@@ -42,7 +42,7 @@ const SURFACE = [
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dnSubmit', 'docSurface', 'docSection', 'wireSections', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'drawCard', 'drawPanes', 'drawPhone', 'drawProjects', 'drawRunner', 'drawSessions',
+  'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
   'endCardDrag', 'endDrag', 'endSession', 'evictFrames',
@@ -64,6 +64,7 @@ const SURFACE = [
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab',
+  'openPhoneTab', 'renderPhoneInto', 'wirePhoneTab',
   // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersProjectPicker',

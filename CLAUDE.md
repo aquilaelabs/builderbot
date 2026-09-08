@@ -290,34 +290,35 @@ project can push, otherwise say so.
 
 ## A phone, if one is connected
 
-Only relevant when the operator has one paired to the dashboard's Phone card.
+Only relevant when a phone is connected on this project's node.
 
-Pairing is once per container, not per session: the key it trusts lives in
-`~/.android` on the home volume, so it outlives a restart. If the phone is not
-showing as connected, the answer is almost always Connect rather than Pair.
+A phone is driven from a **node**, not from this container: whichever node
+has adb is where a handset is paired and connected, on the dashboard's Phone
+tab, and a project's sessions reach the phone on the project's node and no
+other. Pairing is once per node; if the phone is not showing as connected,
+the answer is almost always Connect rather than Pair.
 
 **You cannot reach it directly, and that is deliberate.** The handset is kept
 on an adb server of its own, so `adb devices` here shows the emulator and
-nothing else. Asking for the phone goes through the operator:
+nothing else. Asking for the phone goes through the person who connected it:
 
 ```bash
-bb phone                                    # what is connected, what is waiting
+bb phone                                    # which nodes hold one, whose, what is waiting
 bb phone run --why "..." -- shell getprop ro.build.version.release
 ```
 
-That puts your reason and the exact command on the card and waits. On **Allow**
-the dashboard runs it and hands you the output; on **Deny** you are told no.
-The project's settings can make that **auto**, where it runs at once, or
-**deny**, where the refusal says so — put the command and why in your reply
-then, and the operator runs it or changes the setting.
-The reason is required — the operator is being asked about a command they did
-not write, and without a sentence saying what it is for, allowing it is a
-guess. Write the sentence you would want to read.
+That puts your reason and the exact command in front of the account that
+connected the phone — on their Phone tab and their bell, nobody else's — and
+waits. On **Allow** the node runs it and hands you the output; on **Deny**
+you are told no. There is no setting that skips the question. The reason is
+required — they are being asked about a command they did not write, and
+without a sentence saying what it is for, allowing it is a guess. Write the
+sentence you would want to read.
 
-It waits five minutes and then gives up, so do not open one and wander off.
-And do not go looking for the port the phone is on: reaching around this is
-possible, in the way most things in a container are possible, and it is the
-one thing here that touches hardware the operator is holding.
+It waits fifteen minutes and then gives up, so do not open one and wander
+off. And do not go looking for the port the phone is on: reaching around
+this is possible, in the way most things on a machine are possible, and it
+is the one thing here that touches hardware somebody is holding.
 
 ## What version this is
 

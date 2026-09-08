@@ -140,7 +140,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 4 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
@@ -483,7 +483,8 @@ ok(scan.box && !scan.content,
 // fields, the memory folds and the pane's title bar all sat in the default
 // scheme's blue-grey through the first twelve because their colour was typed
 // in rather than named. A field is the cheapest one to keep honest.
-const fieldBg = () => page.$eval('.side input', e => getComputedStyle(e).backgroundColor);
+// The notebook's add field, open just above: the sidebar has no text field now that the phone is a tab.
+const fieldBg = () => page.$eval('.pane .nb #todoText', e => getComputedStyle(e).backgroundColor);
 const nosField = await fieldBg();
 
 await page.click('#uiMenu .sw[data-theme="default"]');

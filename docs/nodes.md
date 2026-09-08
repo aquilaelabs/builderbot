@@ -1120,7 +1120,7 @@ and Static analysis. Row anatomy in the house language: name, state as a pill
 (online / offline / draining / pending — the severity-pill palette already
 says how), the toolchains its census reports, labels, last-seen, and per-row Test / Drain /
 Remove; Enroll at the top; the pending-approval strip above the list when a
-bulk token is in play, in the same held-above-the-fold shape the phone card's
+bulk token is in play, in the same held-above-the-fold shape the Phone tab's
 asks use.
 
 **The rule for anything new:** *who has to be able to change it, and what has

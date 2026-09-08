@@ -1740,6 +1740,48 @@ def job_add(principal, placement, type, spec, project="", source=None):
     return {"ok": True, "job": jid}
 
 
+def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
+             sizes=None, project=""):
+    """One command on a node, waited for: queued as an exec job, picked up
+    by the agent's next poll (which is held open, so at once), and its log
+    and exit code handed back — the Nodes tab's Test, generalised. For the
+    phone: adb on the node that holds the handset, where the controller has
+    no adb and no phone. {"code", "out"} or {"error"}."""
+    spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
+    if env:
+        spec["env"] = {str(k): str(v) for k, v in env.items()}
+    if files:
+        spec["files"] = list(files)
+        spec["sizes"] = dict(sizes or {})
+        spec["project"] = project
+    r = job_add(principal, {"node": node_id}, "exec", spec, project)
+    if r.get("error"):
+        return {"error": r["error"]}
+    deadline = time.time() + timeout + 10
+    while time.time() < deadline:
+        j = job(r["job"])
+        if j and j["state"] in JOB_END:
+            return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
+                    "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
+        time.sleep(0.25)
+    return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
+
+
+def phone_nodes():
+    """The nodes a phone can be driven from: agent nodes whose census
+    reports adb, with whether they are dialing in. The Phone tab's picker."""
+    out = []
+    for n in node_list():
+        if n["kind"] != "agent" or n["state"] in ("retired", "pending"):
+            continue
+        tc = (n.get("reported") or {}).get("toolchains") or {}
+        if not isinstance(tc, dict) or not (tc.get("adb") or tc.get("android-sdk")):
+            continue
+        out.append({"id": n["id"], "name": n["name"], "live": bool(n.get("live")),
+                    "stores": (n.get("reported") or {}).get("stores") or {}})
+    return out
+
+
 def job_running(node_id):
     """How many jobs this node has going, from the rows — the count the
     slot check uses. Not the agent's own number: that rides a request as a

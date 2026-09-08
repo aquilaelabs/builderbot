@@ -965,9 +965,9 @@ until you clear it, errors marked as errors. It is bare rather than boxed
 because it is a state light first and a control second: a red dot means
 something unread, an **amber** one means a session is blocked on an answer.
 That second case is the reason it exists — a request to reach the phone shows
-up there with **Approve** and **Deny** on it, so answering does not depend on
-which of the two views you happen to be looking at, or on the Phone card being
-scrolled into sight. Clearing empties the page's own log and never an ask: a
+up there with **Approve** and **Deny** on it, for the account that connected
+that phone and nobody else, so answering does not depend on the Phone tab
+being open. Clearing empties the page's own log and never an ask: a
 question somebody is still waiting on is not this button's to dismiss. The log
 is this tab's, so a reload draws a line under it; the asks are the server's and
 are read live, which is why they leave the list the moment they are answered or
@@ -2026,11 +2026,10 @@ exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
-**How much a session may do on its own** is the last row of the same
-dialog — *Claude may* add to the roadmap, file bugs, add rules and use the
-phone, each **auto**, **ask** or **deny**. Auto is today's behaviour: an
-item, report or rule a session adds lands at once, marked as its own, and a
-phone command runs at once and shows in the card's log. Ask holds it instead: the
+**How much of what a session adds lands on its own** is the last row of the
+same dialog — *Claude may* add to the roadmap, file bugs and add rules, each
+**auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
+rule a session adds lands at once, marked as its own. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell
 carries a row per project that takes you there, and **Review** opens the
@@ -2676,7 +2675,7 @@ a refit and a reflow of everything on screen, which is a lot to charge for
 looking at a list. A phone pushes the terminal up for it instead, there being
 no screen to spare for covering one thing with another. Both slide. That is where they belong — a command list is
 about the shell in front of you, not about the box — and it is also what keeps
-the sidebar to seven cards you can read instead of twelve you scroll past. On
+the sidebar to six cards you can read instead of twelve you scroll past. On
 a wide screen the buttons sit at the bar's left edge and the flyout is capped
 rather than stretched: a short list read across two thousand pixels is worse
 than one read in a column.
@@ -2751,10 +2750,12 @@ dashboard's own process.
 
 ### A phone, and asking before touching it
 
-USB is not an option here — there is no `/dev/bus/usb` in the container, and
-passed through it would mean plugging the handset into the server rather than
-leaving it on the desk. So the **Phone** card speaks Android's wireless
-debugging: pair once with the six-digit code, then Connect by IP.
+The container carries no adb and holds no phone. A handset is driven from a
+**node** — whichever one has adb in its packages store — and the **Phone**
+tab (from the Tools card) picks the node, pairs and connects there over
+Android's wireless debugging, and lists what a session is waiting to do.
+Several nodes can each hold their own phone; a project's sessions reach the
+phone on the project's node and no other.
 
 **Open the dashboard on the phone and the IP is already there.** The address
 the field exists to capture is the client address of that very request, and
@@ -2764,50 +2765,56 @@ client address is the desktop's, which is not the phone, and filling it in
 would be a confident wrong answer. The port and the six-digit code still come
 off the phone's own screen; nothing but the phone knows those.
 
-**Pairing is once, and it outlives a restart** — the key the phone trusts is
-in `~/.android` on the home volume, so after a container update the phone is
-still paired and Connect is all it needs. Which matters because pairing has a
-trap in it: **Android cancels the pairing dialog the moment you navigate away
-from it**, taking its port with it. Pairing from the browser *on the phone you
-are pairing* therefore cannot work — by the time you paste the code, the port
-it belonged to is gone. The card notices that case (it knows it is being read
-on the phone whose IP is in the field) and says so, and says the thing worth
-saying first: try Connect, you are probably already paired.
+**Pairing is once per node, and it outlives a restart** — the key the phone
+trusts is in the node account's `~/.android`. Which matters because pairing
+has a trap in it: **Android cancels the pairing dialog the moment you
+navigate away from it**, taking its port with it. Pairing from the browser
+*on the phone you are pairing* therefore cannot work — by the time you paste
+the code, the port it belonged to is gone. The tab notices that case and
+says so, and says the thing worth saying first: try Connect, you are probably
+already paired.
 
 **You give it an IP, not a port.** Android hands out a new one every time
-wireless debugging is toggled, so a remembered port goes stale, and the port on
-the pairing screen is a different number from the one on the main screen
-anyway. The server scans for it. mDNS would answer for free and cannot — the
-container is NAT'd on Docker's bridge and multicast does not cross it.
+wireless debugging is toggled, so a remembered port goes stale, and the port
+on the pairing screen is a different number from the one on the main screen
+anyway. The node scans for it, on its own network.
 
-**Pushing lives in the notebook now**, on the Artifacts view — the card is
-the connection, and what there is to push is a fact about a project rather
-than about the phone.
+**A connection has one owner.** The account that connects a phone is the
+only one that can disconnect it; everybody else sees the connection with
+its controls greyed and the owner named. Every command a session asks for
+goes to that account — on their Phone tab and their bell, nobody else's —
+because the phone is on their desk and they are the one who said yes to it.
 
 **A session never touches the phone itself.** It is kept on an adb server of
-its own, so a plain `adb devices` in a session shows the emulator and nothing
-else. To reach the handset a session runs `bb phone run --why "..." -- …`,
-which puts the reason and the exact command on the card and waits — unless
-the project's settings say **auto** (it runs at once) or **deny** (it is
-refused, and the refusal names the setting); on **Allow**
-the dashboard runs it and hands back the output. The reason is required, not
-optional — approving a command you did not write, with no sentence saying what
-it is for, is a guess.
+its own on the node, so a plain `adb devices` in a session shows the emulator
+and nothing else. To reach the handset a session runs `bb phone run --why
+"..." -- …`, which puts the reason and the exact command in front of the
+phone's owner and waits; on **Allow** the node runs it and hands back the
+output. There is no setting that skips the question. The reason is required,
+not optional — approving a command you did not write, with no sentence saying
+what it is for, is a guess.
 
-That is a door that is shut by default rather than a wall. A session could set
-`ANDROID_ADB_SERVER_PORT` itself and go straight there; inside one container,
-with Bash, nothing can be a wall. What it buys is that reaching the phone is a
-deliberate act rather than an incidental one, and that every deliberate one
-leaves a question on your screen.
+That is a door that is shut by default rather than a wall. A session on the
+node could set `ANDROID_ADB_SERVER_PORT` itself and go straight there;
+nothing on one machine can be a wall. What it buys is that reaching the phone
+is a deliberate act rather than an incidental one, and that every deliberate
+one leaves a question on the owner's screen.
+
+**Installing an APK and pushing an extension** from the Artifacts tab go
+the same way: the file is fetched onto the project's node and installed on
+the phone there, or handed to web-ext there for a temporary add-on that
+stays live until Stop. Both buttons are the connection owner's — anybody
+else sees them ghosted with the owner named — and a push also needs web-ext
+on that node, which the button says when it is missing.
 
 ### How a view knows to re-read
 
 Every view shows facts it does not own. The roadmap's arrows depend on a Claude
-session existing; the Artifacts tab's Push depends on a phone being connected
-somewhere else entirely; the Phone card's questions arrive from a terminal. In
+session existing; the Artifacts tab's Install depends on a phone being
+connected on a node; the Phone tab's questions arrive from a terminal. In
 one week, four of them went stale in exactly the same way — each had invented
 its own rule for when to re-read, out of knowledge it did not have. The worst
-was self-defeating: the Phone card polled only while it already knew of a
+was self-defeating: the phone view polled only while it already knew of a
 pending request, so it could never discover the first one.
 
 So no view decides that any more. `/api/revs` returns one token per thing that

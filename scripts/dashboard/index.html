@@ -1139,7 +1139,7 @@ textarea,select{
 @media(hover:hover){ .artrow a.btn:hover{border-color:#8b949e} }
 .artrow.job .grow{font:var(--f-ui);color:var(--dim)}
 
-/* The phone card. Almost nothing of its own: it is .row like Projects, and
+/* The Phone tab's rows. Almost nothing of their own: .row like Projects, and
    these are the few things a list of rows does not already say. */
 /* A pill used as a row's name sits flush on the explainer under it — a chip
    has a border where a line of text has a descender, so it needs the air a
@@ -2852,13 +2852,10 @@ body.dragging .tab .lbl{cursor:grabbing}
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
-        <label class="pick">Use the phone <select id="rnGatePhone"
-          aria-label="adb commands from a session on the paired phone"></select></label>
       </div>
-      <div class="hint">Auto lands what a session adds, marked as its own, and
-        runs its phone command at once. Ask holds it for you: the notebook shows
-        what is waiting, a phone command sits on the Phone card and the bell.
-        Deny refuses it with a reason the session can quote.</div>
+      <div class="hint">Auto lands what a session adds, marked as its own. Ask
+        holds it for you: the notebook shows what is waiting and you approve or
+        deny it there. Deny refuses it with a reason the session can quote.</div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -3196,6 +3193,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
+        <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
@@ -3207,18 +3205,6 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="card" data-card="projects">
       <h2>Projects</h2>
       <div id="projects"><div class="loading">loading…</div></div>
-    </div>
-    <!-- A phone on the end of wireless adb. USB is not an option here: there
-         is no /dev/bus/usb in the container, and even passed through the
-         handset would have to be plugged into the server rather than sitting
-         on the desk.
-
-         Drawn from JS as rows, the way Projects is, rather than as a bespoke
-         block: this is a list of things with names, subtitles and actions,
-         which is what .row already is. -->
-    <div class="card" data-card="phone">
-      <h2>Phone</h2>
-      <div id="phBody"><div class="loading">loading…</div></div>
     </div>
   </div>
 
@@ -3276,6 +3262,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
 
 <script>
@@ -3634,6 +3621,9 @@ const TABKINDS = {
   jobs:     { multi: false, label: () => "Jobs",
               render: (i) => renderJobsInto(i), live: () => jobsRev,
               open: () => loadJobs() },
+  phone:    { multi: false, label: () => "Phone",
+              render: (i) => renderPhoneInto(i), live: () => phRev,
+              open: () => phFetch(null, true) },
   settings: { multi: false, label: () => "Settings",
               render: (i) => renderSettingsInto(i), live: settingsLive },
   users:    { multi: false, label: () => "Users",
@@ -4728,8 +4718,7 @@ let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: 
                  gate: "", git_name: "", git_email: ""};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules",
-                  phone: "rnGatePhone"};
+const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
@@ -10246,6 +10235,11 @@ $("todoRevert").onclick = revertNotebook;
     }catch(e){ hint.textContent = "artifacts: " + e; return; }
     if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
+    // Why Push and Install are ghosted, when they are: the phone is on the
+    // project's node and belongs to whoever connected it there.
+    const phoneWhy = !dev ? "no phone is connected on this project's node — connect one on the Phone tab"
+      : !art.mine ? `connected by ${art.owner?.name || "somebody else"} — only they can push to it or install on it`
+      : "";
     const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/ — what this project ships, newest first`
@@ -10379,18 +10373,21 @@ project can have several"
             >Send to Docker manager…</button>
         </span>
       </div>`;
-    const jobHtml = job.running ? `
-      <div class="artrow job">
-        <span class="pill ${job.state === "running" ? "ok" : "go"}">${
-          job.state === "running" ? "live" : "starting"}${
-          job.state === "running" ? "" : `<span class="dots"></span>`}</span>
-        <span class="grow">${esc(job.what)} — a temporary add-on, and a
-          snapshot: changes to the project do <b>not</b> auto-push. Rebuild
-          the .xpi and push again. Gone when Firefox restarts.</span>
-        <button type="button" id="artStop">Stop</button>
-      </div>` : "";
     // An install is one shot rather than a session, so it reports its own
     // line: what it is doing, and what went wrong in words when it does.
+    // The push session, as a row: live once web-ext says the add-on is on
+    // the phone, with Stop, which is how the session ends.
+    const jobHtml = job.running || (job.state === "stopped" && job.error) ? `
+      <div class="artrow job">
+        <span class="pill ${job.state === "running" ? "ok" : job.error ? "bad" : "go"}">${
+          job.state === "running" ? "live" : job.error ? "stopped" : "starting"}${
+          job.running && job.state !== "running" ? `<span class="dots"></span>` : ""}</span>
+        <span class="grow">${esc(job.what)}${job.error ? ` — ${esc(job.error)}`
+          : ` — a temporary add-on, and a snapshot: changes to the project do
+          <b>not</b> auto-push. Rebuild the .xpi and push again. Gone when
+          Firefox restarts.`}</span>
+        ${job.running ? `<button type="button" id="artStop">Stop</button>` : ""}
+      </div>` : "";
     const instHtml = inst.running || inst.state === "failed" ? `
       <div class="artrow job">
         <span class="pill ${inst.state === "failed" ? "bad" : "go"}">${
@@ -10419,15 +10416,15 @@ project can have several"
               a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}</span>
           <span class="acts">
             ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
-                inst.running || !dev ? " disabled" : ""} title="${
-                !dev ? "no phone is connected — pair one on the Phone card"
+                inst.running || phoneWhy ? " disabled" : ""} title="${
+                phoneWhy ? esc(phoneWhy)
                 : inst.running ? "one install at a time"
                 : "install it on the phone, replacing any copy already there"
                 }">Install</button>` : ""}
             ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
-                job.running || !art.webext || !dev ? " disabled" : ""} title="${
-                !dev ? "no phone is connected — pair one on the Phone card"
-                : !art.webext ? "web-ext is missing from this image"
+                job.running || phoneWhy || !art.webext ? " disabled" : ""} title="${
+                phoneWhy ? esc(phoneWhy)
+                : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")} — a push is web-ext beside the phone's adb, so install it there`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
@@ -12883,7 +12880,7 @@ function drawBell(){
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    phBusy = "running it"; drawPhone();
+    phBusy = "running it"; phRev++; drawPanes();
     phFetch({action: "allow", id: Number(a.dataset.ballow)});
   });
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
@@ -13312,7 +13309,7 @@ async function refresh(){
     // one straight line, so a draw that threw on the payload took every
     // draw after it down with it: the operator saw Runner and Projects still
     // on "loading…" and Doctor on its boot text, minutes after a restart,
-    // under a red light that only said "error" — while the Phone card, which
+    // under a red light that only said "error" — while the phone view, which
     // fetches for itself, had drawn fine. The container had answered; one
     // draw had tripped over the answer and the page kept the fact to itself.
     // Now the card that failed says so in its own body and the rest draw.
@@ -13465,7 +13462,7 @@ async function pollRevs(){
 
 // Fast while the tab is being looked at, slow while it is not — and the tab
 // being hidden must not mean "stop", which was the mistake in the first cut
-// of the phone card. A hidden tab is exactly where a request lands while
+// of the phone view. A hidden tab is exactly where a request lands while
 // nobody is watching, and a browser throttles background timers hard anyway;
 // what matters is that whenever the page does get to run, it catches up.
 let revTimer = null;
@@ -13514,139 +13511,6 @@ function setBadge(n){
     : ICON_BASE);
 }
 
-// ---- the phone card --------------------------------------------------------
-// Fetched on demand rather than on the fifteen-second poll: the payload walks
-// the projects looking for extension manifests, and doing that forever for a
-// card nobody has open is a poor trade. It refreshes when something is
-// pressed, and while a push is live or a session is waiting on an answer —
-// which is the only time it changes on its own.
-let ph = null, phBusy = "";
-// Held outside the render, because the card is rebuilt whole on every draw and
-// a field that emptied itself mid-sentence would be unusable.
-let phIp = "", phPort = "", phCode = "";
-
-async function phFetch(body){
-  try{
-    const r = body
-      ? await fetch("/api/phone", {method: "POST",
-          headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
-      : await fetch("/api/phone");
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); if (!ph) return; }
-    else ph = j;
-  }catch(e){ notify("phone: " + e, true); }
-  phBusy = "";
-  drawPhone();
-  drawBell();          // the same asks, in the header
-}
-
-function drawPhone(){
-  const box = $("phBody");
-  if (!box) return;
-  const dev = ph?.phone, asks = ph?.asks || [];
-  // This browser's own address wins when it is the phone: viewing the
-  // dashboard ON the device is the one case where the number is not something
-  // anybody has to go and read. A remembered IP is the fallback.
-  if (!phIp) phIp = ph?.you || ph?.ip || "";
-
-  // A word and an animated ellipsis, never a bar: nothing here knows a
-  // percentage, and inventing one would be a lie about progress.
-  const state = phBusy
-    ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
-    : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
-          : `<span class="pill">not connected</span>`;
-
-  const rows = [
-    `<div class="row">
-       <div class="grow"><div class="name">${state}</div>
-         <div class="sub">${dev ? esc(dev.serial)
-           : "try Connect first — a pairing outlives a container restart, so "
-             + "it is usually already done"}</div></div>
-       ${dev ? `<span class="acts"><button type="button" id="phDisconnect"
-         >Disconnect</button></span>` : ""}
-     </div>`,
-    // An IP and no port. Android hands out a new connect port every time
-    // wireless debugging is toggled, so the server scans for it rather than
-    // sending anybody back to the phone to read a number that has changed.
-    `<div class="row">
-       <div class="grow"><input id="phIp" maxlength="15" autocomplete="off"
-         placeholder="192.168.0.10" value="${esc(phIp)}"
-         aria-label="phone IP address"></div>
-       <span class="acts"><button type="button" id="phConnect" class="primary"
-         >${dev ? "Reconnect" : "Connect"}</button></span>
-       ${ph?.you && phIp === ph.you
-         ? `<div class="sub">this device — you are reading this on it</div>` : ""}
-     </div>`,
-    // Pairing in the open rather than behind a fold: it is two fields, and a
-    // fold over two fields is a click that buys nothing.
-    `<div class="row">
-       <div class="grow" style="display:flex;gap:6px">
-         <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="pairing port"
-           value="${esc(phPort)}" aria-label="pairing port">
-         <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="code"
-           value="${esc(phCode)}" aria-label="pairing code">
-       </div>
-       <span class="acts"><button type="button" id="phPair">Pair</button></span>
-       <div class="sub">${ph?.you && phIp === ph.you
-         ? `<b class="warn">You are reading this on the phone you are pairing.</b>
-            Android closes the pairing dialog the moment you leave it, and the
-            port goes with it — so pair from another device with that dialog
-            open here, or skip it: pairing is once per container, and Connect
-            is all you need after that.`
-         : `Wireless debugging → <b>Pair device with pairing code</b>, and
-            leave that dialog open — it cancels when you navigate away. Its
-            port is not the one the main screen shows.`}</div>
-     </div>`,
-  ];
-
-  // What a session is waiting on, above everything else it could be doing:
-  // somebody is blocked on it. With the reason it gave, because Allow on a
-  // command you did not write and cannot place is a guess.
-  for (const a of asks)
-    rows.push(`<div class="row phask">
-      <div class="grow"><div class="name">${esc(a.why)}</div>
-        <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer`
-          : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-deny="${a.id}">Deny</button>
-        <button type="button" class="primary" data-allow="${a.id}">Allow</button>
-      </span></div>`);
-
-  box.innerHTML = rows.join("");
-  // One timer writes into every .dots on the page, and stops itself when
-  // there are none left. Started the way every other user of it does.
-  if (!pkgDotsTimer && box.querySelector(".dots"))
-    pkgDotsTimer = setInterval(pkgTickDots, 400);
-
-  // The fields keep what is in them across a redraw, which happens on a poll
-  // while a push is live.
-  const keep = (id, set) => { const el = $(id); if (el) el.oninput = e => set(e.target.value); };
-  keep("phIp", v => phIp = v);
-  keep("phPairPort", v => phPort = v);
-  keep("phPairCode", v => phCode = v);
-
-  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-  on("phConnect", () => {
-    if (!phIp.trim()) return notify("the phone's IP, from its wireless debugging screen", true);
-    phBusy = "looking for the phone"; drawPhone();
-    phFetch({action: "connect", ip: phIp.trim()});
-  });
-  on("phDisconnect", () => { phBusy = "disconnecting"; drawPhone();
-                             phFetch({action: "disconnect"}); });
-  on("phPair", () => {
-    phBusy = "pairing"; drawPhone();
-    phFetch({action: "pair", ip: phIp.trim(), port: phPort.trim(), code: phCode.trim()});
-  });
-  box.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
-    phBusy = "running it"; drawPhone();
-    phFetch({action: "allow", id: Number(b.dataset.allow)});
-  });
-  box.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
-    phFetch({action: "deny", id: Number(b.dataset.deny)}));
-}
-
 // A request arriving or being answered, and a phone connecting or going away.
 // Both are facts this card displays and neither is a fact it owns — which is
 // exactly the shape that used to go stale.
@@ -13662,11 +13526,13 @@ onRev("nodes", () => {
 onRev("jobs", () => {
   if (tabs.some(t => t.kind === "jobs")) loadJobs();
 });
+// The Phone tab's data (tab-phone.js) — fetched here too, because the bell
+// carries the same asks whether or not the tab is open.
 onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
 onRev("phone.asks", k => setBadge(revs[k] || 0));
-onRev("phone.dev", () => phFetch());
+onRev("phone.dev", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
 phFetch();
 
 // Findings opens as a document tab, not a terminal — it is a report to read,

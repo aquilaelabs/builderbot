@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.28"
+AGENT_VERSION = "0.4.29"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -571,7 +571,13 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "android-sdk": ("android/platform-tools/adb",
                                "android/cmdline-tools/latest/bin/sdkmanager",
                                "android/cmdline-tools/bin/sdkmanager"),
-               "emulator": ("android/emulator/emulator",)}
+               "emulator": ("android/emulator/emulator",),
+               # adb on its own: a phone is driven from whichever node has
+               # it, and the Phone tab's picker reads this.
+               "adb": ("android/platform-tools/adb",),
+               # web-ext beside it: pushing a Firefox extension to the phone
+               # is web-ext driving that adb, on the same node.
+               "web-ext": ("node/bin/web-ext",)}
 
 
 def _toolchains(state):
@@ -611,6 +617,12 @@ def _toolchains(state):
     p = find("emulator")
     if p and os.path.isfile(p):
         tc["emulator"] = "present"
+    p = find("adb")
+    if p and os.path.isfile(p):
+        tc["adb"] = "present"
+    p = find("web-ext")
+    if p and os.path.isfile(p):
+        tc["web-ext"] = "present"
     return tc
 
 
