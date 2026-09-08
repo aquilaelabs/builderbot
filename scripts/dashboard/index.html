@@ -3184,6 +3184,10 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="docbar" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
+    <!-- What this container can install. Its own card rather than a corner
+         of the findings one: a scanner report and a package manager answer
+         different questions, and only one of them depends on /reports being
+         mounted. -->
     <div class="card" data-card="tools">
       <h2>Tools</h2>
       <div class="macros">
@@ -3196,14 +3200,6 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
     </div>
-    <!-- A phone on the end of wireless adb. USB is not an option here: there
-         is no /dev/bus/usb in the container, and even passed through the
-         handset would have to be plugged into the server rather than sitting
-         on the desk.
-
-         Drawn from JS as rows, the way Projects is, rather than as a bespoke
-         block: this is a list of things with names, subtitles and actions,
-         which is what .row already is. -->
     <div class="card" data-card="runner">
       <h2>Runner</h2>
       <div id="runner"><div class="loading">loading…</div></div>
@@ -3212,10 +3208,14 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Projects</h2>
       <div id="projects"><div class="loading">loading…</div></div>
     </div>
-    <!-- What this container can install. Its own card rather than a corner
-         of the findings one: a scanner report and a package manager answer
-         different questions, and only one of them depends on /reports being
-         mounted. -->
+    <!-- A phone on the end of wireless adb. USB is not an option here: there
+         is no /dev/bus/usb in the container, and even passed through the
+         handset would have to be plugged into the server rather than sitting
+         on the desk.
+
+         Drawn from JS as rows, the way Projects is, rather than as a bespoke
+         block: this is a list of things with names, subtitles and actions,
+         which is what .row already is. -->
     <div class="card" data-card="phone">
       <h2>Phone</h2>
       <div id="phBody"><div class="loading">loading…</div></div>
@@ -5237,13 +5237,18 @@ function findingsRulesHtml(rows){
 // kept a copy, and when the default moved the copy did not, so Reset put the
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands — it is written in the same order.
-let cards = {order: [], closed: []};
+let cards = {order: [], closed: []};   // filled from the markup once it exists, below
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
                                            // issued before that carries a
                                            // stale copy and must not win
 
 const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
+// Never empty: a drag before the first poll answered used to save the one
+// card it moved, which the server healed into the default and the drag was
+// lost. The markup is written in the default order, so it is the default
+// until the server's own arrangement arrives.
+cards.order = cardEls().map(el => el.dataset.card);
 
 function applyCards(animate){
   const side = document.querySelector(".col.side");

@@ -280,4 +280,4 @@
 - The bell pins a node whose agent needs updating, in red when it is from another version window with the projects it stops named, and the alert leaves by itself once the agent is current (03908af)
 - A project's settings now say whether Claude may use the paired phone on its own: auto, ask or deny, beside the roadmap, bugs and rules words (03908af)
 - Adding to the roadmap, the bugs, the rules or the memories is one button at the top of its view, so a phone no longer scrolls past the list to reach it; Save and Revert appear only on views with something to save (f06086c)
-- The Tools card sits between Doctor and Runner by default, and its buttons are in alphabetical order (9657aa7)
+- The Tools card sits between Doctor and Runner by default, and its buttons are in alphabetical order (0972357)
