@@ -59,39 +59,22 @@ function renderSettingsInto(i){
   if (nd) nd.onclick = openNodesTab;
 }
 
-// The settings that used to be environment variables (roadmap R29): each
-// group is one section with one Apply, the field's source said beside it
-// until it is saved here, and whether a change takes now or at the next
-// start. Drawn from the poll's copy, so a save shows on the next poll.
+// The settings that used to be environment variables (roadmap R29) — what is
+// left of them after the operator asked which needed to exist at all. Each
+// group is one section with one Apply, a field that has never been saved
+// says so beside it, and the bar says whether a change takes now or at the
+// next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
-  {title: "Dashboard", fields: [
-    {key: "max_tabs", label: "Tabs open at once", type: "number", min: 1, max: 64,
-     hint: "Each terminal tab is a live terminal over its own socket."}]},
   {title: "Claude Code", fields: [
     {key: "claude_auto_update", label: "Update at every start", type: "bool"},
-    {key: "claude_version", label: "Version", type: "text",
-     hint: "latest, or a version to pin."}]},
-  {title: "Commit identity", fields: [
-    {key: "git_name", label: "Name", type: "text"},
-    {key: "git_email", label: "Email", type: "text",
-     hint: "A GitHub noreply address keeps your email out of commits."}]},
-  {title: "Packages installed at boot", fields: [
-    {key: "packages_apt", label: "apt", type: "text"},
-    {key: "packages_npm", label: "npm", type: "text"},
-    {key: "packages_pipx", label: "pipx", type: "text",
-     hint: "Space-separated. Reinstalled at every start, since an image update discards what was installed by hand."}]},
-  {title: "Projects", fields: [
-    {key: "project_bootstrap", label: "Run each project's .builderbot/setup.sh at start", type: "bool"}]},
-  {title: "Unraid", fields: [
-    {key: "unraid_icon_name", label: "Container name, for the icon", type: "text",
-     hint: "Only matters if you renamed the container."}]},
+    {key: "claude_channel", label: "Channel", type: "choice",
+     hint: "stable is the tested release, latest the newest, next the preview."}]},
 ];
 
 function settingsSections(){
   const s = state?.settings;
   if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
-  const src = k => s.settings[k]?.source === "env" ? `<span class="pill">from the environment</span>`
-                 : s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
+  const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   return SETTING_GROUPS.map(g => {
     const boot = g.fields.some(f => s.meta[f.key]?.applied === "boot");
     return `<div class="row stack2" data-group="${esc(g.title)}">
@@ -101,11 +84,17 @@ function settingsSections(){
           ${g.fields.map(f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
-            const ctl = f.type === "bool"
-              ? `<input id="${id}" type="checkbox" data-set="${f.key}"${v ? " checked" : ""}>`
-              : f.type === "number"
-                ? `<input id="${id}" type="number" data-set="${f.key}" min="${f.min}" max="${f.max}" step="1" value="${esc(String(v ?? ""))}" inputmode="numeric">`
-                : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(v ?? ""))}" spellcheck="false" autocomplete="off">`;
+            // A checkbox sits inside its label, the way the Tests bar's do;
+            // a choice is a select over the store's own list.
+            if (f.type === "bool")
+              return `<div class="logdays setrow"><label class="ndcap">
+                <input id="${id}" type="checkbox" data-set="${f.key}"${v ? " checked" : ""}> ${esc(f.label)}</label>${src(f.key)}
+              </div>${f.hint ? `<div class="dim">${esc(f.hint)}</div>` : ""}`;
+            const choices = s.meta[f.key]?.choices || [];
+            const ctl = f.type === "choice"
+              ? `<select id="${id}" data-set="${f.key}">${choices.map(c =>
+                  `<option value="${esc(c)}"${c === v ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`
+              : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(v ?? ""))}" spellcheck="false" autocomplete="off">`;
             return `<div class="logdays setrow">
               <label for="${id}">${esc(f.label)}</label>${ctl}${src(f.key)}
             </div>${f.hint ? `<div class="dim">${esc(f.hint)}</div>` : ""}`;
@@ -142,7 +131,7 @@ function wireSettingsSections(el){
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     };
     btn.onclick = apply;
-    box.querySelectorAll("input[type=text],input[type=number]").forEach(i => {
+    box.querySelectorAll("input[type=text]").forEach(i => {
       i.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
     });
   });

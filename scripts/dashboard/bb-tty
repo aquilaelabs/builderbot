@@ -442,21 +442,21 @@ bad() {
     exit 1
 }
 
-# git_identity PROJECT — on a node, the account's commit identity from the
-# controller (docs/nodes.md §20, rule 2): user.name and user.email are the
-# controller's settings, read through `bb settings`, never set up per node.
-# Once per home, and never over one already there; nothing at all on the
-# controller, where 30-git-and-auth.sh configured it at boot.
+# git_identity PROJECT — on a node, the project's commit identity from the
+# controller (docs/nodes.md §20, rule 2): the project's own setting, read
+# through `bb settings` and written into the repo it works in, never set up
+# per node. The tree is the shared projects share, so the controller's boot
+# hook has usually written it already; this covers a project bound to a node
+# whose setting changed since. Nothing on the controller.
 git_identity() {
     on_node || return 0
-    [ -z "$(git config --global --get user.email 2>/dev/null)" ] || return 0
-    local s name email
+    local s name email tree="${BB_TREE:-$WORKSPACE/$1}"
+    [ -d "$tree/.git" ] || return 0
     s="$(BB_PROJECT="$1" bb settings --json 2>/dev/null)" || return 0
     email="$(printf '%s' "$s" | jq -r '.git_email // empty' 2>/dev/null)"
     name="$(printf '%s' "$s" | jq -r '.git_name // empty' 2>/dev/null)"
-    [ -n "$email" ] || return 0
-    git config --global user.email "$email" 2>/dev/null || return 0
-    [ -z "$name" ] || git config --global user.name "$name" 2>/dev/null || true
+    [ -z "$email" ] || git -C "$tree" config user.email "$email" 2>/dev/null || true
+    [ -z "$name" ]  || git -C "$tree" config user.name  "$name"  2>/dev/null || true
 }
 
 # start SESSION DIR [COMMAND...] — attach to a session, creating it if needed,

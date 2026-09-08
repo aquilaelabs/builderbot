@@ -266,3 +266,4 @@
 - Rules and memories on the Briefing tab are line-divided folds like bug reports: the name on the line, the text behind a click (4b96eb5)
 - The Tests tab and a job's row no longer scroll sideways on a phone (2514f32)
 - A fresh install no longer asks for a runner work directory, and the template describes the container as the workstation and node controller it is (a320ce6)
+- The tab cap, Claude Code's auto-update and pin, your commit identity, packages installed at boot, the project bootstrap and the Unraid icon name are set on the Settings tab now, not in the container template (b2f2c43)

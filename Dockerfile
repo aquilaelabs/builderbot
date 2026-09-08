@@ -258,10 +258,14 @@ RUN set -eux; \
 # postinstall scripts by default, which silently skips Claude Code's native
 # installer (install.cjs). The --allow-scripts flag covers the day an npm
 # upgrade sneaks in anyway; on npm 10 it is an ignored config key.
+# web-ext beside it: the Phone card pushes a Firefox extension to a paired
+# handset from THIS container, and the controller carries what it needs in
+# the image — there is no package list at boot any more (R29, then the
+# operator's call: everything else comes from the package manager on a node).
 RUN set -eux; \
     npm install -g --foreground-scripts \
         --allow-scripts=@anthropic-ai/claude-code \
-        @anthropic-ai/claude-code; \
+        @anthropic-ai/claude-code web-ext; \
     corepack enable; \
     npm cache clean --force; \
     claude --version

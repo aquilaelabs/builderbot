@@ -7,17 +7,8 @@
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
-# The commit identity, from the Settings tab (roadmap R29): saved there it is
-# applied at once; this makes sure a fresh home has it too. The variables it
-# replaced are read for one release.
-GIT_USER_NAME="$(bb_setting git_name GIT_USER_NAME "")"
-GIT_USER_EMAIL="$(bb_setting git_email GIT_USER_EMAIL "")"
-if [ -n "${GIT_USER_NAME:-}" ]; then
-    git config --global user.name "$GIT_USER_NAME"
-fi
-if [ -n "${GIT_USER_EMAIL:-}" ]; then
-    git config --global user.email "$GIT_USER_EMAIL"
-fi
+# No global commit identity: it is a project's own setting (prefs.py), written
+# into each repo's config by the settings dialog and by 40-projects.sh at boot.
 
 # Sane defaults for a container that edits shares owned by another uid.
 git config --global --add safe.directory '*'

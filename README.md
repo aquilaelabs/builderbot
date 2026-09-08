@@ -197,7 +197,7 @@ Everything else has sane defaults — full reference below.
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
-| Extra tools at startup | the Settings tab's *packages installed at boot* (apt, npm, pipx), or drop hooks in `config/startup.d/` |
+| Extra tools | the package manager on the Tools tab, per node; the controller carries what it needs in the image |
 
 ### 7. First boot
 
@@ -319,7 +319,6 @@ then executes hooks and drops privileges:
 
 | Hook | Does |
 |---|---|
-| `10-system-packages.root.sh` | the apt packages set on the Settings tab |
 | `20-claude-code.sh` | Claude Code update, npm/pipx extras |
 | `30-git-and-auth.sh` | git identity, GitHub host keys, `gh` auth (unshielded mode only) |
 | `35-publishing.sh` | npm publish auth, ghcr docker login (socket + PAT present) |
@@ -752,7 +751,7 @@ build`, Zig with `zig cc -target x86_64-windows-gnu` (a C and C++
 cross-compiler that happens to ship with a language), and .NET with `dotnet
 publish -r win-x64 --self-contained`. All three were verified on this box —
 `file` says *PE32+ executable, for MS Windows*. Rust needs one more piece: a
-linker, either `gcc-mingw-w64` in the Settings tab's apt packages or `cargo-zigbuild` on top
+linker, either `gcc-mingw-w64` on the node or `cargo-zigbuild` on top
 of Zig. What none of them give you is a Windows *GUI* toolchain — WPF, WinUI
 and MSIX packaging need Windows itself.
 

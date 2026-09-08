@@ -342,10 +342,15 @@ TMUX_LITERALS = {
 # full xterm.js with its own websocket, so this is a real ceiling on browser
 # memory rather than a tidiness rule — and a phone hits it far earlier than a
 # desktop does.
+# The tab cap: a constant, because each terminal tab is a live terminal over
+# its own socket and twelve is what a browser on this box takes without
+# falling over. It was a setting for one afternoon (R29) and nobody needed to
+# move it.
+MAX_TABS = 12
+
+
 def max_tabs():
-    """The tab cap — a Settings-tab value now (R29), read on use so a change
-    takes on the next poll rather than the next restart."""
-    return settings.get("max_tabs")
+    return MAX_TABS
 
 # Where Claude Code keeps transcripts: one directory per working directory,
 # with the path's slashes turned into dashes, holding one .jsonl per session.
@@ -2242,8 +2247,7 @@ rules.configure(write_json=write_json, state=STATE)
 pending.configure(write_json=write_json, state=STATE)
 # The Settings tab's own store (roadmap R29): what used to be fourteen
 # environment variables. The builder home is where the commit identity lands.
-settings.configure(write_json=write_json, state=STATE,
-                   home=os.environ.get("BUILDER_HOME") or None)
+settings.configure(write_json=write_json, state=STATE)
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -3984,7 +3988,9 @@ class Handler(BaseHTTPRequestHandler):
                                 node=req.get("node") if "node" in req else req.get("dockernode"),
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
-                                gate=req.get("gate"))
+                                gate=req.get("gate"),
+                                git_name=req.get("git_name"), git_email=req.get("git_email"),
+                                workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
