@@ -1,9 +1,9 @@
 # BuilderBot
 
-One container that is a **Claude Code workstation**, a **self-hosted GitHub
-Actions runner**, a **Playwright browser lab** and an **Android build/emulator
-box** — built to live on an Unraid server with your projects mounted straight
-in.
+One container that is a **Claude Code workstation** and the **controller for
+your build nodes** — the machines where builds, tests, CI and the Android
+emulator run — built to live on an Unraid server with your projects mounted
+straight in.
 
 ```
   ┌─────────────────────── BuilderBot ────────────────────────┐
@@ -827,10 +827,10 @@ ffmpeg, imagemagick, build-essential) integrates with the system and cannot
 live on a share. So do the small CLI tools `bb lint` promises — shellcheck,
 hadolint, actionlint — and the Android bootstrap, `sdkmanager` and `adb`,
 which is what installs everything else. Playwright's *module* and its system
-libraries stay; only the browser bundles move. The Actions runner stays too:
-it is what this container is for, its version is part of what an image
-pins, and CI that had to wait for a 666MB download before its first job
-would be a worse trade than the megabytes are worth.
+libraries stay; only the browser bundles move. The Actions runner is not in
+the image at all any more: every runner lives on a node, installed from the
+Nodes tab, so the controller carries neither the runner nor the toolchains a
+job needs.
 
 **The first boot after an update is not free.** A container whose share is
 empty installs the Playwright browsers (~1.3GB) on first start. That happens
