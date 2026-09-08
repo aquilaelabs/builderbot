@@ -277,3 +277,5 @@
 - The house rules a session starts with name each conditional rule by its triggers alone, so the block costs half what it did (ebd67c7)
 - CI on a node now runs with the node's own toolchain, and the browser suite fails when it cannot start instead of quietly passing (8e95533)
 - A test run says up front when it should finish, from what the last run took, and how it compared when it ends (b541901)
+- The bell pins a node whose agent needs updating, in red when it is from another version window with the projects it stops named, and the alert leaves by itself once the agent is current (03908af)
+- A project's settings now say whether Claude may use the paired phone on its own: auto, ask or deny, beside the roadmap, bugs and rules words (03908af)

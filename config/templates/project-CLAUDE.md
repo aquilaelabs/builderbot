@@ -477,9 +477,9 @@ of the rules whose files you changed, and fails by name.
 
 **What belongs here rather than in a memory.** A memory is something you
 noticed; a rule is something that should hold for whoever works here next,
-including a person. "The suite takes ten minutes" is a memory. "Do not edit
-the dashboard while a suite is running, because the page is served from disk
-per request" is a rule — it is about this project and it applies to anybody.
+including a person. "The suite takes ten minutes" is a memory. "A new
+top-level name in index.html goes in test/surface.mjs, or the suite cannot
+see it" is a rule — it is about this project and it applies to anybody.
 When you learn one of those, `bb rules add` it and say so in your reply. The
 operator may have set this project to hold or refuse a session's new rules,
 the same way as roadmap items; `bb rules pending` lists what is waiting.
@@ -854,6 +854,13 @@ durations, and says before it starts when it should finish, from what the
 last run took. Wait for that, not for a guess: a run well past it is stuck,
 not slow, and the process is the thing to look at. `bb tests ingest LOG`
 records a run made some other way.
+
+**Do not edit the tree while its tests are running.** A runner reads files
+as it goes — a dev server serves them from disk per request, a test file is
+loaded when its turn comes — so an edit mid-run makes the run test a mix of
+before and after, and its verdict is about nothing. Stage the change, let
+the run finish, then apply it and run again. One run at a time, for the
+same reason.
 
 **The timings are measured, never estimated.** Do not put a duration in by hand. A number somebody guessed is worse than no
 number, because it reads exactly like one that was measured.
