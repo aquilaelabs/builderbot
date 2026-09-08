@@ -1340,7 +1340,7 @@ def project_list(who):
     node_gaps = {}
     if not NODES_OK:
         for n in nodes.node_list():
-            if n["kind"] == "agent":
+            if n["kind"] == "agent" and n.get("live"):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
@@ -5240,6 +5240,11 @@ class Handler(BaseHTTPRequestHandler):
             # asking through the API names one.
             who = self._who() or {}
             proj = who.get("session") or field(req, "project")
+            # A person may only borrow a project's setting if the project is
+            # theirs to see: otherwise a member limited to one project could
+            # name another whose gate is auto and run adb with no Allow.
+            if proj and not who.get("session") and not users.may_see(who, proj):
+                proj = ""
             mode = prefs.get(proj)["gate"]["phone"] if proj else "ask"
             r = phone.ask(field(req, "why"), req.get("cmd"), mode=mode)
         elif act == "allow" or act == "deny":

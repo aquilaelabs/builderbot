@@ -12869,7 +12869,7 @@ function drawBell(){
                 ? `, so ${a.projects.map(esc).join(", ")} cannot build, test or reach the emulator there` : ""} until it is updated`
             : ""}</div>
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Update agent</a></span></div></div>`),
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),

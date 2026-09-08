@@ -1253,7 +1253,12 @@ def attention(project_nodes):
     ours = agent_file()
     out = []
     for n in node_list():
-        if n["kind"] != "agent" or not agent_stale(n):
+        # Only a node that is dialing in: one that is away takes no job for
+        # that reason first, and Update agent could not reach it anyway — an
+        # alert nobody can act on would sit in the bell until the node came
+        # back, which is the opposite of an alert that leaves when it stops
+        # being true.
+        if n["kind"] != "agent" or not n.get("live") or not agent_stale(n):
             continue
         out.append({"kind": "agent", "node": n["name"], "id": n["id"],
                     "from": (n.get("agent") or {}).get("version") or "?",
