@@ -263,3 +263,4 @@
 - A session's bb token renews itself while the session is in use, so a long conversation no longer loses the notebook and git push after twelve hours (dd8a01d)
 - A roadmap item's or a bug's number is never reused once it has been handed out, so an old reference cannot point at a newer entry (94a1fbe)
 - Rules on the Briefing tab read as text with an Edit button, instead of every rule opening as a form (8e7e703)
+- Rules and memories on the Briefing tab are line-divided folds like bug reports: the name on the line, the text behind a click (4b96eb5)
