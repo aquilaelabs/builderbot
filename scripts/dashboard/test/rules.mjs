@@ -79,7 +79,8 @@ ok(JSON.stringify(saved[1].paths) === '["scripts/agent"]'
      JSON.stringify(saved[1])})`);
 // Written, a rule is READ: its name, its words and its triggers, no fields —
 // every row opening as a form read as a tab of half-finished edits. Edit
-// brings the fields back for that one row; Done puts them away.
+// brings the fields back for that one row; Cancel puts them away and drops
+// what was typed into them.
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r =>
@@ -98,9 +99,23 @@ await page.click('#rulesBox .rulerow[data-i="1"] .rlEdit');
 await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 10000 });
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
-await page.click('#rulesBox .rulerow[data-i="1"] .rlDone');
+await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+   'typing into a rule arms the panel\'s Save');
+await page.click('#rulesBox .rulerow[data-i="1"] .rlCancel');
 await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
-ok(true, '...and Done puts them away again');
+ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .rlBody', e => e.textContent)),
+   '...and Cancel puts them away, reading what was there before Edit');
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...with nothing left staged, so the Save goes quiet again');
+// A row Add made has nothing to go back to: cancelling it is removing it.
+await page.click('#rlAdd');
+await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 3, null, { timeout: 10000 });
+await page.click('#rulesBox .rulerow[data-i="2"] .rlCancel');
+await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
+                                 && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+   'cancelling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------
 // Exactly what bb-tty puts in front of one: `bb rules --prompt`.
