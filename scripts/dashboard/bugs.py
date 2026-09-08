@@ -39,6 +39,8 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import ids  # noqa: E402
+import pending  # noqa: E402
 import time
 from pathlib import Path
 
@@ -51,6 +53,19 @@ def configure(*, write_json, state, tell=None, tmux_name=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name)
     globals()["FILE"] = Path(state) / "bugs.json"
+    # The approval queue (roadmap #27) — see todo.configure.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("bugs", replay)
+
+
+def replay(project, verb, args):
+    """A held tracker call, replayed on approval: a report, or a note or
+    field edit that rode behind a held report."""
+    if verb == "add":
+        return add(project, args.pop("title", ""), by="claude", **args)
+    if verb == "edit":
+        return edit(project, args.pop("bug_id", None), by="claude", **args)
+    return {"error": f"not a tracker change that can be replayed: {verb}"}
 
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
@@ -104,12 +119,9 @@ def save(d):
 
 
 def _int(v):
-    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
+    """12 or "B12" — see todo._int, and ids.py for why there is a letter."""
+    n, _err = ids.parse("bugs", v)
+    return n
 
 
 def _clean(text, limit):
@@ -144,7 +156,8 @@ def _log(d, project, by, ev):
     still changes as it goes, visibly; only the record waits for commit.
     """
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you", **ev}
+          "by": "claude" if by == "claude" else "you",
+          **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
     if b is not None and ev["by"] == b.get("by", "claude"):
         b.setdefault("events", []).append(ev)
@@ -353,13 +366,30 @@ def add(project, title, by="you", severity="medium", **fields):
         return {"error": "a bug needs a title — one line, what goes wrong"}
     if severity not in SEVERITIES:
         return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
+    number = _int(fields.pop("number", None))
+    # The gate (roadmap #27), the same shape as todo.add's: a session's report
+    # may be held or refused per project, and a held one keeps its number.
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "bugs")
+        if g == "deny":
+            return {"error": pending.refusal("bugs")}
+        if g == "ask":
+            with _lock:
+                d = load()
+                n = _next_id(d, project)
+                d.setdefault("reserved", {})[project] = n
+                save(d)
+            return pending.hold(project, "bugs", "add",
+                                {"title": title, "severity": severity, "number": n,
+                                 **{k: v for k, v in fields.items() if k in FIELDS}},
+                                summary=f"[{severity}] {title}", number=n)
     with _lock:
         d = load()
         rows = d["projects"].setdefault(project, [])
         if len(rows) >= MAX_BUGS:
             return {"error": f"{MAX_BUGS} bugs is the limit — close some, or "
                              "this stops being a tracker and starts being a log"}
-        bug = {"id": max((int(b.get("id", 0)) for b in rows), default=0) + 1,
+        bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you",
                "at": int(time.time())}
@@ -373,6 +403,13 @@ def add(project, title, by="you", severity="medium", **fields):
                               "note": bug.get("severity", "")})
         save(d)
     return {"ok": True, "bug": bug}
+
+
+def _next_id(d, project):
+    """One above the highest filed or reserved — see todo._next_id."""
+    rows = d["projects"].get(project) or []
+    top = max((int(b.get("id", 0)) for b in rows), default=0)
+    return max(top, _int((d.get("reserved") or {}).get(project)) or 0) + 1
 
 
 def _moved_by(d, project, bug_id):
@@ -402,7 +439,7 @@ def _edit(project, bug_id, change, by="you", rev=None):
         rows = d["projects"].get(project) or []
         bug = next((b for b in rows if _int(b.get("id")) == bug_id), None)
         if bug is None:
-            return {"error": f"no bug #{bug_id} here"}
+            return {"error": f"no bug {ids.label('bugs', bug_id)} here"}
         want = _int(rev)
         if want is not None and want != int(bug.get("rev", 0)):
             return {"error": "this report changed while you had it open",
@@ -480,16 +517,18 @@ def send(project, bug_id, sessions=(), note=""):
     # was. If it turns out not to have been, `reopen` is the honest way back,
     # and it leaves a line in the log saying so where this would leave none.
     if row.get("status") != "open":
-        return {"error": f"bug #{bug_id} is {STATUS_WORDS.get(row['status'], row['status'])}"
+        return {"error": f"bug {ids.label('bugs', bug_id)} is "
+                         f"{STATUS_WORDS.get(row['status'], row['status'])}"
                          " — reopen it first if it needs work again"}
     # No /model or /effort ahead of it: a project's pair are launch flags now,
     # so the session this reaches is already running on them.
     session = tmux_name("claude-" + project)
-    line = (f"Please look at bug #{bug_id} in this project's tracker. "
-            f"Run `bb bug show {bug_id}` for the report — the area, how to "
+    tag = ids.label("bugs", bug_id)
+    line = (f"Please look at bug {tag} in this project's tracker. "
+            f"Run `bb bug show {tag}` for the report — the area, how to "
             f"reproduce it, expected against actual, and the notes so far. "
             f"When you have dealt with it, close it with `bb bug fix "
-            f"{bug_id} \"what fixed it\"`, or one of the other closes if it "
+            f"{tag} \"what fixed it\"`, or one of the other closes if it "
             f"turns out not to be a fix.")
     note = " ".join(_clean(note or "", 500).split())
     if note:
@@ -550,7 +589,7 @@ def remove(project, bug_id, why="", by="you"):
         rows = d["projects"].get(project) or []
         bug = next((b for b in rows if _int(b.get("id")) == bug_id), None)
         if bug is None:
-            return {"error": f"no bug #{bug_id} here"}
+            return {"error": f"no bug {ids.label('bugs', bug_id)} here"}
         rows.remove(bug)
         _log(d, project, by, {"act": "deleted", "id": bug_id,
                               "text": bug.get("title", ""),
@@ -573,15 +612,15 @@ def prompt(project):
         return ""
     rows.sort(key=lambda b: (SEVERITIES.index(b.get("severity", "medium"))
                              if b.get("severity") in SEVERITIES else 1))
-    lines = [f"- #{b['id']} [{b.get('severity', 'medium')}] {b['title']}"
+    lines = [f"- {ids.label('bugs', b['id'])} [{b.get('severity', 'medium')}] {b['title']}"
              for b in reversed(rows)]
     return ("The project also has a bug tracker, with these open:\n\n"
             + "\n".join(lines) + "\n\n"
-            "`bb bug show <n>` gives one in full — where it lives, how to "
+            "`bb bug show B7` gives one in full — where it lives, how to "
             "reproduce it, what is known about why. When you fix one, close it "
-            "with `bb bug fix <n> \"what fixed it\"`; when you find a new one "
+            "with `bb bug fix B7 \"what fixed it\"`; when you find a new one "
             "and it is out of scope for what you are on, `bb bug add "
             "\"...\" --sev medium --area \"...\" --repro \"...\"` rather than "
             "only mentioning it. Add what you learn about an open one to its "
-            "notes with `bb bug note <n> \"...\"` — the tracker is where the "
+            "notes with `bb bug note B7 \"...\"` — the tracker is where the "
             "next session looks first.")

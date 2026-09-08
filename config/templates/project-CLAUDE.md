@@ -438,17 +438,27 @@ true. The rebuild flow reads `.env.example` to know when new settings need
 filling in, so a new variable your code reads belongs there in the same
 commit.
 
-## The operator's house rules
+## House rules
 
-The one thing in the notebook you read and cannot write. If this project has
-any, they are already in your prompt — you will have met them before this
-line. They live in `/config`, never in the repository, and the file tools are
-denied on them, so you cannot edit the rule you are being held to.
+How the operator wants this project worked on, and what a session has learned
+about working on it. If this project has any, they are already in your prompt
+— you will have met them before this line. They live in `/config`, never in
+the repository, and are read at the start of every session started here.
 
 ```bash
 bb rules                # what is in effect here
 bb rules show NAME      # one of them in full
+bb rules add NAME "..." [--files scripts/agent] [--words agent,protocol]
+bb rules edit NAME "..." | bb rules rm NAME ["why"]
+bb rules history        # what has changed them, by either of you
 ```
+
+**Both of you write them, and each is marked with who did.** Yours are marked
+`[yours]` where they appear and `*` in the listing; you may reword or drop
+those. The operator's you may not touch — say in your reply if one looks
+wrong, and they change it on the Briefing tab. Every change either of you
+makes is in `bb rules history` with a name against it, which is what makes
+this shared rather than locked.
 
 Most of them are quoted to you in full. A rule that applies to *particular*
 work is named in your prompt instead of quoted — a paragraph about the agent
@@ -457,10 +467,14 @@ becomes relevant, either because you were asked about its subject or because
 you are about to edit a file it covers. `bb rules show NAME` is how you read
 one before either of those happens.
 
-There is no verb here that writes one, and that is the point rather than an
-omission: a rule you could set is not a rule. If one seems wrong, or two of
-them conflict, say so in your reply — the operator changes them on the
-notebook's Briefing tab.
+**What belongs here rather than in a memory.** A memory is something you
+noticed; a rule is something that should hold for whoever works here next,
+including a person. "The suite takes ten minutes" is a memory. "Do not edit
+the dashboard while a suite is running, because the page is served from disk
+per request" is a rule — it is about this project and it applies to anybody.
+When you learn one of those, `bb rules add` it and say so in your reply. The
+operator may have set this project to hold or refuse a session's new rules,
+the same way as roadmap items; `bb rules pending` lists what is waiting.
 
 ## The roadmap
 
@@ -491,12 +505,19 @@ session's prompt when it started, so there is nothing to go and read at the
 top of a conversation, and nothing to recite back — the operator can see the
 list; they are looking at the same one.
 
-Each carries a number — `#4` — and that number is the item's own, not its
+Each carries a number — `R4` — and that number is the item's own, not its
 position: it is what the operator sees on the row in the dashboard and what
-`bb roadmap done 4` takes, and it survives the list being rearranged. Refer to
+`bb roadmap done R4` takes, and it survives the list being rearranged. Refer to
 one by it rather than by counting down the list. New items go on the end, so
 the numbers normally run down the page; a gap means something was removed and
 an item out of sequence was moved by hand.
+
+**The letter says which list.** A roadmap item is `R4`; a bug is `B4`; a
+rule is named, not numbered. Write the letter whenever you name one — in a
+reply, a commit message, a note — because `#4` on its own could be either
+tab, or a pull request. Every verb takes the bare number too, so `bb roadmap
+done 4` still works; `bb bug fix R4` is refused, and the refusal says which
+tab R4 belongs to.
 
 The half that needs saying is the writing.
 
@@ -511,6 +532,20 @@ paragraph. This is the operator's own reason for the list existing:
 
 So: say it in the reply *and* add it. Items you add are marked as yours, so
 the operator can see what you raised and sweep it if they disagree.
+
+**The operator decides how much of what you add lands on its own.** Per
+project and per tab — roadmap, bugs, rules — the setting is auto, ask or
+deny, and it covers *creating* an entry only: what is already on a list you
+may still tick, note and reword under any of them. Under **auto** an add
+lands as it always has. Under **ask** it is held: `bb roadmap add` answers
+"held for approval as R12", the item is not on the list yet, and the
+operator approves or denies it on the notebook. Details or steps you add to
+R12 meanwhile ride behind it and land after it; anything else on a held
+item is refused, and `bb roadmap pending` lists what is waiting. You are
+told on a later turn what they decided. Under **deny** the add is refused
+with a sentence you can quote — put the item in your reply instead, and the
+operator adds it if they agree. The same three words apply to `bb bug add`
+and `bb rules add`.
 
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
@@ -592,15 +627,15 @@ case worth being able to see. So do not treat "you sent me this" as proof it
 worked; if you cannot finish a step, say so plainly rather than quietly
 leaving it struck through.
 
-**When you finish a step, mark it.** `bb roadmap step done 4 2` is your mark
-on step 2 of #4, distinct from sent: the panel draws it with a tick instead
+**When you finish a step, mark it.** `bb roadmap step done R4 2` is your mark
+on step 2 of R4, distinct from sent: the panel draws it with a tick instead
 of a number and stops offering it as the next thing to send, and the log says
 a session finished it. Do this whether or not the step was sent to you — a
 phase you were told to start in chat is the case it exists for — and do it
 for the step you were sent as well, or the operator has only your reply to
 go on. There is no undo: if it turns out not to have been finished, the
 operator sends it again, which clears the mark and says so in the log. When
-the last step is done, the item is done: `bb roadmap done 4` takes it off.
+the last step is done, the item is done: `bb roadmap done R4` takes it off.
 A line the operator dealt with themselves is dropped rather than marked,
 because there is still no way to cross one off by hand.
 
@@ -633,7 +668,7 @@ conversation started. There is no `--force`: run `bb roadmap`, which clears
 it, and make the change against what it says now. Your own writes never count
 against you, so a run of edits is not interrupted by itself.
 
-**When you drop something, say why in the command**: `bb roadmap rm 4 "the
+**When you drop something, say why in the command**: `bb roadmap rm R4 "the
 picker this described no longer exists"`. Nothing here can be undone, so that
 note is the only thing between a dropped line and somebody adding it straight
 back. It is kept with the entry and is searchable.
@@ -726,7 +761,8 @@ The notebook's third tab, and yours through `bb bug`. The roadmap is for
 design work; a bug is a different record — severity, where it lives, how to
 reproduce it, expected against actual, and a notes field the analysis
 accumulates in. The open ones are appended to your prompt by number and
-severity; `bb bug show <n>` gives one in full.
+severity; `bb bug show B7` gives one in full. The B is the tracker's letter,
+the way R is the roadmap's; the bare number works too.
 
 ```bash
 bb bug                       # the open ones; `all` includes closed, `show N` one in full
@@ -750,7 +786,9 @@ the same rule as the roadmap, applied to defects: a reply is read once, the
 tracker is read at the start of every session after it. Fill in the fields
 you would want on arrival: area and repro above all. When you learn something
 about one you did not fix, `bb bug note` it — the tracker is where the next
-session looks first.
+session looks first. Filing is subject to the same setting as the roadmap:
+under ask a report is held as B7 until the operator approves it, a note on
+it meanwhile rides behind it, and `bb bug pending` lists what is waiting.
 
 **Close bugs; do not delete them.** There are three ways to close one, and
 the difference between them is what the next reader is told:

@@ -61,18 +61,30 @@ bbBug('add', 'bb lint misses compose files in subdirectories', '--sev', 'low',
 ok(read().length === 2 && read()[1].by === 'claude',
    'a session files one through bb bug, marked as its own');
 const listed = bbBug();
-ok(/\b2\b.*compose files/.test(listed) && /\b1\b.*picker loses/.test(listed),
+ok(/\bB2\b.*compose files/.test(listed) && /\bB1\b.*picker loses/.test(listed),
    'bb bug lists the open ones');
 ok(/repro: put a compose file/.test(bbBug('show', '2')),
    'bb bug show gives one in full, fields and all');
+// ---- the letter (roadmap #28) ------------------------------------------------
+// A bug is B2, everywhere it is printed; the bare number and the lower-case
+// letter are accepted on the way in; the ROADMAP's letter is refused with a
+// sentence naming both — the letter is a check, not decoration.
+ok(/\bB2\b.*compose files/.test(listed) && /filed\s+B2\s/.test(bbBug('history', '--find', 'compose files')),
+   'a bug is printed as B2 in the listing and the log');
+ok(/repro: put a compose file/.test(bbBug('show', 'b2'))
+   && /repro: put a compose file/.test(bbBug('show', '#2')),
+   '...and b2 or #2 name the same bug on the way in');
+ok(/R2 is a roadmap item; a bug is B2/.test((() => {
+     try { return bbBug('show', 'R2'); } catch (e) { return e.stderr.toString(); } })()),
+   '...while the roadmap\'s letter is refused, naming both tabs');
 bbBug('note', '2', 'the file list is built from names, not from content');
 ok(/file list is built from names/.test(read()[1].notes || ''),
    'bb bug note appends what a session learned, dated, without replacing what was there');
 
 const prompt = bbBug('--prompt');
-ok(/#1 \[high\] the picker loses/.test(prompt) && /#2 \[low\]/.test(prompt),
+ok(/B1 \[high\] the picker loses/.test(prompt) && /B2 \[low\]/.test(prompt),
    'the prompt block carries the open bugs, severity first');
-ok(/bb bug show <n>/.test(prompt) && /bb bug add/.test(prompt),
+ok(/bb bug show B7/.test(prompt) && /bb bug add/.test(prompt),
    '...and tells a session how to read one and how to file one');
 
 // ---- the GUI sees what the CLI wrote ---------------------------------------
@@ -105,7 +117,7 @@ ok(!/picker loses/.test(bbBug()), '...and it leaves the open list');
      '...and Delete is last, being the one that cannot be undone');
 }
 ok(/\[fixed\]/.test(bbBug('all')), '...but never the tracker: bb bug all still has it');
-ok(!/#1/.test(bbBug('--prompt')),
+ok(!/B1 /.test(bbBug('--prompt')),
    '...and the next session is not handed a bug that is already fixed');
 
 // Closed sinks below open, however new it is.
@@ -407,14 +419,14 @@ await page.click('#todoGo');
 await page.waitForFunction(() => !document.querySelector('.sendbox'),
                            null, { timeout: 20000 });
 const sent = tmuxCapture('claude-alpha');
-ok(new RegExp(`bug #${first}\\b`).test(sent)
-   && new RegExp(`bb bug show ${first}`).test(sent),
+ok(new RegExp(`bug B${first}\\b`).test(sent)
+   && new RegExp(`bb bug show B${first}`).test(sent),
    'the line names the bug and tells the session to look it up');
 ok(!/expected:|actual:|repro:/i.test(sent),
    '...and carries none of the fields, which is the whole point');
 ok(/it happens on the second run/.test(sent),
    '...but does carry the operator\'s note');
-ok(new RegExp(`bb bug fix ${first}`).test(sent),
+ok(new RegExp(`bb bug fix B${first}`).test(sent),
    '...and says how to close it when it is dealt with');
 // Back into the notebook: the send above lands you in the session's tab.
 await page.click(`${row('alpha')} [data-m]`);

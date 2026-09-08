@@ -100,9 +100,14 @@ def catchup(project, session):
         here = os.path.dirname(os.path.abspath(__file__))
         sys.path.insert(0, here)
         import todo                                          # noqa: E402
+        import pending                                       # noqa: E402
         todo.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                        write_json=_write_json)
-        return str(todo.catchup(project, session) or "")
+        # ...and what the operator decided about anything this session had
+        # waiting for approval (roadmap #27), told once.
+        return " ".join(x for x in (str(todo.catchup(project, session) or ""),
+                                    str(pending.settled_line(project) or ""))
+                        if x)
     except Exception:                     # noqa: BLE001 — never cost a turn
         return ""
 

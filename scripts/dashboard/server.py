@@ -1358,6 +1358,11 @@ def project_list(who):
     test_counts = testreg.counts()
     rule_revs = rules.revisions()
     rule_counts = rules.counts()
+    # What a session has waiting for the operator (roadmap #27): the count
+    # lights the bell and the notebook band; the revision tells an open
+    # notebook to re-read the queue.
+    pend_counts = pending.counts()
+    pend_revs = pending.revisions()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1515,6 +1520,8 @@ def project_list(who):
                     # writes one: nothing else can.
                     "rules_rev": rule_revs.get(d.name, 0),
                     "rules": rule_counts.get(d.name, 0),
+                    "pending": pend_counts.get(d.name, 0),
+                    "pending_rev": pend_revs.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
                     # through nothing that could count. So this one is the
@@ -2221,8 +2228,12 @@ testreg.configure(write_json=write_json, state=STATE)
 # front of every session started here; claude_scope() in bb-tty denies the
 # file tools on the file. Roadmap #7.
 import rules                                                     # noqa: E402
+import pending                                                   # noqa: E402
 
 rules.configure(write_json=write_json, state=STATE)
+# The three stores above configure this one too; done here as well so the
+# endpoint works even if none of them has been touched yet this process.
+pending.configure(write_json=write_json, state=STATE)
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -3761,6 +3772,12 @@ class Handler(BaseHTTPRequestHandler):
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             return self._json(rules.payload(name))
+        if self.path.startswith("/api/pending"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json(pending.payload(name))
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             got = memory.payload(q.get("project", [""])[0],
@@ -3909,6 +3926,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._idle(req)
         if path.startswith("/api/rules"):
             return self._rules(req)
+        if path.startswith("/api/pending"):
+            return self._pending(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
         if path.startswith("/api/prefs"):
@@ -3923,7 +3942,8 @@ class Handler(BaseHTTPRequestHandler):
                                 effort=req.get("effort"),
                                 node=req.get("node") if "node" in req else req.get("dockernode"),
                                 build=req.get("build"),
-                                test=req.get("test"), outputs=req.get("outputs"))
+                                test=req.get("test"), outputs=req.get("outputs"),
+                                gate=req.get("gate"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
@@ -4232,7 +4252,11 @@ class Handler(BaseHTTPRequestHandler):
             # What this session has not been told about the notebook, and
             # marked told (roadmap #27). The answer rides back into the turn
             # the hook is already in, so nothing is spent on saying it.
-            return self._json({"ok": True, "line": todo.catchup(project, uid)})
+            # ...and what the operator decided about anything it had waiting
+            # for approval, which is the other half of #27.
+            line = " ".join(x for x in (todo.catchup(project, uid),
+                                        pending.settled_line(project)) if x)
+            return self._json({"ok": True, "line": line})
         return self._json({"error": "a hook is note, asked, started or seen"}, 400)
 
     def _bb_relay(self, req):
@@ -5171,14 +5195,18 @@ class Handler(BaseHTTPRequestHandler):
         half of it. The memories beside them are staged the same way and for
         the same reason.
 
-        Nothing here is reachable by a session. `bb rules` is read-only and
-        the file tools are denied on the file, so the only writer is somebody
-        signed in to this dashboard with the project on their list.
+        A SESSION IS REFUSED HERE, by name. `bb rules` having no write verb
+        and the file tools being denied on the file cover what a session would
+        do in the ordinary course of work; they do not cover a session with a
+        shell and its own token, which authenticates as a principal with user
+        rights over exactly this project — so without this the endpoint would
+        have been the way around the whole arrangement. The only writer is a
+        person signed in to this dashboard with the project on their list.
         """
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
-        if self._readonly(name):
+        if self._refused("rules", name) or self._readonly(name):
             return None
         if (bad := locked_out(name)):
             return self._json(bad, 409)
@@ -5188,6 +5216,31 @@ class Handler(BaseHTTPRequestHandler):
         if r.get("error"):
             return self._json(r, 400)
         return self._json(rules.payload(name))
+
+    def _pending(self, req):
+        """Approve or deny what a session has waiting (roadmap #27).
+
+        The operator's, by name: a session's own token is refused here the
+        way it is for the rules, because a session approving its own
+        additions is the setting not existing. The reply carries what each
+        record became — approved, failed with the store's own reason, or
+        skipped because its parent is still waiting — and the queue as it
+        now stands, so the modal redraws from one answer.
+        """
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._refused("pending", name) or self._readonly(name):
+            return None
+        act = field(req, "action")
+        ids_ = req.get("ids") if isinstance(req.get("ids"), list) else []
+        if act == "approve":
+            r = pending.approve(name, ids_)
+        elif act == "deny":
+            r = pending.deny(name, ids_)
+        else:
+            return self._json({"error": "action is approve or deny"}, 400)
+        return self._json(r | pending.payload(name))
 
     def _tests(self, req):
         """The hand-written half of the registry, and ingesting a run.

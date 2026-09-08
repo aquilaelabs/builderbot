@@ -407,22 +407,28 @@ bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
-bb roadmap            this project's roadmap
-bb roadmap show N     one item in full: its details, its steps and theirs
+bb roadmap            this project's roadmap — items are R1, R2, ...; bugs are B1, B2
+bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
+bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug find TEXT   search the reports themselves — area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
+bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb tests run       run the project's test command, time it, and record the run
-bb rules           the operator's house rules for this project (read-only)
+bb rules           the house rules for this project — the operator's and yours
 bb rules show NAME one of them in full — what a conditional rule says
+bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
+bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
+bb rules history   what has changed them, by either of you
+bb rules pending   rules a session added that are waiting for your approval
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test — what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1848,10 +1854,13 @@ so nothing gets quietly rewritten.
 
 **The list reads top down, and the top is what matters most** — new items go
 on the end, and the arrows in Reorder are how something gets promoted. Each
-item wears its number: `#4` is the item's own name, not its position, so it is
-what `bb roadmap done 4` takes, what a session means when it says "#4", and what
-survives the list being rearranged. The prompt a session starts with carries
-the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
+item wears its number: `R4` is the item's own name, not its position, so it is
+what `bb roadmap done R4` takes, what a session means when it says "R4", and what
+survives the list being rearranged. The R is the roadmap's letter and B is the
+bug tracker's, so a number in a reply or a commit says which list it is from;
+every verb takes the bare number too, and refuses the other tab's letter. The
+prompt a session starts with carries the same names. Steps inside a group
+number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
 it was moved.
 
@@ -2020,6 +2029,23 @@ reasons: claude puts a confirmation behind that command, and a dialog is
 exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
+
+**How much of what a session adds lands on its own** is the last row of the
+same dialog — *Claude may add to* Roadmap, Bugs and Rules, each **auto**,
+**ask** or **deny**. Auto is today's behaviour: an item, report or rule a
+session adds lands at once, marked as its own. Ask holds it instead: the
+session is told "held for approval as R12", the notebook shows a band above
+its tabs with how many changes are waiting (and a count on each tab), the bell
+carries a row per project that takes you there, and **Review** opens the
+list — every held change with a checkbox and its full text under a fold, a
+select-all box, and Approve and Deny at the foot. Approve replays the ticked
+changes in the order they were made; Deny drops them and anything that rode
+behind them (details or a step added to a held item, a note on a held
+report). Deny refuses the add outright, with a sentence the session can quote
+so it says the thing in its reply instead. It covers creation only: what is
+already on a list a session may still tick, note and reword under every
+setting, and the session is told on its next turn what you decided. The
+settled ones are in `bb history` under *waiting*.
 
 **Changing it while a session is running restarts that session**, and the
 dialog says so before you save. The restart is `tmux respawn-pane`, so the

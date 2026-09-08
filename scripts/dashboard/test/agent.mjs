@@ -512,7 +512,7 @@ print(json.dumps(sorted(os.listdir(d))))
       return { status: r.status, ...(await r.json()) };
     };
     const added = await relay({ argv: ['roadmap', 'add', 'relayed from a node'], cwd: `${DIR}/ws/alpha` });
-    ok(added.status === 200 && added.code === 0 && /added \d+/.test(added.out),
+    ok(added.status === 200 && added.code === 0 && /added R\d+/.test(added.out),
        `a session's bb roadmap runs on the controller and answers (${(added.out || added.error || '').trim().slice(0, 60)})`);
     const listed = await relay({ argv: ['roadmap'] });
     ok(listed.code === 0 && /relayed from a node/.test(listed.out),
@@ -622,7 +622,7 @@ print(json.dumps(sorted(os.listdir(d))))
       ok((listing.match(/once, from a node/g) || []).length === 1 && !/nothing on/.test(listing),
          `a relayed verb run from a node answers once, with the controller's answer (${
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
-      const num = (once.match(/added (\d+)/) || [])[1];
+      const num = (once.match(/added R(\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
       // bb git: git's network half from a node runs on the controller, in
       // the project's tree, with the keys that live only there (docs/nodes.md
@@ -737,7 +737,7 @@ m = re.search(r'RELAY_VERBS = frozenset\\(\\((.*?)\\)\\)', src, re.S)
 print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding: 'utf8' }).trim().split(' ');
     ok(bbList && bbList.join(' ') === srvList.join(' '),
        `bb's BB_RELAY_VERBS and the server's RELAY_VERBS are the same list (${bbList?.length} verbs)`);
-    await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added (\d+)/) || [])[1]), 'test'] });
+    await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added R(\d+)/) || [])[1]), 'test'] });
   }
 
   // an exec job, end to end

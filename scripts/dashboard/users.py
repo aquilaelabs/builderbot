@@ -386,6 +386,19 @@ def may(u, action, project=None):
         return ("you have not taken this project on — add it to your own list "
                 "on the Users tab" if is_admin(u) else
                 "you were not given this project")
+    # A session may never write the house rules it is being held to. Ahead of
+    # the admin pass, because the operator's OWN session carries a token with
+    # the operator's uid on it — this is not a question about who somebody is
+    # but about what a session is, which is the same reason is_admin refuses
+    # to be talked out of `user` above.
+    if action == "rules" and (u or {}).get("session"):
+        return ("a session cannot change the rules it is being held to — they "
+                "are the operator's, written on the notebook's Briefing tab")
+    # ...and may not approve what it has waiting (roadmap #27): a session
+    # signing off its own additions is the setting not existing.
+    if action == "pending" and (u or {}).get("session"):
+        return ("what a session has waiting is the operator's to approve or "
+                "deny, on the notebook — a session cannot answer for itself")
     if is_admin(u):
         return ""
     if action in USER_DENIES:

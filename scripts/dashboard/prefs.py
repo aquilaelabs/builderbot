@@ -34,6 +34,12 @@ FILE = None
 # switching; a value stored here must satisfy theirs, so keep them equal.
 MODELS = ("opus", "sonnet", "haiku", "fable")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# How much the operator wants to be in the loop on what a session ENTERS
+# into each notebook tab (roadmap #27): auto lands it, ask holds it for
+# approval, deny refuses it. Creation only — see pending.py. Kept here
+# because it is a project setting, edited in the same dialog as the rest.
+GATE_KINDS = ("roadmap", "bugs", "rules")
+GATE_MODES = ("auto", "ask", "deny")
 
 _lock = threading.Lock()
 
@@ -91,7 +97,14 @@ def _clean(rec):
             "build": str(rec.get("build") or "")[:500],
             "test": str(rec.get("test") or "")[:500],
             "outputs": [str(g)[:200] for g in (rec.get("outputs") or [])
-                        if str(g)][:16] if isinstance(rec.get("outputs"), list) else []}
+                        if str(g)][:16] if isinstance(rec.get("outputs"), list) else [],
+            # Anything unrecognised reads as auto, for the same reason an
+            # unknown model reads as "leave as is": a hand-edited file must
+            # not lock a session out of the notebook by typo.
+            "gate": {k: ((rec.get("gate") or {}).get(k)
+                         if isinstance(rec.get("gate"), dict)
+                         and (rec.get("gate") or {}).get(k) in GATE_MODES else "auto")
+                     for k in GATE_KINDS}}
 
 
 def get(project):
@@ -106,7 +119,7 @@ def all_projects():
 
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
-              outputs=None, dockernode=None):
+              outputs=None, dockernode=None, gate=None):
     """Change any of one project's settings; None leaves it, "" clears it.
     `dockernode` is the old name for `node`, kept for a caller that still
     says it."""
@@ -134,12 +147,27 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         if outputs is not None:
             got = outputs if isinstance(outputs, list) else str(outputs).split(",")
             cur["outputs"] = [str(g).strip()[:200] for g in got if str(g).strip()][:16]
+        if gate is not None:
+            if not isinstance(gate, dict):
+                return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
+            for k, v in gate.items():
+                if k not in GATE_KINDS:
+                    return {"error": f"not a notebook tab: {k}"}
+                if v not in GATE_MODES:
+                    return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
+                cur["gate"][k] = v
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"]
-                or cur["build"] or cur["test"] or cur["outputs"]):
-            d["projects"][project] = cur
+                or cur["build"] or cur["test"] or cur["outputs"]
+                or any(v != "auto" for v in cur["gate"].values())):
+            # Stored without the all-auto gate, so the file says only what
+            # somebody chose — _clean puts the defaults back on the way out.
+            rec = dict(cur)
+            if all(v == "auto" for v in cur["gate"].values()):
+                rec.pop("gate", None)
+            d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
         write_json(FILE, d)

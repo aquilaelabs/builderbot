@@ -1609,6 +1609,35 @@ textarea,select{
 .dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
+/* What a session has waiting for approval (roadmap #27): the same band as
+   the batch note — it holds nothing, it asks — with its one verb beside the
+   sentence rather than under it, because "Review" is the whole point of the
+   line. On the tab buttons, the count for that tab. */
+#nbPending{padding:0 14px 8px}
+#nbPending div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#nbPending div span{flex:1 1 200px}
+.nbtabs .pcount{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;
+  background:var(--warn);color:#1a1706;font:var(--f-mono);font-size:11px;line-height:16px}
+/* The review modal: one row per held change, its checkbox first, the full
+   text under a fold, and the two verbs at the foot with Approve first. */
+#pendList{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+#pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);font-size:12px;
+  text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);
+  background:var(--panel2,transparent)}
+#pendList .prow{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;padding:8px 10px;
+  border-bottom:1px solid var(--line);align-items:start}
+#pendList .prow:last-child{border-bottom:0}
+#pendList .prow.dep{padding-left:28px}
+#pendList .prow input{margin-top:3px}
+#pendList .prow .psum{overflow-wrap:anywhere}
+#pendList .prow .pwhen{color:var(--dim);font:var(--f-ui);font-size:12px;margin-top:2px}
+#pendList .prow details{margin-top:4px}
+#pendList .prow pre{white-space:pre-wrap;font:var(--f-mono);font-size:12px;margin:4px 0 0;
+  color:var(--dim)}
+#pendAll{display:flex;align-items:center;justify-content:flex-start;gap:8px;padding:6px 2px 8px;font:var(--f-ui)}
+#pendAll input{margin:0;flex:0 0 auto}
+#pendAll span{flex:0 0 auto;white-space:nowrap}
+#pendEmpty{padding:14px 4px;color:var(--dim);font:var(--f-ui)}
 /* The padding went with the band: #memDrift is a section now and .sect>.body
    carries its own. #todoBatch still wears .mdrift as a plain .field band. */
 .mdrift div{color:var(--warn);font:var(--f-ui);margin-bottom:4px}
@@ -2427,6 +2456,10 @@ body.dragging .tab .lbl{cursor:grabbing}
          blocks the operator — nothing here stops a session, which cannot see
          this panel and should not be waiting on it. -->
     <div class="field mdrift" id="todoBatch" hidden></div>
+    <!-- What a session has waiting for the operator's approval (roadmap
+         #27). Above the strip like the batch note, because it is about the
+         notebook and not one tab of it: the modal it opens lists every tab's. -->
+    <div class="field mdrift" id="nbPending" hidden></div>
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
       <button type="button" data-v="roadmap">Roadmap</button>
@@ -2807,6 +2840,24 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint">Run with sh -c in the snapshot's root on the node. Files
         matching the outputs come back into dist/ with a note of what built them.</div>
     </div>
+    <!-- How much the operator wants to be in the loop on what a session
+         ENTERS into the notebook (roadmap #27). Creation only: what is
+         already on a list a session may still tick, note and reword. -->
+    <div class="field" id="rnGateField">
+      <label id="rnGateLabel">Claude may add to</label>
+      <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+        <label class="pick">Roadmap <select id="rnGateRoadmap"
+          aria-label="new roadmap items from a session"></select></label>
+        <label class="pick">Bugs <select id="rnGateBugs"
+          aria-label="new bug reports from a session"></select></label>
+        <label class="pick">Rules <select id="rnGateRules"
+          aria-label="new house rules from a session"></select></label>
+      </div>
+      <div class="hint">Auto lands what a session adds, marked as its own. Ask
+        holds it for you: the notebook shows what is waiting and you approve or
+        deny it there. Deny refuses it with a reason the session can quote. What
+        is already on a list can be ticked, noted and reworded under any of them.</div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -2902,6 +2953,24 @@ body.dragging .tab .lbl{cursor:grabbing}
      where those go to be looked at, put back, or finally destroyed. The last
      of those is the only irreversible thing on this page, so it asks for the
      name to be typed rather than for a click. -->
+<!-- What a session has waiting for approval (roadmap #27), for one
+     project: every held change with a checkbox, a master checkbox, and the
+     two verbs at the foot. Approve replays the ticked ones in the order they
+     were made; Deny drops them and whatever rode behind them. -->
+<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pendTitle">
+  <div class="box wide">
+    <h3 id="pendTitle">Waiting for your approval</h3>
+    <div class="hint" id="pendHint"></div>
+    <label id="pendAll"><input type="checkbox" id="pendAllBox"> <span>Select all</span></label>
+    <div id="pendList"></div>
+    <div id="pendEmpty" hidden>Nothing is waiting here.</div>
+    <div class="foot">
+      <button id="pendApprove" class="primary">Approve</button>
+      <button id="pendDeny" class="danger">Deny</button>
+      <button id="pendClose">Close</button>
+    </div>
+  </div>
+</div>
 <div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
@@ -4652,13 +4721,21 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // dialog that was merely looked at — the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: ""};
+let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
+                 gate: ""};
+// The gate's three pickers, one per notebook tab (roadmap #27).
+const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
+const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
+const rnGateNow = () => Object.fromEntries(
+  Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
+const gateKey = g => ["roadmap", "bugs", "rules"].map(k => g?.[k] || "auto").join(",");
 
 function rnFillPrefs(p){
   rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
-               outputs: (p?.prefs?.outputs || []).join(", ")};
+               outputs: (p?.prefs?.outputs || []).join(", "),
+               gate: gateKey(p?.prefs?.gate)};
   rnFillNode();
   rnFillPrefsRest(p);
 }
@@ -4695,6 +4772,14 @@ function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
+  for (const [k, id] of Object.entries(GATE_IDS)){
+    const el = $(id);
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.gate?.[k] || "auto";
+  }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
@@ -8052,6 +8137,114 @@ function openNotebook(name, view){
   if (view) getNotebook(name).view(view);
 }
 
+// ---- the review modal (roadmap #27) --------------------------------------
+// Top-level rather than the notebook's, because the bell reaches it too. It
+// draws from one fetch and redraws from the answer to its own action, so a
+// row is never ticked twice: what was approved is gone from the reply.
+let pendFor = null;
+async function openPending(project){
+  pendFor = project;
+  $("pendTitle").textContent = `Waiting for your approval — ${project}`;
+  $("pendModal").hidden = false;
+  $("pendList").innerHTML = "";
+  $("pendEmpty").hidden = true;
+  $("pendHint").textContent = "Loading…";
+  try{
+    const r = await fetch(`/api/pending?project=${encodeURIComponent(project)}`);
+    drawPendingModal(await r.json());
+  }catch(e){ $("pendHint").textContent = "Could not read what is waiting."; }
+}
+
+function drawPendingModal(j){
+  if (pendFor === null) return;
+  const rows = j?.pending || [];
+  const gate = j?.gate || {};
+  const held = ["roadmap", "bugs", "rules"].filter(k => gate[k] === "ask");
+  $("pendHint").textContent = rows.length
+    ? `A session added these while ${pendFor} is set to ask for ${held.join(", ") || "nothing"}. `
+      + `Nothing lands until you approve it; denying drops it and anything that rode behind it.`
+    : "";
+  $("pendEmpty").hidden = !!rows.length;
+  $("pendAll").hidden = !rows.length;
+  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
+  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules"};
+  const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
+             : r.kind === "bugs" && r.number != null ? `B${r.number}`
+             : r.kind === "rules" && r.number ? String(r.number) : "";
+  const detail = r => {
+    const a = r.args || {};
+    const bits = [];
+    if (r.kind === "roadmap" && r.verb === "add"){
+      (a.steps || []).forEach((st, i) => bits.push(`${i + 1}. ${st}`));
+    } else if (r.kind === "roadmap"){ bits.push(a.text || ""); }
+    else if (r.kind === "bugs" && r.verb === "add"){
+      for (const k of ["area", "repro", "expected", "actual", "notes"]) if (a[k]) bits.push(`${k}: ${a[k]}`);
+    } else if (r.kind === "bugs"){ for (const k of Object.keys(a)) if (!["bug_id", "act"].includes(k)) bits.push(`${k}: ${a[k]}`); }
+    else if (r.kind === "rules"){
+      bits.push(a.text || "");
+      if (a.paths) bits.push(`files: ${Array.isArray(a.paths) ? a.paths.join(", ") : a.paths}`);
+      if (a.words) bits.push(`words: ${Array.isArray(a.words) ? a.words.join(", ") : a.words}`);
+    }
+    return bits.filter(Boolean).join("\n");
+  };
+  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  let html = "", last = null;
+  for (const r of rows){
+    if (r.kind !== last){ html += `<div class="pkind">${NAMES[r.kind] || esc(r.kind)}</div>`; last = r.kind; }
+    const d = detail(r);
+    html += `<label class="prow${r.after != null ? " dep" : ""}" data-id="${r.id}">
+      <input type="checkbox" checked data-pend="${r.id}" data-after="${r.after ?? ""}">
+      <span><span class="psum">${tag(r) ? `<b>${esc(tag(r))}</b> · ` : ""}${esc(r.summary || "")}</span>
+        <div class="pwhen">${esc(when(r.at))}${r.after != null ? " · rides behind the change above" : ""}</div>
+        ${d && d !== r.summary ? `<details><summary>full text</summary><pre>${esc(d)}</pre></details>` : ""}
+      </span></label>`;
+  }
+  $("pendList").innerHTML = html;
+  $("pendAllBox").checked = !!rows.length;
+  $("pendAllBox").indeterminate = false;
+  const boxes = () => [...$("pendList").querySelectorAll("input[data-pend]")];
+  const sync = () => {
+    const on = boxes().filter(b => b.checked).length;
+    $("pendAllBox").checked = on > 0 && on === boxes().length;
+    $("pendAllBox").indeterminate = on > 0 && on < boxes().length;
+    $("pendApprove").disabled = $("pendDeny").disabled = !on;
+  };
+  $("pendAllBox").onchange = () => { boxes().forEach(b => { b.checked = $("pendAllBox").checked; }); sync(); };
+  boxes().forEach(b => b.onchange = () => {
+    // Unticking a parent unticks what rides behind it: those cannot land
+    // without it, and approving them alone is only a skip.
+    if (!b.checked) boxes().filter(x => x.dataset.after === b.dataset.pend).forEach(x => { x.checked = false; });
+    sync();
+  });
+}
+
+async function pendAct(action){
+  const project = pendFor;
+  const ids = [...$("pendList").querySelectorAll("input[data-pend]:checked")].map(b => Number(b.dataset.pend));
+  if (!project || !ids.length) return;
+  const btn = action === "approve" ? $("pendApprove") : $("pendDeny");
+  busy(btn, action === "approve" ? "Approving" : "Denying");
+  try{
+    const r = await fetch("/api/pending", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project, action, ids})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    const said = [];
+    if (j.approved?.length) said.push(`${j.approved.length} approved`);
+    if (j.denied?.length) said.push(`${j.denied.length} denied`);
+    if (j.skipped?.length) said.push(`${j.skipped.length} skipped — ${j.skipped[0].why}`);
+    if (j.failed?.length) said.push(`${j.failed.length} could not be applied — ${j.failed[0].why}`);
+    notify(`${project}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
+    drawPendingModal(j);
+    // The lists moved under the notebook: re-read whichever views exist.
+    const nb = notebooks.get(project);
+    if (nb){ nb.reload?.(); nb.reloadBugs?.(); nb.reloadMemory?.(); nb.reloadPending?.(); }
+    refresh();
+  }catch(e){ notify("could not reach the dashboard", true); }
+  finally{ unbusy(btn, action === "approve" ? "Approve" : "Deny"); }
+}
+
 function makeNotebook(project){
   const root = document.getElementById("nbTpl").content.firstElementChild.cloneNode(true);
   document.getElementById("nbPark").appendChild(root);
@@ -8064,6 +8257,9 @@ function makeNotebook(project){
   // with it. That is bug #27's shape; the `tests` binding beside them gets
   // away with being late only because the panel never opens on that view.
   let ruleData = null, rulePending = null, rulesRev = null;
+  // The approval queue (roadmap #27): what the band and the tab counts draw
+  // from, and the revision the poll compares to know when to re-read it.
+  let pendData = null, pendRev = null;
 
   // ---- the reading room --------------------------------------------------
   // What goes in is the real element, MOVED: every handler bound to a filter
@@ -8286,7 +8482,7 @@ function stepRow(r, idx, live){
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
               ? (nxt === null ? (steps.every(x => x.done)
-                                 ? `every step of this is done — bb roadmap done ${r.id} takes it off`
+                                 ? `every step of this is done — bb roadmap done R${r.id} takes it off`
                                  : "every step of this has gone")
                               : `pick step ${nxt + 1}, the next one in line`)
             : idx < 0 ? "pick this to send"
@@ -8328,7 +8524,7 @@ function stepRow(r, idx, live){
         : `<span class="n">${idx + 1}</span>`)
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
-                 : `<span class="n id" title="this item is #${r.id} wherever it sits — and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
+                 : `<span class="n id" title="this item is R${r.id} wherever it sits — and what bb roadmap done R${r.id} takes">R${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -9446,14 +9642,17 @@ function drawHistory(){
   }
   $("todoHist").innerHTML = todoLog.map(e => {
     const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
-    const where = e.step != null ? `step ${e.step + 1} of #${e.id}` : `#${e.id}`;
+    // R on the number, as everywhere an item is named (ids.py): a log line
+    // is exactly where a bare number could be read against the bug tracker.
+    const where = e.step != null ? `step ${e.step + 1} of R${e.id}` : `R${e.id}`;
     return `<div class="hist">
       <span class="when">${esc(stamp(e.at || 0))}</span>
       <span class="act ${tone}">${esc(word)}</span>
       <span class="what">${esc(where)} · ${esc(e.text || "")}${
         e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
         e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
-        <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span>${
+        <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
+        e.approved ? ", approved by you" : ""}</span>${
         e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}</span>
     </div>`;
   }).join("");
@@ -9808,7 +10007,9 @@ $("todoRevert").onclick = revertNotebook;
     found: "new", gone: "gone", changed: "",
   };
 
-  function logPane({btnId, barId, paneId, title, fetchLog, emptyText}){
+  // `letter` is the tab's own on a numbered entry — B for the tracker —
+  // and nothing for logs whose entries are named rather than numbered.
+  function logPane({btnId, barId, paneId, title, fetchLog, emptyText, letter = ""}){
     const btn = $(btnId), bar = $(barId), pane = $(paneId);
     let on = false, timer = null;
     const draw = rows => {
@@ -9822,8 +10023,9 @@ $("todoRevert").onclick = revertNotebook;
         : rows.map(e => `<div class="hist">
             <span class="when">${esc(stamp(e.at || 0))}</span>
             <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
-            <span class="what">${e.id != null ? `#${e.id} · ` : ""}${esc(e.text || "")}
-              <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span>${
+            <span class="what">${e.id != null ? `${letter}${e.id} · ` : ""}${esc(e.text || "")}
+              <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
+              e.approved ? ", approved by you" : ""}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");
       // Every history through one pane means one place to page them.
@@ -9864,7 +10066,7 @@ $("todoRevert").onclick = revertNotebook;
            title: "Memory — history",
            fetchLog: q => postMemory({action: "history", ...q})});
   $("bugSort").onchange = drawBugs;
-  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist",
+  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist", letter: "B",
            title: "Bugs — history",
            fetchLog: q => postBug({action: "history", ...q})});
   // The fourth, so all four answer "what happened here" the same way.
@@ -10619,10 +10821,12 @@ become that version's section when it is created">Changelog${
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
     const body = `
-      <div class="hint">Yours, not Claude's: a session reads these and the file
-        tools are denied on them, so it cannot edit the rule it is being held
-        to. What it is <b>not</b> is a refusal — a rule is a request the model
-        can still fumble, unlike the sibling-project walls.</div>
+      <div class="hint">How you want this project worked on. A session reads
+        these at the start and can leave rules of its own — those are marked,
+        and it can change only those; yours it cannot touch. Every change by
+        either of you is in the history. What a rule is <b>not</b> is a
+        refusal: it is a request the model can still fumble, unlike the
+        sibling-project walls.</div>
       ${rows.map((r, i) => `
         <div class="rulerow" data-i="${i}">
           <div class="two">
@@ -10630,7 +10834,8 @@ become that version's section when it is created">Changelog${
               placeholder="a short name" value="${esc(r.name || "")}"
               aria-label="rule name">
             <span class="rlkind ${cond(r) ? "cond" : ""}">${
-              cond(r) ? "on its triggers" : "every session"}</span>
+              cond(r) ? "on its triggers" : "every session"}</span>${
+              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
           </div>
           <textarea class="rlText" spellcheck="false" maxlength="2000"
             placeholder="the rule, in your words">${esc(r.text || "")}</textarea>
@@ -11136,7 +11341,7 @@ bb tests ingest /tmp/run.log</pre>
       <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
           <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
-          <span class="n id">#${b.id}</span>
+          <span class="n id" title="this bug is B${b.id} — what bb bug show B${b.id} takes">B${b.id}</span>
           <span class="btitle${b.status !== "open" ? " done" : ""}">${esc(b.title)}</span>
           <span class="bstat ${esc(b.status)}">${esc(
             b.status === "na" ? "n/a" : b.status === "wontfix" ? "won't fix" : b.status)}</span>
@@ -11293,10 +11498,47 @@ bb tests ingest /tmp/run.log</pre>
   }
 
   // ---- the handle the rest of the page holds ------------------------------
+  // ---- what a session has waiting for approval (roadmap #27) --------------
+  async function loadPending(){
+    try{
+      const r = await fetch(`/api/pending?project=${encodeURIComponent(project)}`);
+      const j = await r.json();
+      if (j.error) return;
+      pendData = j;
+    }catch(e){ return; }
+    drawPending();
+  }
+  function drawPending(){
+    const el = $("nbPending");
+    if (!el) return;
+    const rows = pendData?.pending || [];
+    const n = rows.length;
+    // The strip's own counts, per tab — a number where the tab is, so the
+    // question "which of these" is answered without opening anything.
+    for (const b of root.querySelectorAll(".nbtabs button")){
+      const k = {roadmap: "roadmap", bugs: "bugs", briefing: "rules"}[b.dataset.v];
+      let badge = b.querySelector(".pcount");
+      const c = k ? (pendData?.counts?.[k] || 0) : 0;
+      if (!c){ if (badge) badge.remove(); continue; }
+      if (!badge){ badge = document.createElement("span"); badge.className = "pcount"; b.appendChild(badge); }
+      badge.textContent = String(c);
+    }
+    el.hidden = !n;
+    if (!n){ el.innerHTML = ""; return; }
+    const c = pendData.counts || {};
+    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"]]
+      .filter(([k]) => c[k]).map(([k, w]) => `${c[k]} ${w}${c[k] === 1 || w === "roadmap" ? "" : "s"}`);
+    el.innerHTML = `<div><span>${n} change${n === 1 ? "" : "s"} from a session
+        ${n === 1 ? "is" : "are"} waiting for your approval${parts.length ? " — " + esc(parts.join(", ")) : ""}.</span>
+        <button type="button" id="nbReview">Review</button></div>`;
+    $("nbReview").onclick = () => openPending(project);
+  }
+
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
-    shown(){ if (!loaded){ loaded = true; openMemory(project); } },
+    shown(){ if (!loaded){ loaded = true; openMemory(project); loadPending(); } },
+    reloadPending: loadPending,
     reload(){ return loadTodo(memGen); },
     reloadMemory(){ return loadMemory(memGen); },
     reloadBugs(){ return loadBugs(); },
@@ -11341,6 +11583,10 @@ bb tests ingest /tmp/run.log</pre>
       // take the typing with it.
       if (ruleData && rulesRev !== null && p.rules_rev !== rulesRev
           && !ruleDirty()) loadRules();
+      // ...and the approval queue: a session held something, or another
+      // window answered it. Nothing staged here to lose, so unconditional.
+      if (pendRev !== null && p.pending_rev !== pendRev) loadPending();
+      if (p.pending_rev !== undefined) pendRev = p.pending_rev;
       if (p.tests_rev !== undefined) testsRev = p.tests_rev;
       // The other two halves, which had no such thing until roadmap #26.
       // Guarded rather than unconditional, and that guard is the whole
@@ -11942,8 +12188,10 @@ async function rnSubmit(){
   const node = $("rnNode").value;
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
+  const gate = rnGateNow();
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
-    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
+    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
+    || gateKey(gate) !== rnPrefWas.gate;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -11975,7 +12223,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              node, build, test,
+                              node, build, test, gate,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
@@ -12331,6 +12579,9 @@ function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
   const asks = ph?.asks || [];
+  // What sessions have waiting for approval, per project (roadmap #27):
+  // the server's fact like an ask, so it leaves the moment it is answered.
+  const waiting = (state?.projects || []).filter(p => p.pending > 0);
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -12340,14 +12591,15 @@ function drawBell(){
               : fresh.some(n => n.lv === "warn") ? "warn"
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
-  dot.hidden = !(asks.length || unread);
+  const pendingOn = asks.length + waiting.length;
+  dot.hidden = !(pendingOn || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
-  dot.className = "dot" + (asks.length ? " ask" : worst ? " " + worst : "");
-  bell.classList.toggle("has", !!(asks.length || unread));
-  bell.classList.toggle("waiting", asks.length > 0);
-  bell.title = asks.length
-    ? `${asks.length} waiting on an answer`
+  dot.className = "dot" + (pendingOn ? " ask" : worst ? " " + worst : "");
+  bell.classList.toggle("has", !!(pendingOn || unread));
+  bell.classList.toggle("waiting", pendingOn > 0);
+  bell.title = pendingOn
+    ? `${pendingOn} waiting on an answer`
     : unread ? `${unread} new` : "notifications";
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open — those two disagreed and the panel a
@@ -12365,6 +12617,14 @@ function drawBell(){
           : `${a.left}s left to answer`}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
+    // ...and beside them, what a session has waiting in each project's
+    // notebook. One row per project, not per change: the notebook is where
+    // the changes are read, so the row's only job is to take you there.
+    ...waiting.map(p => `<div class="bnote ask">
+        <div class="btag">waiting for your approval</div>
+        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(p.name)}</div>
+        <div class="bfoot"><span>on the notebook</span>
+          <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
@@ -12384,6 +12644,12 @@ function drawBell(){
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+  });
+  panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNotebook(a.dataset.bpend);
+    openPending(a.dataset.bpend);
   });
 }
 
@@ -12419,6 +12685,10 @@ function toggleBell(open){
 }
 
 $("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
+$("pendApprove").onclick = () => pendAct("approve");
+$("pendDeny").onclick = () => pendAct("deny");
+$("pendClose").onclick = () => { $("pendModal").hidden = true; pendFor = null; };
+$("pendModal").onclick = e => { if (e.target === $("pendModal")){ $("pendModal").hidden = true; pendFor = null; } };
 $("tClose").onclick = () => { $("tmodal").hidden = true; };
 $("tmodal").onclick = e => { if (e.target === $("tmodal")) $("tmodal").hidden = true; };
 // Anywhere else closes it, including the header around it — a panel you have
@@ -12699,6 +12969,11 @@ async function refresh(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
     fetched = true;
+    // The bell reads what sessions have waiting for approval off this
+    // payload (roadmap #27), so it is drawn from here as well as from the
+    // phone and the page's own notes — a row that appeared with the poll
+    // would otherwise wait for something else to happen to be seen.
+    drawBell();
     // The account's scheme, on a browser that has never seen this account
     // (roadmap #25). localStorage is the PAINT path — the scheme is applied
     // at the top of this file before the stylesheet parses, and a value

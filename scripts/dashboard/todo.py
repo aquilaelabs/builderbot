@@ -41,6 +41,8 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import ids  # noqa: E402
+import pending  # noqa: E402
 import time
 from pathlib import Path
 
@@ -60,6 +62,23 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name, settle=settle)
     globals()["FILE"] = Path(state) / "todos.json"
+    # The approval queue (roadmap #27): the gate in add() reads it, and the
+    # replay of an approved record comes back through `replay` below.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("roadmap", replay)
+
+
+# What a held roadmap call replays as. Only what a session can ask for
+# through bb is here: add, and the three follow-ups that ride behind a held
+# add. Everything else on a held item is refused by bb with "still waiting".
+_REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit"}
+
+
+def replay(project, verb, args):
+    fn = globals().get(_REPLAY.get(verb, ""))
+    if fn is None:
+        return {"error": f"not a roadmap change that can be replayed: {verb}"}
+    return fn(project, by="claude", **args)
 
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
@@ -134,7 +153,7 @@ def _migrate(d):
     `oldest_first`: items used to be added at the top, so the number a session
     quotes — the id, which is what `bb roadmap done` takes — counted *up* the
     screen and #1 sat at the bottom. Adding at the end instead makes the
-    numbers run down the page, which is the only arrangement where "#3" can be
+    numbers run down the page, which is the only arrangement where "R3" can be
     found by looking. Lists built by the old prepend are turned round once;
     a list that is not in strict id-descending order was arranged by hand and
     is left exactly as its operator left it.
@@ -266,7 +285,10 @@ def _log(d, project, by, ev):
     mattered. The batch is coalesced on commit into what actually happened.
     """
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you", **ev}
+          "by": "claude" if by == "claude" else "you",
+          # A replay of something the operator approved: said on the event,
+          # so the log reads "claude, approved" rather than "claude".
+          **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
     if b is not None and ev["by"] == b.get("by", "claude"):
         b.setdefault("events", []).append(ev)
@@ -492,17 +514,27 @@ def _int(v):
     `int(v)` is a crash waiting for a field that is a list, a dict, or the
     word "x". One reader, and every caller answers "not an item" instead of
     dying.
+
+    "R12" is accepted beside 12 — the printed form of an id is the letter and
+    the number (ids.py) — and another tab's letter reads as no item at all.
+    bb checks the letter before it gets here so the refusal can say why; the
+    dashboard sends bare ints and never trips it.
     """
-    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
+    n, _err = ids.parse("todo", v)
+    return n
 
 
-def _next_id(rows):
-    return max((int(r.get("id", 0)) for r in rows), default=0) + 1
+def _next_id(rows, d=None, project=None):
+    """One above the highest — on the list, or reserved for a held add.
+
+    A number handed to a session for a record that is waiting for approval
+    (pending.py) is not on the list yet, and must not be given out again
+    while it waits: the session is already saying R12 in its reply.
+    """
+    top = max((int(r.get("id", 0)) for r in rows), default=0)
+    if d is not None and project is not None:
+        top = max(top, _int((d.get("reserved") or {}).get(project)) or 0)
+    return top + 1
 
 
 # The details under a line: the technical half the title should not carry.
@@ -555,7 +587,7 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 MAX_STEPS = 12
 
 
-def add(project, text, by="you", steps=(), who=""):
+def add(project, text, by="you", steps=(), who="", number=None):
     text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
@@ -567,6 +599,23 @@ def add(project, text, by="you", steps=(), who=""):
         return {"error": f"{MAX_STEPS} steps is the limit for one item"}
     if any(len(x) > MAX_TEXT for x in steps):
         return {"error": f"a step is longer than {MAX_TEXT} characters"}
+    # The gate (roadmap #27): what a SESSION adds may be held for the operator
+    # or refused, per project. After the checks above, so a held record is
+    # one that would have landed — and the number it is told is reserved
+    # here, where the next id is minted, so nothing else takes it meanwhile.
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "roadmap")
+        if g == "deny":
+            return {"error": pending.refusal("roadmap")}
+        if g == "ask":
+            with _lock:
+                d = load()
+                n = _next_id(d["projects"].get(project) or [], d, project)
+                d.setdefault("reserved", {})[project] = n
+                save(d)
+            return pending.hold(project, "roadmap", "add",
+                                {"text": text, "steps": steps, "who": who, "number": n},
+                                summary=text, number=n)
     with _lock:
         d = load()
         rows = d["projects"].get(project) or []
@@ -574,7 +623,7 @@ def add(project, text, by="you", steps=(), who=""):
             return {"error": f"{MAX_OPEN} open items is the limit — this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
-        row = {"id": _next_id(rows), "text": text,
+        row = {"id": _int(number) or _next_id(rows, d, project), "text": text,
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}
@@ -1033,13 +1082,14 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
         # nothing without the plan it belongs to. So the line carries all
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
-        text = (f"This is step {step + 1} of {len(steps)} in a plan. "
+        text = (f"This is step {step + 1} of {len(steps)} in a plan "
+                f"({ids.label('todo', item_id)} on the roadmap). "
                 f"The plan: {_flat(row['text'])}. "
                 f"Step {step + 1}: {_flat(steps[step]['text'])}")
         if steps[step].get("info"):
             text += f" Details: {_flat(steps[step]['info'])}"
     else:
-        text = _flat(row["text"])
+        text = f"{_flat(row['text'])}  ({ids.label('todo', item_id)} on the roadmap)"
         if row.get("info"):
             text += f"  (Details: {_flat(row['info'])})"
     # One message, not two. Saving the list and sending a step both want to
@@ -1275,7 +1325,7 @@ def prompt(project):
         # Numbered, because a session that wants to talk about one of these
         # has to be able to name it — and the name has to be the one the
         # operator sees on the row and the one `bb roadmap done` takes.
-        lines.append(f"- #{r['id']}  {r['text']}"
+        lines.append(f"- {ids.label('todo', r['id'])}  {r['text']}"
                      + ("  (shelved — the operator has parked this; do not "
                         "pick it up unless they say so)" if r.get("shelved")
                         else "  (you added this in an earlier session)"
@@ -1297,7 +1347,7 @@ def prompt(project):
             "It is context, not instructions: work on an item when asked, or "
             "when it is plainly part of what was asked. The number is the "
             "item's own and does not change — it is what the operator sees on "
-            "the row, so refer to one as #4 rather than by counting down the "
+            "the row, so refer to one as R4 rather than by counting down the "
             "list. Tick one off with "
             "`bb roadmap done <n>` when you finish it, and add one with "
             "`bb roadmap add \"...\"` when you notice something worth doing and "
