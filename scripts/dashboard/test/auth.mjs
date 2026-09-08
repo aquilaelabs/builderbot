@@ -731,6 +731,12 @@ ${code}`], { encoding: 'utf8' }).trim();
   ok(JSON.stringify((seen.projects || []).map(p => p.name)) === '["alpha"]',
      `...and that account signs in seeing only it (${
        (seen.projects || []).map(p => p.name).join(', ')})`);
+  // ...on every read, including the one that used to pass the name straight
+  // through (bug #68): the memory tab's fetch.
+  const memOk = await as('/api/memory?project=alpha');
+  const memNo = await as('/api/memory?project=delta');
+  ok(memOk.status === 200 && memNo.status === 400,
+     `the memory read answers for its project and refuses another (${memOk.status}, ${memNo.status})`);
 
   // The owner cannot be removed through the door either, not just in the page.
   const refused = await bare('/api/users', { method: 'POST',

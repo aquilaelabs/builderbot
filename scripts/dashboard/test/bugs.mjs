@@ -133,6 +133,48 @@ ok(read().find(b => b.id === 1).status === 'open'
 bbBug('fix', '1', 'this time with the resize listener');
 ok(read().find(b => b.id === 1).status_note === 'this time with the resize listener',
    '...and closing again writes the new answer');
+// ...but not closing a closed one (bug #70): that overwrote the note that is
+// the whole point of closing, and left no line in the log saying so.
+{
+  let said = '';
+  try { bbBug('wontfix', '1', 'never mind'); } catch (e) { said = String(e.stderr || ''); }
+  ok(/already fixed/.test(said) && /reopen it first/.test(said)
+     && read().find(b => b.id === 1).status_note === 'this time with the resize listener',
+     'closing a bug that is already closed is refused, and its note survives');
+}
+
+// ---- the version it was seen in, and closed in (roadmap #6) ---------------
+// alpha has no commits, so nothing honest can be said about it and nothing
+// is: a blank, never a made-up number. A project with a commit gets the same
+// identity `bb version` prints, on filing and again on closing.
+ok(!('seen_in' in read().find(b => b.id === 1)),
+   'a report on a tree with no commits carries no version — a blank rather than a guess');
+{
+  const Z = `${DIR}/ws/zeta`;
+  const genv = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x',
+                 GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x' };
+  execFileSync('git', ['init', '-q', Z], { env: genv });
+  execFileSync('git', ['-C', Z, 'commit', '-q', '--allow-empty', '-m', 'one'], { env: genv });
+  const bbZ = (...a) => execFileSync(BB, ['bug', ...a],
+    { env: { ...process.env, BB_BUG_PROJECT: 'zeta', DASHBOARD_STATE: `${DIR}/state`,
+             WORKSPACE: `${DIR}/ws` } }).toString();
+  const zread = () => JSON.parse(readFileSync(FILE, 'utf8')).projects.zeta || [];
+  bbZ('add', 'stamped on arrival', '--sev', 'low');
+  const z = zread()[0];
+  ok(typeof z.seen_in === 'string' && z.seen_in.length > 0,
+     `a report is stamped with the project's version when it is filed (${z.seen_in})`);
+  ok(new RegExp(`seen in: ${z.seen_in.replace(/[.+]/g, '\\$&')}`).test(bbZ('show', '1')),
+     '...and bb bug show prints it');
+  execFileSync('git', ['-C', Z, 'commit', '-q', '--allow-empty', '-m', 'two'], { env: genv });
+  bbZ('fix', '1', 'done');
+  const zc = zread()[0];
+  ok(typeof zc.fixed_in === 'string' && zc.fixed_in !== z.seen_in,
+     `...and with the version it was closed in, which is a later one (${zc.fixed_in})`);
+  bbZ('reopen', '1');
+  ok(!('fixed_in' in zread()[0]),
+     'reopening takes the closed-in stamp with the note — it turned out not to be true');
+  execFileSync('rm', ['-rf', Z]);
+}
 
 // ---- editing ---------------------------------------------------------------
 bbBug('edit', '2', 'sev', 'medium');

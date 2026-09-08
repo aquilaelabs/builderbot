@@ -11372,9 +11372,11 @@ bb tests ingest /tmp/run.log</pre>
             ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
           <div class="actbar macts">
             <span class="state">reported by ${esc(b.by)} · ${ago(b.at)}${
+              b.seen_in ? ` · in ${esc(b.seen_in)}` : ""}${
               b.status !== "open" && b.status_note
                 ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
-                : ""}</span>
+                : ""}${
+              b.status !== "open" && b.fixed_in ? ` · closed in ${esc(b.fixed_in)}` : ""}</span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
               title="${b.status === "open"
                 ? `hand this bug to the session running here — it is sent as a

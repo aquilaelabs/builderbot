@@ -2366,7 +2366,8 @@ cmd_bug() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" \
+        python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, sys, time
 
 spec = importlib.util.spec_from_file_location("bugs", sys.argv[1])
@@ -2480,6 +2481,13 @@ def show(b):
     print(f"  {'by':>8}: {b.get('by', '?')} · {when}"
           + (f" · {b['status']}: {b.get('status_note', '')}"
              if b.get("status") != "open" else ""))
+    # The versions (roadmap #6): blank where the report predates the stamp
+    # or the tree had nothing honest to say — never a guess.
+    if b.get("seen_in") or b.get("seen_on"):
+        print(f"  {'seen in':>8}: {b.get('seen_in') or '?'}"
+              + (f" · on image {b['seen_on']}" if b.get("seen_on") else ""))
+    if b.get("fixed_in"):
+        print(f"  {'closed in':>8}: {b['fixed_in']}")
 
 
 def rows():

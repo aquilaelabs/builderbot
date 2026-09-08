@@ -2473,7 +2473,13 @@ field the analysis accumulates in (`bb bug note N "..."` appends, dated,
 rather than replacing — the last analysis is how the next one starts). Either
 side writes it: you report from the tab, a session files what it trips over
 with `bb bug add "..." --sev high --area "..." --repro "..."`. It is
-write-through, not staged — a report is a form submitted once. A bug **closes**
+write-through, not staged — a report is a form submitted once. Each report
+is stamped with the project's version as `bb version` prints it, on filing
+(*in 0.4.0-dev.390+e1615f5* on the row) and again on closing (*closed in*),
+plus the image the container was running when it was filed; a report that
+predates the stamp stays blank rather than being backfilled with a guess.
+Closing a bug that is already closed is refused — reopen it first, so the
+log says the earlier answer was withdrawn. A bug **closes**
 three ways, and the difference is what the next reader is told: **fixed**
 (somebody fixed it), **won't fix** (a decision to leave it), and **not
 applicable** (it was real and stopped applying, because the feature it was
