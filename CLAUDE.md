@@ -836,22 +836,23 @@ were going to do anyway is the one that mints it, and the new test shows up
 on the drift report as the thing to write a line about.
 
 ```bash
+bb tests run             run the project's tests, time them, record the run — the way to run them
 bb tests                 where the suite's time goes, slowest first
 bb tests show KEY        one test: what it protects, what it runs, its history
 bb tests note KEY "what it protects" --how "fixtures, stubs, what is faked"
-bb tests ingest [LOG]    record a run's real durations
 bb tests drift           what the runner reported that this list does not, and back
 bb tests flagged         the ones sitting on a round timeout rather than working
+bb tests projection      when a run should finish, from what the last one took
 ```
 
-**The timings are measured, never estimated.** They are parsed out of a run:
+**`bb tests run` is how a session runs the tests.** It runs the project's
+own test command, the one in its settings, with timing on, records the
+durations, and says before it starts when it should finish, from what the
+last run took. Wait for that, not for a guess: a run well past it is stuck,
+not slow, and the process is the thing to look at. `bb tests ingest LOG`
+records a run made some other way.
 
-```bash
-BB_TEST_TIMING=1 bb dashboard test 2>&1 | tee /tmp/run.log
-bb tests ingest /tmp/run.log
-```
-
-Do not put a duration in by hand. A number somebody guessed is worse than no
+**The timings are measured, never estimated.** Do not put a duration in by hand. A number somebody guessed is worse than no
 number, because it reads exactly like one that was measured.
 
 **A test is keyed on where the runner puts it**, `<file>#<ordinal>`, not on
@@ -1054,7 +1055,7 @@ by hand cost four commands and still could not see the failed builds.
 
   ```bash
   bb lint                       # shellcheck / hadolint / actionlint / compose / XML — same as CI
-  bb dashboard test [cards]     # Playwright suite in scripts/dashboard/test/, isolated (see below)
+  bb tests run                  # the Playwright suite, timed and recorded; bb dashboard test [cards] for one file
   python3 -m py_compile scripts/dashboard/server.py
   ```
 

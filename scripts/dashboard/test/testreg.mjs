@@ -335,6 +335,11 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
       DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_AUTH: 'test:test' },
       stdio: ['ignore', 'pipe', 'pipe'] }).toString();
   } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  // Before anything runs it says when the run should finish, from the wall
+  // time the last ingested run reported — so a run is waited for rather than
+  // guessed at, and one well past it is read as stuck.
+  ok(/^projected 40s, what the last run took over \d+ tests in \d+ suites; one past 80s is stuck, not slow$/m.test(out),
+     `bb tests run says first when it should finish, from the last run's wall time (${out.split('\n')[0]})`);
   ok(/nothing timed, so nothing recorded/.test(out),
      'a run that could not start records nothing, and says so');
   ok(!/looks like a test run/.test(out),
