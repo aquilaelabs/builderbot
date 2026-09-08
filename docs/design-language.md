@@ -84,6 +84,20 @@ Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
 first band of the view and sits at one height on all six views.
 
+## Both sizes
+
+The phone and the desktop are both first-class. A surface is not done until
+it has been looked at at both widths: sections open on a desktop and shut on
+a phone, an action bar's buttons share the width on a phone, and controls
+are 16px there so iOS does not zoom.
+
+## Progress
+
+Something that is running says so with a word and an animated ellipsis,
+`busy(btn, verb)`, never a bar or a percentage: nothing here can honestly
+measure how far along a build or a pull is, and a bar that guesses is a lie
+with a scale on it.
+
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their

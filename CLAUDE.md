@@ -1023,17 +1023,8 @@ checkout properly — it sources the library next to itself, so a new helper in
 `/opt` by absolute path, and nothing is really live until CI builds a new image
 and Unraid updates the container.
 
-The corollary is a trap worth naming, because a session has already fallen into
-it: when a fix is merged and the operator says the thing is still broken, the
-first question is **which build their container is on**, not whether the fix was
-wrong. An Unraid container keeps serving whatever it last pulled — an image
-published twenty minutes ago is not on the box until somebody presses update —
-so a screenshot taken after a merge is not evidence about the merge. Three
-speculative fixes went out one afternoon on exactly that mistake, each shipped
-against a screenshot of the build before it. The dashboard header now carries
-the short commit beside the uptime (`bb status` prints the same line first), so
-the question is a glance rather than an inference: check it before concluding
-anything from a report of behavior you thought you had already changed.
+The dashboard header carries the short commit of the image the box is
+running, beside the uptime, and `bb status` prints the same line first.
 
 The version of that question which spans days — *what was the box on when I
 saw that?* — is `bb catchup`. The entrypoint appends a line to
@@ -1077,36 +1068,14 @@ by hand cost four commands and still could not see the failed builds.
   are not the code's — and while it was a step in the lint job it took the
   linters' verdict with it. Do not read a red `dashboard tests` as a
   regression without checking `bb ci-log`; see bug #19.
-  **A new top-level name is one line in `surface.mjs`.** index.html has no
-  module boundary — that is the design, and it is why the suite can drive its
-  internals — so nothing otherwise notices code landing in the WRONG scope. A
-  feature declared inside `makeNotebook` is invisible to the projects card and
-  fails at runtime, which is how it was found the first time. `surface.mjs`
-  holds the page's top-level names and compares both ways: MISSING means one
-  fell into a nested scope, NEW means a global appeared. The second is not an
-  error, it is a decision — this file already carries 84 mutable top-level
-  bindings, and adding a line there is the cost of adding another.
-
-  **Add to it when you change the dashboard**;
-  the pattern in `lib.mjs` (real touch via CDP, dialogs recorded, console
-  errors collected) is the one to follow. Never write ad-hoc harnesses that
-  create tmux sessions: inside a tmux session the client ignores
-  `TMUX_TMPDIR`, and a throwaway session lands on — or a cleanup kills — the
-  real server. The harness unsets `TMUX` and verifies its socket first.
-
-  **One run at a time, and time it before calling it slow.** `run.sh` refuses
-  to start while another run is alive (`BB_TEST_CONCURRENT=1` overrides);
-  three suites side by side on this box is bug #13's reproducer. And
-  `BB_TEST_TIMING=1` prefixes every result with the seconds since the last
-  one — the whole agent suite is about forty-five seconds of real work and the
-  whole suite about five minutes, and a run that takes much longer is *stuck*,
-  not slow: look at the process, not the clock.
-  The one that cost an hour was a test calling `execFileSync` while the
-  agent it depended on was blocked writing to a pipe nobody was draining.
-  Feed that output to `bb tests ingest` and the notebook's Tests tab keeps the
-  numbers, flagging anything sitting on a round timeout — every one of those
-  turned out to be waiting for something that had already happened, or for
-  something that was never going to.
+  `surface.mjs` holds the page's top-level names and compares both ways:
+  MISSING means one fell into a nested scope, NEW means a global appeared.
+  The pattern in `lib.mjs` (real touch via CDP, dialogs recorded, console
+  errors collected) is the one to follow. `BB_TEST_TIMING=1` prefixes every
+  result with the seconds since the last one; feed that output to `bb tests
+  ingest` and the notebook's Tests tab keeps the numbers. The house rule
+  `tests` carries the discipline: one run at a time, no edits under the
+  dashboard during one, kill by pid.
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
   the repo copy — and `bb lint` prints `[skip]` for any tool the running image
   does not carry yet, rather than passing by omission. The dashboard's server
@@ -1124,12 +1093,9 @@ by hand cost four commands and still could not see the failed builds.
   regenerates the README's screenshots from a staged instance.
 
 - **Lint:** CI runs shellcheck, hadolint, actionlint, compose validation and
-  XML well-formedness — every one of them deterministic, so a red run here
-  means something is genuinely wrong — on *this* runner,
-  where minutes are free and the image already carries the tools (the job
-  fetches any that are missing, so it stays green on a container whose image
-  predates a newly added tool); `bb lint` runs the same set in-container.
-  **When it fails, `bb ci-log` is the first place to look** — the runner keeps
+  XML well-formedness on a node's runner; `bb lint` runs the same set here,
+  and the house rule `lint` runs it as its check before a session hands
+  back. **When it fails, `bb ci-log` is the first place to look** — the runner keeps
   no console output, so the workflow tees each check into
   `/config/ci-logs/<repo>/` and that command reads it. `--list` shows the runs
   kept with their results. Without it the only local evidence is
@@ -1141,33 +1107,13 @@ by hand cost four commands and still could not see the failed builds.
   on the push that merging creates would say the same thing twice, after the
   decision instead of before it. A push straight to main is therefore
   unlinted, which is fine because work lands through a PR.
-  The shared configs are the contract: `.hadolint.yaml` holds the Dockerfile
-  ignores (DL3008/DL3013/DL3016 — a rolling dev image deliberately tracks the
-  newest packages — and SC1091), `.github/actionlint.yaml` declares the labels
-  the nodes' runners carry so a bad `runs-on` fails the lint instead of
-  stranding a job in *Waiting for a runner*. That file is generated — `bb
-  ci-labels --write` reads the node registry — so regenerate it when a runner
-  is added or removed rather than editing it; a rule suppressed in only one
-  place means CI and `bb lint` disagree, which is worse than either answer. The shellcheck
-  file list is derived from shebangs, not filenames, so a new script is covered
-  the moment it exists — do not replace that with a name list. That includes a
-  script written *inside* another one: `scripts/lib/embedded-shell.py` pulls
-  the body of any quoted heredoc that opens with a shell shebang out to a temp
-  file so shellcheck sees it, which is how `vm/provision.sh`'s embedded
-  bb-sandbox is covered. A finding names the extracted copy
-  (`provision.sh-BBSANDBOX`), not the line in the outer file.
-- **Credentials here are what they are.** The operator uses SSH deploy keys
-  and opens PRs from their own desktop; there is no container-wide git token at
-  all any more, so `gh` API calls will not work and a session should not keep
-  suggesting one to fix that. Push the branch, print the PR link, move on.
-  If reading a CI run's log would help, say what you would look for and let
-  the operator fetch it.
-- **Conventions:**
-  - Bash: `#!/usr/bin/env bash`, `set -euo pipefail`, helpers and `log`/`warn`/
-    `die` from `lib/common.sh` rather than bare `echo`.
-  - Every script opens with a header comment saying what it is for, and inline
-    comments carry the *why* — usually the failure that motivated the code.
-    That density is the house style, not decoration; match it.
+  `.hadolint.yaml` holds the Dockerfile ignores; `.github/actionlint.yaml` is
+  generated by `bb ci-labels --write`. The shellcheck file list is derived
+  from shebangs, including a shell heredoc inside another script
+  (`scripts/lib/embedded-shell.py`), so a finding may name the extracted copy
+  (`provision.sh-BBSANDBOX`).
+- **Conventions** live in the house rules on the Briefing tab (`bb rules`);
+  what follows is the layout they refer to.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
   - **The dashboard's design language is `docs/design-language.md`**, held
@@ -1181,36 +1127,17 @@ by hand cost four commands and still could not see the failed builds.
     `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
     shape — the terminal is one port over for anything else.
-  - A new setting lands in five places: `.env.example`, `docker-compose.yml`,
-    `unraid/builderbot.xml`, the configuration reference in `README.md`, and
-    `docs/unraid.md` when it needs host-side setup. A setting that stops being
-    read gets removed from all five in the same change — `DASHBOARD_TTYD_PUBLIC_PORT`
-    outlived its code in three files. The README is the
-    documentation surface and is expected to move with behavior.
+  - A setting that has to be in the environment lands in five places:
+    `.env.example`, `docker-compose.yml`, `unraid/builderbot.xml`, the
+    configuration reference in `README.md`, and `docs/unraid.md` when it
+    needs host-side setup. The README is the documentation surface and is
+    expected to move with behavior.
   - The environment block every *other* project gets comes from
     `config/templates/project-CLAUDE.md`. That file is the source of truth;
     this repo's own copy above the end marker is just its output, so edit the
     template and let `bb claude-md --update` propagate it.
-  - Persistence is the recurring design constraint: `/opt` is discarded on every
-    image update, the home, `/config` and SDK volumes are not. New state has to
-    pick a side, and the comment should say which and why. Anything large and
-    merely *downloadable* belongs on the SDK share via `bb sdk`, never in the
-    image — that is what keeps a weekly rebuild from re-shipping gigabytes.
-  - Layer order is a cost. Builds seed from the previous `:latest`, so a
-    Dockerfile change invalidates every layer *below* it — and the host then
-    re-downloads all of them. A runtime-only `ENV`/`ARG` belongs at the **end**
-    of the Dockerfile, not in the top block, unless a build step needs it;
-    two env vars added to the top block once turned a two-line change into a
-    full multi-gigabyte pull. The weekly Monday build is uncached by design and
-    is always a full pull; a manual dispatch is cached unless its `no_cache`
-    box is ticked, so re-running a build that failed costs the host nothing.
-  - Secrets never reach a log unredacted — the entrypoint builds
-    `/run/builderbot/redact.sed` from both token shapes and literal values, and
-    everything the container prints goes through it.
-  - Commits are sentence-case, American-spelled, and describe the change rather
-    than label it ("Minimize a tab, and let the terminals outlive the
-    container"). No conventional-commit prefixes. Work lands on a branch and
-    merges through a PR.
+  - The weekly Monday build is uncached by design and is always a full pull;
+    a manual dispatch is cached unless its `no_cache` box is ticked.
 
 `README.md` holds the full configuration reference and a file-by-file layout;
 `docs/unraid.md` is the host-side walkthrough.
