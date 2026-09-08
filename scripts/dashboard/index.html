@@ -449,6 +449,12 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bnote .bfoot .acts{margin-left:auto;display:flex;gap:12px}
 .bnote .bfoot a{color:var(--dim)}
 .bnote.ask .bfoot a[data-ballow]{color:var(--accent)}
+/* Pinned like a question, red like a fault: an agent from another window
+   is not waiting on an answer, it is stopping work until it is updated. */
+.bnote.ask.bad{border-left-color:var(--bad);border-bottom-color:var(--bad);
+  background:color-mix(in srgb, var(--bad) 13%, var(--panel))}
+.bnote.ask.bad .btag{background:var(--bad);color:#fff}
+.bnote.ask.bad .bwhy{color:var(--bad)}
 .bempty{padding:14px 10px;color:var(--dim);font:var(--f-note);text-align:center}
 .bfootbar{display:flex;justify-content:flex-end;padding:6px 8px;
   border-top:1px solid var(--line)}
@@ -2834,19 +2840,21 @@ body.dragging .tab .lbl{cursor:grabbing}
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
     <div class="field" id="rnGateField">
-      <label id="rnGateLabel">Claude may add to</label>
+      <label id="rnGateLabel">Claude may</label>
       <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
-        <label class="pick">Roadmap <select id="rnGateRoadmap"
+        <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
-        <label class="pick">Bugs <select id="rnGateBugs"
+        <label class="pick">File bugs <select id="rnGateBugs"
           aria-label="new bug reports from a session"></select></label>
-        <label class="pick">Rules <select id="rnGateRules"
+        <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
+        <label class="pick">Use the phone <select id="rnGatePhone"
+          aria-label="adb commands from a session on the paired phone"></select></label>
       </div>
-      <div class="hint">Auto lands what a session adds, marked as its own. Ask
-        holds it for you: the notebook shows what is waiting and you approve or
-        deny it there. Deny refuses it with a reason the session can quote. What
-        is already on a list can be ticked, noted and reworded under any of them.</div>
+      <div class="hint">Auto lands what a session adds, marked as its own, and
+        runs its phone command at once. Ask holds it for you: the notebook shows
+        what is waiting, a phone command sits on the Phone card and the bell.
+        Deny refuses it with a reason the session can quote.</div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -4715,10 +4723,11 @@ let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: 
                  gate: "", git_name: "", git_email: ""};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
+const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules",
+                  phone: "rnGatePhone"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
-const gateKey = g => ["roadmap", "bugs", "rules"].map(k => g?.[k] || "auto").join(",");
+const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
 
 function rnFillPrefs(p){
   rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
@@ -10231,15 +10240,18 @@ $("todoRevert").onclick = revertNotebook;
         el.hidden = false;
         el.className = "";
         el.innerHTML = docSection("artifacts", "build", "Build",
-          b.node ? b.name : "no node",
-          b.node
+          b.node ? (b.gap ? "agent behind" : b.name) : "no node",
+          b.node && b.gap
+            ? `<div class="hint bad">Nothing runs on <b>${esc(b.name)}</b> until its agent is
+               updated: ${esc(b.gap)}</div>`
+            : b.node
             ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
                 ? ` — it carries ${b.tools.map(esc).join(", ")}`
                 : " — it reports no toolchains yet, so a compile will not find one"}.
                Add to it from the Tools tab.</div>`
             : `<div class="hint">No node: nothing can be compiled for this project here.
                ${esc(b.why || "")}</div>`,
-          {cls: b.node ? "" : "warn"});
+          {cls: b.node ? (b.gap ? "bad" : "") : "warn"});
         wireSections(el);
       }
     }
@@ -12776,6 +12788,9 @@ function drawBell(){
   // What sessions have waiting for approval, per project (roadmap #27):
   // the server's fact like an ask, so it leaves the moment it is answered.
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
+  // What the nodes need: an agent behind, or from another window. From the
+  // poll, never stored here, so a row leaves the moment it stops being true.
+  const att = state?.attention || [];
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -12786,14 +12801,18 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length;
-  dot.hidden = !(pendingOn || unread);
+  const attOn = att.some(a => a.window) ? "bad" : att.length ? "warn" : "";
+  dot.hidden = !(pendingOn || att.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
-  dot.className = "dot" + (pendingOn ? " ask" : worst ? " " + worst : "");
-  bell.classList.toggle("has", !!(pendingOn || unread));
+  // A node alert sits between: red when work is stopped, amber when an
+  // update merely waits.
+  dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
+  bell.classList.toggle("has", !!(pendingOn || att.length || unread));
   bell.classList.toggle("waiting", pendingOn > 0);
   bell.title = pendingOn
     ? `${pendingOn} waiting on an answer`
+    : att.length ? `${att.length} need${att.length === 1 ? "s" : ""} attention`
     : unread ? `${unread} new` : "notifications";
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open — those two disagreed and the panel a
@@ -12819,6 +12838,17 @@ function drawBell(){
         <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(p.name)}</div>
         <div class="bfoot"><span>on the notebook</span>
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
+    // ...and the nodes. Out of window is red and names the projects it
+    // stops; behind is amber and waits for a press on the Nodes tab.
+    ...att.map(a => `<div class="bnote ask${a.window ? " bad" : ""}">
+        <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
+        <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
+          a.window
+            ? `. Nothing sent to it is promised to work${a.projects.length
+                ? `, so ${a.projects.map(esc).join(", ")} cannot build, test or reach the emulator there` : ""} until it is updated`
+            : ""}</div>
+        <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Update agent</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
@@ -12844,6 +12874,13 @@ function drawBell(){
     toggleBell(false);
     openNotebook(a.dataset.bpend);
     openPending(a.dataset.bpend);
+  });
+  // To the node's row, where Update agent is: the press itself stays there,
+  // beside the state line that says what it does.
+  panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNodesTab();
   });
 }
 

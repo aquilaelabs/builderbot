@@ -307,6 +307,9 @@ bb phone run --why "..." -- shell getprop ro.build.version.release
 
 That puts your reason and the exact command on the card and waits. On **Allow**
 the dashboard runs it and hands you the output; on **Deny** you are told no.
+The project's settings can make that **auto**, where it runs at once, or
+**deny**, where the refusal says so — put the command and why in your reply
+then, and the operator runs it or changes the setting.
 The reason is required — the operator is being asked about a command they did
 not write, and without a sentence saying what it is for, allowing it is a
 guess. Write the sentence you would want to read.

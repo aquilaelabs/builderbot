@@ -60,14 +60,17 @@ ok(opts.join(',') === 'auto,ask,deny'
    && await page.$eval('#rnGateRoadmap', e => e.value) === 'auto'
    && await page.$eval('#rnGateRules', e => e.value) === 'auto',
    'the dialog offers auto, ask and deny per tab, and reads auto until something is set');
+ok((await page.$$eval('#rnGatePhone option', os => os.map(o => o.value))).join(',') === 'auto,ask,deny',
+   '...and the same three for the phone, the fourth thing a session may do on its own');
 await page.selectOption('#rnGateRoadmap', 'ask');
 await page.selectOption('#rnGateBugs', 'ask');
 await page.selectOption('#rnGateRules', 'deny');
+await page.selectOption('#rnGatePhone', 'auto');
 await page.click('#rnGo');
 await gone('#rnmodal');
 const gate = () => file('claude-prefs.json').projects?.alpha?.gate || {};
-ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny',
-   'saving writes the three words beside the project\'s other settings');
+ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny' && gate().phone === 'auto',
+   'saving writes the four words beside the project\'s other settings');
 await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.rules === 'deny',
                            null, { timeout: 30000 });
 await page.click('#projects [data-rn="alpha"]');

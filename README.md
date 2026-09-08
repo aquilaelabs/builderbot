@@ -973,6 +973,8 @@ is this tab's, so a reload draws a line under it; the asks are the server's and
 are read live, which is why they leave the list the moment they are answered or
 time out.
 
+Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and — in red — a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
+
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
 that answers nothing — either way the popup behind it carries the whole stamp. Every sidebar card collapses to its header with a click
@@ -2024,10 +2026,11 @@ exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
-**How much of what a session adds lands on its own** is the last row of the
-same dialog — *Claude may add to* Roadmap, Bugs and Rules, each **auto**,
-**ask** or **deny**. Auto is today's behaviour: an item, report or rule a
-session adds lands at once, marked as its own. Ask holds it instead: the
+**How much a session may do on its own** is the last row of the same
+dialog — *Claude may* add to the roadmap, file bugs, add rules and use the
+phone, each **auto**, **ask** or **deny**. Auto is today's behaviour: an
+item, report or rule a session adds lands at once, marked as its own, and a
+phone command runs at once and shows in the card's log. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell
 carries a row per project that takes you there, and **Review** opens the
@@ -2784,7 +2787,9 @@ than about the phone.
 **A session never touches the phone itself.** It is kept on an adb server of
 its own, so a plain `adb devices` in a session shows the emulator and nothing
 else. To reach the handset a session runs `bb phone run --why "..." -- …`,
-which puts the reason and the exact command on the card and waits; on **Allow**
+which puts the reason and the exact command on the card and waits — unless
+the project's settings say **auto** (it runs at once) or **deny** (it is
+refused, and the refusal names the setting); on **Allow**
 the dashboard runs it and hands back the output. The reason is required, not
 optional — approving a command you did not write, with no sentence saying what
 it is for, is a guess.

@@ -1334,6 +1334,14 @@ def project_list(who):
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
     project_prefs = prefs.all_projects()
+    # One answer per node about its agent, for every project row on it.
+    node_gaps = {}
+    if not NODES_OK:
+        for n in nodes.node_list():
+            if n["kind"] == "agent":
+                why = nodes.agent_stale(n)
+                if why:
+                    node_gaps[n["id"]] = why
     try:
         here = sorted(WORKSPACE.iterdir())
     except OSError:
@@ -1529,6 +1537,11 @@ def project_list(who):
                     "rules_rev": rule_revs.get(d.name, 0),
                     "rules": rule_counts.get(d.name, 0),
                     "pending": pend_counts.get(d.name, 0),
+                    # Why nothing routed to this project's node runs right
+                    # now — its agent behind, or from another window — so
+                    # the Artifacts tab and the bell say so before a job is
+                    # refused. "" is the ordinary state.
+                    "node_gap": node_gaps.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     "pending_rev": pend_revs.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
@@ -2313,7 +2326,10 @@ def build_state(name):
     return {"node": nid if n else "", "name": n["name"] if n else "",
             "kind": n["kind"] if n else "", "tools": tc,
             "push": projects.may_push(name),
-            "why": "" if n else no_node_advice(name)}
+            "why": "" if n else no_node_advice(name),
+            # Its agent behind or out of window: a build is refused until
+            # the node is updated, and the tab says so before the refusal.
+            "gap": nodes.agent_stale(n) if n else ""}
 
 
 def artifacts_of(name):
@@ -2850,6 +2866,11 @@ def snapshot(who):
         # the Phone card knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
         "phone_asks": len(phone.requests_open()),
+        # What is pinned in the bell about nodes (an agent behind, or from
+        # another window), computed here on every poll so an alert clears
+        # the moment it stops being true — nothing is stored to dismiss.
+        "attention": [] if NODES_OK else nodes.attention(
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}),
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
         # it properly is a subprocess: this rides the poll, and the poll is the
@@ -5211,8 +5232,14 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.disconnect(field(req, "serial"))
         elif act == "ask":
             # A session asking to reach the phone. It does not run anything
-            # itself; if the operator allows it, this process does.
-            r = phone.ask(field(req, "why"), req.get("cmd"))
+            # itself; if the operator allows it, this process does — or at
+            # once, or not at all, as the project's setting says (prefs
+            # gate "phone"). The project is the session's own; a person
+            # asking through the API names one.
+            who = self._who() or {}
+            proj = who.get("session") or field(req, "project")
+            mode = prefs.get(proj)["gate"]["phone"] if proj else "ask"
+            r = phone.ask(field(req, "why"), req.get("cmd"), mode=mode)
         elif act == "allow" or act == "deny":
             r = phone.decide(req.get("id"), act == "allow")
         elif act == "outcome":

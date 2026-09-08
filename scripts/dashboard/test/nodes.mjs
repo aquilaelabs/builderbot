@@ -878,6 +878,20 @@ ok(list[0].id === 'local',
   ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped.version)
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null,
      'the row wears "update available" with the shipped version and an Update agent button');
+  // The bell carries it too, pinned above the log: from the poll, so it is
+  // there without a press and leaves the moment the agent is current.
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.id === id && !a.window),
+                             minted.id, { timeout: 30000 });
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel .bnote.ask', { timeout: 10000 });
+  const bellText = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/agent update available/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
+     && await page.$('#bellPanel [data-bnode]') !== null,
+     `the bell pins "agent update available" for the node, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
+  ok(await page.$eval('#bBell .dot', d => d.classList.contains('warn')),
+     '...in amber: an update waiting is not work stopped');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
   const off = await page.evaluate(sel => ({
     storage: document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
     network: document.querySelector(sel + ' [data-napply="network"]')?.disabled,
@@ -921,9 +935,42 @@ ok(list[0].id === 'local',
   ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
      '...and stays greyed while the update is queued, not only for the round trip');
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
+  // ---- an agent from ANOTHER window stops work, and says which projects ----
+  // Inside a window being behind is routine; across one nothing sent is
+  // promised to work, so the alert is red, names the projects on the node,
+  // and the Artifacts tab says so before a build is refused.
+  await napi('/api/prefs', { project: 'alpha', node: minted.id });
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: '0.3.9', digest: 'sha256:' + '1'.repeat(64) }) });
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.id === id && a.window
+                                     && a.projects.includes('alpha')),
+                             minted.id, { timeout: 30000 });
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel .bnote.ask.bad', { timeout: 10000 });
+  ok(await page.$eval('#bellPanel .bnote.ask.bad', e => /agent out of window/i.test(e.textContent)
+                                                        && /alpha cannot build, test or reach the emulator/.test(e.textContent)),
+     'an agent from another window is a red pinned alert naming the projects it stops');
+  ok(await page.$eval('#bBell .dot', d => d.classList.contains('bad')), '...and the dot is red');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
+  // Waited for rather than read once: the rows and the alerts are two reads
+  // of the record in one poll, and a hello landing between them skews one
+  // poll's answer — the next agrees.
+  await page.waitForFunction(() => /different compatibility window/.test(
+    (state.projects || []).find(p => p.name === 'alpha')?.node_gap || ''), null, { timeout: 30000 });
+  ok(true, 'the project row carries why nothing routed to its node runs');
+  const refusedRun = await napi('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['sh', '-c', 'true'] });
+  ok(/different compatibility window/.test(refusedRun.error || ''),
+     `...and a bb verb sent to it is refused with the same sentence (${(refusedRun.error || 'no error').slice(0, 60)})`);
+  await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
+  // Current again: the alert is not dismissed, it stops being true.
+  await page.waitForFunction(id => !(state?.attention || []).some(a => a.id === id),
+                             minted.id, { timeout: 30000 });
+  ok(true, 'an agent brought current takes its alert out of the bell by itself');
 }
 
 // ---- a node's path mapping (§11: the record owns it) ------------------------
