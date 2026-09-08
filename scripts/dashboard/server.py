@@ -444,7 +444,9 @@ CARDS_FILE = STATE / "cards.json"
 # keys dropping out of this list is also the migration: load_layout filters an
 # existing cards.json against it, so a file still naming them is cleaned on
 # the next read rather than needing anything done to it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone"]
+# Tools between Doctor and Runner: the reach-for-it card next to the
+# health line, ahead of the two that are read rather than pressed.
+CARD_KEYS = ["doctor", "tools", "runner", "projects", "phone"]
 
 
 # The one implementation, in statefile.py, along with the file lock that makes
