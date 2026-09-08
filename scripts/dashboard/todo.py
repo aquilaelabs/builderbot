@@ -42,6 +42,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import ids  # noqa: E402
+import pending  # noqa: E402
 import time
 from pathlib import Path
 
@@ -61,6 +62,23 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name, settle=settle)
     globals()["FILE"] = Path(state) / "todos.json"
+    # The approval queue (roadmap #27): the gate in add() reads it, and the
+    # replay of an approved record comes back through `replay` below.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("roadmap", replay)
+
+
+# What a held roadmap call replays as. Only what a session can ask for
+# through bb is here: add, and the three follow-ups that ride behind a held
+# add. Everything else on a held item is refused by bb with "still waiting".
+_REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit"}
+
+
+def replay(project, verb, args):
+    fn = globals().get(_REPLAY.get(verb, ""))
+    if fn is None:
+        return {"error": f"not a roadmap change that can be replayed: {verb}"}
+    return fn(project, by="claude", **args)
 
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
@@ -267,7 +285,10 @@ def _log(d, project, by, ev):
     mattered. The batch is coalesced on commit into what actually happened.
     """
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you", **ev}
+          "by": "claude" if by == "claude" else "you",
+          # A replay of something the operator approved: said on the event,
+          # so the log reads "claude, approved" rather than "claude".
+          **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
     if b is not None and ev["by"] == b.get("by", "claude"):
         b.setdefault("events", []).append(ev)
@@ -503,8 +524,17 @@ def _int(v):
     return n
 
 
-def _next_id(rows):
-    return max((int(r.get("id", 0)) for r in rows), default=0) + 1
+def _next_id(rows, d=None, project=None):
+    """One above the highest — on the list, or reserved for a held add.
+
+    A number handed to a session for a record that is waiting for approval
+    (pending.py) is not on the list yet, and must not be given out again
+    while it waits: the session is already saying R12 in its reply.
+    """
+    top = max((int(r.get("id", 0)) for r in rows), default=0)
+    if d is not None and project is not None:
+        top = max(top, _int((d.get("reserved") or {}).get(project)) or 0)
+    return top + 1
 
 
 # The details under a line: the technical half the title should not carry.
@@ -557,7 +587,7 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 MAX_STEPS = 12
 
 
-def add(project, text, by="you", steps=(), who=""):
+def add(project, text, by="you", steps=(), who="", number=None):
     text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
@@ -569,6 +599,23 @@ def add(project, text, by="you", steps=(), who=""):
         return {"error": f"{MAX_STEPS} steps is the limit for one item"}
     if any(len(x) > MAX_TEXT for x in steps):
         return {"error": f"a step is longer than {MAX_TEXT} characters"}
+    # The gate (roadmap #27): what a SESSION adds may be held for the operator
+    # or refused, per project. After the checks above, so a held record is
+    # one that would have landed — and the number it is told is reserved
+    # here, where the next id is minted, so nothing else takes it meanwhile.
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "roadmap")
+        if g == "deny":
+            return {"error": pending.refusal("roadmap")}
+        if g == "ask":
+            with _lock:
+                d = load()
+                n = _next_id(d["projects"].get(project) or [], d, project)
+                d.setdefault("reserved", {})[project] = n
+                save(d)
+            return pending.hold(project, "roadmap", "add",
+                                {"text": text, "steps": steps, "who": who, "number": n},
+                                summary=text, number=n)
     with _lock:
         d = load()
         rows = d["projects"].get(project) or []
@@ -576,7 +623,7 @@ def add(project, text, by="you", steps=(), who=""):
             return {"error": f"{MAX_OPEN} open items is the limit — this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
-        row = {"id": _next_id(rows), "text": text,
+        row = {"id": _int(number) or _next_id(rows, d, project), "text": text,
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}

@@ -1405,8 +1405,41 @@ op = argv[0] if argv else "list"
 rest = argv[1:]
 
 # todo.py put its own directory on sys.path, so the id module beside it is
-# importable here the way it is inside the dashboard.
+# importable here the way it is inside the dashboard — and the approval
+# queue (roadmap #27), which todo.configure already set up.
 import ids  # noqa: E402
+import pending  # noqa: E402
+
+
+def held_line(r, what="it"):
+    """What a session is told when its add was held for the operator."""
+    h = r["held"]
+    tag = R(h["number"]) if h.get("number") is not None else "it"
+    return (f"held for approval as {tag} — {what} lands on the roadmap when the "
+            "operator approves it on the notebook. `bb roadmap pending` lists "
+            "what is waiting; you are told on a later turn what they decided")
+
+
+def behind(n, verb, args, summary):
+    """A follow-up aimed at a number that is still waiting for approval.
+
+    info, step add and edit ride behind the held add and land after it;
+    anything else on a held item is refused, because there is nothing to
+    tick, drop or move yet. Returns True when the call was dealt with here.
+    """
+    rec = pending.held(proj, "roadmap", n)
+    if rec is None:
+        return False
+    if verb is None:
+        print(f"[builderbot] ERROR: {R(n)} is still waiting for the operator's "
+              "approval — there is nothing to change yet. `bb roadmap pending`",
+              file=sys.stderr)
+        sys.exit(1)
+    r = pending.hold(proj, "roadmap", verb, args, summary, number=n, after=rec["id"])
+    bail(r)
+    print(f"held behind {R(n)} — it lands with that item when the operator "
+          "approves it, and goes if they deny it")
+    return True
 
 
 def R(n):
@@ -1545,6 +1578,8 @@ elif op == "add":
             words.append(rest[i]); i += 1
     r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps,
                  who=_who); bail(r)
+    if r.get("held"):
+        print(held_line(r)); sys.exit(0)
     n = len(r["item"]["steps"])
     print(f"added {R(r['item']['id'])}: {r['item']['text']}"
           + (f" ({n} steps)" if n else ""))
@@ -1554,7 +1589,7 @@ elif op == "done":
     # is where the words live afterwards.
     if not rest:
         print("usage: bb roadmap done <n>", file=sys.stderr); sys.exit(1)
-    n = ident(rest[0]); fresh()
+    n = ident(rest[0]); behind(n, None, None, None); fresh()
     r = todo.tick(proj, n, by="claude", who=_who); bail(r)
     print(f"done {R(n)}: {r['item']['text']}")
 elif op in ("rm", "remove"):
@@ -1563,7 +1598,7 @@ elif op in ("rm", "remove"):
     # saying why it went.
     if not rest:
         print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
-    n = ident(rest[0]); fresh()
+    n = ident(rest[0]); behind(n, None, None, None); fresh()
     r = todo.remove(proj, n, by="claude", why=" ".join(rest[1:]),
                     who=_who); bail(r)
     print(f"removed {R(n)}")
@@ -1596,7 +1631,7 @@ elif op in ("mv", "move"):
     # and the record both.
     if len(rest) < 2 or rest[1] not in ("up", "down"):
         print("usage: bb roadmap mv <n> up|down", file=sys.stderr); sys.exit(1)
-    n = ident(rest[0])
+    n = ident(rest[0]); behind(n, None, None, None)
     r = todo.move(proj, n, dir=-1 if rest[1] == "up" else 1, by="claude",
                   who=_who)
     bail(r)
@@ -1610,7 +1645,7 @@ elif op == "shelve":
     # was not told, so it is theirs, and one tap in the panel.
     if not rest:
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
-    n = ident(rest[0])
+    n = ident(rest[0]); behind(n, None, None, None)
     r = todo.shelve(proj, n, True, by="claude", who=_who); bail(r)
     print(f"shelved {R(n)} — say in your reply why, the operator unshelves it")
 elif op == "edit":
@@ -1619,7 +1654,11 @@ elif op == "edit":
     # what it used to say.
     if len(rest) < 2:
         print("usage: bb roadmap edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
-    n = ident(rest[0]); fresh()
+    n = ident(rest[0])
+    if behind(n, "edit", {"item_id": n, "text": " ".join(rest[1:]), "who": _who},
+              f"reword {R(n)}: {' '.join(rest[1:])}"):
+        sys.exit(0)
+    fresh()
     r = todo.edit(proj, n, " ".join(rest[1:]), by="claude", who=_who); bail(r)
     print(f"reworded {R(n)}")
 elif op == "info":
@@ -1635,11 +1674,18 @@ elif op == "info":
         if n < 1:
             print("[builderbot] ERROR: step numbers start at 1", file=sys.stderr)
             sys.exit(1)
+        if behind(item, "info", {"item_id": item, "text": " ".join(rest[2:]),
+                                 "step": n - 1, "who": _who},
+                  f"details on step {n} of {R(item)}: {' '.join(rest[2:])}"):
+            sys.exit(0)
         fresh()
         r = todo.set_info(proj, item, " ".join(rest[2:]),
                           step=n - 1, by="claude", who=_who); bail(r)
         print(f"details on step {rest[1]} of {R(item)}")
     else:
+        if behind(item, "info", {"item_id": item, "text": " ".join(rest[1:]), "who": _who},
+                  f"details on {R(item)}: {' '.join(rest[1:])}"):
+            sys.exit(0)
         fresh()
         r = todo.set_info(proj, item, " ".join(rest[1:]), by="claude",
                           who=_who); bail(r)
@@ -1664,25 +1710,28 @@ elif op == "step":
         return n - 1
     item = ident(srest[0]) if srest else None
     if sub == "add" and len(srest) >= 2:
+        if behind(item, "step-add", {"item_id": item, "text": " ".join(srest[1:]), "who": _who},
+                  f"a step on {R(item)}: {' '.join(srest[1:])}"):
+            sys.exit(0)
         r = todo.add_step(proj, item, " ".join(srest[1:]), by="claude",
                           who=_who); bail(r)
         print(f"added a step to {R(item)}")
     elif sub == "edit" and len(srest) >= 3:
         # 1-based on the way in, because that is how the step is numbered
         # everywhere a human reads it.
-        fresh()
+        behind(item, None, None, None); fresh()
         r = todo.edit(proj, item, " ".join(srest[2:]),
                       step=step_index(srest[1]),
                       by="claude", who=_who); bail(r)
         print(f"reworded step {srest[1]} of {R(item)}")
     elif sub in ("rm", "remove") and len(srest) >= 2:
-        fresh()
+        behind(item, None, None, None); fresh()
         r = todo.remove(proj, item,
                         step=step_index(srest[1]),
                         by="claude", why=" ".join(srest[2:]), who=_who); bail(r)
         print(f"removed step {srest[1]} of {R(item)}")
     elif sub == "info" and len(srest) >= 2:
-        fresh()
+        behind(item, None, None, None); fresh()
         r = todo.set_info(proj, item, " ".join(srest[2:]),
                           step=step_index(srest[1]),
                           by="claude", who=_who); bail(r)
@@ -1690,6 +1739,7 @@ elif op == "step":
     elif sub == "done" and len(srest) >= 2:
         # A session's own mark, distinct from the dashboard's "sent": this
         # step is finished, whether or not anybody sent it. See todo.step_done.
+        behind(item, None, None, None)
         r = todo.step_done(proj, item, step_index(srest[1]),
                            by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
         print(f"step {srest[1]} of {R(item)} done")
@@ -1697,6 +1747,7 @@ elif op == "step":
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
         # which loses both their words and the record of what really changed.
+        behind(item, None, None, None)
         r = todo.move(proj, item,
                       step=step_index(srest[1]),
                       dir=-1 if srest[2] == "up" else 1, by="claude",
@@ -1708,6 +1759,19 @@ elif op == "step":
               " | step done <n> <step> [\"note\"]",
               file=sys.stderr)
         sys.exit(1)
+elif op == "pending":
+    # What this project has waiting for the operator (roadmap #27) — the
+    # roadmap's half. Read-only: approving is theirs, on the notebook.
+    rs = pending.listing(proj, "roadmap")
+    if not rs:
+        print(f"nothing from the roadmap is waiting for approval on {proj}")
+    for r in rs:
+        when = time.strftime("%d %b %H:%M", time.localtime(r.get("at", 0)))
+        tag = R(r["number"]) if r.get("number") is not None else ""
+        lead = "  ↳ " if r.get("after") is not None else "  "
+        print(f"{lead}{when}  {tag:<5} {r.get('summary', '')}")
+    g = pending.mode(proj, "roadmap")
+    print(f"  (this project's setting for new roadmap items from a session: {g})")
 elif op in ("history", "log"):
     # Narrowed on the way out, not on the way in: this is read by sessions as
     # often as by people, and a whole log pasted into a conversation costs
@@ -1751,10 +1815,12 @@ elif op in ("history", "log"):
             print(f"{'':>32}was: {e['was']}")
         if e.get("why"):
             print(f"{'':>32}why: {e['why']}")
+        if e.get("approved"):
+            print(f"{'':>32}approved by the operator")
 else:
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
-          "rm N [WHY]|shelve N|begin|commit|revert|"
+          "rm N [WHY]|shelve N|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)
@@ -1833,8 +1899,12 @@ rows = []
 # All four views, so "when did anything here mention X" means all of it. The
 # findings log is the one nobody wrote: its rows carry no `by`, which reads
 # correctly in this column as a blank rather than a name.
+# ...and the approval queue's own log (roadmap #27): what was held, and what
+# the operator decided — the one place "denied" is written down.
+pending = load_mod(dirname, "pending")
+pending.configure(write_json=write_json, state=state)
 for tag, mod in (("roadmap", todo), ("bugs", bugs), ("memory", memory),
-                 ("scanner", findings)):
+                 ("scanner", findings), ("waiting", pending)):
     for e in mod.history(proj, since=since, find=find):
         rows.append((tag, e))
 rows.sort(key=lambda te: -te[1].get("at", 0))
@@ -1848,8 +1918,15 @@ for tag, e in rows:
     # The tab's own letter on the number — R12, B62 — because a merged log is
     # exactly where a bare number could be read against the wrong list.
     kind = {"roadmap": "todo"}.get(tag, tag)
-    ident = (f" {ids.label(kind, e['id'])}" if e.get("id") is not None
-             and kind in ids.LETTERS else "")
+    if tag == "waiting":
+        # The queue's rows carry which tab and that tab's number.
+        k2 = {"roadmap": "todo"}.get(e.get("kind"), e.get("kind"))
+        ident = (f" {ids.label(k2, e['number'])}" if e.get("number") is not None
+                 and k2 in ids.LETTERS else
+                 f" rule {e['number']}" if e.get("number") else "")
+    else:
+        ident = (f" {ids.label(kind, e['id'])}" if e.get("id") is not None
+                 and kind in ids.LETTERS else "")
     print(f"  {when}  {tag:>7}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
           f"{where}{ident}  {e.get('text', '')}")
     if e.get("was"):
@@ -1857,6 +1934,8 @@ for tag, e in rows:
     for k in ("why", "note"):
         if e.get(k):
             print(f"{'':>41}{k}: {e[k]}")
+    if e.get("approved"):
+        print(f"{'':>41}approved by the operator")
 PY
 }
 
@@ -1891,6 +1970,7 @@ reg.configure(write_json=statefile.write_json,
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
 rest = argv[1:]
+import pending  # noqa: E402 — rules.py put its directory on sys.path
 
 # What bb-tty puts in front of a session. Empty output and status 0 when
 # there are no rules, so the caller can test it with `[ -z ]`.
@@ -1923,11 +2003,30 @@ elif op == "add":
     r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude")
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
+    if r.get("held"):
+        print(f"held for approval as the rule {r['held']['number']} — it takes "
+              "effect when the operator approves it on the notebook. `bb rules "
+              "pending` lists what is waiting; you are told on a later turn what "
+              "they decided")
+        sys.exit(0)
     print(f"added {r['rule']['name']} — yours, marked as a session's on the "
           "Briefing tab, and in front of every session started here")
 elif op == "edit":
     if len(rest) < 2:
         sys.exit('usage: bb rules edit <name> "what it should say now"')
+    held = pending.held(proj, "rules", rest[0].strip().lower())
+    if held is not None:
+        # Reworded before it was even approved: the rewording rides behind
+        # the held rule, so the operator reads both and the final wording wins.
+        r = pending.hold(proj, "rules", "edit",
+                         {"name": held["number"], "text": " ".join(rest[1:])},
+                         f"reword {held['number']}: {' '.join(rest[1:])}",
+                         number=held["number"], after=held["id"])
+        if r.get("error"):
+            sys.exit(f"[builderbot] ERROR: {r['error']}")
+        print(f"held behind the rule {held['number']} — it lands with it when the "
+              "operator approves it, and goes if they deny it")
+        sys.exit(0)
     r = reg.edit(proj, rest[0], text=" ".join(rest[1:]), by="claude")
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
@@ -1935,10 +2034,24 @@ elif op == "edit":
 elif op == "rm":
     if not rest:
         sys.exit('usage: bb rules rm <name> ["why it went"]')
+    if pending.held(proj, "rules", rest[0].strip().lower()) is not None:
+        sys.exit(f"[builderbot] ERROR: the rule {rest[0]} is still waiting for the "
+                 "operator's approval — there is nothing to drop yet. `bb rules pending`")
     r = reg.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude")
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     print(f"dropped {r['removed']}")
+elif op == "pending":
+    # The rules' half of what is waiting for the operator (roadmap #27).
+    rs = pending.listing(proj, "rules")
+    if not rs:
+        print(f"no rule is waiting for approval on {proj}")
+    for r in rs:
+        when = time.strftime("%d %b %H:%M", time.localtime(r.get("at", 0)))
+        lead = "  ↳ " if r.get("after") is not None else "  "
+        print(f"{lead}{when}  {r.get('summary', '')}")
+    print(f"  (this project's setting for new rules from a session: "
+          f"{pending.mode(proj, 'rules')})")
 elif op == "history":
     rows = reg.history(proj, limit=20)
     if not rows:
@@ -1950,6 +2063,8 @@ elif op == "history":
         for k in ("was", "why"):
             if e.get(k):
                 print(f"{'':>32}{k}: {e[k][:60]}")
+        if e.get("approved"):
+            print(f"{'':>32}approved by the operator")
 elif op == "list":
     rs = reg.rules(proj)
     if not rs:
@@ -2302,10 +2417,30 @@ op = argv[0] if argv else "list"
 rest = argv[1:]
 
 import ids  # noqa: E402 — bugs.py put its directory on sys.path
+import pending  # noqa: E402 — the approval queue (roadmap #27)
 
 
 def B(n):
     return ids.label("bugs", n) if n is not None else ""
+
+
+def behind(n, verb, args, summary):
+    """A verb aimed at a report that is still waiting for approval: a note
+    or a field edit rides behind it, anything else is refused. See the
+    roadmap's twin. True when dealt with here."""
+    rec = pending.held(proj, "bugs", n)
+    if rec is None:
+        return False
+    if verb is None:
+        print(f"[builderbot] ERROR: {B(n)} is still waiting for the operator's "
+              "approval — there is nothing to close or drop yet. `bb bug pending`",
+              file=sys.stderr)
+        sys.exit(1)
+    r = pending.hold(proj, "bugs", verb, args, summary, number=n, after=rec["id"])
+    bail(r)
+    print(f"held behind {B(n)} — it lands with that report when the operator "
+          "approves it, and goes if they deny it")
+    return True
 
 
 def ident(word):
@@ -2434,6 +2569,12 @@ elif op == "add":
     r = bugs.add(proj, title, by="claude",
                  severity=flags.pop("severity", "medium"), **flags)
     bail(r)
+    if r.get("held"):
+        h = r["held"]
+        print(f"held for approval as {B(h['number'])} — it lands in the tracker "
+              "when the operator approves it on the notebook. `bb bug pending` "
+              "lists what is waiting; you are told on a later turn what they decided")
+        sys.exit(0)
     print(f"filed {B(r['bug']['id'])}: {r['bug']['title']}")
 elif op == "note":
     # The everyday update: what a session learned about a bug it did not fix.
@@ -2444,10 +2585,17 @@ elif op == "note":
         sys.exit(1)
     n = ident(rest[0])
     b = next((x for x in rows() if x.get("id") == n), None)
+    stamp = time.strftime("%d %b", time.localtime())
     if b is None:
+        # A note on a report that is itself waiting: held behind it, with
+        # the note stamped now — that is when it was learned.
+        held_notes = (pending.held(proj, "bugs", n) or {}).get("args", {}).get("notes", "")
+        body = (held_notes + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
+        if behind(n, "edit", {"bug_id": n, "act": "noted", "notes": body},
+                  f"note on {B(n)}: {' '.join(rest[1:])}"):
+            sys.exit(0)
         print(f"[builderbot] ERROR: no bug {B(n)} here", file=sys.stderr)
         sys.exit(1)
-    stamp = time.strftime("%d %b", time.localtime())
     body = (b.get("notes", "") + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
     r = bugs.edit(proj, n, by="claude", act="noted", notes=body); bail(r)
     print(f"noted on {B(n)}")
@@ -2459,6 +2607,9 @@ elif op == "edit":
         sys.exit(1)
     k = "severity" if rest[1] in ("sev", "severity") else rest[1]
     n = ident(rest[0])
+    if behind(n, "edit", {"bug_id": n, k: " ".join(rest[2:])},
+              f"{k} on {B(n)}: {' '.join(rest[2:])}"):
+        sys.exit(0)
     r = bugs.edit(proj, n, by="claude", **{k: " ".join(rest[2:])})
     bail(r)
     print(f"updated {k} on {B(n)}")
@@ -2470,7 +2621,7 @@ elif op in ("rm", "remove"):
         print("usage: bb bug rm <n> [\"why it should not have been filed\"]",
               file=sys.stderr)
         sys.exit(1)
-    n = ident(rest[0])
+    n = ident(rest[0]); behind(n, None, None, None)
     r = bugs.remove(proj, n, why=" ".join(rest[1:]), by="claude"); bail(r)
     print(f"removed {B(n)} — closing keeps a bug, this does not")
 elif op in ("fix", "wontfix", "na", "reopen"):
@@ -2478,11 +2629,23 @@ elif op in ("fix", "wontfix", "na", "reopen"):
         print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
     status = {"fix": "fixed", "wontfix": "wontfix", "na": "na",
               "reopen": "open"}[op]
-    n = ident(rest[0])
+    n = ident(rest[0]); behind(n, None, None, None)
     r = bugs.set_status(proj, n, status,
                         note=" ".join(rest[1:]), by="claude")
     bail(r)
     print(f"{B(n)} {status}")
+elif op == "pending":
+    # The tracker's half of what is waiting for the operator (roadmap #27).
+    rs = pending.listing(proj, "bugs")
+    if not rs:
+        print(f"nothing from the tracker is waiting for approval on {proj}")
+    for r in rs:
+        when = time.strftime("%d %b %H:%M", time.localtime(r.get("at", 0)))
+        tag = B(r["number"]) if r.get("number") is not None else ""
+        lead = "  ↳ " if r.get("after") is not None else "  "
+        print(f"{lead}{when}  {tag:<5} {r.get('summary', '')}")
+    print(f"  (this project's setting for new bug reports from a session: "
+          f"{pending.mode(proj, 'bugs')})")
 elif op in ("history", "log"):
     # The same filters `bb roadmap history` takes, because whoever learned one
     # should not have to learn the other. `bb history` merges all four.
@@ -2520,12 +2683,14 @@ elif op in ("history", "log"):
               f"  {B(e.get('id'))}  {e.get('text', '')}")
         if e.get("note"):
             print(f"{'':>30}note: {e['note']}")
+        if e.get("approved"):
+            print(f"{'':>30}approved by the operator")
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
     print("usage: bb bug [list|all|show N|find TEXT|begin|commit|revert|add TITLE [--sev S] [--area ..] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
-          "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|"
+          "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|pending|"
           "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)
     sys.exit(1)
 PY

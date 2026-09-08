@@ -251,3 +251,4 @@
 - The Memory tab is now the Briefing: your own house rules for a project sit above what Claude remembers, and a session can read them but not change them (e4a9a9a)
 - A node's agent now says which compatibility window it is from, so an agent that may not match the controller reads differently from one that is merely a build behind (0d6330b)
 - House rules can now be written by a session as well as by you, each marked with who wrote it, and the history of them is readable (086db4f)
+- Roadmap items and bugs now carry a letter, R12 and B62, so a number in a reply or a log says which list it is from; the bare number still works (4b39de8)

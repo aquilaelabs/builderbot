@@ -40,6 +40,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import ids  # noqa: E402
+import pending  # noqa: E402
 import time
 from pathlib import Path
 
@@ -52,6 +53,19 @@ def configure(*, write_json, state, tell=None, tmux_name=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name)
     globals()["FILE"] = Path(state) / "bugs.json"
+    # The approval queue (roadmap #27) — see todo.configure.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("bugs", replay)
+
+
+def replay(project, verb, args):
+    """A held tracker call, replayed on approval: a report, or a note or
+    field edit that rode behind a held report."""
+    if verb == "add":
+        return add(project, args.pop("title", ""), by="claude", **args)
+    if verb == "edit":
+        return edit(project, args.pop("bug_id", None), by="claude", **args)
+    return {"error": f"not a tracker change that can be replayed: {verb}"}
 
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
@@ -142,7 +156,8 @@ def _log(d, project, by, ev):
     still changes as it goes, visibly; only the record waits for commit.
     """
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you", **ev}
+          "by": "claude" if by == "claude" else "you",
+          **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
     if b is not None and ev["by"] == b.get("by", "claude"):
         b.setdefault("events", []).append(ev)
@@ -351,13 +366,30 @@ def add(project, title, by="you", severity="medium", **fields):
         return {"error": "a bug needs a title — one line, what goes wrong"}
     if severity not in SEVERITIES:
         return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
+    number = _int(fields.pop("number", None))
+    # The gate (roadmap #27), the same shape as todo.add's: a session's report
+    # may be held or refused per project, and a held one keeps its number.
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "bugs")
+        if g == "deny":
+            return {"error": pending.refusal("bugs")}
+        if g == "ask":
+            with _lock:
+                d = load()
+                n = _next_id(d, project)
+                d.setdefault("reserved", {})[project] = n
+                save(d)
+            return pending.hold(project, "bugs", "add",
+                                {"title": title, "severity": severity, "number": n,
+                                 **{k: v for k, v in fields.items() if k in FIELDS}},
+                                summary=f"[{severity}] {title}", number=n)
     with _lock:
         d = load()
         rows = d["projects"].setdefault(project, [])
         if len(rows) >= MAX_BUGS:
             return {"error": f"{MAX_BUGS} bugs is the limit — close some, or "
                              "this stops being a tracker and starts being a log"}
-        bug = {"id": max((int(b.get("id", 0)) for b in rows), default=0) + 1,
+        bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you",
                "at": int(time.time())}
@@ -371,6 +403,13 @@ def add(project, title, by="you", severity="medium", **fields):
                               "note": bug.get("severity", "")})
         save(d)
     return {"ok": True, "bug": bug}
+
+
+def _next_id(d, project):
+    """One above the highest filed or reserved — see todo._next_id."""
+    rows = d["projects"].get(project) or []
+    top = max((int(b.get("id", 0)) for b in rows), default=0)
+    return max(top, _int((d.get("reserved") or {}).get(project)) or 0) + 1
 
 
 def _moved_by(d, project, bug_id):

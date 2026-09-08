@@ -394,6 +394,11 @@ def may(u, action, project=None):
     if action == "rules" and (u or {}).get("session"):
         return ("a session cannot change the rules it is being held to — they "
                 "are the operator's, written on the notebook's Briefing tab")
+    # ...and may not approve what it has waiting (roadmap #27): a session
+    # signing off its own additions is the setting not existing.
+    if action == "pending" and (u or {}).get("session"):
+        return ("what a session has waiting is the operator's to approve or "
+                "deny, on the notebook — a session cannot answer for itself")
     if is_admin(u):
         return ""
     if action in USER_DENIES:

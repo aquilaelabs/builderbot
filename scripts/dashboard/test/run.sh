@@ -607,6 +607,10 @@ EOF
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json" \
           "$S/state/bugs.json"
+    # ...nor the rules and the approval queue (roadmap #7, #27): a rule or a
+    # held change left by pending.mjs lit the bell and filled the Briefing
+    # tab for every file after it.
+    rm -f "$S/state/rules.json" "$S/state/pending.json"
     echo '["delta"]' > "$S/state/locked-projects.json"     # a test that locks must not hand that on
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # ...nor one that binds a project to a node. nodes.mjs saves alpha's node

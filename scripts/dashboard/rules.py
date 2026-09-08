@@ -71,6 +71,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import pending  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
@@ -81,6 +82,20 @@ FILE = None
 def configure(*, write_json, state):
     globals().update(write_json=write_json, STATE=Path(state))
     globals()["FILE"] = Path(state) / "rules.json"
+    # The approval queue (roadmap #27) — see todo.configure.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("rules", replay)
+
+
+def replay(project, verb, args):
+    """A held rule, replayed on approval — or an edit that rode behind one."""
+    if verb == "add":
+        return add(project, args.get("name", ""), args.get("text", ""),
+                   paths=args.get("paths", ""), words=args.get("words", ""), by="claude")
+    if verb == "edit":
+        return edit(project, args.get("name", ""), text=args.get("text"),
+                    paths=args.get("paths"), words=args.get("words"), by="claude")
+    return {"error": f"not a rules change that can be replayed: {verb}"}
 
 
 # flock on the file itself, so a `bb` process and the dashboard wait for each
@@ -226,7 +241,8 @@ def _log(d, project, by, ev):
     todo.py's — one merged history is what `bb history` reads."""
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append({"at": int(time.time()),
-              "by": "claude" if by == "claude" else "you", **ev})
+              "by": "claude" if by == "claude" else "you",
+              **({"approved": True} if pending.replaying() else {}), **ev})
     del h[:-MAX_HISTORY]
 
 
@@ -254,6 +270,19 @@ def add(project, name, text, paths="", words="", by="claude"):
     """
     if not str(text or "").strip():
         return {"error": "a rule needs something to say"}
+    # The gate (roadmap #27): a session's rule may be held or refused per
+    # project. Keyed by the name it would get, which the replay re-derives.
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "rules")
+        if g == "deny":
+            return {"error": pending.refusal("rules")}
+        if g == "ask":
+            r = _clean({"name": name, "text": text, "paths": paths,
+                        "words": words, "by": by}, 0)
+            return pending.hold(project, "rules", "add",
+                                {"name": r["name"], "text": text,
+                                 "paths": paths, "words": words},
+                                summary=f"{r['name']} — {r['text']}", number=r["name"])
     with _lock:
         d = load()
         p = _project(d, project)

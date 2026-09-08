@@ -472,7 +472,9 @@ noticed; a rule is something that should hold for whoever works here next,
 including a person. "The suite takes ten minutes" is a memory. "Do not edit
 the dashboard while a suite is running, because the page is served from disk
 per request" is a rule — it is about this project and it applies to anybody.
-When you learn one of those, `bb rules add` it and say so in your reply.
+When you learn one of those, `bb rules add` it and say so in your reply. The
+operator may have set this project to hold or refuse a session's new rules,
+the same way as roadmap items; `bb rules pending` lists what is waiting.
 
 ## The roadmap
 
@@ -530,6 +532,20 @@ paragraph. This is the operator's own reason for the list existing:
 
 So: say it in the reply *and* add it. Items you add are marked as yours, so
 the operator can see what you raised and sweep it if they disagree.
+
+**The operator decides how much of what you add lands on its own.** Per
+project and per tab — roadmap, bugs, rules — the setting is auto, ask or
+deny, and it covers *creating* an entry only: what is already on a list you
+may still tick, note and reword under any of them. Under **auto** an add
+lands as it always has. Under **ask** it is held: `bb roadmap add` answers
+"held for approval as R12", the item is not on the list yet, and the
+operator approves or denies it on the notebook. Details or steps you add to
+R12 meanwhile ride behind it and land after it; anything else on a held
+item is refused, and `bb roadmap pending` lists what is waiting. You are
+told on a later turn what they decided. Under **deny** the add is refused
+with a sentence you can quote — put the item in your reply instead, and the
+operator adds it if they agree. The same three words apply to `bb bug add`
+and `bb rules add`.
 
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
@@ -770,7 +786,9 @@ the same rule as the roadmap, applied to defects: a reply is read once, the
 tracker is read at the start of every session after it. Fill in the fields
 you would want on arrival: area and repro above all. When you learn something
 about one you did not fix, `bb bug note` it — the tracker is where the next
-session looks first.
+session looks first. Filing is subject to the same setting as the roadmap:
+under ask a report is held as B7 until the operator approves it, a note on
+it meanwhile rides behind it, and `bb bug pending` lists what is waiting.
 
 **Close bugs; do not delete them.** There are three ways to close one, and
 the difference between them is what the next reader is told:

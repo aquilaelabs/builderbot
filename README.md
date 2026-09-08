@@ -415,9 +415,11 @@ bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
+bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug find TEXT   search the reports themselves — area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
+bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb tests run       run the project's test command, time it, and record the run
@@ -426,6 +428,7 @@ bb rules show NAME one of them in full — what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules history   what has changed them, by either of you
+bb rules pending   rules a session added that are waiting for your approval
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test — what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -2026,6 +2029,23 @@ reasons: claude puts a confirmation behind that command, and a dialog is
 exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
+
+**How much of what a session adds lands on its own** is the last row of the
+same dialog — *Claude may add to* Roadmap, Bugs and Rules, each **auto**,
+**ask** or **deny**. Auto is today's behaviour: an item, report or rule a
+session adds lands at once, marked as its own. Ask holds it instead: the
+session is told "held for approval as R12", the notebook shows a band above
+its tabs with how many changes are waiting (and a count on each tab), the bell
+carries a row per project that takes you there, and **Review** opens the
+list — every held change with a checkbox and its full text under a fold, a
+select-all box, and Approve and Deny at the foot. Approve replays the ticked
+changes in the order they were made; Deny drops them and anything that rode
+behind them (details or a step added to a held item, a note on a held
+report). Deny refuses the add outright, with a sentence the session can quote
+so it says the thing in its reply instead. It covers creation only: what is
+already on a list a session may still tick, note and reword under every
+setting, and the session is told on its next turn what you decided. The
+settled ones are in `bb history` under *waiting*.
 
 **Changing it while a session is running restarts that session**, and the
 dialog says so before you save. The restart is `tmux respawn-pane`, so the
