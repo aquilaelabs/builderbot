@@ -420,6 +420,33 @@ for (const kind of kinds){
   }
 }
 
+// ---- the document and the framework are one thing ---------------------------
+// docs/design-language.md is what a session reads; this suite is what holds
+// the page. The two drift apart the day a helper is renamed and the document
+// still names the old one, so every name the document uses is checked to be
+// real on the page, and every helper the framework exposes is checked to be
+// in the document — a rename without a rewrite fails here by name.
+{
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { dirname, join } = await import('node:path');
+  const doc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'design-language.md'), 'utf8');
+  const helpers = ['docSurface', 'docSection', 'renderGuarded', 'busy'];
+  const missing = helpers.filter(h => !doc.includes(h));
+  ok(missing.length === 0,
+     `the design language names every helper the framework exposes${missing.length ? ` — not: ${missing.join(', ')}` : ''}`);
+  const named = [...doc.matchAll(/`(docSurface|docSection|renderGuarded|busy|wireSections)\b/g)].map(m => m[1]);
+  const unreal = await page.evaluate(ns => ns.filter(n => typeof window[n] !== 'function'), [...new Set(named)]);
+  ok(unreal.length === 0,
+     `...and every helper the document names is a real function on the page${unreal.length ? ` — not: ${unreal.join(', ')}` : ''}`);
+  // By name, with or without the dot: the document writes a class as it
+  // appears in markup as often as as a selector.
+  const classes = ['actbar', 'field', 'histbar', 'danger', 'state'];
+  const undocumented = classes.filter(c => !new RegExp(`\\b${c}\\b`).test(doc));
+  ok(undocumented.length === 0,
+     `...and names the classes the page is measured on${undocumented.length ? ` — not: ${undocumented.join(', ')}` : ''}`);
+}
+
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);
