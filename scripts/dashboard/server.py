@@ -2249,7 +2249,7 @@ import presence                                                  # noqa: E402
 import bugs                                                      # noqa: E402
 
 bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name)
+               tmux_name=tmux_name, workspace=WORKSPACE)
 
 # The notebook's fourth view keeps a log too, and it is the odd one: nothing
 # here writes findings, so the entries are derived by comparing one read of
@@ -3780,6 +3780,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(pending.payload(name))
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            # Against what this account may see, like every read above it —
+            # this one passed the name straight through (bug #68).
+            if q.get("project", [""])[0] not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
             got = memory.payload(q.get("project", [""])[0],
                                  [s["name"] for s in tmux_sessions()])
             return self._json(got if got is not None

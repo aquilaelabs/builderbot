@@ -49,9 +49,14 @@ STATE = None
 FILE = None
 
 
-def configure(*, write_json, state, tell=None, tmux_name=None):
+def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None):
     globals().update(write_json=write_json, STATE=Path(state),
-                     tell=tell, tmux_name=tmux_name)
+                     tell=tell, tmux_name=tmux_name,
+                     # Where the projects are, for the version stamp below.
+                     # bb passes it explicitly; the dashboard too; the
+                     # environment is the fallback for whoever forgot.
+                     WORKSPACE=Path(workspace or os.environ.get("BB_WORKSPACE")
+                                    or os.environ.get("WORKSPACE") or "/workspace"))
     globals()["FILE"] = Path(state) / "bugs.json"
     # The approval queue (roadmap #27) — see todo.configure.
     pending.configure(write_json=write_json, state=state)
@@ -367,6 +372,11 @@ def add(project, title, by="you", severity="medium", **fields):
     if severity not in SEVERITIES:
         return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
     number = _int(fields.pop("number", None))
+    # When it was first seen (roadmap #6): taken NOW, before the gate, so a
+    # report held for approval is stamped with the build it was found on
+    # rather than the one it was approved under. A replay carries it back in.
+    seen_in = fields.pop("seen_in", None) or _stamp(project)
+    seen_on = fields.pop("seen_on", None) or _image()
     # The gate (roadmap #27), the same shape as todo.add's: a session's report
     # may be held or refused per project, and a held one keeps its number.
     if by == "claude" and not pending.replaying():
@@ -381,6 +391,8 @@ def add(project, title, by="you", severity="medium", **fields):
                 save(d)
             return pending.hold(project, "bugs", "add",
                                 {"title": title, "severity": severity, "number": n,
+                                 **({"seen_in": seen_in} if seen_in else {}),
+                                 **({"seen_on": seen_on} if seen_on else {}),
                                  **{k: v for k, v in fields.items() if k in FIELDS}},
                                 summary=f"[{severity}] {title}", number=n)
     with _lock:
@@ -392,7 +404,11 @@ def add(project, title, by="you", severity="medium", **fields):
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you",
-               "at": int(time.time())}
+               "at": int(time.time()),
+               # Never backfilled onto older reports: a made-up "first seen
+               # in" is worse than a blank one.
+               **({"seen_in": str(seen_in)[:80]} if seen_in else {}),
+               **({"seen_on": str(seen_on)[:80]} if seen_on else {})}
         for k in FIELDS:
             v = _clean(fields.get(k), MAX_LONG if k in ("repro", "notes")
                        else MAX_SHORT)
@@ -403,6 +419,39 @@ def add(project, title, by="you", severity="medium", **fields):
                               "note": bug.get("severity", "")})
         save(d)
     return {"ok": True, "bug": bug}
+
+
+def _stamp(project):
+    """The project's version right now (roadmap #6): what a report was first
+    seen in, and what it was closed in.
+
+    The same identity `bb version` prints — VERSION file plus commit count
+    plus sha, or git describe where there is no file — so two reports say
+    "before" and "after" in an order that sorts. None rather than a guess
+    when there is nothing honest to say: a tree with no commits yet, a
+    directory that is not a repository. A blank is read as "unknown"; a
+    made-up number would be read as a fact.
+
+    version.py is configured here only if nobody has: the dashboard
+    configures it with the rest of its modules, bb has not, and configuring
+    it twice with the same paths would only drop the callbacks the dashboard
+    gave it.
+    """
+    try:
+        import version  # noqa: E402 — beside this file, on sys.path already
+        if getattr(version, "WORKSPACE", None) is None:
+            version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+        v = version.render(project)
+        return (v.get("forms") or {}).get("semver") or None
+    except Exception:  # noqa: BLE001 — a stamp must never stop a report
+        return None
+
+
+def _image():
+    """What the container itself was running, for the environmental half of
+    what gets filed: much of it is about the image rather than the
+    project, and the image is what moved between "works" and "broken"."""
+    return os.environ.get("BB_VERSION", "").strip() or None
 
 
 def _next_id(d, project):
@@ -556,16 +605,32 @@ def set_status(project, bug_id, status, note="", by="you"):
     """
     if status not in STATUSES:
         return {"error": f"status is one of: {', '.join(STATUSES)}"}
+    # Taken once, outside the lock: git is slow and the lock is held by the
+    # dashboard's poll too.
+    closed_in = _stamp(project) if status != "open" else None
 
     def change(bug):
+        was = bug.get("status", "open")
+        # Closing a closed bug used to succeed and overwrite its note (bug
+        # #70) — the record of WHY it was closed, which is the point of
+        # closing. Reopen first: that leaves a line in the log saying the
+        # earlier answer was withdrawn, where a second close would leave none.
+        if status != "open" and was != "open":
+            return {"error": f"already {STATUS_WORDS.get(was, was)} — reopen it "
+                             "first if it needs closing differently"}
+        if status == "open" and was == "open":
+            return {"error": "it is open already"}
         bug["status"] = status
         note_ = _clean(note, MAX_SHORT).replace("\n", " ")
         if status == "open":
             bug.pop("status_note", None)
             bug.pop("status_by", None)
+            bug.pop("fixed_in", None)          # it turned out not to be true
         else:
             bug["status_note"] = note_
             bug["status_by"] = "claude" if by == "claude" else "you"
+            if closed_in:
+                bug["fixed_in"] = closed_in[:80]
         return {"ok": True, "bug": bug,
                 "log": {"act": "reopened" if status == "open" else status,
                         "id": bug["id"], "text": bug["title"], "note": note_}}

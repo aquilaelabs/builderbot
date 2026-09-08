@@ -762,7 +762,10 @@ design work; a bug is a different record — severity, where it lives, how to
 reproduce it, expected against actual, and a notes field the analysis
 accumulates in. The open ones are appended to your prompt by number and
 severity; `bb bug show B7` gives one in full. The B is the tracker's letter,
-the way R is the roadmap's; the bare number works too.
+the way R is the roadmap's; the bare number works too. A report carries the
+version it was filed in and, once closed, the version it was closed in —
+the identity `bb version` prints, stamped for you — so "was this before or
+after the fix" is a comparison rather than a guess.
 
 ```bash
 bb bug                       # the open ones; `all` includes closed, `show N` one in full
