@@ -15,12 +15,9 @@ everything can be downloaded, and an .xpi can additionally be pushed to the
 paired phone — unpacked into a scratch directory and handed to web-ext, since
 an XPI is a zip of exactly the source layout web-ext runs.
 """
-import time
-import zipfile
 from pathlib import Path
 
 WORKSPACE = None
-SCRATCH = None
 
 DIST = "dist"
 
@@ -38,8 +35,8 @@ KINDS = {
 MAX_DEPTH = 2
 
 
-def configure(*, workspace, scratch):
-    globals().update(WORKSPACE=Path(workspace), SCRATCH=Path(scratch))
+def configure(*, workspace):
+    globals().update(WORKSPACE=Path(workspace))
 
 
 def listing(project):
@@ -97,64 +94,3 @@ def resolve(project, rel):
     return p if p.is_file() else None
 
 
-# The build that is live on the phone right now, as {(project, path): sha}.
-# Kept only while its push session is: pushing the identical file into a live
-# session would install nothing new, and saying so beats doing it — but once
-# the session is stopped (or Firefox restarted with it), the same file is a
-# legitimate thing to push again, so Stop clears this.
-_live = {}
-
-
-def xpi_sha(project, rel):
-    import hashlib
-    p = resolve(project, rel)
-    if p is None:
-        return None
-    try:
-        return hashlib.sha256(p.read_bytes()).hexdigest()
-    except OSError:
-        return None
-
-
-def live_matches(project, rel):
-    sha = xpi_sha(project, rel)
-    return sha is not None and _live.get((project, rel)) == sha
-
-
-def set_live(project, rel):
-    sha = xpi_sha(project, rel)
-    if sha:
-        _live[(project, rel)] = sha
-
-
-def clear_live():
-    _live.clear()
-
-
-def unpack_xpi(project, rel):
-    """An .xpi unpacked somewhere web-ext can run it, or an error.
-
-    An XPI is a zip of exactly the unpacked-extension layout web-ext expects,
-    so pushing one is: unzip, hand the directory over. Into the scratch area
-    rather than beside the file — dist/ is the project's shipping shelf, and
-    nothing here should write to it.
-    """
-    p = resolve(project, rel)
-    if p is None or p.suffix.lower() != ".xpi":
-        return None, "not an .xpi in this project's dist/"
-    dest = SCRATCH / "xpi" / f"{project}-{int(time.time())}"
-    try:
-        dest.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(p) as z:
-            # Guarded extraction: a hostile zip's ../ entries must not write
-            # outside the scratch directory.
-            for m in z.namelist():
-                tgt = (dest / m).resolve()
-                if not str(tgt).startswith(str(dest.resolve())):
-                    return None, "that archive tries to write outside itself"
-            z.extractall(dest)
-    except (OSError, zipfile.BadZipFile) as e:
-        return None, f"could not unpack it: {e}"
-    if not (dest / "manifest.json").is_file():
-        return None, "no manifest.json inside — not a WebExtension package"
-    return dest, None

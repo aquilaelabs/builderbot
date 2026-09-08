@@ -78,6 +78,24 @@ ok(/30\.0s\s+slow\.mjs#1/.test(flagged) && /10\.0s\s+slow\.mjs#3/.test(flagged),
 ok(!/4\.0s/.test(flagged),
    '...and 4.0s is not: it is under the floor, where a round number is a coincidence');
 
+// ---- accepting a wait that is the work ------------------------------------
+// A test that has to sit on a round number — a real boot, a timeout being
+// proved — is marked so once, with why, and stops bothering anybody. The
+// reason stays on the test, because "decided" and "tolerated" look the same
+// from the number alone.
+ok(/accepted; it will not be flagged/.test(bb('accept', 'slow.mjs#1', 'a real thirty-second boot')),
+   'bb tests accept marks a flagged test as taking the time it takes');
+const afterAccept = bb('flagged');
+ok(!/slow\.mjs#1/.test(afterAccept) && /10\.0s\s+slow\.mjs#3/.test(afterAccept)
+   && /1 accepted as the work/.test(afterAccept),
+   '...and it leaves the flagged list, which says how many were accepted');
+ok(/accepted: sits on 30s, and that is the work — a real thirty-second boot/.test(bb('show', 'slow.mjs#1')),
+   '...with the reason kept on the test');
+ok(/1 flagged \(10s waiting\)/.test(bb('list')),
+   '...and the header counts only what is still flagged');
+ok(/no longer accepted/.test(bb('accept', 'slow.mjs#1', '--no')) && /30\.0s\s+slow\.mjs#1/.test(bb('flagged')),
+   'and --no takes the mark off, so it is flagged again');
+
 // ---- sequence context -----------------------------------------------------
 const shown = bb('show', 'slow.mjs#3');
 ok(/follows: the daemon answers/.test(shown),
@@ -264,6 +282,40 @@ ok(await page.$eval(`${box} .tstN`, e => e.value) === 'half a sentence, not save
 ok(await page.$eval(`${box} .tstP`, e => e.value)
      === 'the daemon address is parsed, not guessed',
    '...and the field beside it, which was saved, still reads what was stored');
+
+// The same mark from the row: the checkbox is offered only on a test that
+// sits on a boundary, and saving with it ticked writes the reason and turns
+// the warning pill into a quiet one.
+{
+  // A fresh flagged row, ingested now: the earlier rows have been through
+  // renames and re-timings by this point, and this one sorts to the top.
+  writeFileSync(LOG, runlog([['wait.mjs', 'a boot that really takes thirty seconds', 30.0]]));
+  bb('ingest', LOG);
+  const row = '#tstList .tst[data-key="wait.mjs#1"]';
+  await page.evaluate(() => notebooks.get('alpha').reloadTests());
+  await page.waitForSelector(row, { timeout: 10000 });
+  ok(await page.$eval(row, e => /wait\?/.test(e.querySelector('.pill.warn')?.textContent || '')),
+     'a flagged row wears the warning pill');
+  await page.click(`${row} > summary`);
+  await page.waitForSelector(`${row} .tstEdit`, { timeout: 10000 });
+  await page.click(`${row} .tstEdit`);
+  await page.waitForSelector(`${row} .tstAccept`, { timeout: 10000 });
+  ok(await page.$eval(`${row} .tstWhy`, e => e.hidden), 'the reason field waits behind the checkbox');
+  await page.click(`${row} .tstAccept`);
+  await page.fill(`${row} .tstWhy`, 'the boot really takes this long');
+  await page.click(`${row} .tstSave`);
+  await page.waitForFunction(s => [...(document.querySelector(s)?.querySelectorAll('.pill') || [])]
+                                    .some(p => /accepted/.test(p.textContent)),
+                             row, { timeout: 15000 });
+  ok(read().tests['wait.mjs#1'].accepted === 'the boot really takes this long',
+     'ticking it on the row writes the reason to the registry');
+  ok(await page.$eval(row, e => /The wait is the work/.test(e.textContent) && /the boot really takes this long/.test(e.textContent)),
+     '...and the row reads it back under its own label');
+  await page.click('#tstFlagged');
+  await page.waitForFunction(s => !document.querySelector(s), row, { timeout: 10000 });
+  ok(true, '...and "flagged only" no longer lists it');
+  await page.click('#tstFlagged');
+}
 
 // ---- filling in a registry that already has a suite in it -----------------
 // The per-test verb takes the file lock and rewrites the store on every call,

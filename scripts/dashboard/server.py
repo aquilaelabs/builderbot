@@ -446,7 +446,7 @@ CARDS_FILE = STATE / "cards.json"
 # the next read rather than needing anything done to it.
 # Tools between Doctor and Runner: the reach-for-it card next to the
 # health line, ahead of the two that are read rather than pressed.
-CARD_KEYS = ["doctor", "tools", "runner", "projects", "phone"]
+CARD_KEYS = ["doctor", "tools", "runner", "projects"]
 
 
 # The one implementation, in statefile.py, along with the file lock that makes
@@ -500,7 +500,7 @@ def save_cards(v):
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
 TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
-             "nodes", "settings", "jobs", "users"}
+             "nodes", "settings", "jobs", "users", "phone"}
 
 
 def _layouts():
@@ -1340,7 +1340,7 @@ def project_list(who):
     node_gaps = {}
     if not NODES_OK:
         for n in nodes.node_list():
-            if n["kind"] == "agent":
+            if n["kind"] == "agent" and n.get("live"):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
@@ -2300,7 +2300,7 @@ phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 import artifacts                                                 # noqa: E402
 import workspace                                                 # noqa: E402
 
-artifacts.configure(workspace=WORKSPACE, scratch=STATE / "artifacts-tmp")
+artifacts.configure(workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2420,6 +2420,7 @@ import jobs                                                      # noqa: E402
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     packages.nodes = nodes
+    phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devapp.compose_done)
@@ -2759,7 +2760,7 @@ def findings_heads():
 #
 # Four bugs in one week came from every view inventing that rule out of
 # knowledge it did not have — the roadmap's arrows not noticing a session
-# start, the Artifacts tab not noticing a phone connect, and the Phone card
+# start, the Artifacts tab not noticing a phone connect, and the phone view
 # polling only when it ALREADY knew about a request, which meant it could
 # never learn of the first one. Each was patched where it hurt. This is the
 # shape that stops the fifth.
@@ -2865,9 +2866,9 @@ def snapshot(who):
         "uptime": uptime(),
         # How many phone requests are waiting on the operator. A count and not
         # the requests themselves: this rides on every poll, and it exists so
-        # the Phone card knows when to go and fetch the real thing. Reading it
+        # the Phone tab knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
-        "phone_asks": len(phone.requests_open()),
+        "phone_asks": len(phone.requests_open(users.uid_of(who))),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
@@ -3592,7 +3593,7 @@ class Handler(BaseHTTPRequestHandler):
         # how they are served — full paths, same shape as the favicons, so it
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
-                    "/tab-users.js"):
+                    "/tab-users.js", "/tab-phone.js"):
             try:
                 body, zipped = self._gzip((HERE / path[1:]).read_bytes())
             except OSError:
@@ -3666,7 +3667,9 @@ class Handler(BaseHTTPRequestHandler):
                                "build": build_state(name),
                                "devapp": devapp.state(name),
                                "devapps": devapp.states(name)}
-                              | phone.summary())
+                              | phone.summary(prefs.get(name)["node"], users.uid_of(self._who()),
+                                              nodes.node(prefs.get(name)["node"])
+                                              if prefs.get(name)["node"] and not NODES_OK else None))
         if self.path.startswith("/api/artifact?"):
             # The download. Resolved and prefix-checked in artifacts.resolve —
             # a symlink inside dist/ must not turn this into a file server for
@@ -3711,10 +3714,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return None
         if self.path.startswith("/api/phone"):
-            # Not on the status poll: this walks the projects looking for
-            # extension manifests, and a filesystem walk every fifteen seconds
-            # for a card nobody has open is a poor trade. The card asks.
-            return self._json(self._phone_payload())
+            # Not on the status poll: a probe is a job on a node, so the tab
+            # asks when it is opened or pressed, and reads the cache between.
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
+                                                  probe=bool(q.get("probe"))))
         if self.path.startswith("/api/packages"):
             # ?node= asks about another node's packages store: what its
             # census says it has, and the package job in flight there. The
@@ -4896,8 +4900,9 @@ class Handler(BaseHTTPRequestHandler):
                 # each other's work.
                 "batch": todo.batch(name)}
 
-    def _phone_payload(self):
-        """The card's data, plus this browser's own address when it is a phone.
+    def _phone_payload(self, node="", probe=False):
+        """The tab's data for this account, plus this browser's own address
+        when it is a phone.
 
         The whole point of the IP field is a number the operator has to go and
         read off the device — and when the dashboard is being viewed ON that
@@ -4909,7 +4914,7 @@ class Handler(BaseHTTPRequestHandler):
         is the desktop's, which is emphatically not the phone, and filling the
         field with it would be a confident wrong answer — the worst kind.
         """
-        out = phone.payload()
+        out = phone.payload(users.uid_of(self._who()), node=node, probe=probe)
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -5162,55 +5167,60 @@ class Handler(BaseHTTPRequestHandler):
         if self._readonly(name):
             return None
         act = field(req, "action")
+        nid = prefs.get(name)["node"]
+        node = nodes.node(nid) if nid and not NODES_OK else None
+        who = self._who() or {}
+        uid, me = users.uid_of(who), who.get("name") or "somebody"
+        # Both verbs touch the phone, so both are the connection owner's:
+        # the phone is on somebody's desk, and they are the one who said
+        # yes to it. The tab ghosts the buttons for anybody else; this is
+        # the line that holds.
+        if act in ("push", "install"):
+            if not node:
+                return self._json({"error": f"{name} has no node, and a phone is "
+                                            "driven from the project's node"}, 400)
+            if not phone.phone_on(nid):
+                return self._json({"error": f"no phone is connected on {node['name']} — "
+                                            "connect one on the Phone tab with that "
+                                            "node picked"}, 400)
+            held = phone.owner_of(nid)
+            if held and held["uid"] != uid:
+                return self._json({"error": f"the phone on {node['name']} was connected "
+                                            f"by {held['name']} — only they can push to "
+                                            "it or install on it"}, 400)
+            if not held:
+                return self._json({"error": f"the phone on {node['name']} has no owner — "
+                                            "connect it on the Phone tab first"}, 400)
         if act == "push":
-            dev = phone.phone()
-            if not dev:
-                return self._json({"error": "no phone is connected — pair one "
-                                            "on the Phone card first"}, 400)
+            # A temporary add-on, through web-ext on the phone's node. A push
+            # is a decision, made each time — nothing auto-pushes on a change.
             rel = field(req, "path")
-            # A push is a decision, made each time — nothing auto-pushes on a
-            # change. The other half of that bargain: pushing the IDENTICAL
-            # build into a session that is still live installs nothing, so it
-            # is compared and said instead of done. Stopping the session
-            # clears the comparison, because after a stop (or a Firefox
-            # restart) the same file is a legitimate thing to push again.
-            if phone.push_state()["running"]:
-                if artifacts.live_matches(name, rel):
-                    return self._json({"error": "that exact build is already "
-                                       "live on the phone — rebuild the .xpi, "
-                                       "or Stop and push again"}, 400)
-                return self._json({"error": "a push is still live — Stop it "
-                                            "first"}, 400)
-            d, err = artifacts.unpack_xpi(name, rel)
-            if err:
-                return self._json({"error": err}, 400)
-            r = phone.push_dir(d, dev["serial"], field(req, "apk"), label=rel)
-            if not r.get("error"):
-                artifacts.set_live(name, rel)
+            f = artifacts.resolve(name, rel)
+            if f is None or f.suffix.lower() != ".xpi":
+                return self._json({"error": "not an .xpi in this project's dist/"}, 400)
+            r = phone.push(nid, node, rel, f.stat().st_size, name, field(req, "apk"),
+                           uid, me, by=self._principal())
         elif act == "install":
             # An APK, installed for real and kept — unlike the extension push,
             # which is a temporary add-on. `adb install -r` replaces an
             # existing copy in place and keeps its data, so this is the update
             # path too and there is no second verb.
-            dev = phone.phone()
-            if not dev:
-                return self._json({"error": "no phone is connected — pair one "
-                                            "on the Phone card first"}, 400)
             rel = field(req, "path")
             f = artifacts.resolve(name, rel)
             if f is None or f.suffix.lower() not in (".apk",):
                 return self._json({"error": "not an .apk in this project's "
                                             "dist/"}, 400)
-            r = phone.install_apk(f, dev["serial"], label=rel)
+            r = phone.install_apk(nid, {"stores": (node.get("reported") or {}).get("stores") or {}},
+                                  rel, f.stat().st_size, name, label=rel,
+                                  by=self._principal())
         elif act == "stop":
-            r = phone.stop_push()
-            artifacts.clear_live()
+            r = phone.stop_push(uid, by=self._principal())
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
         return self._json(r | {"artifacts": artifacts_of(name)}
-                          | phone.summary())
+                          | phone.summary(nid, uid, node))
 
     def _phone(self, req):
         """Pair, connect, and push an extension. Every argument is checked by
@@ -5226,24 +5236,37 @@ class Handler(BaseHTTPRequestHandler):
         if field(req, "action") not in ("ask", "outcome") and self._refused("admin"):
             return None
         act = field(req, "action")
+        who = self._who() or {}
+        uid, me = users.uid_of(who), who.get("name") or "somebody"
+        nid = field(req, "node")
+        if act in ("pair", "connect", "disconnect"):
+            if NODES_OK or not nid or not nodes.node(nid):
+                return self._json({"error": "pick a node — a phone is driven from "
+                                            "a node that has adb"}, 400)
+            if not nodes.node(nid).get("live"):
+                return self._json({"error": f"{nodes.node(nid)['name']} is not dialing "
+                                            "in — nothing reaches its adb right now"}, 400)
         if act == "pair":
-            r = phone.pair(field(req, "ip"), field(req, "port"), field(req, "code"))
+            r = phone.pair(nid, field(req, "ip"), field(req, "port"), field(req, "code"), uid, me)
         elif act == "connect":
-            r = phone.connect(field(req, "ip"), field(req, "port") or None)
+            r = phone.connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
         elif act == "disconnect":
-            r = phone.disconnect(field(req, "serial"))
+            r = phone.disconnect(nid, uid, me)
         elif act == "ask":
-            # A session asking to reach the phone. It does not run anything
-            # itself; if the operator allows it, this process does — or at
-            # once, or not at all, as the project's setting says (prefs
-            # gate "phone"). The project is the session's own; a person
-            # asking through the API names one.
-            who = self._who() or {}
+            # A session asking to reach the phone on its project's node. It
+            # runs nothing itself; the account that connected that phone is
+            # asked, and on Allow the node runs it. The project is the
+            # session's own; a person asking through the API names one they
+            # may see.
             proj = who.get("session") or field(req, "project")
-            mode = prefs.get(proj)["gate"]["phone"] if proj else "ask"
-            r = phone.ask(field(req, "why"), req.get("cmd"), mode=mode)
+            if proj and not who.get("session") and not users.may_see(who, proj):
+                proj = ""
+            pnid = prefs.get(proj)["node"] if proj else ""
+            pn = nodes.node(pnid) if pnid and not NODES_OK else None
+            r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                          pn["name"] if pn else "", proj)
         elif act == "allow" or act == "deny":
-            r = phone.decide(req.get("id"), act == "allow")
+            r = phone.decide(req.get("id"), act == "allow", uid, me)
         elif act == "outcome":
             r = phone.outcome(req.get("id"))
             if not r.get("error"):
@@ -5252,7 +5275,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | self._phone_payload())
+        return self._json(r | self._phone_payload(node=nid, probe=act in ("connect", "disconnect", "pair")))
 
     def _findings_log(self, req):
         """The Analysis view's log. Read-only by nature: the scan runs on the
@@ -5350,6 +5373,8 @@ class Handler(BaseHTTPRequestHandler):
             r = testreg.describe(name, field(req, "key"),
                                  protects=req.get("protects"),
                                  notes=req.get("notes"))
+        elif act == "accept":
+            r = testreg.accept(name, field(req, "key"), field(req, "why"))
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

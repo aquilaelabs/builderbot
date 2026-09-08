@@ -41,6 +41,9 @@ CDIR_ROOT = os.environ["STUB_AGENT_DIR"]
 # the rest is a plausible small VM so the meters have something to draw.
 CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           "sshd": True, "docker": True,
+          # adb, so the Phone tab lists this node: its adb is the harness's
+          # stub on PATH, which answers as a phone that is always there.
+          "toolchains": {"adb": "present", "web-ext": "present"},
           "stores": {"data": {"path": CDIR_ROOT, "free_mb": 50000,
                               "total_mb": 100000}},
           # A session half that is up but on a read-only projects share —
@@ -105,13 +108,26 @@ def stream(job, seq, argv, cwd, env, timeout=300):
         if isinstance(r, dict) and r.get("cancel"):
             canceled[0] = True
 
-    for line in iter(p.stdout.readline, ""):
-        buf.append(line)
-        # Every half second, which is the shipped agent's own cadence — often
-        # enough that a running command reads as running, rare enough that a
-        # chatty build is not one request per line.
+    # Read with a timeout rather than line by line: a command that prints
+    # three lines and then sits there (web-ext, once the add-on is on the
+    # phone) must still have those lines posted, and must still hear a
+    # cancel — both ride the half-second post, which a blocked readline
+    # never reached.
+    import select
+    while True:
+        ready, _, _ = select.select([p.stdout], [], [], 0.5)
+        if ready:
+            line = p.stdout.readline()
+            if not line:
+                break
+            buf.append(line)
         if time.time() - last > 0.5:
-            post()
+            if buf:
+                post()
+            else:
+                r = call("log", {"job": job["id"], "chunks": []})
+                if isinstance(r, dict) and r.get("cancel"):
+                    canceled[0] = True
             last = time.time()
         if canceled[0] or time.time() > deadline:
             p.kill()
@@ -173,8 +189,12 @@ def run_exec(job):
     argv = [str(a) for a in (spec.get("argv") or [])]
     if not argv:
         return "failed", 1, []
-    state, code = stream(job, [0], argv, CDIR_ROOT, dict(os.environ),
-                         timeout=120)
+    # The data store exists once something has been written under it; an
+    # exec job (the phone's adb) can be the first thing here.
+    os.makedirs(CDIR_ROOT, exist_ok=True)
+    env = dict(os.environ)
+    env.update({str(k): str(v) for k, v in (spec.get("env") or {}).items()})
+    state, code = stream(job, [0], argv, CDIR_ROOT, env, timeout=120)
     return state, code, []
 
 
