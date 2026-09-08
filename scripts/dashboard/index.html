@@ -3184,18 +3184,6 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="docbar" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
-    <div class="card" data-card="runner">
-      <h2>Runner</h2>
-      <div id="runner"><div class="loading">loading…</div></div>
-    </div>
-    <div class="card" data-card="projects">
-      <h2>Projects</h2>
-      <div id="projects"><div class="loading">loading…</div></div>
-    </div>
-    <!-- What this container can install. Its own card rather than a corner
-         of the findings one: a scanner report and a package manager answer
-         different questions, and only one of them depends on /reports being
-         mounted. -->
     <div class="card" data-card="tools">
       <h2>Tools</h2>
       <div class="macros">
@@ -3216,6 +3204,18 @@ body.dragging .tab .lbl{cursor:grabbing}
          Drawn from JS as rows, the way Projects is, rather than as a bespoke
          block: this is a list of things with names, subtitles and actions,
          which is what .row already is. -->
+    <div class="card" data-card="runner">
+      <h2>Runner</h2>
+      <div id="runner"><div class="loading">loading…</div></div>
+    </div>
+    <div class="card" data-card="projects">
+      <h2>Projects</h2>
+      <div id="projects"><div class="loading">loading…</div></div>
+    </div>
+    <!-- What this container can install. Its own card rather than a corner
+         of the findings one: a scanner report and a package manager answer
+         different questions, and only one of them depends on /reports being
+         mounted. -->
     <div class="card" data-card="phone">
       <h2>Phone</h2>
       <div id="phBody"><div class="loading">loading…</div></div>
@@ -5233,13 +5233,11 @@ function findingsRulesHtml(rows){
 // drag handle, and holds nothing else. Order and collapsed-state live on the
 // server like the pins do — the phone and the desktop are looking at one
 // machine and should agree about how its dashboard is arranged.
-// Doctor first: the verdict on the whole box outranks any one card below it.
-// Must agree with CARD_KEYS in server.py — the server heals a saved order by
-// re-inserting anything missing at its own position, so a disagreement here
-// self-corrects on the next save and is invisible until a drag lands on the
-// card it forgot. This list was missing `claude` for exactly that reason.
-const CARD_ORDER = ["doctor","runner","projects","tools","phone"];
-let cards = {order: CARD_ORDER.slice(), closed: []};
+// The default order is the server's (CARD_KEYS) and nowhere else: the page
+// kept a copy, and when the default moved the copy did not, so Reset put the
+// cards back where the old copy said. Until the first poll answers, the
+// markup's order stands — it is written in the same order.
+let cards = {order: [], closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
                                            // issued before that carries a
@@ -5818,15 +5816,24 @@ function toggleUiMenu(open){
 }
 
 // The gear's oldest job, now one item in the menu it opens.
-function resetCards(){
+async function resetCards(){
   if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
   toggleUiMenu(false);
   const shut = cards.closed.slice();
-  cards = {order: CARD_ORDER.slice(), closed: []};
+  // An empty order, which the server heals into its default and answers
+  // with — so what comes back is the default as this image defines it.
+  cardsChangedAt = performance.now();
+  try{
+    const r = await fetch("/api/cards", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({order: [], closed: []})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    cards = j.cards; if (state) state.cards = j.cards;
+  }catch(e){ notify("could not reset the cards: " + e, true); return; }
   // Folded cards unfold with the same tween as a click; the rest slide home.
   shut.forEach(k => slideCard(document.querySelector(`.card[data-card="${k}"]`), false));
   applyCards(true);
-  saveCards();
 }
 
 $("bCards").onclick = e => { e.stopPropagation(); toggleUiMenu(); };
