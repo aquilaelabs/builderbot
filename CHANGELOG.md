@@ -276,3 +276,4 @@
 - Every row in the notebook opens to be read; Edit brings its fields, and Cancel puts them away without keeping what you typed (21eb482)
 - The house rules a session starts with name each conditional rule by its triggers alone, so the block costs half what it did (ebd67c7)
 - CI on a node now runs with the node's own toolchain, and the browser suite fails when it cannot start instead of quietly passing (8e95533)
+- A test run says up front when it should finish, from what the last run took, and how it compared when it ends (b541901)
