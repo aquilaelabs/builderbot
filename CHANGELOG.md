@@ -285,3 +285,6 @@
 - Whoever connects a phone owns it: only they can disconnect it, only they are asked when a session wants to use it, and only they can push to it or install on it (c400445)
 - A session's phone request always asks; the project setting that could run it unasked is gone (c400445)
 - A test that has to take as long as it takes can be accepted once, with the reason, and stops being flagged (c400445)
+- The image no longer carries Claude Code; the first boot installs it into the home volume, where updates already went (244e59d)
+- The Tools tab says that Install accepts Google's Android SDK terms, and links them (244e59d)
+- The Users tab shows which Claude account each BuilderBot account is signed in as, and warns when two share one (244e59d)

@@ -288,7 +288,7 @@ without passing it through to a VM and taking it away from everything else.
    shown once and lasts 24 hours.
 2. Add this template a second time, with a different container name, and set:
    - **BUILDERBOT_ROLE** → `node`
-   - **CONTROLLER_URL** → the dashboard's address, e.g. `http://192.168.1.15:7680`
+   - **CONTROLLER_URL** → the dashboard's address, e.g. `http://192.168.1.10:7680`
    - **NODE_TOKEN** → the token you just copied
 3. Give it its own **/config** path — that is where it keeps its identity, so
    it must not share the management container's. Its data, cache and artifacts
