@@ -3342,6 +3342,8 @@ class Handler(BaseHTTPRequestHandler):
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
+        if settings.get("claude_shared_login"):
+            return ""                     # the Settings tab stood the refusal down
         store = users.load()["users"]
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         owner = users.owner_name()

@@ -2815,11 +2815,8 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field" id="rnNodeField" hidden>
       <label for="rnNode">Node — where this project's work runs</label>
       <select id="rnNode"></select>
-      <div class="hint" id="rnNodeHint">Everything this project does off this
-        box goes here — its containers, builds, tests, CI and emulation. What it
-        can build is what is installed on that node (the Tools tab adds to it);
-        an ssh node without an agent hosts containers only. Existing containers
-        stay where they were made.</div>
+      <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator
+        run on this node; what it can build is what the Tools tab installed there.</div>
     </div>
     <div class="field">
       <label for="rnBuildCmd">Build and test — what bb build and bb test run on that node</label>
@@ -2853,9 +2850,8 @@ body.dragging .tab .lbl{cursor:grabbing}
         <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
       </div>
-      <div class="hint">Auto lands what a session adds, marked as its own. Ask
-        holds it for you: the notebook shows what is waiting and you approve or
-        deny it there. Deny refuses it with a reason the session can quote.</div>
+      <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
+        it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -2973,9 +2969,8 @@ body.dragging .tab .lbl{cursor:grabbing}
 <div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
-    <div class="hint">Deleting a project moves it to <code>.trash</code> under
-      the projects share. Its notebook — the roadmap, the bugs, the memories —
-      is left where it is, so putting one back brings all of it with it.</div>
+    <div class="hint">A deleted project moves to <code>.trash</code> on the projects
+      share with its notebook, so putting it back brings everything.</div>
     <div id="tList" class="field"></div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="tClose">Close</button></div>
@@ -7793,10 +7788,10 @@ function renderPackagesInto(i){
           // install is refused because one is already running across the
           // share, and that refusal says so at the press; a standing banner
           // on every draw was explaining a thing that needs no explaining.
-          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
+          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)}${
               typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
                 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
-            is a job there: bb and the catalog travel to the node, and its census reports what landed.`
+            is a job there.`
           : `${esc(d.name || "the node")} reports no packages store yet.`)
       : d.root
       ? (d.shared
@@ -10400,10 +10395,8 @@ project can have several"
           inst.error ? ` — ${esc(inst.error)}` : ""}</span>
       </div>` : "";
     list.innerHTML = devHtml + (!rows.length
-      ? `<div class="hint">Nothing in <b>dist/</b>. The deal is one word long:
-           a build worth keeping gets copied to the project's dist/ directory,
-           and this tab lists dist/ and nothing else. An empty tab on a project
-           that builds things means the copy step is missing.</div>`
+      ? `<div class="hint">Nothing in <b>dist/</b>. A build worth keeping is copied
+           into the project's dist/ directory; this tab lists that and nothing else.</div>`
       : jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
@@ -10947,12 +10940,9 @@ become that version's section when it is created">Changelog${
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
     const body = `
-      <div class="hint">How you want this project worked on. A session reads
-        these at the start and can leave rules of its own — those are marked,
-        and it can change only those; yours it cannot touch. Every change by
-        either of you is in the history. What a rule is <b>not</b> is a
-        refusal: it is a request the model can still fumble, unlike the
-        sibling-project walls.</div>
+      <div class="hint">How you want this project worked on. A session reads these
+        at the start; it may add rules of its own, marked as its, and cannot
+        change yours.</div>
       <div class="addbar" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug rulerow${ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
@@ -11196,14 +11186,9 @@ become that version's section when it is created">Changelog${
     if (!all.length){
       $("tstHint").textContent = "Nothing ingested yet.";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">Every test in the project,
-        recorded: what it protects, what it really exercises, and what it
-        cost in a run rather than in anybody's estimate. A session records a
-        run with
-        <pre class="ndcmd">bb tests run</pre>
-        which runs the project's test command, times it and reconciles this
-        list against what the runner reported, so a test that arrived or
-        went says so.</div>`;
+      $("tstStats").innerHTML = `<div class="hint">Nothing recorded yet. A session
+        runs the tests and records what each cost with
+        <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
       return;
