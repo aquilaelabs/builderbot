@@ -307,6 +307,9 @@ bb phone run --why "..." -- shell getprop ro.build.version.release
 
 That puts your reason and the exact command on the card and waits. On **Allow**
 the dashboard runs it and hands you the output; on **Deny** you are told no.
+The project's settings can make that **auto**, where it runs at once, or
+**deny**, where the refusal says so — put the command and why in your reply
+then, and the operator runs it or changes the setting.
 The reason is required — the operator is being asked about a command they did
 not write, and without a sentence saying what it is for, allowing it is a
 guess. Write the sentence you would want to read.
@@ -474,9 +477,9 @@ of the rules whose files you changed, and fails by name.
 
 **What belongs here rather than in a memory.** A memory is something you
 noticed; a rule is something that should hold for whoever works here next,
-including a person. "The suite takes ten minutes" is a memory. "Do not edit
-the dashboard while a suite is running, because the page is served from disk
-per request" is a rule — it is about this project and it applies to anybody.
+including a person. "The suite takes ten minutes" is a memory. "A new
+top-level name in index.html goes in test/surface.mjs, or the suite cannot
+see it" is a rule — it is about this project and it applies to anybody.
 When you learn one of those, `bb rules add` it and say so in your reply. The
 operator may have set this project to hold or refuse a session's new rules,
 the same way as roadmap items; `bb rules pending` lists what is waiting.
@@ -852,6 +855,13 @@ last run took. Wait for that, not for a guess: a run well past it is stuck,
 not slow, and the process is the thing to look at. `bb tests ingest LOG`
 records a run made some other way.
 
+**Do not edit the tree while its tests are running.** A runner reads files
+as it goes — a dev server serves them from disk per request, a test file is
+loaded when its turn comes — so an edit mid-run makes the run test a mix of
+before and after, and its verdict is about nothing. Stage the change, let
+the run finish, then apply it and run again. One run at a time, for the
+same reason.
+
 **The timings are measured, never estimated.** Do not put a duration in by hand. A number somebody guessed is worse than no
 number, because it reads exactly like one that was measured.
 
@@ -867,6 +877,16 @@ than no registry, and it is the failure this whole thing is built to catch.
 just above a round boundary — 30.0s, 10.0s, 5.0s — is waiting rather than
 working: a fixed sleep, a polling interval, or a selector that matches nothing
 and times out. The work is already done; only the waiting has to go.
+
+**When you add a test, time it before you hand it back.** A test does not
+run alone — the runner runs a file, and the tests in it share one page and
+one server — so run the file it is in with timing on (`bb dashboard test
+FILE` in BuilderBot; the project's own runner pointed at the file
+elsewhere), `bb tests ingest` the output, and read `bb tests flagged`. Your
+new test on that list is waiting on a fixed sleep, a poll interval or a
+selector that never matches: take the wait out and run the file again. Leave
+it only when the time is the work — a real build, a real boot — and say so
+in its `bb tests note`, so the next reader does not chase it.
 
 ## Static analysis findings
 

@@ -150,6 +150,26 @@ ok((await post({ action: 'allow', id: denied.body.id })).body.error,
    '...and an answered request cannot be answered again');
 page.errors = [];   // the refusals above are 400s on purpose
 
+// ---- the project's setting: auto runs it, deny refuses it ------------------
+// The fourth word beside the notebook's three (prefs gate "phone"). A session
+// names no project here — its token does — so a person asking through the
+// API names one, which is what the suite is.
+const pref = body => page.evaluate(async b => (await fetch('/api/prefs', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json(), body);
+await pref({ project: 'alpha', gate: { phone: 'auto' } });
+const auto = await post({ action: 'ask', why: 'read the build number', project: 'alpha',
+                          cmd: ['shell', 'getprop', 'ro.build.version.release'] });
+ok(auto.body.state === 'done' && !auto.body.error,
+   `under auto a session's command runs at once, with nothing to answer (${JSON.stringify(auto.body).slice(0, 80)})`);
+ok(await page.$('.phask') === null, '...and nothing waits on the card');
+await pref({ project: 'alpha', gate: { phone: 'deny' } });
+const no = await post({ action: 'ask', why: 'read the build number', project: 'alpha',
+                        cmd: ['shell', 'getprop', 'ro.build.version.release'] });
+ok(/refuse phone commands/.test(no.body.error || ''),
+   'under deny it is refused, and the refusal names the setting');
+await pref({ project: 'alpha', gate: { phone: 'ask' } });
+page.errors = [];   // the deny is a 400 on purpose
+
 // ---- what the bell says, and how loudly -----------------------------------
 // Appended rather than woven in above: the tests before this one read rows
 // out of the panel and answer the ask, and a block in the middle that opens,

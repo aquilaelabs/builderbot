@@ -483,8 +483,13 @@ def requests_open():
         return [_req_public(r) for r in _reqs if r["state"] == "pending"]
 
 
-def ask(why, argv, by="claude"):
-    """A session asking to reach the phone. Returns the request's id."""
+def ask(why, argv, by="claude", mode="ask"):
+    """A session asking to reach the phone. Returns the request's id.
+
+    `mode` is the project's setting (prefs gate "phone"): under ask the
+    request waits on the card and the bell; under auto it runs at once,
+    recorded like an allowed one so the card's log still shows it; under
+    deny it is refused with a sentence the session can quote."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
         return {"error": "say what it is for — the operator is answering a "
@@ -496,15 +501,24 @@ def ask(why, argv, by="claude"):
         return {"error": "that command is too long to put in front of somebody"}
     if not phone():
         return {"error": "no phone is connected"}
+    if mode == "deny":
+        return {"error": "this project's settings refuse phone commands from a session "
+                         "(Claude may use the phone: deny) — put the command and why in "
+                         "your reply, and the operator runs it or changes the setting"}
     global _req_seq
     with _lock:
         _req_seq += 1
         r = {"id": _req_seq, "at": int(time.time()), "why": why,
-             "cmd": list(argv), "state": "pending", "by": by,
-             "out": "", "code": None}
+             "cmd": list(argv), "state": "running" if mode == "auto" else "pending",
+             "by": by, "out": "", "code": None}
         _reqs.append(r)
         del _reqs[:-MAX_REQS]
-    return {"ok": True, "id": r["id"]}
+    if mode != "auto":
+        return {"ok": True, "id": r["id"]}
+    res = _adb(*r["cmd"], timeout=120)
+    with _lock:
+        r.update(state="done", out=res["out"][-8000:], code=res["code"])
+    return {"ok": True, "id": r["id"], "state": "done", "out": r["out"], "code": r["code"]}
 
 
 def _find(rid):

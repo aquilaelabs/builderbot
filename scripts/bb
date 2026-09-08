@@ -2887,6 +2887,10 @@ post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUT
 r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:]})
 if r.get("error"):
     print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+if r.get("state") == "done":
+    # The project's setting is auto: it ran on the dashboard already.
+    sys.stdout.write(r.get("out") or "")
+    sys.exit(r.get("code") or 0)
 rid = r["id"]
 print(f"[builderbot] asked the operator (#{rid}) — waiting up to 15 minutes "
       "for Allow on the dashboard's Phone card", file=sys.stderr)

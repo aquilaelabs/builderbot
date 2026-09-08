@@ -39,7 +39,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # into each notebook tab (roadmap #27): auto lands it, ask holds it for
 # approval, deny refuses it. Creation only — see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
-GATE_KINDS = ("roadmap", "bugs", "rules")
+GATE_KINDS = ("roadmap", "bugs", "rules", "phone")
 GATE_MODES = ("auto", "ask", "deny")
 
 _lock = threading.Lock()
@@ -160,10 +160,10 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
             cur["git_email"] = str(git_email).strip()[:200]
         if gate is not None:
             if not isinstance(gate, dict):
-                return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
+                return {"error": "gate is {roadmap|bugs|rules|phone: auto|ask|deny}"}
             for k, v in gate.items():
                 if k not in GATE_KINDS:
-                    return {"error": f"not a notebook tab: {k}"}
+                    return {"error": f"not a gate: {k} — one of {', '.join(GATE_KINDS)}"}
                 if v not in GATE_MODES:
                     return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
                 cur["gate"][k] = v

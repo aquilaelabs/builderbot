@@ -1222,9 +1222,44 @@ def agent_stale(n):
     theirs = (n.get("agent") or {}).get("digest") or ""
     if not ours["digest"] or not theirs or theirs == ours["digest"]:
         return ""
-    return (f"{n['name']} runs agent {(n.get('agent') or {}).get('version') or '?'} and this "
-            f"controller ships {ours['version']} — press Update agent on its row first. "
-            "A job this version sends could name something that agent does not know.")
+    mine = (n.get("agent") or {}).get("version") or "?"
+    if agent_gap(n):
+        return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']} — "
+                f"a different compatibility window ({agent_window(mine)} against "
+                f"{agent_window(ours['version'])}), so nothing sent to it is promised to work. "
+                "Update it from the Nodes tab before relying on this node.")
+    return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']} — "
+            "press Update agent on its row first. A job this version sends could name "
+            "something that agent does not know.")
+
+
+def agent_gap(n):
+    """True when this node's agent is from ANOTHER compatibility window than
+    the one this controller ships — 0.3 against 0.4. Inside a window any
+    agent works with any controller and being behind is routine; across one
+    that promise was never made. Empty windows (an agent from before the
+    window existed) are never read as a gap."""
+    ours = agent_window(agent_file()["version"])
+    theirs = agent_window((n.get("agent") or {}).get("version"))
+    return bool(ours and theirs and ours != theirs)
+
+
+def attention(project_nodes):
+    """The pinned alerts about nodes, for the bell: computed from the record
+    on every poll, so one leaves the moment it stops being true. An agent
+    node whose agent is behind (an update is available) or from another
+    window (nothing routed to it is promised to work, and the projects on
+    it are named). `project_nodes` is {project: node id}."""
+    ours = agent_file()
+    out = []
+    for n in node_list():
+        if n["kind"] != "agent" or not agent_stale(n):
+            continue
+        out.append({"kind": "agent", "node": n["name"], "id": n["id"],
+                    "from": (n.get("agent") or {}).get("version") or "?",
+                    "to": ours["version"], "window": agent_gap(n),
+                    "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
+    return out
 
 
 def node_update_agent(principal, node_id):
