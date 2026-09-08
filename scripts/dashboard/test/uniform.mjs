@@ -241,6 +241,51 @@ for (const kind of kinds){
 }
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
+
+// ---- the notebook's head row ------------------------------------------------
+// Every view opens with the same row: its one-line summary left, its History
+// right — and that row is the FIRST band of the view, so the History sits at
+// one height whichever tab is open. Measured rather than read from the
+// markup, because the Briefing tab once put a section above its head and
+// every other rule here still passed.
+{
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'todo');
+                              if (t) focusTab(t.id); });
+  await page.waitForSelector('.nb .nbview:not([hidden]) .field', { timeout: 20000 });
+  const views = await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view));
+  const heads = {};
+  for (const v of views){
+    await page.evaluate(w => getNotebook('alpha').view(w), v);
+    await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
+                               v, { timeout: 20000 });
+    await sleep(150);
+    heads[v] = await page.evaluate(w => {
+      const view = document.querySelector(`.nb .nbview[data-view="${w}"]`);
+      const shown = [...view.children].filter(e => e.offsetHeight > 0 || e.offsetWidth > 0);
+      const first = shown[0];
+      const head = view.querySelector(':scope > .nbhead');
+      return { first: first ? (first.className || first.tagName).split(/\s+/)[0] : '(nothing)',
+               isHead: !!first && first.classList.contains('nbhead'),
+               top: head ? Math.round(head.getBoundingClientRect().top) : null,
+               // Not every view has a log — Tests and Artifacts open with a
+               // summary and nothing else — but where a head has controls
+               // they sit right of the summary, after its spacer.
+               right: !head || [...head.querySelectorAll('button')].every(b => {
+                 const sp = head.querySelector('.sp');
+                 return sp && (sp.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+               }) };
+    }, v);
+  }
+  const notFirst = Object.entries(heads).filter(([, h]) => !h.isHead).map(([v, h]) => `${v} opens with ${h.first}`);
+  ok(notFirst.length === 0,
+     `every notebook view opens with its head row${notFirst.length ? ` — not: ${notFirst.join(', ')}` : ''}`);
+  const tops = new Set(Object.values(heads).map(h => h.top));
+  ok(tops.size === 1,
+     `...and the head row sits at one height on every view (${JSON.stringify(
+       Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.top])))})`);
+  ok(Object.values(heads).every(h => h.right),
+     '...with its controls, where it has any, to the right of the summary');
+}
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
 ok(seenReds.size <= 1,

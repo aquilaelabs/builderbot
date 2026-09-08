@@ -1361,8 +1361,11 @@ textarea,select{
 .nb.ro textarea,.nb.ro input:not([type="checkbox"]){pointer-events:none;opacity:.6}
 .nb .nbhead{color:var(--dim);font:var(--f-ui)}
 /* Every view opens the same way: its one-line summary left, its controls
-   right — the same shape on all four tabs, which is most of what "the same
-   design language" means. */
+   right — the same shape on every tab, which is most of what "the same
+   design language" means. And it is the FIRST band of the view: the History
+   sits at one height whichever tab is open, so the eye never has to look in a
+   different place per tab. uniform.mjs measures that on all six views; a
+   section put above the head on one tab is how it was broken once. */
 .nb .vbar{display:flex;gap:8px;align-items:center}
 .nb .vbar .sp{flex:1}
 .nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);
@@ -2534,17 +2537,19 @@ body.dragging .tab .lbl{cursor:grabbing}
     <!-- Everything a session started here begins with, in one place — which
          is the question this tab answers and the reason it stopped being
          called Memory. Two halves, and the difference between them is not
-         topic but AUTHORITY: the rules are the operator's and Claude cannot
-         change them, the memories are Claude's and it can. Rules first,
-         because how somebody wants to be worked with comes before what a
-         previous session happened to notice. -->
+         topic but AUTHORITY: the rules are the operator's first, the
+         memories are Claude's. Rules above memories, because how somebody
+         wants to be worked with comes before what a previous session
+         happened to notice — but the head row above BOTH, because every
+         view opens with its one-line summary and its History at the same
+         height, and this tab is not the exception (uniform.mjs measures it). -->
     <div class="nbview" data-view="briefing" hidden>
-      <div id="rulesBox"></div>
-      <div class="field nbhead vbar"><span id="memWhere">what Claude remembers here</span>
+      <div class="field nbhead vbar"><span id="memWhere">what every session here starts with</span>
         <span class="sp"></span>
         <button type="button" id="memLog"
           title="what the notebook changed here, with when — Claude's own memory writes are files, not events, so they are not in it">History</button>
       </div>
+      <div id="rulesBox"></div>
       <div class="field histbar" id="memHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the memory log">
         <select class="hwhen" aria-label="how far back">
@@ -8257,6 +8262,9 @@ function makeNotebook(project){
   // with it. That is bug #27's shape; the `tests` binding beside them gets
   // away with being late only because the panel never opens on that view.
   let ruleData = null, rulePending = null, rulesRev = null;
+  // How many memories the tab found (null until read), for the head row that
+  // sums both halves of the briefing — set by drawMemory, read by both draws.
+  let memN = null;
   // The approval queue (roadmap #27): what the band and the tab counts draw
   // from, and the revision the poll compares to know when to re-read it.
   let pendData = null, pendRev = null;
@@ -8332,7 +8340,7 @@ async function openMemory(name){
   memProj = name;
   const gen = ++memGen;
   $("memTitle").textContent = "Notebook — " + name;
-  $("memWhere").textContent = "what Claude remembers here";
+  memN = null; briefingHead();
   $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
   $("todoSaveQuiet").disabled = true;
   todoSel = null;                 // the send box lives on the row, and the
@@ -9293,13 +9301,25 @@ async function loadMemory(gen){
 // #26's three exposures, and the quietest.
 let memIndexRev = "";
 
+// The briefing's head row: one line for both halves of the tab, in the
+// order they sit — the rules, then what Claude remembers. Drawn by whichever
+// half arrives, so it is right after the first and complete after the second.
+function briefingHead(){
+  const el = $("memWhere");
+  if (!el) return;
+  const r = ruleData?.rules?.length;
+  const bits = [];
+  if (r !== undefined) bits.push(r ? `${r} rule${r === 1 ? "" : "s"}` : "no rules");
+  if (memN !== null) bits.push(memN ? `${memN} ${memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
+  el.textContent = "what every session here starts with" + (bits.length ? " — " + bits.join(", ") : "");
+}
+
 function drawMemory(j){
   const n = j.memories.length;
   memIndexRev = j.index_rev || "";
   if (j.rev !== undefined) memRev = j.rev;
-  $("memWhere").textContent = j.exists && n
-    ? `what Claude remembers here — ${n} ${n === 1 ? "memory" : "memories"}`
-    : "what Claude remembers here — nothing yet";
+  memN = j.exists ? n : 0;
+  briefingHead();
   $("memWhere").title = j.dir;
   memTypes = j.types || memTypes;
   // The index and the files disagreeing is the one thing on this tab that is
@@ -10806,6 +10826,7 @@ become that version's section when it is created">Changelog${
   }
 
   function drawRules(){
+    briefingHead();
     const box = $("rulesBox");
     if (!box) return;
     const d = ruleData || {};
