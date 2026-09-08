@@ -1485,10 +1485,15 @@ textarea,select{
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(hover:hover){ #memAdd .link:hover{color:var(--accent)} }
 /* Dashed, because it is the one thing here that is not a memory yet. */
-/* One rule, in the Briefing. Dashed like the memory form beside it, because
-   both are things being written rather than things being read. */
-.rulerow{border:1px dashed var(--line);border-radius:8px;padding:10px;
+/* One rule, in the Briefing. Read by default — a name, the words, its
+   triggers — with the fields behind Edit, like a bug report; a row being
+   written goes dashed, like the memory form beside it. */
+.rulerow{border:1px solid var(--line);border-radius:8px;padding:10px;
   margin-bottom:8px}
+.rulerow.editing{border-style:dashed}
+.rulerow .rlNameRO{font-weight:600;overflow-wrap:anywhere}
+.rulerow .rlBody{white-space:pre-wrap;margin:6px 0;overflow-wrap:anywhere}
+.rulerow .rltrig{font:var(--f-note);color:var(--dim);margin-bottom:4px;overflow-wrap:anywhere}
 .rulerow .two{display:flex;gap:6px;align-items:center}
 .rulerow .two>*{flex:1;min-width:0}
 .rulerow textarea{min-height:96px;white-space:pre-wrap;margin:6px 0}
@@ -8263,6 +8268,12 @@ function makeNotebook(project){
   // with it. That is bug #27's shape; the `tests` binding beside them gets
   // away with being late only because the panel never opens on that view.
   let ruleData = null, rulePending = null, rulesRev = null;
+  // Which rules are open for editing, by row. A rule is READ by default —
+  // its name, its text, its triggers — and shows its fields only after Edit,
+  // the way a bug report does; every row opening as a form read as a tab
+  // full of half-finished edits. A row just added starts open, since it is
+  // nothing but a form until it has words.
+  let ruleEditing = new Set();
   // How many memories the tab found (null until read), for the head row that
   // sums both halves of the briefing — set by drawMemory, read by both draws.
   let memN = null;
@@ -10849,8 +10860,8 @@ become that version's section when it is created">Changelog${
         either of you is in the history. What a rule is <b>not</b> is a
         refusal: it is a request the model can still fumble, unlike the
         sibling-project walls.</div>
-      ${rows.map((r, i) => `
-        <div class="rulerow" data-i="${i}">
+      ${rows.map((r, i) => ruleEditing.has(i) ? `
+        <div class="rulerow editing" data-i="${i}">
           <div class="two">
             <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
               placeholder="a short name" value="${esc(r.name || "")}"
@@ -10870,7 +10881,26 @@ become that version's section when it is created">Changelog${
               value="${esc((r.words || []).join(", "))}" aria-label="words">
           </div>
           <div class="actbar">
+            <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
+            <button type="button" class="rlDone" title="close the fields — what was typed stays staged for Save">Done</button>
+            <button type="button" class="danger rlRm">Remove</button>
+          </div>
+        </div>` : `
+        <div class="rulerow" data-i="${i}">
+          <div class="two">
+            <span class="rlNameRO">${esc(r.name || "(unnamed)")}</span>
+            <span class="rlkind ${cond(r) ? "cond" : ""}">${
+              cond(r) ? "on its triggers" : "every session"}</span>${
+              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
+          </div>
+          <div class="rlBody">${esc(r.text || "")}</div>
+          ${cond(r) ? `<div class="rltrig">${
+              (r.paths || []).length ? `files: ${esc((r.paths || []).join(", "))}` : ""}${
+              (r.paths || []).length && (r.words || []).length ? " · " : ""}${
+              (r.words || []).length ? `words: ${esc((r.words || []).join(", "))}` : ""}</div>` : ""}
+          <div class="actbar">
             <span class="state">${ruleWhen(r)}</span>
+            <button type="button" class="rlEdit">Edit</button>
             <button type="button" class="danger rlRm">Remove</button>
           </div>
         </div>`).join("")}
@@ -10881,8 +10911,8 @@ become that version's section when it is created">Changelog${
              : `${standing} standing, ${rows.length - standing} conditional · `
                + `${chars} characters in front of every session here${
                  d.loud ? " — that is a lot to pay on every conversation" : ""}`)
-          : "Nothing set. A rule here is the one thing in this notebook a "
-            + "session cannot rewrite."}</span>
+          : "Nothing set. A session can leave rules of its own with bb rules "
+            + "add, marked as its; the ones you write here it cannot touch."}</span>
         <button type="button" id="rlAdd">Add a rule</button>
       </div>`;
     box.innerHTML = docSection("briefing", "rules", "Your rules",
@@ -10893,21 +10923,32 @@ become that version's section when it is created">Changelog${
       {cls: d.loud && !ruleDirty() ? "warn" : ""});
     wireSections(box);
     ruleStagedCount = () => (ruleDirty() ? 1 : 0);
-    ruleClearStaged = () => { rulePending = null; drawRules(); };
+    ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); drawRules(); };
     ruleCommitStaged = saveRules;
     box.querySelectorAll(".rulerow").forEach(row => {
       const i = Number(row.dataset.i);
       const put = (k, sel) => {
         const el = row.querySelector(sel);
-        el.oninput = () => ruleField(i, k, el.value);
+        if (el) el.oninput = () => ruleField(i, k, el.value);
       };
       put("name", ".rlName"); put("text", ".rlText");
       put("paths", ".rlPaths"); put("words", ".rlWords");
-      row.querySelector(".rlRm").onclick = () => ruleStage(rs => rs.splice(i, 1));
+      // Removing a row shifts every index above it; the set is rebuilt from
+      // the rows that stay so an open editor does not jump to its neighbour.
+      row.querySelector(".rlRm").onclick = () => {
+        ruleEditing = new Set([...ruleEditing].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
+        ruleStage(rs => rs.splice(i, 1));
+      };
+      const ed = row.querySelector(".rlEdit");
+      if (ed) ed.onclick = () => { ruleEditing.add(i); drawRules(); };
+      const dn = row.querySelector(".rlDone");
+      if (dn) dn.onclick = () => { ruleEditing.delete(i); drawRules(); };
     });
     const add = $("rlAdd");
-    if (add) add.onclick = () => ruleStage(rs => rs.push(
-      {name: "", text: "", paths: [], words: []}));
+    if (add) add.onclick = () => {
+      ruleEditing.add(rows.length);          // the new row, which is a form until it has words
+      ruleStage(rs => rs.push({name: "", text: "", paths: [], words: []}));
+    };
   }
 
   // Typed into rather than redrawn: a repaint on every keystroke would take
@@ -10943,6 +10984,7 @@ become that version's section when it is created">Changelog${
       if (j.error){ notify(j.error, true); return; }
       ruleData = j;
       rulePending = null;
+      ruleEditing.clear();                   // written: back to reading them
       drawRules();
     }catch(e){ notify("could not reach the server: " + e, true); }
   }
