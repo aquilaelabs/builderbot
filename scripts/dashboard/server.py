@@ -1808,6 +1808,33 @@ def _session_visible(name, mine, seen, all_of_them):
 _homes = {}
 
 
+def claude_logins(rows):
+    """Which Claude account each BuilderBot account is signed in as, read
+    from the login Claude Code keeps in that account's home, and whether
+    two of them share one. Anthropic's consumer terms allow one person per
+    Claude account, so two BuilderBot accounts on one login is the thing
+    the per-account homes exist to avoid — said on the row rather than
+    left for somebody to work out."""
+    out = []
+    for u in rows:
+        email = ""
+        home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
+        try:
+            j = json.loads((Path(home) / ".claude.json").read_text())
+            email = str(((j.get("oauthAccount") or {}).get("emailAddress")) or "")[:200]
+        except (OSError, ValueError, AttributeError):
+            email = ""
+        out.append(u | {"claude": email})
+    seen = {}
+    for u in out:
+        if u["claude"]:
+            seen.setdefault(u["claude"], []).append(u["name"])
+    for u in out:
+        others = [n for n in seen.get(u["claude"], []) if n != u["name"]]
+        u["claude_shared_with"] = others
+    return out
+
+
 def home_for(uid):
     """Where that account's home is, from lib/common.sh's user_home.
 
@@ -3737,7 +3764,7 @@ class Handler(BaseHTTPRequestHandler):
             if self._refused("admin"):
                 return None
             return self._json({
-                "users": users.all_users(), "owner": users.owner_name(),
+                "users": claude_logins(users.all_users()), "owner": users.owner_name(),
                 "me": (self._who() or {}).get("name", ""),
                 "roles": list(users.ROLES),
                 "projects": [p["name"] for p in project_list(self._who())]})

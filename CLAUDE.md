@@ -1063,8 +1063,8 @@ by hand cost four commands and still could not see the failed builds.
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a
-  weekly cron rebuild, so the base image, Claude Code and the runner stay
-  fresh. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  weekly cron rebuild, so the base image stays fresh. Claude Code is not in
+  the image — it is installed into the home volume at first boot. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
   but building the image on the box that runs the image is circular — a bad
   image would take down the runner that has to build the fix. **A pull request
   does not build it** — that used to be two hosted builds for one answer, the

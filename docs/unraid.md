@@ -77,8 +77,9 @@ at the end before doing it.
 ## Shared step 2: log the Unraid host into GHCR
 
 The image auto-publishes to `ghcr.io/stencil-projects/builderbot` on every
-push to `main` (plus a weekly freshness rebuild). The repo is private, so the
-package is private, so the Unraid host must authenticate to pull it.
+push to `main` (plus a weekly freshness rebuild). While the package is
+private the Unraid host must authenticate to pull it; a public package needs
+no login, and this step can be skipped.
 
 In the Unraid terminal:
 

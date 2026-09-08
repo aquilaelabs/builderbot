@@ -250,25 +250,21 @@ RUN set -eux; \
     chown -R builder:builder "${WORKSPACE}"
 
 # ---------------------------------------------------------------------------
-# Claude Code + friends, installed globally so a brand-new (empty) home volume
-# still has a working `claude` on PATH. Runtime updates install into
-# ~/.npm-global, which precedes /usr/local on PATH.
+# Claude Code is NOT in this image. It is Anthropic's proprietary binary
+# ("all rights reserved"), and this image is published: baking it in would be
+# redistributing it. The first boot installs it into the home volume
+# (scripts/startup.d/20-claude-code.sh, into ~/.npm-global, which precedes
+# /usr/local on PATH), where every later update also lands — so the container
+# self-updates without a rebuild, and the image ships only what it may.
+#
+# web-ext (MPL) is here: the controller carries what it needs in the image,
+# and there is no package list at boot (R29, then the operator's call:
+# everything else comes from the package manager on a node).
 # ---------------------------------------------------------------------------
-# Node 22's bundled npm 10 is kept deliberately: newer npm majors block
-# postinstall scripts by default, which silently skips Claude Code's native
-# installer (install.cjs). The --allow-scripts flag covers the day an npm
-# upgrade sneaks in anyway; on npm 10 it is an ignored config key.
-# web-ext beside it: the Phone card pushes a Firefox extension to a paired
-# handset from THIS container, and the controller carries what it needs in
-# the image — there is no package list at boot any more (R29, then the
-# operator's call: everything else comes from the package manager on a node).
 RUN set -eux; \
-    npm install -g --foreground-scripts \
-        --allow-scripts=@anthropic-ai/claude-code \
-        @anthropic-ai/claude-code web-ext; \
+    npm install -g --foreground-scripts web-ext; \
     corepack enable; \
-    npm cache clean --force; \
-    claude --version
+    npm cache clean --force
 
 # ---------------------------------------------------------------------------
 # BuilderBot scripts + home skeleton

@@ -7828,6 +7828,9 @@ function renderPackagesInto(i){
           : `Nothing installed — ${onNode
              ? esc(d.name || "the node") + "'s emulator has no image to boot."
              : "the emulator has no image to boot."}`}</div>`}
+    <div class="hint pkgterms">Installing an android package, image or tool accepts
+      <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
+      Android SDK terms</a> for this store — pressing Install is that acceptance, made by you.</div>
     <div class="actbar macros">
       ${d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayPackages() ? "" : `<button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}

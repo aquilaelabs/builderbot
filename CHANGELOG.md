@@ -281,3 +281,7 @@
 - A project's settings now say whether Claude may use the paired phone on its own: auto, ask or deny, beside the roadmap, bugs and rules words (03908af)
 - Adding to the roadmap, the bugs, the rules or the memories is one button at the top of its view, so a phone no longer scrolls past the list to reach it; Save and Revert appear only on views with something to save (f06086c)
 - The Tools card sits between Doctor and Runner by default, and its buttons are in alphabetical order (0972357)
+- The phone is a tab of its own, reached from Tools, and lives on a node: pick the node that has adb, pair and connect there, and each node can hold its own phone (c400445)
+- Whoever connects a phone owns it: only they can disconnect it, only they are asked when a session wants to use it, and only they can push to it or install on it (c400445)
+- A session's phone request always asks; the project setting that could run it unasked is gone (c400445)
+- A test that has to take as long as it takes can be accepted once, with the reason, and stops being flagged (c400445)

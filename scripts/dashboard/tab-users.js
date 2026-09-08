@@ -67,6 +67,11 @@ function userRow(u){
         <span class="pill">${esc(u.role)}</span>${
         isMe ? ` <span class="pill">you</span>` : ""}</div>
       <div class="uscope">${scope}</div>
+      <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
+        ? `signed in to Claude as ${esc(u.claude)}${u.claude_shared_with?.length
+            ? ` — the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}. Anthropic's terms allow one person per Claude account; each BuilderBot account signs in with its own`
+            : ""}`
+        : "no Claude login yet — its sessions sign in on first use"}</div>
       ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given a
         different role — it is the account every other rule here is a guard rail
         around. Its name can be changed.</div>` : ""}

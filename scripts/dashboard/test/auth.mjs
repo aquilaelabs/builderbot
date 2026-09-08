@@ -5,6 +5,7 @@
 // pins the 502 path; the live relay is covered by using the dashboard.
 import { launch, newPage, ok, done, URL, DIR } from './lib.mjs';
 import http from 'node:http';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 
 // Plain fetches first — no credentials at all, straight from node.
 const bare = async (path, opts = {}) =>
@@ -712,6 +713,27 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForFunction(() => !!document.querySelector(
     '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
   ok(true, 'Add makes an account from the tab');
+
+  // Which Claude account each BuilderBot account is signed in as, read from
+  // the login Claude Code keeps in its home — and two on one login said out
+  // loud, since Anthropic's terms allow one person per Claude account.
+  rs = await rows();
+  ok(rs.every(r => /no Claude login yet/.test(r.text)),
+     'a row says when its account has no Claude login yet');
+  const uidOf = (await (await bare('/api/users', { headers: {
+      Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json())
+    .users.find(u => u.name === 'tabmade').uid;
+  mkdirSync(`${DIR}/home/users/${uidOf}`, { recursive: true });
+  for (const h of [`${DIR}/home`, `${DIR}/home/users/${uidOf}`])
+    writeFileSync(`${h}/.claude.json`, JSON.stringify({ oauthAccount: { emailAddress: 'one@example.invalid' } }));
+  await page.evaluate(() => loadUsers());
+  await page.waitForFunction(() => /signed in to Claude as one@example.invalid/.test(
+    document.querySelector('.userstab .urow[data-user="tabmade"]')?.textContent || ''), null, { timeout: 15000 });
+  rs = await rows();
+  ok(/same Claude account as tabmade/.test(rs.find(r => r.name === 'test').text)
+     && /same Claude account as test/.test(rs.find(r => r.name === 'tabmade').text),
+     'two BuilderBot accounts on one Claude login are told so on both rows');
+  for (const h of [`${DIR}/home`, `${DIR}/home/users/${uidOf}`]) rmSync(`${h}/.claude.json`, { force: true });
 
   // ...and giving it a project, which is the whole point of the row.
   await page.click('.userstab .urow[data-user="tabmade"] [data-uprojects]');
