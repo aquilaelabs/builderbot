@@ -1488,7 +1488,7 @@ def project_list(who):
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
         sa = _session_at(d.name)
-        mem_census = memory.census(d.name)
+        mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,
@@ -2899,7 +2899,7 @@ def snapshot(who):
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
-        "attention": [] if NODES_OK else nodes.attention(
+        "attention": [] if NODES_OK or users.may(who, "node") else nodes.attention(
             {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}),
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
@@ -2983,7 +2983,7 @@ def snapshot(who):
         # this is what stops a dead control being drawn, not what stops the
         # action (roadmap #27).
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "packages-write", "git-auth")},
+                ("terminal", "docker-write", "packages-write", "git-auth", "admin")},
         # Projects whose Claude session belongs to somebody else, by NAME —
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -3724,6 +3724,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return None
         if self.path.startswith("/logs/download"):
+            # The container's own log, every project's traffic in it.
+            if self._refused("admin"):
+                return None
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             what = (q.get("what") or [""])[0]
             if what == "archive":
@@ -3797,19 +3800,32 @@ class Handler(BaseHTTPRequestHandler):
                                             + NODES_OK}, 500)
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             jid = q.get("id", [""])[0]
+            # A job and its log are the project's: an account reads the ones
+            # on projects it may see, and a job with no project (a node's
+            # own — an update, a store move) is an administrator's. Same
+            # answer as a typo, so the listing says nothing about what else
+            # is queued on the box.
+            me = self._who()
+            mine = None if users.may(me, "admin") == "" \
+                else {p["name"] for p in project_list(me)}
             if jid:
                 j = nodes.job(jid)
+                if j and mine is not None and j.get("project") not in mine:
+                    j = None
                 return self._json(j if j else {"error": "no such job"},
                                   200 if j else 404)
             try:
                 n = min(500, max(1, int(q.get("n", ["100"])[0])))
             except ValueError:
                 n = 100
-            return self._json({"jobs": nodes.jobs_for(
+            rows = nodes.jobs_for(
                 q.get("node", [""])[0] or None, n=n,
                 project=q.get("project", [""])[0] or None,
                 type=q.get("type", [""])[0] or None,
-                active=q.get("active", [""])[0] == "1"),
+                active=q.get("active", [""])[0] == "1")
+            if mine is not None:
+                rows = [j for j in rows if j.get("project") in mine]
+            return self._json({"jobs": rows,
                 "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
         if self.path.startswith("/api/docker"):
             # Refresh is the retry: drop the memoised availability first, so a
@@ -3842,10 +3858,17 @@ class Handler(BaseHTTPRequestHandler):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
             # allows it and still refuses anything that would change something.
+            # Everything on the daemon, every project's: an administrator's.
+            if self._refused("admin"):
+                return None
             return self._json(devapp.containers())
         if self.path.startswith("/api/project-job"):
+            if self._refused("create"):
+                return None
             return self._json(projects.job())
         if self.path.startswith("/api/trash"):
+            if self._refused("trash"):
+                return None
             return self._trash_list()
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -3873,7 +3896,8 @@ class Handler(BaseHTTPRequestHandler):
             if q.get("project", [""])[0] not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             got = memory.payload(q.get("project", [""])[0],
-                                 [s["name"] for s in tmux_sessions()])
+                                 [s["name"] for s in tmux_sessions()],
+                                 home=home_for(users.uid_of(self._who())))
             return self._json(got if got is not None
                               else {"error": "not a project"}, 400 if got is None else 200)
         if self.path.startswith("/api/tests"):
@@ -3895,7 +3919,10 @@ class Handler(BaseHTTPRequestHandler):
             # place. Public keys are the shareable part — nothing here can
             # reach the private material, by construction. `pat` rides along
             # so the dialogs can say whether a deploy key is optional (a PAT
-            # covers https) or the only way a push can authenticate.
+            # covers https) or the only way a push can authenticate. The
+            # dialog is an administrator's, and so is this.
+            if self._refused("create"):
+                return None
             return self._json({"keys": agent_keys(), "pat": gh_authed()})
         self._json({"error": "not found"}, 404)
 
@@ -4033,6 +4060,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._memory(req)
         if path.startswith("/api/prefs"):
             name = req.get("project", "")
+            # A session may not change the settings of the project it runs
+            # in — the gate that holds its own additions, the commands a
+            # build runs, the identity its commits carry — and nobody may
+            # change a project they cannot see or have not taken on.
+            if (self._who() or {}).get("session"):
+                return self._json({"error": "a project's settings are the operator's — "
+                                            "say what should change in your reply"}, 403)
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            if self._readonly(name):
+                return None
             # Everything else in this dialog is the project's own; the node is
             # not, because a node is shared and moving a project onto one
             # reaches every other project there.
@@ -4475,6 +4513,13 @@ class Handler(BaseHTTPRequestHandler):
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
+        # A session runs on its project's node and no other: naming one in
+        # the request is how a token for one project would reach a machine
+        # it was never bound to.
+        if (self._who() or {}).get("session") and field(req, "node") \
+                and field(req, "node") != pf["node"]:
+            return {"error": "a session's jobs run on its project's node — "
+                             "which node that is, is the operator's to change"}, 403
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400
@@ -5524,18 +5569,21 @@ class Handler(BaseHTTPRequestHandler):
         # so an action added later is a write until somebody says otherwise.
         if act != "history" and self._readonly(proj):
             return None
+        # Whose memories: the reader's own home, never the owner's (B67) —
+        # a session's are the account's that started it.
+        home = home_for(users.uid_of(self._who()))
         if act == "save":
-            r = memory.save(proj, file, field(req, "text"), rev=field(req, "rev"))
+            r = memory.save(proj, file, field(req, "text"), rev=field(req, "rev"), home=home)
         elif act == "index":
             r = memory.save_index(proj, [e for e in (req.get("lines") or [])
                                          if isinstance(e, dict)],
-                                  rev=field(req, "rev"))
+                                  rev=field(req, "rev"), home=home)
         elif act == "create":
             r = memory.create(proj, field(req, "name"), field(req, "title"),
                               field(req, "hook"), field(req, "type"),
-                              field(req, "body"))
+                              field(req, "body"), home=home)
         elif act == "delete":
-            r = memory.delete(proj, file)
+            r = memory.delete(proj, file, home=home)
         elif act == "history":
             return self._json({"history": memory.history(
                 proj, limit=req.get("limit"), since=req.get("since"),
@@ -5559,6 +5607,11 @@ class Handler(BaseHTTPRequestHandler):
         cannot grow a key that came from a request, and every stored macro is
         addressable by something this server chose.
         """
+        # They run in terminals, so they are edited by accounts that may have
+        # one — a command list a shell-less account could write and an
+        # administrator would run is a shell by proxy.
+        if self._refused("terminal"):
+            return None
         action = req.get("action")
         with _state_lock:                   # read, edit, write — one at a time
             return self._custom_edit(req, action)

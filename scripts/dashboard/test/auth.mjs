@@ -458,6 +458,41 @@ ${code}`], { encoding: 'utf8' });
        'an admin cannot edit the notebook of a project it has not taken on');
     ok((await post(adm, '/api/bugs', { project: 'alpha', action: 'add', title: 'x' })).status === 403,
        '...nor file a bug on it');
+    ok((await post(adm, '/api/prefs', { project: 'alpha', build: 'make' })).status === 403,
+       '...nor change its settings');
+    // What is the box's rather than a project's is an administrator's: the
+    // container log, the trash, the daemon's containers, the deploy keys,
+    // the command lists that run in terminals.
+    for (const [ep, want] of [['/logs/download', 403], ['/api/trash', 403], ['/api/containers', 403],
+                              ['/api/pubkeys', 403], ['/api/project-job', 403]])
+      ok((await bare(ep, { headers: other })).status === want, `a user is refused ${ep}`);
+    ok((await post(other, '/api/custom', { action: 'save', name: 'x', body: 'rm -rf /' })).status === 403,
+       'a user cannot write the command lists an administrator\'s terminal runs');
+    ok((await bare('/api/v1/jobs?n=50', { headers: other })).status === 200
+       && ((await (await bare('/api/v1/jobs?n=50', { headers: other })).json()).jobs || []).every(j => j.project === 'beta'),
+       'a user reads only the jobs of projects they were given');
+    ok(!((await (await bare('/api/status', { headers: other })).json()).attention || []).length,
+       '...and the bell\'s node alerts, which only an administrator can act on, are not theirs');
+    // Memories are the reader's own, in the reader's home — not the owner's
+    // (bug B67): a user opening the Memory tab must not see what the owner's
+    // sessions remembered, and what they write must land where their own
+    // sessions read.
+    {
+      const { mkdirSync: mk, writeFileSync: wf } = await import('node:fs');
+      const uid = (await (await bare('/api/users', { headers: owner })).json()).users.find(u => u.name === 'sharer').uid;
+      const slug = (`${DIR}/ws/beta`).replaceAll('/', '-');
+      const theirs = `${DIR}/home/users/${uid}/.claude/projects/${slug}/memory`;
+      const owners = `${DIR}/home/.claude/projects/${slug}/memory`;
+      mk(theirs, { recursive: true }); mk(owners, { recursive: true });
+      wf(`${theirs}/theirs.md`, '---\nname: theirs\ndescription: a user\'s own\nmetadata:\n  type: project\n---\n\nmine\n');
+      wf(`${owners}/owners.md`, '---\nname: owners\ndescription: the owner\'s\nmetadata:\n  type: project\n---\n\nnot yours\n');
+      const seenBy = async h => ((await (await bare('/api/memory?project=beta', { headers: h })).json()).memories || []).map(m => m.name);
+      const u = await seenBy(other), o = await seenBy(owner);
+      ok(u.includes('theirs') && !u.includes('owners'),
+         `a user reads their own memories and not the owner's (${u.join(',')})`);
+      ok(o.includes('owners') && !o.includes('theirs'),
+         `...and the owner reads theirs and not the user's (${o.join(',')})`);
+    }
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
     ok((await term(adm, 'claude:alpha')).status === 403,
        '...nor start a Claude session in it, which is the most write-shaped thing here');
@@ -816,6 +851,19 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   for (const ep of ['/api/v1/nodes', '/api/packages', '/api/users']) {
     ok((await post(ep, { action: 'x' })).status === 403, `${ep} is closed to a session`);
   }
+  // A session works on its project and its project's node, and changes
+  // neither: the settings that hold its own additions and name its node are
+  // the operator's, and a node named in a request is a machine the token
+  // was never bound to.
+  ok((await post('/api/prefs', { project: 'alpha', gate: { roadmap: 'auto' } })).status === 403,
+     'a session cannot change its project\'s settings');
+  const far = await post('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'n_elsewhere', argv: ['true'] });
+  ok(far.status === 403 && /project's node/.test((await far.json()).error || ''),
+     '...nor send a job to a node other than its project\'s');
+  const jl = await (await as('/api/v1/jobs?n=50')).json();
+  ok(Array.isArray(jl.jobs) && jl.jobs.every(j => j.project === 'alpha'),
+     `the job list a session reads holds its project's jobs and no other (${jl.jobs?.length ?? '?'})`);
+  ok((await as('/api/v1/jobs?id=j_nothing')).status === 404, '...and a job it may not see is absent, not refused');
   // ...but the phone's `ask` is exactly what a session does, and the control
   // on it is that the operator reads the reason and decides.
   const asked = await post('/api/phone', { action: 'ask', why: 'a test', argv: ['devices'] });

@@ -288,3 +288,5 @@
 - The image no longer carries Claude Code; the first boot installs it into the home volume, where updates already went (244e59d)
 - The Tools tab says that Install accepts Google's Android SDK terms, and links them (244e59d)
 - The Users tab shows which Claude account each BuilderBot account is signed in as, and warns when two share one (244e59d)
+- The explainers on the Users, Nodes, Tools and Settings tabs and in the notebook are one sentence each now (35af88a)
+- A Settings switch lets two accounts share one Claude login, for one person testing both; off, a second session on the same login is still refused (35af88a)

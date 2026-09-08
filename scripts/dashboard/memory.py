@@ -133,8 +133,10 @@ MAX_BYTES = 32 * 1024
 MAX_FILES = 200
 
 
-def memory_dir(project):
-    """Where a project's memories live, or None if that is not a project.
+def memory_dir(project, home=None):
+    """Where a project's memories live for one account — its home's
+    .claude/projects, the box's own when no home is named — or None if
+    that is not a project.
 
     The name is checked against /workspace rather than joined onto it. This is
     the only place in the dashboard where operator input becomes a filesystem
@@ -151,7 +153,8 @@ def memory_dir(project):
         return None
     # The same slug Claude Code uses for transcripts: the working directory's
     # path with the slashes turned into dashes.
-    return CLAUDE_PROJECTS / str(d).replace("/", "-") / "memory"
+    root = Path(home) / ".claude" / "projects" if home else CLAUDE_PROJECTS
+    return root / str(d).replace("/", "-") / "memory"
 
 
 FIELD_RE = re.compile(r"^\s*(\w+):\s*(.*?)\s*$")
@@ -274,7 +277,7 @@ def _read(p):
             "big": st.st_size > MAX_BYTES}
 
 
-def census(project):
+def census(project, home=None):
     """How many memories this project has, and a stamp that moves when any of
     them does — one walk of the directory for both.
 
@@ -291,7 +294,7 @@ def census(project):
     only thing that catches the writer who never passes through this module:
     a session editing a memory with its own file tools.
     """
-    d = memory_dir(project)
+    d = memory_dir(project, home)
     out = {"count": 0, "rev": ""}
     if d is None:
         return out
@@ -318,9 +321,9 @@ def count(project):
     return census(project)["count"]
 
 
-def payload(project, live=()):
+def payload(project, live=(), home=None):
     """Everything the book shows for one project, or None if it is not one."""
-    d = memory_dir(project)
+    d = memory_dir(project, home)
     if d is None:
         return None
     index, memories = "", []
@@ -451,8 +454,8 @@ def _conflict(p, rev, what):
             "conflict": {"rev": _rev(now), "current": now, "at": at}}
 
 
-def save(project, file, text, rev=None):
-    d = memory_dir(project)
+def save(project, file, text, rev=None, home=None):
+    d = memory_dir(project, home)
     if d is None:
         return {"error": f"not a project: {project}"}
     if file == INDEX:
@@ -477,7 +480,7 @@ def save(project, file, text, rev=None):
     return {"ok": True, "when": int(time.time())}
 
 
-def save_index(project, entries, rev=None):
+def save_index(project, entries, rev=None, home=None):
     """Rewrite MEMORY.md from the one line each memory carries.
 
     The index is regenerated rather than edited as text, so it cannot end up
@@ -490,7 +493,7 @@ def save_index(project, entries, rev=None):
     of the warning the panel shows for them. Lines that are not index lines
     at all are left exactly where they were.
     """
-    d = memory_dir(project)
+    d = memory_dir(project, home)
     if d is None:
         return {"error": f"not a project: {project}"}
     want = {}
@@ -541,14 +544,14 @@ def save_index(project, entries, rev=None):
     return {"ok": True, "when": int(time.time())}
 
 
-def create(project, name, title, hook, mtype, body):
+def create(project, name, title, hook, mtype, body, home=None):
     """Write a new memory, and give it its line in the index.
 
     Both halves or neither: a file with no index line is invisible until
     recall happens to surface it, which is the failure mode the panel warns
     about — it should not be the thing the panel's own button produces.
     """
-    d = memory_dir(project)
+    d = memory_dir(project, home)
     if d is None:
         return {"error": f"not a project: {project}"}
     name = (name or "").strip()
@@ -616,8 +619,8 @@ def _unindex(d, file):
             pass
 
 
-def delete(project, file):
-    d = memory_dir(project)
+def delete(project, file, home=None):
+    d = memory_dir(project, home)
     if d is None:
         return {"error": f"not a project: {project}"}
     if file == INDEX:

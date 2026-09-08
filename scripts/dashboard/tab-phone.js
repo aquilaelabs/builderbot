@@ -28,7 +28,13 @@ function openPhoneTab(){
   phFetch();
 }
 
+// Connecting, pairing and disconnecting are an administrator's (the server
+// refuses anybody else); the tab ghosts them rather than offering a press
+// that would be refused.
+const mayPhone = () => state?.can?.admin !== false;
+
 async function phFetch(body, probe){
+  const knew = phNode;
   try{
     const q = `?node=${encodeURIComponent(phNode)}${probe ? "&probe=1" : ""}`;
     const r = body
@@ -42,6 +48,9 @@ async function phFetch(body, probe){
   }catch(e){ notify("phone: " + e, true); }
   phBusy = "";
   if (ph && !ph.nodes.some(n => n.id === phNode)) phNode = ph.nodes[0]?.id || "";
+  // A probe asked for before any node was known went nowhere: now one is,
+  // ask it once.
+  if (probe && !body && !knew && phNode) return phFetch(null, true);
   phRev++;
   if (tabs.some(t => t.kind === "phone")) drawPanes();
   drawBell();          // the same asks, in the header
@@ -62,6 +71,10 @@ function renderPhoneInto(i){
   // anybody has to go and read. The node's remembered IP is the fallback.
   if (!phIp) phIp = ph.you || n?.ip || "";
   const held = n && n.owner && !n.mine;   // somebody else's connection
+  const off = held || !n.live || !mayPhone();
+  const offWhy = held ? `connected by ${esc(n.owner.name)} — only they can change it`
+    : !n.live ? "the node is not dialing in"
+    : !mayPhone() ? "connecting a phone is an administrator's" : "";
   d.setBar(`${nodes.length ? `<label class="pick">Node <select id="phPick" aria-label="node">${
       nodes.map(x => `<option value="${esc(x.id)}"${x.id === n?.id ? " selected" : ""}>${
         esc(x.name)}${x.phone ? ` — ${esc(x.phone.model || "phone")}` : ""}${
@@ -87,7 +100,7 @@ function renderPhoneInto(i){
            ? `${esc(n.name)} is not dialing in — nothing reaches its adb right now`
            : dev ? esc(dev.serial)
            : "try Connect first — a pairing outlives a restart, so it is usually already done"}</div></div>
-       ${dev && n.mine ? `<span class="acts"><button type="button" id="phDisconnect"
+       ${dev && n.mine && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"
          >Disconnect</button></span>` : ""}
      </div>`,
     // An IP and no port. Android hands out a new connect port every time
@@ -96,11 +109,9 @@ function renderPhoneInto(i){
     `<div class="row">
        <div class="grow"><input id="phIp" maxlength="15" autocomplete="off"
          placeholder="192.168.0.10" value="${esc(phIp)}"
-         aria-label="phone IP address"${held || !n.live ? " disabled" : ""}></div>
+         aria-label="phone IP address"${off ? " disabled" : ""}></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"${
-         held || !n.live ? " disabled" : ""} title="${held
-           ? `connected by ${esc(n.owner.name)} — only they can change it`
-           : !n.live ? "the node is not dialing in" : ""}"
+         off ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
        ${ph.you && phIp === ph.you
          ? `<div class="sub">this device — you are reading this on it</div>` : ""}
@@ -110,11 +121,11 @@ function renderPhoneInto(i){
     `<div class="row">
        <div class="grow" style="display:flex;gap:6px">
          <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="pairing port"
-           value="${esc(phPort)}" aria-label="pairing port"${held || !n.live ? " disabled" : ""}>
+           value="${esc(phPort)}" aria-label="pairing port"${off ? " disabled" : ""}>
          <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="code"
-           value="${esc(phCode)}" aria-label="pairing code"${held || !n.live ? " disabled" : ""}>
+           value="${esc(phCode)}" aria-label="pairing code"${off ? " disabled" : ""}>
        </div>
-       <span class="acts"><button type="button" id="phPair"${held || !n.live ? " disabled" : ""}>Pair</button></span>
+       <span class="acts"><button type="button" id="phPair"${off ? " disabled" : ""} title="${offWhy}">Pair</button></span>
        <div class="sub">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
             Android closes the pairing dialog the moment you leave it, and the
