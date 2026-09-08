@@ -11,19 +11,18 @@
 #trivy:ignore:AVD-DS-0002
 
 ##############################################################################
-# BuilderBot — a single container that is both a Claude Code workstation and
-# a self-hosted GitHub Actions runner.
+# BuilderBot — a Claude Code workstation and the controller for build nodes:
+# the machines where builds, tests, CI and the Android emulator actually run.
 ##############################################################################
 FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="BuilderBot" \
-      org.opencontainers.image.description="Claude Code environment + GitHub Actions self-hosted runner" \
+      org.opencontainers.image.description="Claude Code workstation and build-node controller" \
       org.opencontainers.image.source="https://github.com/Stencil-Projects/BuilderBot" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=22
-# "latest" resolves the newest actions/runner release at build time.
 # ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
 # release is a single self-contained binary and pins to a known version.
 ARG TTYD_VERSION=1.7.7

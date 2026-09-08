@@ -159,8 +159,6 @@ services:
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/home:/home/builder
       # Drop your own *.sh startup hooks in here.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
-      # Actions runner checkout/work directory.
-      - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/work:/workspace/_work
 
       # Static-analysis reports, READ-ONLY. The scanner stays on the host by
       # design: mounting only its output means nothing in this container can
