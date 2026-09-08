@@ -94,14 +94,22 @@ fi
 # — the contention bug #13 describes, made to order. A pid lock says so
 # instead, with how long the other has been going. BB_TEST_CONCURRENT=1
 # overrides it for whoever knows what they are doing.
+#
+# The other run may be ANOTHER ACCOUNT'S: on a node the CI runner shares the
+# box with every session, and its run holds this same lock. So liveness is
+# /proc, not kill -0 — which answers "no" for a pid that is not yours and
+# read a live CI run as a stale lock — and the lock is written world-
+# writable, so the next account can take over one a killed run left.
 LOCK="${TMPDIR:-/tmp}/dashboard-test.lock"
 if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$LOCK" ]; then
     other="$(cat "$LOCK" 2>/dev/null || true)"
-    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
-        die "another dashboard test run is going (pid $other, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago) — one at a time; wait for it, kill it, or set BB_TEST_CONCURRENT=1"
+    if [ -n "$other" ] && [ -d "/proc/$other" ]; then
+        owner="$(stat -c %U "$LOCK" 2>/dev/null || echo somebody)"
+        die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago) — one at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
     fi
 fi
-printf '%s' "$$" > "$LOCK"
+( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
+    || die "cannot take $LOCK — it is $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, left by a run that is over; remove it from that account and re-run"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # Every tmux call from here on — ours and the server's — talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
@@ -168,6 +176,14 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
     && for d in alpha beta gamma delta ep.silon; do echo x > "$d/README.md"; done \
     && for d in alpha beta delta ep.silon; do git init -q "$d"; done \
+    && for d in alpha beta delta ep.silon; do
+           # The fixture's own identity, so a commit the server makes in one
+           # of these (a version bump, VERSION's first commit) does not lean
+           # on the ACCOUNT's global config: the node's CI runner has none,
+           # and two version tests went red there and green here for exactly
+           # that (measured on bb-sandbox's first real run of this suite).
+           git -C "$d" config user.name "dashboard test" \
+           && git -C "$d" config user.email "test@example.invalid"; done \
     && git -C alpha remote add origin git@github.com:owner/alpha.git \
     && git -C ep.silon remote add origin https://gitlab.example/eps.git )
     # alpha is linked to GitHub and beta to nothing — the link-to-GitHub
@@ -621,6 +637,9 @@ fresh() {
     # held change left by pending.mjs lit the bell and filled the Briefing
     # tab for every file after it.
     rm -f "$S/state/rules.json" "$S/state/pending.json"
+    # ...and the test registry: uniform.mjs ingests a run of its own so the
+    # Tests view has rows, and testreg.mjs counts what it ingests.
+    rm -f "$S/state/tests.json"
     echo '["delta"]' > "$S/state/locked-projects.json"     # a test that locks must not hand that on
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # ...nor one that binds a project to a node. nodes.mjs saves alpha's node

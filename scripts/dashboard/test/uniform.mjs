@@ -242,6 +242,57 @@ for (const kind of kinds){
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
+// ---- adding goes at the top ------------------------------------------------
+// The control that adds to a notebook view is the first band under its head
+// row, above the list, at both widths — never at the foot, where a phone
+// scrolled past every row to find it. Measured on each view that has one,
+// against its head row and the first row of its list.
+{
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'todo');
+                              if (t) focusTab(t.id); });
+  const misplaced = [];
+  for (const v of ['roadmap', 'bugs', 'briefing']){
+    await page.evaluate(w => getNotebook('alpha').view(w), v);
+    await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"] [data-add]`)?.offsetHeight > 0,
+                               v, { timeout: 20000 });
+    const r = await page.evaluate(w => {
+      const view = document.querySelector(`.nb .nbview[data-view="${w}"]`);
+      const head = view.querySelector(':scope > .nbhead').getBoundingClientRect();
+      return [...view.querySelectorAll('[data-add]')].map(a => {
+        const box = a.getBoundingClientRect();
+        // The list this control adds to: the nearest following sibling band
+        // holding rows, or the section's own list for a rule.
+        const list = a.dataset.add === 'rule' ? view.querySelector('#rlList')
+                   : a.dataset.add === 'memory' ? view.querySelector('#memList')
+                   : a.dataset.add === 'bug' ? view.querySelector('#bugList')
+                   : view.querySelector('#todoList');
+        const row = list?.firstElementChild?.getBoundingClientRect();
+        return { add: a.dataset.add, belowHead: box.top >= head.bottom - 1,
+                 aboveList: !row || box.bottom <= row.top + 1,
+                 button: !!a.querySelector('button') };
+      });
+    }, v);
+    r.filter(x => !(x.belowHead && x.aboveList && x.button)).forEach(x => misplaced.push(`${v}:${x.add} ${JSON.stringify(x)}`));
+  }
+  ok(misplaced.length === 0,
+     `every add control sits under its head row and above its list, as a button${
+       misplaced.length ? ` — not: ${misplaced.join('; ')}` : ''}`);
+  // Save and Revert only where something can be staged behind them: a Save
+  // under a list that writes through read as a button that did nothing.
+  const foots = {};
+  for (const v of ['roadmap', 'briefing', 'artifacts', 'bugs', 'analysis', 'tests']){
+    await page.evaluate(w => getNotebook('alpha').view(w), v);
+    await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
+                               v, { timeout: 20000 });
+    // The notebook on screen, not the first in the DOM: a second project's
+    // notebook may be parked before it.
+    foots[v] = await page.evaluate(() => [...document.querySelectorAll('.nb')]
+      .find(n => n.checkVisibility())?.querySelector('#nbFoot')?.checkVisibility() || false);
+  }
+  ok(foots.roadmap && foots.briefing && foots.artifacts && !foots.bugs && !foots.analysis && !foots.tests,
+     `the notebook's foot shows on the views that stage and on no other (${JSON.stringify(foots)})`);
+}
+
 // ---- the notebook's head row ------------------------------------------------
 // Every view opens with the same row: its one-line summary left, its History
 // right — and that row is the FIRST band of the view, so the History sits at

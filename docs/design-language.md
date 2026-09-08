@@ -90,6 +90,16 @@ Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
 first band of the view and sits at one height on all six views.
 
+Adding goes at the top. The control that adds to a view is the first band
+under its head row, above the list, one shape on every view (`.addbar`, a
+button named for what it adds, `data-add`), and the form it opens unrolls
+in that band's place. Never at the foot: a phone should not scroll past the
+list to add to it.
+
+Save and Revert at the notebook's foot show only on the views that stage
+something behind them (Roadmap, Briefing, the version on Artifacts). A view
+that writes through — Bugs, Tests, Analysis — has no foot.
+
 ## Both sizes
 
 The phone and the desktop are both first-class. A surface is not done until
