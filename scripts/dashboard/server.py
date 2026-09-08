@@ -5373,6 +5373,8 @@ class Handler(BaseHTTPRequestHandler):
             r = testreg.describe(name, field(req, "key"),
                                  protects=req.get("protects"),
                                  notes=req.get("notes"))
+        elif act == "accept":
+            r = testreg.accept(name, field(req, "key"), field(req, "why"))
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

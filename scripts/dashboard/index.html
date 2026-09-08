@@ -11293,7 +11293,9 @@ become that version's section when it is created">Changelog${
             ? `<span class="pill ${t.status === "fail" ? "bad" : "warn"}">${esc(t.status)}</span>` : ""}
           ${t.suspect ? `<span class="pill warn" data-tip="this lands on a ${t.suspect}s
              boundary — near certainly a fixed sleep or a polling timeout rather
-             than ${t.suspect}s of work">${t.suspect}s wait?</span>` : ""}
+             than ${t.suspect}s of work">${t.suspect}s wait?</span>`
+            : t.accepted ? `<span class="pill" data-tip="sits on ${t.sits_on}s, and that is the
+             work: ${esc(t.accepted)}">${t.sits_on}s, accepted</span>` : ""}
           ${t.after ? `<span class="tstafter">follows: ${esc(
              t.after.length > 120 ? t.after.slice(0, 118) + "…" : t.after)}</span>` : ""}
         </summary>
@@ -11323,6 +11325,7 @@ become that version's section when it is created">Changelog${
             <div class="bfield"><label>What it exercises</label><div class="bval${t.notes ? "" : " dim"}">${
               esc(t.notes) || "not written yet"}</div></div>`
           : `<div class="bfield"><div class="bval dim">Not described yet — what breaks if this goes red, and what it exercises.</div></div>`}
+          ${t.accepted ? `<div class="bfield"><label>The wait is the work</label><div class="bval">${esc(t.accepted)}</div></div>` : ""}
           <div class="actbar"><span class="sp"></span>
             <button type="button" class="tstEdit">Edit</button></div>`;
         body.querySelector(".tstEdit").onclick = () => {
@@ -11339,10 +11342,17 @@ become that version's section when it is created">Changelog${
         <textarea class="tstN" spellcheck="false"
           placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
             esc(draft ? draft.notes : t.notes)}</textarea>
+        ${t.sits_on ? `
+        <label class="ndcap"><input type="checkbox" class="tstAccept"${t.accepted ? " checked" : ""}>
+          the wait is the work — it has to sit on ${t.sits_on}s, so stop flagging it</label>
+        <input class="tstWhy" maxlength="300" autocomplete="off" placeholder="why — a real boot, a timeout being proved"
+          value="${esc(t.accepted)}"${t.accepted ? "" : " hidden"}>` : ""}
         <div class="actbar"><span class="sp"></span>
           <button type="button" class="stop tstCancel"
             title="put the fields away — what was typed here is dropped">Cancel</button>
           <button type="button" class="primary tstSave">Save</button></div>`;
+      const acc = body.querySelector(".tstAccept");
+      if (acc) acc.onchange = () => { body.querySelector(".tstWhy").hidden = !acc.checked; };
       body.querySelector(".tstCancel").onclick = () => {
         tstEditing.delete(t.key);
         // The fields go before the redraw reads them for a draft.
@@ -11353,8 +11363,14 @@ become that version's section when it is created">Changelog${
         busy(e.target, "Saving");
         const protects = body.querySelector(".tstP").value,
               notes = body.querySelector(".tstN").value;
+        const acc = body.querySelector(".tstAccept");
+        const why = acc && acc.checked ? (body.querySelector(".tstWhy").value.trim() || "the wait is the work") : "";
         tstEditing.delete(t.key);          // written: back to reading it
-        if (!await postTests({action: "describe", key: t.key, protects, notes}))
+        // The mark goes first: describe redraws from its answer, and a
+        // second post after that would draw the row twice.
+        if (acc && (why !== (t.accepted || "")) && !await postTests({action: "accept", key: t.key, why}))
+          tstEditing.add(t.key);
+        else if (!await postTests({action: "describe", key: t.key, protects, notes}))
           tstEditing.add(t.key);           // refused: the fields stay, with the typing
       });
     };

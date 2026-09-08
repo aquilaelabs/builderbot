@@ -90,6 +90,7 @@ bb — BuilderBot helper
   bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
   bb tests drift         what the runner reported that this list does not, and back
   bb tests flagged       the ones sitting on a round timeout rather than working
+  bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
   bb tests projection    when a run should finish, from what the last one took
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
@@ -2373,6 +2374,8 @@ elif op == "show":
     if t["suspect"]:
         print(f"  FLAGGED: lands on a {t['suspect']}s boundary — a fixed sleep or a "
               "polling timeout rather than work")
+    elif t.get("accepted"):
+        print(f"  accepted: sits on {t['sits_on']}s, and that is the work — {t['accepted']}")
     print(f"  protects: {t['protects'] or '(nothing written yet)'}")
     print(f"  exercises: {t['notes'] or '(nothing written yet)'}")
 elif op == "describe" and rest[:1] == ["--from"]:
@@ -2454,11 +2457,23 @@ elif op == "drift":
 elif op == "flagged":
     p = reg.payload(proj)
     print(f"{p['suspect']} tests land on a round timeout — "
-          f"{p['recover_ms'] // 1000}s of the suite is waiting, not working")
+          f"{p['recover_ms'] // 1000}s of the suite is waiting, not working"
+          + (f" · {p['accepted']} accepted as the work, not listed" if p["accepted"] else ""))
     for t in p["tests"]:
         if t["suspect"]:
             print(f"   {secs(t['ms']):>8}  {t['key']:<20} {t['name'][:56]}"
                   f"  [{t['suspect']}s]")
+elif op == "accept":
+    # `bb tests accept KEY "why"`: the wait is the work — a real boot, a
+    # timeout being proved — so it stops being flagged, with the reason kept
+    # beside it. `--no` takes the mark off.
+    if len(rest) < 2 or (rest[1] != "--no" and not rest[1].strip()):
+        print("usage: bb tests accept <key> \"why the time is the work\"  |  bb tests accept <key> --no",
+              file=sys.stderr); sys.exit(1)
+    r = reg.accept(proj, rest[0], "" if rest[1] == "--no" else " ".join(rest[1:]))
+    bail(r)
+    print(f"{rest[0]}: " + ("no longer accepted — flagged again if it sits on a round number"
+                            if rest[1] == "--no" else "accepted; it will not be flagged"))
 else:
     print(f"[builderbot] ERROR: unknown: bb tests {op}", file=sys.stderr)
     sys.exit(1)

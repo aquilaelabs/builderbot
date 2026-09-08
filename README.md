@@ -412,6 +412,7 @@ bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb tests run       run the project's test command, time it, and record the run — says first when it should finish
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
+bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project — the operator's and yours
 bb rules show NAME one of them in full — what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own

@@ -306,6 +306,27 @@ def describe(project, key, protects=None, notes=None):
     return {"ok": True, "test": t | {"key": key}}
 
 
+def accept(project, key, why):
+    """The wait is the work: a test that has to sit on a round number — a
+    real boot, a real timeout being proved — is marked so, with why, and
+    stops being flagged. "" takes the mark off again. The reason is kept
+    beside the test, because the next reader's first question is whether
+    this was decided or merely tolerated."""
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        t = (p.get("tests") or {}).get(key)
+        if not t:
+            return {"error": f"no test called {key} here — `bb tests` lists them"}
+        why = " ".join(str(why or "").split())[:MAX_TEXT]
+        if why:
+            t["accepted"] = why
+        else:
+            t.pop("accepted", None)
+        save(d)
+    return {"ok": True, "test": t | {"key": key}}
+
+
 def describe_many(project, rows):
     """Write many descriptions at once, from {key: {protects, notes}}.
 
@@ -402,7 +423,11 @@ def payload(project):
             # and this view sorts by duration — which would otherwise strand
             # every "..." line miles from the sentence it finishes.
             "cont": t.get("name", "").startswith("..."),
-            "suspect": suspect(ms),
+            # Not flagged when the wait was accepted: the boundary is still
+            # reported (`sits_on`) so the row can say what was accepted.
+            "suspect": None if t.get("accepted") else suspect(ms),
+            "sits_on": suspect(ms),
+            "accepted": t.get("accepted", ""),
             # Was it slower than it used to be? Against the median of what came
             # before rather than the previous run, which on this box is noise.
             "was": _median(hist[:-1]) if len(hist) > 1 else None,
@@ -445,6 +470,7 @@ def payload(project):
         "n": len(tests),
         "suspect": sum(1 for t in tests if t["suspect"]),
         "recover_ms": sum(t["suspect"] * 1000 for t in tests if t["suspect"]),
+        "accepted": sum(1 for t in tests if t["accepted"]),
         "undocumented": sum(1 for t in tests if not t["protects"]),
         # The last run's own wall time, for the honest gap between what the
         # tests cost and what the suite costs: the difference is the harness.
