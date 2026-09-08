@@ -81,7 +81,7 @@ decisions you need to make.
 
 | Credential | Lives where | Used for |
 |---|---|---|
-| **GHCR pull token** — classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the private image. Fine-grained PATs don't work for GHCR pulls |
+| **GHCR pull token** — classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the image while the package is private; a public package needs none. Fine-grained PATs don't work for GHCR pulls |
 | **Runner PAT** — fine-grained, owned by the org, and only for minting registration tokens for runners on your *nodes*. Repo: *Administration R/W*. Org: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens — that is its only job. Skip if `ENABLE_RUNNER=false` |
 | **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
 
@@ -360,8 +360,10 @@ bb git push|fetch|pull|ls-remote [ARGS]
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
-bb claude-md --is-stale exit 0 when the block exists and has drifted — the
-                        gate the ghosted Claude button and bb-tty both ask
+bb claude-md --is-stale exit 0 when the block exists and has drifted
+bb claude-md --out-of-window  exit 0 when the block is from another compatibility
+                        window than the template — the gate the ghosted Claude
+                        button and bb-tty both ask; --window prints a block's window
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
@@ -974,7 +976,7 @@ is this tab's, so a reload draws a line under it; the asks are the server's and
 are read live, which is why they leave the list the moment they are answered or
 time out.
 
-Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and — in red — a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
+Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and — in red — a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated, or a project whose CLAUDE.md environment block is from another window, with its update beside it. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
 
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
@@ -2164,7 +2166,7 @@ Under it, and not behind a fold, are **what it publishes and what it mounts,
 written the way Unraid's own Docker tab writes them** — container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
-one, `7474:TCP ← 192.168.1.15:7475` for a published port. That is deliberately
+one, `7474:TCP ← 192.168.1.10:7475` for a published port. That is deliberately
 not a second notation to learn; it is the one already used for every other
 container on the box. All of it is read from the *resolved* compose config, so
 a path or a port assembled out of variables shows as the value compose arrived
@@ -3281,18 +3283,26 @@ template, and nothing below the end marker — done in-process rather than by
 shelling out once per project on every poll. A `CLAUDE.md` with no markers is
 named but *not* offered the link, because `--update` refuses that file too.
 
-**And it stops a session starting on a wrong map.** While a project's block is
-out of date its **Claude button is ghosted**, saying why, because the block is
-precisely what a session is briefed with: an old one tells it this container
-carries an Android SDK, or that builds happen here, and the session acts on
-it. Pressing the update link above the button clears both in one go. `bb-tty`
-refuses the same case, so the terminal URL is not a way around it — the same
-reasoning as the lock. Three states are *not* refused: a project with no
-`CLAUDE.md` (that is `--init`, and yours to decide), one predating the markers
-(no fix to press), and one whose session is already running, which the button
-reaches rather than starts — being cut off from a live conversation would be a
-worse fault than the one this prevents. `bb claude-md --is-stale` is the
-predicate, exit code only.
+**And a block from another window stops the project's sessions.** The block
+carries the compatibility window it was written for — the
+`BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor, the
+same window the node agent promises. Drift *inside* the window is routine
+and stops nothing: the link waits, and a session may start meanwhile. A
+block from *another* window describes a different BuilderBot, so that
+project's **Claude button is ghosted**, saying which window against which;
+`bb-tty` refuses the same case, so the terminal URL is not a way around it;
+the bell pins it in red with the update beside it; and the sessions already
+running on that project — here or on its node — are **ended**, since the
+moment after a controller update is exactly when a conversation started
+under the old window is acting on a map that is now wrong. The same hold
+applies when the project's *own* node runs an agent from another window:
+the button waits for that node's Update as well as the block's. It is per
+project — another project's node being out of window is that row's hold.
+Pressing the update link clears the block's half in one go. Three states are
+*not* refused: a project with no `CLAUDE.md` (that is `--init`, and yours to
+decide), one predating the markers or the window line (no window to compare,
+and "cannot say" is never read as a gap), and one merely behind inside the
+window. `bb claude-md --out-of-window` is the predicate, exit code only.
 
 ## Playwright, Android, publishing
 

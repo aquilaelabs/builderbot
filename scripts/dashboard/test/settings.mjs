@@ -33,6 +33,8 @@ ok(groups.join('|') === 'Claude Code',
 ok(await page.$eval('.settingstab [data-set="claude_auto_update"]', e => e.checked && e.closest('label') !== null)
    && await page.$eval('.settingstab [data-set="claude_channel"]', e => e.tagName === 'SELECT' && e.value === 'latest'),
    'the update switch sits in its label and the channel is a select, on latest by default');
+ok(await page.$eval('.settingstab [data-set="claude_shared_login"]', e => e.type === 'checkbox' && !e.checked),
+   'the shared-login switch is a checkbox, off by default');
 ok((await page.$$eval('.settingstab [data-set="claude_channel"] option', os => os.map(o => o.value))).join(',') === 'stable,latest,next',
    '...offering the channels the package publishes: stable, latest, next');
 ok(await page.$eval('.settingstab [data-group="Claude Code"] .actbar .state', e => /next start/.test(e.textContent)),

@@ -930,7 +930,7 @@ def _store_share(n):
     because it is the only answer that survives the transport differing. On
     this box the SDK share is reached through Unraid's FUSE layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by the sandbox
-    (192.168.1.15:/mnt/user/development/SDK); neither string can be derived
+    (192.168.1.10:/mnt/user/development/SDK); neither string can be derived
     from the other, so the pair was invisible and the one-install-at-a-time
     arbitration never engaged for it.
 

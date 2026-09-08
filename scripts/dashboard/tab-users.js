@@ -67,6 +67,11 @@ function userRow(u){
         <span class="pill">${esc(u.role)}</span>${
         isMe ? ` <span class="pill">you</span>` : ""}</div>
       <div class="uscope">${scope}</div>
+      <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
+        ? `signed in to Claude as ${esc(u.claude)}${u.claude_shared_with?.length
+            ? ` — the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}: fine while one person is behind both, since Anthropic's terms allow one person per Claude account`
+            : ""}`
+        : "no Claude login yet — its sessions sign in on first use"}</div>
       ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given a
         different role — it is the account every other rule here is a guard rail
         around. Its name can be changed.</div>` : ""}
@@ -120,59 +125,21 @@ function renderUsersInto(i){
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     ${usersList.map(userRow).join("")}
     ${docSection("users", "roles", "What an account gets", "", `
-        <div class="sub">Everybody here works as themselves: their own
-          terminals, their own shell history, their own Claude login and their
-          own memories, in a home of their own. The tab strip and the colour
-          scheme follow the account to any browser they sign in on. The
-          <b>owner</b> keeps this container's original home, so an install
-          with one operator is unchanged.</div>
-        <div class="sub">More than one person can work a project at once. The
-          first is the owner, in the project directory; everybody else gets a
-          <b>worktree</b> of their own — a checkout on a branch of their own,
-          sharing the project's git — so two people cannot overwrite each
-          other, commit each other's half-finished work, or share a
-          <code>dist/</code>. Conflicts turn up at the merge, where git is
-          good at them.</div>
-        <div class="sub">A worktree session builds into its own
-          <code>dist/</code>, so the Artifacts tab (which reads the project
-          directory) will not show it, and the dev instance belongs to the
-          project rather than to the session.</div>
-        <div class="sub">What is refused is two sessions on one <b>Anthropic
-          account</b>: they would share its limits, and afterwards nothing
-          could say which of them did what. Each account signs in to its own,
-          from the Doctor card in its own session.</div>
-        <div class="sub">The notebook — roadmap, bugs, analysis — stays shared,
-          because it is about the project rather than the person. Memories do
-          not, for the same reason in reverse.</div>
-        <div class="sub">A <b>user</b> has no shell and no command line at
-          all. That is what makes the rest of the role mean something:
-          everything else here is enforced by this dashboard, and a terminal
-          is the way around all of it. Their Claude session opens as a
-          console — the real interface, read-only, with a box to type in and
-          a button to end it. They can see Docker and the package manager for
-          their own projects' nodes — the instances, their ports and mounts,
-          and the web button — and change neither, with one exception:
-          <b>Rebuild</b>. Building what you committed and looking at it is the
-          point of having the project, so that one is theirs, and Abort with
-          it.</div>
-        <div class="sub warn">An <b>admin</b> has a shell, and a shell is
-          everything: one user inside the container, so an administrator can
-          reach any account's files if they go looking. Give that role to
-          people you would give the server to.</div>`)}
+        <div class="sub">Each account has its own home: terminals, shell history,
+          Claude login and memories. The owner keeps this container's original one.</div>
+        <div class="sub">Two people on one project each get a worktree on a branch of
+          their own. The notebook stays shared; memories do not.</div>
+        <div class="sub">A <b>user</b> has no shell: their Claude session is a console,
+          and Docker and packages are read-only apart from Rebuild and Abort on their
+          own projects.</div>
+        <div class="sub warn">An <b>admin</b> has a shell, which reaches every account's
+          files. Give that role to people you would give the server to.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `
-        <div class="sub">An <b>admin</b> can do anything here except act on the
-          owner. A <b>user</b> gets the projects you give them and the work
-          inside them — not deleting, renaming, or changing which node one
-          builds on, because a node is shared and that reaches every project
-          on it.</div>
-        <div class="sub">The project list means the same thing for both, and
-          the difference is the remedy. An admin is shown <b>every</b> project
-          — hiding one from somebody who administers the box only sends them
-          looking for it — and works on the ones on their own list, which they
-          can add to themselves. A user is shown only what you give them and
-          cannot grant themselves anything. So for an admin the list is a
-          seatbelt against editing the wrong project; for a user it is the
-          boundary.</div>
+        <div class="sub">An <b>admin</b> can do anything except act on the owner. A
+          <b>user</b> gets only the projects you give them, and cannot delete, rename
+          or move one to another node.</div>
+        <div class="sub">An admin sees every project and works on the ones on their
+          list; a user sees only their list.</div>
         <div class="actbar uadd">
           <input id="uNewName" placeholder="name" autocomplete="off" aria-label="new account name">
           <input id="uNewPw" type="password" placeholder="password"

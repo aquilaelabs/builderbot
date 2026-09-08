@@ -3,7 +3,8 @@
 // scratch workspace, CLAUDE.md built from the checkout's template — while the
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
-import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
+         refreshUntil } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -115,12 +116,12 @@ ok(marker > 0, 'its CLAUDE.md carries the environment block');
 ok(md.indexOf('A widget frobnicator') > marker,
    '...with the given notes below the end marker');
 
-// ---- a stale environment block ghosts the Claude button ------------------
+// ---- drift inside the window stops nothing ------------------------------
 // The block is what a session is briefed with, and it goes stale every time
-// the image gains a feature: a session reading an old one goes looking for a
-// toolchain that has left the container, or believes it can build here. The
-// row already offers the one-press fix, so the button waits for that press
-// rather than starting a session on a wrong map.
+// the image gains a feature. Inside a compatibility window that is routine
+// — the row offers the one-press fix, and a session may start meanwhile,
+// the same promise the agent's window makes. Only a block from ANOTHER
+// window (below) holds the project.
 {
   const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
   const current = readFileSync(mdPath, 'utf8');
@@ -131,19 +132,65 @@ ok(md.indexOf('A widget frobnicator') > marker,
     ?.issues.some(i => i.action === 'claude-md-update'), { timeout: 20000 });
   const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
   await page.waitForSelector(btn, { timeout: 10000 });
-  // dataset.tip, not title: tipify() moves every title onto data-tip so the
-  // page draws its own tooltip rather than waiting on the browser's.
+  const drifted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
+  ok(!drifted.off && !/compatibility window/.test(drifted.why),
+     `a block behind inside the window offers the update and leaves the Claude button live (${
+       drifted.why.slice(0, 50)})`);
+  ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
+     '...and pins nothing in the bell');
+}
+
+// ---- a block from another window holds the project ----------------------
+// Across a window the promise was never made: the block describes a
+// different BuilderBot, so the button ghosts saying so, the bell pins it in
+// red, and a session already running on the project is ended by the sweep
+// — the moment after a controller update is exactly when a conversation
+// started under the old window is acting on a map that is now wrong. The
+// row's own link is the fix, and everything above leaves when it is pressed.
+{
+  const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
+  const current = readFileSync(mdPath, 'utf8');
+  const win = /BUILDERBOT:ENV:WINDOW (\d+\.\d+)/.exec(current)?.[1] || '';
+  ok(/^\d+\.\d+$/.test(win), `a project made from the template carries its window (${win || 'none'})`);
+  tmuxNew('claude-zeta', `${DIR}/ws/zeta`);
+  await refreshUntil(page, () => (state.sessions || []).some(s => s.name === 'claude-zeta'));
+  writeFileSync(mdPath, current.replace(`BUILDERBOT:ENV:WINDOW ${win} -->`,
+    'BUILDERBOT:ENV:WINDOW 0.1 -->'));
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state.projects || []).find(p => p.name === 'zeta')?.held,
+    { timeout: 20000 });
+  const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
   const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  // The title as well as the attribute: the button ghosts for half a dozen
-  // reasons, and only the title says this is the one being tested.
-  ok(ghosted.off && /environment block is out of date/.test(ghosted.why),
-     `a stale CLAUDE.md environment block ghosts the Claude button, saying so (${ghosted.why.slice(0, 60)})`);
-  // ...and the fix the row offers is what brings it back.
+  ok(ghosted.off && /another compatibility window \(0\.1 against/.test(ghosted.why),
+     `a block from another window ghosts the Claude button, saying which (${ghosted.why.slice(0, 70)})`);
+  ok(await page.$eval('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]',
+       a => /another compatibility window/.test(a.textContent)),
+     '...and the row\'s update link says the same');
+  const alert = await page.evaluate(() => (state.attention || []).find(a => a.kind === 'md' && a.project === 'zeta'));
+  ok(alert && alert.project === 'zeta' && alert.window && alert.from === '0.1',
+     `...and the bell pins it in red, naming the project and the window (${JSON.stringify(alert)})`);
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel .bnote.bad', { timeout: 10000 });
+  ok(await page.$eval('#bellPanel', e => /CLAUDE\.md out of window/.test(e.textContent)
+                                          && !!e.querySelector('[data-bmd="zeta"]')),
+     '...as a row in the bell with Update on it');
+  await page.click('#bBell');
+  // The sweep runs every second under the suite: the session it ends is the
+  // one on the held project, and nothing else on the box.
+  tmuxNew('claude-alpha-keep', `${DIR}/ws/alpha`);
+  await refreshUntil(page, () => !(state.sessions || []).some(s => s.name === 'claude-zeta'),
+                     { timeout: 20000 });
+  ok(await page.evaluate(() => (state.sessions || []).some(s => s.name === 'claude-alpha-keep')),
+     '...and the session running on the held project is ended, while another project\'s is not');
+  tmuxKill('claude-alpha-keep');
+  // ...and the fix the row offers is what brings it all back.
   await page.click('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]');
   await page.waitForFunction(() => !((state.projects || []).find(p => p.name === 'zeta')
     ?.issues || []).some(i => i.action === 'claude-md-update'), { timeout: 20000 });
   ok(await page.$eval(btn, b => !b.disabled),
      '...and the update link on the row lets a session start again');
+  ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
+     '...with the bell\'s row gone on its own');
   ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
      '...with the project\'s own notes below the marker untouched');
 }

@@ -108,6 +108,12 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
    && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
    'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
 
+// Pressing Install accepts Google's SDK terms, and the tab says so where the
+// button is — the acceptance is the operator's, not a script's.
+ok(await page.$eval('.doc .pkgterms', e => /Android SDK terms/.test(e.textContent)
+                                          && e.querySelector('a[href*="developer.android.com/studio/terms"]')),
+   'the Tools tab says that Install accepts Google\'s Android SDK terms, with the terms linked');
+
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg:not(.img) input[value="flutter"]');
 await page.check('.doc .pkg:not(.img) input[value="android:emulator"]');

@@ -455,7 +455,19 @@ so "which of these is newer" always has an answer.
 A node whose agent is from another window is reported as such and not
 refused: the Nodes tab separates *behind* (a newer build in the same window,
 routine) from *out of window* (the promise was never made, update before
-relying on it). Refusing would strand a node on a guess. The older `protocol`
+relying on it). Refusing would strand a node on a guess. The one thing an
+out-of-window agent does stop is Claude sessions on the projects bound to
+that node: the controller ends the running ones and ghosts each such
+project's Claude button until the node is updated — per project, so a
+project on a current node is untouched.
+
+The CLAUDE.md environment block is in the same window. The template carries
+a `BUILDERBOT:ENV:WINDOW` line under its begin marker, held to the project's
+minor by the same test that holds the agent's, and a project's copy from
+another window is treated the way an agent from one is: the block described
+a different BuilderBot, so sessions on that project are ended and refused
+until `bb claude-md --update` restamps it. A block merely behind inside the
+window is drift — the row offers the update and nothing stops. The older `protocol`
 integer, which both sides declared and neither ever compared, is superseded
 by this and is removed at `0.5.0` — removing a field the other side may still
 read being exactly the kind of break the window exists to schedule.

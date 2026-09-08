@@ -855,8 +855,10 @@ ok(true, 'pinning it puts it back on the sidebar');
   // run.sh points TEMPLATE_MD at it.
   const tpl = readFileSync(new globalThis.URL('../../../config/templates/project-CLAUDE.md',
                                    import.meta.url), 'utf8');
+  // From another WINDOW, not merely behind: only that ghosts the button
+  // whose tip is measured below — drift inside the window leaves it live.
   writeFileSync(`${DIR}/ws/beta/CLAUDE.md`,
-    tpl.replace('BUILDERBOT:ENV:BEGIN -->', 'BUILDERBOT:ENV:BEGIN -->\nstray.'));
+    tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+ -->/, 'BUILDERBOT:ENV:WINDOW 0.1 -->'));
   await refreshUntil(page, () => ((state.projects || []).find(p => p.name === 'beta')
     ?.issues || []).some(i => i.action === 'claude-md-update'));
   const row = '#projects .row[data-row="beta"]';
@@ -892,9 +894,14 @@ ok(true, 'pinning it puts it back on the sidebar');
   const dead = await page.$eval(btn, b => ({ off: b.disabled,
     op: getComputedStyle(b).opacity,
     tip: b.dataset.tip || '' }));
-  ok(dead.off && /out of date/.test(dead.tip) && dead.op === '1',
+  ok(dead.off && /compatibility window/.test(dead.tip) && dead.op === '1',
      `a ghosted button reading out its reason is not a layer of its own (${
        dead.op}, ${dead.tip.slice(0, 46)}…)`);
+  // Put back: the fixture tree outlives this file, and a project left held
+  // here would be held — its sessions ended, its row red in the bell — in
+  // every file after it.
+  writeFileSync(`${DIR}/ws/beta/CLAUDE.md`, tpl);
+  await refreshUntil(page, () => !(state.projects || []).find(p => p.name === 'beta')?.held);
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);

@@ -326,7 +326,7 @@ def store_id(path, make=True):
     Two machines mounting one share have no way to recognize each other by
     path: this container reaches the SDK share through Unraid's FUSE layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
-    over NFS (192.168.1.15:/mnt/user/development/SDK). Neither string can be
+    over NFS (192.168.1.10:/mnt/user/development/SDK). Neither string can be
     derived from the other without knowing it is Unraid, so pairing on the
     mount was never going to work here — measured on this box, 3 Sep.
 

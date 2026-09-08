@@ -39,6 +39,13 @@ KEYS = {
     # An npm dist-tag of @anthropic-ai/claude-code: stable, latest or next.
     "claude_channel": {"default": "latest", "kind": "choice",
                        "choices": ("stable", "latest", "next"), "applied": "boot"},
+    # Off, the server refuses a second Claude session on one project when
+    # another account's session there is signed in to the same Claude
+    # account — two people on one login is what Anthropic's terms forbid.
+    # On, that refusal stands down: for one person testing two BuilderBot
+    # accounts with the one Claude login they have. The refusal is kept,
+    # not removed, because the setting is for that test and nothing else.
+    "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
 }
 MAX_TEXT = 200
 

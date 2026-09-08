@@ -123,7 +123,7 @@ changed after the day it was built:
 
 ```bash
 sudo bb-sandbox                      # a menu, whiptail where the distro has it
-sudo bb-sandbox add-nfs 192.168.1.15:/mnt/user/media:/auxiliary
+sudo bb-sandbox add-nfs 192.168.1.10:/mnt/user/media:/auxiliary
 sudo bb-sandbox add-share workspace:/workspace:ro
 sudo bb-sandbox appdata /devdata     # which mount holds container appdata
 sudo bb-sandbox readonly /workspace  # ...and back with: readonly /workspace off
@@ -291,8 +291,8 @@ then, in that session:
 ```bash
 sudo bash provision.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
-    --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
-    --nfs 192.168.1.15:/mnt/user/bb-sandbox/devdata:/devdata
+    --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
+    --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
 ```
 
 Both steps ask for the password you set in the installer, because the VM has
@@ -416,15 +416,15 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
   ```bash
   sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
-      --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
-      --nfs 192.168.1.15:/mnt/user/bb-sandbox/devdata:/devdata
+      --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
+      --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
   ```
 
   Export them from Unraid first: *Shares → share → NFS Security Settings*,
   **Security: Private**, with a rule naming only the VM:
 
   ```
-  192.168.1.151(sec=sys,rw,all_squash,anonuid=99,anongid=100)
+  192.168.1.101(sec=sys,rw,all_squash,anonuid=99,anongid=100)
   ```
 
   `all_squash` with `anonuid=99,anongid=100` is the part that matters beyond

@@ -63,8 +63,10 @@ bb — BuilderBot helper
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
-  bb claude-md --is-stale  exit 0 when that block exists and has drifted — the
-                         gate the ghosted Claude button and bb-tty both ask
+  bb claude-md --is-stale  exit 0 when that block exists and has drifted
+  bb claude-md --out-of-window  exit 0 when that block is from another compatibility
+                         window than the template — the gate the ghosted Claude
+                         button and bb-tty both ask; --window prints a block's window
   bb ci-labels [--write] the runner labels the registry knows; --write regenerates
                          .github/actionlint.yaml from them
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
@@ -1170,6 +1172,9 @@ ENV_END='<!-- BUILDERBOT:ENV:END -->'
 # Print the marked environment block of a file, markers included.
 md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
     'index($0,b){f=1} f{print} index($0,e){exit}' "$1"; }
+# The window stamped in a block, or nothing: only the line inside the markers
+# counts, so a project's own notes cannot claim one.
+md_window() { md_block "$1" | sed -n 's/.*BUILDERBOT:ENV:WINDOW \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1; }
 
 # Keep a project's CLAUDE.md environment section in step with the image.
 #
@@ -1186,6 +1191,8 @@ cmd_claude_md() {
             --init)   mode=init ;;
             --check)  mode=check ;;
             --is-stale) mode=is-stale ;;
+            --out-of-window) mode="out-of-window" ;;
+            --window)  mode="window" ;;
             -*) die "unknown option: $1" ;;
             *)  target="$1" ;;
         esac
@@ -1207,6 +1214,29 @@ cmd_claude_md() {
         [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
         grep -qF "$ENV_BEGIN" "$target" && grep -qF "$ENV_END" "$target" || return 1
         ! cmp -s <(md_block "$TEMPLATE_MD") <(md_block "$target")
+        return
+    fi
+
+    # `--window` prints the compatibility window a block was written for —
+    # the BUILDERBOT:ENV:WINDOW line under the begin marker, BuilderBot's
+    # minor — and nothing for a block that predates the line. `--out-of-window`
+    # is the gate: exit 0 only when the block CARRIES a window and it differs
+    # from the template's. A block behind inside the window is drift, which
+    # `--is-stale` reports and nothing refuses a session over; a block from
+    # another window is the one a session must not be briefed with, because
+    # what it says about the environment was true of a different BuilderBot.
+    # Empty means "cannot say" and is never read as a gap, the same rule the
+    # agent's window follows.
+    if [ "$mode" = window ]; then
+        [ -f "$target" ] || return 1
+        md_window "$target"
+        return 0
+    fi
+    if [ "$mode" = out-of-window ]; then
+        [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
+        local ours theirs
+        ours="$(md_window "$TEMPLATE_MD")"; theirs="$(md_window "$target")"
+        [ -n "$ours" ] && [ -n "$theirs" ] && [ "$ours" != "$theirs" ]
         return
     fi
 

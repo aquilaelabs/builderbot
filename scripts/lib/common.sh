@@ -201,8 +201,8 @@ clear_npm_staging() {
 
 # install_claude_code [VERSION] — install or upgrade Claude Code into the home
 # volume. Retries once from a clean package directory, which is safe to do:
-# ~/.npm-global precedes /usr/local on PATH, so the worst case falls back to
-# the copy baked into the image.
+# an upgrade that fails leaves the copy already there; a first install that
+# fails leaves the box without one, and the hook says so.
 install_claude_code() {
     local version="${1:-latest}"
     local pkg="${HOME}/.npm-global/lib/node_modules/@anthropic-ai/claude-code"

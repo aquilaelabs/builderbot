@@ -721,6 +721,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
     BB_DEV_DATA_DIR="$S/devdata" \
     BUILDERBOT_IDLE_UNIT=1 \
+    BB_COMPAT_SWEEP=1 \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do

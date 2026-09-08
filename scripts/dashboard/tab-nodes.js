@@ -184,10 +184,8 @@ function nodeRunnerSection(n, c){
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
           placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
       </div>
-      ${rep.installed || want.want ? `<div class="sub ndrunpin">Every BuilderBot runner answers
-        <code>self-hosted</code>, so a workflow that asks for no more than that lands on whichever
-        is idle. This node's own name is a label on its runner, so this is the line that pins a
-        job here — <code>bb lint</code> says when a project's workflows do not carry it:
+      ${rep.installed || want.want ? `<div class="sub ndrunpin">Any BuilderBot runner answers
+        <code>self-hosted</code>; this node's name is the label that pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}
       <div class="actbar">
         <span class="state ndrunstate${vcls ? " " + vcls : ""}">${
@@ -253,18 +251,15 @@ function nodeAdvancedSection(n, stale, inflight){
     c.draft.pathsText = text; c.draft.pathsFrom = text;
   }
   const body = `
-    <div class="sub">Path mapping — what this container's paths are called on the node, for its
-      daemon to resolve a compose file's bind mounts. With the projects share mounted at
-      <code>/workspace</code> on both machines it is the identity, and this can stay blank.</div>
+    <div class="sub">What this container's paths are called on the node, for its daemon's
+      bind mounts. With the projects share at <code>/workspace</code> on both, leave it blank.</div>
     <div class="ndpaths actbar">
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping">
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
       <button type="button" data-nd="check-paths"
-        title="prove the two machines mean the same directory by the projects share: a marker is made
-               under it here and looked for through the node's daemon. Nothing else verifies the pair,
-               and a wrong one fails silently — an empty directory where the project should be">Check</button>
+        title="check that both machines mean the same directory by the projects share">Check</button>
     </div>
     <div class="sub ndcheck" hidden></div>
     <div class="actbar">
@@ -467,9 +462,8 @@ function nodeConfSections(n){
         saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
       ${mounts}
       <div><button type="button" data-madd>+ mount</button></div>
-      <div class="sub">Stores — where the agent keeps job data, toolchains, build caches and
-        this node's copy of what projects built. Each is a directory of its own: a system
-        path is refused, here and on the node.</div>
+      <div class="sub">Where the agent keeps job data, toolchains, caches and built artifacts.
+        Each is its own directory; a system path is refused.</div>
       ${stores}
       <div class="actbar">
         <span class="state ndconfstate${(failedFor("storage") || [0, statusCls])[1] ? " " + (failedFor("storage") || [0, statusCls])[1] : ""}">${
@@ -709,9 +703,8 @@ function renderNodesInto(i){
   d.list.innerHTML = rows + none
     + (!nodesList.length ? `<div class="empty">no nodes — which cannot happen:
         local is seeded at boot. If you can read this, the store broke.</div>` : "");
-  d.setFoot(`a node does everything for the projects bound to it — pick one in a
-    project's settings dialog. What it can build is what is installed on it;
-    jobs run as the account it enrolled, never root.`);
+  d.setFoot(`A node does the work of the projects bound to it — pick one in a project's
+    settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
 }
 
@@ -735,10 +728,8 @@ function wireNodesTab(root){
     body.innerHTML = `<div class="field">
         <label for="ndEnName">Name</label>
         <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox">
-        <div class="hint">the node dials in; nothing here connects to it. The
-          token you get back is good once and for a day. A node does everything
-          for the projects bound to it — what it can actually build is what
-          gets installed on it afterwards, from the Tools tab.</div>
+        <div class="hint">The node dials in with this token, which is good once and
+          for a day. What it can build is what the Tools tab installs on it afterwards.</div>
       </div>
       <div class="foot">
         <button type="button" class="primary" id="ndEnGo">Mint a token</button>

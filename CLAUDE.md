@@ -1,6 +1,7 @@
 # Working inside BuilderBot
 
 <!-- BUILDERBOT:ENV:BEGIN -->
+<!-- BUILDERBOT:ENV:WINDOW 0.4 -->
 <!-- Everything between these markers is generated from BuilderBot's shipped
      template and is safe to replace wholesale:
          bb claude-md            # is this copy current?
@@ -28,6 +29,14 @@ ships, and changes nothing. If it reports the block differs, run
 marked block and never touches the project notes below the end marker. (The
 dashboard notices the same drift on its own and offers the update as a link on
 the project's row, so it may already have been done for you.)
+
+The block carries the compatibility window it was written for — the
+`BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor
+version. Drift inside a window is routine and stops nothing. A block from
+another window does: the dashboard ends the sessions running on that project,
+ghosts its Claude button and refuses a new one until the block is updated —
+and, for a project on a node, until that node's agent is from the same
+window too.
 
 Two things about doing it:
 
@@ -1063,8 +1072,8 @@ by hand cost four commands and still could not see the failed builds.
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a
-  weekly cron rebuild, so the base image, Claude Code and the runner stay
-  fresh. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  weekly cron rebuild, so the base image stays fresh. Claude Code is not in
+  the image — it is installed into the home volume at first boot. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
   but building the image on the box that runs the image is circular — a bad
   image would take down the runner that has to build the fix. **A pull request
   does not build it** — that used to be two hosted builds for one answer, the

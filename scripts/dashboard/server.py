@@ -1113,6 +1113,130 @@ def md_state(path):
     return "current" if have == want else "stale"
 
 
+_WINDOW_RE = re.compile(r"BUILDERBOT:ENV:WINDOW (\d+\.\d+)")
+
+
+def md_window(path):
+    """The compatibility window a CLAUDE.md's environment block was written
+    for — "0.4", from the BUILDERBOT:ENV:WINDOW line under the begin marker
+    — or "" for a block that predates the line. Only the line inside the
+    markers counts, so a project's own notes cannot claim one. Empty means
+    "cannot say", read the way nodes.agent_window reads it: never as a gap."""
+    m = _WINDOW_RE.search(md_block(path) or "")
+    return m.group(1) if m else ""
+
+
+def md_gap(path):
+    """A sentence when a project's block is from ANOTHER compatibility window
+    than the template this controller ships, else "".
+
+    The window is the same promise the agent's is (nodes.agent_window): while
+    BuilderBot is 0.4.x, a 0.4 block briefs a session truthfully enough for
+    it to work, and drift inside the window — a feature the block does not
+    mention yet — is routine: the row offers the update, and nothing stops
+    for it. Across a window that promise was never made, and a session
+    briefed with the old block would be told about a different container
+    — so that is the one state a session is refused, ghosted and ended over,
+    until the block is updated (compat_reap_once, bb-tty, the row's button).
+    """
+    ours, theirs = md_window(TEMPLATE_MD), md_window(path)
+    if not ours or not theirs or ours == theirs:
+        return ""
+    return (f"CLAUDE.md's environment block is from another compatibility window "
+            f"({theirs} against {ours}) — a session briefed with it would be told about "
+            "a different BuilderBot. The update link on the row fixes it in one press")
+
+
+def node_holds():
+    """{node id: why} for every agent node whose agent is from another
+    compatibility window than this controller ships — the half of a
+    project's hold that is its node's. Being merely behind is not here:
+    inside a window an older agent takes a job and a session, and the Nodes
+    tab's Update is a courtesy rather than a gate."""
+    out = {}
+    if NODES_OK:
+        return out
+    for n in nodes.node_list():
+        if n["kind"] == "agent" and nodes.agent_gap(n):
+            out[n["id"]] = nodes.agent_stale(n)
+    return out
+
+
+def compat_holds():
+    """{project: why} for every project no Claude session may run on right
+    now: its CLAUDE.md block from another window, or its node's agent from
+    one. Per project on purpose — another project's node being out of window
+    is that project's problem, and this one's button stays live."""
+    out = {}
+    holds = node_holds()
+    pp = prefs.all_projects()
+    try:
+        dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
+    except OSError:
+        return out
+    for d in dirs:
+        md = d / "CLAUDE.md"
+        why = md_gap(md) if md.is_file() else ""
+        if not why:
+            why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
+        if why:
+            out[d.name] = why
+    return out
+
+
+# How often the sweep below runs. Settable only so the suite need not wait
+# half a minute to see a session end.
+COMPAT_SWEEP_S = float(os.environ.get("BB_COMPAT_SWEEP") or 30)
+
+
+def compat_reap_once():
+    """End the Claude sessions running on a held project (compat_holds), here
+    and on the nodes. Returns the names ended.
+
+    This is the other half of the window's promise: a controller that moved
+    its minor may have changed what the block says and what the agent
+    understands, so a conversation started under the old window is running
+    on a map that is now wrong, and it is ended rather than left to act on
+    it. Inside a window nothing here fires — an update to the block or the
+    agent that keeps the window leaves every session running. Run once at
+    start, which is the moment after a controller update, and on a timer
+    after that for a window that moves under a running server (a bump
+    landing on a `bb dashboard dev` restart, a node enrolled behind)."""
+    holds = compat_holds()
+    if not holds:
+        return []
+    wanted = {tmux_name(f"claude-{p}"): why for p, why in holds.items()}
+    ended = []
+    for s in tmux_sessions():
+        why = wanted.get(tmux_base(s["name"]))
+        if not why:
+            continue
+        r = run(["tmux", "kill-session", "-t", "=" + s["name"]], timeout=10)
+        if r["code"] == 0:
+            ended.append(s["name"])
+            print(f"dashboard: compat: ended {s['name']} — {why}", flush=True)
+    if not NODES_OK:
+        for nid, (nname, sess) in nodes.node_sessions().items():
+            for s in sess:
+                real = str(s.get("name") or "")
+                why = wanted.get(tmux_base(real))
+                if not why:
+                    continue
+                nodes.session_kill(nid, real)
+                ended.append(real)
+                print(f"dashboard: compat: ending {real} on {nname} — {why}", flush=True)
+    return ended
+
+
+def _compat_loop():
+    while True:
+        try:
+            compat_reap_once()
+        except Exception as e:        # noqa: BLE001 — a sweeper must not die
+            print(f"dashboard: compat: {e}", flush=True)
+        time.sleep(max(1.0, COMPAT_SWEEP_S))
+
+
 # What a new project may be called, and where a clone may come from. The name
 # becomes a directory under /workspace and part of a tmux session name, so it
 # gets the strictest charset of the two — one path segment, starting with a
@@ -1344,6 +1468,9 @@ def project_list(who):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
+    # ...and the sharper answer for the Claude button: a node from another
+    # WINDOW holds this project's sessions; one merely behind does not.
+    held_nodes = node_holds()
     try:
         here = sorted(WORKSPACE.iterdir())
     except OSError:
@@ -1419,6 +1546,7 @@ def project_list(who):
         # Path.is_file() only swallows ENOENT/ENOTDIR/EBADF/ELOOP — EACCES is
         # re-raised, so an unreadable project directory took out the whole
         # status endpoint rather than being reported as the one thing wrong.
+        md_hold = ""
         try:
             has_md = (d / "CLAUDE.md").is_file()
         except OSError:
@@ -1469,9 +1597,16 @@ def project_list(who):
                 elif (md := md_state(d / "CLAUDE.md")) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
-                    # every time the image gains a feature.
+                    # every time the image gains a feature. From another
+                    # window it is the same link with the sharper words —
+                    # that one stops the project's sessions until pressed.
+                    md_hold = md_gap(d / "CLAUDE.md")
                     issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": "CLAUDE.md environment block is out of date — update"})
+                                   "text": ("CLAUDE.md environment block is from another "
+                                            f"compatibility window ({md_window(d / 'CLAUDE.md')} "
+                                            f"against {md_window(TEMPLATE_MD)}) — update")
+                                   if md_hold else
+                                   "CLAUDE.md environment block is out of date — update"})
                 elif md == "unmarked":
                     # `bb claude-md --update` refuses this one, so it must not be
                     # offered as a link that would do nothing.
@@ -1488,7 +1623,7 @@ def project_list(who):
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
         sa = _session_at(d.name)
-        mem_census = memory.census(d.name)
+        mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,
@@ -1544,6 +1679,15 @@ def project_list(who):
                     # the Artifacts tab and the bell say so before a job is
                     # refused. "" is the ordinary state.
                     "node_gap": node_gaps.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # Why no Claude session may run here right now, or "":
+                    # its CLAUDE.md block from another compatibility window,
+                    # else its own node's agent from one. The button ghosts
+                    # on this and bb-tty refuses on the same facts; the sweep
+                    # ends what is running. Per project: another project's
+                    # node being out of window is not this row's hold.
+                    "held": md_hold or held_nodes.get(
+                        project_prefs.get(d.name, {}).get("node") or "", ""),
+                    "md_window": md_window(d / "CLAUDE.md") if has_md else "",
                     "pending_rev": pend_revs.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
@@ -1806,6 +1950,33 @@ def _session_visible(name, mine, seen, all_of_them):
 
 
 _homes = {}
+
+
+def claude_logins(rows):
+    """Which Claude account each BuilderBot account is signed in as, read
+    from the login Claude Code keeps in that account's home, and whether
+    two of them share one. Anthropic's consumer terms allow one person per
+    Claude account, so two BuilderBot accounts on one login is the thing
+    the per-account homes exist to avoid — said on the row rather than
+    left for somebody to work out."""
+    out = []
+    for u in rows:
+        email = ""
+        home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
+        try:
+            j = json.loads((Path(home) / ".claude.json").read_text())
+            email = str(((j.get("oauthAccount") or {}).get("emailAddress")) or "")[:200]
+        except (OSError, ValueError, AttributeError):
+            email = ""
+        out.append(u | {"claude": email})
+    seen = {}
+    for u in out:
+        if u["claude"]:
+            seen.setdefault(u["claude"], []).append(u["name"])
+    for u in out:
+        others = [n for n in seen.get(u["claude"], []) if n != u["name"]]
+        u["claude_shared_with"] = others
+    return out
 
 
 def home_for(uid):
@@ -2872,8 +3043,15 @@ def snapshot(who):
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
-        "attention": [] if NODES_OK else nodes.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}),
+        "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}))
+        # ...and a project whose CLAUDE.md block is from another window: red
+        # like an agent out of window, since it stops the same thing, and
+        # only for projects this account sees — ps is already that list.
+        + [{"kind": "md", "project": p["name"], "from": p.get("md_window") or "?",
+            "to": md_window(TEMPLATE_MD), "window": True}
+           for p in ps if p.get("held") and p.get("md_window")
+           and p["md_window"] != md_window(TEMPLATE_MD)],
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
         # it properly is a subprocess: this rides the poll, and the poll is the
@@ -2956,7 +3134,7 @@ def snapshot(who):
         # this is what stops a dead control being drawn, not what stops the
         # action (roadmap #27).
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "packages-write", "git-auth")},
+                ("terminal", "docker-write", "packages-write", "git-auth", "admin")},
         # Projects whose Claude session belongs to somebody else, by NAME —
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -3315,6 +3493,8 @@ class Handler(BaseHTTPRequestHandler):
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
+        if settings.get("claude_shared_login"):
+            return ""                     # the Settings tab stood the refusal down
         store = users.load()["users"]
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         owner = users.owner_name()
@@ -3695,6 +3875,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return None
         if self.path.startswith("/logs/download"):
+            # The container's own log, every project's traffic in it.
+            if self._refused("admin"):
+                return None
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             what = (q.get("what") or [""])[0]
             if what == "archive":
@@ -3737,7 +3920,7 @@ class Handler(BaseHTTPRequestHandler):
             if self._refused("admin"):
                 return None
             return self._json({
-                "users": users.all_users(), "owner": users.owner_name(),
+                "users": claude_logins(users.all_users()), "owner": users.owner_name(),
                 "me": (self._who() or {}).get("name", ""),
                 "roles": list(users.ROLES),
                 "projects": [p["name"] for p in project_list(self._who())]})
@@ -3768,19 +3951,32 @@ class Handler(BaseHTTPRequestHandler):
                                             + NODES_OK}, 500)
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             jid = q.get("id", [""])[0]
+            # A job and its log are the project's: an account reads the ones
+            # on projects it may see, and a job with no project (a node's
+            # own — an update, a store move) is an administrator's. Same
+            # answer as a typo, so the listing says nothing about what else
+            # is queued on the box.
+            me = self._who()
+            mine = None if users.may(me, "admin") == "" \
+                else {p["name"] for p in project_list(me)}
             if jid:
                 j = nodes.job(jid)
+                if j and mine is not None and j.get("project") not in mine:
+                    j = None
                 return self._json(j if j else {"error": "no such job"},
                                   200 if j else 404)
             try:
                 n = min(500, max(1, int(q.get("n", ["100"])[0])))
             except ValueError:
                 n = 100
-            return self._json({"jobs": nodes.jobs_for(
+            rows = nodes.jobs_for(
                 q.get("node", [""])[0] or None, n=n,
                 project=q.get("project", [""])[0] or None,
                 type=q.get("type", [""])[0] or None,
-                active=q.get("active", [""])[0] == "1"),
+                active=q.get("active", [""])[0] == "1")
+            if mine is not None:
+                rows = [j for j in rows if j.get("project") in mine]
+            return self._json({"jobs": rows,
                 "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
         if self.path.startswith("/api/docker"):
             # Refresh is the retry: drop the memoised availability first, so a
@@ -3813,10 +4009,17 @@ class Handler(BaseHTTPRequestHandler):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
             # allows it and still refuses anything that would change something.
+            # Everything on the daemon, every project's: an administrator's.
+            if self._refused("admin"):
+                return None
             return self._json(devapp.containers())
         if self.path.startswith("/api/project-job"):
+            if self._refused("create"):
+                return None
             return self._json(projects.job())
         if self.path.startswith("/api/trash"):
+            if self._refused("trash"):
+                return None
             return self._trash_list()
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -3844,7 +4047,8 @@ class Handler(BaseHTTPRequestHandler):
             if q.get("project", [""])[0] not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             got = memory.payload(q.get("project", [""])[0],
-                                 [s["name"] for s in tmux_sessions()])
+                                 [s["name"] for s in tmux_sessions()],
+                                 home=home_for(users.uid_of(self._who())))
             return self._json(got if got is not None
                               else {"error": "not a project"}, 400 if got is None else 200)
         if self.path.startswith("/api/tests"):
@@ -3866,7 +4070,10 @@ class Handler(BaseHTTPRequestHandler):
             # place. Public keys are the shareable part — nothing here can
             # reach the private material, by construction. `pat` rides along
             # so the dialogs can say whether a deploy key is optional (a PAT
-            # covers https) or the only way a push can authenticate.
+            # covers https) or the only way a push can authenticate. The
+            # dialog is an administrator's, and so is this.
+            if self._refused("create"):
+                return None
             return self._json({"keys": agent_keys(), "pat": gh_authed()})
         self._json({"error": "not found"}, 404)
 
@@ -4004,6 +4211,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._memory(req)
         if path.startswith("/api/prefs"):
             name = req.get("project", "")
+            # A session may not change the settings of the project it runs
+            # in — the gate that holds its own additions, the commands a
+            # build runs, the identity its commits carry — and nobody may
+            # change a project they cannot see or have not taken on.
+            if (self._who() or {}).get("session"):
+                return self._json({"error": "a project's settings are the operator's — "
+                                            "say what should change in your reply"}, 403)
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            if self._readonly(name):
+                return None
             # Everything else in this dialog is the project's own; the node is
             # not, because a node is shared and moving a project onto one
             # reaches every other project there.
@@ -4446,6 +4664,13 @@ class Handler(BaseHTTPRequestHandler):
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
+        # A session runs on its project's node and no other: naming one in
+        # the request is how a token for one project would reach a machine
+        # it was never bound to.
+        if (self._who() or {}).get("session") and field(req, "node") \
+                and field(req, "node") != pf["node"]:
+            return {"error": "a session's jobs run on its project's node — "
+                             "which node that is, is the operator's to change"}, 403
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400
@@ -5495,18 +5720,21 @@ class Handler(BaseHTTPRequestHandler):
         # so an action added later is a write until somebody says otherwise.
         if act != "history" and self._readonly(proj):
             return None
+        # Whose memories: the reader's own home, never the owner's (B67) —
+        # a session's are the account's that started it.
+        home = home_for(users.uid_of(self._who()))
         if act == "save":
-            r = memory.save(proj, file, field(req, "text"), rev=field(req, "rev"))
+            r = memory.save(proj, file, field(req, "text"), rev=field(req, "rev"), home=home)
         elif act == "index":
             r = memory.save_index(proj, [e for e in (req.get("lines") or [])
                                          if isinstance(e, dict)],
-                                  rev=field(req, "rev"))
+                                  rev=field(req, "rev"), home=home)
         elif act == "create":
             r = memory.create(proj, field(req, "name"), field(req, "title"),
                               field(req, "hook"), field(req, "type"),
-                              field(req, "body"))
+                              field(req, "body"), home=home)
         elif act == "delete":
-            r = memory.delete(proj, file)
+            r = memory.delete(proj, file, home=home)
         elif act == "history":
             return self._json({"history": memory.history(
                 proj, limit=req.get("limit"), since=req.get("since"),
@@ -5530,6 +5758,11 @@ class Handler(BaseHTTPRequestHandler):
         cannot grow a key that came from a request, and every stored macro is
         addressable by something this server chose.
         """
+        # They run in terminals, so they are edited by accounts that may have
+        # one — a command list a shell-less account could write and an
+        # administrator would run is a shell by proxy.
+        if self._refused("terminal"):
+            return None
         action = req.get("action")
         with _state_lock:                   # read, edit, write — one at a time
             return self._custom_edit(req, action)
@@ -6264,6 +6497,7 @@ def main():
     # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()
     idle.start()
+    threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if packages.AUTOCHECK:
         threading.Thread(target=packages.versions_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
