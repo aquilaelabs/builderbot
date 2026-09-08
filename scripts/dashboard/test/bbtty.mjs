@@ -46,12 +46,14 @@ case "\${1:-}" in
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
   rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
   # The gate bb-tty asks before starting a session: exit 0 means the
-  # environment block is stale and no session should start. Answered from an
-  # env var the cases below flip, the way the claude stub answers auth from a
-  # fixture — and answered HONESTLY by default, because a stub that exits 0
-  # for everything reads as "every project is stale" and would refuse every
-  # session in this file.
-  claude-md) [ "\${FAKE_MD_STALE:-0}" = 1 ] && exit 0; exit 1 ;;
+  # environment block is from another compatibility window and no session
+  # should start. Answered from an env var the cases below flip, the way the
+  # claude stub answers auth from a fixture — and answered HONESTLY by
+  # default, because a stub that exits 0 for everything reads as "every
+  # project is out of window" and would refuse every session in this file.
+  # Only for that flag: a stub answering --is-stale the same way would be
+  # testing the gate the page no longer asks.
+  claude-md) [ "\${2:-}" = --out-of-window ] && [ "\${FAKE_MD_GAP:-0}" = 1 ] && exit 0; exit 1 ;;
 esac
 exit 0
 `);
@@ -178,17 +180,18 @@ ok(refusedIn < 5000,
 ok(/Projects card/.test(out),
    '...and says where to undo it, rather than only that it said no');
 
-// A CLAUDE.md whose environment block has fallen behind the image. The block
-// is what a session is briefed with, so starting one on a stale copy is
-// starting it on a wrong map — it reads that this container carries an
-// Android SDK, or that builds happen here, and acts on it. Refused HERE as
-// well as ghosted on the row, for the same reason the lock is: the ttyd URL
-// is reachable directly.
+// A CLAUDE.md whose environment block is from ANOTHER compatibility window
+// than this BuilderBot. The block is what a session is briefed with, so
+// starting one on that copy is starting it on a wrong map — it reads that
+// this container carries an Android SDK, or that builds happen here, and
+// acts on it. Refused HERE as well as ghosted on the row, for the same
+// reason the lock is: the ttyd URL is reachable directly. Drift inside the
+// window is the stub's default answer above, and refuses nothing.
 rmSync(LOCKS, { force: true });
-out = connect(0, { FAKE_MD_STALE: '1' });
+out = connect(0, { FAKE_MD_GAP: '1' });
 await sleep(400);
-ok(/environment block is out of date/.test(out) && !alive('claude-alpha'),
-   'a stale CLAUDE.md environment block refuses a Claude session too');
+ok(/another\s+compatibility window/.test(out) && !alive('claude-alpha'),
+   'a CLAUDE.md environment block from another window refuses a Claude session too');
 ok(/update/.test(out),
    '...naming the one-press fix on the row rather than only saying no');
 

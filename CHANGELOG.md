@@ -290,3 +290,6 @@
 - The Users tab shows which Claude account each BuilderBot account is signed in as, and warns when two share one (244e59d)
 - The explainers on the Users, Nodes, Tools and Settings tabs and in the notebook are one sentence each now (35af88a)
 - A Settings switch lets two accounts share one Claude login, for one person testing both; off, a second session on the same login is still refused (35af88a)
+- A session can no longer change its project's settings or send a job to a node other than its project's (e3c8b59)
+- A user account reads only the jobs, memories and node alerts of its own projects; the container log, the trash, the daemon's containers, the deploy keys and the command lists are an administrator's (e3c8b59)
+- The Memory tab shows and writes each account's own memories (e3c8b59)

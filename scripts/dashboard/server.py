@@ -1113,6 +1113,130 @@ def md_state(path):
     return "current" if have == want else "stale"
 
 
+_WINDOW_RE = re.compile(r"BUILDERBOT:ENV:WINDOW (\d+\.\d+)")
+
+
+def md_window(path):
+    """The compatibility window a CLAUDE.md's environment block was written
+    for — "0.4", from the BUILDERBOT:ENV:WINDOW line under the begin marker
+    — or "" for a block that predates the line. Only the line inside the
+    markers counts, so a project's own notes cannot claim one. Empty means
+    "cannot say", read the way nodes.agent_window reads it: never as a gap."""
+    m = _WINDOW_RE.search(md_block(path) or "")
+    return m.group(1) if m else ""
+
+
+def md_gap(path):
+    """A sentence when a project's block is from ANOTHER compatibility window
+    than the template this controller ships, else "".
+
+    The window is the same promise the agent's is (nodes.agent_window): while
+    BuilderBot is 0.4.x, a 0.4 block briefs a session truthfully enough for
+    it to work, and drift inside the window — a feature the block does not
+    mention yet — is routine: the row offers the update, and nothing stops
+    for it. Across a window that promise was never made, and a session
+    briefed with the old block would be told about a different container
+    — so that is the one state a session is refused, ghosted and ended over,
+    until the block is updated (compat_reap_once, bb-tty, the row's button).
+    """
+    ours, theirs = md_window(TEMPLATE_MD), md_window(path)
+    if not ours or not theirs or ours == theirs:
+        return ""
+    return (f"CLAUDE.md's environment block is from another compatibility window "
+            f"({theirs} against {ours}) — a session briefed with it would be told about "
+            "a different BuilderBot. The update link on the row fixes it in one press")
+
+
+def node_holds():
+    """{node id: why} for every agent node whose agent is from another
+    compatibility window than this controller ships — the half of a
+    project's hold that is its node's. Being merely behind is not here:
+    inside a window an older agent takes a job and a session, and the Nodes
+    tab's Update is a courtesy rather than a gate."""
+    out = {}
+    if NODES_OK:
+        return out
+    for n in nodes.node_list():
+        if n["kind"] == "agent" and nodes.agent_gap(n):
+            out[n["id"]] = nodes.agent_stale(n)
+    return out
+
+
+def compat_holds():
+    """{project: why} for every project no Claude session may run on right
+    now: its CLAUDE.md block from another window, or its node's agent from
+    one. Per project on purpose — another project's node being out of window
+    is that project's problem, and this one's button stays live."""
+    out = {}
+    holds = node_holds()
+    pp = prefs.all_projects()
+    try:
+        dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
+    except OSError:
+        return out
+    for d in dirs:
+        md = d / "CLAUDE.md"
+        why = md_gap(md) if md.is_file() else ""
+        if not why:
+            why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
+        if why:
+            out[d.name] = why
+    return out
+
+
+# How often the sweep below runs. Settable only so the suite need not wait
+# half a minute to see a session end.
+COMPAT_SWEEP_S = float(os.environ.get("BB_COMPAT_SWEEP") or 30)
+
+
+def compat_reap_once():
+    """End the Claude sessions running on a held project (compat_holds), here
+    and on the nodes. Returns the names ended.
+
+    This is the other half of the window's promise: a controller that moved
+    its minor may have changed what the block says and what the agent
+    understands, so a conversation started under the old window is running
+    on a map that is now wrong, and it is ended rather than left to act on
+    it. Inside a window nothing here fires — an update to the block or the
+    agent that keeps the window leaves every session running. Run once at
+    start, which is the moment after a controller update, and on a timer
+    after that for a window that moves under a running server (a bump
+    landing on a `bb dashboard dev` restart, a node enrolled behind)."""
+    holds = compat_holds()
+    if not holds:
+        return []
+    wanted = {tmux_name(f"claude-{p}"): why for p, why in holds.items()}
+    ended = []
+    for s in tmux_sessions():
+        why = wanted.get(tmux_base(s["name"]))
+        if not why:
+            continue
+        r = run(["tmux", "kill-session", "-t", "=" + s["name"]], timeout=10)
+        if r["code"] == 0:
+            ended.append(s["name"])
+            print(f"dashboard: compat: ended {s['name']} — {why}", flush=True)
+    if not NODES_OK:
+        for nid, (nname, sess) in nodes.node_sessions().items():
+            for s in sess:
+                real = str(s.get("name") or "")
+                why = wanted.get(tmux_base(real))
+                if not why:
+                    continue
+                nodes.session_kill(nid, real)
+                ended.append(real)
+                print(f"dashboard: compat: ending {real} on {nname} — {why}", flush=True)
+    return ended
+
+
+def _compat_loop():
+    while True:
+        try:
+            compat_reap_once()
+        except Exception as e:        # noqa: BLE001 — a sweeper must not die
+            print(f"dashboard: compat: {e}", flush=True)
+        time.sleep(max(1.0, COMPAT_SWEEP_S))
+
+
 # What a new project may be called, and where a clone may come from. The name
 # becomes a directory under /workspace and part of a tmux session name, so it
 # gets the strictest charset of the two — one path segment, starting with a
@@ -1344,6 +1468,9 @@ def project_list(who):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
+    # ...and the sharper answer for the Claude button: a node from another
+    # WINDOW holds this project's sessions; one merely behind does not.
+    held_nodes = node_holds()
     try:
         here = sorted(WORKSPACE.iterdir())
     except OSError:
@@ -1419,6 +1546,7 @@ def project_list(who):
         # Path.is_file() only swallows ENOENT/ENOTDIR/EBADF/ELOOP — EACCES is
         # re-raised, so an unreadable project directory took out the whole
         # status endpoint rather than being reported as the one thing wrong.
+        md_hold = ""
         try:
             has_md = (d / "CLAUDE.md").is_file()
         except OSError:
@@ -1469,9 +1597,16 @@ def project_list(who):
                 elif (md := md_state(d / "CLAUDE.md")) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
-                    # every time the image gains a feature.
+                    # every time the image gains a feature. From another
+                    # window it is the same link with the sharper words —
+                    # that one stops the project's sessions until pressed.
+                    md_hold = md_gap(d / "CLAUDE.md")
                     issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": "CLAUDE.md environment block is out of date — update"})
+                                   "text": ("CLAUDE.md environment block is from another "
+                                            f"compatibility window ({md_window(d / 'CLAUDE.md')} "
+                                            f"against {md_window(TEMPLATE_MD)}) — update")
+                                   if md_hold else
+                                   "CLAUDE.md environment block is out of date — update"})
                 elif md == "unmarked":
                     # `bb claude-md --update` refuses this one, so it must not be
                     # offered as a link that would do nothing.
@@ -1544,6 +1679,15 @@ def project_list(who):
                     # the Artifacts tab and the bell say so before a job is
                     # refused. "" is the ordinary state.
                     "node_gap": node_gaps.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # Why no Claude session may run here right now, or "":
+                    # its CLAUDE.md block from another compatibility window,
+                    # else its own node's agent from one. The button ghosts
+                    # on this and bb-tty refuses on the same facts; the sweep
+                    # ends what is running. Per project: another project's
+                    # node being out of window is not this row's hold.
+                    "held": md_hold or held_nodes.get(
+                        project_prefs.get(d.name, {}).get("node") or "", ""),
+                    "md_window": md_window(d / "CLAUDE.md") if has_md else "",
                     "pending_rev": pend_revs.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
@@ -2899,8 +3043,15 @@ def snapshot(who):
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
-        "attention": [] if NODES_OK or users.may(who, "node") else nodes.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}),
+        "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}))
+        # ...and a project whose CLAUDE.md block is from another window: red
+        # like an agent out of window, since it stops the same thing, and
+        # only for projects this account sees — ps is already that list.
+        + [{"kind": "md", "project": p["name"], "from": p.get("md_window") or "?",
+            "to": md_window(TEMPLATE_MD), "window": True}
+           for p in ps if p.get("held") and p.get("md_window")
+           and p["md_window"] != md_window(TEMPLATE_MD)],
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
         # it properly is a subprocess: this rides the poll, and the poll is the
@@ -6346,6 +6497,7 @@ def main():
     # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()
     idle.start()
+    threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if packages.AUTOCHECK:
         threading.Thread(target=packages.versions_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

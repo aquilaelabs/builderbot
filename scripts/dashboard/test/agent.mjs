@@ -1811,6 +1811,16 @@ print(json.dumps({'state': st, 'code': code, 'log': ''.join(j.lines),
   ok(win === minor,
      `...and its window is the project's minor — bump one and you bump both (${
        win} against ${minor} from VERSION ${proj})`);
+  // The CLAUDE.md template is in the same window, for the same reason: the
+  // block a session is briefed with is a compatibility promise too, and a
+  // bump that moves the minor without restamping it would leave every
+  // project's copy claiming the window that just ended — or, worse, the
+  // template claiming the old one, so nothing is ever held.
+  const tmpl = readFileSync(`${REPO}/config/templates/project-CLAUDE.md`, 'utf8');
+  const mdWin = /<!-- BUILDERBOT:ENV:WINDOW (\d+\.\d+) -->/.exec(tmpl)?.[1] || '';
+  ok(mdWin === minor,
+     `...and the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line is the same minor (${
+       mdWin || 'unset'} against ${minor})`);
 }
 
 await done(browser);

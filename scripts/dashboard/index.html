@@ -5868,23 +5868,16 @@ function drawRunner(){
 // a problem to fix but a mount point waiting for content.
 const isBroken = p => p.issues.some(i => i.level === "error");
 
-// The environment block a session is briefed with has fallen behind the image.
-//
-// Not an error — the project is fine and everything else on the row works —
-// but it IS a reason not to start a session: the block tells a session what
-// this container carries, and acting on a stale one is how a session goes
-// looking for an SDK that left the image. It is a warning the row already
-// offers a one-press fix for, so the button waits for that press rather than
-// starting on a wrong map. Only this state: no CLAUDE.md at all is the
-// operator's decision (`--init`), and one predating the markers has no fix to
-// press, so neither of those stops anything. bb-tty refuses the same case, so
-// the URL is not a way around it.
-const mdStale = p => (p.issues || []).some(i => i.action === "claude-md-update");
-
-// ...and a session that is ALREADY RUNNING is reached, not started: the same
-// button goes to its tab, and stranding somebody from a live conversation
-// over a stale file would be a worse fault than the one this prevents.
-const mdBlocks = p => mdStale(p) && !liveSessions().has(myClaude(p.name));
+// Why no Claude session may run on this project right now, from the server:
+// its CLAUDE.md environment block from another compatibility window than
+// this BuilderBot, or its own node's agent from one. Drift INSIDE the window
+// — the block behind on a feature, the agent behind on a build — is not
+// here: the row offers the update and the button stays live, the same
+// promise the agent's window makes. Across a window the promise was never
+// made, so the button waits for the press, bb-tty refuses the URL, and the
+// server ends what is running. Per project: another project's node being
+// out of window is that row's hold, not this one's.
+const heldWhy = p => p.held || "";
 
 let showAllProjects = false;
 
@@ -5972,15 +5965,12 @@ function projectRow(p, live, cls, inTab){
           // The sign-in that matters for a session on a NODE is the one in
           // that node's home, which this container cannot see (roadmap #24).
           || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
-          || mdBlocks(p))
+          || heldWhy(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
-                 : mdBlocks(p)
-                   ? "CLAUDE.md's environment block is out of date — a session started now "
-                     + "would be briefed on a container that has moved on. The update link "
-                     + "above fixes it in one press"
+                 : heldWhy(p) ? heldWhy(p)
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
@@ -12862,7 +12852,17 @@ function drawBell(){
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
     // ...and the nodes. Out of window is red and names the projects it
     // stops; behind is amber and waits for a press on the Nodes tab.
-    ...att.map(a => `<div class="bnote ask${a.window ? " bad" : ""}">
+    ...att.map(a => a.kind === "md"
+      // A project's CLAUDE.md block from another window: red like an agent
+      // out of window, because it stops the same thing — its sessions —
+      // and the fix is the row's own link, offered here too.
+      ? `<div class="bnote ask bad">
+        <div class="btag">CLAUDE.md out of window</div>
+        <div class="bwhy">${esc(a.project)}'s CLAUDE.md environment block is from ${esc(a.from)
+          } and this BuilderBot is ${esc(a.to)}. No session runs there until it is updated</div>
+        <div class="bfoot"><span>sessions there are stopped</span>
+          <span class="acts"><a href="#" data-bmd="${esc(a.project)}">Update</a></span></div></div>`
+      : `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
           a.window
@@ -12903,6 +12903,10 @@ function drawBell(){
     e.preventDefault();
     toggleBell(false);
     openNodesTab();
+  });
+  panel.querySelectorAll("[data-bmd]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    claudeMd(a.dataset.bmd, "update", a);
   });
 }
 

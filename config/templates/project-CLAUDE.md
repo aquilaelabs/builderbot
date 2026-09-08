@@ -1,6 +1,7 @@
 # Working inside BuilderBot
 
 <!-- BUILDERBOT:ENV:BEGIN -->
+<!-- BUILDERBOT:ENV:WINDOW 0.4 -->
 <!-- Everything between these markers is generated from BuilderBot's shipped
      template and is safe to replace wholesale:
          bb claude-md            # is this copy current?
@@ -28,6 +29,14 @@ ships, and changes nothing. If it reports the block differs, run
 marked block and never touches the project notes below the end marker. (The
 dashboard notices the same drift on its own and offers the update as a link on
 the project's row, so it may already have been done for you.)
+
+The block carries the compatibility window it was written for — the
+`BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor
+version. Drift inside a window is routine and stops nothing. A block from
+another window does: the dashboard ends the sessions running on that project,
+ghosts its Claude button and refuses a new one until the block is updated —
+and, for a project on a node, until that node's agent is from the same
+window too.
 
 Two things about doing it:
 
