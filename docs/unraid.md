@@ -151,7 +151,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * the appdata paths for home / config / work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
-Fill in `GITHUB_PAT` (the commit identity is set on the dashboard's Settings tab), leave
+Fill in `GITHUB_PAT` (a project's commit identity is set in its settings dialog), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
@@ -254,7 +254,7 @@ Two things that will silently defeat it:
   not need to resolve.
 - **The filename comes from the container name**, and nothing inside a
   container can see its own container name. If you renamed this container from
-  `BuilderBot`, set the container name on the dashboard's Settings tab to match.
+  `BuilderBot`, the icon is not found: the cache is keyed by that name.
 
 The one-time equivalent, if you would rather not add a mapping — just redo it
 if you ever recreate `docker.img`:

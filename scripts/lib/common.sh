@@ -49,12 +49,10 @@ warn() { printf '[builderbot] WARN: %s\n' "$*" >&2; }
 die()  { printf '[builderbot] ERROR: %s\n' "$*" >&2; exit 1; }
 
 # is_true VALUE — accepts true/1/yes/on in any case.
-# bb_setting KEY [ENVVAR] [DEFAULT] — a Settings-tab value (roadmap R29):
-# /config/settings.json first, then the environment variable it replaced (for
-# one release, so an install that still sets the variable keeps working through
-# the update), then the default. Booleans come out as the words true/false, so
-# is_true reads them. jq is in the image; without it, or without the file, the
-# answer is the variable's or the default's, never a crash at boot.
+# bb_setting KEY [DEFAULT] — a Settings-tab value (roadmap R29) out of
+# /config/settings.json, else the default. Booleans come out as the words
+# true/false, so is_true reads them. jq is in the image; without it, or without
+# the file, the answer is the default, never a crash at boot.
 bb_setting() {
     local f="${DASHBOARD_STATE:-/config}/settings.json" v=""
     if [ -r "$f" ] && command -v jq >/dev/null 2>&1; then
@@ -62,8 +60,7 @@ bb_setting() {
               'if has($k) and .[$k] != null then (.[$k] | tostring) else empty end' \
               "$f" 2>/dev/null || true)"
     fi
-    if [ -z "$v" ] && [ -n "${2:-}" ]; then v="${!2:-}"; fi
-    printf '%s' "${v:-${3:-}}"
+    printf '%s' "${v:-${2:-}}"
 }
 
 is_true() {

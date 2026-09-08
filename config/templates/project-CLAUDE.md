@@ -66,10 +66,10 @@ recreated on every image update.
 - Running processes, including the emulator and any dev server
 
 So: **never `apt-get install` something and consider the problem solved.** It
-will be gone after the next update. Durable extras belong in the dashboard's
-Settings tab, under packages installed at boot, or in a startup hook in
-`/config/startup.d/`. Mention it to the user rather than trying to set those
-yourself — the tab is theirs.
+will be gone after the next update. A tool a project needs is installed
+through the package manager on its node (the Tools tab); the controller
+carries what it needs in the image. Say what is missing rather than
+installing it yourself.
 
 Uncommitted work in this project is **not** at risk from a container restart.
 It is still worth committing, but do not panic-commit on the theory that the
@@ -896,8 +896,9 @@ only when the finding is genuinely a false positive, and say why.
 
 ## Git and credentials
 
-- Commit identity is already configured from the container's environment. Do
-  not set `user.name` / `user.email` per-repo.
+- Commit identity is this project's own setting, written into this repo's
+  config by the operator's settings dialog. If a commit fails asking who you
+  are, say so rather than setting `user.name` / `user.email` yourself.
 - SSH keys may be **shielded**: served by a root-owned agent so that pushes
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem

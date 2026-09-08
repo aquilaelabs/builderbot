@@ -2,13 +2,10 @@
 #
 # roles: controller
 #
-# Report on the mounted projects and, optionally, run each project's own
-# bootstrap.
-#
-# If a mounted project contains `.builderbot/setup.sh`, it is executed on every
-# container start when PROJECT_BOOTSTRAP=true. That is the seam for installing
-# per-project dependencies (npm ci, uv sync, …) without baking them into this
-# image.
+# Report on the mounted projects, and put each one's commit identity into its
+# repo config — the project's own setting (prefs.py), so a session commits as
+# the person that project belongs to and a repo without one says so at the
+# first commit rather than committing as nobody.
 #
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
@@ -29,9 +26,14 @@ for dir in "$WORKSPACE"/*/; do
         log "project: ${name}"
     fi
 
-    if is_true "$(bb_setting project_bootstrap PROJECT_BOOTSTRAP false)" \
-            && [ -x "$dir/.builderbot/setup.sh" ]; then
-        log "running ${name}/.builderbot/setup.sh"
-        (cd "$dir" && ./.builderbot/setup.sh) || warn "${name} bootstrap exited $?"
+    # The identity, from the same file the dashboard writes (claude-prefs.json).
+    if [ -d "$dir/.git" ] && [ -r "${DASHBOARD_STATE:-/config}/claude-prefs.json" ] \
+            && command -v jq >/dev/null 2>&1; then
+        gname="$(jq -r --arg p "$name" '.projects[$p].git_name // empty' \
+                 "${DASHBOARD_STATE:-/config}/claude-prefs.json" 2>/dev/null || true)"
+        gemail="$(jq -r --arg p "$name" '.projects[$p].git_email // empty' \
+                  "${DASHBOARD_STATE:-/config}/claude-prefs.json" 2>/dev/null || true)"
+        [ -z "$gname" ]  || git -C "$dir" config user.name  "$gname"  2>/dev/null || true
+        [ -z "$gemail" ] || git -C "$dir" config user.email "$gemail" 2>/dev/null || true
     fi
 done

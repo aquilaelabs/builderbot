@@ -3120,18 +3120,10 @@ except (OSError, ValueError):
     locks = []
 rec["locked"] = proj in (locks if isinstance(locks, list) else [])
 rec["project"] = proj
-# The commit identity, for a session on a node to adopt (bb-tty's
-# git_identity): the controller's, from its environment or its git config,
-# never something set up per node.
-import subprocess
-def gitc(k):
-    try:
-        return subprocess.run(["git", "config", "--global", "--get", k], capture_output=True,
-                              text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ""
-rec["git_name"] = os.environ.get("GIT_USER_NAME") or gitc("user.name")
-rec["git_email"] = os.environ.get("GIT_USER_EMAIL") or gitc("user.email")
+# The commit identity is the project's own setting (prefs.py), for a session
+# on a node to write into the tree it works in (bb-tty's git_identity).
+rec["git_name"] = rec.get("git_name") or ""
+rec["git_email"] = rec.get("git_email") or ""
 if os.environ.get("BB_SETTINGS_JSON") == "1":
     print(json.dumps(rec))
     raise SystemExit(0)
