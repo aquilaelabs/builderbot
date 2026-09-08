@@ -77,6 +77,24 @@ ok(JSON.stringify(saved[1].paths) === '["scripts/agent"]'
    && JSON.stringify(saved[1].words) === '["agent","protocol"]',
    `...and splitting the triggers on the comma they were typed with (${
      JSON.stringify(saved[1])})`);
+// Written, a rule is READ: its name, its words and its triggers, no fields —
+// every row opening as a form read as a tab of half-finished edits. Edit
+// brings the fields back for that one row; Done puts them away.
+await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
+                                 && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
+ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r =>
+     /agent-compat/.test(r.querySelector('.rlNameRO')?.textContent || '')
+     && /add, do not change/.test(r.querySelector('.rlBody')?.textContent || '')
+     && /files: scripts\/agent/.test(r.querySelector('.rltrig')?.textContent || '')
+     && !r.querySelector('textarea, input')),
+   'a saved rule is shown as words, not as fields');
+await page.click('#rulesBox .rulerow[data-i="1"] .rlEdit');
+await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 10000 });
+ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
+   'Edit opens that rule\'s fields and no other\'s');
+await page.click('#rulesBox .rulerow[data-i="1"] .rlDone');
+await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
+ok(true, '...and Done puts them away again');
 
 // ---- what a session is handed ----------------------------------------------
 // Exactly what bb-tty puts in front of one: `bb rules --prompt`.
