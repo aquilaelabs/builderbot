@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.27"
+AGENT_VERSION = "0.4.28"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.

@@ -275,3 +275,4 @@
 - Six working conventions that lived in CLAUDE.md and a session's private memory are house rules on the Briefing tab now, where both of you can read and change them (5366f50)
 - Every row in the notebook opens to be read; Edit brings its fields, and Cancel puts them away without keeping what you typed (21eb482)
 - The house rules a session starts with name each conditional rule by its triggers alone, so the block costs half what it did (ebd67c7)
+- CI on a node now runs with the node's own toolchain, and the browser suite fails when it cannot start instead of quietly passing (8e95533)
