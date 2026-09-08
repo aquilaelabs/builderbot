@@ -90,6 +90,7 @@ bb — BuilderBot helper
   bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
   bb tests drift         what the runner reported that this list does not, and back
   bb tests flagged       the ones sitting on a round timeout rather than working
+  bb tests projection    when a run should finish, from what the last one took
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
@@ -2224,12 +2225,24 @@ cmd_tests() {
         # condition, and PIPESTATUS still holds the pipeline's own statuses —
         # which is the only way to end up with the SUITE's exit code rather
         # than tee's. Read straight after `|| rc=$?` it is the `||`'s.
-        local rc=0
+        # Say when it will be done before it starts, from the registry's
+        # last run, and how the finish compared: the projection is the
+        # measurement's whole point, and a run nobody can time is guessed at.
+        local rc=0 t0 want took
+        BB_TESTS_PROJECT="$proj" "$0" tests projection 2>/dev/null || true
+        want="$(BB_TESTS_PROJECT="$proj" "$0" tests projection --secs 2>/dev/null || echo 0)"
+        t0=$(date +%s)
         if BB_TEST_TIMING=1 BB_PROJECT="$proj" "$0" test "$@" 2>&1 | tee "$log"
         then rc=0
         else rc="${PIPESTATUS[0]:-1}"
         fi
+        took=$(( $(date +%s) - t0 ))
         echo
+        if [ "${want:-0}" -gt 0 ] 2>/dev/null; then
+            echo "took ${took}s against ${want}s projected"
+        else
+            echo "took ${took}s"
+        fi
         # A FAILING run is still worth ingesting — a red suite has real
         # timings in it, and the registry is about where the time goes rather
         # than about whether it passed. What is not worth ingesting is a run
@@ -2328,6 +2341,21 @@ if op in ("list", "ls"):
         print(f"   {secs(t['ms']):>8}  {t['key']:<20} {t['name'][:60]}{mark}")
         if t.get("after"):
             print(f"             follows: {t['after'][:60]}")
+elif op == "projection":
+    # When a run will finish, from what the last one took — so nobody has
+    # to guess, and a run well past it is read as stuck rather than slow.
+    # `--secs` is the bare number, for `bb tests run` to hold up against
+    # the clock when the run ends.
+    p = reg.payload(proj)
+    wall = p["last_wall_ms"] / 1000 if p["last_wall_ms"] else p["total_ms"] / 1000
+    if rest[:1] == ["--secs"]:
+        print(f"{wall:.0f}")
+    elif not wall:
+        print("no projection yet — nothing measured on this project; this run records the first")
+    else:
+        print(f"projected {wall:.0f}s, what the last run took over {p['n']} tests in "
+              f"{len(p['suites'])} suites; one past {2 * wall:.0f}s is stuck, not slow")
+
 elif op == "show":
     if not rest:
         print("usage: bb tests show <key>", file=sys.stderr); sys.exit(1)
