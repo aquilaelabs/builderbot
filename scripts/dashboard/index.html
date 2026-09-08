@@ -761,7 +761,16 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    line under them. Side by side, "Notebook" as a word did not fit beside a
    long project name on a phone — and the count it used to carry is the
    panel's own business now. */
-.row.stack2{flex-direction:column;align-items:stretch;gap:4px}
+/* nowrap, and it is the whole fix for a stacked row spilling off a phone:
+   .row wraps, and a COLUMN flex container that may wrap sizes its one line
+   to the widest item's max-content width and stretches every item to it.
+   So a job's kept-workspace path — one long token, even one that wraps when
+   drawn — set the line at 419px inside a 375px row, the action bar stretched
+   to match, and its Log button sat 58px past the edge. A stacked row has
+   nothing to wrap into a second column; saying so makes the row's width the
+   row's, and min-width:0 on the text column is then what lets it shrink. */
+.row.stack2{flex-direction:column;align-items:stretch;gap:4px;flex-wrap:nowrap}
+.row.stack2 .grow{min-width:0;overflow-wrap:anywhere}
 .row.stack2 .acts{margin-left:0;flex-wrap:wrap}
 /* Who is working here, under the row's controls rather than above them: it is
    a fact about the project, and the buttons are what somebody came to the row
@@ -1679,7 +1688,10 @@ textarea,select{
    the name: these names are prose and a "..." row read on its own says
    nothing, which sorting by duration would otherwise do to every one of them.
    Indented to the name's column, so it reads as belonging to it. */
-.tstafter{flex:1 0 100%;min-width:0;margin-left:calc(4.5em + 8px);
+/* Shrinkable, or it is the row's width PLUS its margin: a flex item with a
+   100% basis that may not shrink and a left margin overflows its row by the
+   margin, and the whole Tests tab scrolled sideways on a phone by it. */
+.tstafter{flex:1 1 100%;min-width:0;margin-left:calc(4.5em + 8px);
   color:var(--dim);font:var(--f-note);font-style:italic;overflow-wrap:anywhere}
 /* The rollup: one line per suite, the number first so the column reads down. */
 .tstsuite{display:flex;gap:10px;align-items:baseline;
@@ -1961,7 +1973,13 @@ button[aria-busy="true"]{opacity:.75}
 .pkgnode{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   padding:11px 14px;border-bottom:1px solid var(--line);font:var(--f-ui)}
 .pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
-.jbouts a{color:var(--accent)} .jbouts code{font:var(--f-note)}
+.jbouts a{color:var(--accent)}
+/* A kept workspace is a long path, and .row code is nowrap; on a phone it
+   wraps here rather than running off the row. Written with the row in the
+   selector because .row code comes later in this sheet and ties it on
+   specificity otherwise — the first version of this line lost that tie. */
+.row .jbouts code{font:var(--f-note);white-space:normal;overflow-wrap:anywhere}
+.jbouts a{overflow-wrap:anywhere}
 @media (max-width:600px){
   .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
   .ndmount .ndmstate,.ndstore .sub{grid-column:1}

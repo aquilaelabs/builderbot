@@ -17,7 +17,7 @@
 //
 // What is deliberately NOT here: per-kind content checks. Those live in each
 // kind's own suite. This file only holds the language every kind shares.
-import { URL, launch, newPage, ok, done, ready, sleep } from './lib.mjs';
+import { URL, DIR, launch, newPage, ok, done, ready, sleep } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -333,27 +333,91 @@ ok(seenReds.size <= 1,
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => setView('terminal'));
 await sleep(400);
+// The Tests view needs rows to be measured on, and one of them a continuation
+// — a "..." name whose "follows:" line is drawn under it — because that line
+// is exactly what scrolled the tab sideways once (a 100% flex basis plus a
+// margin, unable to shrink). A registry the fixture does not carry, so a
+// two-line run is ingested here; the file reset takes it away again.
+{
+  const { writeFileSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const { dirname, join } = await import('node:path');
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  writeFileSync(`${DIR}/ws/alpha/.bb-test-run.log`,
+    '[dashboard-test] == shape.mjs ==\nPASS  [+0.1s] a row long enough to wrap on a phone, which most of them are\n'
+    + 'PASS  [+0.1s] ...and a continuation of it, whose follows line is drawn under the name\n'
+    + '2 passed, 0 failed in 0.2s\n');
+  execFileSync(join(HERE, '..', '..', 'bb'), ['tests', 'ingest', '.bb-test-run.log'],
+    { cwd: `${DIR}/ws/alpha`, env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+      DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
+}
+// Measured on the document AND on the document box, because the box scrolls
+// on its own: the page reported no overflow while the Tests tab scrolled
+// sideways inside its pane. The widest offender is named, so the failure
+// says what to fix rather than that something is wide. The tab strip is
+// the one thing allowed past the edge — it scrolls by design.
+const sideways = () => page.evaluate(() => {
+  const host = document.querySelector('.doc.on');
+  const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div') || host;
+  const controls = [...(host?.querySelectorAll('input, select, textarea') || [])]
+    .filter(e => e.offsetHeight > 0)
+    .filter(e => !['checkbox', 'radio'].includes(e.type));
+  const edge = (box?.getBoundingClientRect().right || document.documentElement.clientWidth) + 1;
+  let widest = null;
+  for (const e of box?.querySelectorAll('*') || []){
+    if (e.closest('.nbtabs')) continue;
+    const r = e.getBoundingClientRect();
+    if (r.width && r.right > edge && (!widest || r.right > widest.right)){
+      // Named with its text and its parents, so the failure says where to
+      // look rather than "a button": a bare `button.` cost a second run.
+      // ...and each parent's width, because the element named is only where
+      // the overflow ENDS: a button at the right of a row is past the edge
+      // because something else made the row wide.
+      const chain = [];
+      let row = null;
+      for (let a = e.parentElement, n = 0; a && n < 5 && !a.classList.contains('doc'); a = a.parentElement, n++){
+        chain.push(`${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''}.${String(a.className || '').split(/\s+/)[0]}=${Math.round(a.getBoundingClientRect().width)}`);
+        if (a.classList.contains('row')) row = a;
+      }
+      widest = { right: Math.round(r.right),
+                 what: `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className || '').split(/\s+/)[0]}`
+                   + ` "${(e.textContent || '').trim().slice(0, 20)}" in ${chain.join(' < ')}`
+                   + (row ? ` — row: ${row.outerHTML.replace(/\s+/g, ' ').slice(0, 700)}` : '') };
+    }
+  }
+  return {
+    overflow: Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                       box ? box.scrollWidth - box.clientWidth : 0),
+    widest,
+    small: controls.filter(e => parseFloat(getComputedStyle(e).fontSize) < 16)
+      .map(e => e.id || e.className || e.tagName),
+  };
+});
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
                              if (t) focusTab(t.id); }, kind);
   await sleep(250);
-  const m = await page.evaluate(() => {
-    const host = document.querySelector('.doc.on');
-    const controls = [...(host?.querySelectorAll('input, select, textarea') || [])]
-      .filter(e => e.offsetHeight > 0)
-      .filter(e => !['checkbox', 'radio'].includes(e.type));
-    return {
-      overflow: document.documentElement.scrollWidth
-                - document.documentElement.clientWidth,
-      small: controls.filter(e => parseFloat(getComputedStyle(e).fontSize) < 16)
-        .map(e => e.id || e.className || e.tagName),
-    };
-  });
-  ok(m.overflow <= 0, `[${kind}] no sideways scroll at phone width (${
-    m.overflow}px over)`);
-  ok(m.small.length === 0, `[${kind}] phone controls are 16px${
-    m.small.length ? ` — not: ${m.small.join(', ')}` : ''}`);
+  // The notebook is six views behind one tab, and each has its own layout;
+  // the Tests view is the one that scrolled sideways while the Roadmap, the
+  // one this check used to look at, did not.
+  const views = kind === 'todo'
+    ? await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view)) : [''];
+  for (const v of views){
+    if (v){
+      await page.evaluate(w => getNotebook('alpha').view(w), v);
+      await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
+                                 v, { timeout: 20000 });
+      await sleep(250);
+    }
+    const m = await sideways();
+    const tag = v ? `${kind}/${v}` : kind;
+    ok(m.overflow <= 0 && !m.widest, `[${tag}] no sideways scroll at phone width (${
+      m.overflow}px over${m.widest ? `; ${m.widest.what} reaches ${m.widest.right}px` : ''})`);
+    ok(m.small.length === 0, `[${tag}] phone controls are 16px${
+      m.small.length ? ` — not: ${m.small.join(', ')}` : ''}`);
+  }
 }
 
 ok(page.errors.length === 0,
