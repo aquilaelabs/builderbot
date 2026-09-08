@@ -454,18 +454,17 @@ bb rules history        # what has changed them, by either of you
 ```
 
 **Both of you write them, and each is marked with who did.** Yours are marked
-`[yours]` where they appear and `*` in the listing; you may reword or drop
-those. The operator's you may not touch — say in your reply if one looks
+`*` wherever they appear; you may reword or drop those. The operator's you may not touch — say in your reply if one looks
 wrong, and they change it on the Briefing tab. Every change either of you
 makes is in `bb rules history` with a name against it, which is what makes
 this shared rather than locked.
 
-Most of them are quoted to you in full. A rule that applies to *particular*
-work is named in your prompt instead of quoted — a paragraph about the agent
-is not worth paying for on a CSS change — and its text arrives on the turn it
-becomes relevant, either because you were asked about its subject or because
-you are about to edit a file it covers. `bb rules show NAME` is how you read
-one before either of those happens.
+A rule with a trigger — files it covers, words that raise it — is named in
+your prompt with its triggers and not quoted: a paragraph about the agent is
+not worth paying for on a CSS change. Its text arrives whole on the turn it
+becomes relevant, because you were asked about a word it names or are about
+to edit a file it covers. `bb rules show NAME` reads one before either of
+those happens. Only a rule with no trigger at all is quoted to you in full.
 
 **A rule can carry a whole framework.** `--doc PATH` names the document in
 the repo that defines it in full, and `--check CMD` the command that verifies

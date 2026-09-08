@@ -238,7 +238,7 @@ ok(/reworded/.test(bb('edit', 'dont-edit-during-a-suite', 'Stage edits; apply af
 }
 ok(/\*dont-edit-during-a-suite/.test(bb('list')),
    'the listing marks which are a session\'s, since that is what decides what it may do');
-ok(/\[yours\]/.test(bb('--prompt')),
+ok(/^\* No em dashes/m.test(bb('--prompt')) || /\*dont-edit-during-a-suite/.test(bb('--prompt')),
    'and the block says so too — a session\'s own note must not reach the next one '
    + 'wearing the operator\'s authority');
 {

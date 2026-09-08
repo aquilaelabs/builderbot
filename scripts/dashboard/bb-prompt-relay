@@ -150,9 +150,9 @@ def rules_firing(project, *, prompt="", path=""):
     if not hit:
         return ""
     out = ["House rules for this project cover what you are about to do — the "
-           "operator's are theirs and not yours; one marked [yours] a session left:"]
+           "operator's are theirs and not yours; one marked * a session left:"]
     for r in hit:
-        mine = "[yours] " if r.get("by") == "claude" else ""
+        mine = "* " if r.get("by") == "claude" else ""
         doc = f"\nDefined in full in {r['doc']} — read it first." if r.get("doc") else ""
         chk = f"\nRun `bb rules check {r['name']}` before calling the work done." if r.get("check") else ""
         out.append(f"\n[{r['name']}] {mine}\n{r['text']}{doc}{chk}")
