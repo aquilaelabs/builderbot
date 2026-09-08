@@ -3756,12 +3756,21 @@ cmd_lint() {
                 # registry is the controller's, and bb ci-labels is relayed
                 # there — called direct, it read an empty registry here and
                 # called every label unknown.
-                known="$(bash "$0" ci-labels 2>/dev/null | tr '\n' ' ')"
-                declared="$(sed -n 's/^    - //p' .github/actionlint.yaml)"
-                for l in $declared; do
-                    case " $known " in *" $l "*) ;; *) missing="${missing:+$missing, }$l" ;; esac
-                done
-                [ -z "$missing" ] || echo "  [note] actionlint.yaml declares labels no runner in the registry carries: ${missing} — bb ci-labels --write regenerates it"
+                #
+                # And guarded: under set -e a failing substitution ends the
+                # whole lint with nothing said, which is what happened on a
+                # node whose session token had expired — the relay refused,
+                # and lint stopped after actionlint with no verdict at all.
+                # A registry that cannot be read is a note, not a silent exit.
+                if known="$(bash "$0" ci-labels 2>/dev/null | tr '\n' ' ')"; then
+                    declared="$(sed -n 's/^    - //p' .github/actionlint.yaml)"
+                    for l in $declared; do
+                        case " $known " in *" $l "*) ;; *) missing="${missing:+$missing, }$l" ;; esac
+                    done
+                    [ -z "$missing" ] || echo "  [note] actionlint.yaml declares labels no runner in the registry carries: ${missing} — bb ci-labels --write regenerates it"
+                else
+                    echo "  [note] the runner registry could not be read (bb ci-labels failed), so runs-on labels were not checked against it"
+                fi
             fi
             # ...and the other half of the same failure (roadmap #19). A
             # project's node governs BuilderBot's OWN queue — bb build, test,
