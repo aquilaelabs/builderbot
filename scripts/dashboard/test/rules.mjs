@@ -83,11 +83,17 @@ ok(JSON.stringify(saved[1].paths) === '["scripts/agent"]'
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r =>
-     /agent-compat/.test(r.querySelector('.rlNameRO')?.textContent || '')
+     r.tagName === 'DETAILS' && !r.open
+     && /agent-compat/.test(r.querySelector('summary .rlNameRO')?.textContent || '')
      && /add, do not change/.test(r.querySelector('.rlBody')?.textContent || '')
-     && /files: scripts\/agent/.test(r.querySelector('.rltrig')?.textContent || '')
+     && /scripts\/agent/.test(r.querySelector('.rltrig')?.textContent || '')
      && !r.querySelector('textarea, input')),
-   'a saved rule is shown as words, not as fields');
+   'a saved rule is a closed fold with its name on the line and its words behind it, not fields');
+ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r => getComputedStyle(r).borderRadius === '0px'
+     && getComputedStyle(r).borderTopWidth === '1px'),
+   '...drawn as a line-divided row like a bug report, not a box');
+await page.click('#rulesBox .rulerow[data-i="1"] summary');
+await page.waitForFunction(() => document.querySelector('#rulesBox .rulerow[data-i="1"]').open, null, { timeout: 10000 });
 await page.click('#rulesBox .rulerow[data-i="1"] .rlEdit');
 await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 10000 });
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
