@@ -825,6 +825,19 @@ and `_seed_paths` are deleted, and so is the env branch of `devapp._pairs`.
 The path mapping lives on the node record (`config.paths`, edited on an agent
 node's row, read by `devapp.host_map` through the node being addressed).
 
+**Check, beside it (roadmap #13).** Under the identity mapping — the shipped
+default and the rule — nothing verified that the two machines actually mean
+the same directory by `/workspace`: this container's mount table says nothing
+about the other machine's, and docker answers a missing bind source by
+creating an empty directory, so the failure was silent twice over (it cost
+three rounds on 27 Aug, when the share was repointed on one side only). Check
+makes a marker directory under the share here and asks the node's daemon
+whether it can see it, through the same guarded one-shot container the
+dev-data directory is made with (`devapp.check_paths`, a `test -d` on the
+share root). Three answers and never a guess: the same directory, NOT the
+same directory with what that would cost, or "could not ask" with the
+daemon's own words. Off the poll — it is for when something changed.
+
 The `ssh` kind went in the same change, because the seed was the only thing
 that made one: `node_add` is a refusal naming enrollment, `_addr` and
 `runner_of` know two kinds, and the `ssh` branch of `jobs.run_exec` — the

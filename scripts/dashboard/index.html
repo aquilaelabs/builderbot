@@ -1828,7 +1828,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   color:var(--ink)}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
 .docbarrow .sp{flex:1}
-.ndtest.warn,#logDaysSaid.warn{color:var(--warn)}
+.ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs — with the page's pre skin, inset like a field. */
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
@@ -1937,7 +1937,8 @@ button[aria-busy="true"]{opacity:.75}
 .ndstore .sub{grid-column:2}
 .ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ndconfstate.note{color:var(--note)}
-.ndpaths{display:flex;gap:6px;align-items:center}
+/* The mapping's row is an action bar (its field, then Save and Check), so
+   it lays out like every other bar; the input takes the room before them. */
 .ndpaths input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}

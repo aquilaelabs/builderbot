@@ -1315,7 +1315,11 @@ case — could do everything except docker. The kind itself is gone now, and
 404. A node's **path mapping** — what this container's paths are called on
 that machine, which its daemon needs to resolve a compose file's bind
 sources — is on its row, and is where the old `DOCKER_HOST_PATHS` setting
-lives. Every change writes an audit row.
+lives. Every change writes an audit row. **Check**, beside the mapping,
+proves the two machines mean the same directory by the projects share: a
+marker is made under it here and looked for through the node's daemon, and
+the row says plainly whether it was found — the one pair nothing else
+verifies, and one that fails silently when it is wrong.
 
 **A node does everything for the projects bound to it.** There is nothing to
 pick per node — no "this one builds, that one deploys". A project names one

@@ -953,6 +953,35 @@ ok(list[0].id === 'local',
      '...and the node\'s row shows it, editable');
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
      '...while the controller, whose paths are its own, is not a row here at all');
+
+  // ---- Check: the pair nothing else verifies (roadmap #13) ------------------
+  // A marker made under the share here, looked for through the node's
+  // daemon by the same guarded one-shot container that makes the dev-data
+  // directory. The stub answers yes; run.testfail makes it say no the way
+  // `test -d` does. The marker never outlives the check.
+  const { readFileSync: rf, writeFileSync: wf, unlinkSync: ul, readdirSync: rd } = await import('node:fs');
+  const chk = `.nodestab .ndrow[data-node="${sb.id}"] .ndcheck`;
+  await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
+  await page.waitForFunction(s => /same directory/.test(document.querySelector(s)?.textContent || ''),
+                             chk, { timeout: 20000 });
+  ok(/^the same directory/.test(await page.$eval(chk, e => e.textContent))
+     && !(await page.$eval(chk, e => e.classList.contains('warn'))),
+     'Check makes a marker under the projects share here and finds it through the daemon: the same directory');
+  const dlog = rf(`${DIR}/dockerstate/docker.log`, 'utf8');
+  ok(/run --rm -u \d+:\d+ -v \/[^ ]+:\/d alpine test -d \/d\/\S*bb-path-check-[0-9a-f]+/.test(dlog),
+     '...as a one-shot test -d through the guarded probe, mounting the share root');
+  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
+     '...and the marker is gone afterwards');
+  wf(`${DIR}/dockerstate/run.testfail`, '');
+  await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
+  await page.waitForFunction(s => /NOT the same/.test(document.querySelector(s)?.textContent || ''),
+                             chk, { timeout: 20000 });
+  ok(await page.$eval(chk, e => e.classList.contains('warn'))
+     && /would bind an empty tree/.test(await page.$eval(chk, e => e.textContent)),
+     'a marker the daemon cannot see is said plainly, with what it would cost');
+  ul(`${DIR}/dockerstate/run.testfail`);
+  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
+     '...and the marker is gone after a no as well');
 }
 
 // ...and put the sandbox's path mapping back: it lives on the node record

@@ -4028,6 +4028,12 @@ class Handler(BaseHTTPRequestHandler):
             # What this container's paths are called on the node's machine
             # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
             r = nodes.node_paths_set(self._principal(), nid, field(req, "paths"))
+        elif act == "check-paths":
+            # Whether the two machines mean the same directory by the
+            # projects share (roadmap #13): a marker made here, looked for
+            # through the node's daemon. Off the poll, on purpose.
+            r = ({"error": "no such node"} if not nodes.node(nid)
+                 else devapp.check_paths(nid))
         elif act == "funnel":
             # Tailscale Funnel for a port on the node, raw: the manager's
             # route picker goes through the instance's record; this is the
