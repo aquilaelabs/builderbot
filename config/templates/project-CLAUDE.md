@@ -947,9 +947,11 @@ only when the finding is genuinely a false positive, and say why.
 
 ## Git and credentials
 
-- Commit identity is this project's own setting, written into this repo's
-  config by the operator's settings dialog. If a commit fails asking who you
-  are, say so rather than setting `user.name` / `user.email` yourself.
+- Commit identity is the account's own, set on their Profile tab, and it
+  reaches this session as git's environment (`GIT_AUTHOR_*`,
+  `GIT_COMMITTER_*`) — so two people on one project are two authors. If a
+  commit fails asking who you are, say so rather than setting `user.name`
+  / `user.email` yourself.
 - SSH keys may be **shielded**: served by a root-owned agent so that pushes
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem

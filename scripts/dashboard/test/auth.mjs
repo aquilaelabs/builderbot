@@ -781,6 +781,25 @@ ${code}`], { encoding: 'utf8' }).trim();
   }, null, { timeout: 15000 });
   ok(true, '...and the project picker gives it one');
 
+  // A role changes on Save, not on the pick: the select alone writes
+  // nothing, and the Save beside it wakes only when the pick differs.
+  ok(await page.$eval('.userstab [data-urolesave="tabmade"]', b => b.disabled),
+     'the role Save is asleep while the pick is what is saved');
+  await page.selectOption('.userstab [data-urole="tabmade"]', 'admin');
+  await page.waitForTimeout(300);
+  ok(await page.$eval('.userstab .urow[data-user="tabmade"] .pill', p => p.textContent.trim()) === 'user'
+     && !(await page.$eval('.userstab [data-urolesave="tabmade"]', b => b.disabled)),
+     '...picking another role saves nothing yet, and wakes Save');
+  await page.click('.userstab [data-urolesave="tabmade"]');
+  await page.waitForFunction(() => document.querySelector(
+    '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'admin', null, { timeout: 15000 });
+  ok(true, '...and Save is what writes it');
+  // Back to a user for what follows, the same way.
+  await page.selectOption('.userstab [data-urole="tabmade"]', 'user');
+  await page.click('.userstab [data-urolesave="tabmade"]');
+  await page.waitForFunction(() => document.querySelector(
+    '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'user', null, { timeout: 15000 });
+
   // The account it made is real, and scoped.
   const as = (path) => bare(path, { headers: {
     Authorization: 'Basic ' + Buffer.from('tabmade:tabmadepw1').toString('base64') } });

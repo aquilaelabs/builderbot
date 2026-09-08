@@ -152,7 +152,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * the appdata paths for home / config / work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
-Fill in `GITHUB_PAT` (a project's commit identity is set in its settings dialog), leave
+Fill in `GITHUB_PAT` (each account's commit identity is set on its Profile tab), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 

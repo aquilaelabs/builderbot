@@ -119,7 +119,7 @@ function renderPhoneInto(i){
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
     `<div class="row">
-       <div class="grow" style="display:flex;gap:6px">
+       <div class="grow prefrow">
          <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="pairing port"
            value="${esc(phPort)}" aria-label="pairing port"${off ? " disabled" : ""}>
          <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="code"

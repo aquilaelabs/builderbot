@@ -247,6 +247,52 @@ for (const kind of kinds){
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
+// ---- a control never spans its container ----------------------------------
+// A button, a select, a text field, or a row of them side by side stops
+// short of the tab's width at every width (docs/design-language.md,
+// Controls). Measured as the union of a row's controls against the box
+// holding them, so an action bar whose buttons sit at the right is judged
+// on the buttons and not on the bar's own full-width flex box. Terminals
+// and logs are not controls; a readonly textarea showing text is a log.
+async function spanning(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const W = box.getBoundingClientRect().width;
+    const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
+    const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
+    const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
+    const out = [];
+    const seen = new Set();
+    for (const row of box.querySelectorAll(ROWS)){
+      const kids = [...row.querySelectorAll(CTL)].filter(vis);
+      kids.forEach(k => seen.add(k));
+      if (!kids.length) continue;
+      const l = Math.min(...kids.map(k => k.getBoundingClientRect().left));
+      const r = Math.max(...kids.map(k => k.getBoundingClientRect().right));
+      if (r - l > W * 0.9) out.push(`${row.className.split(' ')[0]} ${Math.round(r - l)}/${Math.round(W)}`);
+    }
+    for (const e of box.querySelectorAll(CTL)){
+      if (seen.has(e) || !vis(e) || e.closest('.term, .dmlog, pre, .dropbox, .sendbox')) continue;
+      if (e.tagName === 'TEXTAREA' && e.readOnly) continue;
+      const w = e.getBoundingClientRect().width;
+      if (w > W * 0.9) out.push(`${e.id || e.className.split(' ')[0] || e.tagName} ${Math.round(w)}/${Math.round(W)}`);
+    }
+    return { wide: out, w: W };
+  });
+}
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  const S = await spanning();
+  ok(!S.err && S.wide.length === 0,
+     `[${kind}] no control or row of controls spans the tab${
+       S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+}
+
 // ---- adding goes at the top ------------------------------------------------
 // The control that adds to a notebook view is the first band under its head
 // row, above the list, at both widths — never at the foot, where a phone

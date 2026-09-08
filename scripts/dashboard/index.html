@@ -70,6 +70,10 @@
   color-scheme:dark;
   --tap:38px;
   --doc-w:1080px;
+  /* The widest a control, or a row of them, may be on a document surface or
+     a sidebar card: a field that runs the whole width of a tab reads as a
+     form pretending to be a page (docs/design-language.md, Controls). */
+  --ctl-w:30rem;
   /* The inset of a band on a document surface — a notebook row, a modal's
      field, a document tab's row, a findings rule. It was retyped as 11px 14px
      at every band and as 9px 11px at a few that were written against the
@@ -377,8 +381,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    for a field that owns its row and wrong for one sitting between a label and
    a button — unscoped, this lost the tie on source order and the row broke
    into four stacked lines. */
-.uimenu .logdays input{width:5em;min-height:var(--tap);text-align:center;
-  flex:0 0 auto}
+/* Two selectors deep, to outrank the document-tab skin's width:100%
+   further down, which is right for a field that owns its row. */
+.logset .logdays input:not([type=checkbox]),.uimenu .logdays input{width:5em;
+  min-height:var(--tap);text-align:center;flex:0 0 auto}
 /* Pushed to the end of the row so it reads as acting on the field beside it,
    and never shrunk below a tap target. */
 .logdays button{margin-left:auto;flex:0 0 auto;min-height:var(--tap)}
@@ -387,12 +393,13 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    characters wide, which is the number field's width above. */
 .setrow label{flex:0 0 auto}
 .setrow input[type=text]{flex:1 1 12em;min-width:0}
+.logset .setrow select{width:auto;flex:0 1 auto}
 .setrow .pill{flex:0 0 auto}
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
-  flex:1 1 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
+  flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-body);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
@@ -1171,7 +1178,7 @@ input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
 @media(max-width:600px){
   .todoadd{flex-wrap:wrap}
   .todoadd input{flex:1 1 100%}
-  .todoadd button{flex:1 1 auto}
+  .todoadd button{flex:0 0 auto}
 }
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
@@ -1882,17 +1889,29 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A control never spans its container. The cap goes on the ROW where there
+   is one — an action bar, a filter bar, a picker row, an add form — so the
+   controls in it stop short together and are not capped a second time
+   inside it; a lone control takes the cap itself. The union of a row's
+   controls is what uniform.mjs measures, against the surface holding it.
+   Terminals and logs are not controls and are not here. */
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts){
+  max-width:min(var(--ctl-w),88%)}
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+  max-width:min(var(--ctl-w),88%)}
 .actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
 .actbar .state{flex:1 1 100%;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 .actbar .lead{margin-right:auto}
+/* A select in a bar is one control among its buttons, sized like them —
+   not the field-that-owns-its-row width the skin gives a select. */
+.actbar select{width:auto;flex:0 0 auto}
+.actbar input{width:auto;flex:0 1 12em;min-width:0}
 @media(max-width:600px){
-  .actbar button,.actbar select{flex:1 1 auto;min-height:var(--tap)}
-  /* ...except a lone destructive one. Sharing the width makes a SET of
-     buttons even, which is the point; doing it to a single Forget this makes
-     the one irreversible control on the screen the biggest thing on it. It
-     keeps the finger height and gives up the width. A lone Apply still
-     stretches — that one is the section's whole purpose. */
-  .actbar button.danger:only-of-type{flex:0 0 auto}
+  /* The finger height, and nothing of the width: a phone's action bar used
+     to share the row between its buttons, which made every set of two span
+     the screen edge to edge — the shape the width rule above forbids. The
+     buttons keep their own size and sit at the right, as on a desktop. */
+  .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
 }
 button[aria-busy="true"]{opacity:.75}
 
@@ -7126,8 +7145,16 @@ async function openDevEnv(project, instance){
 // the node has tailscale. public is named as unbuilt rather than hidden, so
 // the record's third mode is visible for what it is. Drawn only for an
 // instance that publishes something or already has a route set.
+// A route picked and not yet applied, per instance — the tab redraws when
+// the daemon answers, and a pick a redraw put back could never be applied.
+const dmRouteDraft = {};
+
 function dmRouteLine(d){
   const r = d.route;
+  const draft = dmRouteDraft[`${d.project}|${d.instance}`] || {};
+  const mode = draft.mode ?? r?.mode, port = String(draft.port ?? r?.port ?? "");
+  const dirty = (draft.mode != null && draft.mode !== r?.mode)
+             || (draft.port != null && String(draft.port) !== String(r?.port ?? ""));
   if (!r || (!r.ports?.length && r.mode === "lan" && !r.url)) return "";
   const link = r.url
     ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url)}</a>`
@@ -7136,11 +7163,12 @@ function dmRouteLine(d){
                  ["funnel", r.funnel_ok ? "funnel — a public https URL via Tailscale" : "funnel — needs tailscale on the node"],
                  ["public", "public — not built"]];
   return `<div class="sub dmroute">${link}${r.why ? ` <span class="dim">— ${esc(r.why)}</span>` : ""}
-    <select data-route="mode" aria-label="route" title="how this instance is reached">${
-      modes.map(([v, l]) => `<option value="${v}"${v === r.mode ? " selected" : ""}${
+    <select data-route="mode" data-was="${esc(r.mode)}" aria-label="route" title="how this instance is reached">${
+      modes.map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}${
         v === "public" || (v === "funnel" && !r.funnel_ok) ? " disabled" : ""}>${esc(l)}</option>`).join("")}</select>${
-    r.ports?.length > 1 ? `<select data-route="port" aria-label="port" title="which published port">${
-      r.ports.map(p => `<option value="${p}"${p === r.port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}</div>`;
+    r.ports?.length > 1 ? `<select data-route="port" data-was="${esc(String(r.port))}" aria-label="port" title="which published port">${
+      r.ports.map(p => `<option value="${p}"${String(p) === port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}
+    <button type="button" data-routeapply${dirty ? "" : " disabled"} title="save the route">Apply</button></div>`;
 }
 
 function dockerJob(){
@@ -7696,15 +7724,30 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
   });
-  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = async () => {
+  // The route is saved on Apply, not on the pick (docs/design-language.md,
+  // Settings): a pick wakes the button when it differs from what is saved.
+  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = () => {
     const row = sel.closest("[data-inst]");
+    const d = dmRouteDraft[row.dataset.inst] || (dmRouteDraft[row.dataset.inst] = {});
+    d[sel.dataset.route] = sel.value;
+    const dirty = [...row.querySelectorAll("[data-route]")].some(x => x.value !== x.dataset.was);
+    if (!dirty) delete dmRouteDraft[row.dataset.inst];
+    const b = row.querySelector("[data-routeapply]");
+    if (b) b.disabled = !dirty;
+  });
+  el.querySelectorAll("[data-routeapply]").forEach(btn => btn.onclick = async () => {
+    const row = btn.closest("[data-inst]");
     const [project, instance] = row.dataset.inst.split("|");
-    const mode = row.querySelector('[data-route="mode"]')?.value || "lan";
+    const sel = row.querySelector('[data-route="mode"]');
+    const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
-    if (mode === "funnel" && sel.dataset.route === "mode" && !confirm(
+    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
         `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
         + `https URL on the node — anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){ sel.value = "lan"; return; }
+        + `route back to lan closes it.`)){ sel.value = sel.dataset.was; btn.disabled = true;
+          delete dmRouteDraft[row.dataset.inst]; return; }
+    delete dmRouteDraft[row.dataset.inst];
+    busy(btn, "Applying");
     try{
       const r = await fetch("/api/devapp", {method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -10484,6 +10527,7 @@ project can have several"
   // used to be a commit before the finger left the button.
   // {component -> part}, "" being the project's own.
   let verPending = {};
+  let verPolicyPending = null;   // a picked policy, until Save writes it
 
   async function loadVersion(){
     const box = $("verBox");
@@ -10539,13 +10583,18 @@ project can have several"
     // Published to the panel-level Save/Revert, which live outside this
     // closure. Rebound on every draw so they always close over this
     // notebook's own state rather than whichever one drew last.
-    verStagedCount = () => Object.keys(verPending).length;
-    verClearStaged = () => { verPending = {}; drawVersion(); };
+    verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
+    verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
     verCommitStaged = async () => {
       const parts = Object.entries(verPending);
-      if (!parts.length) return "";
-      verPending = {};
+      const policy = verPolicyPending;
+      if (!parts.length && policy == null) return "";
+      verPending = {}; verPolicyPending = null;
       const done = [];
+      if (policy != null){
+        const j = await postVersion({action: "policy", policy}, true);
+        if (j && !j.error) done.push(`Claude access: ${POLICY_LABEL[policy] || policy}`);
+      }
       for (const [comp, part] of parts){
         const j = await postVersion({action: "bump", part, component: comp},
                                     true);
@@ -10660,8 +10709,13 @@ project can have several"
       // indistinguishable from one that did nothing.
       finally { b.disabled = false; }
     });
+    // Staged like a bump, written by the foot's Save (docs/design-language.md,
+    // Settings): picking the saved value back clears the stage.
     const pol = $("verPolicy");
-    if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
+    if (pol) pol.onchange = () => {
+      verPolicyPending = pol.value === pol.dataset.was ? null : pol.value;
+      drawVersion(); syncSave();
+    };
   }
 
   // "Ships something else from here?" — the door to a component's own
@@ -10768,12 +10822,13 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
         </div>
         ${v.component ? "" : `<label class="verpol">
           <span>Claude access</span>
-          <select id="verPolicy"
+          <select id="verPolicy" data-was="${esc(v.policy)}"
             aria-label="which parts of the version a Claude session may move">
             ${(v.policies || []).map(o => `<option value="${o}"${
-              o === v.policy ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
+              o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
             ).join("")}
-          </select>
+          </select>${verPolicyPending != null
+            ? `<span class="vermark">staged: on Save</span>` : ""}
         </label>`}
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops

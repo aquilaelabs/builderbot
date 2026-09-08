@@ -14,6 +14,10 @@ let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";
 let usersMeta = {owner: "", me: "", roles: [], projects: []};
 let usersEditing = "";           // the row whose projects are open, if any
+// A role picked and not yet saved, per account: the tab redraws on the
+// poll, and a pick that a redraw put back would be a Save that could never
+// be pressed. Cleared by the save, or by picking the saved role again.
+const usersRoleDraft = {};
 
 function openUsersTab(){
   openTab({kind: "users", arg: "__users", label: "Users"});
@@ -80,10 +84,13 @@ function userRow(u){
       <span class="state">${esc(seen)}</span>
       ${u.role === "user" ? `<button type="button" data-uprojects="${esc(u.name)}"
         >${usersEditing === u.name ? "Done" : "Projects"}</button>` : ""}
-      ${isOwner ? "" : `<select data-urole="${esc(u.name)}" aria-label="role for ${esc(u.name)}">${
+      ${isOwner ? "" : `<select data-urole="${esc(u.name)}" data-was="${esc(u.role)}"
+        aria-label="role for ${esc(u.name)}">${
         usersMeta.roles.filter(r => r !== "owner").map(r =>
-          `<option value="${esc(r)}"${r === u.role ? " selected" : ""}>${esc(r)}</option>`).join("")}
-      </select>`}
+          `<option value="${esc(r)}"${r === (usersRoleDraft[u.name] || u.role) ? " selected" : ""}>${esc(r)}</option>`).join("")}
+      </select><button type="button" data-urolesave="${esc(u.name)}"${
+        usersRoleDraft[u.name] && usersRoleDraft[u.name] !== u.role ? "" : " disabled"}
+        title="save the role">Save</button>`}
       <button type="button" data-upasswd="${esc(u.name)}">Password</button>
       ${isOwner
         ? `<button type="button" class="danger" disabled
@@ -167,8 +174,20 @@ function wireUsers(el){
                 + `have signed in with stops working on the next request.`))
       usersAct({action: "remove", name: n});
   });
-  el.querySelectorAll("[data-urole]").forEach(sel => sel.onchange = () =>
-    usersAct({action: "role", name: sel.dataset.urole, role: sel.value}));
+  // A role is saved on Save, not on the change: the select is a question
+  // and the button is the answer (docs/design-language.md, Settings).
+  el.querySelectorAll("[data-urole]").forEach(sel => sel.onchange = () => {
+    if (sel.value === sel.dataset.was) delete usersRoleDraft[sel.dataset.urole];
+    else usersRoleDraft[sel.dataset.urole] = sel.value;
+    const b = el.querySelector(`[data-urolesave="${CSS.escape(sel.dataset.urole)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-urolesave]").forEach(b => b.onclick = async () => {
+    const name = b.dataset.urolesave, role = usersRoleDraft[name];
+    if (!role) return;
+    delete usersRoleDraft[name];
+    await usersAct({action: "role", name, role});
+  });
   el.querySelectorAll("[data-upasswd]").forEach(b => b.onclick = () => {
     const n = b.dataset.upasswd;
     const pw = prompt(`New password for ${n} — at least 8 characters.\n\n`

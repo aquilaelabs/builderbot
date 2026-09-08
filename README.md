@@ -1535,7 +1535,8 @@ failure, because the workflow file is the repo's and this is advice. A
 dispatch is a deliberate act, not a workflow that forgot.
 
 **How an instance is reached.** Each running instance on the Docker manager
-carries its route: the URL, and a picker for the mode. **lan** is the
+carries its route: the URL, a picker for the mode, and Apply, which is what
+writes the pick — a pick alone changes nothing. **lan** is the
 published port at the node's own address, what the manager always linked.
 **funnel** is Tailscale Funnel on the node — a public https URL at the node's
 MagicDNS name with no DNS, certificate or firewall change — applied by the
@@ -1565,7 +1566,15 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 ### The Settings tab
 
 The gear in the header keeps what belongs to this **browser** — theme and
-layout — and one entry, **All settings…**, opening the Settings tab: what the
+layout — and one entry, **Profile…**, opening the signed-in account's own
+tab: their name and email, the name and email their commits carry (blank
+means the ones above), and a password change that asks for the current one
+first. The commit identity is per account rather than per project, and
+reaches every session and shell that account opens as git's environment,
+which outranks whatever a repository has configured — so two people on one
+project are two authors. The **Administration** card on the sidebar, shown
+only to administrators, holds **Controller settings**, opening the Settings
+tab, and **Users**. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions — end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
@@ -3127,7 +3136,7 @@ one in the morning, every `bb` verb stopped, and there was no tab to open.
 
 #### Accounts
 
-The Tools card's **Users** tab adds people. There is exactly one **owner**,
+The Administration card's **Users** tab adds people. There is exactly one **owner**,
 undeletable and renameable; an **admin** can do everything except act on the
 owner; a **user** gets the projects you give them and the work inside them,
 but not deleting one, renaming one, or changing which node it builds on — a
