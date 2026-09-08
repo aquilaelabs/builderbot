@@ -902,5 +902,46 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      'none of which touches the owner');
 }
 
+// ---- the Profile tab: an account's own settings -----------------------
+// Anybody signed in, about themselves only: name and email, the git identity
+// their commits carry, and a password change that asks for the current one
+// first — a browser left signed in is not enough to lock its owner out. The
+// throwaway account, because the suite's own credential must keep working.
+{
+  // Made here: the tabmade account above was removed by the flow that tests
+  // removing one.
+  await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'add', name: 'profiled', password: 'tabmadepw1', role: 'user' }) })).json());
+  const H = pw => ({ Authorization: 'Basic ' + Buffer.from(`profiled:${pw}`).toString('base64'),
+                     'Content-Type': 'application/json' });
+  const api = async (pw, body) => {
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/profile',
+      body ? { method: 'POST', headers: H(pw), body: JSON.stringify(body) } : { headers: H(pw) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  const me = await api('tabmadepw1');
+  ok(me.status === 200 && me.body.name === 'profiled' && me.body.role === 'user',
+     'a user reads its own profile, which the admin gate does not cover');
+  const saved = await api('tabmadepw1', { action: 'save', profile: { full_name: 'Tab Made', email: 'tab@example.invalid' } });
+  ok(saved.status === 200 && saved.body.git.name === 'Tab Made' && saved.body.git.email === 'tab@example.invalid',
+     '...and sets its name and email, which its commits then carry');
+  const wrong = await api('tabmadepw1', { action: 'password', current: 'nope-nope', password: 'tabmadepw2' });
+  ok(wrong.status === 400 && /current password/.test(wrong.body.error || ''),
+     'a password change with the wrong current password is refused');
+  const right = await api('tabmadepw1', { action: 'password', current: 'tabmadepw1', password: 'tabmadepw2' });
+  ok(right.status === 200 && (await api('tabmadepw2')).status === 200 && (await api('tabmadepw1')).status === 401,
+     '...and with the right one the new password signs in and the old one does not');
+  // The Profile tab itself, on the owner's page, and the Administration card
+  // beside it: the card is an administrator's and this page is one.
+  await page.evaluate(() => openProfileTab());
+  await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
+  ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
+                                          && !!el.querySelector('#pfPasswd')),
+     'the Profile tab names the account and carries Save and Change password');
+  ok(await page.$eval('#cardAdmin', el => !el.hidden && !!el.querySelector('#bSettings') && !!el.querySelector('#bUsers')),
+     'the Administration card holds Controller settings and Users, and an administrator sees it');
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

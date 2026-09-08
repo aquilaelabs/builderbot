@@ -188,6 +188,70 @@ def prefs(u):
     return dict(p) if isinstance(p, dict) else {}
 
 
+# What an account may say about itself on its Profile tab, and how long
+# each may be. Whitelisted by name: the store is read on the login path and
+# holds password hashes, so nothing arbitrary is parked in it.
+PROFILE_FIELDS = {"full_name": 120, "email": 200, "git_name": 120, "git_email": 200}
+
+
+def profile(u):
+    """The account's own settings, for its Profile tab: never a credential."""
+    p = prefs(u)
+    return {k: str(p.get(k) or "")[:n] for k, n in PROFILE_FIELDS.items()}
+
+
+def git_identity(u):
+    """The name and email this account's commits carry: its git identity
+    where it set one, else its real name and email, else its account name.
+
+    Per ACCOUNT, not per project: two people working on one project are
+    two authors, and a repo-level user.name would make them one. It reaches
+    a session as git's environment (bb-tty exports GIT_AUTHOR_* and
+    GIT_COMMITTER_*), which outranks any config a repository carries, so a
+    project set up under the old per-project identity commits as the person
+    at the keyboard all the same.
+    """
+    p = profile(u)
+    name = p["git_name"] or p["full_name"] or str((u or {}).get("name") or "")
+    email = p["git_email"] or p["email"]
+    if name and not email:
+        email = f"{re.sub(r'[^A-Za-z0-9._-]+', '-', name).strip('-').lower() or 'user'}@builderbot.local"
+    return {"name": name, "email": email}
+
+
+def git_env(u):
+    """The four variables git reads ahead of any config, for a subprocess
+    committing on this account's behalf; {} for a principal that is nobody."""
+    g = git_identity(u)
+    if not g["name"]:
+        return {}
+    return {"GIT_AUTHOR_NAME": g["name"], "GIT_AUTHOR_EMAIL": g["email"],
+            "GIT_COMMITTER_NAME": g["name"], "GIT_COMMITTER_EMAIL": g["email"]}
+
+
+def profile_set(name, patch):
+    """Merge the Profile tab's fields — PROFILE_FIELDS only, each capped."""
+    keep = {}
+    for k, n in PROFILE_FIELDS.items():
+        if k in patch:
+            keep[k] = " ".join(str(patch.get(k) or "").split())[:n]
+    if not keep:
+        return {"error": "nothing here is a profile field"}
+    if keep.get("email") and "@" not in keep["email"]:
+        return {"error": "the email needs an @ in it"}
+    if keep.get("git_email") and "@" not in keep["git_email"]:
+        return {"error": "the git email needs an @ in it"}
+    return prefs_set(name, keep)
+
+
+def change_password(name, current, new):
+    """An account changing its OWN password: the current one is checked
+    first, so a browser left signed in is not enough to lock its owner out."""
+    if not authenticate(name, current or ""):
+        return {"error": "the current password is not right"}
+    return set_password(name, new)
+
+
 def prefs_set(name, patch):
     """Merge into an account's prefs. Keys are whitelisted by the caller —
     this is reached from a signed-in browser, so an unbounded dict here would

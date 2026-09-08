@@ -76,6 +76,10 @@ const DRIVERS = {
     open: () => page.evaluate(() => openUsersTab()),
     readyWhen: '.userstab .urow',
   },
+  profile: {
+    open: () => page.evaluate(() => openProfileTab()),
+    readyWhen: '.profiletab .setrow',
+  },
 };
 
 // Every kind that renders a document, from the page's own registry — never a

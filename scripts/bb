@@ -3273,8 +3273,12 @@ cmd_settings() {
     [ "${1:-}" = --json ] && json=1
     proj="${BB_PROJECT:-${BB_VERSION_PROJECT:-}}"
     if [ -z "$proj" ]; then
-        proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+        # --json from a shell with no project still answers: the commit
+        # identity in it is the account's, and bb-tty asks for a shell too.
+        proj="$(project_here 2>/dev/null)" || {
+            [ "$json" = 1 ] || die "not inside a project under ${WORKSPACE} — cd into one first"
+            proj=""
+        }
     fi
     BB_SETTINGS_JSON="$json" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$(dirname "$(readlink -f "$0")")/dashboard" "$proj" <<'PY'
@@ -3292,10 +3296,29 @@ except (OSError, ValueError):
     locks = []
 rec["locked"] = proj in (locks if isinstance(locks, list) else [])
 rec["project"] = proj
-# The commit identity is the project's own setting (prefs.py), for a session
-# on a node to write into the tree it works in (bb-tty's git_identity).
-rec["git_name"] = rec.get("git_name") or ""
-rec["git_email"] = rec.get("git_email") or ""
+# The commit identity is the ACCOUNT's (users.py's git_identity), for bb-tty
+# to put in a session's environment: BB_ACCOUNT_UID names the seat, and no
+# seat means the owner's. Read from the store directly rather than through
+# users.py, which wants the dashboard's configure(); the shape is two fields.
+def _identity(uid):
+    try:
+        with open(os.path.join(state, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return "", ""
+    for name, u in store.items():
+        if not isinstance(u, dict):
+            continue
+        if (uid and u.get("uid") == uid) or (not uid and u.get("role") == "owner"):
+            pr = u.get("prefs") if isinstance(u.get("prefs"), dict) else {}
+            gname = str(pr.get("git_name") or pr.get("full_name") or name)
+            gemail = str(pr.get("git_email") or pr.get("email") or "")
+            if gname and not gemail:
+                import re as _re
+                gemail = (_re.sub(r"[^A-Za-z0-9._-]+", "-", gname).strip("-").lower() or "user") + "@builderbot.local"
+            return gname, gemail
+    return "", ""
+rec["git_name"], rec["git_email"] = _identity(os.environ.get("BB_ACCOUNT_UID", ""))
 if os.environ.get("BB_SETTINGS_JSON") == "1":
     print(json.dumps(rec))
     raise SystemExit(0)

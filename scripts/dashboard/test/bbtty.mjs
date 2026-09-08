@@ -45,6 +45,7 @@ case "\${1:-}" in
            fi ;;
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
   rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
+  settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid"}\\n' ;;
   # The gate bb-tty asks before starting a session: exit 0 means the
   # environment block is from another compatibility window and no session
   # should start. Answered from an env var the cases below flip, the way the
@@ -99,6 +100,13 @@ await sleep(400);
 ok(!/command too long/.test(out),
    'a roadmap past tmux\'s 16KB command limit does not stop the session starting');
 ok(alive('claude-alpha'), '...the session is really there');
+// The account's commit identity rides into the session as git's environment
+// — GIT_AUTHOR_* and GIT_COMMITTER_*, which outrank any user.name a
+// repository carries — from bb settings --json, which the stub answers.
+const genv = k => { try { return execFileSync('tmux', ['show-environment', '-t', 'claude-alpha', k], { encoding: 'utf8' }).trim(); } catch { return ''; } };
+ok(genv('GIT_AUTHOR_NAME') === 'GIT_AUTHOR_NAME=Pat Tester'
+   && genv('GIT_COMMITTER_EMAIL') === 'GIT_COMMITTER_EMAIL=pat@example.invalid',
+   `the session carries the account's commit identity as git's environment (${genv('GIT_AUTHOR_NAME') || 'unset'})`);
 const cmd = paneCmd();
 ok(cmd.length < 200 && /claude-run-alpha\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');

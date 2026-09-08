@@ -140,7 +140,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 4 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
@@ -1385,10 +1385,17 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   // controller-scoped (docs/nodes.md §13); the gear keeps this browser's
   // items and the door.
   await page.click('#bCards');
-  await page.waitForSelector('#uiSettings');
+  await page.waitForSelector('#uiProfile');
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logApply')),
      'the gear holds appearance and a door, not the log policy');
-  await page.click('#uiSettings');
+  // The door to the controller's settings is the Administration card's
+  // now; the gear's door is the account's own Profile tab.
+  await page.click('#uiProfile');
+  await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
+  ok(true, "the gear's door opens the account's Profile tab");
+  await page.evaluate(() => { const c = document.getElementById('cardAdmin');
+    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
+  await page.click('#bSettings');
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');
   await page.click('.settingstab #logApply');
