@@ -30,17 +30,23 @@ DASH="$(dirname "$HERE")"
     die()  { printf '[dashboard-test] ERROR: %s\n' "$*" >&2; exit 1; }
 }
 
-export NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}"
+# Missing pieces FAIL, by name. They used to print [skip] and exit 0, and
+# on a node — where the runner's jobs had no node or Playwright on PATH —
+# every CI run of this suite was green without running a test (bug B74).
+# A run that could not start is not a pass.
+#
+# The same search bb uses, for both: the module and the browsers live on the
+# store, and the /opt path is a symlink that only exists once the startup
+# hook has run. The checkout's bb, not the one on PATH: this harness tests
+# this tree, and the installed copy is whatever the running image shipped.
+NODE_PATH="$(bash "$DASH/../bb" shot --print-node-path 2>/dev/null \
+            || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
+export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
-    || { log "[skip] playwright is not installed in this image"; exit 0; }
-# The same search bb uses: the browsers live on the SDK share now, and the
-# /opt path is a symlink that only exists once the startup hook has run.
-# The checkout's bb, not the one on PATH: this harness tests this tree, and
-# the installed copy is whatever the running image shipped — which may not
-# know the flag yet.
+    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH) — on a node they are the playwright recipe in the packages store, installed from the Tools tab"
 CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
-[ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium — install it with: bb sdk install playwright"; exit 0; }
-command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
+[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb sdk install playwright"
+command -v tmux >/dev/null || die "tmux is not installed"
 
 # The port is picked, not fixed. It was 8093 for everybody, which meant a run
 # on this box and the CI job for the push that started it fought over one

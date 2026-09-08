@@ -3177,9 +3177,11 @@ cmd_git() {
 # image's global one. One rule for both machines: a node has only the store's,
 # and the controller prefers it so the two drive the same browser revisions.
 pw_node_path() {
-    local d; d="$(sdk_dir playwright 2>/dev/null)/node_modules"
-    if [ -d "$d" ]; then printf '%s:%s' "$d" "${NODE_PATH:-/usr/lib/node_modules}"
-    else printf '%s' "${NODE_PATH:-/usr/lib/node_modules}"; fi
+    local d rest; d="$(sdk_dir playwright 2>/dev/null)/node_modules"
+    rest="${NODE_PATH:-/usr/lib/node_modules}"
+    if [ -d "$d" ]; then
+        case ":$rest:" in *":$d:"*) printf '%s' "$rest" ;; *) printf '%s:%s' "$d" "$rest" ;; esac
+    else printf '%s' "$rest"; fi
 }
 
 cmd_settings() {
@@ -4178,6 +4180,7 @@ cmd_shot() {
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
     if [ "${1:-}" = --print-chromium ]; then find_chromium; printf '\n'; return 0; fi
+    if [ "${1:-}" = --print-node-path ]; then pw_node_path; printf '\n'; return 0; fi
     while [ $# -gt 0 ]; do
         case "$1" in
             --auth)   auth="$2"; shift 2 ;;

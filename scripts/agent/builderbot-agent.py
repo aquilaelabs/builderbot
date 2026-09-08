@@ -775,6 +775,19 @@ def ci_log_dir(state):
     return os.path.join((state.get("stores") or {}).get("data") or "/tmp", "ci-logs")
 
 
+def runner_env_text(state):
+    """The runner's .env: the SAME environment sdk_env hands every other job
+    on this node, one KEY=VALUE per line, which the runner reads into every
+    job it runs. It carried only BB_CI_LOG_DIR until 8 Sep, so a CI job's
+    PATH was the bare system's — no node, no Playwright, no store — while a
+    session or a bb job on the same machine had the toolchain. The browser
+    suite then skipped with exit 0 and every 'dashboard tests' run on
+    bb-sandbox was green without running a test (bug B74). Sorted, so the
+    text is stable and runner_env_sync can compare it byte for byte.
+    """
+    return "".join(f"{k}={v}\n" for k, v in sorted(sdk_env(state).items()))
+
+
 def sdk_versions(state):
     """What `bb sdk versions` reports on this node: {name: version}.
 
@@ -1473,16 +1486,16 @@ class Agent:
         return st, r
 
     def runner_env_sync(self):
-        """An existing runner's .env, kept saying where this agent archives
-        CI logs. _apply_runner writes it at install; a runner installed
-        before this agent knew about it (bb-sandbox's was) kept archiving
-        under its own home. Rewritten when it differs, and the service
-        cycled so the runner reads it — only while it is idle: a restart
-        under a running job would kill the job."""
+        """An existing runner's .env, kept equal to what runner_env_text says
+        now: the node's toolchain and where CI logs are archived. _apply_runner
+        writes it at install; a runner installed before this agent knew a
+        line (bb-sandbox's was) ran with less. Rewritten when it differs, and
+        the service cycled so the runner reads it — only while it is idle: a
+        restart under a running job would kill the job."""
         d = RUNNER_DIR
         if not os.path.isfile(os.path.join(d, ".runner")):
             return
-        want = f"BB_CI_LOG_DIR={ci_log_dir(self.state)}\n"
+        want = runner_env_text(self.state)
         try:
             with open(os.path.join(d, ".env")) as f:
                 have = f.read()
@@ -1502,7 +1515,7 @@ class Agent:
         if who:
             with contextlib.suppress(OSError):
                 os.chown(os.path.join(d, ".env"), who["user"], who["group"])
-        log(f"runner: archiving CI logs under {ci_log_dir(self.state)}; restarting the runner to read it")
+        log("runner: its .env now carries the node's toolchain and the CI log directory; restarting the runner to read it")
         if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
             quiet = type("Q", (), {"say": staticmethod(lambda t: None)})()
             self._sh(quiet, ["bash", "./svc.sh", "stop"], cwd=d)
@@ -2835,16 +2848,16 @@ class Agent:
             return "failed", code
         with open(os.path.join(d, ".builderbot-labels"), "w") as f:
             f.write(",".join(labels))
-        # The runner reads .env into every job it runs. This is how the
-        # workflows' archive step finds the node's data store instead of
-        # the runner's own home — see ci_log_dir — and the directory is made
-        # here, readable, so the session account can read what lands in it.
+        # The runner reads .env into every job it runs: the node's toolchain,
+        # so CI sees what bb build sees, and where the workflows' archive
+        # step lands — see runner_env_text. The log directory is made here,
+        # readable, so the session account can read what lands in it.
         logs = ci_log_dir(self.state)
         self.own_dir(logs, who)
         with contextlib.suppress(OSError):
             os.chmod(logs, 0o755)
         with open(os.path.join(d, ".env"), "w") as f:
-            f.write(f"BB_CI_LOG_DIR={logs}\n")
+            f.write(runner_env_text(self.state))
         if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
             for verb in (["install", user], ["start"]):
                 if self._sh(job, ["bash", "./svc.sh", *verb], cwd=d) != 0:

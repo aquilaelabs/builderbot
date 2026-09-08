@@ -33,9 +33,11 @@ concurrency:
 
 jobs:
   dashboard:
-    # The BuilderBot container itself: the image already carries Playwright and
-    # Chromium, and the harness reports [skip] on an image that predates them
-    # rather than passing by omission.
+    # A node: Playwright and Chromium are its packages store's, on the PATH
+    # the runner's .env carries (the agent writes the same environment every
+    # bb job gets). The harness FAILS by name when they are missing rather
+    # than passing by omission — it skipped with exit 0 until 8 Sep, and every
+    # run here was green without a test (bug B74).
     runs-on: [self-hosted, bb-sandbox]
     # `bash` rather than the default `bash -e`, because that one difference is
     # pipefail — and the run below is piped into tee. Without it the tee's exit

@@ -1436,6 +1436,13 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const renv = existsSync(`${DIR}/runner/.env`) ? readFileSync(`${DIR}/runner/.env`, 'utf8') : '';
     ok(/^BB_CI_LOG_DIR=.*agentdata\/ci-logs$/m.test(renv) && existsSync(`${DIR}/agentdata/ci-logs`),
        'the runner\'s .env points its workflows\' archive step at the data store, and the directory is there');
+    // The rest of that file is the node's job environment: without it a CI
+    // job's PATH was the bare system's, and the browser suite skipped with
+    // exit 0 on every run (bug B74).
+    ok(/^SDK_ROOT=.*(agentpackages|fakeshare\/packages)$/m.test(renv)
+       && /^PATH=.*(agentpackages|fakeshare\/packages)/m.test(renv)
+       && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
+       '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');
     const rn = await until(async () => { const n = await nodeById(minted.id);
       return n.reported.services?.['actions-runner']?.installed ? n : null; });
     ok(rn && rn.reported.services['actions-runner'].name === 'agentbox'
