@@ -161,6 +161,27 @@ ok(/nothing changed here that a rule/.test(bb('check')),
   try { bb('check', 'design'); } catch (e) { out = String(e.stdout || ''); }
   ok(/FAIL  design/.test(out), 'a failing check fails by name, with a non-zero exit');
   ok(/checked by: false/.test(bb('show', 'design')), 'bb rules show prints the doc and the check');
+
+  // ---- the Stop hook (R31, step 2): a failing check refuses the stop ------
+  // Run the way Claude Code runs it: JSON on stdin, JSON on stdout. The
+  // design rule's check is `false` and src/new.txt is a changed file under
+  // its files, so the stop is refused with the failure; a stop a hook already
+  // refused once is let through; a passing check writes a stamp, and the same
+  // tree is not checked twice.
+  const cache = `${DIR}/cache-check`;
+  const stop = body => execFileSync('python3', [join(HERE, '..', 'bb-check-relay'), 'alpha', 'u_test'],
+    { env: { ...ENV, BB_TREE: `${DIR}/ws/alpha`, XDG_CACHE_HOME: cache }, input: JSON.stringify(body) }).toString();
+  const refused = stop({ stop_hook_active: false });
+  ok(/"decision": "block"/.test(refused) && /FAIL  design/.test(refused),
+     'the Stop hook refuses the stop with the failing check named');
+  ok(stop({ stop_hook_active: true }) === '',
+     '...but lets a stop through that a hook already refused once, so it never loops');
+  bb('edit', 'design', '--check', 'test -d .git');
+  ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/checked-alpha`),
+     'a passing check lets the stop go and stamps the tree');
+  bb('edit', 'design', '--check', 'false');
+  ok(stop({ stop_hook_active: false }) === '',
+     '...and the same tree is not checked again, even though the check would now fail');
 }
 
 // ---- reading them from a session -------------------------------------------

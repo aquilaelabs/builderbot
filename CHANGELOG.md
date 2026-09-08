@@ -269,3 +269,4 @@
 - The tab cap, Claude Code's auto-update and pin, your commit identity, packages installed at boot, the project bootstrap and the Unraid icon name are set on the Settings tab now, not in the container template (b2f2c43)
 - The Settings tab keeps only Claude Code's update switch and channel; a project's commit identity is set in its own settings dialog; packages come from the package manager, and web-ext ships in the image (180c416)
 - The Settings tab no longer carries a note about what stays in the container template (2e1d951)
+- A house rule can name the document that defines a framework and the command that checks it; bb rules check runs the checks for what you changed (2197366)
