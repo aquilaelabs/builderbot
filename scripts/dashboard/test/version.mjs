@@ -290,6 +290,25 @@ ok(/forgets its settings \([0-9a-f]{7}\)/.test(cl('--for', 'extension').out),
    '...stamped with the commit it describes');
 ok(cl('add', '').code !== 0, 'an empty entry is refused');
 
+// A change that tweaks something already logged this cycle corrects the
+// line rather than adding a second one about the same thing — the reader
+// should meet each change once, and the honest record is one line that is
+// right. Positional numbers, because the section is short-lived by design.
+cl('add', 'Pairing shows the code larger');
+const listed = cl('unreleased').out;
+ok(/^\s*1\s+Pairing works across screen switches\s+\([0-9a-f]{7}\)/m.test(listed)
+   && /^\s*2\s+Pairing shows the code larger/m.test(listed),
+   'bb changelog unreleased numbers the entries waiting for a bump');
+ok(cl('edit', '2', 'Pairing shows the code larger, and reads it aloud').code === 0,
+   'a session can reword an unreleased entry instead of logging the same thing twice');
+const reworded = cl().out;
+ok(/- Pairing shows the code larger, and reads it aloud \([0-9a-f]{7}\)/.test(reworded)
+   && !/code larger \(/.test(reworded) && /- Pairing works across/.test(reworded),
+   '...replacing the line in place with its commit stamp kept, and the others untouched');
+const missing = cl('edit', '9', 'Nothing here');
+ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
+   'an entry that is not there is refused, naming how many there are');
+
 // The bump dates the section, in the same commit that moves VERSION.
 mb('bump', 'patch');
 const rolled = cl().out;
@@ -299,6 +318,8 @@ ok(/## 2\.2\.1 — \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
    "the project's bump dates its Unreleased section");
 ok(/## Unreleased/.test(cl('--for', 'extension').out),
    "...and leaves the extension's still accruing");
+ok(cl('edit', '1', 'Rewriting history').code !== 0 && !/Rewriting history/.test(cl().out),
+   'a dated section is history: once bumped, nothing is left to edit');
 ok(execFileSync('git', ['-C', M, 'show', '--stat', '--format=', 'HEAD'], { env })
      .toString().includes('CHANGELOG.md'),
    '...with VERSION and CHANGELOG.md moving in one commit');

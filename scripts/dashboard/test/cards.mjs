@@ -1314,7 +1314,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
     const bad = [];
     for (const el of document.querySelectorAll('input,select,textarea')){
       const t = (el.type || el.tagName).toLowerCase();
-      if (t === 'checkbox' || t === 'radio' || t === 'hidden') continue;
+      if (t === 'checkbox' || t === 'radio' || t === 'hidden' || t === 'file') continue;
       if (!el.getBoundingClientRect().width) continue;
       const c = getComputedStyle(el);
       if (c.borderTopLeftRadius !== '6px' || c.borderTopWidth !== '1px'

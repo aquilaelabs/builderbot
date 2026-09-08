@@ -813,6 +813,8 @@ input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"]))
 textarea,select{
   background:var(--sunk);color:var(--ink);border:1px solid var(--line);
   border-radius:6px}
+input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
+
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .uimenu input,.uimenu textarea,.uimenu select,
@@ -3013,6 +3015,16 @@ body.dragging .tab .lbl{cursor:grabbing}
              placeholder="e.g. my-app">
       <div class="hint" id="pNameHint"></div>
       <div class="hint" id="pNamePreview" hidden></div>
+    </div>
+    <!-- A code base somebody already has, for a fresh local repo: unpacked
+         into the new directory before git init. Uploaded on Create rather
+         than on choosing, so a change of mind costs nothing. -->
+    <div class="field" id="pArchiveField">
+      <label for="pArchive">Start from an archive <span class="dim">— optional</span></label>
+      <input id="pArchive" type="file"
+             accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
+      <div class="hint">zip or tar (gz, bz2, xz), unpacked into the new directory
+        before git init; a single top-level folder inside is dropped.</div>
     </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
@@ -7953,7 +7965,7 @@ async function pkgAct(action, only){
 // failure so nothing typed is lost.
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pAboutField"] },
+           fields: ["pSrcField", "pNameField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
                     "pTokenField", "pKeyField"] },
@@ -7971,7 +7983,7 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pUrlField", "pPushField",
+  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pUrlField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
   // The deploy-key picker only appears when the agent actually holds keys:
@@ -11840,7 +11852,7 @@ become that version's section when it is created">Changelog${
   };
 }
 
-function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; $("pArchive").value = ""; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
@@ -11953,6 +11965,7 @@ $("pCreate").onclick = async () => {
   const mode = pMode, linkName = pLink, gen = pGen;
   const name = $("pName").value.trim(), url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
+  const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
     ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
     : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
@@ -11975,13 +11988,26 @@ $("pCreate").onclick = async () => {
           ? "GitHub is not authenticated — pick a deploy key"
           : "GitHub is not authenticated and the agent holds no deploy keys — set GITHUB_PAT, or add a key to /secrets/ssh and restart the container");
     }
+    // The archive goes first, on its own: the create request is a small
+    // JSON body and the upload is not, so the server spools the bytes and
+    // hands back an id the create quotes.
+    let archive = "";
+    if (file){
+      b.textContent = "Uploading…";
+      const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(file.name),
+                            {method: "POST", body: file});
+      const uj = await u.json().catch(() => ({}));
+      if (!u.ok) return fail(uj.error || `upload failed (HTTP ${u.status})`);
+      archive = uj.id;
+      b.textContent = "Creating…";
+    }
     const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name: linkName, url, key})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode, url, about: $("pAbout").value,
+          body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 key: mode === "clone" ? key : "",
                                 token: mode === "clone" ? $("pToken").value.trim() : "",
                                 push: mode === "clone" && $("pPush").checked})});

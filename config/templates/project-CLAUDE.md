@@ -380,6 +380,8 @@ version sits its changelog, and you write it:
 ```bash
 bb changelog add "Pairing no longer fails when you switch screens"
 bb changelog            # read it; --for DIR for a component's own
+bb changelog unreleased # what is waiting for a bump, numbered
+bb changelog edit 3 "…" # reword entry 3 rather than logging it twice
 ```
 
 A changelog line is not a commit message. The commit says what happened to
@@ -390,6 +392,15 @@ it describes), once per user-visible change rather than once per commit, and
 into the component the change belongs to. Entries accumulate under
 Unreleased; when the operator bumps the version they become that release's
 dated section, so nothing is lost while the number waits.
+
+**When a change tweaks something already logged this cycle, correct that
+line instead of adding one.** Read `bb changelog unreleased` before you log:
+if an entry there already describes the thing you just changed — a fix on a
+fix, a second pass over one feature — `bb changelog edit N "…"` rewords it,
+keeping its commit stamp and adding yours. Use your judgment: two lines about
+one change tell the reader about it twice, but a genuinely separate change
+is a new line. Only Unreleased is editable; a dated section is a release
+somebody may have read.
 
 **You very likely cannot move it, and that is the point.** Which parts a
 session may bump is a per-project setting the operator owns: the default is

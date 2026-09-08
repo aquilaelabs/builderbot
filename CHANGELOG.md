@@ -293,3 +293,4 @@
 - A session can no longer change its project's settings or send a job to a node other than its project's (e3c8b59)
 - A user account reads only the jobs, memories and node alerts of its own projects; the container log, the trash, the daemon's containers, the deploy keys and the command lists are an administrator's (e3c8b59)
 - The Memory tab shows and writes each account's own memories (e3c8b59)
+- A CLAUDE.md environment block that has only drifted no longer ghosts the project's Claude button; one from another compatibility window, or a node agent from one, stops that project's sessions until updated, with the update offered in the bell (34754d0)

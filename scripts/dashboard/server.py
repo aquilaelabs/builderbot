@@ -4110,6 +4110,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._agent()
         if not self._authed():
             return self._deny()
+        # The one body that is not JSON: an archive to start a project from,
+        # streamed to the spool by projects.spool_archive. Its own door
+        # before the JSON read, and its own cap — MAX_BODY is sized for a
+        # form, and an upload is not read into memory at all.
+        if self.path.split("?")[0] == "/api/upload-archive":
+            return self._upload_archive()
         req = self._read_json()
         if req is None:
             return None
@@ -5822,6 +5828,21 @@ class Handler(BaseHTTPRequestHandler):
                         pass          # the project exists; the sidebar is not
                                       # worth failing the create over
         return self._json(body, code)
+
+    def _upload_archive(self):
+        """Spool an archive for the create dialog; {id, name, size, kind}.
+        The same gate as create, because it is the first half of one — and
+        an upload that stops short of a project would otherwise be a way
+        for a user account to fill the controller's disk."""
+        if self._refused("create"):
+            return None
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._json({"error": "bad request"}, 400)
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        r = projects.spool_archive(self.rfile, n, (q.get("name") or [""])[0])
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _link(self, req):
         """Link an existing local repo to an empty GitHub repo. See projects.py."""

@@ -28,10 +28,14 @@ import contextlib
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
+import tarfile
+import tempfile
 import threading
 import time
+import zipfile
 from pathlib import Path
 
 # A personal access token belonging to ONE project.
@@ -1197,6 +1201,20 @@ def create(req):
         except OSError as e:
             return {"error": f"cannot create {name}: {e}"}, 500
     if mode == "init":
+        # An archive to start from: unpacked into the directory just claimed,
+        # BEFORE git init, so the tree is there for the CLAUDE.md draft and
+        # the first status. Anything wrong with it removes that directory —
+        # made a moment ago, so nobody else's.
+        arch = _field(req, "archive")
+        if arch:
+            r = unpack_archive(arch, dest)
+            if r.get("error"):
+                shutil.rmtree(dest, ignore_errors=True)
+                return r, 400
+            body, code = _init(dest, name, about, cloned=not about)
+            if code == 200:
+                body["note"] = f"{r['files']} files from {r['name']} — {body.get('note') or 'ready'}"
+            return body, code
         return _init(dest, name, about)
     global _dest
     _dest = dest
@@ -1214,12 +1232,235 @@ def create(req):
 _mkdir_lock = threading.Lock()
 
 
-def _init(dest, name, about):
+def _init(dest, name, about, cloned=False):
     r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
-    return {"ok": True, "name": name, "note": _write_md(dest, about, False)}, 200
+    return {"ok": True, "name": name, "note": _write_md(dest, about, cloned)}, 200
+
+
+# ---- starting from an archive ---------------------------------------------
+# A code base somebody already has — a zip from a download page, a tarball
+# off another machine — dropped into a new local repo. Uploaded first, into
+# a spool on this container's own disk, and named by a random id the create
+# request then quotes: the two steps keep the JSON API's body cap where it
+# is, and an upload nobody follows up on is swept on the next one. The spool
+# is container-local on purpose — it holds nothing worth keeping.
+SPOOL = Path(os.environ.get("BB_ARCHIVE_SPOOL") or
+             os.path.join(tempfile.gettempdir(), "builderbot-archives"))
+ARCHIVE_MAX = 512 * 1024 * 1024        # the upload, on the wire
+UNPACKED_MAX = 4 * 1024 * 1024 * 1024  # what it may become on disk
+MEMBERS_MAX = 200_000
+SPOOL_TTL = 30 * 60
+ARCHIVE_KINDS = "zip, tar, tar.gz (tgz), tar.bz2, tar.xz"
+# Junk that rides along in an archive made on a desktop and never belongs in
+# a repository: skipped rather than refused, and not worth a sentence.
+_JUNK = ("__MACOSX", ".DS_Store", "Thumbs.db")
+
+
+def spool_archive(stream, size, filename):
+    """Stream an upload into the spool; {id, name, size} or {error}.
+
+    Checked as an archive once it is on disk — zipfile and tarfile each
+    read their own signature — so a wrong file is refused now, with the
+    formats named, rather than at create time with a directory to undo.
+    """
+    if not 0 < size <= ARCHIVE_MAX:
+        return {"error": f"an archive is at most {ARCHIVE_MAX // (1024 * 1024)}MB here"}
+    name = os.path.basename(str(filename or "archive"))[:120] or "archive"
+    try:
+        SPOOL.mkdir(parents=True, exist_ok=True)
+        _sweep_spool()
+        aid = secrets.token_hex(8)
+        dest = SPOOL / aid
+        with open(dest, "wb") as f:
+            left = size
+            while left > 0:
+                chunk = stream.read(min(left, 1 << 20))
+                if not chunk:
+                    break
+                f.write(chunk)
+                left -= len(chunk)
+        if left:
+            dest.unlink(missing_ok=True)
+            return {"error": "the upload ended early — try again"}
+        kind = _archive_kind(dest)
+        if not kind:
+            dest.unlink(missing_ok=True)
+            return {"error": f"{name} is not an archive this can open — {ARCHIVE_KINDS}"}
+        (SPOOL / f"{aid}.name").write_text(name, encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not keep the upload: {e}"}
+    return {"id": aid, "name": name, "size": size, "kind": kind}
+
+
+def _sweep_spool():
+    now = time.time()
+    for f in SPOOL.iterdir():
+        with contextlib.suppress(OSError):
+            if now - f.stat().st_mtime > SPOOL_TTL:
+                f.unlink()
+
+
+def _archive_kind(path):
+    if zipfile.is_zipfile(path):
+        return "zip"
+    try:
+        if tarfile.is_tarfile(path):
+            return "tar"
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+def _strip_root(names):
+    """The one top-level directory every member sits under, or "". A zip
+    from GitHub or a tarball made with `tar czf app.tgz app/` wraps the tree
+    in a folder named after itself; the project directory IS that folder,
+    so a second layer would only make every path one deeper than anybody
+    expects."""
+    roots = set()
+    for n in names:
+        first = n.split("/", 1)[0]
+        if not first or first in _JUNK:
+            continue
+        roots.add(first)
+        if len(roots) > 1:
+            return ""
+    root = next(iter(roots), "")
+    # A single FILE at the top is not a wrapper; only a directory is.
+    return root if root and any(n.startswith(root + "/") for n in names) else ""
+
+
+def _member_ok(rel):
+    """A member path this will write: relative, inside the tree, not junk."""
+    if not rel or rel.startswith("/") or "\\" in rel:
+        return False
+    parts = rel.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        return False
+    return not any(p in _JUNK for p in parts)
+
+
+def unpack_archive(aid, dest):
+    """Unpack a spooled archive into `dest`; {files, name} or {error}.
+
+    Every member path is checked to land inside `dest` — an archive is a
+    list of paths somebody else wrote, and `../` or an absolute path in one
+    is the classic way to write outside the directory being filled. tar
+    goes through the data filter for the same reason (links out of the
+    tree, device nodes, setuid bits); zip is walked by hand because zipfile
+    has no filter of its own. Sizes are summed before anything is written,
+    so a small file that unpacks to a disk's worth is refused rather than
+    discovered.
+    """
+    if not re.fullmatch(r"[0-9a-f]{16}", str(aid or "")):
+        return {"error": "no such upload — choose the archive again"}
+    src = SPOOL / aid
+    if not src.is_file():
+        return {"error": "that upload has gone — uploads are kept for thirty minutes; choose the archive again"}
+    try:
+        name = (SPOOL / f"{aid}.name").read_text(encoding="utf-8").strip() or "archive"
+    except OSError:
+        name = "archive"
+    kind = _archive_kind(src)
+    try:
+        if kind == "zip":
+            n = _unzip(src, dest)
+        elif kind == "tar":
+            n = _untar(src, dest)
+        else:
+            return {"error": f"{name} is not an archive this can open — {ARCHIVE_KINDS}"}
+    except _Refused as e:
+        return {"error": f"{name}: {e}"}
+    except (OSError, zipfile.BadZipFile, tarfile.TarError, EOFError) as e:
+        return {"error": f"could not unpack {name}: {e}"}
+    finally:
+        with contextlib.suppress(OSError):
+            src.unlink()
+            (SPOOL / f"{aid}.name").unlink()
+    if n == 0:
+        return {"error": f"{name} holds no files"}
+    return {"files": n, "name": name}
+
+
+class _Refused(Exception):
+    pass
+
+
+def _check_budget(names, total):
+    if len(names) > MEMBERS_MAX:
+        raise _Refused(f"more than {MEMBERS_MAX} entries — too many for one project")
+    if total > UNPACKED_MAX:
+        raise _Refused(f"unpacks to more than {UNPACKED_MAX // (1 << 30)}GB")
+
+
+def _unzip(src, dest):
+    dest = dest.resolve()
+    with zipfile.ZipFile(src) as z:
+        infos = z.infolist()
+        _check_budget(infos, sum(i.file_size for i in infos))
+        root = _strip_root([i.filename for i in infos])
+        n = 0
+        for i in infos:
+            rel = i.filename
+            if root:
+                if rel == root or rel == root + "/":
+                    continue
+                if not rel.startswith(root + "/"):
+                    raise _Refused(f"{rel} sits outside {root}/")
+                rel = rel[len(root) + 1:]
+            if rel.endswith("/"):
+                continue                      # directories come with their files
+            if not _member_ok(rel):
+                if any(p in _JUNK for p in rel.split("/")):
+                    continue
+                raise _Refused(f"{i.filename} would land outside the project")
+            out = dest / rel
+            if dest not in out.resolve().parents:
+                raise _Refused(f"{i.filename} would land outside the project")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with z.open(i) as f, open(out, "wb") as g:
+                shutil.copyfileobj(f, g)
+            # Keep an executable bit a Unix zip recorded: a build script that
+            # arrives unrunnable is a small mystery for the first session.
+            mode = (i.external_attr >> 16) & 0o777
+            if mode & 0o111:
+                with contextlib.suppress(OSError):
+                    os.chmod(out, (mode | 0o600) & 0o777)
+            n += 1
+    return n
+
+
+def _untar(src, dest):
+    dest = dest.resolve()
+    with tarfile.open(src) as t:
+        members = t.getmembers()
+        _check_budget(members, sum(m.size for m in members if m.isfile()))
+        root = _strip_root([m.name for m in members])
+        keep = []
+        for m in members:
+            rel = m.name
+            if root:
+                if rel == root:
+                    continue
+                if not rel.startswith(root + "/"):
+                    raise _Refused(f"{rel} sits outside {root}/")
+                rel = rel[len(root) + 1:]
+            if any(p in _JUNK for p in rel.split("/")):
+                continue
+            if not (m.isfile() or m.isdir() or m.issym()):
+                continue                      # devices, fifos: not source
+            if not _member_ok(rel):
+                raise _Refused(f"{m.name} would land outside the project")
+            m.name = rel
+            keep.append(m)
+        # The data filter refuses what a repository never holds — links that
+        # point out of the tree, absolute names, setuid — and strips owner
+        # ids, which are another machine's anyway.
+        t.extractall(dest, members=keep, filter="data")
+        return sum(1 for m in keep if m.isfile())
 
 
 def _clone(dest, url, helper="", may_push_=False):

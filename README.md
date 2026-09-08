@@ -348,6 +348,9 @@ bb version policy  what a session may move here, and who decides
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
                    next version bump dates the accumulated lines
+bb changelog unreleased  the entries waiting for a bump, numbered
+bb changelog edit N "..."  reword one of them — a change that tweaks something
+                   already logged this cycle corrects its line rather than adding one
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
@@ -1094,7 +1097,14 @@ lives in its body. The cards:
   At the foot of the card, **New project…** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes the project section of a freshly built `CLAUDE.md` (environment
-  block from the image's template, your notes below the end marker). A clone
+  block from the image's template, your notes below the end marker). It can
+  also start from an archive you already have — zip, or tar with gzip, bzip2
+  or xz — unpacked into the new directory before `git init`: a single
+  top-level folder inside is dropped (the project directory *is* that
+  folder), desktop junk like `__MACOSX` is skipped, and with no notes typed
+  the `CLAUDE.md` is drafted from the unpacked files the way a clone's is.
+  Nothing is committed; the first session, or you, decides what the first
+  commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the
   container's own access — a deploy key or PAT that can already reach it —
   the directory takes the repository's name, and the `CLAUDE.md` project
