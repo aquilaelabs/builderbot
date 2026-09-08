@@ -1315,7 +1315,11 @@ case — could do everything except docker. The kind itself is gone now, and
 404. A node's **path mapping** — what this container's paths are called on
 that machine, which its daemon needs to resolve a compose file's bind
 sources — is on its row, and is where the old `DOCKER_HOST_PATHS` setting
-lives. Every change writes an audit row.
+lives. Every change writes an audit row. **Check**, beside the mapping,
+proves the two machines mean the same directory by the projects share: a
+marker is made under it here and looked for through the node's daemon, and
+the row says plainly whether it was found — the one pair nothing else
+verifies, and one that fails silently when it is wrong.
 
 **A node does everything for the projects bound to it.** There is nothing to
 pick per node — no "this one builds, that one deploys". A project names one
@@ -3092,6 +3096,17 @@ moment the one in its environment has expired. A long session therefore
 recovers by having its tab opened, and until it is, `bb` says the token
 expired and when — rather than "not signed in", which sent somebody looking
 for a sign-in that was never the problem.
+
+**And it renews itself while the session works.** Past half its life, every
+authenticated answer from the controller — a `bb` verb, the hook that runs
+on each prompt — carries a fresh token in an `X-BB-Session` header, and the
+client writes it into that same cache file; `bb` then sends whichever of
+its two tokens expires later. A session in use therefore never runs out; only
+one idle for twelve hours does, and that one is told to have its tab opened.
+An expired token is never renewed, which is what keeps twelve hours meaning
+something for one that leaked. This came from a session driven from the
+remote view overnight: the token from the tab it was started in ran out at
+one in the morning, every `bb` verb stopped, and there was no tab to open.
 
 #### Accounts
 

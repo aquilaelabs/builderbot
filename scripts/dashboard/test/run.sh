@@ -445,6 +445,10 @@ if [ -n "${DOCKER_HOST:-}" ] && [ -f "$ST/deadhosts" ] \
    && grep -qF "$DOCKER_HOST" "$ST/deadhosts"; then
   echo "cannot connect to the daemon at $DOCKER_HOST"; exit 1
 fi
+# The one-shot `run` the dev-data probe makes (mkdir, mv, test -d on one
+# share). Answers yes by default; run.testfail is the suite saying the marker
+# is NOT over there — a clean exit 1 with nothing said, as `test -d` does.
+if [ "$1" = run ] && [ -f "$ST/run.testfail" ]; then exit 1; fi
 case "$1" in
   # A daemon that is not there at all — the VM powered off, or an address that
   # is not a sandbox VM. availability is what the page gates every Docker

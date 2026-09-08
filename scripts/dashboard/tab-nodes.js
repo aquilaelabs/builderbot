@@ -256,12 +256,17 @@ function nodeAdvancedSection(n, stale, inflight){
     <div class="sub">Path mapping — what this container's paths are called on the node, for its
       daemon to resolve a compose file's bind mounts. With the projects share mounted at
       <code>/workspace</code> on both machines it is the identity, and this can stay blank.</div>
-    <div class="ndpaths">
+    <div class="ndpaths actbar">
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping">
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
+      <button type="button" data-nd="check-paths"
+        title="prove the two machines mean the same directory by the projects share: a marker is made
+               under it here and looked for through the node's daemon. Nothing else verifies the pair,
+               and a wrong one fails silently — an empty directory where the project should be">Check</button>
     </div>
+    <div class="sub ndcheck" hidden></div>
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
         to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
@@ -804,7 +809,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
       // actions whose effect the row cannot see at once — beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", paths: "Saving"}[act] || "Working");
+               retire: "Removing", paths: "Saving", "check-paths": "Checking"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -817,6 +822,19 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         const inp = box.querySelector('[data-k="paths"]');
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
         const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
+        return;
+      }
+      if (act === "check-paths"){
+        // Roadmap #13. Like Test: the verdict goes on the row's own line,
+        // found again after nodeAct's repaint replaced the one clicked.
+        const out = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndcheck`);
+        if (out){ out.hidden = false; out.textContent = "checking…"; }
+        const j = await nodeAct({action: "check-paths", id});
+        const now = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndcheck`) || out;
+        if (!now) return;
+        now.hidden = false;
+        now.textContent = j.error || j.why || (j.same ? "the same directory" : "not the same directory");
+        now.classList.toggle("warn", !j.same);
         return;
       }
       if (act === "test"){

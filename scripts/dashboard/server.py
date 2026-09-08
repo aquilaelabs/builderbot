@@ -2965,7 +2965,14 @@ class Handler(BaseHTTPRequestHandler):
             # A session's scoped token: one project, user rights, an expiry.
             # Never a person, so it can do what a user can do on that project
             # and nothing else (bug #16).
-            return users.session_principal(hdr[7:].strip())
+            tok = hdr[7:].strip()
+            who = users.session_principal(tok)
+            # Past half its life, the answer to this request carries a fresh
+            # one (users.renewal): set here, sent by _json, so a session in
+            # use never runs out. Reset per request — the handler instance
+            # outlives one.
+            self._renewed = users.renewal(tok) if who else ""
+            return who
         if hdr.startswith("Basic "):
             try:
                 given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
@@ -3454,6 +3461,12 @@ class Handler(BaseHTTPRequestHandler):
         body, zipped = self._gzip(json.dumps(obj).encode())
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        # A session token's renewal, when _who decided one was due: bb and
+        # the hooks read this header and write the token where bb looks.
+        fresh = getattr(self, "_renewed", "")
+        if fresh:
+            self.send_header("X-BB-Session", fresh)
+            self._renewed = ""
         # no-store, declared rather than assumed: preloading /api/status made
         # it cache-eligible, and a reload that revived a stale layout snapshot
         # from the browser cache then overwrote the real one on the next save.
@@ -4028,6 +4041,12 @@ class Handler(BaseHTTPRequestHandler):
             # What this container's paths are called on the node's machine
             # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
             r = nodes.node_paths_set(self._principal(), nid, field(req, "paths"))
+        elif act == "check-paths":
+            # Whether the two machines mean the same directory by the
+            # projects share (roadmap #13): a marker made here, looked for
+            # through the node's daemon. Off the poll, on purpose.
+            r = ({"error": "no such node"} if not nodes.node(nid)
+                 else devapp.check_paths(nid))
         elif act == "funnel":
             # Tailscale Funnel for a port on the node, raw: the manager's
             # route picker goes through the instance's record; this is the

@@ -848,6 +848,17 @@ ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
 ok(/\bdone\b/.test(afterDone) && /\bremove\b/.test(afterDone),
    '...which is what tells "ticked off" apart from "dropped": both leave, '
    + 'and only the log says which happened');
+// ...and its number is never handed out again (bug B72): a number is the
+// item's own, and "a gap means something was removed" only holds if nothing
+// is numbered twice. It used to be max(on the list)+1, so ticking the
+// newest items off gave their numbers to the next adds.
+{
+  const next = bbTodo('add', 'the number after a finished one');
+  const nid = Number((next.match(/added R(\d+)/) || [])[1]);
+  ok(nid > Number(finId),
+     `a finished item's number is not reused — the next add is R${nid}, after R${finId}`);
+  bbTodo('rm', String(nid), 'numbering fixture');
+}
 ok(!bbTodo('--prompt').includes('a job to finish'),
    '...so the next session is not handed work that is already finished');
 

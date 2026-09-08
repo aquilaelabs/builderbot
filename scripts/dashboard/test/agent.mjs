@@ -517,6 +517,52 @@ print(json.dumps(sorted(os.listdir(d))))
     const listed = await relay({ argv: ['roadmap'] });
     ok(listed.code === 0 && /relayed from a node/.test(listed.out),
        '...against the project the token was minted for, with no cwd sent at all');
+
+    // ---- renewal: a session in use never runs out ------------------------
+    // A token lasts twelve hours and a working session ran past it overnight:
+    // every bb verb stopped, and from the remote view there was no tab to
+    // open. So past half its life every authenticated answer carries a fresh
+    // one (users.renewal, X-BB-Session), bbapi writes it where bb looks, and
+    // bb prefers whichever of its two expires later.
+    {
+      const mint = ttl => execFileSync('python3', ['-c', `
+import importlib.util, os, json
+spec = importlib.util.spec_from_file_location('users', ${JSON.stringify(`${REPO}/scripts/dashboard/users.py`)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def wj(path, d):
+    tmp = str(path) + '.new'
+    with open(tmp, 'w') as f: json.dump(d, f, indent=2)
+    os.replace(tmp, path)
+m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
+print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
+      const expOf = t => Number(Buffer.from(t.slice(4), 'base64url').toString().split('|')[1]);
+      const short = mint(3600);
+      const raw = await fetch(URL.replace(/\/$/, '') + '/api/v1/bb', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + short, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ argv: ['roadmap'] }) });
+      const fresh = raw.headers.get('x-bb-session') || '';
+      ok(raw.status === 200 && /^bbs_/.test(fresh) && expOf(fresh) - expOf(short) > 6 * 3600
+         && Buffer.from(fresh.slice(4), 'base64url').toString().startsWith('alpha|'),
+         `an answer to a token past half its life carries a fresh one for the same project (${fresh.slice(0, 8)}…)`);
+      const full = await fetch(URL.replace(/\/$/, '') + '/api/v1/bb', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ argv: ['roadmap'] }) });
+      ok(full.status === 200 && !full.headers.get('x-bb-session'),
+         '...and one with most of its life left is left alone');
+      // bb itself, on a node, with the short token in its environment: the
+      // renewed one lands in the cache file, and the next call sends THAT.
+      const cache = `${DIR}/cache-renew`;
+      const env = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                    BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache };
+      execFileSync('bash', [`${REPO}/scripts/bb`, 'roadmap'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const kept = existsSync(`${cache}/builderbot/token-alpha`)
+        ? readFileSync(`${cache}/builderbot/token-alpha`, 'utf8').trim() : '';
+      ok(/^bbs_/.test(kept) && expOf(kept) > expOf(short),
+         'bb keeps the renewed token in the account\'s cache, where it reads when the environment\'s has expired');
+      const again = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', '--now'],
+        { encoding: 'utf8', env: { ...env }, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      ok(again === kept, '...and prefers it over the older one in its environment from then on');
+    }
     const settings = await relay({ argv: ['settings', '--json'] });
     ok(settings.code === 0 && JSON.parse(settings.out).project === 'alpha'
        && typeof JSON.parse(settings.out).locked === 'boolean',

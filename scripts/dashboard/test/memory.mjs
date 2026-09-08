@@ -85,6 +85,26 @@ ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
    && /2 problems/.test(await page.$eval('#memDrift .sect > summary', e => e.textContent)),
    '...and both sit behind one section that counts them');
 
+// The third kind of drift (roadmap #4): a [[link]] in a memory's body naming
+// no memory here — what a rename leaves behind. Written to disk the way a
+// session writes one, and taken away again so the counts below still hold.
+{
+  const { unlinkSync } = await import('node:fs');
+  writeFileSync(`${MEM}/linker.md`, '---\nname: linker\ndescription: points at one that was renamed\nmetadata:\n  type: project\n---\n\nSee [[tabs]] and [[gone-elsewhere]].\n');
+  await page.evaluate(() => notebooks.get('alpha').reloadMemory());
+  await page.waitForFunction(() => [...document.querySelectorAll('#memDrift div')]
+    .some(d => /gone-elsewhere/.test(d.textContent)), null, { timeout: 10000 });
+  const drift3 = await page.$$eval('#memDrift div', ds => ds.map(d => d.textContent));
+  ok(drift3.some(d => d.includes('linker.md') && d.includes('[[gone-elsewhere]]') && d.includes('names no memory')),
+     'a [[link]] in a memory naming no memory here is called out, by file and by link');
+  ok(!drift3.some(d => d.includes('[[tabs]]')),
+     '...while one that names a memory that exists is not');
+  unlinkSync(`${MEM}/linker.md`);
+  await page.evaluate(() => notebooks.get('alpha').reloadMemory());
+  await page.waitForFunction(() => ![...document.querySelectorAll('#memDrift div')]
+    .some(d => /gone-elsewhere/.test(d.textContent)), null, { timeout: 10000 });
+}
+
 // ---- editing -----------------------------------------------------------
 await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
 await page.waitForSelector('#memList .mem[open] textarea');
