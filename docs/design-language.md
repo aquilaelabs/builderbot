@@ -76,7 +76,13 @@ text are exempt.
 A row with detail behind it is a fold, the shape a bug report has: the name
 on the line with its pills, the fields under labels when opened, its action
 bar at the foot, and a line divider between rows rather than a box. Rules
-and memories on the Briefing tab are this shape too.
+and memories on the Briefing tab and the tests on the Tests tab are this
+shape too.
+
+A row opens to be read, never as a form. Edit on its action bar swaps the
+fields in; Cancel (`.stop`) puts them away and drops what was typed, and
+Save puts them away having written it. A row Add made has nothing to go
+back to, so cancelling it removes it.
 
 ## The notebook
 

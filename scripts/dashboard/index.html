@@ -1503,11 +1503,16 @@ textarea,select{
    success and not a refusal. */
 .bug .bstat.na{color:var(--purple);border-color:var(--purple-edge)}
 .bug .body{padding:0 2px 10px 17px}
-.bug .bfield{margin-bottom:7px}
-.bug .bfield label{font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
+/* The fields of a row you open, under their labels. A memory and a test
+   read this way too: the same shape for every fold, and Edit is what puts
+   fields in its place. */
+.bug .bfield,.mem .bfield,.tst .bfield{margin-bottom:7px}
+.bug .bfield label,.mem .bfield label,.tst .bfield label{
+  font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
   text-transform:uppercase;letter-spacing:.4px;display:block}
-.bug .bval{font:12.5px/1.5 system-ui,sans-serif;white-space:pre-wrap;
-  overflow-wrap:anywhere}
+.bug .bval,.mem .bval,.tst .bval{font:12.5px/1.5 system-ui,sans-serif;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.bval.dim{color:var(--dim)}
 .bugform .two{display:flex;gap:6px}
 .bugform .two>*{flex:1;min-width:0}
 /* ...but not on a phone, where half of 393px is a field showing a dozen
@@ -8255,6 +8260,10 @@ function makeNotebook(project){
   // on the line, the words behind a click — a tab that showed every rule in
   // full was a wall. Kept across redraws so a reword does not shut the fold.
   let ruleOpen = new Set();
+  // What each row read when its Edit was pressed, so Cancel has somewhere
+  // to go back to. A row with no entry here is one Add made: cancelling
+  // that is removing it.
+  let ruleWas = new Map();
   // How many memories the tab found (null until read), for the head row that
   // sums both halves of the briefing — set by drawMemory, read by both draws.
   let memN = null;
@@ -9258,6 +9267,7 @@ async function revertNotebook(){
   ruleClearStaged();
   todoOrdering = false;
   redrawTodo();
+  memEditing.clear();
   await loadMemory(memGen);       // drops whatever the editors were holding
 }
 
@@ -9308,6 +9318,7 @@ function briefingHead(){
 }
 
 function drawMemory(j){
+  memLast = j;
   const n = j.memories.length;
   memIndexRev = j.index_rev || "";
   if (j.rev !== undefined) memRev = j.rev;
@@ -9338,6 +9349,15 @@ function drawMemory(j){
   // work?" — the whole point is to look at it again.
   const open = new Set([...$("memList").querySelectorAll(".mem[open]")]
                        .map(d => d.dataset.file));
+  // What is being typed into the rows that have fields out, carried across
+  // the redraw the way the Tests view carries its drafts: a redraw arrives
+  // after every save, and it must not take a half-written memory with it.
+  const typed = new Map();
+  $("memList").querySelectorAll(".mem").forEach(d => {
+    const ta = d.querySelector("textarea[data-file]");
+    const t = d.querySelector(".ixt"), h = d.querySelector(".ixh");
+    if (ta || t) typed.set(d.dataset.file, {text: ta?.value, title: t?.value, hook: h?.value});
+  });
   $("memList").innerHTML = j.memories.map(m => `
     <details class="mem" data-file="${esc(m.file)}"${open.has(m.file) ? " open" : ""}>
       <summary>
@@ -9345,7 +9365,21 @@ function drawMemory(j){
         <span class="mname">${esc(m.name)}</span>
         <span class="mwhen">${ago(m.when)}</span>
       </summary>
-      <div class="body">
+      <div class="body">${!memEditing.has(m.file) || m.big ? `
+        <div class="bfield"><label>in the index</label><div class="bval${m.listed ? "" : " dim"}">${m.listed
+          ? `${esc(m.title)} — ${esc(m.hook)}`
+          : "not in the index — Claude sees this only when recall reaches for it"}</div></div>
+        ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
+        ${m.big
+          ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB — too large to
+               edit here; open it in a terminal</div>`
+          : `<div class="bfield"><label>the memory</label><div class="bval mtext">${esc(m.text)}</div></div>`}
+        <div class="actbar macts">
+          ${m.big ? "" : `<button type="button" class="mEdit">Edit</button>`}
+          <button type="button" class="danger" data-del="${esc(m.file)}"
+            title="delete this memory and take its line out of the index"
+            >Forget this</button>
+        </div>` : `
         <div class="ix" data-file="${esc(m.file)}">
           <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
             placeholder="title" value="${esc(m.title)}">
@@ -9366,10 +9400,13 @@ function drawMemory(j){
                   is said by the note above the editor, and repeating it here
                   would be the same sentence twice on one screen. -->
              <div class="actbar macts">
+               <span class="state">Save at the foot writes it</span>
+               <button type="button" class="stop mCancel"
+                 title="put the fields away — what was typed here is dropped">Cancel</button>
                <button type="button" class="danger" data-del="${esc(m.file)}"
                  title="delete this memory and take its line out of the index"
                  >Forget this</button>
-             </div>`}
+             </div>`}`}
       </div>
     </details>`).join("");
   paginate($("memList"), ":scope > .mem", {noun: "memories"});
@@ -9384,6 +9421,28 @@ function drawMemory(j){
   $("memList").querySelectorAll("textarea[data-file], .ix input").forEach(t => {
     t.dataset.was = t.value;
     t.oninput = syncSave;
+  });
+  // ...and what was being typed goes back in, over the stored text `was`
+  // now remembers, so the redraw changed nothing about what is unsaved.
+  typed.forEach((v, file) => {
+    const d = $("memList").querySelector(`.mem[data-file="${CSS.escape(file)}"]`);
+    if (!d) return;
+    const ta = d.querySelector("textarea[data-file]");
+    const t = d.querySelector(".ixt"), h = d.querySelector(".ixh");
+    if (ta && v.text !== undefined) ta.value = v.text;
+    if (t && v.title !== undefined) t.value = v.title;
+    if (h && v.hook !== undefined) h.value = v.hook;
+  });
+  $("memList").querySelectorAll(".mEdit").forEach(b => b.onclick = () => {
+    memEditing.add(b.closest(".mem").dataset.file);
+    drawMemory(memLast);
+  });
+  $("memList").querySelectorAll(".mCancel").forEach(b => b.onclick = () => {
+    const d = b.closest(".mem");
+    memEditing.delete(d.dataset.file);
+    // Its fields go before the redraw reads them, so nothing typed is carried.
+    d.querySelectorAll("textarea[data-file], .ix input").forEach(t => t.remove());
+    drawMemory(memLast);
   });
   // Not while one is being typed into: a redraw arrives after every save, and
   // it should not take a half-written memory with it.
@@ -9400,6 +9459,12 @@ function drawMemory(j){
 // on screen to read and copy from, and the only two answers are to write over
 // it or to reload deliberately, with the loss said out loud.
 let memClash = null;
+
+// Which memories have their fields out. A memory is READ by default, like a
+// bug report and a rule: Edit puts the fields in its place, Save writes and
+// puts them away, Cancel puts them away and drops what was typed.
+let memEditing = new Set();
+let memLast = null;               // the last payload drawn, for a redraw with nothing fetched
 
 function drawMemClash(){
   const box = $("memClash");
@@ -9418,12 +9483,13 @@ function drawMemClash(){
       <button type="button" id="memClashMine" class="primary">Write mine over it</button>
     </div>`;
   $("memClashDrop").onclick = () => { memClash = null; drawMemClash();
-                                      loadMemory(memGen); };
+                                      memEditing.clear(); loadMemory(memGen); };
   $("memClashMine").onclick = async () => {
     const c2 = memClash; memClash = null; drawMemClash();
     // Rewritten against what is there now, which is what makes it a decision
     // rather than a race won twice.
-    await postMemory({...c2.body, rev: c2.rev});
+    if (await postMemory({...c2.body, rev: c2.rev}))
+      memEditing.delete(c2.body.file);
     await loadMemory(memGen); refresh(); syncSave();
   };
 }
@@ -9483,8 +9549,17 @@ async function saveMemory(quiet){
     .some(t => t.value !== t.dataset.was);
   if (!edits.length && !ix){ if (!quiet) notify("nothing changed"); return; }
   let done = 0, want = edits.length + (ix ? 1 : 0);
-  for (const e of edits) if (await postMemory({action:"save", ...e})) done++;
-  if (ix && await postMemory({action:"index", lines: memLines(), rev: memIndexRev})) done++;
+  // Written, so the fields go away — except a row whose write was refused,
+  // whose typing the clash band promises is still in the editor.
+  const kept = new Set();
+  for (const e of edits){
+    if (await postMemory({action:"save", ...e})) done++; else kept.add(e.file);
+  }
+  if (ix){
+    if (await postMemory({action:"index", lines: memLines(), rev: memIndexRev})) done++;
+    else memEditing.forEach(f => kept.add(f));   // the index lines live in every open row
+  }
+  memEditing = kept;
   if (done && !quiet)
     notify(`saved ${done} of ${want} — Claude reads these when a session starts`);
   if (!quiet){ await loadMemory(memGen); refresh(); }
@@ -9581,6 +9656,7 @@ async function forgetMemory(file){
 The file goes, and its line comes out of the`
     + ` index. A running session keeps what it already read.`)) return;
   if (await postMemory({action:"delete", file})){
+    memEditing.delete(file);
     notify(`${file} forgotten`);
     await loadMemory(memGen);
     refresh();
@@ -9988,8 +10064,10 @@ $("todoRevert").onclick = revertNotebook;
                  + "first if you want to keep it.")) return false;
     revertPending();
     verClearStaged();
+    ruleClearStaged();
     todoOrdering = false;
     redrawTodo();
+    memEditing.clear();
     await loadMemory(memGen);     // drops whatever the editors were holding
     return true;
   }
@@ -10874,7 +10952,7 @@ become that version's section when it is created">Changelog${
             </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
-              <button type="button" class="rlDone" title="close the fields — what was typed stays staged for Save">Done</button>
+              <button type="button" class="stop rlCancel" title="put the fields away — what was typed here is dropped">Cancel</button>
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
@@ -10908,7 +10986,7 @@ become that version's section when it is created">Changelog${
       {cls: d.loud && !ruleDirty() ? "warn" : ""});
     wireSections(box);
     ruleStagedCount = () => (ruleDirty() ? 1 : 0);
-    ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); ruleOpen.clear(); drawRules(); };
+    ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); ruleOpen.clear(); ruleWas.clear(); drawRules(); };
     ruleCommitStaged = saveRules;
     box.querySelectorAll(".rulerow").forEach(row => {
       const i = Number(row.dataset.i);
@@ -10924,12 +11002,34 @@ become that version's section when it is created">Changelog${
       row.querySelector(".rlRm").onclick = () => {
         const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
         ruleEditing = shift(ruleEditing); ruleOpen = shift(ruleOpen);
+        ruleWas = new Map([...ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
         ruleStage(rs => rs.splice(i, 1));
       };
       const ed = row.querySelector(".rlEdit");
-      if (ed) ed.onclick = () => { ruleEditing.add(i); ruleOpen.add(i); drawRules(); };
-      const dn = row.querySelector(".rlDone");
-      if (dn) dn.onclick = () => { ruleEditing.delete(i); drawRules(); };
+      if (ed) ed.onclick = () => {
+        const r = (rulePending || ruleData?.rules || [])[i];
+        ruleWas.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])]});
+        ruleEditing.add(i); ruleOpen.add(i); drawRules();
+      };
+      // Back to reading it, as it read before Edit. If that leaves the list
+      // exactly as it is on disk there is nothing staged any more, and the
+      // foot's Save goes quiet with it.
+      const cn = row.querySelector(".rlCancel");
+      if (cn) cn.onclick = () => {
+        const was = ruleWas.get(i); ruleWas.delete(i);
+        const rs = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
+        if (was) rs[i] = was;
+        else {
+          rs.splice(i, 1);
+          const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
+          ruleEditing = shift(ruleEditing); ruleOpen = shift(ruleOpen);
+        }
+        ruleEditing.delete(i);
+        const seen = list => JSON.stringify(list.map(r => [r.name || "", r.text || "",
+          (r.paths || []).join(","), (r.words || []).join(","), r.doc || "", r.check || ""]));
+        rulePending = seen(rs) === seen(ruleData?.rules || []) ? null : rs;
+        drawRules(); syncSave();
+      };
       // The same tween the bug reports open with, bound on the summary
       // rather than toggle, which fires after the browser has snapped it.
       const sum = row.querySelector("summary");
@@ -10980,7 +11080,7 @@ become that version's section when it is created">Changelog${
       ruleData = j;
       rulePending = null;
       ruleEditing.clear();                   // written: back to reading them
-      ruleOpen.clear();
+      ruleOpen.clear(); ruleWas.clear();
       drawRules();
     }catch(e){ notify("could not reach the server: " + e, true); }
   }
@@ -10996,6 +11096,7 @@ become that version's section when it is created">Changelog${
   // this page.
   let tests = null;
   let testsRev = null;    // the registry's revision as of the last read
+  let tstEditing = new Set();   // the rows whose two fields are out
   let tstSuite = "", tstFlagged = false, tstUndoc = false;
 
   async function loadTests(){
@@ -11052,6 +11153,8 @@ become that version's section when it is created">Changelog${
     // of their own leaves nothing to carry, and a row they never touched
     // takes whatever another window wrote.
     const drafts = new Map(), stored = new Map(all.map(t => [t.key, t]));
+    // A draft is a row whose fields are out and hold something unsaved; the
+    // rows whose fields are out and untouched are tstEditing's.
     $("tstList").querySelectorAll(".tst[open] > .body").forEach(body => {
       const t = stored.get(body.parentElement.dataset.key);
       const p = body.querySelector(".tstP"), n = body.querySelector(".tstN");
@@ -11177,11 +11280,28 @@ bb tests ingest /tmp/run.log</pre>
       if (!t || !body || body.dataset.done) return;
       body.dataset.done = "1";
       const draft = drafts.get(box.dataset.key);
-      body.innerHTML = `
-        <div class="sub">${esc(t.key)}${
+      const sub = `<div class="sub">${esc(t.key)}${
           t.was ? ` · was ${esc(dur(t.was))}` : ""}${
           (t.history || []).length > 1
-            ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>
+            ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>`;
+      // Read first, the way a bug report is: the two sentences under their
+      // labels and an Edit. The fields come only when Edit is pressed.
+      if (!draft && !tstEditing.has(t.key)){
+        body.innerHTML = `${sub}
+          ${t.protects || t.notes ? `
+            <div class="bfield"><label>What it protects</label><div class="bval${t.protects ? "" : " dim"}">${
+              esc(t.protects) || "not written yet"}</div></div>
+            <div class="bfield"><label>What it exercises</label><div class="bval${t.notes ? "" : " dim"}">${
+              esc(t.notes) || "not written yet"}</div></div>`
+          : `<div class="bfield"><div class="bval dim">Not described yet — what breaks if this goes red, and what it exercises.</div></div>`}
+          <div class="actbar"><span class="sp"></span>
+            <button type="button" class="tstEdit">Edit</button></div>`;
+        body.querySelector(".tstEdit").onclick = () => {
+          tstEditing.add(t.key); body.dataset.done = ""; fill(box);
+        };
+        return;
+      }
+      body.innerHTML = `${sub}
         <label>What it protects</label>
         <textarea class="tstP" spellcheck="false"
           placeholder="the behaviour that breaks if this goes red">${
@@ -11191,12 +11311,22 @@ bb tests ingest /tmp/run.log</pre>
           placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
             esc(draft ? draft.notes : t.notes)}</textarea>
         <div class="actbar"><span class="sp"></span>
+          <button type="button" class="stop tstCancel"
+            title="put the fields away — what was typed here is dropped">Cancel</button>
           <button type="button" class="primary tstSave">Save</button></div>`;
+      body.querySelector(".tstCancel").onclick = () => {
+        tstEditing.delete(t.key);
+        // The fields go before the redraw reads them for a draft.
+        body.querySelectorAll("textarea").forEach(x => x.remove());
+        body.dataset.done = ""; fill(box);
+      };
       body.querySelector(".tstSave").onclick = e => pressing(e.target, async () => {
         busy(e.target, "Saving");
-        await postTests({action: "describe", key: t.key,
-                         protects: body.querySelector(".tstP").value,
-                         notes: body.querySelector(".tstN").value});
+        const protects = body.querySelector(".tstP").value,
+              notes = body.querySelector(".tstN").value;
+        tstEditing.delete(t.key);          // written: back to reading it
+        if (!await postTests({action: "describe", key: t.key, protects, notes}))
+          tstEditing.add(t.key);           // refused: the fields stay, with the typing
       });
     };
     $("tstList").querySelectorAll(".tst > summary").forEach(sum => {

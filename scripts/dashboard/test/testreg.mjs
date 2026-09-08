@@ -219,22 +219,36 @@ ok(await page.$('#tstFolds details[data-sect="tests:suites"]') !== null
 const box = '#tstList .tst[data-key="slow.mjs#2"]';
 await page.click(`${box} > summary`);
 await page.waitForFunction(s => document.querySelector(s)?.open, box, { timeout: 10000 });
+// Read first, like a bug report: an undescribed test says so, and Edit is
+// what brings the two fields. Cancel puts them away and drops the typing.
+await page.waitForSelector(`${box} .tstEdit`);
+ok(!await page.$(`${box} textarea`) && /Not described yet/.test(await page.$eval(box, e => e.textContent)),
+   'a row opens to read, saying it is not described yet, with no fields');
+await page.click(`${box} .tstEdit`);
+await page.waitForSelector(`${box} .tstP`);
+await page.fill(`${box} .tstP`, 'a sentence that goes nowhere');
+await page.click(`${box} .tstCancel`);
+await page.waitForFunction(s => !document.querySelector(s + ' .tstP'), box, { timeout: 10000 });
+ok(/Not described yet/.test(await page.$eval(box, e => e.textContent))
+   && read().tests['slow.mjs#2'].protects === '',
+   'Cancel puts the fields away with nothing written');
+await page.click(`${box} .tstEdit`);
+await page.waitForSelector(`${box} .tstP`);
 await page.fill(`${box} .tstP`, 'the daemon address is parsed, not guessed');
 await page.click(`${box} .tstSave`);
-// The button wears its verb until the repaint replaces it, so waiting for it
-// to be a Save again is waiting for the write to have landed and been drawn.
-await page.waitForFunction(s => {
-  const b = document.querySelector(s + ' .tstSave');
-  return b && b.textContent.trim() === 'Save' && !b.disabled;
-}, box, { timeout: 15000 });
+// Written, the row reads again: waiting for the fields to go is waiting for
+// the write to have landed and been drawn.
+await page.waitForFunction(s => !document.querySelector(s + ' .tstP'), box, { timeout: 15000 });
 ok(read().tests['slow.mjs#2'].protects === 'the daemon address is parsed, not guessed',
    'the tab writes a description through, with no Save for the panel to hold');
 // The editor is built when a row opens rather than when the list draws —
 // 1950 rows would otherwise be 3900 textareas and 28k nodes for a first
-// screen of 25. Which means a redraw has to put back both the fold AND what
-// was inside it, or saving a description folds away the row you were in.
-ok(await page.$eval(box, e => e.open && !!e.querySelector('.tstP')),
-   '...and the row it was written in stays open, with its editor still there');
+// screen of 25. Which means a redraw has to put back the fold, or saving a
+// description folds away the row you were in.
+ok(await page.$eval(box, e => e.open && /parsed, not guessed/.test(e.querySelector('.bval')?.textContent || '')),
+   '...and the row it was written in stays open, reading what was saved');
+await page.click(`${box} .tstEdit`);
+await page.waitForSelector(`${box} .tstN`);
 ok(await page.evaluate(() => ({
      rows: document.querySelectorAll('#tstList .tst').length,
      areas: document.querySelectorAll('#tstList textarea').length })

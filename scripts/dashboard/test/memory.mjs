@@ -62,17 +62,16 @@ ok(mems.some(m => m.name === 'tabs' && m.type === 'feedback')
 // shown on the memory it names. There is no whole-index editor to get wrong.
 ok(await page.$('#memIndex') === null,
    'the index is not offered as a block of text to edit');
-const ixOf = name => page.$eval(`#memList .mem:has(.mname:text-is("${name}")) .ix`,
-  d => ({ t: d.querySelector('.ixt').value, h: d.querySelector('.ixh').value }));
-const tabsIx = await ixOf('tabs');
-ok(tabsIx.t === 'Prefers tabs' && tabsIx.h === 'spaces are a fight not worth having',
-   '...its line is split onto the memory it points at, title and hook apart');
-const looseIx = await ixOf('loose');
-ok(looseIx.t === '' && looseIx.h === '',
-   'a memory with no line gets empty fields rather than no fields');
-ok((await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixnote',
-                     d => d.textContent)).includes('Not in the index'),
-   '...and says on the row that this is why Claude misses it');
+// Read, not typed into: the line sits under its label on the memory, and the
+// fields for it come only with Edit, the way a bug report's do.
+const ixOf = name => page.$eval(`#memList .mem:has(.mname:text-is("${name}")) .bfield .bval`,
+  d => d.textContent.replace(/\s+/g, ' ').trim());
+ok(await ixOf('tabs') === 'Prefers tabs — spaces are a fight not worth having',
+   '...its line is shown on the memory it points at, title and hook');
+ok(/not in the index/.test(await ixOf('loose')),
+   'a memory with no line says so on the row, which is why Claude misses it');
+ok(await page.$('#memList .mem .ix') === null,
+   '...and neither row is a form until Edit is pressed');
 
 const drift = await page.$$eval('#memDrift div', ds => ds.map(d => d.textContent));
 ok(drift.some(d => d.includes('vanished.md') && d.includes('not here')),
@@ -107,9 +106,27 @@ ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
 
 // ---- editing -----------------------------------------------------------
 await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
+// Read first, like a bug report: the text under its label, and Edit for the
+// fields. Cancel puts them away and drops what was typed.
+await page.waitForSelector('#memList .mem[open] .mEdit');
+ok(!await page.$('#memList .mem[open] textarea')
+   && (await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice'),
+   'opening one shows the whole file to read, frontmatter and all, and no fields');
+await page.click('#memList .mem[open] .mEdit');
 await page.waitForSelector('#memList .mem[open] textarea');
 ok((await page.$eval('#memList .mem[open] textarea', t => t.value)).includes('asked for it twice'),
-   'opening one shows the whole file, frontmatter and all');
+   'Edit puts the file in a field');
+await page.$eval('#memList .mem[open] textarea', t => {
+  t.value = t.value.replace('asked for it twice', 'a change nobody wanted');
+  t.dispatchEvent(new Event('input'));
+});
+await page.click('#memList .mem[open] .mCancel');
+await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea'), null, { timeout: 10000 });
+ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice')
+   && await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...and Cancel puts it away, reading what is on disk, with nothing left to save');
+await page.click('#memList .mem[open] .mEdit');
+await page.waitForSelector('#memList .mem[open] textarea');
 
 await page.$eval('#memList .mem[open] textarea', t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
@@ -129,6 +146,9 @@ ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
 ok(read('tabs.md').startsWith('---\n') && read('tabs.md').endsWith('\n'),
    '...intact, and newline-terminated');
+await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea'), null, { timeout: 10000 });
+ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it three times'),
+   '...and written, the memory reads again, saying what was saved');
 
 // ---- forgetting --------------------------------------------------------
 page.dialogs = [];
@@ -147,6 +167,8 @@ ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
 // pointing at a file that was never there. Filling the memory's fields in has
 // to do both halves — give it a line, and take the dead one out.
 await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
+await page.click('#memList .mem:has(.mname:text-is("loose")) .mEdit');
+await page.waitForSelector('#memList .mem:has(.mname:text-is("loose")) .ixt');
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
   i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
@@ -340,6 +362,8 @@ writeFileSync(`${MEM}/clash.md`,
   '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nas loaded\n');
 await page.evaluate(() => notebooks.get('alpha').reloadMemory());
 await openFold(page, '#memList .mem:has(.mname:text-is("clash"))');
+await page.click('#memList .mem:has(.mname:text-is("clash")) .mEdit');
+await page.waitForSelector('#memList .mem[open] textarea');
 await page.$eval('#memList .mem[open] textarea', t => {
   t.value = t.value.replace('as loaded', 'what the operator typed');
   t.dispatchEvent(new Event('input')); });
