@@ -271,3 +271,4 @@
 - The Settings tab no longer carries a note about what stays in the container template (2e1d951)
 - A house rule can name the document that defines a framework and the command that checks it; bb rules check runs the checks for what you changed (2197366)
 - A session cannot hand work back while a house rule's check fails on what it changed; BuilderBot's own design language is one document held by such a rule (99c957a)
+- The design language document is checked against the dashboard on every test run, so it cannot describe a framework that has changed (a88da97)
