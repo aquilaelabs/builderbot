@@ -210,7 +210,7 @@ setup_ssh_agent() {
 # dashboard/logs.py — a count is the wrong unit for "was that this week?", and
 # five generations of a crash loop is five minutes.
 rotate_log() {
-    local logfile="$1" keep="${BB_LOG_KEEP:-60}" i
+    local logfile="$1" keep=60 i             # a ceiling, constant since R29
     case "$keep" in
         ''|*[!0-9]*) keep=5 ;;
     esac

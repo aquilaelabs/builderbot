@@ -176,7 +176,6 @@ Required / usually touched:
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
 | `GITHUB_URL` | Repo (`https://github.com/OWNER/REPO`) or org (`https://github.com/ORG`) that node runners register with |
-| `GIT_USER_NAME` / `GIT_USER_EMAIL` | Your commit identity |
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 
 **The template's Extra Params default to `--hostname=builderbot --device=/dev/kvm
@@ -198,7 +197,7 @@ Everything else has sane defaults — full reference below.
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
-| Extra tools at startup | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES`, or drop hooks in `config/startup.d/` |
+| Extra tools at startup | the Settings tab's *packages installed at boot* (apt, npm, pipx), or drop hooks in `config/startup.d/` |
 
 ### 7. First boot
 
@@ -274,13 +273,9 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `America/New_York` | Container timezone |
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing; empty = subscription login via `bb login` |
-| `AUTO_UPDATE_CLAUDE` | `true` | Update Claude Code on every start |
-| `CLAUDE_CODE_VERSION` | `latest` | Pin the auto-update |
 | `GITHUB_URL` | — | Repo or org URL node runners register with |
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
-| `SHUTDOWN_GRACE` | `90` | Seconds a stop may spend powering down the emulator and ending Claude sessions. Unraid caps this with its own Docker Stop Timeout (default **10**) — raise that if you want the full drain |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
-| `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
 | `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
@@ -290,16 +285,10 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `NVIDIA_VISIBLE_DEVICES` | *(empty)* | Empty means this container claims no GPU, which is right for a controller — emulation runs on a node. On a node container that renders, `all`, or a GPU UUID with more than one card |
 | `NVIDIA_DRIVER_CAPABILITIES` | *(empty)* | Set to `all` beside the above on a node container that renders: it is what gets you GL/EGL/Vulkan rather than CUDA alone |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
-| `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
-| `PROJECT_BOOTSTRAP` | `false` | Run `<project>/.builderbot/setup.sh` each start |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
-| `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
-| `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
-| `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
-| `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
 Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
 three optional ones — `/secrets` (ro, shielded credentials), `/logs`
@@ -330,7 +319,7 @@ then executes hooks and drops privileges:
 
 | Hook | Does |
 |---|---|
-| `10-system-packages.root.sh` | `EXTRA_APT_PACKAGES` |
+| `10-system-packages.root.sh` | the apt packages set on the Settings tab |
 | `20-claude-code.sh` | Claude Code update, npm/pipx extras |
 | `30-git-and-auth.sh` | git identity, GitHub host keys, `gh` auth (unshielded mode only) |
 | `35-publishing.sh` | npm publish auth, ghcr docker login (socket + PAT present) |
@@ -763,7 +752,7 @@ build`, Zig with `zig cc -target x86_64-windows-gnu` (a C and C++
 cross-compiler that happens to ship with a language), and .NET with `dotnet
 publish -r win-x64 --self-contained`. All three were verified on this box —
 `file` says *PE32+ executable, for MS Windows*. Rust needs one more piece: a
-linker, either `EXTRA_APT_PACKAGES=gcc-mingw-w64` or `cargo-zigbuild` on top
+linker, either `gcc-mingw-w64` in the Settings tab's apt packages or `cargo-zigbuild` on top
 of Zig. What none of them give you is a Windows *GUI* toolchain — WPF, WinUI
 and MSIX packaging need Windows itself.
 
@@ -1649,7 +1638,7 @@ container.
   terminal title Claude Code itself maintains, read through tmux — no polling
   of the conversation, no extra process
 - a **Doctor** card: `bb doctor`'s checks, run by the server in the background
-  every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
+  every 30 minutes and
   re-run on demand with its ↻. Its status row wears the verdict as a dot —
   green, amber or red — beside an "all n ok" button that unfolds the detail:
   failures and warnings as full lines, with the fix hint from `bb doctor`'s
@@ -2572,7 +2561,7 @@ Ticked items stay a week, then go.
   is still an attached tmux client, and tmux sizes a window to its smallest
   one, so different geometry would mean the terminals fighting over the width.
   The fourth reloads — the ceiling is there because each
-  one is a live xterm and its own socket, the same reasoning as `DASHBOARD_MAX_TABS`.
+  one is a live xterm and its own socket, the same reasoning as the tab cap.
   Killing a session also closes its tab, whichever tab that is — a tab left
   pointing at a dead session would only offer to recreate it.
 - **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
@@ -2650,14 +2639,14 @@ pane commands.
 
 **The tab strip is shared, not per-browser.** It lives on the container, so
 opening the dashboard on a phone shows what the desktop has open, and a change
-on either reaches the other within a poll. `DASHBOARD_MAX_TABS` (default 12)
-caps how many can be open at once: each terminal tab is an iframe running a
+on either reaches the other within a poll. The tab cap on the Settings tab
+(default 12) limits how many can be open at once: each terminal tab is an iframe running a
 full terminal emulator over its own websocket, so the limit is about browser
 memory, not tidiness.
 
 **Terminals survive a container restart, scrollback and all.** tmux dies with
 the container, so on the way down the supervisor writes each terminal's
-directory and the last 2000 lines of its screen (`BB_SESSION_HISTORY`) to
+directory and the last 2000 lines of its screen to
 `/config/sessions/`, and a startup hook recreates them there and prints that
 scrollback back in before the shell starts. Minimized terminals come back the
 same way, since they are sessions like any other.
@@ -3333,7 +3322,7 @@ in both places.
 in the dashboard's settings menu — the gear, beside the colour schemes. A
 count was the wrong unit for the question anybody has (*was that this week?*)
 and a container in a crash loop can burn five generations in a minute;
-`BB_LOG_KEEP` survives as the ceiling for exactly that case.
+a ceiling of sixty generations survives for exactly that case.
 
 **Apply crops.** Lowering the number deletes what it already excludes, then
 and there, rather than waiting for the next boot — which is why it is a button

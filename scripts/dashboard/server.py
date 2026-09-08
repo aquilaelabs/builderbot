@@ -342,7 +342,10 @@ TMUX_LITERALS = {
 # full xterm.js with its own websocket, so this is a real ceiling on browser
 # memory rather than a tidiness rule — and a phone hits it far earlier than a
 # desktop does.
-MAX_TABS = int(os.environ.get("DASHBOARD_MAX_TABS", "12"))
+def max_tabs():
+    """The tab cap — a Settings-tab value now (R29), read on use so a change
+    takes on the next poll rather than the next restart."""
+    return settings.get("max_tabs")
 
 # Where Claude Code keeps transcripts: one directory per working directory,
 # with the path's slashes turned into dashes, holding one .jsonl per session.
@@ -535,7 +538,7 @@ def load_layout(uid):
         v = {}
     tabs, ids = [], set()
     stored = v.get("tabs") if isinstance(v.get("tabs"), list) else []
-    for t in stored[:MAX_TABS]:
+    for t in stored[:max_tabs()]:
         if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
             continue
         tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
@@ -2051,7 +2054,9 @@ def image_stamp():
 # it. The card's refresh button re-runs on demand for the "did my fix work"
 # moment.
 # ---------------------------------------------------------------------------
-DOCTOR_EVERY = max(300, int(os.environ.get("DASHBOARD_DOCTOR_INTERVAL", "1800")))
+# Half an hour, a constant (R29): the card's own button re-runs it on demand,
+# which is the control anybody actually reached for.
+DOCTOR_EVERY = 1800
 
 _doctor_lock = threading.Lock()
 _doctor = {"when": 0, "checks": [], "failed": False, "running": True}
@@ -2229,11 +2234,16 @@ testreg.configure(write_json=write_json, state=STATE)
 # file tools on the file. Roadmap #7.
 import rules                                                     # noqa: E402
 import pending                                                   # noqa: E402
+import settings                                                  # noqa: E402
 
 rules.configure(write_json=write_json, state=STATE)
 # The three stores above configure this one too; done here as well so the
 # endpoint works even if none of them has been touched yet this process.
 pending.configure(write_json=write_json, state=STATE)
+# The Settings tab's own store (roadmap R29): what used to be fourteen
+# environment variables. The builder home is where the commit identity lands.
+settings.configure(write_json=write_json, state=STATE,
+                   home=os.environ.get("BUILDER_HOME") or None)
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -2781,6 +2791,9 @@ def revisions():
         revs[f"git:{n}"] = _mtime(WORKSPACE / n / ".git" / "logs" / "HEAD")
     revs["vpolicy"] = _mtime(STATE / "versions.json")
     revs["prefs"] = _mtime(STATE / "claude-prefs.json")
+    # The Settings tab's store (R29): a save has to reach the next poll, and
+    # the payload is rebuilt only when something in this list moves.
+    revs["settings"] = _mtime(STATE / "settings.json")
     # The dev-instance job and its files. In-memory counter plus mtimes — the
     # poll never spawns docker.
     revs["devapp"] = devapp.job_rev()
@@ -2874,7 +2887,9 @@ def snapshot(who):
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         "project_job": projects.job(),
-        "max_tabs": MAX_TABS,
+        "max_tabs": max_tabs(),
+        # Everything the Settings tab edits, with where each value came from.
+        "settings": settings.payload(),
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
@@ -3941,6 +3956,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._logs(req)
         if path.startswith("/api/idle"):
             return self._idle(req)
+        if path.startswith("/api/settings"):
+            # The Settings tab's fields (R29): an administrator's, validated
+            # and applied by the store; the answer is the tab's next drawing.
+            if self._refused("admin"):
+                return
+            r = settings.set_many(req.get("set") or {})
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(r | settings.payload())
         if path.startswith("/api/rules"):
             return self._rules(req)
         if path.startswith("/api/pending"):
