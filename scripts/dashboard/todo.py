@@ -525,16 +525,26 @@ def _int(v):
 
 
 def _next_id(rows, d=None, project=None):
-    """One above the highest — on the list, or reserved for a held add.
+    """One above the highest number ever handed out here.
 
-    A number handed to a session for a record that is waiting for approval
-    (pending.py) is not on the list yet, and must not be given out again
-    while it waits: the session is already saying R12 in its reply.
+    On the list, held for approval (pending.py), or finished and gone: the
+    file keeps the high-water mark under `reserved`, and it never comes
+    down. It used to be the highest number still ON the list, so ticking
+    the newest items off handed their numbers to the next adds — the
+    approval gate was #27 in ten comments and the next item was R27 too
+    (bug B72). A number is the item's own, and "a gap means something was
+    removed" only holds if nothing is ever numbered twice.
     """
     top = max((int(r.get("id", 0)) for r in rows), default=0)
     if d is not None and project is not None:
         top = max(top, _int((d.get("reserved") or {}).get(project)) or 0)
     return top + 1
+
+
+def _took(d, project, n):
+    """Record that `n` has been handed out, so it never is again."""
+    r = d.setdefault("reserved", {})
+    r[project] = max(_int(r.get(project)) or 0, int(n))
 
 
 # The details under a line: the technical half the title should not carry.
@@ -623,7 +633,9 @@ def add(project, text, by="you", steps=(), who="", number=None):
             return {"error": f"{MAX_OPEN} open items is the limit — this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
-        row = {"id": _int(number) or _next_id(rows, d, project), "text": text,
+        nid = _int(number) or _next_id(rows, d, project)
+        _took(d, project, nid)
+        row = {"id": nid, "text": text,
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}

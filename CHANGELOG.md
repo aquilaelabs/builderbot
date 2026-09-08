@@ -260,3 +260,4 @@
 - The Briefing tab points out a [[link]] in a memory that names no memory, the way it already points out index drift (19dd08d)
 - A Check button beside a node's path mapping proves both machines mean the same directory by the projects share (19dd08d)
 - bb lint no longer stops silently when the runner registry cannot be read (19dd08d)
+- A session's bb token renews itself while the session is in use, so a long conversation no longer loses the notebook and git push after twelve hours (dd8a01d)

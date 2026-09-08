@@ -592,4 +592,14 @@ ok(settledBug.repro === "the operator's repro, typed at length"
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
+// A deleted report's number is not handed out again either (bug B72). Last,
+// because its two log lines would push the oldest verb off the History
+// pane's first page for the check above.
+{
+  const filed = bbBug('add', 'numbered after the deletions above', '--sev', 'low');
+  const n = Number((filed.match(/filed B(\d+)/) || [])[1]);
+  ok(n > 5, `a report filed after the newest were deleted gets a new number, not a reused one (B${n})`);
+  bbBug('rm', String(n), 'numbering fixture');
+}
+
 await done(browser);

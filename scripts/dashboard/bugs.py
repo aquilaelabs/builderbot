@@ -414,6 +414,7 @@ def add(project, title, by="you", severity="medium", **fields):
                        else MAX_SHORT)
             if v:
                 bug[k] = v
+        _took(d, project, bug["id"])
         rows.append(bug)
         _log(d, project, by, {"act": "filed", "id": bug["id"], "text": title,
                               "note": bug.get("severity", "")})
@@ -455,10 +456,16 @@ def _image():
 
 
 def _next_id(d, project):
-    """One above the highest filed or reserved — see todo._next_id."""
+    """One above the highest number ever handed out — see todo._next_id.
+    `reserved` is the high-water mark: held, filed, or deleted since."""
     rows = d["projects"].get(project) or []
     top = max((int(b.get("id", 0)) for b in rows), default=0)
     return max(top, _int((d.get("reserved") or {}).get(project)) or 0) + 1
+
+
+def _took(d, project, n):
+    r = d.setdefault("reserved", {})
+    r[project] = max(_int(r.get(project)) or 0, int(n))
 
 
 def _moved_by(d, project, bug_id):
