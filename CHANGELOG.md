@@ -268,3 +268,4 @@
 - A fresh install no longer asks for a runner work directory, and the template describes the container as the workstation and node controller it is (a320ce6)
 - The tab cap, Claude Code's auto-update and pin, your commit identity, packages installed at boot, the project bootstrap and the Unraid icon name are set on the Settings tab now, not in the container template (b2f2c43)
 - The Settings tab keeps only Claude Code's update switch and channel; a project's commit identity is set in its own settings dialog; packages come from the package manager, and web-ext ships in the image (180c416)
+- The Settings tab no longer carries a note about what stays in the container template (2e1d951)

@@ -10922,6 +10922,14 @@ become that version's section when it is created">Changelog${
                 placeholder="words that raise it — agent, protocol"
                 value="${esc((r.words || []).join(", "))}" aria-label="words">
             </div>
+            <div class="two">
+              <input class="rlDoc" autocomplete="off" spellcheck="false"
+                placeholder="the document that defines it — docs/design-language.md"
+                value="${esc(r.doc || "")}" aria-label="document">
+              <input class="rlCheck" autocomplete="off" spellcheck="false"
+                placeholder="the command that checks it — bash scripts/test.sh"
+                value="${esc(r.check || "")}" aria-label="check">
+            </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
               <button type="button" class="rlDone" title="close the fields — what was typed stays staged for Save">Done</button>
@@ -10930,6 +10938,8 @@ become that version's section when it is created">Changelog${
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
             ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
             ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
+            ${r.doc ? `<div class="bfield rlframe"><label>defined in</label><div class="bval">${esc(r.doc)}</div></div>` : ""}
+            ${r.check ? `<div class="bfield rlframe"><label>checked by</label><div class="bval">${esc(r.check)} <span class="dim">· bb rules check ${esc(r.name || "")}</span></div></div>` : ""}
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)}</span>
               <button type="button" class="rlEdit">Edit</button>
@@ -10966,6 +10976,7 @@ become that version's section when it is created">Changelog${
       };
       put("name", ".rlName"); put("text", ".rlText");
       put("paths", ".rlPaths"); put("words", ".rlWords");
+      put("doc", ".rlDoc"); put("check", ".rlCheck");
       // Removing a row shifts every index above it; the set is rebuilt from
       // the rows that stay so an open editor does not jump to its neighbour.
       row.querySelector(".rlRm").onclick = () => {

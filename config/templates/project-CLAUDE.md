@@ -467,6 +467,12 @@ becomes relevant, either because you were asked about its subject or because
 you are about to edit a file it covers. `bb rules show NAME` is how you read
 one before either of those happens.
 
+**A rule can carry a whole framework.** `--doc PATH` names the document in
+the repo that defines it in full, and `--check CMD` the command that verifies
+it. Under a rule with a doc, read the doc before the work; under one with a
+check, run `bb rules check` before calling the work done — it runs the checks
+of the rules whose files you changed, and fails by name.
+
 **What belongs here rather than in a memory.** A memory is something you
 noticed; a rule is something that should hold for whoever works here next,
 including a person. "The suite takes ten minutes" is a memory. "Do not edit
