@@ -866,6 +866,7 @@ textarea,select{
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
+.nb .foot[hidden]{display:none}
 /* A verb that cannot be undone, once and everywhere. It was scoped to the
    modals and the notebook, so the same decision — Remove a container, Revoke
    a node's credential — was red on one surface and ordinary ink on another,
@@ -1151,7 +1152,11 @@ textarea,select{
 /* A question somebody is blocked on. Bordered rather than merely spaced,
    because a question on a dashboard is easy to scroll past. */
 .row.phask{border-left:2px solid var(--accent)}
-.todoadd{display:flex;gap:8px}
+/* Adding goes at the top: the control that adds to a view is the first band
+   under its head row, one shape on every view, and its form unrolls in its
+   place — never at the foot, where a phone scrolls past the list to find it. */
+.addbar,.todoadd{display:flex;gap:8px;align-items:center}
+.addbar button{flex:0 0 auto;min-height:var(--tap)}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .todoadd[hidden]{display:none}
 .todoadd input{flex:1 1 auto;min-width:0}
@@ -1447,9 +1452,6 @@ textarea,select{
   .mem .ix .ixt{margin-bottom:6px} }
 .mem .ixnote{color:var(--dim);font:var(--f-note);margin-bottom:8px}
 .mem .ixnote.bad{color:var(--gold)}
-#memAdd .link{background:none;border:0;color:var(--dim);padding:2px 0;
-  font:12px/1.4 system-ui,sans-serif;min-height:var(--tap)}
-@media(hover:hover){ #memAdd .link:hover{color:var(--accent)} }
 /* Dashed, because it is the one thing here that is not a memory yet. */
 /* One rule, in the Briefing: the same fold a bug report is — its name on
    the line, the words and the triggers behind a click, and the fields only
@@ -2478,7 +2480,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <!-- One row: type it, add it, or rearrange what is already there. They
            are the three things you do TO the list, as against the History
            above, which only reads it. -->
-      <div class="todoadd">
+      <div class="todoadd" data-add="roadmap">
         <input id="todoText" maxlength="500" autocomplete="off"
                placeholder="something for the roadmap">
         <button id="todoAdd" class="primary" type="button">Add</button>
@@ -2549,14 +2551,16 @@ body.dragging .tab .lbl{cursor:grabbing}
            warnings, because this one is about the typing still on screen. -->
       <div class="field clash" id="memClash" hidden></div>
       <div class="mdrift" id="memDrift"></div>
-    <div class="field" id="memListField">
+    <!-- Above the list, and outside it: the list is hidden when there is
+         nothing in it, and a project with no memories is exactly where
+         writing the first one by hand is worth offering. -->
+    <div class="field">
       <label id="memCount">Memories</label>
+      <div id="memAdd"></div>
+    </div>
+    <div class="field" id="memListField">
       <div id="memList"></div>
     </div>
-    <!-- Outside the list, which is hidden when there is nothing in it — a
-         project with no memories is exactly where writing the first one by
-         hand is worth offering. -->
-    <div class="field" id="memAdd"></div>
     </div>
     <!-- The bug tracker. Deliberately write-through, unlike the roadmap:
          a bug report is a form submitted once, not a list curated in place,
@@ -2579,6 +2583,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         </select>
       </div>
       <div class="field" id="bugHist" hidden></div>
+      <div class="field" id="bugAdd"></div>
       <!-- Its own row under the header, the same shape the log's filters use.
            Open before closed is not one of the choices: a tracker is read to
            find what is outstanding, so that stays the primary key and this
@@ -2594,7 +2599,6 @@ body.dragging .tab .lbl{cursor:grabbing}
         </select>
       </div>
       <div class="field" id="bugList"></div>
-      <div class="field" id="bugAdd"></div>
     </div>
     <!-- The scanner's findings for this project, read-only: the scan runs on
          the host and bb findings reads the same digest in a terminal. -->
@@ -2658,7 +2662,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="field" id="anaHist" hidden></div>
       <div id="anaList"></div>
     </div>
-    <div class="foot">
+    <div class="foot" id="nbFoot">
       <!-- One. There were two, and the second one typed the change into a
            running session's input box — which was the ONLY way anything
            reached a session before #27 gave the prompt hook a free channel
@@ -9587,7 +9591,8 @@ const TYPE_WHAT = {
 
 function drawMemAdd(){
   const box = $("memAdd");
-  box.innerHTML = `<button type="button" class="link">+ write a memory</button>`;
+  box.innerHTML = `<div class="addbar" data-add="memory">
+    <button type="button">Write a memory</button></div>`;
   box.querySelector("button").onclick = openMemAdd;
 }
 
@@ -10045,6 +10050,10 @@ $("todoRevert").onclick = revertNotebook;
         x.classList.add("justpainted");
       }
     });
+    // Save and Revert belong to the views that stage — roadmap, briefing and
+    // the version on Artifacts. Bugs, tests and findings write through, and
+    // a Save under a list nothing stages read as a button that did nothing.
+    $("nbFoot").hidden = ["bugs", "analysis", "tests"].includes(v);
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
@@ -10931,6 +10940,7 @@ become that version's section when it is created">Changelog${
         either of you is in the history. What a rule is <b>not</b> is a
         refusal: it is a request the model can still fumble, unlike the
         sibling-project walls.</div>
+      <div class="addbar" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug rulerow${ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
             ruleEditing.has(i) || ruleOpen.has(i) ? " open" : ""}>
@@ -10979,17 +10989,14 @@ become that version's section when it is created">Changelog${
             </div>`}
           </div>
         </details>`).join("")}</div>
-      <div class="actbar">
-        <span class="state">${rows.length
+      <div class="fnote">${rows.length
           ? (chars === null
              ? "unsaved — the size is measured on what is written"
              : `${standing} standing, ${rows.length - standing} conditional · `
                + `${chars} characters in front of every session here${
                  d.loud ? " — that is a lot to pay on every conversation" : ""}`)
           : "Nothing set. A session can leave rules of its own with bb rules "
-            + "add, marked as its; the ones you write here it cannot touch."}</span>
-        <button type="button" id="rlAdd">Add a rule</button>
-      </div>`;
+            + "add, marked as its; the ones you write here it cannot touch."}</div>`;
     box.innerHTML = docSection("briefing", "rules", "Your rules",
       rows.length ? `${rows.length}` : "none", body,
       // No `open` override: the framework's default is right here — open on a
@@ -11176,14 +11183,14 @@ become that version's section when it is created">Changelog${
     if (!all.length){
       $("tstHint").textContent = "Nothing ingested yet.";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">This is where every test in
-        the project is recorded — what it protects, and what it really
-        exercises. The timings come from a run rather than from anybody's
-        estimate:
-        <pre class="ndcmd">BB_TEST_TIMING=1 bb dashboard test 2>&amp;1 | tee /tmp/run.log
-bb tests ingest /tmp/run.log</pre>
-        Ingest reconciles this list against what the runner reported, so a
-        test that arrived or went says so.</div>`;
+      $("tstStats").innerHTML = `<div class="hint">Every test in the project,
+        recorded: what it protects, what it really exercises, and what it
+        cost in a run rather than in anybody's estimate. A session records a
+        run with
+        <pre class="ndcmd">bb tests run</pre>
+        which runs the project's test command, times it and reconciles this
+        list against what the runner reported, so a test that arrived or
+        went says so.</div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
       return;
@@ -11499,7 +11506,8 @@ bb tests ingest /tmp/run.log</pre>
 
   function drawBugAdd(){
     const box = $("bugAdd");
-    box.innerHTML = `<button type="button" class="link">+ report a bug</button>`;
+    box.innerHTML = `<div class="addbar" data-add="bug">
+      <button type="button">Report a bug</button></div>`;
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.

@@ -35,7 +35,7 @@ await page.waitForFunction(() => /Nothing reported/.test(
 ok(true, 'the Bugs tab opens empty, and says where reports end up');
 
 // ---- reporting one from the panel -----------------------------------------
-await page.click('#bugAdd .link');
+await page.click('#bugAdd button');
 await page.waitForSelector('.bugform', { timeout: 10000 });
 ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    'the form opens without a cursor in it, like everything else here');

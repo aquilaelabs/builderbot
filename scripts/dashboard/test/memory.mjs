@@ -193,7 +193,7 @@ ok(true, 'which leaves the panel with nothing to warn about');
 // like all of them, so the lines below ride down instead of being teleported.
 {
   const seen = await animatedDuring(page, async () => {
-    await page.click('#memAdd .link');
+    await page.click('#memAdd button');
     await page.waitForSelector('#naTitle');
   });
   ok(seen.some(n => /\bmemAdd\b/.test(n)),
@@ -223,12 +223,12 @@ ok(born.startsWith('---\nname: no-parsed-progress\n')
 ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) — '
                               + 'a word and an ellipsis, never a bar'),
    '...and gets its line in the index in the same act, never one without the other');
-ok(await page.$('#naTitle') === null && await page.$('#memAdd .link') !== null,
+ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
    'the form folds back to the button afterwards');
 {
   // ...and folding back is the same motion, in reverse: Cancel and a written
   // memory both roll it up rather than snapping the list upward.
-  await page.click('#memAdd .link');
+  await page.click('#memAdd button');
   await page.waitForSelector('#naTitle');
   const seen = await animatedDuring(page, async () => {
     await page.click('#naCancel');
