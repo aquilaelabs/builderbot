@@ -257,3 +257,6 @@
 - A bug report now shows the version it was first seen in and the version it was closed in (c4c778a)
 - Closing a bug that is already closed is refused instead of overwriting its note; reopen it first (c4c778a)
 - An account can no longer read another project's memories through the notebook's memory endpoint (c4c778a)
+- The Briefing tab points out a [[link]] in a memory that names no memory, the way it already points out index drift (19dd08d)
+- A Check button beside a node's path mapping proves both machines mean the same directory by the projects share (19dd08d)
+- bb lint no longer stops silently when the runner registry cannot be read (19dd08d)

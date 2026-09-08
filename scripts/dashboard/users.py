@@ -486,6 +486,37 @@ def mint_session(project, ttl=SESSION_TTL, uid=""):
         f"{body}|{sig}".encode()).decode().rstrip("=")
 
 
+def renewal(tok):
+    """A fresh token for the same session, when this one is past half its
+    life — or "" when it is not (or is not a session token at all).
+
+    A token lasts twelve hours and a conversation does not: one that was
+    minted when its tab was opened ran out overnight while the session was
+    still working, and every bb verb stopped with "expired" until the tab
+    was opened again — from the remote view there is no tab to open, so the
+    operator ended the session. So every authenticated call from a session
+    is an opportunity to renew: past the halfway mark the answer carries a
+    new token for the same project and account, and bb writes it where it
+    looks. A session in use never runs out; only one idle for twelve hours
+    does, and that one is told what to do.
+
+    Only a token that still VERIFIES is renewed. An expired one is not — that
+    is what makes twelve hours mean something for a token that leaked.
+    """
+    p = session_principal(tok)
+    if not p:
+        return ""
+    raw = str(tok)[len(SESSION_PREFIX):]
+    try:
+        body = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode()
+        exp = int(body.split("|")[1])
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return ""
+    if exp - time.time() > SESSION_TTL / 2:
+        return ""
+    return mint_session(p["session"], uid=p.get("uid", ""))
+
+
 def session_principal(tok):
     """The account a session token stands for, or None.
 

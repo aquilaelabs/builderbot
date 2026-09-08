@@ -3097,6 +3097,17 @@ recovers by having its tab opened, and until it is, `bb` says the token
 expired and when — rather than "not signed in", which sent somebody looking
 for a sign-in that was never the problem.
 
+**And it renews itself while the session works.** Past half its life, every
+authenticated answer from the controller — a `bb` verb, the hook that runs
+on each prompt — carries a fresh token in an `X-BB-Session` header, and the
+client writes it into that same cache file; `bb` then sends whichever of
+its two tokens expires later. A session in use therefore never runs out; only
+one idle for twelve hours does, and that one is told to have its tab opened.
+An expired token is never renewed, which is what keeps twelve hours meaning
+something for one that leaked. This came from a session driven from the
+remote view overnight: the token from the tab it was started in ran out at
+one in the morning, every `bb` verb stopped, and there was no tab to open.
+
 #### Accounts
 
 The Tools card's **Users** tab adds people. There is exactly one **owner**,

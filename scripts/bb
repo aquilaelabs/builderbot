@@ -2068,8 +2068,9 @@ elif op == "history":
 elif op == "list":
     rs = reg.rules(proj)
     if not rs:
-        print("no house rules on this project. The operator writes them on "
-              "the notebook's Briefing tab; you cannot.")
+        print("no house rules on this project yet. The operator writes them on "
+              "the notebook's Briefing tab; `bb rules add NAME \"...\"` leaves "
+              "one of yours there, marked as a session's.")
         sys.exit(0)
     p = reg.payload(proj)
     print(f"{p['standing']} standing, {p['conditional']} conditional — "
@@ -2933,13 +2934,23 @@ bb_token_dead() {
 # the tab is what puts this back in touch.
 bb_token_now() {
     local t="${BB_TOKEN:-}"
-    if [ -n "$t" ] && ! bb_token_dead "$t"; then printf '%s' "$t"; return 0; fi
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
     local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/token-${BB_PROJECT:-}"
-    if [ -r "$f" ]; then
-        local ft; ft="$(cat "$f" 2>/dev/null)"
-        if [ -n "$ft" ] && ! bb_token_dead "$ft"; then printf '%s' "$ft"; return 0; fi
+    local ft=""
+    [ -r "$f" ] && ft="$(cat "$f" 2>/dev/null)"
+    # The later-expiring of the two. The file used to be read only once the
+    # environment's token had died; now every answer from the controller
+    # can renew it (users.renewal, kept by bbapi.keep_token), so the file is
+    # usually the NEWER one while the environment still verifies — and a
+    # session that keeps sending the older token would be renewed on every
+    # call for nothing.
+    if [ -n "$ft" ] && ! bb_token_dead "$ft"; then
+        if [ -z "$t" ] || bb_token_dead "$t" \
+           || [ "$(bb_token_exp "$ft")" -gt "$(bb_token_exp "$t")" ] 2>/dev/null; then
+            printf '%s' "$ft"; return 0
+        fi
     fi
+    if [ -n "$t" ] && ! bb_token_dead "$t"; then printf '%s' "$t"; return 0; fi
     printf '%s' "$t"                          # nothing fresher; the die below says so
 }
 
@@ -3201,6 +3212,16 @@ cmd_users() {
             # For the operator proving a node by hand — the node cannot
             # mint one, and BB_TOKEN=… is how bb there reaches the
             # controller — and for the test suite. Never written anywhere.
+            #
+            # --now prints the token bb would send from here, not a new one:
+            # the environment's or the renewed one in the cache, whichever
+            # expires later (bb_token_now) — which is the question "why is
+            # bb refusing" and "did the renewal land" both come down to.
+            if [ "${1:-}" = "--now" ]; then
+                local now; now="$(bb_token_now)"
+                [ -n "$now" ] || die "no session token here — this is not a session bb-tty started"
+                printf '%s\n' "$now"; return 0
+            fi
             [ -n "${1:-}" ] || die "which project? bb users token PROJECT [ACCOUNT]"
             [ -d "$WORKSPACE/$1" ] || die "no project called $1 under $WORKSPACE"
             # With an account name the token is FOR that account — what a
