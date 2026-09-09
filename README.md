@@ -1481,7 +1481,10 @@ emulation — and gives its build and test commands and the output globs. `bb bu
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on
-the row (which job, which node, which snapshot). A failed build keeps its
+the row (which job, which node, which snapshot). The tab's **Download
+source** hands over the code base itself as a zip through the browser — what
+git tracks and would track, under one directory named for the project, never
+`.git`, `dist/` or what `.gitignore` hides. A failed build keeps its
 workspace on the node for a look, and says where. The census reports each
 node's cache size beside **Clear cache**, and the Tools tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
@@ -2866,8 +2869,14 @@ what it is for, is a guess.
 
 **Root on a node has the same shape.** A session has no sudo there and gets
 none; what it can do is `bb root run --why "..." -- CMD`, which puts the
-reason and the exact command in front of every administrator — on the Nodes
-tab and the bell — and waits. Allow runs that one command as root on the
+reason and the exact command in front of a person — on the Nodes tab and the
+bell — and waits. Which person is decided by the session that asks: the
+account it belongs to, when that account is an administrator, and every
+administrator when it is a user's, because a sandbox is a shared machine and
+root on it is not a user's to allow. (Their own phone is: a phone request
+goes to whoever connected the handset, which is the asker when it is theirs.
+Letting a particular user allow root on a particular sandbox is a
+permissions design of its own, not written yet.) Allow runs that one command as root on the
 project's node, as a system job whose log opens with the reason and who
 allowed it, so the Jobs tab is the record; Deny says no. Only a node
 provisioned as a sandbox takes it — somebody's own machine is not the

@@ -523,13 +523,21 @@ def _req_public(r):
     return {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
             "state": r["state"], "by": r["by"], "node": r["node"],
             "node_name": r["node_name"], "project": r["project"],
-            "kind": r.get("kind") or "phone",
+            "kind": r.get("kind") or "phone", "asker": r.get("asker") or "",
             "left": max(0, WAIT_SECONDS - (int(time.time()) - r["at"]))}
 
 
 def _for(r, uid, admin):
-    """Whether a request waits on this account: a phone request on the
-    account that connected the phone, a root request on any administrator."""
+    """Whether a request waits on this account. Routed by the SESSION that
+    asked: a phone request goes to the account that connected the phone —
+    which is the asker themselves when it is their own phone on their own
+    session; a root request goes to the asker when their account is an
+    administrator, and to every administrator when it is not, because a
+    sandbox is a shared machine and root on it is not a user's to allow —
+    their own phone is. (A per-user grant for root on a sandbox is a design
+    of its own, not written yet.)"""
+    if r.get("kind") == "root" and not admin:
+        return False
     if r["to"] == "admins":
         return bool(admin)
     return r["to"] == uid
@@ -546,9 +554,11 @@ def requests_open(uid=None, admin=False):
                 if r["state"] == "pending" and (uid is None or _for(r, uid, admin))]
 
 
-def ask(why, argv, nid, node_name, project, by="claude"):
+def ask(why, argv, nid, node_name, project, by="claude", asker=""):
     """A session asking to reach the phone on its project's node. The
-    request goes to whoever connected that phone. Returns the request's id."""
+    request goes to whoever connected that phone — the asker, when it is
+    their own. `asker` names the account whose session asks, for the row.
+    Returns the request's id."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
         return {"error": "say what it is for — the operator is answering a "
@@ -566,15 +576,15 @@ def ask(why, argv, nid, node_name, project, by="claude"):
         return {"error": f"no phone is connected on {node_name or nid} — somebody "
                          "connects one on the Phone tab with that node picked"}
     return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
-                  rec.get("owner_name") or "the owner")
+                  rec.get("owner_name") or "the owner", asker)
 
 
-def _queue(kind, why, argv, nid, node_name, project, by, to, to_name):
+def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker=""):
     global _req_seq
     with _lock:
         _req_seq += 1
         r = {"id": _req_seq, "at": int(time.time()), "why": why, "kind": kind,
-             "cmd": list(argv), "state": "pending", "by": by,
+             "cmd": list(argv), "state": "pending", "by": by, "asker": asker,
              "node": nid, "node_name": node_name or nid, "project": project,
              "to": to, "out": "", "code": None}
         _reqs.append(r)
@@ -582,14 +592,18 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name):
     return {"ok": True, "id": r["id"], "to": to_name}
 
 
-def ask_root(why, argv, nid, node_name, project, sandbox, by="claude"):
+def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
+             asker_uid="", asker_name="", asker_admin=False):
     """A session asking for ONE command as root on its project's node
     (roadmap R38). Not sudo, which would be every command from then on
     with nobody reading them, and not a sudo that pretends — this is the
     phone's shape applied to root: the reason and the exact command go to
-    the administrators, one of them allows or denies, and the node runs
-    that command and nothing else. Only a node provisioned as a sandbox
-    (a MANAGED node) takes it: somebody's own machine is not the
+    a person, they allow or deny, and the node runs that command and
+    nothing else. Which person is the session's own account when it is an
+    administrator's — their ask, on their Nodes tab and bell — and every
+    administrator when a user's session asks, because a sandbox is shared
+    and root on it is not a user's to allow. Only a node provisioned as a
+    sandbox (a MANAGED node) takes it: somebody's own machine is not the
     controller's to run root on, whoever asks."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
@@ -606,7 +620,12 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude"):
     if not sandbox:
         return {"error": f"{node_name or nid} was not provisioned as a BuilderBot sandbox, so "
                          "root there is its owner's and not something this can ask for"}
-    return _queue("root", why, argv, nid, node_name, project, by, "admins", "the administrators")
+    if asker_admin and asker_uid:
+        return _queue("root", why, argv, nid, node_name, project, by, asker_uid,
+                      f"{asker_name or 'you'} (your own account — it is on your Nodes tab and bell)",
+                      asker_name)
+    return _queue("root", why, argv, nid, node_name, project, by, "admins",
+                  "the administrators", asker_name)
 
 
 def _find(rid):
@@ -630,8 +649,11 @@ def decide(rid, allow, uid, name="", admin=False):
         if r is None:
             return {"error": "no such request"}
         if not _for(r, uid, admin):
-            return {"error": "that request is for the administrators"
-                    if r["to"] == "admins" else
+            return {"error": "root on a sandbox is a shared machine's: an administrator "
+                             "allows it, not a user — your own phone is yours to allow"
+                    if r.get("kind") == "root" and not admin else
+                    "that request is for the administrator whose session asked"
+                    if r.get("kind") == "root" else
                     "that request is for the account that connected the phone"}
         if r["state"] != "pending":
             return {"error": f"that one was already {r['state']}"}

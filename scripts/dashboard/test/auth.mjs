@@ -701,11 +701,15 @@ ${code}`], { encoding: 'utf8' }).trim();
 
   // The machinery is not a project and is not theirs at all.
   for (const [path, body] of [['/api/v1/nodes', { action: 'enroll', name: 'zzprobe' }],
-                              ['/api/packages', { action: 'install', names: ['jdk'] }],
-                              ['/api/phone', { action: 'connect' }]]) {
+                              ['/api/packages', { action: 'install', names: ['jdk'] }]]) {
     const r3 = await post(path, body);
     ok(r3.status === 403, `${path} is an administrator's`);
   }
+  // A phone is not machinery: whoever connects one owns it, and a user may
+  // — the ownership is held per connection, not by role. (No node named,
+  // so this is refused for that reason and not for who is asking.)
+  ok((await post('/api/phone', { action: 'connect' })).status !== 403,
+     "/api/phone is any account's — a phone is its owner's, not the administrators'");
   // ...and the refusal REFUSED. Asserting the status alone is what let a
   // guard through that wrote a 403 and then did the thing anyway: _json
   // returns None, so `if (no := self._may(...))` was never true. The nodes

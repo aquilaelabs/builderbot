@@ -52,12 +52,20 @@ await api('/api/users', { action: 'projects', name: 'visitor', projects: ['alpha
 // ---- the ask, and who sees it ------------------------------------------------
 const asked = await api('/api/phone', { action: 'ask', kind: 'root', why: 'load the binder module for the emulator',
                                         cmd: ['sh', '-c', 'echo root-ran-here; id -un'], project: 'alpha' });
-ok(asked.body.id > 0 && /administrators/.test(asked.body.to || ''),
-   `a session can ask for one root command, and is told it went to the administrators (${JSON.stringify(asked.body).slice(0, 90)})`);
+ok(asked.body.id > 0 && /test.*your own account/.test(asked.body.to || ''),
+   `an administrator's own ask goes to that administrator, and says so (${asked.body.to})`);
 ok((await api('/api/phone', undefined, other)).body.asks.filter(a => a.kind === 'root').length === 0,
    'a user account is not asked — a root request waits on administrators alone');
-ok((await api('/api/phone')).body.asks.some(a => a.id === asked.body.id && a.kind === 'root'),
-   '...and the administrator is, with the request marked as a root one');
+ok((await api('/api/phone')).body.asks.some(a => a.id === asked.body.id && a.kind === 'root' && a.asker === 'test'),
+   '...and the administrator is, with the request marked as a root one and naming whose session asked');
+// A second administrator is not asked about the first one's own request:
+// the answer is routed to the session that asked, when it can be.
+execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'ops', '--role', 'admin'],
+  { input: 'opspassword1\nopspassword1\n', encoding: 'utf8',
+    env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+const ops = asUser('ops', 'opspassword1');
+ok(!(await api('/api/phone', undefined, ops)).body.asks.some(a => a.id === asked.body.id),
+   "another administrator is not asked about an administrator's own request — it went to the session that asked");
 ok((await api('/api/phone', { action: 'allow', id: asked.body.id }, other)).body.error,
    '...and the user cannot answer it, either way');
 
@@ -109,15 +117,30 @@ ok((await api('/api/phone', { action: 'allow', id: denied.body.id })).body.error
 
 // ---- a session's own token can ask, and reads only its own outcome ----------------
 {
-  const mint = (proj) => execFileSync('python3', ['-c', `
+  const mint = (proj, who = '') => execFileSync('python3', ['-c', `
 import importlib.util, json, os
 spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 def wj(p, d):
     tmp = str(p) + ".tmp"; open(tmp, "w").write(json.dumps(d, indent=2)); os.replace(tmp, p)
 u.configure(state="${DIR}/state", write_json=wj)
-print(u.mint_session("${proj}"))`], { encoding: 'utf8' }).trim();
+uid = u.load()["users"]["${who}"]["uid"] if "${who}" else ""
+print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const alpha = { Authorization: 'Bearer ' + mint('alpha'), 'Content-Type': 'application/json' };
+  // A USER's session asks: they may not allow root on a shared machine, so
+  // the request goes to every administrator — and not back to them.
+  const vsess = { Authorization: 'Bearer ' + mint('alpha', 'visitor'), 'Content-Type': 'application/json' };
+  const vask = await api('/api/phone', { action: 'ask', kind: 'root', why: 'from a user session', cmd: ['true'] }, vsess);
+  ok(vask.status === 200 && /administrators/.test(vask.body.to || ''),
+     `a user's session may ask, and is told the request went to the administrators (${vask.body.to})`);
+  const seenBy = async h => (await api('/api/phone', undefined, h)).body.asks.some(a => a.id === vask.body.id);
+  ok(await seenBy(owner) && await seenBy(ops) && !(await seenBy(other)),
+     '...every administrator sees it, and the user whose session asked does not');
+  ok(/administrator allows it, not a user/.test((await api('/api/phone', { action: 'allow', id: vask.body.id }, other)).body.error || ''),
+     '...and the user cannot allow root on a shared sandbox, and is told why');
+  await api('/api/phone', { action: 'deny', id: vask.body.id }, ops);
+  ok((await api('/api/phone', { action: 'outcome', id: vask.body.id }, vsess)).body.state === 'denied',
+     '...while any administrator can answer it');
   const beta = { Authorization: 'Bearer ' + mint('beta'), 'Content-Type': 'application/json' };
   const sess = await api('/api/phone', { action: 'ask', kind: 'root', why: 'from a session', cmd: ['true'] }, alpha);
   ok(sess.status === 200 && sess.body.id > 0, `a session token may ask for root on its project's node (${sess.status})`);
@@ -131,4 +154,5 @@ print(u.mint_session("${proj}"))`], { encoding: 'utf8' }).trim();
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 if (page.errors.length) console.log(page.errors);
 await api('/api/users', { action: 'remove', name: 'visitor' });
+await api('/api/users', { action: 'remove', name: 'ops' });
 await done(browser);

@@ -667,7 +667,7 @@ function renderNodesInto(i){
     const askRows = rootAsks.map(a => `<div class="row ndask">
       <div class="grow"><div class="name">root: ${esc(a.why)}</div>
         <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.project || "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">

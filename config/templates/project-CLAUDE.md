@@ -342,8 +342,11 @@ bb root                                     # what is waiting on an administrato
 bb root run --why "..." -- modprobe binder_linux
 ```
 
-That puts your reason and the exact command in front of the administrators
-and waits; on **Allow** the node runs that command as root and hands you the
+That puts your reason and the exact command in front of a person and waits:
+the account whose session this is, when it is an administrator's — on their
+Nodes tab and bell — and otherwise every administrator, because a sandbox is
+a shared machine and root on it is not a user's to allow (their own phone
+is). On **Allow** the node runs that command as root and hands you the
 output, on **Deny** you are told no. A second command is a second question.
 It works only on a node provisioned as a sandbox — somebody's own machine is
 not yours to run root on — and a project with no node has nothing to ask.

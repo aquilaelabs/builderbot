@@ -3920,6 +3920,31 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return None
+        if self.path.startswith("/api/source?"):
+            # The code base as a zip, from the Artifacts tab: what git
+            # tracks and would track, never .git, dist/ or what .gitignore
+            # hides. A person's download, so a session's token is refused —
+            # a session has the tree already.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if (self._who() or {}).get("session"):
+                return self._json({"error": "a session has the tree already"}, 403)
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            try:
+                got = artifacts.source_zip(name)
+            except (OSError, subprocess.SubprocessError) as e:
+                return self._json({"error": str(e)}, 500)
+            if got is None:
+                return self._json({"error": "no such project"}, 404)
+            fname, data = got
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
         if self.path.startswith("/logs/download"):
             # The container's own log, every project's traffic in it.
             if self._refused("admin"):
@@ -5543,11 +5568,15 @@ class Handler(BaseHTTPRequestHandler):
         to run."""
         # NOT one gate for the whole endpoint. `ask` is what a session does
         # (bb phone run --why ...) and `outcome` is it reading the answer;
-        # the control on those is that the operator sees the reason and
-        # decides, one command at a time. Pairing, connecting and deciding
-        # are the operator's, and a session may not reach them.
-        if field(req, "action") not in ("ask", "outcome") and self._refused("admin"):
-            return None
+        # the control on those is that a person sees the reason and decides,
+        # one command at a time. Pairing, connecting, disconnecting and
+        # deciding are a PERSON's — any account, not only an administrator:
+        # a phone is its owner's, and phone.py holds the ownership (only the
+        # account that connected one can disconnect it or answer for it,
+        # and root on a shared sandbox is an administrator's whoever asks).
+        # A session's token may reach none of them.
+        if field(req, "action") not in ("ask", "outcome") and (self._who() or {}).get("session"):
+            return self._json({"error": "a session asks; a person answers"}, 403)
         act = field(req, "action")
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
@@ -5577,13 +5606,22 @@ class Handler(BaseHTTPRequestHandler):
                 proj = ""
             pnid = prefs.get(proj)["node"] if proj else ""
             pn = nodes.node(pnid) if pnid and not NODES_OK else None
+            # Whose session asks: the account behind the token (a session on
+            # a node is minted for one), or the person calling the API. The
+            # answer is routed to them where it can be — their own phone,
+            # or root when they are an administrator.
+            acct = users.account_of(who) or {}
+            asker_uid = str(acct.get("uid") or "")
+            asker_name = str(acct.get("name") or "")
             if field(req, "kind") == "root":
                 r = phone.ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
                                    pn["name"] if pn else "", proj,
-                                   bool(((pn or {}).get("reported") or {}).get("sandbox")))
+                                   bool(((pn or {}).get("reported") or {}).get("sandbox")),
+                                   asker_uid=asker_uid, asker_name=asker_name,
+                                   asker_admin=users.is_admin(acct))
             else:
                 r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                              pn["name"] if pn else "", proj)
+                              pn["name"] if pn else "", proj, asker=asker_name)
         elif act == "allow" or act == "deny":
             r = phone.decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
         elif act == "outcome":

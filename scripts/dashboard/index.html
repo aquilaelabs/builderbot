@@ -2757,7 +2757,8 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="field" id="tstList"></div>
     </div>
     <div class="nbview" data-view="artifacts" hidden>
-      <div class="field nbhead vbar"><span id="artHint">loading…</span></div>
+      <div class="field nbhead vbar"><span id="artHint">loading…</span><span class="sp"></span>
+        <button type="button" id="artSource" title="the code base as a zip: what git tracks and would track, never build output or dist/">Download source</button></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
@@ -10799,6 +10800,10 @@ $("todoRevert").onclick = revertNotebook;
     }catch(e){ hint.textContent = "artifacts: " + e; return; }
     if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
+    // The code base itself, as a zip through the browser: a navigation, so
+    // the browser's own download handles it, cookie and all.
+    const src = $("artSource");
+    if (src) src.onclick = () => { location.href = "/api/source?project=" + encodeURIComponent(project); };
     // Why Push and Install are ghosted, when they are: the phone is on the
     // project's node and belongs to whoever connected it there.
     const phoneWhy = !dev ? "no phone is connected on this project's node — connect one on the Phone tab"
@@ -13453,7 +13458,7 @@ function drawBell(){
         <div class="btag">${a.kind === "root" ? `root on ${esc(a.node_name)} — needs your answer` : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
         <div class="bcmd">${a.kind === "root" ? "#" : "adb"} ${esc(a.cmd.join(" "))}</div>
-        <div class="bfoot"><span>${a.left > 60
+        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>

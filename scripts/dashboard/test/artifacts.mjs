@@ -79,6 +79,28 @@ ok((await get('/api/artifact?project=alpha&path=dist/../CLAUDE.md')).status === 
    'a path that climbs out of dist/ is refused');
 ok((await get('/api/artifact?project=alpha&path=dist/leak.txt')).status === 404,
    '...and so is a symlink pointing out of it — dist/ must not become a file server');
+
+// ---- the code base itself, as a zip ------------------------------------------
+// What git tracks and would track, under one directory named for the
+// project; never .git, dist/ (the artifacts have their own downloads) or a
+// symlink pointing out of the tree.
+ok(await page.$eval('#artSource', b => !b.disabled && b.textContent === 'Download source'),
+   'the tab offers the code base as a download');
+{
+  const zipPath = `${DIR}/alpha-source.zip`, hdrs = `${DIR}/alpha-source.hdr`;
+  execFileSync('curl', ['-fsS', '-u', 'test:test', '-D', hdrs, '-o', zipPath,
+                        `${URL.replace(/\/$/, '')}/api/source?project=alpha`]);
+  const names = execFileSync('python3', ['-c', `
+import sys, zipfile
+print("\\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))`, zipPath], { encoding: 'utf8' }).trim().split('\n');
+  const head = execFileSync('cat', [hdrs], { encoding: 'utf8' });
+  ok(/content-type: application\/zip/i.test(head) && /filename="alpha-source-[^"]+\.zip"/.test(head),
+     `it is a zip named for the project (${(head.match(/filename="[^"]+"/) || [''])[0]})`);
+  ok(names.includes('alpha/README.md') && names.every(n => n.startsWith('alpha/')),
+     `the tree is inside one directory named for the project (${names.length} entries)`);
+  ok(!names.some(n => n.startsWith('alpha/dist/') || n.startsWith('alpha/.git/')),
+     '...with neither dist/ nor .git in it');
+}
 page.errors = [];
 
 // ---- installing needs a phone on the project's node ----------------------
