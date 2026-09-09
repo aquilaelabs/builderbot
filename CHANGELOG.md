@@ -306,3 +306,7 @@
 - A Claude session does not start for an account with no name and email for its commits until the Profile has them (2bea578)
 - An administrator edits everything about an account, a new password included, in one dialog from the Users tab (2bea578)
 - The bell and gear panels, tab pills and a switched-to tab now move rather than snap (2bea578)
+- A push in progress no longer makes the Phone tab forget who connected the phone, and a probe that could not run is cancelled rather than left queued (5bbff32)
+- A zip made by Finder, or a tarball made under ./, now starts a project; an archive that cannot be opened is refused in a sentence (5bbff32)
+- One person's commit identity no longer leaks into another's shell on the same box (5bbff32)
+- Typing in one Settings section survives pressing Apply in another, and the user dialog closes on Escape (5bbff32)
