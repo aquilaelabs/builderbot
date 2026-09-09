@@ -295,6 +295,8 @@ ok(cl('add', '').code !== 0, 'an empty entry is refused');
 // should meet each change once, and the honest record is one line that is
 // right. Positional numbers, because the section is short-lived by design.
 cl('add', 'Pairing shows the code larger');
+// A second commit before the edit, so the line has two to name.
+execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'Another pass over pairing'], { env });
 const listed = cl('unreleased').out;
 ok(/^\s*1\s+Pairing works across screen switches\s+\([0-9a-f]{7}\)/m.test(listed)
    && /^\s*2\s+Pairing shows the code larger/m.test(listed),
@@ -302,9 +304,9 @@ ok(/^\s*1\s+Pairing works across screen switches\s+\([0-9a-f]{7}\)/m.test(listed
 ok(cl('edit', '2', 'Pairing shows the code larger, and reads it aloud').code === 0,
    'a session can reword an unreleased entry instead of logging the same thing twice');
 const reworded = cl().out;
-ok(/- Pairing shows the code larger, and reads it aloud \([0-9a-f]{7}\)/.test(reworded)
+ok(/- Pairing shows the code larger, and reads it aloud \([0-9a-f]{7}, [0-9a-f]{7}\)/.test(reworded)
    && !/code larger \(/.test(reworded) && /- Pairing works across/.test(reworded),
-   '...replacing the line in place with its commit stamp kept, and the others untouched');
+   '...replacing the line in place, naming the commit it had and the one that reworded it, the others untouched');
 const missing = cl('edit', '9', 'Nothing here');
 ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
    'an entry that is not there is refused, naming how many there are');
@@ -318,8 +320,9 @@ ok(/## 2\.2\.1 — \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
    "the project's bump dates its Unreleased section");
 ok(/## Unreleased/.test(cl('--for', 'extension').out),
    "...and leaves the extension's still accruing");
-ok(cl('edit', '1', 'Rewriting history').code !== 0 && !/Rewriting history/.test(cl().out),
-   'a dated section is history: once bumped, nothing is left to edit');
+ok(/nothing unreleased/.test(cl('unreleased').out)
+   && cl('edit', '1', 'Rewriting history').code !== 0 && !/Rewriting history/.test(cl().out),
+   'a dated section is history: once bumped, the numbered list is empty and nothing is left to edit');
 ok(execFileSync('git', ['-C', M, 'show', '--stat', '--format=', 'HEAD'], { env })
      .toString().includes('CHANGELOG.md'),
    '...with VERSION and CHANGELOG.md moving in one commit');

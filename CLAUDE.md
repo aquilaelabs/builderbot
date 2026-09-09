@@ -396,8 +396,9 @@ dated section, so nothing is lost while the number waits.
 **When a change tweaks something already logged this cycle, correct that
 line instead of adding one.** Read `bb changelog unreleased` before you log:
 if an entry there already describes the thing you just changed — a fix on a
-fix, a second pass over one feature — `bb changelog edit N "…"` rewords it,
-keeping its commit stamp and adding yours. Use your judgment: two lines about
+fix, a second pass over one feature — `bb changelog edit N "…"` rewords it.
+The line keeps every commit it already carried and gains yours, oldest
+first, so the entry names all the commits that made it. Use your judgment: two lines about
 one change tell the reader about it twice, but a genuinely separate change
 is a new line. Only Unreleased is editable; a dated section is a release
 somebody may have read.
@@ -949,9 +950,10 @@ only when the finding is genuinely a false positive, and say why.
 
 - Commit identity is the account's own, set on their Profile tab, and it
   reaches this session as git's environment (`GIT_AUTHOR_*`,
-  `GIT_COMMITTER_*`) — so two people on one project are two authors. If a
-  commit fails asking who you are, say so rather than setting `user.name`
-  / `user.email` yourself.
+  `GIT_COMMITTER_*`) — so two people on one project are two authors. A
+  session does not start for an account that has none set, so a commit
+  failing to find an author here is a fault to report, not one to fix with
+  `user.name` / `user.email` yourself.
 - SSH keys may be **shielded**: served by a root-owned agent so that pushes
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem
@@ -1162,7 +1164,8 @@ by hand cost four commands and still could not see the failed builds.
 - **Conventions** live in the house rules on the Briefing tab (`bb rules`);
   what follows is the layout they refer to.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
-    `index.html` is one file of vanilla JS and CSS. No framework, no build step.
+    `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
+    document tab beside it. No framework, no build step.
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

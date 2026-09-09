@@ -121,9 +121,9 @@ function renderUsersInto(i){
         <div class="sub">An admin sees every project and works on the ones on their
           list; a user sees only their list.</div>
         <div class="uadd">
-          <div class="setrow col">${lbl("uNewName", "Account name", "what they sign in with")}
+          <div class="setrow col">${lbl("uNewName", "Account name")}
             <input id="uNewName" autocomplete="off"></div>
-          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters; they can change it on their Profile")}
+          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
             <input id="uNewPw" type="password" autocomplete="new-password"></div>
           <div class="setrow col">${lbl("uNewRole", "Role")}
           <select id="uNewRole">${
@@ -186,7 +186,9 @@ function usersEditOpen(name){
        autocomplete="off" spellcheck="false" ${extra}></div>`;
   m.innerHTML = `<div class="box">
     <h3>Edit ${esc(u.name)}</h3>
-    ${f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
+    ${u.name === usersMeta.me
+      ? f("ueName", "Account name", u.name, "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
+      : f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
     ${isOwner ? `<div class="field">${lbl("", "Role", "the owner's role cannot change; its name can")}<div class="hint">owner</div></div>`
       : `<div class="field">${lbl("ueRole", "Role")}<select id="ueRole">${
           usersMeta.roles.filter(r => r !== "owner").map(r =>
@@ -212,6 +214,14 @@ function usersEditOpen(name){
     </div>
   </div>`;
   m.hidden = false;
+  // Dismissed like every other dialog: the backdrop, or Escape.
+  m.onclick = e => { if (e.target === m) m.hidden = true; };
+  if (!m.dataset.keys){
+    m.dataset.keys = "1";
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && !m.hidden){ e.preventDefault(); m.hidden = true; }
+    });
+  }
   const role = m.querySelector("#ueRole");
   if (role) role.onchange = () => { m.querySelector("#ueProjField").hidden = role.value !== "user"; };
   m.querySelector("#ueCancel").onclick = () => { m.hidden = true; };
@@ -221,7 +231,7 @@ function usersEditOpen(name){
 
 async function usersEditSave(name, m){
   const v = id => m.querySelector("#" + id)?.value ?? "";
-  const body = {action: "edit", name, to: v("ueName").trim(),
+  const body = {action: "edit", name, to: m.querySelector("#ueName")?.disabled ? "" : v("ueName").trim(),
                 role: m.querySelector("#ueRole")?.value || "",
                 profile: {full_name: v("ueFull"), email: v("ueEmail"),
                           git_name: v("ueGitName"), git_email: v("ueGitEmail")},

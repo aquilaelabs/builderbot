@@ -206,7 +206,8 @@ def profile(u):
 
 def git_identity(u):
     """The name and email this account's commits carry: its git identity
-    where it set one, else its real name and email, else its account name.
+    where it set one, else its real name and email, else nothing — a made-up
+    address would be a lie in every log it landed in (git_ready).
 
     Per ACCOUNT, not per project: two people working on one project are
     two authors, and a repo-level user.name would make them one. It reaches

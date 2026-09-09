@@ -264,6 +264,10 @@ async function spanning(){
     const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
     if (!box) return { err: 'no document box found' };
     const W = box.getBoundingClientRect().width;
+    // The rule's own number as well as the surface: a 700px field on a
+    // 1080px tab is inside 90% and outside --ctl-w.
+    const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
+    const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
     const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
@@ -275,13 +279,14 @@ async function spanning(){
       if (!kids.length) continue;
       const l = Math.min(...kids.map(k => k.getBoundingClientRect().left));
       const r = Math.max(...kids.map(k => k.getBoundingClientRect().right));
-      if (r - l > W * 0.9) out.push(`${row.className.split(' ')[0]} ${Math.round(r - l)}/${Math.round(W)}`);
+      if (r - l > LIM) out.push(`${row.className.split(' ')[0]} ${Math.round(r - l)}/${Math.round(W)}`);
     }
     for (const e of box.querySelectorAll(CTL)){
       if (seen.has(e) || !vis(e) || e.closest('.term, .dmlog, pre, .dropbox, .sendbox')) continue;
-      if (e.tagName === 'TEXTAREA' && e.readOnly) continue;
+      // A prose editor in the notebook is a page, not a control.
+      if (e.tagName === 'TEXTAREA' && (e.readOnly || e.closest('.nb'))) continue;
       const w = e.getBoundingClientRect().width;
-      if (w > W * 0.9) out.push(`${e.id || e.className.split(' ')[0] || e.tagName} ${Math.round(w)}/${Math.round(W)}`);
+      if (w > LIM) out.push(`${e.id || e.className.split(' ')[0] || e.tagName} ${Math.round(w)}/${Math.round(W)}`);
     }
     return { wide: out, w: W };
   });
@@ -439,6 +444,18 @@ ok(seenReds.size <= 1,
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => setView('terminal'));
 await sleep(400);
+// The same width rule at phone width, on every tab: the cap is min(--ctl-w,
+// 88%), and 88% is what bites here.
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  const S = await spanning();
+  ok(!S.err && S.wide.length === 0,
+     `[${kind}] no control or row of controls spans the tab at phone width${
+       S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+}
 // The Tests view needs rows to be measured on, and one of them a continuation
 // — a "..." name whose "follows:" line is drawn under it — because that line
 // is exactly what scrolled the tab sideways once (a 100% flex basis plus a

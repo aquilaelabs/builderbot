@@ -533,6 +533,15 @@ start() {
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)
+    # ...and this account's identity taken OUT of the server's global
+    # environment, where the first session's landed when the server was
+    # started from a process that had it exported. A pane given no -e of its
+    # own — a root shell, an account with no identity yet — would otherwise
+    # inherit somebody else's name onto its commits, which is the very
+    # mislabel the identity exists to stop.
+    for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+        tmux set-environment -gu "$v" 2>/dev/null || true
+    done
     # -A -d creates it if it is missing and attaches to it if it is not, without
     # attaching yet — race-free where has-session followed by new-session is not.
     tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"
@@ -579,6 +588,7 @@ case "$target" in
             ''|*[!0-9]*) bad "Invalid terminal number: ${num}" ;;
         esac
         if [ -z "$proj" ]; then
+            git_identity ""
             start "$(sess "shell-${num}")" "$WORKSPACE"
         fi
         dir="$WORKSPACE/$proj"

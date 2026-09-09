@@ -63,7 +63,7 @@ const SURFACE = [
   'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
-  'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab',
+  'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep',
   'openPhoneTab', 'renderPhoneInto', 'wirePhoneTab',
   // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
   // is not a window property, so usersList and friends are not listed here.

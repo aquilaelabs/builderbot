@@ -24,8 +24,7 @@ let phNode = "";                 // the picked node's id; "" until the first ans
 let phIp = "", phPort = "", phCode = "";
 
 function openPhoneTab(){
-  openTab({kind: "phone", arg: "__phone", label: "Phone"});
-  phFetch();
+  openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
 }
 
 // Connecting, pairing and disconnecting are an administrator's (the server
@@ -70,6 +69,14 @@ function renderPhoneInto(i){
   // dashboard ON the device is the one case where the number is not something
   // anybody has to go and read. The node's remembered IP is the fallback.
   if (!phIp) phIp = ph.you || n?.ip || "";
+  if (!nodes.length){
+    d.setBar(`<span class="sp"></span>
+      <button type="button" id="phRefresh" title="ask again now">Refresh</button>`);
+    d.list.innerHTML = `<div class="hint">No node carries adb. A phone is driven from
+      a node — install android-tools on one from the Tools tab, and it appears here.</div>`;
+    wirePhoneTab(d.el);
+    return;
+  }
   const held = n && n.owner && !n.mine;   // somebody else's connection
   const off = held || !n.live || !mayPhone();
   const offWhy = held ? `connected by ${esc(n.owner.name)} — only they can change it`
@@ -81,11 +88,6 @@ function renderPhoneInto(i){
         x.live ? "" : ", quiet"}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
     <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
-  if (!nodes.length){
-    d.list.innerHTML = `<div class="hint">No node carries adb. A phone is driven from
-      a node — install android-tools on one from the Tools tab, and it appears here.</div>`;
-    return;
-  }
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
   const state = phBusy

@@ -900,7 +900,8 @@ ok(true, 'pinning it puts it back on the sidebar');
   // Put back: the fixture tree outlives this file, and a project left held
   // here would be held — its sessions ended, its row red in the bell — in
   // every file after it.
-  writeFileSync(`${DIR}/ws/beta/CLAUDE.md`, tpl);
+  // beta had no CLAUDE.md at fixture time: put back is remove.
+  rmSync(`${DIR}/ws/beta/CLAUDE.md`, { force: true });
   await refreshUntil(page, () => !(state.projects || []).find(p => p.name === 'beta')?.held);
 }
 

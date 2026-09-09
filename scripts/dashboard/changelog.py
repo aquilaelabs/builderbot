@@ -130,7 +130,7 @@ def add(d, text, sha=""):
         return {"error": f"could not write {FILE}: {e}"}
 
 
-_STAMP = re.compile(r"\s*\(([0-9a-f]{7}(?:, [0-9a-f]{7})*)\)$")
+_STAMP = re.compile(r"\s*\(([0-9a-f]{7,40}(?:, [0-9a-f]{7,40})*)\)$")   # --short=7 grows on ambiguity
 
 
 def numbered(d):

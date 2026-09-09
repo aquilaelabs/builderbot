@@ -46,8 +46,11 @@ is `<div class="field histbar">`.
 
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
 or three words and no more: a field that is filled in still says what it
-is, which a placeholder cannot. What the label cannot say rides the `?`
-beside it — `helpIcon(text)`, a circle with a tooltip — never a dash and a
+is, which a placeholder cannot. Where there is something the label cannot
+say — a password's rules, what blank means, what a rename costs — it rides
+the `?` beside it: `helpIcon(text)`, a circle with a tooltip that opens on
+hover and on a tap, so a phone reads it too. Most fields need none: "Your
+email" explains itself, and a `?` saying so is noise. Never a dash and a
 clause on the label, never a line of small print under the field. A
 checkbox keeps its sentence beside it. A placeholder, where there is one,
 is an example, not a name. The two exceptions are a search box in a bar and
@@ -59,6 +62,12 @@ the row up to the cap, and only a number field is a few characters wide.
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
+
+**What the width test measures:** on every document tab, at desktop and at
+phone width, the union of each control row's controls and each lone control
+against the smaller of `--ctl-w` and nine tenths of the tab's box. A prose
+editor in the notebook — a memory's body, a rule, a bug's repro — is a page
+rather than a control and keeps the reading width.
 
 **Every group of settings ends with one action bar** — the state line and
 its Apply or Save at the right — and nothing else in the group carries a

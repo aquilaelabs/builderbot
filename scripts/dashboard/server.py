@@ -3917,8 +3917,12 @@ class Handler(BaseHTTPRequestHandler):
             # Not on the status poll: a probe is a job on a node, so the tab
             # asks when it is opened or pressed, and reads the cache between.
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            # A probe is a job on the named node, and a session's token is
+            # bound to one project's node and no other (the same rule the
+            # jobs endpoint keeps): a session reads the cache, an account
+            # may ask the node.
             return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
-                                                  probe=bool(q.get("probe"))))
+                                                  probe=bool(q.get("probe")) and not (self._who() or {}).get("session")))
         if self.path.startswith("/api/packages"):
             # ?node= asks about another node's packages store: what its
             # census says it has, and the package job in flight there. The
@@ -5517,7 +5521,7 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "allow" or act == "deny":
             r = phone.decide(req.get("id"), act == "allow", uid, me)
         elif act == "outcome":
-            r = phone.outcome(req.get("id"))
+            r = phone.outcome(req.get("id"), project=who.get("session") or "")
             if not r.get("error"):
                 return self._json(r)
         else:

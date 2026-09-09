@@ -36,8 +36,8 @@ async function loadProfile(){
 // Controls) — a filled-in field still says what it is.
 const PROFILE_FIELDS = [
   ["account", "Account name", "what you sign in with. Changing it signs your other browsers out", "text"],
-  ["full_name", "Your name", "the name people see", "text"],
-  ["email", "Your email", "how to reach you. Nothing here sends mail", "email"],
+  ["full_name", "Your name", "", "text"],
+  ["email", "Your email", "", "email"],
   ["git_name", "Git name", "on your commits. Blank means your name", "text"],
   ["git_email", "Git email", "on your commits. Blank means your email; a GitHub noreply address keeps yours out of the log", "email"],
 ];
@@ -80,11 +80,11 @@ function renderProfileInto(i){
         <h4>Password</h4>
         <div class="logset">
           <div class="logdays setrow col">
-            ${lbl("pfCur", "Current password", "asked first, so a browser left signed in is not enough to lock you out")}
+            ${lbl("pfCur", "Current password")}
             <input id="pfCur" type="password" autocomplete="current-password">
           </div>
           <div class="logdays setrow col">
-            ${lbl("pfNew", "New password", "at least 8 characters")}
+            ${lbl("pfNew", "New password", "at least 8 characters, and every browser signed in as you signs out when it changes")}
             <input id="pfNew" type="password" autocomplete="new-password">
           </div>
           <div class="logdays setrow col">
@@ -92,7 +92,7 @@ function renderProfileInto(i){
             <input id="pfNew2" type="password" autocomplete="new-password">
           </div>
           <div class="actbar">
-            <span class="state">every browser signed in as you signs out</span>
+            <span class="state"></span>
             <button type="button" id="pfPasswd">Change password</button>
           </div>
         </div>

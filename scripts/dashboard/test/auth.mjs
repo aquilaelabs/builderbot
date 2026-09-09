@@ -497,6 +497,10 @@ ${code}`], { encoding: 'utf8' });
          `a user reads their own memories and not the owner's (${u.join(',')})`);
       ok(o.includes('owners') && !o.includes('theirs'),
          `...and the owner reads theirs and not the user's (${o.join(',')})`);
+      // Not the fixture's: taken away again so no later file meets a beta
+      // memory nobody seeded.
+      rmSync(`${theirs}/theirs.md`, { force: true });
+      rmSync(`${owners}/owners.md`, { force: true });
     }
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
     ok((await term(adm, 'claude:alpha')).status === 403,
@@ -952,6 +956,18 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      'the Profile tab names the account and carries Save and Change password');
   ok(await page.$eval('#cardAdmin', el => !el.hidden && !!el.querySelector('#bSettings') && !!el.querySelector('#bUsers')),
      'the Administration card holds Controller settings and Users, and an administrator sees it');
+  // The ? beside a label opens on a tap as well as a hover, so a phone reads
+  // it: a click toggles it, and a tap anywhere else closes it.
+  await page.click('.profiletab .help');
+  const tipped = await page.$eval('.profiletab .help.on', el => getComputedStyle(el, '::after').content);
+  ok(/at least 8 characters|sign in with/.test(tipped),
+     `a tap on the ? shows its tooltip without a hover (${tipped.slice(0, 40)})`);
+  await page.click('.profiletab h4');
+  ok(!(await page.$('.profiletab .help.on')), '...and a tap elsewhere closes it');
+  // Made here, removed here: users.json is not reset between files.
+  await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove', name: 'profiled' }) })).json());
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
