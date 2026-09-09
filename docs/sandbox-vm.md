@@ -337,7 +337,15 @@ tool:
   the job, with the names it does have, and leaves them to the owner —
   Playwright's browsers are that case outside Debian today.
 
-Then run one script inside it:
+Then run one script inside it. Bare, it prints its help and changes nothing;
+`--interactive` asks the questions below one at a time, prints the command
+it built so you can keep it for the next machine, and runs it on a yes:
+
+```bash
+sudo bash provision-linux.sh --interactive
+```
+
+Or with the options in hand:
 
 The repository is private, so the VM cannot fetch the script itself — copy it
 over. **From the Unraid terminal**, where that path is the host's own; inside
