@@ -325,3 +325,4 @@
 - A node can be locked so its storage, network and root are managed only at its own console: Lock system changes under the node's Advanced section refuses those from the dashboard until Unlock (f1f3b69)
 - The notebook's tabs run in the order a project is worked: Briefing, Roadmap, Bugs, Git, Artifacts, Tests, Analysis (f1f3b69)
 - Fixes from a review: a package a node was missing is now actually installed on Debian and Arch, a network change on systemd-networkd takes effect, allowing a root command no longer hangs the page while it runs, and the provisioner survives an offline node and Rocky's curl-minimal (f1f3b69)
+- The version popup is now a welcome panel: a getting-started guide (one for users, one for administrators) and this changelog behind a switch. It opens on the guide the first time you sign in, and on the changelog once after each update, marking what is new since you last looked (56f0ff7)
