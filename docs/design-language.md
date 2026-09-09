@@ -59,6 +59,11 @@ inside, because there is nothing to mistake them for once typed in. A text
 field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
+**A file field is a button of ours and the name of what was picked.** The
+browser's own chooser stays hidden: its button wears the browser's skin,
+not the page's, and there is no styling it. A `.filepick` — a button that
+opens the chooser, and the picked name beside it — is the shape.
+
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.

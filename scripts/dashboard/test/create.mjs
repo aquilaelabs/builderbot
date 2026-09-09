@@ -799,8 +799,25 @@ ok(await page.$eval('#pKey', el => el.value === ''),
 ok(await page.$eval('#pSrcField', el => el.hidden)
    && await page.$eval('#pNameField', el => el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden)
-   && await page.$eval('#pUrlField', el => !el.hidden),
-   'link mode asks for the URL and key only');
+   && await page.$eval('#pUrlField', el => !el.hidden)
+   && await page.$eval('#pLinkAuthField', el => !el.hidden),
+   'link mode asks for the URL and how the push authenticates');
+// The switch the settings dialog wears: a deploy key the agent holds, or a
+// token for this project alone. The token half is checked for its shape
+// before GitHub is asked, so a wrong paste is refused here without a network.
+await page.click('#pLinkToken');
+ok(await page.$eval('#pTokenField', el => !el.hidden) && await page.$eval('#pKeyField', el => el.hidden),
+   'Access token shows the token field and puts the key picker away');
+await page.fill('#pUrl', 'https://github.com/owner/beta-remote');
+await page.click('#pCreate');
+ok(await page.$eval('#pErr', el => /access token/.test(el.textContent)),
+   '...and an empty token is refused before the round-trip');
+await page.fill('#pToken', 'not-a-token');
+await page.click('#pCreate');
+await page.waitForFunction(() => /not a GitHub token/.test(document.getElementById('pErr').textContent), null, { timeout: 10000 });
+ok(true, '...as is a token that is not one, in a sentence');
+await page.click('#pLinkKey');
+ok(await page.$eval('#pTokenField', el => el.hidden), 'Deploy key puts the token field away again');
 await page.fill('#pUrl', 'git@github.com:owner/beta-remote.git');
 await page.click('#pCreate');
 ok(await page.$eval('#pErr', el => el.textContent.includes('deploy key')),

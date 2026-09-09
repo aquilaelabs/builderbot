@@ -1126,9 +1126,13 @@ lives in its body. The cards:
   configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos — gh answers for plain https remotes.
   A local repo with **no remote at all** wears a chain icon beside its eye:
-  **link to GitHub**. It asks the same two questions as a clone — URL and
-  deploy key — sets `origin`, and pushes the current branch, but **only into
-  an empty repository**: `git ls-remote` must come back with no refs first,
+  **link to GitHub**. It asks for the URL and how the push authenticates —
+  the same switch the settings dialog wears: a **deploy key** the agent
+  holds, or an **access token** for this project alone, checked against
+  GitHub, stored under `/config` and read by git's helper, with the
+  repository created private through the API when it does not exist yet —
+  sets `origin`, records the project as able to push, and pushes the
+  current branch, but **only into an empty repository**: `git ls-remote` must come back with no refs first,
   so linking can never write over existing work. Without a PAT a deploy key
   is required (a push has to authenticate somehow); with one, the key is
   optional and a URL that does not exist yet is created for you via
