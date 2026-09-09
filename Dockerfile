@@ -290,6 +290,10 @@ COPY config/templates/ /opt/builderbot/templates/
 # so that the path relative to both bb and server.py is the same here as it is
 # in a checkout, which is what lets `bb dashboard dev` and the tests read it.
 COPY config/packages.json /opt/builderbot/config/packages.json
+# The changelog, for the welcome panel: shown once per image update, so it
+# has to travel with the image it describes. Two levels above server.py,
+# where a checkout keeps it too.
+COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach — see
 # scripts/startup.d/05-unraid-icon.root.sh.

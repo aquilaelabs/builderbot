@@ -3164,6 +3164,12 @@ def snapshot(who):
         # This account's colour scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
+        # Whether this account has read the getting-started guide, and
+        # which image's changelog it acknowledged: the welcome panel opens
+        # itself once for each — the guide on a first sign-in, the changelog
+        # once per image update — and these are what make it once.
+        "welcome": {"seen": bool(users.prefs(who).get("welcome_seen")),
+                    "image_seen": str(users.prefs(who).get("image_seen") or "")},
     }
 
 
@@ -3920,6 +3926,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return None
+        if self.path.startswith("/api/welcome"):
+            # BuilderBot's own changelog, for the welcome panel: the file
+            # beside this checkout (CHANGELOG.md two levels up, which is
+            # /opt/builderbot/CHANGELOG.md in the image and the repository's
+            # under bb dashboard dev), and where this account last looked —
+            # the image commit it acknowledged — so the panel can draw a
+            # line under what is new since.
+            text = changelog.read(Path(__file__).resolve().parents[2])
+            seen = str(users.prefs(self._who()).get("image_seen") or "")
+            return self._json({"sections": changelog.sections(text) if text else [],
+                               "present": text is not None, "seen": seen})
         if self.path.startswith("/api/source?"):
             # The code base as a zip, from the Artifacts tab: what git
             # tracks and would track, never .git, dist/ or what .gitignore
@@ -6108,6 +6125,12 @@ class Handler(BaseHTTPRequestHandler):
             theme = str(want.get("theme") or "")
             if re.fullmatch(r"[a-z]{2,12}", theme):
                 keep["theme"] = theme
+            # The welcome panel's two marks: the getting-started guide has
+            # been read, and which image's changelog was acknowledged.
+            if isinstance(want.get("welcome_seen"), bool):
+                keep["welcome_seen"] = want["welcome_seen"]
+            if isinstance(want.get("image_seen"), str) and re.fullmatch(r"[0-9a-f]{0,40}", want["image_seen"]):
+                keep["image_seen"] = want["image_seen"]
             if not keep:
                 return self._json({"error": "nothing here is a setting"}, 400)
             return self._json(users.prefs_set(me["name"], keep))

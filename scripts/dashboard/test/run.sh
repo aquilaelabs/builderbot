@@ -746,7 +746,11 @@ u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.d
 d = u.load()
 d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
                       # An author, or no Claude session starts for it (users.git_ready).
-                      "prefs": {"full_name": "Dashboard Test", "email": "test@example.invalid"},
+                      # ...and the welcome panel read, or it would open over
+                      # every page load in the suite (cards.mjs opens it on purpose).
+                      "prefs": {"full_name": "Dashboard Test", "email": "test@example.invalid",
+                                "welcome_seen": True,
+                                "image_seen": "abc1234def5678901234567890abcdef12345678"},
                       "password": u.hash_password("test"), "created": 0,
                       "seen": 0}
 u._save(d)

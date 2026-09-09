@@ -504,6 +504,23 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .about .aline{display:flex;gap:10px;align-items:baseline;padding:3px 0}
 .about .aline span{flex:0 0 96px;color:var(--dim);font:var(--f-note)}
 .about .aline code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
+/* The welcome panel's switch and its two pages: the guide is prose, the
+   changelog is a list with a line under what is new since the reader last
+   looked. Segmented like the notebook's strip, not a select. */
+.abswitch{display:flex;gap:6px;margin:10px 0 6px}
+.abswitch button{flex:0 1 auto}
+.abswitch button.on{border-color:var(--accent);color:var(--accent)}
+.abpage{max-height:52vh;overflow:auto;padding-right:4px}
+.abpage h4{margin:12px 0 4px;font:var(--f-ui);font-weight:600}
+.abpage p,.abpage li{font:var(--f-ui);color:var(--fg);line-height:1.5}
+.abpage ul{margin:4px 0 8px 18px;padding:0}
+.abpage .dim{color:var(--dim)}
+.ablog h4{display:flex;gap:8px;align-items:baseline}
+.ablog h4 .dim{font:var(--f-note)}
+.ablog li{margin:2px 0}
+.ablog .abnew{margin:8px 0;padding:4px 8px;border-left:3px solid var(--accent);
+  color:var(--accent);font:var(--f-note)}
+.ablog li.old{color:var(--dim)}
 
 .switch{display:none;gap:6px;padding:6px 12px;background:var(--panel);
   border-bottom:1px solid var(--line);flex:0 0 auto}
@@ -2886,7 +2903,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
      aria-labelledby="aboutTitle">
-  <div class="box">
+  <div class="box wide">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
       <div class="aline"><span>version</span><code id="aVer"></code></div>
@@ -2897,9 +2914,19 @@ body.dragging .tab .lbl{cursor:grabbing}
       <p class="hint">This is what <code>/opt</code> is serving — an update
         pulls whatever <code>:latest</code> is now, and <code>bb drift</code>
         says what a checkout has changed since.</p>
+      <!-- Two pages behind one switch: how to start, and what changed. The
+           panel opens itself on the guide the first time an account signs
+           in, and on the changelog once after every image update; a press
+           on the version in the header opens it any other time. -->
+      <div class="abswitch" role="tablist">
+        <button type="button" data-ab="guide" role="tab">Getting started</button>
+        <button type="button" data-ab="log" role="tab">Changelog</button>
+      </div>
+      <div class="abpage" id="abGuide" hidden></div>
+      <div class="abpage ablog" id="abLog" hidden></div>
     </div>
     <div class="foot"><span class="sp"></span>
-      <button type="button" onclick="$('aboutModal').hidden = true">Close</button>
+      <button type="button" id="aboutClose">Close</button>
     </div>
   </div>
 </div>
@@ -5039,16 +5066,136 @@ function drawBuild(img){
     || "unstamped — built outside CI, or older than the stamp itself";
   $("aBuilt").textContent = img?.built || "—";
 }
-$("bAbout").onclick = () => {
+// ---- the welcome panel: the guide, and the changelog ----------------------
+// Two guides, because an administrator and a user see different sidebars:
+// the user's is what a person with projects and no machinery needs; the
+// administrator's adds the nodes, the tools, the accounts. Written here
+// rather than fetched, so the panel works on a first sign-in before anything
+// else has loaded.
+const GUIDE_USER = `
+  <h4>What this is</h4>
+  <p>BuilderBot is a Claude Code workstation in a browser. Each project on the
+  left is a repository; a Claude session on it edits that tree, and the
+  notebook beside it is where you and Claude keep the plan.</p>
+  <h4>Start here</h4>
+  <ul>
+    <li><b>Your profile</b> (the gear, top right): set your name and email and
+      the git identity your commits carry. No session starts until they are
+      set, so the first thing to do is this.</li>
+    <li><b>A project</b>: press its name to open the notebook, <b>Claude</b> to
+      start a session on it, and the terminal button for a shell.</li>
+    <li><b>The notebook</b>: Briefing (rules and memories), Roadmap (what to
+      do next, sent to Claude one step at a time), Bugs, Git (the repository
+      read out, with Send to Claude), Artifacts (what it built, the version),
+      Tests, Analysis.</li>
+    <li><b>The bell</b>: what needs your answer — a session asking to reach
+      your phone, or a change waiting for approval — and what the page said.</li>
+    <li><b>Your phone</b>: Tools → Phone connects a handset on wireless
+      debugging to a node; a session then asks you before it touches it.</li>
+  </ul>
+  <h4>On a phone</h4>
+  <p>The same page: the bar at the bottom switches between the sidebar and the
+  terminal, and the keys panel stands in for the ones a soft keyboard hides.</p>`;
+const GUIDE_ADMIN = GUIDE_USER + `
+  <h4>As an administrator</h4>
+  <ul>
+    <li><b>Nodes</b>: the machines where builds, tests, CI, the emulator and
+      sessions run. Enroll one with <b>Enroll node</b> and
+      <code>vm/provision.sh</code> on the machine (any common distribution;
+      <code>--check</code> first says whether it can). Each node's row has its
+      storage, network, runner and a lock that keeps system changes at its
+      own console.</li>
+    <li><b>Tools</b>: the toolchains a node carries — the JDK, the Android
+      SDK and its system images, Playwright — installed per node from the
+      catalog. A project builds with what its node has.</li>
+    <li><b>Users</b> (Administration): accounts, roles and which projects each
+      may see. A user works on projects; an administrator also runs the
+      machinery and answers a session asking for root on a node.</li>
+    <li><b>Controller settings</b>: the things that used to be environment
+      variables. Everything here waits for Save.</li>
+    <li><b>Approvals</b>: a session's roadmap items, bugs and rules can land on
+      their own, be held for you, or be refused — per project, per tab.</li>
+  </ul>`;
+let abPage = "guide", abLogLoaded = false;
+function abShow(which){
+  abPage = which;
+  document.querySelectorAll(".abswitch button").forEach(b => b.classList.toggle("on", b.dataset.ab === which));
+  $("abGuide").hidden = which !== "guide";
+  $("abLog").hidden = which !== "log";
+  if (which === "guide")
+    $("abGuide").innerHTML = state?.can?.admin === false ? GUIDE_USER : GUIDE_ADMIN;
+  if (which === "log" && !abLogLoaded) abLoadLog();
+}
+async function abLoadLog(){
+  const el = $("abLog");
+  el.innerHTML = `<div class="loading">loading…</div>`;
+  let j;
+  try{ j = await (await fetch("/api/welcome")).json(); }
+  catch(e){ el.innerHTML = `<p class="dim">changelog: ${esc(String(e))}</p>`; return; }
+  abLogLoaded = true;
+  if (!j.present){ el.innerHTML = `<p class="dim">This image carries no changelog.</p>`; return; }
+  // Everything above the entry that carries the commit this account last
+  // acknowledged is new to it; the line is drawn there. An image whose
+  // commit is a logging commit matches no entry, and then nothing is marked
+  // rather than everything.
+  const seen = j.seen || "";
+  let boundary = -1, i = 0;
+  const flat = [];
+  for (const s of j.sections) for (const e of s.entries) flat.push(e);
+  if (seen) boundary = flat.findIndex(e => e.shas.some(sha => seen.startsWith(sha)));
+  const rows = [];
+  for (const s of j.sections){
+    if (!s.entries.length) continue;
+    rows.push(`<h4>${esc(s.title)}${s.title === "Unreleased"
+      ? ` <span class="dim">— in this image, not yet a numbered release</span>` : ""}</h4><ul>`);
+    for (const e of s.entries){
+      if (boundary >= 0 && i === boundary)
+        rows.push(`</ul><div class="abnew">everything above is new since you last looked</div><ul>`);
+      rows.push(`<li${boundary >= 0 && i >= boundary ? ' class="old"' : ""}>${esc(e.text)}</li>`);
+      i++;
+    }
+    rows.push(`</ul>`);
+  }
+  el.innerHTML = rows.join("") || `<p class="dim">Nothing logged yet.</p>`;
+}
+function openAbout(which){
   // Host and uptime read at open, not at draw: the popup should say what is
   // true now, and uptime in particular moves while the page sits.
   $("aHost").textContent = state?.host || "—";
   $("aUp").textContent = state?.uptime || "—";
+  abShow(which || abPage);
   $("aboutModal").hidden = false;
-};
+}
+function closeAbout(){
+  $("aboutModal").hidden = true;
+  // Read once: closing the panel is the acknowledgement, for both pages.
+  const w = state?.welcome, rev = state?.image?.rev || "";
+  if (!state?.me || !w) return;
+  const patch = {};
+  if (!w.seen) patch.welcome_seen = true;
+  if (rev && w.image_seen !== rev) patch.image_seen = rev;
+  if (!Object.keys(patch).length) return;
+  w.seen = true; w.image_seen = rev || w.image_seen;
+  fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
+                       body: JSON.stringify({action: "prefs", prefs: patch})}).catch(() => {});
+}
+$("bAbout").onclick = () => openAbout();
+$("aboutClose").onclick = closeAbout;
+document.querySelectorAll(".abswitch button").forEach(b => b.onclick = () => abShow(b.dataset.ab));
 $("aboutModal").onclick = e => {
-  if (e.target.id === "aboutModal") $("aboutModal").hidden = true;
+  if (e.target.id === "aboutModal") closeAbout();
 };
+// Opened by itself, once each: on the guide for an account that has not
+// read it, else on the changelog for an image this account has not seen.
+// Decided on the first poll, when the account and the image are known.
+let welcomed = false;
+function welcomeOnce(){
+  if (welcomed || !state?.me || !state.welcome) return;
+  welcomed = true;
+  const w = state.welcome, rev = state.image?.rev || "";
+  if (!w.seen) openAbout("guide");
+  else if (rev && w.image_seen !== rev) openAbout("log");
+}
 
 // Which pane of a split is active decides where the keys and the commands
 // go, and clicking into a terminal is the natural way to say "this one" —
@@ -13851,6 +13998,7 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    welcomeOnce();
     fetched = true;
     // The bell reads what sessions have waiting for approval off this
     // payload (roadmap #27), so it is drawn from here as well as from the

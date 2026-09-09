@@ -65,6 +65,9 @@ const SURFACE = [
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'renderPhoneInto', 'wirePhoneTab',
+  // The welcome panel (the About popup grown a guide and the changelog). The
+  // guides are top-level consts, which are not window properties.
+  'abShow', 'abLoadLog', 'openAbout', 'closeAbout', 'welcomeOnce',
   // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersEditOpen', 'usersEditSave',
