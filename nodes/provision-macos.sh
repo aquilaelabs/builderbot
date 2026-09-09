@@ -16,7 +16,7 @@
 #
 # Written for the bash macOS ships (3.2): no associative arrays, no mapfile,
 # nothing newer than 2007. Its own file rather than a branch of
-# vm/provision.sh for that reason and one more — that script provisions a
+# nodes/provision-linux.sh for that reason and one more — that script provisions a
 # machine, and this one only adds a footprint to somebody's.
 #
 set -eu
@@ -92,7 +92,7 @@ chk() {
     esac
 }
 if [ "$(uname -s)" = Darwin ]; then chk ok "macOS $(sw_vers -productVersion 2>/dev/null || echo '?') on $(uname -m)"
-else chk fail "this is $(uname -s), and this script is for macOS — vm/provision.sh is the one for Linux"; fi
+else chk fail "this is $(uname -s), and this script is for macOS — nodes/provision-linux.sh is the one for Linux"; fi
 if [ "$(id -u)" = 0 ]; then chk fail "run this as yourself, not root: a guest node is one directory in your home and a launchd agent that runs as you"; fi
 if xcode-select -p >/dev/null 2>&1; then chk ok "Xcode command line tools at $(xcode-select -p)"
 else chk fail "no Xcode command line tools: run  xcode-select --install  and come back (git and clang live there)"; fi

@@ -3979,7 +3979,7 @@ cmd_lint() {
         done < <(files '*')
         # A script embedded in a QUOTED heredoc is a string to the shell and a
         # string to shellcheck, so it was never checked at all — and one of
-        # them is vm/provision.sh's bb-sandbox, ~280 lines installed to a
+        # them is nodes/provision-linux.sh's bb-sandbox, ~280 lines installed to a
         # root-only path on another machine, where four bugs had been sitting.
         # Extracted by the same rule the list above is built on — a shell
         # shebang on its first line — so this stays a property of the content
@@ -4345,7 +4345,7 @@ find_chromium() {
         if [ -n "$missing" ]; then
             if on_node; then
                 die "Chromium is in the store but ${BB_NODE:-this node} lacks its system libraries (${missing% }).
-   Re-run vm/provision.sh on it — the session half installs them."
+   Re-run nodes/provision-linux.sh on it — the session half installs them."
             fi
             die "Chromium is in the store but this image lacks its system libraries (${missing% })"
         fi

@@ -1584,7 +1584,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 // A daemon that answers is not the same thing as the sandbox. Everything the
 // manager does beyond compose runs a container as root over there, and the
 // whole reason that is acceptable is that the far side is a box built to be
-// wrecked — so the daemon has to carry the label vm/provision.sh puts on the
+// wrecked — so the daemon has to carry the label nodes/provision-linux.sh puts on the
 // one it made, and an unlabelled machine is refused rather than driven.
 {
   writeFileSync(`${DIR}/dockerstate/unlabelled`, '');

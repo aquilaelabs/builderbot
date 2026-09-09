@@ -6,7 +6,7 @@ new script is covered the moment it exists. A script written INSIDE another one
 escapes that: the body of a `<<'TAG'` heredoc is a string to the shell and a
 string to shellcheck, and nothing looks in it.
 
-vm/provision.sh is why this exists. It embeds bb-sandbox — around 280 lines
+nodes/provision-linux.sh is why this exists. It embeds bb-sandbox — around 280 lines
 installed to a root-only path on the sandbox VM — rather than fetching it,
 because provisioning is one file you curl onto a fresh machine. Four bugs sat
 in there unlinted, including two that could damage an fstab.

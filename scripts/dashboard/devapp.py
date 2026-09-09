@@ -87,7 +87,7 @@ project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
-# machine; ssh:// and the bb account provision.sh makes are filled in, so an
+# machine; ssh:// and the bb account provision-linux.sh makes are filled in, so an
 # address of any other kind turns the feature off with the reason on it rather
 # than half-working.
 #
@@ -97,7 +97,7 @@ node_paths = None     # a node's path mapping, from its record (docs/nodes.md §
 # it, and a filter that can be got wrong is not a boundary.
 
 
-# The account vm/provision.sh makes on the sandbox VM. Assumed rather than
+# The account nodes/provision-linux.sh makes on the sandbox VM. Assumed rather than
 # asked for, because there is one provisioner and it makes one user: a setting
 # whose only correct value is known is a way to get it wrong.
 DEFAULT_USER = "bb"
@@ -182,7 +182,7 @@ def docker_host():
     return "ssh://" + (host if "@" in host else f"{DEFAULT_USER}@{host}")
 
 
-# What vm/provision.sh stamps on the daemon it set up: a label in
+# What nodes/provision-linux.sh stamps on the daemon it set up: a label in
 # /etc/docker/daemon.json. Docker reports its own labels on `docker info`, so
 # the check costs one read over the connection already being used — no second
 # channel, no file to fetch, nothing on the VM to keep in step but the
@@ -783,7 +783,7 @@ def available():
     if not addr:
         return {"on": False,
                 "why": "no node with a daemon — enroll the sandbox VM on the "
-                       "Nodes tab (Enroll node mints a token, then provision.sh "
+                       "Nodes tab (Enroll node mints a token, then provision-linux.sh "
                        "on the machine); see docs/sandbox-vm.md"} | source()
     if not addr.startswith("ssh://"):
         return {"on": False,
@@ -798,7 +798,7 @@ def available():
     # difference is the whole safety argument: a container run here is root on
     # the far side, which is fine on a box whose job is being wrecked and
     # nothing like fine on the server. So the daemon has to carry the stamp
-    # vm/provision.sh puts on the one it made.
+    # nodes/provision-linux.sh puts on the one it made.
     info = daemon_info()
     if info.get("error"):
         return {"on": False,
@@ -807,7 +807,7 @@ def available():
     if not is_sandbox(info["labels"]):
         return {"on": False,
                 "why": "this daemon is not a BuilderBot sandbox — it carries no "
-                       f"{SANDBOX_LABEL} label. Run vm/provision.sh on the VM "
+                       f"{SANDBOX_LABEL} label. Run nodes/provision-linux.sh on the VM "
                        "(again is fine, it only adds what is missing); see "
                        "docs/sandbox-vm.md"} | source()
     # A verified daemon is the source of truth from here on. Adopting it clears
@@ -1499,7 +1499,7 @@ def sandbox_daemon():
 
 def verified_sandbox():
     """The guard's question: an ssh address AND a daemon carrying the stamp
-    vm/provision.sh puts on the VM it made.
+    nodes/provision-linux.sh puts on the VM it made.
 
     An ssh address only proves somebody typed one. The label is the only thing
     that says the machine on the end is the box built to be wrecked — which is

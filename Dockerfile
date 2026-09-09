@@ -215,7 +215,7 @@ RUN set -eux; \
 # module, which the container runtime injects when NVIDIA_DRIVER_CAPABILITIES
 # includes `display`; scripts/startup.d/48-gpu-display starts it, node role
 # only. A VM node gets the same from the recipe (android:emulator's
-# system.apt) and vm/provision.sh.
+# system.apt) and nodes/provision-linux.sh.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     apt-get update; \

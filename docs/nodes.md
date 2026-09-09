@@ -330,7 +330,7 @@ list carries the digest and version this controller ships, the row compares
 its node's against them and says *update available*, and the **Update
 agent** button queues the `self-update` job with that digest in its spec —
 so a node is never handed a file other than the one this controller serves.
-`provision.sh` re-run on an enrolled node is the console path to the same
+`provision-linux.sh` re-run on an enrolled node is the console path to the same
 swap, with the node's own token. The agent's `hello` after re-exec is what
 moves the row.
 
@@ -920,7 +920,7 @@ in a template and does the rest from the dashboard.
 
 ## 12. Provisioning and the agent
 
-One script, `vm/provision.sh` grown up: detect with `/etc/os-release`;
+One script, `nodes/provision-linux.sh` grown up: detect with `/etc/os-release`;
 abstract the package manager over `apt|dnf|pacman|zypper|apk`; install Docker
 only if the docker capability was requested; install the agent and its systemd
 unit; enroll with the token; idempotent throughout; end by printing the node
@@ -1561,7 +1561,7 @@ build runs here, no test, no CI job, no emulator. A project names the nodes
 its builds, tests, CI and emulation run on; a session on this container
 reaches them only through `bb` verbs that submit jobs; the artifacts come
 back into `dist/`. A VM is therefore required for full function, and the
-sandbox VM the Docker manager already needs is the first node — `provision.sh
+sandbox VM the Docker manager already needs is the first node — `provision-linux.sh
 --controller URL --token bbe_…` enrolls it in the same run.
 
 Three things follow, in the order they have to happen.
@@ -1720,7 +1720,7 @@ above, in order:
    relayed — they answer for the machine the session is on, which is the
    point. The token's scope is the project; a session's credential is the
    same scoped token it has always had (bug #16), now with a hop.
-6. **A third account.** Sessions run as `builder` (provision.sh
+6. **A third account.** Sessions run as `builder` (provision-linux.sh
    `--session-user`), made with the controller's PUID:PGID so files it saves
    on the share are owned as the controller's are; in `kvm` for the
    emulator, in **no docker group**, no sudo. Jobs stay `bb`; the agent stays
@@ -1735,7 +1735,7 @@ quietly started on the wrong machine — and `_term_proxy` dials the node's
 ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
 account. The project row carries the same decision (`session_at`,
 `session_why`), so the Claude button is dead with the sentence before
-anything is asked. provision.sh filters 7681/7682 to the controller's
+anything is asked. provision-linux.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
 The node's sessions are on the Sessions card too: the agent's heartbeat
 carries the session account's tmux sessions (name, attached, directory,
@@ -1816,5 +1816,5 @@ Everything else is a *guest*: the agent, the stores and the session half
 live in one directory with one service unit, and the controller changes
 nothing outside it. A MacBook enrolled as a node is still a MacBook; a
 `--remove` leaves no trace. The class is declared at enrollment and gates
-the system verbs per what each actually touches (roadmap #23). provision.sh
+the system verbs per what each actually touches (roadmap #23). provision-linux.sh
 today is the managed shape; the guest shape is the work.

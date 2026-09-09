@@ -1581,8 +1581,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const SBDIR = `${DIR}/sandbox-src`;
     mkdirSync(SBDIR, { recursive: true });
     execFileSync('python3', [`${REPO}/scripts/lib/embedded-shell.py`, SBDIR,
-                             `${REPO}/vm/provision.sh`], { stdio: 'pipe' });
-    const SB = `${SBDIR}/provision.sh-BBSANDBOX`;
+                             `${REPO}/nodes/provision-linux.sh`], { stdio: 'pipe' });
+    const SB = `${SBDIR}/provision-linux.sh-BBSANDBOX`;
     const NJ = `${DIR}/contract-node.json`;
     writeFileSync(NJ, JSON.stringify({ stores: {
       data: '/var/lib/builderbot/data', packages: '/mnt/tank/builderbot/packages',

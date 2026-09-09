@@ -27,7 +27,7 @@ and a shared Docker network closes only the first:
 4. **The dashboard's own API**, which holds the same credential a session
    does.
 
-**A separate physical machine does just as well, and `provision.sh` runs on
+**A separate physical machine does just as well, and `provision-linux.sh` runs on
 one.** Nothing in the argument below is about virtualization: what closes
 these four paths is that the daemon belongs to a machine whose whole job is
 being wrecked and reset, with no route to the server's containers. A VM is
@@ -118,7 +118,7 @@ its own.
 
 ## Configuring it afterwards
 
-`provision.sh` installs **`bb-sandbox`**, and that is how the machine is
+`provision-linux.sh` installs **`bb-sandbox`**, and that is how the machine is
 changed after the day it was built:
 
 ```bash
@@ -160,7 +160,7 @@ your source is the one thing on this machine to keep away from a group that
 is root. It is made with `--session-uid`/`--session-gid` **99:100**, the
 controller's PUID:PGID, so a file it saves on the projects share is owned
 exactly as one saved from the controller is; a different uid would leave the
-share with files the rest of the array does not expect. `provision.sh`
+share with files the rest of the array does not expect. `provision-linux.sh`
 installs tmux, ttyd, jq and git for it, Claude Code into its home by the
 native installer, and a `/etc/profile.d` entry so a login shell as that
 account has the role, the controller's address and `bb` (from the bundle the
@@ -236,7 +236,7 @@ Two paths. The second needs no tooling on your side at all.
 ### From a cloud image (automatic)
 
 Download an Ubuntu 26.04 **cloud** image (or a Debian **genericcloud** qcow2),
-resize it, and boot it with the seed in `vm/cloud-init/` attached as a second
+resize it, and boot it with the seed in `nodes/cloud-init/` attached as a second
 drive labelled `cidata`. Fill in
 the ssh key and the share tags first. `growpart` sizes the root filesystem,
 cloud-init installs Docker and mounts the shares, and the machine is ready on
@@ -249,7 +249,7 @@ headless, no desktop. It is what most Docker instructions assume, it turns on
 unattended security updates by default, which is worth having on a box nobody
 logs into, and Docker's repository already publishes for it (`resolute`).
 Debian 13 works identically if you would rather have the leaner machine;
-`provision.sh` accepts either — and most other distributions, which the
+`provision-linux.sh` accepts either — and most other distributions, which the
 section after this one covers; the installer screens below are Ubuntu's.
 
 Take the installer's defaults except for four screens, where the default is
@@ -267,7 +267,7 @@ wrong for this particular machine:
   BuilderBot reaches the daemon; skip it and you are fixing that through the
   VNC console. Import or paste the key here.
 - **Featured snaps — do not tick Docker.** The snap is not what
-  `provision.sh` installs, and two Dockers will argue.
+  `provision-linux.sh` installs, and two Dockers will argue.
 - **Network — DHCP is fine, but pin the address.** The node record and every
   web UI you open point at it, so a lease that moves breaks both. Set it
   static, or reserve it on the router against the MAC in the domain XML.
@@ -279,7 +279,7 @@ pages, and this is a box you will eventually log into to work something out.
 ### Any other distribution
 
 The same XML serves every distribution — only the installer ISO line in it
-changes, and the file lists the filenames — and `provision.sh` reads
+changes, and the file lists the filenames — and `provision-linux.sh` reads
 `/etc/os-release` and takes the machine's own tools from there. It knows
 four families and three independents; a derivative lands with its parent
 through `ID_LIKE`, so nothing has to be named for Mint or CachyOS to work.
@@ -341,17 +341,17 @@ Then run one script inside it:
 
 The repository is private, so the VM cannot fetch the script itself — copy it
 over. **From the Unraid terminal**, where that path is the host's own; inside
-BuilderBot the same file is `/workspace/BuilderBot/vm/provision.sh`.
+BuilderBot the same file is `/workspace/BuilderBot/nodes/provision-linux.sh`.
 
 ```bash
-scp /mnt/user/development/projects/BuilderBot/vm/provision.sh bb@<vm-ip>:
+scp /mnt/user/development/projects/BuilderBot/nodes/provision-linux.sh bb@<vm-ip>:
 ssh bb@<vm-ip>
 ```
 
 then, in that session:
 
 ```bash
-sudo bash provision.sh --user bb \
+sudo bash provision-linux.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
     --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
     --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
@@ -366,7 +366,7 @@ writable root, an init it can hand a service to and that is actually
 running, the architecture, cgroups, overlay, `/dev/kvm`, free space, and
 whether Docker's repository and the controller answer. A FAIL stops the run
 with nothing changed and every finding printed; a WARN is repeated at the
-end. `sudo bash provision.sh --check` runs only that and exits 0 or 1, for
+end. `sudo bash provision-linux.sh --check` runs only that and exits 0 or 1, for
 asking "will this work here?" on a variant you are not sure about.
 
 Both steps ask for the password you set in the installer, because the VM has
@@ -415,7 +415,7 @@ only the suite name differs — saying so when it does.
 
 ## The domain XML
 
-`vm/unraid-domain.xml` is the whole machine, for every distribution: only
+`nodes/unraid-vm.xml` is the whole machine, for every distribution: only
 the installer ISO line in it changes, and the file lists them. Create the VM
 in **Form view** first so Unraid makes the domain folder and the vdisk, then
 switch to **XML view** and paste it over what is there — keeping the `<uuid>`
@@ -442,7 +442,7 @@ Then what differs from Unraid's placeholder, each for a reason:
 | cpu | `host-passthrough` | the same, with a note | it is what puts `/dev/kvm` inside the guest — but only if the **host** has nested virtualization on (`options kvm-amd nested=1` or `kvm-intel`, in `/boot/config/modprobe.d/`, then a reboot). Without it the emulator on this node has no acceleration |
 | rng | *(absent)* | `virtio` from `/dev/urandom` | a fresh guest can otherwise sit at boot waiting on entropy before sshd and the agent's TLS come up |
 | serial | *(absent)* | `pty` | `virsh console` from the Unraid shell, for the day ssh is what broke |
-| GPU | *(absent)* | a commented `hostdev` block | for when the card moves to the node (roadmap R20); the guest half — driver and headless X server — is not in `provision.sh` yet, so it stays commented |
+| GPU | *(absent)* | a commented `hostdev` block | for when the card moves to the node (roadmap R20); the guest half — driver and headless X server — is not in `provision-linux.sh` yet, so it stays commented |
 
 ## Unraid settings that matter
 
@@ -503,7 +503,7 @@ Then what differs from Unraid's placeholder, each for a reason:
   So bring the machine up with NFS, which needs no host-side daemon:
 
   ```bash
-  sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
+  sudo bash provision-linux.sh --user bb --key "ssh-ed25519 …" \
       --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
       --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
   ```
@@ -558,7 +558,7 @@ Then what differs from Unraid's placeholder, each for a reason:
   </filesystem>
   ```
 
-  The `target dir` is the *tag*, not a path; `provision.sh --share
+  The `target dir` is the *tag*, not a path; `provision-linux.sh --share
   workspace:/workspace` is what mounts it.
 - **Guest agent.** `qemu-guest-agent` is installed by both paths so Unraid can
   shut the VM down cleanly instead of pulling the plug.
@@ -588,7 +588,7 @@ keeps across every machine sharing a store, so it says so and points at the
 tab. Nothing to run until a package job has put a `bb` there.
 
 **2. Enroll it as a node.** On the dashboard's Nodes tab, **Enroll node**
-mints a one-time token; run `provision.sh --controller URL --token bbe_…` on
+mints a one-time token; run `provision-linux.sh --controller URL --token bbe_…` on
 the VM and it dials in and stays. The node opens no port and this container
 holds no key that logs into it — the credential the node keeps opens its own
 row and nothing else. Adding a machine by ssh address is gone (roadmap #18):
@@ -600,7 +600,7 @@ are gone with that kind and are read nowhere.
 Nothing but a sandbox VM is accepted, and the address is only half of what
 decides that. An address of any other kind greys every Docker control out with
 a sentence saying why, rather than half-working — and so does an ssh address
-whose daemon does not **say it is the sandbox**. `provision.sh` writes a
+whose daemon does not **say it is the sandbox**. `provision-linux.sh` writes a
 `builderbot.sandbox` label into `/etc/docker/daemon.json` and restarts the
 daemon; BuilderBot reads it back with `docker info` over the connection it
 already has and refuses to drive anything without it.
@@ -610,7 +610,7 @@ moves them with one-shot containers running as **root on the far side**, which
 is only reasonable against a machine whose job is being wrecked. An ssh address
 proves somebody typed one; the label is the only thing that says what is on the
 end of it. A VM provisioned before this existed has no stamp — re-run
-`provision.sh` on it, which adds what is missing and changes nothing else.
+`provision-linux.sh` on it, which adds what is missing and changes nothing else.
 
 **Point it at a different sandbox and that one becomes the source of truth.**
 Two VMs can wear one address — a rebuilt sandbox, a second machine given the

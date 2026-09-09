@@ -1,5 +1,5 @@
 #cloud-config
-# The same machine provision.sh makes, built at first boot instead of by hand.
+# The same machine provision-linux.sh makes, built at first boot instead of by hand.
 #
 # Use this with a Debian or Ubuntu *cloud* image (the genericcloud qcow2), not
 # an installer ISO — a cloud image is already a working root filesystem and

@@ -221,7 +221,7 @@ docker exec -it BuilderBot bb login    # one time; survives updates
 ```
 
 **CI runs on a node, not in this container.** Enroll one (step 9 in
-`docs/unraid.md` — a token from the Nodes tab, then `provision.sh` on the
+`docs/unraid.md` — a token from the Nodes tab, then `provision-linux.sh` on the
 machine), open its row on the Nodes tab and press **Install runner**. It
 registers under the node's own name, which is the label a workflow uses:
 
@@ -1264,7 +1264,7 @@ named that machine in earlier releases; both are gone, with the `ssh` node
 kind they belonged to.)
 
 **A daemon has to say it is the sandbox before anything is driven on it.**
-`vm/provision.sh` writes a `builderbot.sandbox` label into the VM's
+`nodes/provision-linux.sh` writes a `builderbot.sandbox` label into the VM's
 `/etc/docker/daemon.json`; the dashboard reads it back with `docker info` over
 the ssh connection it already has, and a daemon without it is refused exactly
 like an unreachable one — named as the reason, with the command to fix it. An
@@ -1272,7 +1272,7 @@ ssh address only proves somebody typed one, and every one-shot container the
 manager runs is root on the far side: what makes that reasonable is the far
 side being a box built to be wrecked, which is a thing only the provisioner
 can vouch for. A VM set up before this shipped has no stamp; re-running
-`provision.sh` adds it and changes nothing else.
+`provision-linux.sh` adds it and changes nothing else.
 
 **Point it at a different sandbox and that one becomes the source of truth.**
 A build records the daemon's own id as well as its address, because two VMs can
@@ -1338,7 +1338,7 @@ mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new — what makes a node safe to reboot), **Clear cache**,
 **Revoke** and **Remove** (retire: off every list, row kept as history — an
 id is never reused). **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
-runs `vm/provision.sh --controller URL --token bbe_…` and dials in. That is
+runs `nodes/provision-linux.sh --controller URL --token bbe_…` and dials in. That is
 the only way in — there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of
 job, docker included. The **ssh node kind is retired** (roadmap #18): it
@@ -1384,7 +1384,7 @@ full set, so it is a mechanism rather than a setting.)
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
 shown once inside the command to run on the machine —
-`sudo bash provision.sh --controller URL --token bbe_…`, or the two-line
+`sudo bash provision-linux.sh --controller URL --token bbe_…`, or the two-line
 version that fetches `builderbot-agent` by hand. The provisioner downloads
 the agent from the controller itself (checking it against the digest the
 controller sends), enrolls, and leaves it running under systemd. From then
@@ -1401,7 +1401,7 @@ available* when the node's agent is not the file this controller ships, and
 **Update agent** hands it over as a job: the agent checks the download
 against the digest, swaps itself in place and re-execs, so nothing on the
 node restarts and no running job is interrupted (it waits for its own to
-finish). Re-running `provision.sh` on an enrolled node does the same thing
+finish). Re-running `provision-linux.sh` on an enrolled node does the same thing
 from the console, with the node's own token. Nothing updates an agent
 unasked.
 
@@ -3488,7 +3488,7 @@ docker compose build && docker compose up -d
 
 ## A Mac as a node
 
-`vm/provision-macos.sh` enrolls a Mac as a **guest** node: one directory
+`nodes/provision-macos.sh` enrolls a Mac as a **guest** node: one directory
 (`~/.builderbot`) and one launchd agent that runs as you at login, no root,
 nothing in `/etc`, and `--remove` takes exactly that away. It is written for
 the bash macOS ships, so it is its own file rather than a branch of the
@@ -3591,9 +3591,9 @@ scripts/
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
-vm/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
-vm/provision.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
-vm/unraid-domain.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
+nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
+nodes/provision-linux.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
+nodes/unraid-vm.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

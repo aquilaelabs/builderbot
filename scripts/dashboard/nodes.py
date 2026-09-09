@@ -525,7 +525,7 @@ def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
     way in rather than a 404.
     """
     return {"error": "ssh nodes are gone — enroll the machine with a token "
-                     "instead: Enroll node mints one, and provision.sh "
+                     "instead: Enroll node mints one, and provision-linux.sh "
                      "--controller URL --token bbe_… on the machine does the "
                      "rest. It needs no key from this container, and it then "
                      "takes every kind of job, docker included."}

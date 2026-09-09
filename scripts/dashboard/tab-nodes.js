@@ -826,7 +826,9 @@ function wireNodesTab(root){
         <div class="hint">shown once; the controller keeps only a hash. On a
           fresh machine, the provisioner installs docker and the agent
           together:</div>
-        <pre class="ndcmd">sudo bash provision.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+        <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+        <div class="hint">on a Mac, as yourself — one directory and a launchd agent, no root:</div>
+        <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         <div class="hint">or on a machine that already has python3, the agent alone:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent
