@@ -1,0 +1,8 @@
+<resources>
+    <!-- Compose draws everything; this only keeps the system bars sane. -->
+    <style name="Theme.BuilderBot" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+</resources>

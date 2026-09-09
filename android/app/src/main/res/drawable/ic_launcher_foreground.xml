@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A terminal prompt's chevron and a bar: the dashboard's mark, in the
+     accent colour, on the icon's dark ground. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#58A6FF"
+        android:pathData="M30,36 L48,54 L30,72 L36,78 L60,54 L36,30 Z" />
+    <path
+        android:fillColor="#58A6FF"
+        android:pathData="M56,70 H80 V78 H56 Z" />
+</vector>

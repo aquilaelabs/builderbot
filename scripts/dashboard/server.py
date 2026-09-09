@@ -1494,6 +1494,7 @@ def project_list(who):
         else:
             todo_batches[name] = b
     bug_revs = bugs.revisions()
+    bug_counts = bugs.counts()          # open bugs per project, for the row and the app
     # ...and the roadmap's, so an open notebook stops being the one surface
     # here that never notices somebody else writing (roadmap #26). The Bugs
     # tab has polled bug_rev since it was built; the Roadmap and Memory views
@@ -1661,6 +1662,7 @@ def project_list(who):
                     # So an open Bugs tab notices a session filing or closing
                     # one without polling the tracker itself.
                     "bug_rev": bug_revs.get(d.name, 0),
+                    "bugs": bug_counts.get(d.name, 0),
                     # Two, because the two halves are re-read separately and
                     # a memory edit must not throw away a half-typed roadmap
                     # item beside it.
@@ -2217,6 +2219,28 @@ def uptime():
     # container's — /proc/uptime is the host's under a shared kernel.
     r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
     return r["out"].strip() or "?"
+
+
+# The API surface the companion app is written against (android/). One
+# number, moved with the app: android/api-surface.json names every path
+# and field the app reads and carries the same number, test/appapi.mjs
+# holds the running server to that file, and the app compares this against
+# its own TARGET_API to say when it is behind. A change to a path or a
+# field listed there bumps all three together — the app, the file, this.
+APP_API = 1
+
+
+def app_apk():
+    """The newest companion APK in BuilderBot's own dist/, if this
+    controller has the repository as a project: what the app points at when
+    it finds itself behind. Its filename only; the Artifacts tab serves it."""
+    d = WORKSPACE / "BuilderBot" / "dist"
+    try:
+        apks = sorted((p for p in d.iterdir() if p.suffix == ".apk" and p.is_file()),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return ""
+    return apks[0].name if apks else ""
 
 
 def image_stamp():
@@ -3926,6 +3950,11 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return None
+        if self.path.startswith("/api/meta"):
+            # What the companion app asks first: the surface number this
+            # dashboard serves, the image it is, and where a newer app is.
+            return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
+                               "image": image_stamp().get("rev") or "", "apk": app_apk()})
         if self.path.startswith("/api/welcome"):
             # BuilderBot's own changelog, for the welcome panel: the file
             # beside this checkout (CHANGELOG.md two levels up, which is

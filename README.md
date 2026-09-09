@@ -3475,6 +3475,43 @@ cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```
 
+## The companion app
+
+`android/` is an Android app that does most of what the dashboard does,
+minus the terminals: the projects and their notebooks (roadmap, bugs,
+briefing, artifacts, the repository's state), the approvals, the nodes, the
+accounts and your profile — in the shape an Android app takes, screens and
+a bottom bar, not the tabs a browser page needs. Sign in with the
+dashboard's address and your account; the credential is kept in the
+device's encrypted preferences.
+
+**Notifications.** A foreground service polls the dashboard on the interval
+you set and posts what the bell would show: a session asking for your phone
+or for root on a node arrives as a notification with **Approve** and
+**Deny** on it, answered without opening the app; changes a session has
+waiting, and a node whose agent is behind or out of window, arrive as notes
+that open the right screen. There is no push service — the phone reaches
+your BuilderBot directly, on your network or over your tailnet — so nothing
+needs an account with anybody, and nothing is kept in the repository.
+
+**Keeping it in step with the dashboard.** `android/api-surface.json` names
+every path the app calls and the fields it reads, and carries a number that
+`server.py`'s `APP_API` and the app's `TARGET_API` both carry. The dashboard
+suite's `appapi.mjs` holds the running server to that file, so a change that
+renames a field or a path the app reads fails the suite until the app is
+updated with it; and the app compares the dashboard's number to its own on
+the More screen and says when it is behind, naming the newer APK in
+BuilderBot's own Artifacts tab. Moving the surface means moving all three
+together: the file, the constant, the app.
+
+**Building it.** `.github/workflows/android-app.yml` builds the debug APK on
+a node's runner — the JDK and the Android SDK come from the node's packages
+store, the same environment every `bb` job gets — on a push to `main` that
+touches `android/`, names it by `bb version --file`, drops it into
+BuilderBot's `dist/` where the runner's machine mounts the projects share,
+and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
+assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
+
 ## Layout
 
 ```
@@ -3515,6 +3552,7 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
 vm/provision.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 vm/unraid-domain.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
 config/skel/                     home directory skeleton

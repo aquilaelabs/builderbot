@@ -1,0 +1,60 @@
+# The companion app, built on a node. The node's runner carries the JDK and
+# the Android SDK from its packages store — the same environment every bb
+# job gets — so the build is `gradlew` and nothing else. The APK lands in
+# BuilderBot's own dist/ on the projects share when the runner's machine
+# mounts it (the sandbox does, at /workspace), which is where the Artifacts
+# tab lists it and where /api/meta points an app that finds itself behind;
+# and it goes up as a workflow artifact either way.
+#
+# On main only, for the paths the app is built from: a PR does not build it
+# (the dashboard suite's appapi.mjs already holds the contract there), so
+# the APK that ships is the one from the tree that merged.
+name: android app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-app.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: [self-hosted, bb-sandbox]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # bb version counts commits
+
+      - name: Build the debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon --console=plain assembleDebug
+
+      - name: Name it by the repository's version
+        id: name
+        run: |
+          v="$(bash scripts/bb version --file 2>/dev/null || git rev-parse --short HEAD)"
+          echo "file=builderbot-app-${v}.apk" >> "$GITHUB_OUTPUT"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "builderbot-app-${v}.apk"
+
+      - name: Land it in BuilderBot's dist/ where the share is mounted
+        run: |
+          if [ -d /workspace/BuilderBot ]; then
+            mkdir -p /workspace/BuilderBot/dist
+            cp "${{ steps.name.outputs.file }}" /workspace/BuilderBot/dist/
+            echo "in dist/: ${{ steps.name.outputs.file }}"
+          else
+            echo "the projects share is not mounted on this runner; the APK is a workflow artifact only"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.file }}
+          path: ${{ steps.name.outputs.file }}
+          if-no-files-found: error
