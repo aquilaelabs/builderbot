@@ -278,7 +278,7 @@ def has_systemd():
         return pin == "1"
     return os.path.isdir("/run/systemd/system")
 DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
-# ...and the RHEL family's pair, for a node provisioned on Rocky (vm/provision.sh
+# ...and the RHEL family's pair, for a node provisioned on Rocky (nodes/provision-linux.sh
 # takes either): a recipe names its packages per family under `system.apt`
 # and `system.dnf`, and the agent uses the list for the manager it has.
 DNF_BIN = os.environ.get("BUILDERBOT_DNF_BIN", "dnf")

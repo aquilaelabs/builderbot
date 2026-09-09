@@ -10,8 +10,8 @@
 #
 # Run it inside the VM, once:
 #
-#   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
-#   sudo bash provision.sh --key "ssh-ed25519 AAAA..."
+#   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/nodes/provision-linux.sh
+#   sudo bash provision-linux.sh --key "ssh-ed25519 AAAA..."
 #
 # With --controller URL --token bbe_… (the Nodes tab mints the token) it also
 # enrolls the machine as a node: the agent is fetched from the controller and
@@ -52,7 +52,7 @@ CHECK_ONLY=0
 
 usage() {
     cat <<'EOF'
-usage: provision.sh [options]
+usage: provision-linux.sh [options]
 
   --user NAME          the account Docker runs under and ssh lands on. The
                        default is bb, and BuilderBot assumes bb — so changing
@@ -842,7 +842,7 @@ else
     # by hand — ssh in, run bb-tty, run bb roadmap — the same path the
     # dashboard takes, rather than a second one.
     cat > /etc/profile.d/builderbot-session.sh <<EOF
-# Written by BuilderBot's provision.sh. A session on this node, at a console.
+# Written by BuilderBot's provision-linux.sh. A session on this node, at a console.
 case "\$(id -un)" in
     ${SESSION_NAME})
         export BUILDERBOT_ROLE=node WORKSPACE=/workspace
@@ -863,7 +863,7 @@ say "bb-sandbox"
 # in each entry point — its comments were paid for one silent failure at a time
 # and are not worth writing twice.
 #
-# Embedded rather than fetched: provision.sh is one file you curl onto a fresh
+# Embedded rather than fetched: provision-linux.sh is one file you curl onto a fresh
 # VM, and a second download is a second thing that can be unreachable at the
 # moment you are standing in front of a machine with no shares.
 #
@@ -886,7 +886,7 @@ cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 #
 # bb-sandbox — configure this Docker sandbox after it has been provisioned.
 #
-# Installed by provision.sh, which also uses it for its own mounts: this is the
+# Installed by provision-linux.sh, which also uses it for its own mounts: this is the
 # only copy of the fstab logic, so the wizard and the first run cannot drift.
 #
 # Root, on this machine. Run by a person at the console, and — since phase 5
@@ -903,7 +903,7 @@ CONF=/etc/bb-sandbox.conf
 # shellcheck source=/dev/null
 [ -f "$CONF" ] && . "$CONF"
 APPDATA="${APPDATA:-}"
-# The account BuilderBot ssh's in as, recorded by provision.sh because this is
+# The account BuilderBot ssh's in as, recorded by provision-linux.sh because this is
 # the one thing here it knows and the tool cannot work out. `logname` was the
 # guess before, and it answers with whoever ran sudo — a different name the
 # moment the operator administers this box from an account of their own, and
@@ -1671,7 +1671,7 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
         case "$ctl_ip" in *:*) fam=ip6 ;; *) fam=ip ;; esac
         install -d -m 0755 /etc/builderbot
         cat > /etc/builderbot/session-ports.nft <<EOF
-# Written by BuilderBot's provision.sh: the session ttyds, reachable from the
+# Written by BuilderBot's provision-linux.sh: the session ttyds, reachable from the
 # controller (${ctl_host}) and the loopback, and from nowhere else.
 table inet builderbot_session
 delete table inet builderbot_session

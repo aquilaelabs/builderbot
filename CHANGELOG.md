@@ -330,3 +330,4 @@
 - The place toolchains are installed is called the package store everywhere now; the SDK_ROOT setting, the /sdk mount and bb sdk keep their names (0746987)
 - A Mac can be enrolled as a node with vm/provision-macos.sh: one directory and one launchd agent, no root, its own darwin scope in the package store, Homebrew for system packages, and the JDK, Node, Go, Flutter and xcodes from the Tools tab (0746987)
 - The package store is laid out per platform (linux-x86_64, darwin-arm64), so one share serves Linux nodes and a Mac without collisions; an existing store is moved into place once, automatically. Update each node's agent before the container (0746987)
+- The provisioners live in nodes/ now — provision-linux.sh and provision-macos.sh, with the Unraid VM template beside them — since a node is not always a VM (a176853)

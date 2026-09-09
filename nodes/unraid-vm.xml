@@ -18,7 +18,7 @@
   ONE FILE FOR EVERY DISTRIBUTION. The hardware is the same whatever is
   installed on it — virtio has been in every Linux kernel for fifteen
   years — so the only line that changes per distribution is the installer
-  ISO below, and provision.sh sorts out the rest inside the guest (the
+  ISO below, and provision-linux.sh sorts out the rest inside the guest (the
   Debian, RHEL, Arch and SUSE families, Alpine, Void and Gentoo; a
   derivative is recognised by its ID_LIKE). The <vmtemplate> line is
   Unraid's icon and nothing more; change os= and icon= to taste.
@@ -106,7 +106,7 @@
          64G a Docker sandbox got by with: the packages store lands here
          (/var/lib/builderbot/packages — the Android SDK's system images
          alone are tens of gigabytes, the JDK, Flutter and the Playwright
-         browsers on top) unless provision.sh points the stores at a share
+         browsers on top) unless provision-linux.sh points the stores at a share
          instead. The guest grows into it; the file only takes what is used. -->
     <disk type="file" device="disk">
       <driver name="qemu" type="qcow2" cache="writeback" discard="unmap" io="threads"/>
@@ -155,7 +155,7 @@
          step can fail that way is a bad recipe.
 
          So the shares come in over NFS instead, which needs nothing on the
-         host side and is what provision.sh mounts with its "nfs" option. See
+         host side and is what provision-linux.sh mounts with its "nfs" option. See
          docs/sandbox-vm.md for both, including how to put virtiofs back once
          the machine is up and you can read a log if it complains.
 
@@ -236,7 +236,7 @@
          settings off, then a restart), because a device is one guest's at a
          time. Find the addresses under Tools -> System Devices and bind them
          to VFIO there; then uncomment this with them filled in. The guest
-         still needs the driver and the headless X server provision.sh does
+         still needs the driver and the headless X server provision-linux.sh does
          not yet install — R20's remaining step — so leave this commented
          until it does.
     <hostdev mode="subsystem" type="pci" managed="yes">
