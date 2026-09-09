@@ -1463,8 +1463,10 @@ mounted from somewhere else. A network change is the one that can cut the
 cord it arrives on, so it is applied with a three-minute dial-back: the node
 re-addresses itself and must reach the controller from the new address, or it
 puts the previous config back on its own and says so when it reconnects.
-Network changes need netplan on the node, and the job says so where there is
-none. Nothing here is offered to an ssh node or to local.
+The job names the address and never the tool: the agent detects whether
+netplan or NetworkManager owns the node's network and writes it through
+that one, and refuses, saying so, on a node with neither. Nothing here is
+offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
 node for everything it does off this box: containers, builds, tests, CI and

@@ -1061,11 +1061,19 @@ is the stamp). A `system` job with `apply: storage` diffs desired mounts
 against reported and runs `bb-sandbox remove` / `add-nfs` / `add-share` for
 the difference, then moves the stores in node.json and makes them; it ends
 with a hello, so the row shows the applied state at once. `apply: network`
-writes `/etc/netplan/90-builderbot.yaml`, keeps the previous file, runs
-`netplan apply`, and dials the controller from wherever it landed for up to
-three minutes; no answer and the previous file goes back and is applied
-again, and the job reports the revert on reconnect — netplan only, and it
-says so on a node without it. The controller offers system jobs only to an
+carries the address, gateway and resolvers and never a tool: the agent
+detects which service owns the machine's network and renders the same spec
+through it — on Debian and Ubuntu a file of its own under `/etc/netplan`
+and `netplan apply`; on the RHEL family the ipv4 keys of the interface's
+NetworkManager connection through `nmcli`, then `con up`. Either way it
+keeps what was there, dials the controller from wherever it landed for up
+to three minutes, and with no answer puts the previous config back and
+applies it again, reporting the revert on reconnect. A node with neither
+backend refuses the job and says so. The same detection picks the package
+manager — apt or dnf — for a recipe's system packages, and the census
+reports both (`distro`), so the row says what a change would go through.
+Another distribution is another backend in the agent, not another job
+spec. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
 agent refuses them without bb-sandbox whatever the row says. On the Nodes
 tab the row grows a *storage & network* fold: the editor is a draft that

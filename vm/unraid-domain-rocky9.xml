@@ -9,9 +9,8 @@
   repository, ttyd from its GitHub release because no RHEL repository
   carries it, firewalld holding the session ports, SELinux left enforcing
   with the one boolean containers need to read an NFS share, and
-  NetworkManager rather than netplan — which means the Nodes tab's Network
-  section is refused on this node; a static address is set at the console
-  with nmcli, once.
+  NetworkManager rather than netplan — the agent detects which and the
+  Nodes tab's Network section goes through nmcli here.
 
   Create the VM in Form view first so Unraid makes the domain folder and the
   vdisk, then switch to XML view and paste this over what is there. Keep two

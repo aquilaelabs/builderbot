@@ -299,9 +299,10 @@ afterwards. The differences inside are the distribution's, not BuilderBot's:
 - **SELinux stays enforcing.** The one thing it blocks that a node does is a
   container reading an NFS mount, so `--nfs` turns on `virt_use_nfs`;
   nothing else needs a boolean, and turning SELinux off is not a step here;
-- **NetworkManager, not netplan** — so the Nodes tab's Network section is
-  refused on this node with that reason. Its Storage section works: fstab
-  is fstab.
+- **NetworkManager, not netplan** — and the Nodes tab's Network section
+  goes through it: the agent detects which one the machine has and writes
+  the same address through `nmcli` here, `netplan` there. Storage is fstab
+  on both.
 - a recipe's **system packages** come from `dnf` where the recipe names them
   for it (`system.dnf` beside `system.apt` in `config/packages.json` — the
   emulator's are there). One that names them for apt only says so on the

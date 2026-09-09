@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.30"
+AGENT_VERSION = "0.4.31"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -283,6 +283,9 @@ DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
 # and `system.dnf`, and the agent uses the list for the manager it has.
 DNF_BIN = os.environ.get("BUILDERBOT_DNF_BIN", "dnf")
 RPM_BIN = os.environ.get("BUILDERBOT_RPM_BIN", "rpm")
+# NetworkManager's CLI, the network backend where there is no netplan (the
+# RHEL family). Settable for the same reason as netplan's: the suite stubs it.
+NMCLI_BIN = os.environ.get("BUILDERBOT_NMCLI_BIN", "nmcli")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
@@ -881,6 +884,8 @@ def census(state):
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
         "mounts": mounts_now(),
         "network": network_now(),
+        # Which of the machine's own tools a system job would go through.
+        "distro": distro_now(),
         # The same report the controller makes for itself, so one store is
         # not described two ways (roadmap #19).
         "packages_versions": sdk_versions(state),
@@ -1048,6 +1053,203 @@ def _os_release():
     except OSError:
         pass
     return ""
+
+
+# ---------------------------------------------------------------------------
+# the machine's own tools
+#
+# A system job from the controller says WHAT — an address and a gateway, a
+# mount, the packages a recipe needs — and never how: the spec is the same
+# for every node. The how is this machine's, and it is detected here rather
+# than assumed: which package manager is installed, and which service owns
+# the network. Each backend renders the same desired state into its own
+# commands, and the census reports which one a node has, so the row can say
+# what a change would go through before it is sent. Debian/Ubuntu (apt,
+# netplan) and the RHEL family (dnf, NetworkManager) are the two so far;
+# another distribution is another backend here, not another job spec.
+
+def _have(binary):
+    """A binary on PATH, or an absolute path that is executable — the suite
+    points the *_BIN settings at stubs by path."""
+    return bool(shutil.which(binary)) or os.access(binary, os.X_OK)
+
+
+def pkg_backend():
+    """(name, query argv, install argv) for the package manager this machine
+    has, keyed by the tool that answers whether a package is installed —
+    dpkg or rpm — since that is the half every check needs. Empty when it
+    is neither, which is a machine this agent cannot install packages on."""
+    if _have(DPKG_BIN):
+        return "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
+    if _have(RPM_BIN):
+        return "dnf", [RPM_BIN, "-q"], [DNF_BIN, "-y", "-q", "install"]
+    return "", [], []
+
+
+class NetplanNet:
+    """Debian and Ubuntu: one YAML file of our own under /etc/netplan, and
+    `netplan apply`. The snapshot is the file's previous text (None when
+    there was none), which is exactly what restore puts back."""
+    name = "netplan"
+
+    @staticmethod
+    def available():
+        return _have(NETPLAN_BIN)
+
+    @staticmethod
+    def ready(iface):
+        return ""
+
+    @staticmethod
+    def render(iface, mode, addr, gw, dns):
+        lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
+        if mode == "dhcp":
+            lines.append("      dhcp4: true")
+        else:
+            lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
+            if gw:
+                lines += ["      routes:", "        - to: default", f"          via: {gw}"]
+            if dns:
+                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def snapshot(iface):
+        try:
+            with open(os.path.join(NETPLAN_DIR, NETPLAN_FILE)) as f:
+                return f.read()
+        except OSError:
+            return None
+
+    @staticmethod
+    def same(desired, before):
+        return desired == before
+
+    @staticmethod
+    def _write(text):
+        path = os.path.join(NETPLAN_DIR, NETPLAN_FILE)
+        if text is None:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+            return path
+        os.makedirs(NETPLAN_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            os.fchmod(f.fileno(), 0o600)
+            f.write(text)
+        return path
+
+    def apply(self, agent, job, iface, desired, before):
+        path = self._write(desired)
+        job.say(f"wrote {path}:\n{desired}")
+        job.flush()                      # the last words before the cord is cut
+        return agent._sh(job, [NETPLAN_BIN, "apply"])
+
+    def restore(self, agent, job, iface, before):
+        self._write(before)
+        agent._sh(job, [NETPLAN_BIN, "apply"])
+
+
+class NetworkManagerNet:
+    """The RHEL family (and any machine NetworkManager runs): the ipv4 keys
+    of the connection on the interface, through nmcli, then `con up` to
+    make it live. The snapshot is those keys as they were, and restore is
+    the same modify with the old values."""
+    name = "networkmanager"
+    FIELDS = ("ipv4.method", "ipv4.addresses", "ipv4.gateway", "ipv4.dns",
+              "ipv4.ignore-auto-dns")
+
+    @staticmethod
+    def available():
+        return _have(NMCLI_BIN) and _run([NMCLI_BIN, "-t", "-g", "RUNNING", "general"]) == "running"
+
+    @staticmethod
+    def conn(iface):
+        return _run([NMCLI_BIN, "-t", "-g", "GENERAL.CONNECTION", "device", "show", iface])
+
+    def ready(self, iface):
+        if not self.conn(iface):
+            return (f"NetworkManager has no connection on {iface} — once, at the console: "
+                    f"nmcli con add type ethernet ifname {iface} con-name {iface}")
+        return ""
+
+    @staticmethod
+    def render(iface, mode, addr, gw, dns):
+        if mode == "dhcp":
+            return {"ipv4.method": "auto", "ipv4.addresses": "", "ipv4.gateway": "",
+                    "ipv4.dns": "", "ipv4.ignore-auto-dns": "no"}
+        return {"ipv4.method": "manual", "ipv4.addresses": addr, "ipv4.gateway": gw,
+                "ipv4.dns": ",".join(dns), "ipv4.ignore-auto-dns": "yes" if dns else "no"}
+
+    def snapshot(self, iface):
+        con = self.conn(iface)
+        return {"_con": con, **{f: _run([NMCLI_BIN, "-t", "-g", f, "con", "show", con])
+                                for f in self.FIELDS}}
+
+    @staticmethod
+    def same(desired, before):
+        return all((before or {}).get(k, "").strip() == v for k, v in desired.items())
+
+    def apply(self, agent, job, iface, desired, before):
+        con = before["_con"]
+        argv = [NMCLI_BIN, "con", "mod", con]
+        for k in self.FIELDS:
+            argv += [k, desired[k]]
+        job.say(f"NetworkManager connection {con!r} on {iface}: "
+                + " ".join(f"{k}={desired[k] or '-'}" for k in self.FIELDS) + "\n")
+        job.flush()
+        rc = agent._sh(job, argv)
+        return rc or agent._sh(job, [NMCLI_BIN, "con", "up", con])
+
+    def restore(self, agent, job, iface, before):
+        con = before["_con"]
+        argv = [NMCLI_BIN, "con", "mod", con]
+        for k in self.FIELDS:
+            argv += [k, before.get(k, "")]
+        agent._sh(job, argv)
+        agent._sh(job, [NMCLI_BIN, "con", "up", con])
+
+
+def net_backend():
+    """The service that owns this machine's network, or None. netplan
+    first: on a machine with both, netplan renders to NetworkManager, and
+    a file of ours beside its files is the change it expects."""
+    for b in (NetplanNet(), NetworkManagerNet()):
+        if b.available():
+            return b
+    return None
+
+
+def distro_now():
+    """What this machine is, as the facts the agent picks its commands by:
+    the distribution and its family from /etc/os-release, its package
+    manager, and its network backend. In the census, so the controller and
+    the row can say which tools a change would go through."""
+    d = {"id": "", "family": "", "pretty": "", "pkg": "", "network": ""}
+    like = ""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                k, _, v = line.strip().partition("=")
+                v = v.strip().strip('"')
+                if k == "ID":
+                    d["id"] = v[:32]
+                elif k == "ID_LIKE":
+                    like = v
+                elif k == "PRETTY_NAME":
+                    d["pretty"] = v[:80]
+    except OSError:
+        pass
+    ids = {d["id"], *like.split()}
+    if ids & {"debian", "ubuntu"}:
+        d["family"] = "debian"
+    elif ids & {"rhel", "fedora", "centos", "rocky", "almalinux"}:
+        d["family"] = "rhel"
+    else:
+        d["family"] = d["id"]
+    d["pkg"] = pkg_backend()[0]
+    b = net_backend()
+    d["network"] = b.name if b else ""
+    return d
 
 
 class Sampler:
@@ -2431,12 +2633,7 @@ class Agent:
         # that names packages for the other family only is not wrong, it is
         # incomplete for this node: say so with the names it does have, so
         # the owner can find their equivalents, and carry on to the recipe.
-        if shutil.which(DPKG_BIN):
-            fam, query, install = "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
-        elif shutil.which(RPM_BIN):
-            fam, query, install = "dnf", [RPM_BIN, "-q"], [DNF_BIN, "-y", "-q", "install"]
-        else:
-            fam, query, install = "", [], []
+        fam, query, install = pkg_backend()
         want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
         if not want:
             other = next((k for k in ("apt", "dnf") if k != fam and system.get(k)), "")
@@ -2698,13 +2895,17 @@ class Agent:
 
     def _apply_network(self, job, cfg):
         """Commit/confirm, because this is the one change that can cut the
-        cord it arrives on (docs/nodes.md §12): write the netplan file,
-        apply it, then dial the controller from wherever the machine landed.
-        No answer within DIAL_BACK_S and the previous file is put back and
-        applied again, and the failure is reported on reconnect."""
-        if not shutil.which(NETPLAN_BIN) and not os.access(NETPLAN_BIN, os.X_OK):
-            job.say("refused: network changes need netplan on this node, and it "
-                    "has none — set the address by hand, or on a node that has it\n")
+        cord it arrives on (docs/nodes.md §12): render the desired address
+        through whichever backend owns this machine's network — netplan, or
+        NetworkManager — apply it, then dial the controller from wherever
+        the machine landed. No answer within DIAL_BACK_S and the previous
+        config is put back and applied again, and the failure is reported
+        on reconnect. The spec is the same whatever the backend."""
+        backend = net_backend()
+        if backend is None:
+            job.say("refused: network changes need netplan or NetworkManager on this node, "
+                    f"and {_os_release() or 'it'} has neither running — set the address by "
+                    "hand, or on a node that has one\n")
             return "failed", 77
         net = cfg.get("network") if isinstance(cfg.get("network"), dict) else cfg
         iface = str(net.get("interface") or network_now().get("interface") or "")
@@ -2712,39 +2913,22 @@ class Agent:
             job.say("refused: no interface named and no default route to read one from\n")
             return "failed", 65
         mode = "static" if net.get("mode") == "static" else "dhcp"
-        lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
-        if mode == "dhcp":
-            lines.append("      dhcp4: true")
-        else:
-            addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
-            if not addr:
-                job.say("refused: a static address needs an address\n")
-                return "failed", 65
-            lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
-            if gw:
-                lines += ["      routes:", f"        - to: default", f"          via: {gw}"]
-            dns = [str(d) for d in (net.get("dns") or []) if str(d)]
-            if dns:
-                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
-        text = "\n".join(lines) + "\n"
-        path = os.path.join(NETPLAN_DIR, NETPLAN_FILE)
-        before = None
-        try:
-            with open(path) as f:
-                before = f.read()
-        except OSError:
-            pass
-        if before == text:
-            job.say("already applied — the netplan file has not changed\n")
+        addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
+        dns = [str(d) for d in (net.get("dns") or []) if str(d)]
+        if mode == "static" and not addr:
+            job.say("refused: a static address needs an address\n")
+            return "failed", 65
+        why = backend.ready(iface)
+        if why:
+            job.say(f"refused: {why}\n")
+            return "failed", 77
+        desired = backend.render(iface, mode, addr, gw, dns)
+        before = backend.snapshot(iface)
+        if backend.same(desired, before):
+            job.say(f"already applied — {backend.name} already has this config\n")
             return "succeeded", 0
-        os.makedirs(NETPLAN_DIR, exist_ok=True)
-        with open(path, "w") as f:
-            os.fchmod(f.fileno(), 0o600)
-            f.write(text)
-        job.say(f"wrote {path}:\n{text}")
-        job.flush()                      # the last words before the cord is cut
-        if self._sh(job, [NETPLAN_BIN, "apply"]) != 0:
-            self._restore_netplan(job, path, before)
+        if backend.apply(self, job, iface, desired, before) != 0:
+            backend.restore(self, job, iface, before)
             return "failed", 1
         job.say(f"applied; dialing the controller back from the new address "
                 f"(up to {DIAL_BACK_S}s)\n")
@@ -2759,7 +2943,7 @@ class Agent:
             # test that shortens DIAL_BACK_S was paying twice over.
             time.sleep(max(0.0, min(5.0, deadline - time.time())))
         job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
-        self._restore_netplan(job, path, before)
+        backend.restore(self, job, iface, before)
         deadline = time.time() + DIAL_BACK_S
         while time.time() < deadline:
             if self.hello()[0] == 200:
@@ -3023,16 +3207,6 @@ class Agent:
             if line.strip():
                 job.say(line + "\n")
         return p.returncode
-
-    def _restore_netplan(self, job, path, before):
-        if before is None:
-            with contextlib.suppress(OSError):
-                os.remove(path)
-        else:
-            with open(path, "w") as f:
-                os.fchmod(f.fileno(), 0o600)
-                f.write(before)
-        self._sh(job, [NETPLAN_BIN, "apply"])
 
     def reexec(self):
         # The ttyds first: execv keeps the children and loses every handle

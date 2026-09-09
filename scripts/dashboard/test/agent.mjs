@@ -90,6 +90,24 @@ print("unknown", a, file=sys.stderr); sys.exit(2)
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
 echo "$*" >> "${DIR}/netplan.log"
 `, { mode: 0o755 });
+// nmcli, for the NetworkManager backend: one connection on eth0 whose ipv4
+// keys live in a state file, answering the queries the agent makes and
+// recording every call. The fixture agent never sees it (netplan is found
+// first); the direct-call test below points the agent at it by path.
+writeFileSync(`${DIR}/bin/nmcli`, `#!/bin/sh
+S="${DIR}/nm.state"; echo "$*" >> "${DIR}/nmcli.log"
+[ -f "$S" ] || printf 'ipv4.method=auto\\nipv4.addresses=\\nipv4.gateway=\\nipv4.dns=\\nipv4.ignore-auto-dns=no\\n' > "$S"
+case "$*" in
+  "-t -g RUNNING general") echo running ;;
+  "-t -g GENERAL.CONNECTION device show eth0") echo "Wired connection 1" ;;
+  "-t -g GENERAL.CONNECTION device show "*) ;;
+  "-t -g "*" con show Wired connection 1") grep "^$3=" "$S" | cut -d= -f2- ;;
+  "con mod Wired connection 1 "*) shift 3
+    while [ $# -ge 2 ]; do grep -v "^$1=" "$S" > "$S.n"; echo "$1=$2" >> "$S.n"; mv "$S.n" "$S"; shift 2; done ;;
+  "con up Wired connection 1") ;;
+  *) echo "nmcli stub: unknown: $*" >&2; exit 2 ;;
+esac
+`, { mode: 0o755 });
 // dpkg that has nothing, and an npm that refuses: a recipe's system
 // packages are all missing, and the one recipe that would download a
 // browser stops at its first command instead.
@@ -849,6 +867,12 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(before.reported.sandbox === true && Array.isArray(before.reported.mounts)
        && before.reported.network && Array.isArray(before.reported.network.dns),
        'the census says the node is a sandbox and reports its mounts and address');
+    // The machine's own tools, detected rather than assumed: the fixture
+    // has a dpkg and a netplan (both stubs, found by path), so that is
+    // what a system job there would go through, and the row can say so.
+    ok(before.reported.distro && before.reported.distro.pkg === 'apt'
+       && before.reported.distro.network === 'netplan' && typeof before.reported.distro.family === 'string',
+       `...and which package manager and network backend it has (${JSON.stringify(before.reported.distro)})`);
     const refused = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
     ok(/save a configuration first/.test(refused.error || ''),
        'apply with nothing saved is refused, saying so');
@@ -1792,6 +1816,52 @@ print(json.dumps({'state': st, 'code': code, 'log': ''.join(j.lines),
      `a network change the controller cannot confirm is reverted (${R.state})`);
   ok(/dhcp4: true/.test(R.file) && !/10\.1\.1\.5/.test(R.file) && R.applies === 2,
      '...the previous file is back and applied a second time');
+}
+
+// ---- the same network spec through NetworkManager ---------------------------
+// The job the controller sends is one shape — mode, address, gateway, dns —
+// and the agent picks the backend the machine has. With no netplan and an
+// nmcli that says it is running, that is NetworkManager: the connection's
+// ipv4 keys are modified and brought up, a repeat is "already applied", and
+// a change the controller cannot confirm is put back the same way.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile
+os.environ['BUILDERBOT_NETPLAN_BIN'] = '/nonexistent/netplan'
+os.environ['BUILDERBOT_NMCLI_BIN'] = ${JSON.stringify(`${DIR}/bin/nmcli`)}
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+a = m.Agent.__new__(m.Agent)
+a.state = {'stores': {}}
+class J:
+    def __init__(self): self.lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+state = lambda: dict(l.split('=', 1) for l in open(${JSON.stringify(`${DIR}/nm.state`)}).read().splitlines() if '=' in l)
+want = {'network': {'mode': 'static', 'address': '10.1.1.5/24', 'gateway': '10.1.1.1', 'dns': ['10.1.1.1', '10.1.1.2'], 'interface': 'eth0'}}
+a.hello = lambda: (200, {})
+j1 = J(); s1 = a._apply_network(j1, want); st1 = state()
+j2 = J(); s2 = a._apply_network(j2, want)
+a.hello = lambda: (503, {'error': 'unreachable'})
+j3 = J(); s3 = a._apply_network(j3, {'network': {'mode': 'dhcp', 'interface': 'eth0'}}); st3 = state()
+print(json.dumps({'distro': m.distro_now(), 'r1': s1, 'log1': ''.join(j1.lines), 'st1': st1,
+                  'r2': s2, 'log2': ''.join(j2.lines), 'r3': s3, 'log3': ''.join(j3.lines), 'st3': st3,
+                  'calls': open(${JSON.stringify(`${DIR}/nmcli.log`)}).read()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.distro.network === 'networkmanager',
+     `with no netplan and a running NetworkManager, that is the backend the agent detects (${JSON.stringify(R.distro)})`);
+  ok(R.r1[0] === 'succeeded' && R.st1['ipv4.method'] === 'manual' && R.st1['ipv4.addresses'] === '10.1.1.5/24'
+     && R.st1['ipv4.gateway'] === '10.1.1.1' && R.st1['ipv4.dns'] === '10.1.1.1,10.1.1.2'
+     && /con up Wired connection 1/.test(R.calls) && /dialed back/.test(R.log1),
+     `the same static spec lands as the connection's ipv4 keys, brought up and confirmed (${R.r1[0]}: ${JSON.stringify(R.st1)})`);
+  ok(R.r2[0] === 'succeeded' && /already applied/.test(R.log2),
+     '...and sending it again is "already applied", read back from the connection');
+  ok(R.r3[0] === 'failed' && /reverting/.test(R.log3) && R.st3['ipv4.method'] === 'manual'
+     && R.st3['ipv4.addresses'] === '10.1.1.5/24',
+     `...and a change the controller cannot confirm is put back the same way (${R.r3[0]}: ${JSON.stringify(R.st3)})`);
 }
 
 // ---- the agent's version is WINDOW.BUILD ----------------------------------

@@ -483,8 +483,19 @@ function nodeConfSections(n){
       </div>`;
   // The four static fields only when static: five boxes of placeholders
   // under a dhcp node were the wall this section used to be on a phone.
+  // Which service on the machine the agent would write this into. The
+  // spec it is sent is the same everywhere; the agent detects the backend
+  // (netplan on Debian and Ubuntu, NetworkManager on the RHEL family) and
+  // reports it in the census, so the row can say so before the job goes —
+  // or say that a change would be refused, on a machine with neither.
+  const dist = rep.distro;
+  const via = !dist ? ""
+    : dist.network === "netplan" ? " Through netplan on this node."
+    : dist.network === "networkmanager" ? " Through NetworkManager on this node."
+    : ` <b class="warn">This node reports neither netplan nor NetworkManager${
+        dist.pretty ? " (" + esc(dist.pretty) + ")" : ""}; a change would be refused.</b>`;
   const network = `
-      <div class="sub">Applied with a three-minute dial-back, or reverted.</div>
+      <div class="sub">Applied with a three-minute dial-back, or reverted.${via}</div>
       <div class="ndnet${isStatic ? "" : " dhcp"}">
         <select data-k="net:mode" aria-label="mode">
           <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
@@ -529,8 +540,8 @@ function nodeConfSections(n){
     : failedFor("network") ? "bad" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
   // .ndconf and .ndconfbody: the names the suite finds the plane by; the
   // sections are its children, so a test can read them in order.
-  // Storage and Network edit the machine's own configuration — fstab,
-  // netplan — which only a node provisioned as a sandbox (a MANAGED node,
+  // Storage and Network edit the machine's own configuration — fstab, and
+  // whatever owns its network — which only a node provisioned as a sandbox (a MANAGED node,
   // roadmap #23) hands over. A container node or a guest machine keeps its
   // mounts and its address its own, and the tab says so rather than
   // offering buttons the agent refuses.

@@ -972,6 +972,15 @@ def _census(c):
         "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
         "gateway": str(net.get("gateway") or "")[:64],
         "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
+    # The machine's own tools, as the agent detected them: its package
+    # manager and the service that owns its network. A system job's spec is
+    # the same for every node; this says what the agent there would turn it
+    # into, so the row can say so — and absent from an agent that predates
+    # the detection, which the row reads as "not reported", not as none.
+    d = c.get("distro") if isinstance(c.get("distro"), dict) else None
+    if d is not None:
+        out["distro"] = {k: re.sub(r"[^a-zA-Z0-9 ._()/-]", "", str(d.get(k) or ""))[:80]
+                         for k in ("id", "family", "pretty", "pkg", "network")}
     return out
 
 
@@ -1024,7 +1033,9 @@ _CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
 def _clean_config(cfg):
     """The desired config, validated to its shape, or an error string. Every
     field is bounded here so a system job's spec is never a blob from the
-    page — the agent writes what arrives into fstab and netplan."""
+    page — the agent writes what arrives into fstab and into whichever
+    backend owns its network (netplan, NetworkManager); the spec names the
+    address, never the tool."""
     cfg = cfg if isinstance(cfg, dict) else {}
     out = {}
     mounts = []
