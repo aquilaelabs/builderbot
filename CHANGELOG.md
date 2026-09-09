@@ -322,3 +322,6 @@
 - A Claude session can ask for one command as root on its project's node: the reason and the exact command go to the administrators on the Nodes tab and the bell, Allow runs that command and nothing else, Deny says no — there is no sudo and no pretend sudo (046d028)
 - An approval is put in front of the person whose session asked: your own phone's requests come to you, and a root request comes to you when you are an administrator — a user's goes to the administrators, since root on a shared sandbox is theirs to allow; any account can now connect and own a phone (fe2f04e)
 - The Artifacts tab has Download source: the project's code base as a zip, straight to the browser, without build output or .git (fe2f04e)
+- A node can be locked so its storage, network and root are managed only at its own console: Lock system changes under the node's Advanced section refuses those from the dashboard until Unlock (f1f3b69)
+- The notebook's tabs run in the order a project is worked: Briefing, Roadmap, Bugs, Git, Artifacts, Tests, Analysis (f1f3b69)
+- Fixes from a review: a package a node was missing is now actually installed on Debian and Arch, a network change on systemd-networkd takes effect, allowing a root command no longer hangs the page while it runs, and the provisioner survives an offline node and Rocky's curl-minimal (f1f3b69)
