@@ -318,3 +318,4 @@
 - Linking a project to GitHub can authenticate with an access token as well as a deploy key, and creates the repository when it is not there yet (72200dd)
 - The Unraid VM template is sized for a node that builds and runs the emulator, and one template serves every distribution: only the installer ISO line changes, and provision.sh sets up Debian, RHEL, Arch and SUSE family machines plus Alpine, Void and Gentoo (b8c45a0, f927ba4)
 - A node's Storage, Network and package installs work the same whatever distribution it runs: the node detects its own package manager, network service and init system, and the row says which a change will go through (30a2e97, f927ba4)
+- provision.sh checks the machine first — family, package manager, image-based variants, writable root, init, architecture, kernel, disk, network — and refuses with the whole list before changing anything; --check asks without provisioning (f15f591)
