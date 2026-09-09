@@ -13,15 +13,22 @@
 
   What differs from Unraid's placeholder is called out where it sits: q35
   rather than i440fx, shared memory backing, no CPU pinning, a virtio rng,
-  and sizes for a machine that compiles. The Rocky Linux 9 twin of this file
-  is unraid-domain-rocky9.xml; provision.sh takes either.
+  and sizes for a machine that compiles.
+
+  ONE FILE FOR EVERY DISTRIBUTION. The hardware is the same whatever is
+  installed on it — virtio has been in every Linux kernel for fifteen
+  years — so the only line that changes per distribution is the installer
+  ISO below, and provision.sh sorts out the rest inside the guest (the
+  Debian, RHEL, Arch and SUSE families, Alpine, Void and Gentoo; a
+  derivative is recognised by its ID_LIKE). The <vmtemplate> line is
+  Unraid's icon and nothing more; change os= and icon= to taste.
 -->
 <domain xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0" type="kvm">
   <uuid>b091db01-cbdd-07b7-c797-79ca40d31a00</uuid>
   <name>bb-sandbox</name>
   <description>BuilderBot node — builds, tests, CI, the emulator and sessions run here; containers it can wreck</description>
   <metadata>
-    <vmtemplate xmlns="http://unraid" name="Ubuntu" icon="ubuntu.png" os="ubuntu" storage="default"/>
+    <vmtemplate xmlns="http://unraid" name="Linux" icon="linux.png" os="linux" storage="default"/>
   </metadata>
 
   <!-- 16 GiB and 6 cores. This is no longer a box that only builds the odd
@@ -108,8 +115,29 @@
       <boot order="2"/>
     </disk>
 
-    <!-- The Ubuntu Server installer. Correct the path, install, then delete
-         this whole block so it stops booting from the ISO. -->
+    <!-- The installer. The ONE line that differs per distribution: put the
+         ISO you downloaded into /mnt/user/isos and name it here, install
+         (headless, no desktop, ssh on — docs/sandbox-vm.md has the screens
+         that matter), then delete this whole block so it stops booting from
+         the ISO. The filenames as their projects publish them:
+           ubuntu-26.04-live-server-amd64.iso          Ubuntu Server (tested)
+           debian-13.x.x-amd64-netinst.iso             Debian
+           Rocky-9-latest-x86_64-minimal.iso           Rocky Linux
+           AlmaLinux-9-latest-x86_64-minimal.iso       AlmaLinux
+           CentOS-Stream-10-latest-x86_64-boot.iso     CentOS Stream
+           Fedora-Server-netinst-x86_64-*.iso          Fedora Server
+           archlinux-x86_64.iso                        Arch (manual install)
+           manjaro-*-minimal-*.iso, EndeavourOS_*.iso, cachyos-*.iso
+           openSUSE-Leap-16.x-NET-x86_64-Media.iso     openSUSE Leap
+           openSUSE-Tumbleweed-NET-x86_64-Current.iso  openSUSE Tumbleweed
+           alpine-virt-3.x.x-x86_64.iso                Alpine (the virt image)
+           void-live-x86_64-*-base.iso                 Void
+           install-amd64-minimal-*.iso                 Gentoo (a long install)
+         Mint, Pop!_OS and Kali are desktop images with a desktop the node
+         never shows anyone; they work, but a server image of their parent
+         is the better machine. Raspberry Pi OS is an ARM image and not an
+         Unraid VM. Rocky 9 and its siblings need x86-64-v2, which any
+         host that can run this VM has; host-passthrough below hands it on. -->
     <disk type="file" device="cdrom">
       <driver name="qemu" type="raw"/>
       <source file="/mnt/user/isos/ubuntu-26.04-live-server-amd64.iso"/>

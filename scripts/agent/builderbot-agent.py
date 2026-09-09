@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.31"
+AGENT_VERSION = "0.4.32"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -286,6 +286,25 @@ RPM_BIN = os.environ.get("BUILDERBOT_RPM_BIN", "rpm")
 # NetworkManager's CLI, the network backend where there is no netplan (the
 # RHEL family). Settable for the same reason as netplan's: the suite stubs it.
 NMCLI_BIN = os.environ.get("BUILDERBOT_NMCLI_BIN", "nmcli")
+# The other package managers and network backends this agent can drive —
+# one pair per family, detected on the machine, never told by the
+# controller. Each settable so the suite can point one at a stub or at a
+# path that does not exist.
+PACMAN_BIN = os.environ.get("BUILDERBOT_PACMAN_BIN", "pacman")
+ZYPPER_BIN = os.environ.get("BUILDERBOT_ZYPPER_BIN", "zypper")
+APK_BIN = os.environ.get("BUILDERBOT_APK_BIN", "apk")
+XBPS_QUERY_BIN = os.environ.get("BUILDERBOT_XBPS_QUERY_BIN", "xbps-query")
+XBPS_INSTALL_BIN = os.environ.get("BUILDERBOT_XBPS_INSTALL_BIN", "xbps-install")
+EMERGE_BIN = os.environ.get("BUILDERBOT_EMERGE_BIN", "emerge")
+NETWORKD_DIR = os.environ.get("BUILDERBOT_NETWORKD_DIR", "/etc/systemd/network")
+NETWORKCTL_BIN = os.environ.get("BUILDERBOT_NETWORKCTL_BIN", "networkctl")
+INTERFACES_FILE = os.environ.get("BUILDERBOT_INTERFACES_FILE", "/etc/network/interfaces")
+IFUP_BIN = os.environ.get("BUILDERBOT_IFUP_BIN", "ifup")
+IFDOWN_BIN = os.environ.get("BUILDERBOT_IFDOWN_BIN", "ifdown")
+WICKED_BIN = os.environ.get("BUILDERBOT_WICKED_BIN", "wicked")
+SYSCONFIG_NET_DIR = os.environ.get("BUILDERBOT_SYSCONFIG_NET_DIR", "/etc/sysconfig/network")
+DHCPCD_CONF = os.environ.get("BUILDERBOT_DHCPCD_CONF", "/etc/dhcpcd.conf")
+OS_RELEASE = os.environ.get("BUILDERBOT_OS_RELEASE", "/etc/os-release")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
@@ -1077,12 +1096,28 @@ def _have(binary):
 def pkg_backend():
     """(name, query argv, install argv) for the package manager this machine
     has, keyed by the tool that answers whether a package is installed —
-    dpkg or rpm — since that is the half every check needs. Empty when it
-    is neither, which is a machine this agent cannot install packages on."""
+    since that is the half every check needs — and, where two families
+    share one (rpm: dnf and zypper), by the installer beside it. The name
+    is the key a recipe lists its system packages under (`system.apt`,
+    `system.dnf`, ...). Empty when it is none of them, which is a machine
+    this agent cannot install packages on: a recipe's packages are named
+    for the owner there."""
     if _have(DPKG_BIN):
         return "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
+    if _have(RPM_BIN) and _have(ZYPPER_BIN) and not _have(DNF_BIN):
+        return "zypper", [RPM_BIN, "-q"], [ZYPPER_BIN, "-n", "-q", "install", "-y"]
     if _have(RPM_BIN):
         return "dnf", [RPM_BIN, "-q"], [DNF_BIN, "-y", "-q", "install"]
+    if _have(PACMAN_BIN):
+        return "pacman", [PACMAN_BIN, "-Q"], [PACMAN_BIN, "-S", "--noconfirm", "--needed"]
+    if _have(APK_BIN):
+        return "apk", [APK_BIN, "info", "-e"], [APK_BIN, "add", "-q"]
+    if _have(XBPS_QUERY_BIN):
+        return "xbps", [XBPS_QUERY_BIN], [XBPS_INSTALL_BIN, "-y"]
+    if _have(EMERGE_BIN):
+        # No query short of portage-utils: everything asked for is emerged
+        # with --noreplace, which is portage's own "if missing".
+        return "emerge", [], [EMERGE_BIN, "--quiet", "--noreplace"]
     return "", [], []
 
 
@@ -1209,14 +1244,262 @@ class NetworkManagerNet:
         agent._sh(job, [NMCLI_BIN, "con", "up", con])
 
 
+class FilesNet:
+    """The shape shared by the backends that are files plus a reload: render
+    the desired state as {path: text-or-None}, snapshot the same paths as
+    they are, write, run the reload, and restore by writing the snapshot
+    back and reloading again. None for a path means "not there", both in
+    what is wanted and in what was found, so a file this created is removed
+    again on revert."""
+    name = ""
+
+    def ready(self, iface):
+        return ""
+
+    @staticmethod
+    def same(desired, before):
+        return desired == before
+
+    def snapshot(self, iface):
+        out = {}
+        for path in self.paths(iface):
+            try:
+                with open(path) as f:
+                    out[path] = f.read()
+            except OSError:
+                out[path] = None
+        return out
+
+    @staticmethod
+    def _write(files):
+        for path, text in files.items():
+            if text is None:
+                with contextlib.suppress(OSError):
+                    os.remove(path)
+                continue
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                os.fchmod(f.fileno(), 0o644)
+                f.write(text)
+
+    def apply(self, agent, job, iface, desired, before):
+        self._write(desired)
+        for path, text in desired.items():
+            job.say(f"wrote {path}:\n{text}" if text is not None else f"removed {path}\n")
+        job.flush()                      # the last words before the cord is cut
+        return self.reload(agent, job, iface)
+
+    def restore(self, agent, job, iface, before):
+        self._write(before)
+        self.reload(agent, job, iface)
+
+
+class NetworkdNet(FilesNet):
+    """systemd-networkd (Arch and its derivatives on a server install, and
+    anything else that chose it): one .network file of our own for the
+    interface, and `networkctl reload`."""
+    name = "systemd-networkd"
+
+    @staticmethod
+    def available():
+        return _have(NETWORKCTL_BIN) and os.path.isdir(NETWORKD_DIR) \
+            and _run(["systemctl", "is-active", "systemd-networkd"]) == "active"
+
+    @staticmethod
+    def paths(iface):
+        return [os.path.join(NETWORKD_DIR, f"90-builderbot-{iface}.network")]
+
+    def render(self, iface, mode, addr, gw, dns):
+        lines = ["[Match]", f"Name={iface}", "", "[Network]"]
+        if mode == "dhcp":
+            lines.append("DHCP=yes")
+        else:
+            lines.append(f"Address={addr}")
+            if gw:
+                lines.append(f"Gateway={gw}")
+            lines += [f"DNS={d}" for d in dns]
+        return {self.paths(iface)[0]: "\n".join(lines) + "\n"}
+
+    def reload(self, agent, job, iface):
+        rc = agent._sh(job, [NETWORKCTL_BIN, "reload"])
+        return rc or agent._sh(job, [NETWORKCTL_BIN, "reconfigure", iface])
+
+
+class IfupdownNet(FilesNet):
+    """/etc/network/interfaces — Debian without netplan, Raspberry Pi OS
+    before NetworkManager, Alpine's ifupdown-ng. The interface's own stanza
+    in that file is replaced with ours (the rest of the file is kept as it
+    is), then the interface is cycled with ifdown/ifup."""
+    name = "ifupdown"
+
+    @staticmethod
+    def available():
+        return _have(IFUP_BIN) and os.path.isfile(INTERFACES_FILE)
+
+    @staticmethod
+    def paths(iface):
+        return [INTERFACES_FILE]
+
+    @staticmethod
+    def _without(text, iface):
+        """The file minus the interface's stanza: its `auto`/`allow-*`
+        line and its `iface` block up to the next top-level keyword."""
+        out, skipping = [], False
+        for line in text.splitlines():
+            w = line.split()
+            top = bool(w) and not line[0].isspace()
+            if top and w[0] in ("iface",) and len(w) > 1 and w[1] == iface:
+                skipping = True
+                continue
+            if top and w[0] in ("auto", "allow-hotplug") and iface in w[1:]:
+                rest = [x for x in w[1:] if x != iface]
+                if rest:
+                    out.append(w[0] + " " + " ".join(rest))
+                continue
+            if top and w[0] in ("iface", "auto", "allow-hotplug", "mapping", "source", "source-directory"):
+                skipping = False
+            if not skipping:
+                out.append(line)
+        return "\n".join(out).rstrip("\n") + ("\n" if out else "")
+
+    def render(self, iface, mode, addr, gw, dns):
+        try:
+            with open(INTERFACES_FILE) as f:
+                base = self._without(f.read(), iface)
+        except OSError:
+            base = ""
+        lines = ["# BuilderBot: this interface, as the controller set it", f"auto {iface}"]
+        if mode == "dhcp":
+            lines.append(f"iface {iface} inet dhcp")
+        else:
+            lines.append(f"iface {iface} inet static")
+            lines.append(f"    address {addr}")
+            if gw:
+                lines.append(f"    gateway {gw}")
+            if dns:
+                lines.append(f"    dns-nameservers {' '.join(dns)}")
+        return {INTERFACES_FILE: base + ("\n" if base and not base.endswith("\n\n") else "")
+                + "\n".join(lines) + "\n"}
+
+    def reload(self, agent, job, iface):
+        agent._sh(job, [IFDOWN_BIN, iface])
+        return agent._sh(job, [IFUP_BIN, iface])
+
+
+class WickedNet(FilesNet):
+    """SUSE Leap's wicked: ifcfg-IFACE for the address, ifroute-IFACE for
+    the default route, and the static resolvers in netconfig's config, then
+    `wicked ifreload` and `netconfig update`."""
+    name = "wicked"
+
+    @staticmethod
+    def available():
+        return _have(WICKED_BIN) and os.path.isdir(SYSCONFIG_NET_DIR) \
+            and _run(["systemctl", "is-active", "wicked"]) == "active"
+
+    @staticmethod
+    def paths(iface):
+        return [os.path.join(SYSCONFIG_NET_DIR, f"ifcfg-{iface}"),
+                os.path.join(SYSCONFIG_NET_DIR, f"ifroute-{iface}"),
+                os.path.join(SYSCONFIG_NET_DIR, "config")]
+
+    def render(self, iface, mode, addr, gw, dns):
+        ifcfg, ifroute, config = self.paths(iface)
+        out = {}
+        if mode == "dhcp":
+            out[ifcfg] = "STARTMODE='auto'\nBOOTPROTO='dhcp'\n"
+            out[ifroute] = None
+        else:
+            out[ifcfg] = f"STARTMODE='auto'\nBOOTPROTO='static'\nIPADDR='{addr}'\n"
+            out[ifroute] = f"default {gw} - {iface}\n" if gw else None
+        # netconfig's config is a shared file: only its static-DNS line moves.
+        try:
+            with open(config) as f:
+                text = f.read()
+        except OSError:
+            text = ""
+        kept = [l for l in text.splitlines() if not l.startswith("NETCONFIG_DNS_STATIC_SERVERS=")]
+        kept.append(f'NETCONFIG_DNS_STATIC_SERVERS="{" ".join(dns) if mode == "static" else ""}"')
+        out[config] = "\n".join(kept) + "\n"
+        return out
+
+    def reload(self, agent, job, iface):
+        rc = agent._sh(job, [WICKED_BIN, "ifreload", iface])
+        agent._sh(job, ["netconfig", "update", "-f"])
+        return rc
+
+
+class DhcpcdNet(FilesNet):
+    """dhcpcd on its own (Void's default): a static address is a marked
+    block in dhcpcd.conf for the interface, and the daemon is restarted."""
+    name = "dhcpcd"
+    MARK = "# BuilderBot: "
+
+    @staticmethod
+    def available():
+        return _have("dhcpcd") and os.path.isfile(DHCPCD_CONF) and bool(_run(["pgrep", "-x", "dhcpcd"]))
+
+    @staticmethod
+    def paths(iface):
+        return [DHCPCD_CONF]
+
+    def render(self, iface, mode, addr, gw, dns):
+        try:
+            with open(DHCPCD_CONF) as f:
+                text = f.read()
+        except OSError:
+            text = ""
+        out, skipping = [], False
+        for line in text.splitlines():
+            if line.startswith(self.MARK + iface):
+                skipping = True
+                continue
+            if skipping and line.startswith(self.MARK + "end"):
+                skipping = False
+                continue
+            if not skipping:
+                out.append(line)
+        base = "\n".join(out).rstrip("\n")
+        if mode == "static":
+            block = [self.MARK + iface, f"interface {iface}", f"static ip_address={addr}"]
+            if gw:
+                block.append(f"static routers={gw}")
+            if dns:
+                block.append(f"static domain_name_servers={' '.join(dns)}")
+            block.append(self.MARK + "end")
+            base = (base + "\n\n" if base else "") + "\n".join(block)
+        return {DHCPCD_CONF: base + "\n"}
+
+    def reload(self, agent, job, iface):
+        for argv in (["sv", "restart", "dhcpcd"], ["rc-service", "dhcpcd", "restart"],
+                     ["systemctl", "restart", "dhcpcd"]):
+            if _have(argv[0]):
+                return agent._sh(job, argv)
+        return agent._sh(job, ["dhcpcd", "-n", iface])
+
+
 def net_backend():
-    """The service that owns this machine's network, or None. netplan
-    first: on a machine with both, netplan renders to NetworkManager, and
-    a file of ours beside its files is the change it expects."""
-    for b in (NetplanNet(), NetworkManagerNet()):
+    """The service that owns this machine's network, or None. In the order
+    that resolves a machine with two of them: netplan renders to whichever
+    of NetworkManager and networkd is under it, so a file of ours beside
+    its files is the change it expects; NetworkManager over networkd where
+    both run; the file-based ones only when nothing above them is running."""
+    for b in (NetplanNet(), NetworkManagerNet(), NetworkdNet(), WickedNet(),
+              IfupdownNet(), DhcpcdNet()):
         if b.available():
             return b
     return None
+
+
+def init_now():
+    """Which init runs this machine — what a service of ours is, there."""
+    if os.path.isdir("/run/systemd/system"):
+        return "systemd"
+    if _have("rc-service"):
+        return "openrc"
+    if os.path.isdir("/etc/sv") and _have("sv"):
+        return "runit"
+    return ""
 
 
 def distro_now():
@@ -1224,10 +1507,10 @@ def distro_now():
     the distribution and its family from /etc/os-release, its package
     manager, and its network backend. In the census, so the controller and
     the row can say which tools a change would go through."""
-    d = {"id": "", "family": "", "pretty": "", "pkg": "", "network": ""}
+    d = {"id": "", "family": "", "pretty": "", "pkg": "", "network": "", "init": ""}
     like = ""
     try:
-        with open("/etc/os-release") as f:
+        with open(OS_RELEASE) as f:
             for line in f:
                 k, _, v = line.strip().partition("=")
                 v = v.strip().strip('"')
@@ -1239,16 +1522,26 @@ def distro_now():
                     d["pretty"] = v[:80]
     except OSError:
         pass
+    # A derivative lands with its parent through ID_LIKE: Mint, Pop!_OS and
+    # Kali with Debian; Fedora, CentOS Stream, Rocky and Alma with RHEL;
+    # Manjaro, EndeavourOS and CachyOS with Arch; Leap and Tumbleweed with
+    # SUSE. The independents are their own family.
     ids = {d["id"], *like.split()}
-    if ids & {"debian", "ubuntu"}:
-        d["family"] = "debian"
-    elif ids & {"rhel", "fedora", "centos", "rocky", "almalinux"}:
-        d["family"] = "rhel"
+    for family, members in (("debian", {"debian", "ubuntu", "raspbian"}),
+                            ("rhel", {"rhel", "fedora", "centos", "rocky", "almalinux"}),
+                            ("arch", {"arch", "archlinux", "manjaro"}),
+                            ("suse", {"suse", "opensuse", "opensuse-leap", "opensuse-tumbleweed", "sles"}),
+                            ("alpine", {"alpine"}), ("void", {"void"}), ("gentoo", {"gentoo"}),
+                            ("nixos", {"nixos"}), ("slackware", {"slackware"})):
+        if ids & members:
+            d["family"] = family
+            break
     else:
         d["family"] = d["id"]
     d["pkg"] = pkg_backend()[0]
     b = net_backend()
     d["network"] = b.name if b else ""
+    d["init"] = init_now()
     return d
 
 
@@ -2636,7 +2929,8 @@ class Agent:
         fam, query, install = pkg_backend()
         want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
         if not want:
-            other = next((k for k in ("apt", "dnf") if k != fam and system.get(k)), "")
+            other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
+                          if k != fam and system.get(k)), "")
             if other:
                 job.say(f"{name} needs system packages its recipe names for {other} only; "
                         f"this node's are its owner's to install — the {other} names: "
@@ -2644,8 +2938,11 @@ class Agent:
             return True
         missing = []
         for x in want:
+            if not query:
+                missing.append(x)          # emerge: no query, --noreplace skips the installed
+                continue
             p = _run(query + [x])
-            if not p or (fam == "dnf" and "not installed" in p):
+            if not p or (fam in ("dnf", "zypper") and "not installed" in p):
                 missing.append(x)
         if not missing:
             return True
@@ -2903,9 +3200,10 @@ class Agent:
         on reconnect. The spec is the same whatever the backend."""
         backend = net_backend()
         if backend is None:
-            job.say("refused: network changes need netplan or NetworkManager on this node, "
-                    f"and {_os_release() or 'it'} has neither running — set the address by "
-                    "hand, or on a node that has one\n")
+            job.say("refused: network changes need a backend this agent drives — netplan, "
+                    "NetworkManager, systemd-networkd, wicked, ifupdown or dhcpcd — and "
+                    f"{_os_release() or 'this node'} has none of them running; set the address "
+                    "by hand, or on a node that has one\n")
             return "failed", 77
         net = cfg.get("network") if isinstance(cfg.get("network"), dict) else cfg
         iface = str(net.get("interface") or network_now().get("interface") or "")

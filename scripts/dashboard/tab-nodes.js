@@ -485,14 +485,16 @@ function nodeConfSections(n){
   // under a dhcp node were the wall this section used to be on a phone.
   // Which service on the machine the agent would write this into. The
   // spec it is sent is the same everywhere; the agent detects the backend
-  // (netplan on Debian and Ubuntu, NetworkManager on the RHEL family) and
-  // reports it in the census, so the row can say so before the job goes —
-  // or say that a change would be refused, on a machine with neither.
+  // (netplan, NetworkManager, systemd-networkd, wicked, ifupdown, dhcpcd)
+  // and reports it in the census, so the row can say so before the job goes
+  // — or say that a change would be refused, on a machine with none.
   const dist = rep.distro;
+  const NET_BACKENDS = {netplan: "netplan", networkmanager: "NetworkManager",
+    "systemd-networkd": "systemd-networkd", wicked: "wicked", ifupdown: "/etc/network/interfaces",
+    dhcpcd: "dhcpcd"};
   const via = !dist ? ""
-    : dist.network === "netplan" ? " Through netplan on this node."
-    : dist.network === "networkmanager" ? " Through NetworkManager on this node."
-    : ` <b class="warn">This node reports neither netplan nor NetworkManager${
+    : NET_BACKENDS[dist.network] ? ` Through ${NET_BACKENDS[dist.network]} on this node.`
+    : ` <b class="warn">This node reports no network backend the agent drives${
         dist.pretty ? " (" + esc(dist.pretty) + ")" : ""}; a change would be refused.</b>`;
   const network = `
       <div class="sub">Applied with a three-minute dial-back, or reverted.${via}</div>

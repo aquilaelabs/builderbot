@@ -1463,9 +1463,10 @@ mounted from somewhere else. A network change is the one that can cut the
 cord it arrives on, so it is applied with a three-minute dial-back: the node
 re-addresses itself and must reach the controller from the new address, or it
 puts the previous config back on its own and says so when it reconnects.
-The job names the address and never the tool: the agent detects whether
-netplan or NetworkManager owns the node's network and writes it through
-that one, and refuses, saying so, on a node with neither. Nothing here is
+The job names the address and never the tool: the agent detects what owns
+the node's network — netplan, NetworkManager, systemd-networkd, wicked,
+`/etc/network/interfaces` or dhcpcd — and writes it through that one, and
+refuses, saying so, on a node with none of them. Nothing here is
 offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
@@ -3477,8 +3478,8 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
-vm/provision.sh                  turns a Debian, Ubuntu or Rocky Linux 9 machine into a node — the Docker sandbox, the stores, the session half — and enrolls it
-vm/unraid-domain.xml             the node as an Unraid VM (Ubuntu); unraid-domain-rocky9.xml is the same machine with the Rocky installer
+vm/provision.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
+vm/unraid-domain.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

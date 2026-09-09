@@ -249,8 +249,8 @@ headless, no desktop. It is what most Docker instructions assume, it turns on
 unattended security updates by default, which is worth having on a box nobody
 logs into, and Docker's repository already publishes for it (`resolute`).
 Debian 13 works identically if you would rather have the leaner machine;
-`provision.sh` accepts either. **Rocky Linux 9** works too — see the section
-after this one for what differs; the installer screens below are Ubuntu's.
+`provision.sh` accepts either — and most other distributions, which the
+section after this one covers; the installer screens below are Ubuntu's.
 
 Take the installer's defaults except for four screens, where the default is
 wrong for this particular machine:
@@ -276,40 +276,66 @@ Use `bb` as the username so it matches `--user bb` below, and take the normal
 Ubuntu Server rather than *minimized* — minimized strips editors and man
 pages, and this is a box you will eventually log into to work something out.
 
-### On Rocky Linux 9 instead
+### Any other distribution
 
-`vm/unraid-domain-rocky9.xml` is the same machine with the Rocky installer in
-the drive (`Rocky-9-latest-x86_64-minimal.iso`), and `provision.sh` takes the
-RHEL family — Rocky, Alma, RHEL, CentOS Stream — by the same command line.
-Pick **Minimal Install**, create the `bb` user as an administrator on the
-user screen, and set the address static there or at the console with `nmcli`
-afterwards. The differences inside are the distribution's, not BuilderBot's:
+The same XML serves every distribution — only the installer ISO line in it
+changes, and the file lists the filenames — and `provision.sh` reads
+`/etc/os-release` and takes the machine's own tools from there. It knows
+four families and three independents; a derivative lands with its parent
+through `ID_LIKE`, so nothing has to be named for Mint or CachyOS to work.
 
-- packages come from `dnf`, and Docker from its own `rhel` repository, which
-  serves Rocky and Alma unchanged (`podman-docker`, if the image carried it,
-  is removed so `docker` is Docker);
-- `ttyd` is not in any RHEL repository, so the session half fetches the
-  static binary from ttyd's GitHub release into `/usr/local/bin`. That is the
-  one download in the script that is not a package manager's — an offline
-  node needs it copied in by hand, and the script says so;
-- **firewalld** holds the session ports: the same two rich rules, 7681 and
-  7682 from the controller's address and nobody else's, rewritten on each
-  run. The nftables file the Debian path writes is not used, because
-  firewalld would flush a table beside its own on its next reload;
-- **SELinux stays enforcing.** The one thing it blocks that a node does is a
-  container reading an NFS mount, so `--nfs` turns on `virt_use_nfs`;
-  nothing else needs a boolean, and turning SELinux off is not a step here;
-- **NetworkManager, not netplan** — and the Nodes tab's Network section
-  goes through it: the agent detects which one the machine has and writes
-  the same address through `nmcli` here, `netplan` there. Storage is fstab
-  on both.
-- a recipe's **system packages** come from `dnf` where the recipe names them
-  for it (`system.dnf` beside `system.apt` in `config/packages.json` — the
-  emulator's are there). One that names them for apt only says so on the
-  job, with the Debian names, and leaves them to the owner; Playwright's
-  browsers are that case today, so on Rocky `bb sdk install playwright`
-  lands the module and the browsers, and the forty libraries around them are
-  yours.
+| family | members | packages | Docker from | ttyd from | network backend | init |
+|---|---|---|---|---|---|---|
+| Debian | Ubuntu, Debian, Mint, Pop!_OS, Kali, Raspberry Pi OS | apt | Docker's repo (Ubuntu's for Mint and Pop via `UBUNTU_CODENAME`; Debian's for Kali and Pi OS) | the distribution | netplan, NetworkManager or ifupdown | systemd |
+| RHEL | Rocky, AlmaLinux, CentOS Stream, Fedora, RHEL | dnf | Docker's `centos`, `fedora` or `rhel` repo | ttyd's release binary | NetworkManager | systemd |
+| Arch | Arch, Manjaro, EndeavourOS, CachyOS | pacman | the distribution | the distribution | NetworkManager or systemd-networkd | systemd |
+| SUSE | openSUSE Leap, Tumbleweed | zypper | the distribution | Tumbleweed's; the release binary on Leap | NetworkManager or wicked | systemd |
+| Alpine | | apk | the distribution | the distribution | ifupdown-ng | OpenRC |
+| Void | | xbps | the distribution | the distribution | dhcpcd or NetworkManager | runit |
+| Gentoo | | emerge (hours) | the distribution | the release binary | whichever was chosen | OpenRC or systemd |
+
+**What has been run and what has only been written.** Ubuntu and Debian are
+what this grew up on. Everything else is written against that family's
+documented commands and warns rather than aborts where a package is not
+where it was expected — a first run on each is the test, and the script says
+what it could not do at the end. NixOS and Slackware are refused with the
+reason: NixOS is declarative, so an imperative install would not survive the
+next rebuild (the honest form is a module, not yet written), and Slackware
+ships no Docker.
+
+The differences inside are the distribution's, not BuilderBot's, and the
+script keeps them behind four small functions — `pkg`, `svc_enable`,
+`svc_install`, `pkg_names` — so the rest of it never names a distribution's
+tool:
+
+- the RHEL family gets Docker's own repository, fetched as the repo file
+  rather than through `dnf config-manager` (dnf4 and dnf5 spell that
+  differently), and `podman-docker` removed so `docker` is Docker. Arch,
+  SUSE, Alpine, Void and Gentoo package a current Docker themselves;
+- `ttyd` comes from the distribution where it packages it, and otherwise
+  from the static binary in ttyd's GitHub release — the one download in the
+  script that is not a package manager's, so an offline node copies it in;
+- **firewalld** holds the session ports where it is running (the RHEL
+  family, SUSE): the same two rich rules, 7681 and 7682 from the controller's
+  address and nobody else's. Everywhere else the nftables file is applied
+  at boot the way that init runs a one-shot — a unit, an OpenRC `local.d`
+  script, or a line in `rc.local`;
+- **SELinux stays enforcing** on the RHEL family. The one thing it blocks
+  that a node does is a container reading an NFS mount, so `--nfs` turns on
+  `virt_use_nfs`; nothing else needs a boolean;
+- the agent runs as a service of whatever init the machine has — a systemd
+  unit, an OpenRC script under `supervise-daemon`, or a runit directory —
+  and the Actions runner, which needs systemd for its own service, runs in
+  the foreground under the agent where there is none;
+- the Nodes tab's Network section works on all of them: the agent detects
+  which service owns the machine's network and writes the same address
+  through it — netplan, NetworkManager, systemd-networkd, wicked,
+  `/etc/network/interfaces` or `dhcpcd.conf`. Storage is fstab everywhere;
+- a recipe's **system packages** are named per family under `system` in
+  `config/packages.json` (the emulator's are there for apt, dnf, pacman,
+  zypper and apk). One that has no list for this node's family says so on
+  the job, with the names it does have, and leaves them to the owner —
+  Playwright's browsers are that case outside Debian today.
 
 Then run one script inside it:
 
@@ -377,8 +403,8 @@ only the suite name differs — saying so when it does.
 
 ## The domain XML
 
-`vm/unraid-domain.xml` is the whole machine; `vm/unraid-domain-rocky9.xml`
-is the same one with the Rocky installer and a different name. Create the VM
+`vm/unraid-domain.xml` is the whole machine, for every distribution: only
+the installer ISO line in it changes, and the file lists them. Create the VM
 in **Form view** first so Unraid makes the domain folder and the vdisk, then
 switch to **XML view** and paste it over what is there — keeping the `<uuid>`
 Unraid gave you, because the OVMF nvram file is named after it and a new one

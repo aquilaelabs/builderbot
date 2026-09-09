@@ -1063,15 +1063,20 @@ the difference, then moves the stores in node.json and makes them; it ends
 with a hello, so the row shows the applied state at once. `apply: network`
 carries the address, gateway and resolvers and never a tool: the agent
 detects which service owns the machine's network and renders the same spec
-through it — on Debian and Ubuntu a file of its own under `/etc/netplan`
-and `netplan apply`; on the RHEL family the ipv4 keys of the interface's
-NetworkManager connection through `nmcli`, then `con up`. Either way it
+through it — a file of its own under `/etc/netplan` and `netplan apply`;
+the ipv4 keys of the interface's NetworkManager connection through
+`nmcli`, then `con up`; a `.network` file and `networkctl reload` under
+systemd-networkd; wicked's `ifcfg`/`ifroute` files on SUSE Leap; the
+interface's stanza in `/etc/network/interfaces` and an `ifdown`/`ifup`; a
+marked block in `dhcpcd.conf`. Either way it
 keeps what was there, dials the controller from wherever it landed for up
 to three minutes, and with no answer puts the previous config back and
 applies it again, reporting the revert on reconnect. A node with neither
 backend refuses the job and says so. The same detection picks the package
-manager — apt or dnf — for a recipe's system packages, and the census
-reports both (`distro`), so the row says what a change would go through.
+manager — apt, dnf, zypper, pacman, apk, xbps or emerge — for a recipe's
+system packages (named per family under `system` in the catalog), and the
+census reports both with the init system (`distro`), so the row says what
+a change would go through.
 Another distribution is another backend in the agent, not another job
 spec. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
