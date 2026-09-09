@@ -31,11 +31,15 @@ async function loadProfile(){
   if (tabs.some(t => t.kind === "profile")) drawPanes();
 }
 
+// Key, label, what the ? beside it says, input type. The label sits above
+// the field and the explanation rides the help icon (docs/design-language.md,
+// Controls) — a filled-in field still says what it is.
 const PROFILE_FIELDS = [
-  ["full_name", "Name", "the name people see — not the account name you sign in with"],
-  ["email", "Email", "how to reach you; nothing here sends mail"],
-  ["git_name", "Git name", "on your commits; blank means the name above"],
-  ["git_email", "Git email", "on your commits; blank means the email above. A GitHub noreply address keeps yours out of the log"],
+  ["account", "Account name", "what you sign in with. Changing it signs your other browsers out", "text"],
+  ["full_name", "Your name", "the name people see", "text"],
+  ["email", "Your email", "how to reach you. Nothing here sends mail", "email"],
+  ["git_name", "Git name", "on your commits. Blank means your name", "text"],
+  ["git_email", "Git email", "on your commits. Blank means your email; a GitHub noreply address keeps yours out of the log", "email"],
 ];
 
 function renderProfileInto(i){
@@ -45,7 +49,7 @@ function renderProfileInto(i){
     d.list.innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
-  const p = profile.profile || {}, g = profile.git || {};
+  const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
   const val = k => profileDraft[k] ?? p[k] ?? "";
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   d.setBar(`<span class="dim">${esc(profile.name)} · ${esc(profile.role)}${
@@ -55,14 +59,17 @@ function renderProfileInto(i){
       <div class="grow">
         <h4>Who you are</h4>
         <div class="logset">
-          ${PROFILE_FIELDS.map(([k, label, hint]) => `
-            <div class="logdays setrow">
-              <label for="pf_${k}">${esc(label)}</label>
-              <input id="pf_${k}" type="text" data-pf="${k}" value="${esc(val(k))}"
+          ${PROFILE_FIELDS.map(([k, label, hint, type]) => `
+            <div class="logdays setrow col">
+              ${lbl("pf_" + k, label, hint)}
+              <input id="pf_${k}" type="${type}" data-pf="${k}" value="${esc(val(k))}"
                      spellcheck="false" autocomplete="off">
-            </div><div class="dim">${esc(hint)}</div>`).join("")}
+            </div>`).join("")}
           <div class="actbar">
-            <span class="state">commits are signed ${esc(g.name || "—")}${g.email ? ` &lt;${esc(g.email)}&gt;` : ""}</span>
+            <span class="state${profile.git_ready === false ? " warn" : ""}">${
+              profile.git_ready === false
+                ? "no author for commits yet — a Claude session waits for a name and an email here"
+                : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
           </div>
         </div>
@@ -72,20 +79,20 @@ function renderProfileInto(i){
       <div class="grow">
         <h4>Password</h4>
         <div class="logset">
-          <div class="logdays setrow">
-            <label for="pfCur">Current</label>
+          <div class="logdays setrow col">
+            ${lbl("pfCur", "Current password", "asked first, so a browser left signed in is not enough to lock you out")}
             <input id="pfCur" type="password" autocomplete="current-password">
           </div>
-          <div class="logdays setrow">
-            <label for="pfNew">New</label>
+          <div class="logdays setrow col">
+            ${lbl("pfNew", "New password", "at least 8 characters")}
             <input id="pfNew" type="password" autocomplete="new-password">
           </div>
-          <div class="logdays setrow">
-            <label for="pfNew2">Again</label>
+          <div class="logdays setrow col">
+            ${lbl("pfNew2", "New password again")}
             <input id="pfNew2" type="password" autocomplete="new-password">
           </div>
           <div class="actbar">
-            <span class="state">at least 8 characters; every browser signed in as you signs out</span>
+            <span class="state">every browser signed in as you signs out</span>
             <button type="button" id="pfPasswd">Change password</button>
           </div>
         </div>
@@ -96,7 +103,7 @@ function renderProfileInto(i){
 }
 
 function wireProfile(root){
-  const p = profile?.profile || {};
+  const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {
     const k = inp.dataset.pf;
     if (inp.value === (p[k] ?? "")) delete profileDraft[k];
@@ -107,17 +114,25 @@ function wireProfile(root){
   const save = root.querySelector("#pfSave");
   if (save) save.onclick = async () => {
     const body = {};
-    root.querySelectorAll("[data-pf]").forEach(i => { body[i.dataset.pf] = i.value; });
+    root.querySelectorAll("[data-pf]").forEach(i => { if (i.dataset.pf !== "account") body[i.dataset.pf] = i.value; });
+    const account = root.querySelector("#pf_account")?.value.trim() || "";
+    for (const id of ["pf_email", "pf_git_email"]){
+      const el = root.querySelector("#" + id);
+      if (el && el.value && !el.checkValidity()) return notify(`${el.value} is not an email address`, true);
+    }
     busy(save, "Saving");
     try{
       const r = await fetch("/api/profile", {method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "save", profile: body})});
+        body: JSON.stringify({action: "save", profile: body, account})});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       for (const k of Object.keys(profileDraft)) delete profileDraft[k];
-      notify("saved — your next session and shell carry it");
+      notify(j.name !== profile?.name
+        ? `saved — you are ${j.name} now; other browsers signed in as you sign out`
+        : "saved — your next session and shell carry it");
       await loadProfile();
+      refresh();                      // the Claude buttons follow git_ready
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
   };

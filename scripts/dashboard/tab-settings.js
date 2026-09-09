@@ -77,18 +77,21 @@ function settingsSections(){
             const id = "set_" + f.key;
             // A checkbox sits inside its label, the way the Tests bar's do;
             // a choice is a select over the store's own list.
+            // A checkbox keeps its sentence beside it; a field or a select
+            // has its label above, and what the label cannot say rides the ?
+            // (docs/design-language.md, Controls).
             if (f.type === "bool")
               return `<div class="logdays setrow"><label class="ndcap">
-                <input id="${id}" type="checkbox" data-set="${f.key}"${v ? " checked" : ""}> ${esc(f.label)}</label>${src(f.key)}
-              </div>${f.hint ? `<div class="dim">${esc(f.hint)}</div>` : ""}`;
+                <input id="${id}" type="checkbox" data-set="${f.key}"${v ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
+              </div>`;
             const choices = s.meta[f.key]?.choices || [];
             const ctl = f.type === "choice"
               ? `<select id="${id}" data-set="${f.key}">${choices.map(c =>
                   `<option value="${esc(c)}"${c === v ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`
               : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(v ?? ""))}" spellcheck="false" autocomplete="off">`;
-            return `<div class="logdays setrow">
-              <label for="${id}">${esc(f.label)}</label>${ctl}${src(f.key)}
-            </div>${f.hint ? `<div class="dim">${esc(f.hint)}</div>` : ""}`;
+            return `<div class="logdays setrow col">
+              ${lbl(id, f.label, f.hint)}${ctl}${src(f.key)}
+            </div>`;
           }).join("")}
           <div class="actbar">
             <span class="state">${boot ? "takes at the next start" : "takes now"}</span>
@@ -138,14 +141,15 @@ function idleSection(){
   if (m === undefined) return `<div class="sub">the idle rule arrives with the first poll…</div>`;
   return `<h4>Claude sessions</h4>
     <div class="logset">
-      <div class="dim">A session with no activity — nothing typed, nothing
-        written — for this long is ended, here and on every node. 0 never
-        ends one. Shells are left alone.</div>
-      <div class="logdays">
-        <label for="idleMin">End after</label>
+      <div class="dim">A session with nothing typed and nothing written for
+        this long is ended, here and on every node.</div>
+      <div class="logdays setrow col">
+        ${lbl("idleMin", "Minutes idle before a session ends", "0 never ends one. Shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
                value="${m}" inputmode="numeric">
-        <span>minutes idle</span>
+      </div>
+      <div class="actbar">
+        <span class="state">takes now — a node hears on its next poll</span>
         <button type="button" id="idleApply" title="save it — a node hears on its next poll">Apply</button>
       </div>
     </div>`;

@@ -351,14 +351,16 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:1px solid var(--line);border-top:0;
-  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 /* The header's own menu, under the gear. Same shape and the
    same manners as the bell panel beside it: anchored to the header's bottom
    edge, anything else closes it, Escape closes it. */
 .uimenu{position:absolute;right:8px;top:100%;z-index:40;
   width:min(300px,calc(100vw - 16px));
   background:var(--panel);border:1px solid var(--line);border-top:0;
-  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px}
+  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
   text-transform:uppercase;color:var(--dim)}
 .uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
@@ -383,7 +385,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    into four stacked lines. */
 /* Two selectors deep, to outrank the document-tab skin's width:100%
    further down, which is right for a field that owns its row. */
-.logset .logdays input:not([type=checkbox]),.uimenu .logdays input{width:5em;
+.logset .logdays input[type=number],.uimenu .logdays input{width:5em;
   min-height:var(--tap);text-align:center;flex:0 0 auto}
 /* Pushed to the end of the row so it reads as acting on the field beside it,
    and never shrunk below a tap target. */
@@ -392,7 +394,21 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    room, the source pill after it — and a text field that is not five
    characters wide, which is the number field's width above. */
 .setrow label{flex:0 0 auto}
-.setrow input[type=text]{flex:1 1 12em;min-width:0}
+/* A field with its label above it, and the ? that carries the explanation.
+   .col stacks the row; the field takes the row's width, which the cap on
+   .setrow already limits. */
+.setrow.col{flex-direction:column;align-items:stretch;gap:4px}
+.setrow.col>input,.setrow.col>select{width:100%;flex:none}
+.setrow.col>input[type=number]{width:7em}
+.lbl{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);margin:0}
+.help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+  margin-left:5px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
+  font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
+  transition:color .15s ease,border-color .15s ease}
+.help:hover,.help:focus-visible{color:var(--ink);border-color:var(--ink)}
+.uadd{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.uadd .setrow{flex:1 1 12em}
+.setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
 .logset .setrow select{width:auto;flex:0 1 auto}
 .setrow .pill{flex:0 0 auto}
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
@@ -2126,6 +2142,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast.bad{border-color:#94423d;color:var(--bad)}
 #toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
   line-height:1;padding:5px 9px;color:var(--dim)}
@@ -2143,7 +2160,8 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
   align-items:center;position:relative}
 .tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
-  border-radius:6px;overflow:hidden;background:var(--btn)}
+  border-radius:6px;overflow:hidden;background:var(--btn);
+  transition:background-color .15s ease,border-color .15s ease}
 .tab.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
 /* The tab and the command chip clip their contents, which would clip the
@@ -2263,6 +2281,8 @@ body.dragging .tab .lbl{cursor:grabbing}
    Not color-scheme:dark on the frame — that is what turns the canvas white,
    which is the opposite of what it sounds like it would do. */
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
+/* A document brought to the front fades in, the way painted content does. */
+.pane .doc.on{animation:contentIn .18s ease}
 .pane .doc{overflow:auto;background:var(--bg);padding:12px;
   -webkit-overflow-scrolling:touch}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
@@ -2742,8 +2762,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   <div class="box wide">
     <h3 id="devEnvTitle">Dev instance env</h3>
     <div class="field">
-      <label>This project's dev env — kept in <code>/config/devenv/</code>,
-        never in the repo. Handed to compose as <code>--env-file</code>.</label>
+      <label>Dev env<span class="help" data-tip="kept in /config/devenv/, never in the repo, and handed to compose as --env-file" tabindex="0">?</span></label>
       <textarea rows="14" spellcheck="false"></textarea>
       <div class="hint"></div>
     </div>
@@ -2787,7 +2806,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="rnPreview" hidden></div>
     </div>
     <div class="field" id="rnTokenField" hidden>
-      <label for="rnToken">Access token <span class="dim">— leave empty to keep the current one</span></label>
+      <label for="rnToken">Access token<span class="help" data-tip="leave empty to keep the current one" tabindex="0">?</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <!-- A stored token is not shown and not typed over: the field is closed
@@ -2834,13 +2853,13 @@ body.dragging .tab .lbl{cursor:grabbing}
          wanted. Send-to-Docker preselects it, and an instance still remembers
          the node it was actually created on. -->
     <div class="field" id="rnNodeField" hidden>
-      <label for="rnNode">Node — where this project's work runs</label>
+      <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator
         run on this node; what it can build is what the Tools tab installed there.</div>
     </div>
     <div class="field">
-      <label for="rnBuildCmd">Build and test — what bb build and bb test run on that node</label>
+      <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run on that node, and the outputs a build leaves" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
       <input id="rnTestCmd" autocomplete="off" spellcheck="false"
@@ -2892,7 +2911,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="cNameHint"></div>
     </div>
     <div class="field" id="cNodeField" hidden>
-      <label for="cNode">Node — which docker host it runs on</label>
+      <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
     </div>
     <div class="field">
@@ -2936,7 +2955,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="dnPreview" hidden></div>
     </div>
     <div class="field" id="dnNodeField" hidden>
-      <label for="dnNode">Node — which docker host it runs on</label>
+      <label for="dnNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="dnNode"></select>
       <div class="hint">Defaults to this project's node from its settings
         dialog; an instance stays bound to the node it was created on.</div>
@@ -3031,7 +3050,7 @@ body.dragging .tab .lbl{cursor:grabbing}
          into the new directory before git init. Uploaded on Create rather
          than on choosing, so a change of mind costs nothing. -->
     <div class="field" id="pArchiveField">
-      <label for="pArchive">Start from an archive <span class="dim">— optional</span></label>
+      <label for="pArchive">Start from an archive<span class="help" data-tip="optional. zip or tar, unpacked into the new directory before git init; a single top-level folder inside is dropped" tabindex="0">?</span></label>
       <input id="pArchive" type="file"
              accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
       <div class="hint">zip or tar (gz, bz2, xz), unpacked into the new directory
@@ -3066,7 +3085,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="pPushHint"></div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token <span class="dim">— optional</span></label>
+      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, checked against GitHub before the clone starts" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>
@@ -3318,6 +3337,11 @@ let showKeys = false;
 let seq = 0;
 
 const $ = id => document.getElementById(id);
+// A field's label sits above it, and what the label cannot say rides a ?
+// beside it (docs/design-language.md, Controls). `id` may be "" for a
+// label that names a group rather than one control.
+const helpIcon = t => t ? `<span class="help" data-tip="${esc(t)}" aria-label="${esc(t)}" tabindex="0">?</span>` : "";
+const lbl = (id, text, help) => `<label class="lbl"${id ? ` for="${esc(id)}"` : ""}>${esc(text)}${helpIcon(help)}</label>`;
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tabOf = id => tabs.find(t => t.id === id) || null;
@@ -5718,7 +5742,7 @@ function drawUiMenu(){
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
     <h4>Account</h4>
-    <button type="button" id="uiProfile">Profile…</button>`;
+    <button type="button" id="uiProfile">Profile</button>`;
   el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
@@ -5751,11 +5775,13 @@ function logSection(){
       <div class="dim">${L.files} file(s), ${humanBytes(L.bytes)}${
         L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
         L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
-      <div class="logdays">
-        <label for="logDays">Keep for</label>
+      <div class="logdays setrow col">
+        ${lbl("logDays", "Days of logs kept", "older files are deleted when this is applied")}
         <input id="logDays" type="number" min="1" max="3650" step="1"
                value="${L.days}" inputmode="numeric">
-        <span>days</span>
+      </div>
+      <div class="actbar">
+        <span class="state">takes now — anything already past it is cropped</span>
         <button type="button" id="logApply"
           title="save it, and crop anything already past it">Apply</button>
       </div>
@@ -5910,7 +5936,9 @@ const isBroken = p => p.issues.some(i => i.level === "error");
 // made, so the button waits for the press, bb-tty refuses the URL, and the
 // server ends what is running. Per project: another project's node being
 // out of window is that row's hold, not this one's.
-const heldWhy = p => p.held || "";
+const heldWhy = p => p.held || (state?.git_ready === false
+  ? "set your name and email for commits on your Profile (the gear) first — every project here is a repository, and a commit needs an author"
+  : "");
 
 let showAllProjects = false;
 
@@ -7677,7 +7705,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
       ? "nothing on record here — an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
     <div class="actbar macros">${mayDocker()
-        ? `<button id="bDockerNew">New container…</button>` : ""
+        ? `<button id="bDockerNew">New container</button>` : ""
       }<button id="bDockerRe">Refresh</button></div></div>`;
   gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
@@ -9441,10 +9469,12 @@ function drawMemory(j){
             >Forget this</button>
         </div>` : `
         <div class="ix" data-file="${esc(m.file)}">
+          ${lbl("", "Title")}
           <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
-            placeholder="title" value="${esc(m.title)}">
+            value="${esc(m.title)}">
+          ${lbl("", "Hook", "what it says, in one line; what recall matches on")}
           <input class="ixh" maxlength="240" autocomplete="off"
-            placeholder="what it says, in one line" value="${esc(m.hook)}">
+            value="${esc(m.hook)}">
         </div>
         <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
           ? "Its line in the index — the one part loaded into every session started here."
@@ -9660,7 +9690,7 @@ function openMemAdd(){
 
 function paintMemAdd(box){
   box.innerHTML = `<div class="memadd">
-    <label for="naTitle">Title — how it reads in the index</label>
+    <label for="naTitle">Title<span class="help" data-tip="how it reads in the index" tabindex="0">?</span></label>
     <input id="naTitle" maxlength="80" autocomplete="off" placeholder="No parsed progress">
     <div class="two">
       <div><label for="naName">File</label>
@@ -9671,7 +9701,7 @@ function paintMemAdd(box){
           `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
-    <label for="naHook">One line — its hook in the index, and what recall matches on</label>
+    <label for="naHook">Hook<span class="help" data-tip="its one line in the index, and what recall matches on" tabindex="0">?</span></label>
     <input id="naHook" maxlength="240" autocomplete="off"
       placeholder="a word and an animated ellipsis, never a bar or a percentage">
     <label for="naBody">The memory itself</label>
@@ -10411,11 +10441,11 @@ $("todoRevert").onclick = revertNotebook;
           ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
-            title="it publishes ${devTcp.length} ports — pick one">Open…</button>` : ""}
+            title="it publishes ${devTcp.length} ports — pick one">Open</button>` : ""}
           <button type="button" id="devSend" class="primary"
             title="name a container built from this project and manage it there — a
 project can have several"
-            >Send to Docker manager…</button>
+            >Send to Docker manager</button>
         </span>
       </div>`;
     // An install is one shot rather than a session, so it reports its own
@@ -11013,26 +11043,31 @@ become that version's section when it is created">Changelog${
               r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
           </summary>
           <div class="body">${ruleEditing.has(i) ? `
+            ${lbl("", "Name", "a short name; the listing and bb rules show NAME use it")}
             <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
-              placeholder="a short name" value="${esc(r.name || "")}"
+              placeholder="tests" value="${esc(r.name || "")}"
               aria-label="rule name">
-            <textarea class="rlText" spellcheck="false" maxlength="2000"
-              placeholder="the rule, in your words">${esc(r.text || "")}</textarea>
+            ${lbl("", "The rule", "in your words; a session reads it at the start")}
+            <textarea class="rlText" spellcheck="false" maxlength="2000">${esc(r.text || "")}</textarea>
             <div class="two">
+              <div>${lbl("", "Files it covers", "paths or globs, comma-separated. The rule arrives when a session is about to edit one")}
               <input class="rlPaths" autocomplete="off" spellcheck="false"
-                placeholder="files it covers — scripts/agent, *.kt"
-                value="${esc((r.paths || []).join(", "))}" aria-label="paths">
+                placeholder="scripts/agent, *.kt"
+                value="${esc((r.paths || []).join(", "))}" aria-label="paths"></div>
+              <div>${lbl("", "Words that raise it", "comma-separated. The rule arrives when a session is asked about one")}
               <input class="rlWords" autocomplete="off" spellcheck="false"
-                placeholder="words that raise it — agent, protocol"
-                value="${esc((r.words || []).join(", "))}" aria-label="words">
+                placeholder="agent, protocol"
+                value="${esc((r.words || []).join(", "))}" aria-label="words"></div>
             </div>
             <div class="two">
+              <div>${lbl("", "Document", "the file in the repo that defines it in full")}
               <input class="rlDoc" autocomplete="off" spellcheck="false"
-                placeholder="the document that defines it — docs/design-language.md"
-                value="${esc(r.doc || "")}" aria-label="document">
+                placeholder="docs/design-language.md"
+                value="${esc(r.doc || "")}" aria-label="document"></div>
+              <div>${lbl("", "Check", "the command that verifies it; bb rules check runs it")}
               <input class="rlCheck" autocomplete="off" spellcheck="false"
-                placeholder="the command that checks it — bash scripts/test.sh"
-                value="${esc(r.check || "")}" aria-label="check">
+                placeholder="bash scripts/test.sh"
+                value="${esc(r.check || "")}" aria-label="check"></div>
             </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
@@ -11385,7 +11420,7 @@ become that version's section when it is created">Changelog${
         <textarea class="tstP" spellcheck="false"
           placeholder="the behaviour that breaks if this goes red">${
             esc(draft ? draft.protects : t.protects)}</textarea>
-        <label>What it exercises — fixtures, stubs, what is real and what is faked</label>
+        <label>What it exercises<span class="help" data-tip="fixtures, stubs, what is real and what is faked" tabindex="0">?</span></label>
         <textarea class="tstN" spellcheck="false"
           placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
             esc(draft ? draft.notes : t.notes)}</textarea>
@@ -11538,14 +11573,14 @@ become that version's section when it is created">Changelog${
   function bugForm(b){
     const v = k => esc(b?.[k] || "");
     return `<div class="memadd bugform">
-      <label>Title — one line, what goes wrong</label>
+      <label>Title<span class="help" data-tip="one line, what goes wrong" tabindex="0">?</span></label>
       <input class="bfTitle" maxlength="200" autocomplete="off" value="${v("title")}"
         placeholder="the picker loses its selection on rotate">
       <div class="two">
         <div><label>Severity</label>
           <select class="bfSev">${SEVS.map(x =>
             `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
-        <div><label>Where — files, component, screen</label>
+        <div><label>Where<span class="help" data-tip="files, component, screen" tabindex="0">?</span></label>
           <input class="bfArea" maxlength="200" autocomplete="off" value="${v("area")}"
             placeholder="scripts/dashboard/index.html, the picker"></div>
       </div>
@@ -11558,7 +11593,7 @@ become that version's section when it is created">Changelog${
         <div><label>Actual</label>
           <input class="bfActual" maxlength="300" autocomplete="off" value="${v("actual")}"></div>
       </div>
-      <label>Notes — cause, analysis, fix plan</label>
+      <label>Notes<span class="help" data-tip="cause, analysis, fix plan" tabindex="0">?</span></label>
       <textarea class="bfNotes" spellcheck="false"
         placeholder="what is known about why; mostly Claude's half">${v("notes")}</textarea>
       <div class="actbar">

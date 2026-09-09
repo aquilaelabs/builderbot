@@ -107,9 +107,9 @@ function renderPhoneInto(i){
     // wireless debugging is toggled, so the node scans for it rather than
     // sending anybody back to the phone to read a number that has changed.
     `<div class="row">
-       <div class="grow"><input id="phIp" maxlength="15" autocomplete="off"
-         placeholder="192.168.0.10" value="${esc(phIp)}"
-         aria-label="phone IP address"${off ? " disabled" : ""}></div>
+       <div class="grow setrow col">${lbl("phIp", "Phone IP address", "from its wireless debugging screen. The port is found for you")}
+         <input id="phIp" maxlength="15" autocomplete="off"
+         placeholder="192.168.0.10" value="${esc(phIp)}"${off ? " disabled" : ""}></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"${
          off ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
@@ -120,10 +120,12 @@ function renderPhoneInto(i){
     // fold over two fields is a click that buys nothing.
     `<div class="row">
        <div class="grow prefrow">
-         <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="pairing port"
-           value="${esc(phPort)}" aria-label="pairing port"${off ? " disabled" : ""}>
-         <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="code"
-           value="${esc(phCode)}" aria-label="pairing code"${off ? " disabled" : ""}>
+         <div class="setrow col">${lbl("phPairPort", "Pairing port", "from the pairing dialog, not the main screen")}
+         <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="37123"
+           value="${esc(phPort)}"${off ? " disabled" : ""}></div>
+         <div class="setrow col">${lbl("phPairCode", "Pairing code")}
+         <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="123456"
+           value="${esc(phCode)}"${off ? " disabled" : ""}></div>
        </div>
        <span class="acts"><button type="button" id="phPair"${off ? " disabled" : ""} title="${offWhy}">Pair</button></span>
        <div class="sub">${ph.you && phIp === ph.you

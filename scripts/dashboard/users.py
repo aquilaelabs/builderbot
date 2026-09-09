@@ -128,10 +128,14 @@ def all_users():
     """Every account, without the hashes. What a listing is allowed to see."""
     out = []
     for name, u in sorted(load()["users"].items()):
+        pr = u.get("prefs") if isinstance(u.get("prefs"), dict) else {}
         out.append({"name": name, "uid": u.get("uid", ""),
                     "role": u.get("role", "user"),
                     "projects": list(u.get("projects") or []),
-                    "created": u.get("created", 0), "seen": u.get("seen", 0)})
+                    "created": u.get("created", 0), "seen": u.get("seen", 0),
+                    # The Profile fields, for the Users tab's edit dialog:
+                    # never a credential, never the theme.
+                    "profile": {k: str(pr.get(k) or "")[:n] for k, n in PROFILE_FIELDS.items()}})
     return out
 
 
@@ -212,18 +216,26 @@ def git_identity(u):
     at the keyboard all the same.
     """
     p = profile(u)
-    name = p["git_name"] or p["full_name"] or str((u or {}).get("name") or "")
-    email = p["git_email"] or p["email"]
-    if name and not email:
-        email = f"{re.sub(r'[^A-Za-z0-9._-]+', '-', name).strip('-').lower() or 'user'}@builderbot.local"
-    return {"name": name, "email": email}
+    return {"name": p["git_name"] or p["full_name"],
+            "email": p["git_email"] or p["email"]}
+
+
+def git_ready(u):
+    """Whether this account's commits would carry an author: a name and an
+    email, from the git fields or the plain ones. A Claude session is not
+    started without it — every project is a repository, and a commit with
+    no author is one git refuses, halfway through whatever the session was
+    doing. Nothing is invented to fill the gap: an address made up from an
+    account name would be a lie in every log it lands in."""
+    g = git_identity(u)
+    return bool(g["name"] and g["email"])
 
 
 def git_env(u):
     """The four variables git reads ahead of any config, for a subprocess
     committing on this account's behalf; {} for a principal that is nobody."""
     g = git_identity(u)
-    if not g["name"]:
+    if not (g["name"] and g["email"]):
         return {}
     return {"GIT_AUTHOR_NAME": g["name"], "GIT_AUTHOR_EMAIL": g["email"],
             "GIT_COMMITTER_NAME": g["name"], "GIT_COMMITTER_EMAIL": g["email"]}
@@ -237,11 +249,16 @@ def profile_set(name, patch):
             keep[k] = " ".join(str(patch.get(k) or "").split())[:n]
     if not keep:
         return {"error": "nothing here is a profile field"}
-    if keep.get("email") and "@" not in keep["email"]:
-        return {"error": "the email needs an @ in it"}
-    if keep.get("git_email") and "@" not in keep["git_email"]:
-        return {"error": "the git email needs an @ in it"}
+    for k in ("email", "git_email"):
+        if keep.get(k) and not EMAIL_RE.fullmatch(keep[k]):
+            return {"error": f"{keep[k]} is not an email address"}
     return prefs_set(name, keep)
+
+
+# One local part, one @, a host with a dot in it, no whitespace. Not the
+# RFC — that grammar admits addresses no mail server has seen — but the
+# shape every address anybody types here has, and the one a typo breaks.
+EMAIL_RE = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 
 
 def change_password(name, current, new):

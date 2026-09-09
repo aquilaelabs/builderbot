@@ -13,11 +13,6 @@ let usersList = null;            // last answer, or null before the first
 let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";
 let usersMeta = {owner: "", me: "", roles: [], projects: []};
-let usersEditing = "";           // the row whose projects are open, if any
-// A role picked and not yet saved, per account: the tab redraws on the
-// poll, and a pick that a redraw put back would be a Save that could never
-// be pressed. Cleared by the save, or by picking the saved role again.
-const usersRoleDraft = {};
 
 function openUsersTab(){
   openTab({kind: "users", arg: "__users", label: "Users"});
@@ -82,41 +77,19 @@ function userRow(u){
     </div>
     <div class="actbar">
       <span class="state">${esc(seen)}</span>
-      ${u.role === "user" ? `<button type="button" data-uprojects="${esc(u.name)}"
-        >${usersEditing === u.name ? "Done" : "Projects"}</button>` : ""}
-      ${isOwner ? "" : `<select data-urole="${esc(u.name)}" data-was="${esc(u.role)}"
-        aria-label="role for ${esc(u.name)}">${
-        usersMeta.roles.filter(r => r !== "owner").map(r =>
-          `<option value="${esc(r)}"${r === (usersRoleDraft[u.name] || u.role) ? " selected" : ""}>${esc(r)}</option>`).join("")}
-      </select><button type="button" data-urolesave="${esc(u.name)}"${
-        usersRoleDraft[u.name] && usersRoleDraft[u.name] !== u.role ? "" : " disabled"}
-        title="save the role">Save</button>`}
-      <button type="button" data-upasswd="${esc(u.name)}">Password</button>
+      <button type="button" data-uedit="${esc(u.name)}"
+        title="everything about this account in one dialog, saved together">Edit</button>
       ${isOwner
         ? `<button type="button" class="danger" disabled
              title="the owner cannot be deleted — rename it instead">Remove</button>`
         : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
     </div>
-    ${usersEditing === u.name ? usersProjectPicker(u) : ""}
   </div>`;
 }
 
 // Which projects a `user` account may see. Only the ones the admin doing the
 // giving can see themselves — the server filters again, so this is the honest
 // list rather than the enforcing one.
-function usersProjectPicker(u){
-  const have = new Set(u.projects);
-  return `<div class="upick grow">
-    ${usersMeta.projects.length
-      ? usersMeta.projects.map(p => `<label class="pkg"><input type="checkbox"
-          data-uproj="${esc(p)}"${have.has(p) ? " checked" : ""}>
-          <span class="grow"><span class="nm">${esc(p)}</span></span></label>`).join("")
-      : `<div class="sub">no projects to give</div>`}
-    <div class="actbar"><button type="button" class="primary" data-usave="${esc(u.name)}"
-      >Save projects</button></div>
-  </div>`;
-}
-
 function renderUsersInto(i){
   const d = docSurface(i, "users");
   if (!d) return;
@@ -147,19 +120,21 @@ function renderUsersInto(i){
           or move one to another node.</div>
         <div class="sub">An admin sees every project and works on the ones on their
           list; a user sees only their list.</div>
-        <div class="actbar uadd">
-          <input id="uNewName" placeholder="name" autocomplete="off" aria-label="new account name">
-          <input id="uNewPw" type="password" placeholder="password"
-            autocomplete="new-password" aria-label="password">
-          <select id="uNewRole" aria-label="role">${
+        <div class="uadd">
+          <div class="setrow col">${lbl("uNewName", "Account name", "what they sign in with")}
+            <input id="uNewName" autocomplete="off"></div>
+          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters; they can change it on their Profile")}
+            <input id="uNewPw" type="password" autocomplete="new-password"></div>
+          <div class="setrow col">${lbl("uNewRole", "Role")}
+          <select id="uNewRole">${
             usersMeta.roles.filter(r => r !== "owner").map(r =>
               // `user` selected, not merely first: the roles run owner, admin,
               // user, so the browser's own default would be the MOST privileged
               // of the two on offer. Adding somebody should start at the least.
               `<option value="${esc(r)}"${r === "user" ? " selected" : ""}
-                >${esc(r)}</option>`).join("")}</select>
-          <button type="button" class="primary" id="uAdd">Add</button>
-        </div>`)}`;
+                >${esc(r)}</option>`).join("")}</select></div>
+        </div>
+        <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
   wireSections(d.list);
   d.setFoot(`Locked out? <code>bb users passwd &lt;name&gt;</code> in the
     container resets a password, and <code>bb users add</code> makes an account
@@ -176,34 +151,7 @@ function wireUsers(el){
   });
   // A role is saved on Save, not on the change: the select is a question
   // and the button is the answer (docs/design-language.md, Settings).
-  el.querySelectorAll("[data-urole]").forEach(sel => sel.onchange = () => {
-    if (sel.value === sel.dataset.was) delete usersRoleDraft[sel.dataset.urole];
-    else usersRoleDraft[sel.dataset.urole] = sel.value;
-    const b = el.querySelector(`[data-urolesave="${CSS.escape(sel.dataset.urole)}"]`);
-    if (b) b.disabled = sel.value === sel.dataset.was;
-  });
-  el.querySelectorAll("[data-urolesave]").forEach(b => b.onclick = async () => {
-    const name = b.dataset.urolesave, role = usersRoleDraft[name];
-    if (!role) return;
-    delete usersRoleDraft[name];
-    await usersAct({action: "role", name, role});
-  });
-  el.querySelectorAll("[data-upasswd]").forEach(b => b.onclick = () => {
-    const n = b.dataset.upasswd;
-    const pw = prompt(`New password for ${n} — at least 8 characters.\n\n`
-                      + `Any session signed in as ${n} stops working at once.`);
-    if (pw) usersAct({action: "passwd", name: n, password: pw});
-  });
-  el.querySelectorAll("[data-uprojects]").forEach(b => b.onclick = () => {
-    usersEditing = usersEditing === b.dataset.uprojects ? "" : b.dataset.uprojects;
-    usersRev++; drawPanes();
-  });
-  el.querySelectorAll("[data-usave]").forEach(b => b.onclick = () => {
-    const picked = [...el.querySelectorAll("[data-uproj]")]
-      .filter(c => c.checked).map(c => c.dataset.uproj);
-    usersEditing = "";
-    usersAct({action: "projects", name: b.dataset.usave, projects: picked});
-  });
+  el.querySelectorAll("[data-uedit]").forEach(b => b.onclick = () => usersEditOpen(b.dataset.uedit));
   const add = el.querySelector("#uAdd");
   if (add) add.onclick = () => {
     const name = el.querySelector("#uNewName").value.trim();
@@ -212,4 +160,99 @@ function wireUsers(el){
     usersAct({action: "add", name, password: pw,
               role: el.querySelector("#uNewRole").value});
   };
+}
+
+// ---- the edit dialog ------------------------------------------------------
+// Everything about one account in one place, saved together (docs/
+// design-language.md, Settings): its name, role, projects, the Profile
+// fields an administrator may fill in for somebody, and a new password —
+// which an administrator sets without the current one, that being the way
+// back in for somebody locked out. The owner's role is not on offer; the
+// store refuses it anyway. Built once, on first use, and filled per open.
+function usersEditOpen(name){
+  const u = usersList.find(x => x.name === name);
+  if (!u) return;
+  let m = document.getElementById("umodal");
+  if (!m){
+    m = document.createElement("div");
+    m.id = "umodal"; m.className = "modal"; m.hidden = true;
+    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+    document.body.appendChild(m);
+  }
+  const isOwner = u.role === "owner";
+  const pf = u.profile || {};
+  const f = (id, label, val, type = "text", extra = "", help = "") =>
+    `<div class="field">${lbl(id, label, help)}<input id="${id}" type="${type}" value="${esc(val || "")}"
+       autocomplete="off" spellcheck="false" ${extra}></div>`;
+  m.innerHTML = `<div class="box">
+    <h3>Edit ${esc(u.name)}</h3>
+    ${f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
+    ${isOwner ? `<div class="field">${lbl("", "Role", "the owner's role cannot change; its name can")}<div class="hint">owner</div></div>`
+      : `<div class="field">${lbl("ueRole", "Role")}<select id="ueRole">${
+          usersMeta.roles.filter(r => r !== "owner").map(r =>
+            `<option value="${esc(r)}"${r === u.role ? " selected" : ""}>${esc(r)}</option>`).join("")}
+        </select></div>`}
+    ${f("ueFull", "Their name", pf.full_name)}
+    ${f("ueEmail", "Their email", pf.email, "email")}
+    ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}
+    ${f("ueGitEmail", "Git email", pf.git_email, "email", "", "on their commits. Blank means their email")}
+    ${f("uePw", "New password", "", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
+    <div class="field" id="ueProjField"${u.role === "user" ? "" : " hidden"}>
+      ${lbl("", "Projects this account sees", "a project not on the list does not appear for them at all")}
+      <div class="upick">${usersMeta.projects.length
+        ? usersMeta.projects.map(p => `<label class="pkg"><input type="checkbox"
+            data-ueproj="${esc(p)}"${(u.projects || []).includes(p) ? " checked" : ""}>
+            <span class="grow"><span class="nm">${esc(p)}</span></span></label>`).join("")
+        : `<div class="sub">no projects to give</div>`}</div>
+    </div>
+    <div class="field" id="ueErrWrap" hidden><div class="hint bad" id="ueErr"></div></div>
+    <div class="foot">
+      <button id="ueSave" class="primary">Save</button>
+      <button id="ueCancel">Cancel</button>
+    </div>
+  </div>`;
+  m.hidden = false;
+  const role = m.querySelector("#ueRole");
+  if (role) role.onchange = () => { m.querySelector("#ueProjField").hidden = role.value !== "user"; };
+  m.querySelector("#ueCancel").onclick = () => { m.hidden = true; };
+  m.querySelector("#ueSave").onclick = () => usersEditSave(u.name, m);
+  m.querySelector("#ueName").focus();
+}
+
+async function usersEditSave(name, m){
+  const v = id => m.querySelector("#" + id)?.value ?? "";
+  const body = {action: "edit", name, to: v("ueName").trim(),
+                role: m.querySelector("#ueRole")?.value || "",
+                profile: {full_name: v("ueFull"), email: v("ueEmail"),
+                          git_name: v("ueGitName"), git_email: v("ueGitEmail")},
+                password: v("uePw")};
+  if ((m.querySelector("#ueRole")?.value || "user") === "user" && !m.querySelector("#ueProjField").hidden)
+    body.projects = [...m.querySelectorAll("[data-ueproj]")].filter(c => c.checked).map(c => c.dataset.ueproj);
+  // An email that is not one is caught here, before a request: the field
+  // knows (type=email), and the server checks the same shape again.
+  for (const id of ["ueEmail", "ueGitEmail"]){
+    const el = m.querySelector("#" + id);
+    if (el && el.value && !el.checkValidity()){
+      m.querySelector("#ueErr").textContent = `${el.value} is not an email address`;
+      m.querySelector("#ueErrWrap").hidden = false;
+      return;
+    }
+  }
+  m.querySelector("#ueErrWrap").hidden = true;
+  const btn = m.querySelector("#ueSave");
+  busy(btn, "Saving");
+  try{
+    const r = await fetch("/api/users", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error){
+      m.querySelector("#ueErr").textContent = j.error || `failed (HTTP ${r.status})`;
+      m.querySelector("#ueErrWrap").hidden = false;
+      return;
+    }
+    m.hidden = true;
+    notify(`${body.to || name} saved`);
+    await loadUsers();
+  }catch(e){ notify(String(e), true); }
+  finally{ if (btn.isConnected) unbusy(btn, "Save"); }
 }

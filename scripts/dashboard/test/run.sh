@@ -745,8 +745,10 @@ u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 d = u.load()
 d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
+                      # An author, or no Claude session starts for it (users.git_ready).
+                      "prefs": {"full_name": "Dashboard Test", "email": "test@example.invalid"},
                       "password": u.hash_password("test"), "created": 0,
-                      "seen": 0, "prefs": {}}
+                      "seen": 0}
 u._save(d)
 PY
 
