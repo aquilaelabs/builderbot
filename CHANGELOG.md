@@ -336,3 +336,4 @@
 - The Briefing tab opens with the code base counted: the languages as a bar with percentages, and the files and lines git tracks — nothing untracked or ignored is in the number (14d5002)
 - The one-time package store migration is gone now that every store is laid out per platform (14d5002)
 - A Claude session stops running commands while BuilderBot is restarting after an update, or while its project's CLAUDE.md is from another compatibility window; a block merely behind inside the window keeps working and the session is told once that an update is waiting (099d997, 224691c)
+- The health meters on a node's row line up: every bar is the same width, with the values in one column (b096be8)
