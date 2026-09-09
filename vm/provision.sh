@@ -48,6 +48,7 @@ STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
 declare -a SHARES=() NFS=()
+CHECK_ONLY=0
 
 usage() {
     cat <<'EOF'
@@ -67,6 +68,11 @@ usage: provision.sh [options]
                        agent runs ttyd for it and the dashboard's terminals
                        reach it; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
+  --check              only the pre-flight: say whether this machine is one
+                       the script can provision — its family, its tools, its
+                       init, a writable root — and change nothing. Exit 0 when
+                       it is, 1 when it is not. The same checks run first on
+                       every real run, before anything is installed.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
                        BuilderBot no longer needs one: an enrolled node dials
@@ -140,6 +146,7 @@ while [ $# -gt 0 ]; do
         --packages) STORE_PACKAGES="$2"; shift 2 ;;
         --cache) STORE_CACHE="$2"; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
+        --check) CHECK_ONLY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -186,7 +193,8 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
 fi
 
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
-. /etc/os-release
+ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
+[ -r /etc/os-release ] && . /etc/os-release
 # --- the machine's own tools -------------------------------------------------
 # One script, many distributions. Everything BuilderBot's own — the accounts,
 # the stores, fstab, the agent — is the same on all of them, because none of
@@ -205,6 +213,11 @@ fi
 # from their documentation, warn rather than abort where a package is not
 # where it was expected, and want a first run to shake out. Say so in the
 # repository when one is proven.
+#
+# Nothing here exits. A machine the script cannot take is reported by the
+# pre-flight below, beside everything else it found, so one run says the
+# whole of what is wrong rather than the first thing.
+FAMILY=""; FAMILY_WHY=""
 _ids=" ${ID:-} ${ID_LIKE:-} "
 case "$_ids" in
     *" debian "*|*" ubuntu "*|*" raspbian "*)          FAMILY=deb ;;
@@ -215,32 +228,21 @@ case "$_ids" in
     *" void "*)     FAMILY=void ;;
     *" gentoo "*)   FAMILY=gentoo ;;
     *" nixos "*)
-        echo "NixOS is configured declaratively, and this script installs things imperatively — a" >&2
-        echo "docker daemon, accounts, fstab and a service dropped into /etc would not survive the" >&2
-        echo "next nixos-rebuild. vm/nixos-node.nix is the same machine as a NixOS module: import" >&2
-        echo "it from configuration.nix, rebuild, then run this script with only --controller" >&2
-        echo "and --token to enroll (that half is a file under /var and a unit the module declares)." >&2
-        exit 1 ;;
+        FAMILY_WHY="NixOS is configured declaratively, and this script installs things imperatively: a docker daemon, accounts, fstab and a service dropped into /etc would not survive the next nixos-rebuild. The honest form is a NixOS module declaring the same machine, which is not written yet." ;;
     *" slackware "*)
-        echo "Slackware ships no Docker and no service manager this script can hand a unit to; a" >&2
-        echo "machine without Docker is a guest node (roadmap R23), which this does not build yet." >&2
-        exit 1 ;;
+        FAMILY_WHY="Slackware ships no Docker and no service manager this script can hand a unit to; a machine without Docker is a guest node (roadmap R23), which this does not build yet." ;;
     *)
-        echo "this does not know ${PRETTY_NAME:-${ID:-this distribution}} (ID=${ID:-?} ID_LIKE=${ID_LIKE:-none})." >&2
-        echo "It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo —" >&2
-        echo "a derivative of one of those is recognised by its ID_LIKE. Add a family in this" >&2
-        echo "script's 'the machine's own tools' block for a new one." >&2
-        exit 1 ;;
+        if [ -z "${ID:-}" ]; then
+            FAMILY_WHY="/etc/os-release is missing or names no ID, so there is nothing to tell what this is."
+        else
+            FAMILY_WHY="${PRETTY_NAME:-$ID} is not a family this knows (ID=${ID} ID_LIKE=${ID_LIKE:-none}). It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo; a derivative of one of those is recognised by its ID_LIKE. A new family is a case in this script's 'the machine's own tools' block."
+        fi ;;
 esac
+INIT=""
 if [ -d /run/systemd/system ]; then INIT=systemd
 elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
 elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
-else
-    echo "no init system this script knows: not systemd, OpenRC or runit. It writes a service" >&2
-    echo "for the agent and cannot leave one running here." >&2
-    exit 1
 fi
-printf '   %s: %s family, %s\n' "${PRETTY_NAME:-$ID}" "$FAMILY" "$INIT"
 
 # pkg_refresh — the package index, once, before the first install.
 pkg_refresh() {
@@ -398,6 +400,123 @@ pkg_names() {
         docker:*)     echo "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" ;;
     esac
 }
+
+# --- pre-flight: is this machine one this script can provision? -------------
+# Before a single package lands. The family says what the machine CLAIMS to
+# be; these check what it actually has, because the variants that go wrong
+# are the ones whose os-release looks fine — an immutable Fedora whose dnf
+# refuses, a MicroOS whose /usr is read-only, an Ubuntu Core with snaps and
+# no apt, a Debian that dropped systemd, a live image running from RAM. A
+# FAIL stops the run here with every finding printed, so one run says the
+# whole of what is wrong; a WARN is something the run can survive but the
+# operator should know, and is repeated at the end.
+say "checking this machine"
+CHECK_FAILED=0
+declare -a WARNINGS=()
+chk() {
+    case "$1" in
+        ok)   printf '   ok    %s\n' "$2" ;;
+        warn) printf '   WARN  %s\n' "$2"; WARNINGS+=("$2") ;;
+        fail) printf '   FAIL  %s\n' "$2"; CHECK_FAILED=1 ;;
+    esac
+}
+# 1. what it is, and whether that is a family this handles
+if [ -n "$FAMILY" ]; then chk ok "${PRETTY_NAME:-$ID}: the ${FAMILY} family"
+else chk fail "$FAMILY_WHY"; fi
+# 2. the tools the family implies are really here — a derivative can claim a
+#    parent whose package manager it replaced (Ubuntu Core has no apt;
+#    Silverblue's dnf is a stub that refuses)
+if [ -n "$FAMILY" ]; then
+    case "$FAMILY" in
+        deb)    need="apt-get dpkg" ;; rhel) need="dnf rpm" ;; arch) need="pacman" ;;
+        suse)   need="zypper rpm" ;; alpine) need="apk" ;; void) need="xbps-install xbps-query" ;;
+        gentoo) need="emerge" ;;
+    esac
+    missing=""
+    for t in $need; do command -v "$t" >/dev/null 2>&1 || missing="${missing} ${t}"; done
+    if [ -z "$missing" ]; then chk ok "package manager: ${need%% *}"
+    else chk fail "the ${FAMILY} family's package manager is not here (missing:${missing}) — a variant that replaced it, which this script cannot install onto"; fi
+fi
+# 3. the immutable and image-based variants, by the marks they leave: these
+#    have a package manager on PATH and still cannot be installed onto
+if [ -f /run/ostree-booted ]; then
+    chk fail "this is an OSTree (image-based) system — Fedora Silverblue/Kinoite/CoreOS/IoT, RHEL image mode: packages are layered by rpm-ostree and a reboot, not installed; use the ordinary Server/Minimal image instead"
+elif command -v transactional-update >/dev/null 2>&1 && ! touch /usr/.bb-probe 2>/dev/null; then
+    chk fail "this is a transactional system (openSUSE MicroOS/Aeon, SLE Micro): /usr is read-only and changes want transactional-update and a reboot; use Leap or Tumbleweed instead"
+elif [ -d /snap/core ] && ! command -v apt-get >/dev/null 2>&1; then
+    chk fail "this is Ubuntu Core: snaps only, no apt, no ordinary accounts; use Ubuntu Server instead"
+elif [ -f /etc/lbu/lbu.conf ] && [ ! -e /etc/apk/repositories ] ; then
+    chk fail "this Alpine runs from RAM (diskless mode): nothing installed survives a reboot; run setup-alpine with the sys disk mode first"
+else
+    rm -f /usr/.bb-probe
+    chk ok "an ordinary installed system, not an image-based one"
+fi
+# 4. a writable root: /etc and /usr/local take files, /var takes the stores
+for d in /etc /usr/local /var/lib; do
+    if [ -d "$d" ] && touch "$d/.bb-probe" 2>/dev/null; then rm -f "$d/.bb-probe"
+    else chk fail "$d is not writable — a read-only root, a live image, or a mount this cannot change"; fi
+done
+# 5. an init this can hand a service to, and one that is actually running
+#    (systemd's directory exists in a chroot too, where systemctl does not work)
+case "$INIT" in
+    systemd)
+        st="$(systemctl is-system-running 2>/dev/null || true)"
+        case "$st" in
+            running|degraded|starting|maintenance) chk ok "init: systemd (${st})" ;;
+            *) chk fail "systemd is on the disk but not running this machine (is-system-running says '${st:-nothing}') — a chroot, a container, or a rescue shell" ;;
+        esac ;;
+    openrc) chk ok "init: OpenRC" ;;
+    runit)  if [ -d /var/service ] || [ -d /run/runit ]; then chk ok "init: runit"
+            else chk fail "runit is installed but no service directory is live (/var/service)"; fi ;;
+    *)      chk fail "no init this knows: not systemd, OpenRC or runit. It writes a service for the agent and would have nothing to run it" ;;
+esac
+# 6. the architecture: what Docker, the agent and the Actions runner build for
+case "$(uname -m)" in
+    x86_64|aarch64) chk ok "architecture: $(uname -m)" ;;
+    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker and ttyd have builds; the Actions runner, the JDK and the emulator do not — this can be a Docker node and little else" ;;
+    *) chk fail "architecture $(uname -m): nothing this installs is built for it" ;;
+esac
+# 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then chk ok "cgroups v2"
+elif [ -d /sys/fs/cgroup/memory ]; then chk warn "cgroups v1: Docker still runs, but current distributions and the emulator's memory accounting expect v2"
+else chk fail "no cgroup filesystem is mounted — Docker cannot start containers here"; fi
+if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/null; then chk ok "overlay filesystem"
+else chk warn "the overlay filesystem is not available — Docker will fall back to a slower storage driver"; fi
+if [ -e /dev/kvm ]; then chk ok "/dev/kvm: the emulator can be accelerated"
+else chk warn "no /dev/kvm: the Android emulator would run unaccelerated (a VM needs nested virtualization on its host)"; fi
+# 8. room: Docker images, the packages store and a build all land on / by default
+avail_mb="$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')"
+if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the packages store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
+elif [ -n "$avail_mb" ]; then chk ok "$((avail_mb / 1024))G free on /"; fi
+# 9. the network: Docker's repository and the controller, if one was named.
+#    Warnings, not failures — an offline node is still a node, but every
+#    install below will fail and it is better said once here.
+if command -v curl >/dev/null 2>&1; then
+    if curl -fsI --max-time 10 https://download.docker.com/ >/dev/null 2>&1; then chk ok "internet: download.docker.com answers"
+    else chk warn "download.docker.com does not answer — no package will download; an offline node needs its packages brought in by hand"; fi
+    if [ -n "$CONTROLLER" ]; then
+        if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/api/v1/agent/download" 2>/dev/null \
+           || curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "${CONTROLLER%/}/" 2>/dev/null | grep -q '^[234]'; then
+            chk ok "controller: ${CONTROLLER} answers"
+        else chk warn "controller ${CONTROLLER} does not answer from here — enrollment will fail; check the address and that the dashboard is up"; fi
+    fi
+else
+    chk warn "no curl yet — it is installed below; the network is untested until then"
+fi
+# 10. the accounts: what the script uses to make them
+if command -v useradd >/dev/null 2>&1 && command -v groupadd >/dev/null 2>&1; then chk ok "useradd/groupadd"
+elif [ "$FAMILY" = alpine ]; then chk ok "useradd: from the shadow package, installed below"
+else chk warn "no useradd/groupadd — the shadow tools are missing and the accounts step will fail"; fi
+if [ "$CHECK_FAILED" = 1 ]; then
+    printf '\n'
+    warn "this machine is not one this script can provision — nothing was changed"
+    exit 1
+fi
+if [ "$CHECK_ONLY" = 1 ]; then
+    printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
+    [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"
+    exit 0
+fi
 
 say "packages"
 pkg_refresh
@@ -1576,6 +1695,10 @@ EOF
 fi
 
 ip="$(my_ip)"
+if [ "${#WARNINGS[@]}" -gt 0 ]; then
+    say "the pre-flight warned about ${#WARNINGS[@]} thing(s), still true:"
+    for w in "${WARNINGS[@]}"; do printf '   - %s\n' "$w"; done
+fi
 # What to paste. BuilderBot fills in the scheme and the bb account, so on a
 # default install the address IS the whole setting; the account is spelled out
 # only when it is not the one BuilderBot would assume.

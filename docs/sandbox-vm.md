@@ -357,6 +357,18 @@ sudo bash provision.sh --user bb \
     --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
 ```
 
+**It checks the machine before it touches it.** The first thing a run prints
+is a pre-flight: the family it read from `/etc/os-release`, whether that
+family's package manager is really there, whether this is an ordinary
+installed system rather than an image-based one (Silverblue and the other
+OSTree variants, MicroOS, Ubuntu Core, an Alpine running from RAM), a
+writable root, an init it can hand a service to and that is actually
+running, the architecture, cgroups, overlay, `/dev/kvm`, free space, and
+whether Docker's repository and the controller answer. A FAIL stops the run
+with nothing changed and every finding printed; a WARN is repeated at the
+end. `sudo bash provision.sh --check` runs only that and exits 0 or 1, for
+asking "will this work here?" on a variant you are not sure about.
+
 Both steps ask for the password you set in the installer, because the VM has
 no `authorized_keys` yet — `--key` is what puts one there, so the first
 connection is necessarily password-based. After this, BuilderBot gets in
