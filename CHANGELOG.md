@@ -316,3 +316,4 @@
 - The Git view can hand a commit, a change, a branch or a conflicted merge to Claude with one press, and a per-project policy says whether a session may push its branch or push to main (e8de858)
 - Choosing an archive for a new project uses a button that matches the page (72200dd)
 - Linking a project to GitHub can authenticate with an access token as well as a deploy key, and creates the repository when it is not there yet (72200dd)
+- The Unraid VM template is sized for a node that builds and runs the emulator, and a Rocky Linux 9 version of it exists — provision.sh sets up either (b8c45a0)
