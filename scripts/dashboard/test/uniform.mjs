@@ -125,7 +125,21 @@ async function measure(kind){
       .filter(e => !['checkbox', 'radio', 'range', 'file'].includes(e.type));
     const offskin = controls.filter(e => skin(e) !== skin(ref))
       .map(e => e.id || e.className || e.tagName);
+    // Meters (design language, Meters): every track in a stack the same
+    // width. A stack is the parent that holds more than one track; the
+    // widths are rounded, and a stack whose widths are not all one value
+    // is reported with them, so the failure names the ragged row.
+    const stacks = new Map();
+    for (const t of box.querySelectorAll('.track')){
+      if (t.offsetHeight === 0) continue;
+      const key = t.parentElement?.parentElement;
+      if (!key) continue;
+      if (!stacks.has(key)) stacks.set(key, []);
+      stacks.get(key).push(Math.round(t.getBoundingClientRect().width));
+    }
+    const ragged = [...stacks.values()].filter(ws => ws.length > 1 && new Set(ws).size > 1);
     return {
+      ragged, stacks: [...stacks.values()].filter(ws => ws.length > 1).length,
       // flush and nbhost are the same treatment in the sheet — the notebook
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
@@ -143,6 +157,9 @@ for (const kind of kinds){
   await sleep(150);                       // entrance animation settles
   const m = await measure(kind);
   ok(!m.err, `[${kind}] a document box exists (${m.err || 'ok'})`);
+  ok((m.ragged || []).length === 0,
+     `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
+       m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
   if (m.err) continue;
   ok(m.flush, `[${kind}] fills its pane flush, like every document`);
   ok(m.maxw === '1080px',

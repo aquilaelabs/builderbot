@@ -185,6 +185,17 @@ Something that is running says so with a word and an animated ellipsis,
 measure how far along a build or a pull is, and a bar that guesses is a lie
 with a scale on it.
 
+## Meters
+
+A bar that measures something real — a disk, memory, a load — is a meter:
+a label, a track, a value. Meters come in stacks, and a stack is read as
+one set of gauges, so every track in it is the same width and the values
+sit in one right-aligned column. The value column has a fixed width sized
+to the widest value the stack can show; it is never `auto`, because then
+each row sizes its bar to whatever its own number leaves it, the long
+values shorten their bars, and the stack reads as a ragged edge instead of
+a comparison. `uniform.mjs` measures every stack on every tab for this.
+
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their

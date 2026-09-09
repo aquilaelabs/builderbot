@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Claude Code hook: nothing runs while BuilderBot is away or this project's
+CLAUDE.md block is from another compatibility window; drift inside the
+window is a warning, once.
+
+    bb-gate PROJECT SESSION            # PreToolUse: JSON on stdin, refuses with exit 2
+    bb-gate --prompt PROJECT SESSION   # UserPromptSubmit: prints a warning for the model
+
+A session keeps running through a container update: it lives in tmux on the
+controller, or on a node that never restarted at all. So the environment it
+was briefed with can be a version old by the time its next tool call runs,
+and nothing in the session itself would notice. This hook does, and applies
+the same rule the dashboard keeps for the block (`bb claude-md`):
+
+- The controller does not answer: it is restarting after an update, or
+  down. Every tool is refused until it answers again — there is nothing to
+  do but wait, and working blind against a machine that is changing is
+  worse than waiting.
+- The block is from ANOTHER compatibility window (`--out-of-window`): what
+  it says about the environment was true of a different BuilderBot, and
+  the dashboard ends such sessions anyway. Refused until the operator
+  updates it — the link on the project's row, or `bb claude-md --update`.
+- The block is behind INSIDE the window (`--is-stale`): the session works,
+  and is told once, on its next prompt, that an update is waiting and that
+  reading CLAUDE.md again after it is worth doing. Drift inside a window is
+  routine and stops nothing, which is the promise the window makes.
+
+Cheap on purpose: the controller is asked at most every twenty seconds
+while things are fine (the answer is kept beside the token file), and the
+block comparison is two file reads. While REFUSING, every call re-checks,
+so the first tool call after the fix goes through. Refuses with exit 2 and
+the sentence on stderr, which Claude Code hands to the model; allows with
+exit 0. Silent on any failure of its own, except the controller not
+answering, which is the point.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+try:
+    import bbapi                                                    # noqa: E402
+except ImportError:
+    bbapi = None
+
+CHECK_EVERY = 20
+
+
+def tree():
+    return (os.environ.get("BB_TREE")
+            or os.path.join(os.environ.get("WORKSPACE", "/workspace"), sys.argv[1]))
+
+
+def bb():
+    """The bb beside this hook — the bundle's on a node, the image's here."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
+    return here if os.path.isfile(here) else "bb"
+
+
+def token(project):
+    t = os.environ.get("BB_TOKEN", "")
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    try:
+        with open(os.path.join(d, "builderbot", f"token-{project}")) as f:
+            t = f.read().strip() or t
+    except OSError:
+        pass
+    return t
+
+
+def stamp_file(project):
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    return os.path.join(d, "builderbot", f"gate-{project}")
+
+
+def controller_answers(project):
+    """True when the controller answered a status request now."""
+    if bbapi is None:
+        return True                     # nothing to ask with; never refuse blind
+    r = bbapi.call("/api/status", auth="Bearer " + token(project), timeout=8)
+    if r.get("error") and "HTTP" not in str(r.get("error")):
+        return False                    # no connection: down, or restarting
+    return True                         # an answer, even a refusal, is a controller that is up
+
+
+def md_check(project, flag):
+    """bb claude-md --is-stale / --out-of-window: True on exit 0."""
+    try:
+        r = subprocess.run(["bash", bb(), "claude-md", flag], cwd=tree(),
+                           capture_output=True, timeout=30, env=dict(os.environ, BB_PROJECT=project))
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+WARN_EVERY = 3600
+
+
+def prompt_warning(project):
+    """The UserPromptSubmit half: a sentence for the model when the block is
+    behind inside the window, once an hour at most, and nothing otherwise."""
+    if not md_check(project, "--is-stale") or md_check(project, "--out-of-window"):
+        return ""
+    sf = stamp_file(project)
+    last = {}
+    try:
+        with open(sf) as f:
+            last = json.load(f)
+    except (OSError, ValueError):
+        pass
+    if time.time() - float(last.get("warned") or 0) < WARN_EVERY:
+        return ""
+    last["warned"] = time.time()
+    try:
+        os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)
+        with open(sf, "w") as f:
+            json.dump(last, f)
+    except OSError:
+        pass
+    return ("Note from BuilderBot: this project's CLAUDE.md environment block is behind the one "
+            "the container now ships, inside the same compatibility window — you can keep "
+            "working. Say so in your reply; the operator updates it from the project's row "
+            "(or with `bb claude-md --update`), and reading CLAUDE.md again after that is "
+            "worth doing.")
+
+
+def main():
+    args = sys.argv[1:]
+    if args[:1] == ["--prompt"]:
+        project = (args[1:2] or [""])[0]
+        if project:
+            w = prompt_warning(project)
+            if w:
+                sys.stdout.write(w + "\n")
+        return 0
+    project = (args[:1] or [""])[0]
+    if not project:
+        return 0
+    sf = stamp_file(project)
+    now = time.time()
+    last = {}
+    try:
+        with open(sf) as f:
+            last = json.load(f)
+    except (OSError, ValueError):
+        pass
+    # Fine last time, and recently: let it through without asking anybody.
+    if last.get("ok") and now - float(last.get("at") or 0) < CHECK_EVERY:
+        return 0
+    why = ""
+    if not controller_answers(project):
+        why = ("BuilderBot is not answering — it is restarting after an update, or down. "
+               "Nothing runs until it is back: wait, then try again. If this keeps up, the "
+               "operator checks the container.")
+    elif md_check(project, "--out-of-window"):
+        why = ("This project's CLAUDE.md environment block is from another compatibility "
+               "window of BuilderBot, so what it told you about the environment was true of "
+               "a different container. The operator updates it — the link on the project's "
+               "row on the dashboard, or `bb claude-md --update` in a shell of their own — "
+               "and until then nothing runs here. Once it is updated, read CLAUDE.md again "
+               "before carrying on.")
+    try:
+        os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)
+        with open(sf, "w") as f:
+            json.dump({**last, "ok": not why, "at": now}, f)
+    except OSError:
+        pass
+    if why:
+        sys.stderr.write(why + "\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:                                               # noqa: BLE001
+        sys.exit(0)                     # a hook that cannot run is never worth a turn

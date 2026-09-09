@@ -1922,7 +1922,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    and pressure picks the colour so a filling disk is what the eye finds. */
 .ndmeters{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
   gap:6px 18px;margin:8px 0}
-.ndmeter{display:grid;grid-template-columns:5.5em 1fr auto;gap:8px;align-items:center;
+/* Every track in a stack the same width: the value column is a fixed
+   width (the widest value, "1261MB / 7419MB", fits), never `auto`, or each
+   row sizes its bar to whatever its own number leaves it and the stack
+   reads as a ragged edge rather than a set of gauges. docs/design-language.md,
+   Meters. */
+.ndmeter{display:grid;grid-template-columns:5.5em 1fr 8.5em;gap:8px;align-items:center;
   font:var(--f-note)}
 .ndmeter .lbl{color:var(--dim)}
 .ndmeter .track{height:6px;border-radius:99px;background:var(--sunk);
@@ -1931,7 +1936,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   transition:width .3s ease}
 .ndmeter.warn .fill{background:var(--warn)}
 .ndmeter.bad .fill{background:var(--bad)}
-.ndmeter .val{color:var(--ink);font:var(--f-note);white-space:nowrap}
+.ndmeter .val{color:var(--ink);font:var(--f-note);white-space:nowrap;text-align:right}
 .ndlabels{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcaps{display:flex;gap:14px;flex-wrap:wrap}

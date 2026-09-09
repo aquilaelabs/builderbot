@@ -30,6 +30,13 @@ marked block and never touches the project notes below the end marker. (The
 dashboard notices the same drift on its own and offers the update as a link on
 the project's row, so it may already have been done for you.)
 
+**Two of the cases are enforced, not advised.** A session outlives a container
+update, so a hook on every tool call refuses to run anything while the
+controller is not answering (restarting after an update) or while this block
+is from another compatibility window, and says which: wait for the one, ask
+the operator for the other. A block merely behind inside the window stops
+nothing — you are told once, on a prompt, that an update is waiting.
+
 The block carries the compatibility window it was written for — the
 `BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor
 version. Drift inside a window is routine and stops nothing. A block from
