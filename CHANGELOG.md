@@ -335,3 +335,4 @@
 - The provisioners print their help when run with nothing, and --interactive walks through the questions, shows the command it built, and runs it on a yes — on Linux and on a Mac (bcaec8b)
 - The Briefing tab opens with the code base counted: the languages as a bar with percentages, and the files and lines git tracks — nothing untracked or ignored is in the number (14d5002)
 - The one-time package store migration is gone now that every store is laid out per platform (14d5002)
+- A Claude session stops running commands while BuilderBot is restarting after an update, or while its project's CLAUDE.md is behind the version the container ships — it says which, and continues once you have updated the block from the project's row (099d997)
