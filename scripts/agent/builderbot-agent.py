@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.37"
+AGENT_VERSION = "0.4.38"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -1024,7 +1024,24 @@ def session_now(state):
     # On a node that has to be the node's boot, not the controller's — the
     # controller stamps this into a node-bound terminal's URL for the page.
     out["boot"] = boot_id()
+    # ...and how long ago that boot was. A network mount lands a moment
+    # after the agent starts, so a census taken in that moment says the
+    # share is missing; with the uptime beside it the controller can say
+    # "just came up, not mounted yet" rather than "add the mount".
+    out["up_s"] = uptime_s()
     return out
+
+
+def uptime_s():
+    """Seconds since this machine booted, or -1 when it cannot be read."""
+    try:
+        if platform.system() == "Darwin":
+            m = re.search(r"sec\s*=\s*(\d+)", _run(["sysctl", "-n", "kern.boottime"]))
+            return int(time.time() - int(m.group(1))) if m else -1
+        with open("/proc/uptime") as f:
+            return int(float(f.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return -1
 
 
 def boot_id():
@@ -2033,6 +2050,7 @@ class Agent:
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
         self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
+        self.session_mount = None         # (mounted, writable) as the last census said, to notice it moving
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
         # The runner as a child of this process where there is no systemd
         # (a container node): run.sh in the foreground, supervised here.
@@ -2076,7 +2094,10 @@ class Agent:
             share_images((self.state.get("stores") or {}).get("packages") or "")
         except OSError as e:
             log(f"packages store: could not share the images ({e})")
-        st, r = self.ctl.call("hello", {"census": census(self.state),
+        c = census(self.state)
+        se = c.get("session") or {}
+        self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
+        st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
                                         "running": self.running_ids()}, timeout=30)
@@ -2220,6 +2241,7 @@ class Agent:
                     continue
                 delay = 1
             self.session_check()
+            self.session_mount_check()
             self.session_firewall_check()
             self.session_idle_reap()
             self.runner_check()
@@ -2899,6 +2921,29 @@ class Agent:
             if claude and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} — idle {limit} minute(s), the controller's rule")
                 self._tmux(["kill-session", "-t", "=" + name])
+
+    def session_mount_check(self):
+        """Once a loop: is the projects share at /workspace as the last
+        census said — mounted, and writable? A census rides hello every ten
+        minutes, and the first one after a boot is taken before the network
+        mounts land (the unit orders after remote-fs.target now, but a mount
+        with nofail can still be late, and a Mac's owner mounts the share by
+        hand), so it says the share is missing and the controller ghosts
+        every Claude button bound here for the rest of those ten minutes.
+        So the fact is measured each loop — two stats — and a change says
+        hello again at once."""
+        if not SESSION or self.session_mount is None:
+            return
+        try:
+            mounted = os.path.ismount("/workspace")
+            now = (mounted, mounted and os.access("/workspace", os.W_OK))
+        except OSError:
+            return
+        if now != self.session_mount:
+            log(f"sessions: the projects share at /workspace is {'mounted' if now[0] else 'not mounted'}"
+                f"{' read-only' if now[0] and not now[1] else ''} now; telling the controller")
+            self.session_mount = now
+            self.hello_at = 0
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often

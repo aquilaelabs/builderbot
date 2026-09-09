@@ -1807,6 +1807,22 @@ def _arg_project(arg):
     return ""
 
 
+# A node that came up this recently and reports no /workspace is one whose
+# network mount has not landed yet, not one missing a mount.
+BOOT_GRACE_S = 600
+_hello_asked = {}
+
+
+def _ask_hello(nid):
+    """A fresh census from a node a session was just refused on, at most
+    once a minute: the census rides hello every ten minutes, and the retry
+    a person makes ten seconds later should reason about the node as it is."""
+    now = time.time()
+    if now - _hello_asked.get(nid, 0) >= 60:
+        _hello_asked[nid] = now
+        nodes.ask_hello(nid)
+
+
 def session_target(project):
     """Where a session on this project runs (roadmap #24, phase 10b):
 
@@ -1824,6 +1840,13 @@ def session_target(project):
     later splits a conversation across two boxes. The sentence says which
     of the three it was and what fixes it. A project with no node keeps its
     session here, as it always has.
+
+    Two of the refusals are PASSING — the node is rebooting, or it just
+    came up and its network mount has not landed — and the sentence for
+    those says to wait, not to unbind the node: the operator who rebooted
+    the sandbox and met "add the mount... unbind the node" had nothing to
+    add and nothing to unbind. The census is asked for again on the
+    strength of any refusal it decided, so the next look is current.
     """
     nid = (prefs.get(project) or {}).get("node") or "" if project else ""
     if not nid or NODES_OK:
@@ -1834,8 +1857,19 @@ def session_target(project):
     name = n.get("name") or nid
     rep = n.get("reported") or {}
     se = rep.get("session")
-    if n.get("state") != "online" or not n.get("live", True) and n.get("state") != "online":
+    passing = False
+    if n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
+    elif n.get("live") is False:
+        # The agent has stopped dialing in: a reboot, an update, a machine
+        # that is off. Its tmux sessions are still there when it comes
+        # back, and the button comes back with it — nothing to change.
+        seen = int((n.get("agent") or {}).get("last_seen") or 0)
+        ago = int(time.time() - seen) if seen else 0
+        when = (f"{ago // 60} minutes ago" if ago >= 120 else f"{ago} seconds ago") if seen else "never"
+        why = (f"{project}'s sessions run on {name}, whose agent is not answering — last heard "
+               f"from {when}. If it is restarting, its sessions are back when it dials in")
+        passing = True
     elif not isinstance(se, dict):
         why = (f"{project}'s sessions run on {name}, whose agent predates sessions on a "
                "node — update the agent from the Nodes tab")
@@ -1843,9 +1877,18 @@ def session_target(project):
         why = (f"{project}'s sessions run on {name}, which runs none yet"
                + (f": {se['why']}" if se.get("why") else
                   " — provision it with --session-user"))
+        _ask_hello(nid)
     elif not se.get("workspace"):
-        why = (f"{project}'s sessions run on {name}, which does not mount the projects "
-               "share at /workspace — add the mount on its row on the Nodes tab")
+        up = se.get("up_s")
+        if isinstance(up, int) and 0 <= up < BOOT_GRACE_S:
+            why = (f"{project}'s sessions run on {name}, which came up {up} seconds ago and has "
+                   "not mounted the projects share at /workspace yet — a network mount lands a "
+                   "moment after boot, and the button is back when it does")
+            passing = True
+        else:
+            why = (f"{project}'s sessions run on {name}, which does not mount the projects "
+                   "share at /workspace — add the mount on its row on the Nodes tab")
+        _ask_hello(nid)
     elif se.get("writable") is False:
         # Read-only was the right way to mount the share for a Docker-only
         # sandbox and is the wrong way for one that runs sessions: nothing
@@ -1854,6 +1897,7 @@ def session_target(project):
                "read-only — a session there could not save a file. Untick read-only on "
                "the /workspace mount on its row on the Nodes tab and apply, or `sudo "
                "bb-sandbox readonly /workspace off` on the machine")
+        _ask_hello(nid)
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale
@@ -1865,7 +1909,8 @@ def session_target(project):
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
                 "boot": str(se.get("boot") or "")}
     return {"where": "refused", "name": name,
-            "why": why + ". Unbind the node in the project's settings dialog to work here instead."}
+            "why": why + ("." if passing else
+                          ". Unbind the node in the project's settings dialog to work here instead.")}
 
 # A session name without the account that owns it. Shell sessions are named
 # `<uid>~shell-…` since roadmap #26 — two people opening a terminal on one

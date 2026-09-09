@@ -394,7 +394,10 @@ svc_active() {
 # svc_install NAME DESCRIPTION COMMAND — a service of OUR OWN (the agent),
 # written the way this init wants one: a unit, an OpenRC script under
 # supervise-daemon, or a runit directory. Rewritten on every run, then
-# enabled and (re)started.
+# enabled and (re)started. Ordered after the network mounts (remote-fs,
+# netmount): the agent's first census says whether /workspace is mounted,
+# and one taken before the share landed ghosted every Claude button bound
+# to the node for the ten minutes until the next.
 svc_install() {
     local name="$1" desc="$2" cmd="$3"
     case "$INIT" in
@@ -402,7 +405,7 @@ svc_install() {
             cat > "/etc/systemd/system/${name}.service" <<EOF
 [Unit]
 Description=${desc}
-After=network-online.target docker.service
+After=network-online.target remote-fs.target docker.service
 Wants=network-online.target
 
 [Service]
@@ -425,7 +428,7 @@ supervisor=supervise-daemon
 command="${cmd%% *}"
 command_args="${cmd#* }"
 respawn_delay=5
-depend() { need net; after docker; }
+depend() { need net; use netmount; after docker; }
 EOF
             chmod 0755 "/etc/init.d/${name}"
             rc-update add "$name" default >/dev/null 2>&1 || true
