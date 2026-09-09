@@ -1741,7 +1741,11 @@ that came up under ten minutes ago whose network mount has not landed —
 the census carries the uptime (`session.up_s`) for that, the agent
 re-reports the moment `/workspace` appears rather than at the next
 ten-minute hello, and the provisioner's unit orders after `remote-fs.target`
-so the first census usually has the mount already. provision-linux.sh filters 7681/7682 to the controller's
+so the first census usually has the mount already. A mount the server
+refused is neither: the agent tries an unmounted fstab entry when it takes
+the census and reports what mount said (`mounts[].error`), the row and the
+button repeat it, and Apply network asks each NFS server's exports
+(`showmount -e`) before moving to an address they do not admit. provision-linux.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
 Addresses move, and the design survives it without anybody re-enrolling:
 the node dials out, so a node whose own address changes is reached by the

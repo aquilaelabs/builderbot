@@ -1880,7 +1880,21 @@ def session_target(project):
         _ask_hello(nid)
     elif not se.get("workspace"):
         up = se.get("up_s")
-        if isinstance(up, int) and 0 <= up < BOOT_GRACE_S:
+        # The server's own reason, when the agent tried the mount and kept
+        # what it said: a refused mount is not a missing one, and the fix
+        # is on the host, not on this row.
+        merr = next((str(m.get("error") or "") for m in (rep.get("mounts") or [])
+                     if isinstance(m, dict) and m.get("path") == "/workspace" and m.get("error")), "")
+        if merr and "access denied" in merr.lower():
+            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
+                   f"/workspace: {merr}. The host's NFS export names another address, and this "
+                   f"node is on {nodes.route_host(nid) or 'a new one'} — change the rule on the "
+                   "host (Unraid: Shares → the share → NFS Security Settings) and the mount "
+                   "lands on its own")
+        elif merr:
+            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
+                   f"/workspace: {merr} — its row on the Nodes tab has the mount")
+        elif isinstance(up, int) and 0 <= up < BOOT_GRACE_S:
             why = (f"{project}'s sessions run on {name}, which came up {up} seconds ago and has "
                    "not mounted the projects share at /workspace yet — a network mount lands a "
                    "moment after boot, and the button is back when it does")
