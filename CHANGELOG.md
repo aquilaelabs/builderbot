@@ -317,3 +317,4 @@
 - Choosing an archive for a new project uses a button that matches the page (72200dd)
 - Linking a project to GitHub can authenticate with an access token as well as a deploy key, and creates the repository when it is not there yet (72200dd)
 - The Unraid VM template is sized for a node that builds and runs the emulator, and a Rocky Linux 9 version of it exists — provision.sh sets up either (b8c45a0)
+- A node's Storage, Network and package installs work the same on Ubuntu and Rocky Linux: the node detects its own tools (apt or dnf, netplan or NetworkManager) and the row says which a change will go through (30a2e97)
