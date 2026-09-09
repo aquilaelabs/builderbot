@@ -879,6 +879,17 @@ ok(true, 'pinning it puts it back on the sidebar');
   ok(Math.abs(fit.box - (fit.row - 20)) < 2,
      `a row's tooltip is as wide as its row, so nothing can push it off the card (${
        fit.box} in ${fit.row})`);
+  // ...and under the LINK, not under the row: with the row as the tip's
+  // containing block, the link's tip and the icons' landed in one place.
+  const where = await page.evaluate(sel => {
+    const a = document.querySelector(sel + ' [data-fix]');
+    const row = document.querySelector(sel);
+    return { top: parseFloat(getComputedStyle(a, '::after').top),
+             want: a.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
+             rowH: row.getBoundingClientRect().height };
+  }, row);
+  ok(Math.abs(where.top - where.want) < 2 && where.top < where.rowH,
+     `...and sits under the link it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
   // ...and the tip on a DEAD control, which is the one somebody has to read,
   // because it is the sentence saying why the control is dead. The fade on a
   // disabled button is opacity, and opacity below 1 makes a stacking context

@@ -1007,9 +1007,14 @@ input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
      project you are reading about. */
   .side .row{position:relative}
   .side .row [data-tip]{position:static}
+  /* ...as wide as the row, and UNDER THE THING HOVERED, not under the row:
+     with the row as the containing block every tip in it landed in one
+     place, so the link's under the name read where the icons' do. The
+     pointerover handler beside tipOff() writes --tipy from the element's
+     own bottom edge. */
   .side .row [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none;
-    bottom:auto;top:calc(100% + 6px)}
+    bottom:auto;top:var(--tipy,calc(100% + 6px))}
   /* A DEAD button's tip is the one on this page somebody actually has to
      read — it is the sentence saying why the button is dead — and it was the
      one that could not be. The fade on a disabled control is `opacity:.5`,
@@ -3772,6 +3777,16 @@ function tipOff(){
   }, true);
 }
 tipOff();
+// A sidebar row's tip is positioned against the ROW (see the .side .row
+// rule): its vertical place is the hovered element's own bottom edge.
+addEventListener("pointerover", e => {
+  const el = e.target.closest && e.target.closest(".side .row [data-tip]");
+  if (!el) return;
+  const row = el.closest(".row");
+  if (!row) return;
+  el.style.setProperty("--tipy",
+    (el.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6) + "px");
+}, true);
 
 // A tap on a ? toggles its tooltip; a tap anywhere else closes whichever is
 // open. Bound once on the document, so icons drawn later count too.
