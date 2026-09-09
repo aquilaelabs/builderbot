@@ -1558,10 +1558,22 @@ with the one the tree is on and whose session's worktree sits on which
 upstream. It reads on open and again when the tree's history moves, never on
 the poll, and every question is git plumbing on the controller against the
 project on the share — a sha or a path from the address is checked against
-what the repository itself reports before it reaches a command. This step is
-read-only; the actions and the Send-to-Claude half are roadmap R36's next
-steps. On a phone the notebook's strip wraps into rows so all seven views
-stay on screen.
+what the repository itself reports before it reaches a command.
+
+The view acts too, each button one fixed git command with checked arguments,
+run under your author and the project's own credentials: **Fetch**, **Pull**
+(fast-forward only, refused with uncommitted changes) and **Push** (through
+the same path `bb git push` takes, offered only to a project with push
+rights) on the bar under the head row; **Commit all** with a message at the
+top of Changes and **Discard** on each file; **New branch** at the top of
+Branches, **Switch** on a branch (refused while the owner's Claude session
+stands in the directory, or with uncommitted changes) and **Delete**, which
+refuses a branch holding commits no other branch has until you say so
+twice; **Revert** and **Branch here** on a picked commit. A session's token
+has none of these — it has `bb git` — and a locked project takes no action.
+Send to Claude and the per-project git policy are roadmap R36's last step.
+On a phone the notebook's strip wraps into rows so all seven views stay on
+screen.
 
 ### The Jobs tab
 

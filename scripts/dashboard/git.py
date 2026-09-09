@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The notebook's Git view: what a project's repository holds, read out for
-the page (roadmap R36, step 1).
+the page, and the handful of things the page may do to it (roadmap R36).
 
-Read-only here. Every answer is git plumbing run on the CONTROLLER against
+Every answer is git plumbing run on the CONTROLLER against
 the project's tree on the share — the one place with the credentials, the
 worktrees and every account's author — and shaped for the page: the
 uncommitted changes, the recent history with parents (the page draws the
@@ -52,6 +52,10 @@ def _git(repo, *args, timeout=20):
 
 def is_repo(repo):
     return _git(repo, "rev-parse", "--is-inside-work-tree") is not None
+
+
+def has_remote(repo):
+    return bool((_git(repo, "remote") or "").strip())
 
 
 def status(repo):
@@ -275,3 +279,162 @@ def payload(project, what, sha="", path="", n=None):
         return {"status": status(repo), "commits": log(repo, n or LOG_MAX),
                 **branches(repo)}
     return {"error": "unknown question"}
+
+
+# ---- the actions (R36 step 2) ----------------------------------------------
+# Each one is a FIXED git command with checked arguments, the way every
+# executing endpoint on this dashboard is a table lookup and never a string:
+# a ref through check-ref-format, a sha through SHA_RE against the log, a
+# path against what status reports, a message as an argument and never in a
+# shell. Run under the acting account's author (GIT_AUTHOR_*, given as
+# `env`) and the project's own credentials (the repository's helper and
+# ssh alias, in its config already), which is why they run here and not on
+# a node. Refusals are sentences; nothing here guesses.
+
+BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
+NET_TIMEOUT = 120
+
+
+def _run(repo, *args, env=None, timeout=30):
+    """{code, out} of one git command, stderr folded into out."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                           text=True, timeout=timeout, check=False,
+                           env={**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"})
+    except subprocess.TimeoutExpired:
+        return {"code": 124, "out": f"git {args[0]} took longer than {timeout}s"}
+    except OSError as e:
+        return {"code": 1, "out": str(e)}
+    return {"code": r.returncode, "out": ((r.stdout or "") + (r.stderr or "")).strip()[-4000:]}
+
+
+def _ok_branch(name):
+    name = str(name or "").strip()
+    if not BRANCH_RE.match(name) or name.endswith("/") or ".." in name or name.endswith(".lock"):
+        return ""
+    return name
+
+
+def _has_branch(repo, name):
+    return _git(repo, "show-ref", "--verify", "--quiet", f"refs/heads/{name}") is not None
+
+
+def _dirty(repo):
+    st = status(repo)
+    return [f["path"] for f in st.get("files", []) if f["state"] != "untracked"]
+
+
+def act(repo, action, args, env=None, may_push=True):
+    """Do one thing to the repository; {ok, out, ...} or {error}."""
+    args = args if isinstance(args, dict) else {}
+    if not is_repo(repo):
+        return {"error": "not a git repository"}
+    if action == "fetch":
+        r = _run(repo, "fetch", "--prune", env=env, timeout=NET_TIMEOUT)
+        return _done(r, "fetched")
+    if action == "pull":
+        if _dirty(repo):
+            return {"error": "there are uncommitted changes — commit or discard them first, so a pull cannot land on top of them"}
+        r = _run(repo, "pull", "--ff-only", env=env, timeout=NET_TIMEOUT)
+        if r["code"] and "diverged" in r["out"] or r["code"] and "Not possible to fast-forward" in r["out"]:
+            return {"error": "the branch and its upstream have both moved — this only fast-forwards; merge or rebase from a shell, or ask Claude"}
+        return _done(r, "pulled")
+    if action == "push":
+        if not may_push:
+            return {"error": "this project has no push rights — they are granted in the clone dialog, once"}
+        st = status(repo)
+        branch = st.get("branch") or ""
+        if not branch or branch == "(detached)":
+            return {"error": "not on a branch"}
+        r = (_run(repo, "push", env=env, timeout=NET_TIMEOUT) if st.get("upstream")
+             else _run(repo, "push", "-u", "origin", branch, env=env, timeout=NET_TIMEOUT))
+        return _done(r, "pushed")
+    if action == "branch":
+        name = _ok_branch(args.get("name"))
+        if not name:
+            return {"error": "a branch name is letters, digits and . _ / -"}
+        if _has_branch(repo, name):
+            return {"error": f"{name} already exists"}
+        at = str(args.get("at") or "HEAD")
+        if at != "HEAD" and not SHA_RE.match(at):
+            return {"error": "not a commit"}
+        r = _run(repo, "branch", "--", name, at, env=env)
+        if r["code"]:
+            return {"error": r["out"] or "could not create the branch"}
+        if args.get("switch"):
+            return act(repo, "switch", {"name": name}, env=env)
+        return {"ok": True, "out": f"{name} created at {at[:7] if at != 'HEAD' else 'HEAD'}"}
+    if action == "switch":
+        name = _ok_branch(args.get("name"))
+        if not name or not _has_branch(repo, name):
+            return {"error": "no such branch"}
+        if _dirty(repo):
+            return {"error": "there are uncommitted changes — commit or discard them before switching, so they cannot be carried onto the wrong branch"}
+        r = _run(repo, "switch", "--", name, env=env)
+        return _done(r, f"on {name}")
+    if action == "revert":
+        sha = str(args.get("sha") or "")
+        if not SHA_RE.match(sha):
+            return {"error": "not a commit"}
+        parents = (_git(repo, "show", "--no-patch", "--format=%P", sha) or "").split()
+        if not parents:
+            return {"error": "no such commit"}
+        if _dirty(repo):
+            return {"error": "there are uncommitted changes — commit or discard them first, so the revert is its own commit"}
+        extra = ["-m", "1"] if len(parents) > 1 else []
+        r = _run(repo, "revert", "--no-edit", *extra, sha, env=env)
+        if r["code"]:
+            _run(repo, "revert", "--abort", env=env)
+            return {"error": "the revert does not apply cleanly — it was abandoned; ask Claude to do it by hand"}
+        return _done(r, "reverted")
+    if action == "commit":
+        msg = " ".join(str(args.get("message") or "").split())
+        if not msg:
+            return {"error": "a commit needs a message"}
+        st = status(repo)
+        listed = [f["path"] for f in st.get("files", [])]
+        if not listed:
+            return {"error": "nothing to commit"}
+        want = args.get("paths")
+        paths = [p for p in (want if isinstance(want, list) else listed) if p in listed]
+        if not paths:
+            return {"error": "none of those is a changed file"}
+        r = _run(repo, "add", "-A", "--", *paths, env=env)
+        if r["code"]:
+            return {"error": r["out"] or "could not stage"}
+        r = _run(repo, "commit", "-m", msg, "--", *paths, env=env)
+        if r["code"]:
+            return {"error": r["out"] or "could not commit"}
+        return {"ok": True, "out": r["out"], "commit": (_git(repo, "rev-parse", "--short=7", "HEAD") or "").strip()}
+    if action == "discard":
+        path = str(args.get("path") or "")
+        st = status(repo)
+        f = next((x for x in st.get("files", []) if x["path"] == path), None)
+        if not f:
+            return {"error": "not a changed file"}
+        if f["state"] == "untracked":
+            r = _run(repo, "clean", "-f", "--", path, env=env)
+        else:
+            r = _run(repo, "restore", "--staged", "--worktree", "--", path, env=env)
+        return _done(r, f"{path} discarded")
+    if action == "delete":
+        name = _ok_branch(args.get("name"))
+        if not name or not _has_branch(repo, name):
+            return {"error": "no such branch"}
+        st = status(repo)
+        if name == st.get("branch"):
+            return {"error": "that is the branch the tree is on — switch first"}
+        if name == _main_branch(repo):
+            return {"error": f"{name} is the main branch; it stays"}
+        r = _run(repo, "branch", "-D" if args.get("force") else "-d", "--", name, env=env)
+        if r["code"] and "not fully merged" in r["out"] and not args.get("force"):
+            return {"error": f"{name} has commits that are on no other branch — deleting it loses them",
+                    "unmerged": True}
+        return _done(r, f"{name} deleted")
+    return {"error": "unknown action"}
+
+
+def _done(r, said):
+    if r["code"]:
+        return {"error": r["out"] or f"git failed ({r['code']})"}
+    return {"ok": True, "out": r["out"] or said}

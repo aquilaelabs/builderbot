@@ -3857,6 +3857,11 @@ class Handler(BaseHTTPRequestHandler):
                 n = 0
             r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
                                 path=q.get("path", [""])[0], n=n)
+            if what in ("", "all") and not r.get("error"):
+                # What the network bar may offer: a remote to talk to, and
+                # the project's push rights, granted once in the clone dialog.
+                r["remote"] = gitview.has_remote(WORKSPACE / name)
+                r["push"] = projects.may_push(name)
             return self._json(r, 400 if r.get("error") else 200)
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -4232,6 +4237,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._create(req)
         if path.startswith("/api/profile"):
             return self._profile(req)
+        if path.startswith("/api/git"):
+            return self._git_act(req)
         if path.startswith("/api/link"):
             return self._link(req)
         if path.startswith("/api/project-job"):
@@ -5919,6 +5926,42 @@ class Handler(BaseHTTPRequestHandler):
                                "git": users.git_identity(me), "git_ready": users.git_ready(me)},
                               cookie=cookie)
         return self._json({"error": "unknown action"}, 400)
+
+    def _git_act(self, req):
+        """The Git view's actions (roadmap R36 step 2): fixed git commands on
+        the project's tree on the controller, under the acting account's
+        author and the project's own credentials. An account's, never a
+        session's — a session has bb git — on a project it may see and has
+        taken on, and not while the project is locked. Switching the tree's
+        branch is refused while the owner's Claude session runs in the
+        project directory, because that session is standing in it."""
+        me = self._who()
+        if not me or not users.uid_of(me) or me.get("session"):
+            return self._json({"error": "an account's, not a session's — a session uses bb git"}, 403)
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": "not a project"}, 400)
+        if self._readonly(name):
+            return None
+        if name in set(load_locks()):
+            return self._json({"error": "locked — the padlock on its row unlocks it"}, 403)
+        action = field(req, "action")
+        if action == "switch":
+            mine = tmux_name(f"claude-{name}")
+            if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
+                   for s in tmux_sessions() + node_tmux_sessions()):
+                return self._json({"error": "the owner's Claude session is running in this "
+                                            "directory — end it before switching the branch "
+                                            "under it"}, 409)
+        env = {**projects._git_env(), **users.git_env(me)}
+        env.pop("DASHBOARD_AUTH", None)
+        r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
+                        may_push=projects.may_push(name))
+        if r.get("ok") and not NODES_OK:
+            nodes.audit(self._principal(), "git-" + action, name,
+                        {k: v for k, v in (req.get("args") or {}).items()
+                         if k in ("name", "sha", "path", "at")})
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _upload_archive(self):
         """Spool an archive for the create dialog; {id, name, size, kind}.

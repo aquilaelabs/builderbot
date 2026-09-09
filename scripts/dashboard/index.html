@@ -1185,6 +1185,9 @@ input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
 .gmsg{font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
 .gadd{color:var(--accent)} .gdel{color:var(--bad)}
 .gbranch .name code{font:var(--mono);font-size:13px}
+.gcommitbar,.gbranchbar{padding:0 0 8px}
+.gcommitbar input,.gbranchbar input{flex:1 1 auto;min-width:0}
+.gitnet{border-bottom:1px solid var(--line)}
 /* A diff: one fold per file, the lines coloured, and it scrolls inside its
    own box on a phone rather than the pane. */
 .dfile{border-top:1px solid var(--line);margin-top:6px}
@@ -2768,6 +2771,15 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="field nbhead vbar"><span id="gitHint">loading…</span>
         <span class="sp"></span>
         <button type="button" id="gitRefresh" title="read the repository again now">Refresh</button>
+      </div>
+      <!-- The network half, one bar: fetch and pull bring the remote's
+           commits down, push sends this branch up through the controller's
+           own credentials — the same path bb git push takes. -->
+      <div class="field actbar gitnet" id="gitNet" hidden>
+        <span class="state" id="gitNetState"></span>
+        <button type="button" data-gitact="fetch" title="bring the remote's branches down without touching this one">Fetch</button>
+        <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
+        <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
       <div id="gitBody"></div>
     </div>
@@ -10437,6 +10449,7 @@ $("todoRevert").onclick = revertNotebook;
   // redraw: the commit picked and the files unfolded are kept by sha and
   // path, not by position.
   let git = null, gitPick = "", gitOpenFiles = new Set();
+  let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
   async function loadGit(){
     const hint = $("gitHint"), body = $("gitBody");
     try{
@@ -10457,21 +10470,76 @@ $("todoRevert").onclick = revertNotebook;
       st.upstream ? (st.ahead || st.behind
         ? ` · ${st.ahead ? st.ahead + " ahead" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " behind " + st.upstream : (st.ahead ? " of " + st.upstream : "")}`
         : ` · level with ${st.upstream}`) : ""}`;
+    const net = $("gitNet");
+    if (net){
+      const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+      net.hidden = locked || !git.remote;
+      $("gitNetState").textContent = !git.remote ? "" : !git.push
+        ? "no push rights — fetch and pull only; rights are granted in the clone dialog"
+        : st.upstream ? `${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`
+        : "no upstream yet — Push sets one";
+      net.querySelector('[data-gitact="push"]').disabled = !git.push;
+      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+    }
     drawGit();
   }
+
+  // One action on the repository: a fixed command on the controller with
+  // checked arguments (git.py). The view reloads on the answer, and on the
+  // git revision when the tree's history moves.
+  async function gitAct(action, args, btn, verb){
+    if (btn) busy(btn, verb || "Working");
+    try{
+      const r = await fetch("/api/git", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, action, args: args || {}})});
+      const j = await r.json();
+      if (j.error){
+        if (j.unmerged && confirm(`${j.error}.\n\nDelete it anyway?`))
+          return gitAct(action, {...args, force: true}, btn, verb);
+        notify(j.error, true);
+        return j;
+      }
+      notify(j.out ? j.out.split("\n").slice(-1)[0] : `${action} done`);
+      await loadGit();
+      return j;
+    }catch(e){ notify("git: " + e, true); return {error: String(e)}; }
+    finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
+  }
+  const gitBusy = (btn, verb) => { btn.dataset.label = btn.dataset.label || btn.textContent; return btn; };
+  $("gitNet")?.querySelectorAll("[data-gitact]").forEach(b => b.onclick = () =>
+    gitAct(b.dataset.gitact, {}, gitBusy(b), {fetch: "Fetching", pull: "Pulling", push: "Pushing"}[b.dataset.gitact]));
 
   function drawGit(){
     const body = $("gitBody");
     if (!git || git.error) return;
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
+    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
     const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}"${
         gitOpenFiles.has(f.path) ? " open" : ""}>
         <summary><span class="t"><code>${esc(f.path)}</code></span>
           <span class="sst${f.state === "conflict" ? " bad" : f.state === "untracked" ? " note" : ""}">${
             esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
         <div class="body gdiff"><div class="loading">loading…</div></div>
+        ${locked ? "" : `<div class="body"><div class="actbar">
+          <button type="button" class="danger" data-gitdiscard="${esc(f.path)}"
+            title="put this file back as the last commit has it — nothing keeps the change">Discard</button>
+        </div></div>`}
       </details>`).join("");
+    // Adding goes at the top: the commit's form is the section's first
+    // band, above the files it will take.
+    const commitBar = files.length && !locked ? `<div class="addbar gcommitbar" data-add="commit">
+        <input id="gitMsg" maxlength="200" autocomplete="off" placeholder="what changed, for the log"
+          aria-label="commit message" value="${esc(gitMsgDraft)}">
+        <button type="button" class="primary" id="gitCommit"
+          title="commit every changed file under your author">Commit all</button>
+      </div>` : "";
+    const branchBar = locked ? "" : `<div class="addbar gbranchbar" data-add="branch">
+        <input id="gitNewBranch" maxlength="120" autocomplete="off" spellcheck="false"
+          placeholder="new branch, from the commit the tree is on" aria-label="new branch name" value="${esc(gitBranchDraft)}">
+        <button type="button" id="gitBranchGo">New branch</button>
+      </div>`;
     const lanes = gitLanes(commits);
     const H = 34, W = 14, lanesN = Math.max(1, ...commits.map(c => c.lane + 1));
     const ago_ = t => t ? ago(t * 1000) : "";
@@ -10502,13 +10570,50 @@ $("todoRevert").onclick = revertNotebook;
               ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} against ${esc(b.upstream)}`
               : `level with ${esc(b.upstream)}`) : "",
             `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
+        ${b.remote || locked ? "" : `<span class="acts">${b.head ? "" : `<button type="button"
+            data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
+            b.head || b.name === git.main ? "" : `<button type="button" class="danger"
+            data-gitdelete="${esc(b.name)}" title="delete the branch — refused while it holds commits no other branch has">Delete</button>`}</span>`}
       </div>`).join("");
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
-        files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`)
+        commitBar + (files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`))
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", "Branches", String(local.length), branchRows || `<div class="sub dim">no branches</div>`);
+      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="sub dim">no branches</div>`));
     wireSections(body);
+    const msg = $("gitMsg");
+    if (msg){
+      msg.oninput = () => { gitMsgDraft = msg.value; };
+      msg.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("gitCommit")?.click(); } };
+    }
+    const cm = $("gitCommit");
+    if (cm) cm.onclick = async () => {
+      if (!gitMsgDraft.trim()) return notify("a commit needs a message", true);
+      const j = await gitAct("commit", {message: gitMsgDraft}, gitBusy(cm), "Committing");
+      if (j && j.ok) gitMsgDraft = "";
+    };
+    const nb = $("gitNewBranch");
+    if (nb){
+      nb.oninput = () => { gitBranchDraft = nb.value; };
+      nb.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("gitBranchGo")?.click(); } };
+    }
+    const bg = $("gitBranchGo");
+    if (bg) bg.onclick = async () => {
+      if (!gitBranchDraft.trim()) return notify("a branch needs a name", true);
+      const j = await gitAct("branch", {name: gitBranchDraft.trim(), switch: true}, gitBusy(bg), "Creating");
+      if (j && j.ok) gitBranchDraft = "";
+    };
+    body.querySelectorAll("[data-gitdiscard]").forEach(b => b.onclick = () => {
+      const path = b.dataset.gitdiscard;
+      if (confirm(`Discard the changes to ${path}?\n\nIt goes back to what the last commit has, and nothing keeps what was changed.`))
+        gitAct("discard", {path}, gitBusy(b), "Discarding");
+    });
+    body.querySelectorAll("[data-gitswitch]").forEach(b => b.onclick = () =>
+      gitAct("switch", {name: b.dataset.gitswitch}, gitBusy(b), "Switching"));
+    body.querySelectorAll("[data-gitdelete]").forEach(b => b.onclick = () => {
+      const name = b.dataset.gitdelete;
+      if (confirm(`Delete the branch ${name}?`)) gitAct("delete", {name}, gitBusy(b), "Deleting");
+    });
     body.querySelectorAll(".gfile").forEach(d => {
       d.addEventListener("toggle", () => {
         if (d.open) gitOpenFiles.add(d.dataset.path); else gitOpenFiles.delete(d.dataset.path);
@@ -10552,8 +10657,21 @@ $("todoRevert").onclick = revertNotebook;
         ${c.message.includes("\n") ? `<pre class="gmsg">${esc(c.message.split("\n").slice(1).join("\n").trim())}</pre>` : ""}
         <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
+        ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
+          <span class="state">a revert is a new commit undoing this one; a branch here starts from it</span>
+          <button type="button" data-gitbranchat="${esc(c.sha)}" title="a new branch starting at this commit">Branch here</button>
+          <button type="button" data-gitrevert="${esc(c.sha)}" title="a new commit that undoes this one — nothing is rewritten">Revert</button>
+        </div>`}
         ${renderDiff(c.diff)}
       </div>`;
+      box.querySelectorAll("[data-gitrevert]").forEach(b => b.onclick = () => {
+        if (confirm(`Revert ${c.short} — ${c.message.split("\n")[0]}?\n\nA new commit undoes it; the history keeps both.`))
+          gitAct("revert", {sha: b.dataset.gitrevert}, gitBusy(b), "Reverting");
+      });
+      box.querySelectorAll("[data-gitbranchat]").forEach(b => b.onclick = () => {
+        const name = prompt(`A branch starting at ${c.short}. Its name:`);
+        if (name && name.trim()) gitAct("branch", {name: name.trim(), at: b.dataset.gitbranchat, switch: true}, gitBusy(b), "Creating");
+      });
     }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
   }
   const rf = $("gitRefresh");
