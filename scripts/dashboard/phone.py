@@ -337,14 +337,15 @@ def _node_row(n, uid, probe):
             "may_drive": may_drive(n["id"], uid)}
 
 
-def payload(uid, node="", probe=False):
+def payload(uid, node="", probe=False, admin=False):
     """The tab's data for one account: every node a phone can be driven
     from, which of them holds one and whose it is, and the requests waiting
-    on THIS account. `probe` asks the picked node's adb again now."""
+    on THIS account — phone requests on the phone's owner, root requests on
+    an administrator. `probe` asks the picked node's adb again now."""
     rows = []
     for n in (nodes.phone_nodes() if nodes is not None else []):
         rows.append(_node_row(n, uid, probe and n["id"] == node))
-    return {"nodes": rows, "asks": requests_open(uid)}
+    return {"nodes": rows, "asks": requests_open(uid, admin)}
 
 
 def summary(nid, uid, node=None):
@@ -522,17 +523,27 @@ def _req_public(r):
     return {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
             "state": r["state"], "by": r["by"], "node": r["node"],
             "node_name": r["node_name"], "project": r["project"],
+            "kind": r.get("kind") or "phone",
             "left": max(0, WAIT_SECONDS - (int(time.time()) - r["at"]))}
 
 
-def requests_open(uid=None):
-    """What is waiting: everything, or only what waits on this account."""
+def _for(r, uid, admin):
+    """Whether a request waits on this account: a phone request on the
+    account that connected the phone, a root request on any administrator."""
+    if r["to"] == "admins":
+        return bool(admin)
+    return r["to"] == uid
+
+
+def requests_open(uid=None, admin=False):
+    """What is waiting: everything, or only what waits on this account —
+    `admin` says whether it is one, which is who a root request waits on."""
     with _lock:
         for r in _reqs:
             if r["state"] == "pending" and time.time() - r["at"] > WAIT_SECONDS:
                 r["state"] = "expired"
         return [_req_public(r) for r in _reqs
-                if r["state"] == "pending" and (uid is None or r["to"] == uid)]
+                if r["state"] == "pending" and (uid is None or _for(r, uid, admin))]
 
 
 def ask(why, argv, nid, node_name, project, by="claude"):
@@ -554,16 +565,48 @@ def ask(why, argv, nid, node_name, project, by="claude"):
     if not rec or not phone_on(nid):
         return {"error": f"no phone is connected on {node_name or nid} — somebody "
                          "connects one on the Phone tab with that node picked"}
+    return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
+                  rec.get("owner_name") or "the owner")
+
+
+def _queue(kind, why, argv, nid, node_name, project, by, to, to_name):
     global _req_seq
     with _lock:
         _req_seq += 1
-        r = {"id": _req_seq, "at": int(time.time()), "why": why,
+        r = {"id": _req_seq, "at": int(time.time()), "why": why, "kind": kind,
              "cmd": list(argv), "state": "pending", "by": by,
              "node": nid, "node_name": node_name or nid, "project": project,
-             "to": rec["owner"], "out": "", "code": None}
+             "to": to, "out": "", "code": None}
         _reqs.append(r)
         del _reqs[:-MAX_REQS]
-    return {"ok": True, "id": r["id"], "to": rec.get("owner_name") or "the owner"}
+    return {"ok": True, "id": r["id"], "to": to_name}
+
+
+def ask_root(why, argv, nid, node_name, project, sandbox, by="claude"):
+    """A session asking for ONE command as root on its project's node
+    (roadmap R38). Not sudo, which would be every command from then on
+    with nobody reading them, and not a sudo that pretends — this is the
+    phone's shape applied to root: the reason and the exact command go to
+    the administrators, one of them allows or denies, and the node runs
+    that command and nothing else. Only a node provisioned as a sandbox
+    (a MANAGED node) takes it: somebody's own machine is not the
+    controller's to run root on, whoever asks."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for — the operator is answering a "
+                         "question about a root command they did not write"}
+    if not isinstance(argv, list) or not argv or not all(
+            isinstance(a, str) for a in argv):
+        return {"error": "nothing to run"}
+    if len(argv) > 40 or any(len(a) > 500 for a in argv):
+        return {"error": "that command is too long to put in front of somebody"}
+    if not nid:
+        return {"error": f"{project or 'this project'} has no node, so there is no machine "
+                         "to run anything on as root — root is asked for on the project's node"}
+    if not sandbox:
+        return {"error": f"{node_name or nid} was not provisioned as a BuilderBot sandbox, so "
+                         "root there is its owner's and not something this can ask for"}
+    return _queue("root", why, argv, nid, node_name, project, by, "admins", "the administrators")
 
 
 def _find(rid):
@@ -573,10 +616,11 @@ def _find(rid):
     return None
 
 
-def decide(rid, allow, uid, name=""):
-    """The owner's answer. Allowing runs it on the node, so the session never
-    reaches the phone itself. Anybody else is refused: the question was put
-    to the person who connected the phone."""
+def decide(rid, allow, uid, name="", admin=False):
+    """The answer. Allowing runs it on the node, so the session never
+    reaches the phone — or root — itself. Anybody else is refused: a phone
+    question was put to the person who connected the phone, a root one to
+    the administrators."""
     try:
         rid = int(rid)
     except (TypeError, ValueError):
@@ -585,19 +629,36 @@ def decide(rid, allow, uid, name=""):
         r = _find(rid)
         if r is None:
             return {"error": "no such request"}
-        if r["to"] != uid:
-            return {"error": "that request is for the account that connected the phone"}
+        if not _for(r, uid, admin):
+            return {"error": "that request is for the administrators"
+                    if r["to"] == "admins" else
+                    "that request is for the account that connected the phone"}
         if r["state"] != "pending":
             return {"error": f"that one was already {r['state']}"}
         r["state"] = "running" if allow else "denied"
     if not allow:
         return {"ok": True}
-    res = _adb(r["node"], "-s", (_rec(r["node"]) or {}).get("serial") or "", *r["cmd"],
-               timeout=120, by=f"user:{name}") if (_rec(r["node"]) or {}).get("serial") \
-        else _adb(r["node"], *r["cmd"], timeout=120, by=f"user:{name}")
+    if r.get("kind") == "root":
+        res = _root(r["node"], r["cmd"], r["why"], by=f"user:{name}")
+    else:
+        res = _adb(r["node"], "-s", (_rec(r["node"]) or {}).get("serial") or "", *r["cmd"],
+                   timeout=120, by=f"user:{name}") if (_rec(r["node"]) or {}).get("serial") \
+            else _adb(r["node"], *r["cmd"], timeout=120, by=f"user:{name}")
     with _lock:
         r.update(state="done", out=res["out"][-8000:], code=res["code"])
     return {"ok": True}
+
+
+def _root(nid, argv, why, by):
+    """The one approved command, as root on the node: a system job the
+    agent runs only on a sandbox node, with the reason and who allowed it
+    written into its log so the Jobs tab is the record."""
+    if nodes is None:
+        return {"code": 1, "out": "the node registry is not available on this controller"}
+    r = nodes.root_wait(by, nid, argv, why=why, timeout=600)
+    if r.get("error"):
+        return {"code": 1, "out": r["error"]}
+    return {"code": r.get("code") or 0, "out": r.get("out") or ""}
 
 
 def outcome(rid, project=""):

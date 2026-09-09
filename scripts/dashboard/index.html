@@ -1249,6 +1249,8 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A question somebody is blocked on. Bordered rather than merely spaced,
    because a question on a dashboard is easy to scroll past. */
 .row.phask{border-left:2px solid var(--accent)}
+.row.ndask{border-left:2px solid var(--bad)}
+.row.ndask .name{color:var(--bad)}
 /* Adding goes at the top: the control that adds to a view is the first band
    under its head row, one shape on every view, and its form unrolls in its
    place — never at the foot, where a phone scrolls past the list to find it. */
@@ -13445,10 +13447,12 @@ function drawBell(){
   const when = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
   const rows = [
     // Above everything the page merely said: somebody is blocked on these.
-    ...asks.map(a => `<div class="bnote ask">
-        <div class="btag">needs your answer</div>
+    // A root ask (roadmap R38) is the same row with the stakes said: which
+    // machine, and that it is root there. `#` is the prompt root gets.
+    ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
+        <div class="btag">${a.kind === "root" ? `root on ${esc(a.node_name)} — needs your answer` : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">adb ${esc(a.cmd.join(" "))}</div>
+        <div class="bcmd">${a.kind === "root" ? "#" : "adb"} ${esc(a.cmd.join(" "))}</div>
         <div class="bfoot"><span>${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>

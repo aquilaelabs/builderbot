@@ -3043,7 +3043,7 @@ def snapshot(who):
         # the requests themselves: this rides on every poll, and it exists so
         # the Phone tab knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
-        "phone_asks": len(phone.requests_open(users.uid_of(who))),
+        "phone_asks": len(phone.requests_open(users.uid_of(who), users.is_admin(who))),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
@@ -5226,7 +5226,8 @@ class Handler(BaseHTTPRequestHandler):
         is the desktop's, which is emphatically not the phone, and filling the
         field with it would be a confident wrong answer — the worst kind.
         """
-        out = phone.payload(users.uid_of(self._who()), node=node, probe=probe)
+        out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
+                            admin=users.is_admin(self._who()))
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -5565,20 +5566,26 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "disconnect":
             r = phone.disconnect(nid, uid, me)
         elif act == "ask":
-            # A session asking to reach the phone on its project's node. It
-            # runs nothing itself; the account that connected that phone is
-            # asked, and on Allow the node runs it. The project is the
-            # session's own; a person asking through the API names one they
-            # may see.
+            # A session asking to reach the phone on its project's node —
+            # or, with kind "root", for one command as root there (roadmap
+            # R38). It runs nothing itself; the account that connected that
+            # phone, or an administrator, is asked, and on Allow the node
+            # runs it. The project is the session's own; a person asking
+            # through the API names one they may see.
             proj = who.get("session") or field(req, "project")
             if proj and not who.get("session") and not users.may_see(who, proj):
                 proj = ""
             pnid = prefs.get(proj)["node"] if proj else ""
             pn = nodes.node(pnid) if pnid and not NODES_OK else None
-            r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                          pn["name"] if pn else "", proj)
+            if field(req, "kind") == "root":
+                r = phone.ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                                   pn["name"] if pn else "", proj,
+                                   bool(((pn or {}).get("reported") or {}).get("sandbox")))
+            else:
+                r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                              pn["name"] if pn else "", proj)
         elif act == "allow" or act == "deny":
-            r = phone.decide(req.get("id"), act == "allow", uid, me)
+            r = phone.decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
         elif act == "outcome":
             r = phone.outcome(req.get("id"), project=who.get("session") or "")
             if not r.get("error"):

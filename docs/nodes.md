@@ -1078,7 +1078,15 @@ system packages (named per family under `system` in the catalog), and the
 census reports both with the init system (`distro`), so the row says what
 a change would go through.
 Another distribution is another backend in the agent, not another job
-spec. The controller offers system jobs only to an
+spec. A fourth system job, `apply: root` (roadmap R38), runs ONE command as
+root that an administrator allowed: a session asks with `bb root run --why
+"..." -- CMD`, the request waits on the administrators the way a phone
+request waits on the phone's owner (same list, `kind: root`, on the Nodes
+tab and the bell), Allow queues the job with the reason and the approver in
+its spec so its log is the record, and only a sandbox node takes it — the
+agent refuses it without the stamp like storage and network. It is not
+sudo: there is no second command without a second question, and nothing
+pretends. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
 agent refuses them without bb-sandbox whatever the row says. On the Nodes
 tab the row grows a *storage & network* fold: the editor is a draft that

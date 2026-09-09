@@ -442,6 +442,12 @@ bb phone run --why "..." -- adb args...
                    ask to reach it — the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb root            what root commands are waiting on an administrator
+bb root run --why "..." -- CMD...
+                   ask for ONE command as root on this project's node — an
+                   administrator allows or denies it on the Nodes tab or the
+                   bell, and the node runs that command and nothing else. Not
+                   sudo: a second command is a second question
 bb catchup         what has happened here lately: commits with the first line
                    of their bodies, what moved in the notebook, the builds this
                    box archived, and which image it is actually running
@@ -2857,6 +2863,16 @@ phone's owner and waits; on **Allow** the node runs it and hands back the
 output. There is no setting that skips the question. The reason is required,
 not optional — approving a command you did not write, with no sentence saying
 what it is for, is a guess.
+
+**Root on a node has the same shape.** A session has no sudo there and gets
+none; what it can do is `bb root run --why "..." -- CMD`, which puts the
+reason and the exact command in front of every administrator — on the Nodes
+tab and the bell — and waits. Allow runs that one command as root on the
+project's node, as a system job whose log opens with the reason and who
+allowed it, so the Jobs tab is the record; Deny says no. Only a node
+provisioned as a sandbox takes it — somebody's own machine is not the
+controller's to run root on — and there is no fake sudo either: a refusal
+that says why beats a success that did not happen.
 
 That is a door that is shut by default rather than a wall. A session on the
 node could set `ANDROID_ADB_SERVER_PORT` itself and go straight there;

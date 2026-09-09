@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.32"
+AGENT_VERSION = "0.4.33"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -2979,11 +2979,13 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
         cfg = spec.get("config") if isinstance(spec.get("config"), dict) else {}
+        if what == "root":
+            return self._apply_root(job, cfg)
         if what == "storage":
             return self._apply_storage(job, cfg)
         if what == "network":
@@ -3015,6 +3017,27 @@ class Agent:
             if line.strip():
                 job.say(line + "\n")
         return p.returncode
+
+    def _apply_root(self, job, cfg):
+        """One command as root, that a person allowed (roadmap R38). The
+        controller queues this only after an administrator read the reason
+        and the exact command and pressed Allow; the job's log opens with
+        both and who it was, so the Jobs tab is the record. Nothing about
+        the command is interpreted here: it is run as given, as root, once,
+        and its output and exit code go back. Not sudo — there is no second
+        command without a second question."""
+        argv = [str(a) for a in (cfg.get("argv") or []) if str(a)]
+        if not argv:
+            job.say("refused: nothing to run\n")
+            return "failed", 64
+        job.say(f"# root on this node, allowed by {cfg.get('by') or 'the operator'}: "
+                f"{cfg.get('why') or '(no reason given)'}\n")
+        try:
+            timeout = max(1, min(int(cfg.get("timeout") or 600), 3600))
+        except (TypeError, ValueError):
+            timeout = 600
+        rc = self._sh(job, argv, timeout=timeout)
+        return ("succeeded" if rc == 0 else "failed"), rc
 
     def _apply_storage(self, job, cfg):
         """Mounts as a diff against what bb-sandbox has — remove what is no

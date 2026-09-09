@@ -329,6 +329,27 @@ off. And do not go looking for the port the phone is on: reaching around
 this is possible, in the way most things on a machine are possible, and it
 is the one thing here that touches hardware somebody is holding.
 
+## One command as root, if you truly need it
+
+You have no sudo on a node and will not get one. Almost nothing needs it:
+packages are the Tools tab's, mounts and addresses the Nodes tab's, and a
+tool that clones, builds or syncs runs as you. When something genuinely
+does — a kernel module, a device permission, a daemon setting — ask for that
+one command the way you ask for the phone:
+
+```bash
+bb root                                     # what is waiting on an administrator
+bb root run --why "..." -- modprobe binder_linux
+```
+
+That puts your reason and the exact command in front of the administrators
+and waits; on **Allow** the node runs that command as root and hands you the
+output, on **Deny** you are told no. A second command is a second question.
+It works only on a node provisioned as a sandbox — somebody's own machine is
+not yours to run root on — and a project with no node has nothing to ask.
+Write the reason you would want to read, and ask for the smallest command
+that does the job, not a shell.
+
 ## What version this is
 
 Every project here uses the same scheme, and `bb version` is what makes it the

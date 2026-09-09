@@ -658,6 +658,22 @@ function renderNodesInto(i){
     // button for the round trip; this is what keeps it grey afterwards,
     // through the repaint that replaces the element.
     const inflight = t => (n.jobs || []).some(j => j.type === t);
+    // What a session is waiting on, as root, on THIS machine (roadmap R38):
+    // above everything else on the row, because somebody is blocked on it
+    // and it is the one thing here that runs as root. From the phone's
+    // answer, which carries every ask for this account; the server sends a
+    // root ask to administrators only, so a user sees none.
+    const rootAsks = (typeof ph !== "undefined" && ph?.asks || []).filter(a => a.kind === "root" && a.node === n.id);
+    const askRows = rootAsks.map(a => `<div class="row ndask">
+      <div class="grow"><div class="name">root: ${esc(a.why)}</div>
+        <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>
+        <div class="sub">${esc(a.project || "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
+          ? `${Math.floor(a.left / 60)} min left to answer`
+          : `${a.left}s left to answer`}</div></div>
+      <span class="acts">
+        <button type="button" data-rdeny="${a.id}">Deny</button>
+        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
+      </span></div>`).join("");
     // An update was pressed less than three minutes ago and the agent has
     // not come back with the new digest: the job row is gone the moment the
     // agent swaps itself in, but the row only learns that from its next
@@ -695,7 +711,7 @@ function renderNodesInto(i){
     // Every live agent node gets the plane: the runner needs no stamp. What
     // inside it needs one — Storage and Network — nodeConfSections decides.
     const plane = n.kind === "agent" && !pending;
-    return `
+    return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
@@ -734,6 +750,14 @@ function wireNodesTab(root){
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
+  // The root asks answer through the phone's endpoint, which holds the one
+  // list of asks; phFetch redraws this tab when the answer comes back.
+  root.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "running";
+    phFetch({action: "allow", id: Number(b.dataset.rallow)});
+  });
+  root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   // ---- enrolling, in a dialog -------------------------------------------
   // Written here rather than into the tab, so a poll landing mid-type cannot
   // take the name with it: the box is outside this tab's DOM and survives

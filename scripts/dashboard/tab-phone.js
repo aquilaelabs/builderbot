@@ -51,7 +51,8 @@ async function phFetch(body, probe){
   // ask it once.
   if (probe && !body && !knew && phNode) return phFetch(null, true);
   phRev++;
-  if (tabs.some(t => t.kind === "phone")) drawPanes();
+  // The Nodes tab draws the root asks from the same answer.
+  if (tabs.some(t => t.kind === "phone" || t.kind === "nodes")) drawPanes();
   drawBell();          // the same asks, in the header
 }
 
@@ -62,7 +63,9 @@ function renderPhoneInto(i){
     d.list.innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
-  const nodes = ph.nodes || [], asks = ph.asks || [];
+  // The root asks share the list (one bell, one fetch) and are the Nodes
+  // tab's to show: they are about a machine, not a handset.
+  const nodes = ph.nodes || [], asks = (ph.asks || []).filter(a => a.kind !== "root");
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   const dev = n?.phone;
   // This browser's own address wins when it is the phone: viewing the
