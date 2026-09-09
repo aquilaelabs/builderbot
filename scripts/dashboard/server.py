@@ -3460,20 +3460,22 @@ class Handler(BaseHTTPRequestHandler):
         suggestion, because the ttyd URL is reachable directly.
         """
         arg = _term_arg(rest)
+        me = self._who()
+        uid = users.uid_of(me)
+        # No author, no terminal: every project is a repository, a commit
+        # with no name and email behind it is one git refuses halfway through
+        # the work, and a shell is where git is typed. bb-tty asks the same
+        # question on the node, from the same answer (bb settings --json's
+        # git_ready).
+        if uid and (arg == "shell" or arg.startswith("sh:") or arg.startswith("claude:")) \
+                and not users.git_ready(me):
+            return (f"{me['name']} has no name and email for commits yet — set them "
+                    "on your Profile (the gear in the header) and open this again")
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
-        me = self._who()
-        uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        # No author, no session: every project is a repository, and a commit
-        # with no name and email behind it is one git refuses halfway through
-        # the work. bb-tty asks the same question on the node, from the same
-        # answer (bb settings --json's git_ready).
-        if not users.git_ready(me):
-            return (f"{me['name']} has no name and email for commits yet — set them "
-                    "on your Profile (the gear in the header) and open this again")
         # A session on a node is in THAT machine's tmux with that account's
         # login there, neither of which this container can see: the
         # announcement and the one-Anthropic-account rule are the node's
@@ -4617,6 +4619,11 @@ class Handler(BaseHTTPRequestHandler):
         if not me:
             return self._json({"error": "not signed in"}, 401)
         argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
+        # git's network half runs under the account's author like everything
+        # else it does with a repository: none set, none run.
+        if argv and argv[0] == "git" and users.uid_of(me) and not users.git_ready(me):
+            return self._json({"error": "no name and email for commits yet — set them on "
+                                        "your Profile (the gear in the dashboard's header) first"}, 403)
         if not argv or argv[0] not in RELAY_VERBS:
             return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
                                "it answers for the machine the session is on"}, 400)

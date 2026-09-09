@@ -980,6 +980,32 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      `on a phone the tooltip is placed inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
   await page.click('.profiletab h4');
   await page.setViewportSize({ width: 1280, height: 800 });
+  // No author, no terminal and no git: an account with no name and email
+  // is refused a shell as well as a session at the door, and bb git for it
+  // is refused on the relay — every project is a repository, and a shell is
+  // where git is typed. The account made above has no author until it is
+  // given one; then everything opens.
+  {
+    const noauthor = { Authorization: 'Basic ' + Buffer.from('noauthor:tabmadepw1').toString('base64') };
+    await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', name: 'noauthor', password: 'tabmadepw1', role: 'admin' }) })).json());
+    const sh = await bare('/term/ws?arg=sh:1:beta', { headers: noauthor });
+    ok(sh.status === 409 && /no name and email/.test((await sh.json()).error || ''),
+       'an account with no author is refused a shell at the door, and told where to set one');
+    const git = await bare('/api/v1/bb', { method: 'POST',
+      headers: { ...noauthor, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ argv: ['git', 'ls-remote'], cwd: `${DIR}/ws/beta` }) });
+    ok(git.status === 403 && /no name and email/.test((await git.json()).error || ''),
+       '...and bb git for it is refused on the relay');
+    await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
+    ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
+       '...and a name and email on the Profile open the door');
+    await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remove', name: 'noauthor' }) })).json());
+  }
   // Made here, removed here: users.json is not reset between files.
   await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },

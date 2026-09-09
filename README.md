@@ -1569,9 +1569,11 @@ The gear in the header keeps what belongs to this **browser** — theme and
 layout — and one entry, **Profile**, opening the signed-in account's own
 tab: their account name, their name and email, the name and email their
 commits carry (blank means the ones above), and a password change that asks
-for the current one first. A Claude session does not start for an account
-with no name and email for commits — every project is a repository — and the
-row's Claude button says so until the Profile has them. The commit identity is per account rather than per project, and
+for the current one first. Neither a Claude session nor a shell starts for an account with no
+name and email for commits, and `bb git` refuses for it — every project is a
+repository, and a shell is where git is typed — and the row's buttons say so
+until the Profile has them. Blank git fields fall back to the name and email
+above and to nothing else; no address is ever made up. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured — so two people on one
 project are two authors. The **Administration** card on the sidebar, shown

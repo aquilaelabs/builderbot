@@ -6110,8 +6110,11 @@ function projectRow(p, live, cls, inTab){
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        ${notMine(p) ? "disabled" : ""}
-        title="${notMine(p) ? NOT_MINE_WHY : "shell — open another terminal here"}"
+        ${notMine(p) || state?.git_ready === false ? "disabled" : ""}
+        title="${notMine(p) ? NOT_MINE_WHY
+                : state?.git_ready === false
+                  ? "set your name and email for commits on your Profile (the gear) first — a shell is where git is typed"
+                : "shell — open another terminal here"}"
         >${TERM}</button>` : ""}
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"

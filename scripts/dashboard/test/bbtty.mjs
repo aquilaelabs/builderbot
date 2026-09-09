@@ -211,6 +211,19 @@ out = connect(0, { FAKE_GIT_READY: '0' });
 await sleep(400);
 ok(/no name and email for commits/.test(out) && !alive('claude-alpha'),
    'an account with no author for its commits is refused a Claude session, and told where to set one');
+// ...and a shell, which is where git is typed.
+{
+  try { execFileSync('tmux', ['kill-session', '-t', 'shell-1'], { env: { ...process.env, TMUX: '' } }); } catch { /* none */ }
+  let shOut;
+  try {
+    shOut = execFileSync('bash', [BBTTY, 'sh:1:alpha'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
+             HOME: join(DIR, 'home'), DASHBOARD_STATE: join(DIR, 'state'), FAKE_GIT_READY: '0' } });
+  } catch (e) { shOut = `${e.stdout || ''}${e.stderr || ''}`; }
+  ok(/a shell does not start/.test(shOut) && !alive('shell-1'),
+     'an account with no author is refused a shell too, in the same words');
+}
 
 // And unlocking really lets it back in: a gate that cannot be opened again is
 // a different bug, and one nobody notices until they need it.
