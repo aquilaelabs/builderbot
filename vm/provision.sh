@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Turn a fresh Debian or Ubuntu VM into BuilderBot's Docker sandbox.
+# Turn a fresh Debian, Ubuntu or Rocky Linux 9 machine into a BuilderBot node.
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
@@ -186,27 +186,49 @@ fi
 
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 . /etc/os-release
+# Two families, one script. FAMILY decides the package manager, Docker's
+# repository, where ttyd comes from and who holds the firewall; everything
+# BuilderBot's own — the accounts, the stores, fstab, the agent — is the
+# same on both, because none of it is the distribution's.
 case "${ID:-}" in
-    debian|ubuntu) ;;
-    *) echo "this expects Debian or Ubuntu, not ${ID:-unknown}" >&2; exit 1 ;;
+    debian|ubuntu) FAMILY=deb ;;
+    rocky|rhel|almalinux|centos) FAMILY=rhel ;;
+    *) echo "this expects Debian, Ubuntu or Rocky Linux (RHEL 9 family), not ${ID:-unknown}" >&2; exit 1 ;;
 esac
+# pkg NAME... — install what is named, quietly, with the manager the family
+# has. The names are the family's own where they differ (nfs-common against
+# nfs-utils), given by the caller.
+pkg() {
+    if [ "$FAMILY" = deb ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"
+    else
+        dnf -y -q install "$@"
+    fi
+}
 
 say "packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-# Only what the agent, Docker and the mounts need. nfs-common matters if
+if [ "$FAMILY" = deb ]; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+fi
+# Only what the agent, Docker and the mounts need. The NFS client matters if
 # --nfs is used and costs nothing if not. What a PACKAGE needs from the
 # machine — Chromium's forty libraries, say — is that package's business:
 # its recipe in config/packages.json names them under `system`, and the
 # agent installs them when the package is (unzip used to be here for the
 # android tools; that recipe unzips with python now).
-apt-get install -y -qq ca-certificates curl gnupg nfs-common
+if [ "$FAMILY" = deb ]; then
+    pkg ca-certificates curl gnupg nfs-common
+else
+    pkg ca-certificates curl gnupg2 nfs-utils
+fi
 # ...and the guest agent only where there is a host to talk to, so Unraid can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM — this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if systemd-detect-virt --quiet --vm; then
-    apt-get install -y -qq qemu-guest-agent
+    pkg qemu-guest-agent
+    [ "$FAMILY" = rhel ] && systemctl enable --now qemu-guest-agent >/dev/null 2>&1 || true
 fi
 
 say "docker"
@@ -233,7 +255,15 @@ docker_suite() {
     return 1
 }
 
-if ! command -v docker >/dev/null 2>&1; then
+if ! command -v docker >/dev/null 2>&1 && [ "$FAMILY" = rhel ]; then
+    # Docker's rhel repository serves Rocky and Alma too — same packages, the
+    # $releasever in the repo file resolving to 9. podman-docker, if the
+    # image came with it, would answer `docker` with podman: taken out.
+    dnf -y -q remove podman-docker >/dev/null 2>&1 || true
+    pkg dnf-plugins-core
+    dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+    pkg docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+elif ! command -v docker >/dev/null 2>&1; then
     case "$ID" in
         ubuntu) suite="$(docker_suite "$VERSION_CODENAME" noble jammy)" || true ;;
         *)      suite="$(docker_suite "$VERSION_CODENAME" bookworm bullseye)" || true ;;
@@ -285,7 +315,7 @@ stamp_daemon() {
     # An existing file is merged rather than replaced — it may carry storage
     # or logging settings this script knows nothing about, and a sandbox that
     # came up with different storage would be a surprising way to find out.
-    have_jq || apt-get install -y -qq jq >/dev/null 2>&1 || true
+    have_jq || pkg jq >/dev/null 2>&1 || true
     if ! have_jq; then
         warn "/etc/docker/daemon.json exists and jq is not available to merge"
         warn "add \"labels\": [\"${label}\"] to it by hand, then: systemctl restart docker"
@@ -422,10 +452,32 @@ else
     [ -n "$SSH_KEY" ] && authorize "$SESSION_NAME" "$SSH_KEY"
     # What a session needs on the box: tmux keeps it alive across a dropped
     # browser, ttyd is what the controller's terminal proxy dials, and jq
-    # and git are what bb-tty and bb reach for. All from the distribution —
-    # ttyd has been in Debian and Ubuntu's universe for years.
-    apt-get install -y -qq tmux ttyd jq git >/dev/null 2>&1 \
-        || warn "tmux, ttyd, jq or git did not install — sessions will not start until they do"
+    # and git are what bb-tty and bb reach for. From the distribution where
+    # it has them — ttyd has been in Debian and Ubuntu's universe for years —
+    # and, on the RHEL family, which carries no ttyd at all, the static
+    # binary from ttyd's own release, pinned to this machine's architecture.
+    if [ "$FAMILY" = deb ]; then
+        pkg tmux ttyd jq git >/dev/null 2>&1 \
+            || warn "tmux, ttyd, jq or git did not install — sessions will not start until they do"
+    else
+        pkg tmux jq git >/dev/null 2>&1 \
+            || warn "tmux, jq or git did not install — sessions will not start until they do"
+        if ! command -v ttyd >/dev/null 2>&1; then
+            case "$(uname -m)" in
+                x86_64) tarch=x86_64 ;;
+                aarch64) tarch=aarch64 ;;
+                *) tarch="" ;;
+            esac
+            if [ -n "$tarch" ] && curl -fsSL -o /usr/local/bin/ttyd.new \
+                    "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${tarch}"; then
+                chmod 0755 /usr/local/bin/ttyd.new && mv /usr/local/bin/ttyd.new /usr/local/bin/ttyd
+                printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
+            else
+                rm -f /usr/local/bin/ttyd.new
+                warn "ttyd did not install — no RHEL repository carries it; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
+            fi
+        fi
+    fi
     # Claude Code, into the account's own home by its native installer: no
     # node runtime to keep up, and `claude update` from inside a session
     # keeps it current. Best effort — a node without internet at provision
@@ -1098,6 +1150,15 @@ for spec in "${NFS[@]:-}"; do
     /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount — see the check below"
     p="${spec%:ro}"; MOUNTED+=("${p##*:}")
 done
+# SELinux stays enforcing on the RHEL family — nothing here needs it off —
+# but by default it stops a container from reading an NFS mount, which is
+# exactly what a dev instance's bind of the projects share is. One boolean,
+# persistent, says containers may; the mounts themselves are unaffected.
+if [ "${#NFS[@]}" -gt 0 ] && [ -n "${NFS[0]:-}" ] && command -v getenforce >/dev/null 2>&1 \
+        && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
+    setsebool -P virt_use_nfs 1 2>/dev/null \
+        || warn "could not set virt_use_nfs — containers will be refused the NFS shares until it is on"
+fi
 # Checked rather than assumed, which is the difference between finding out now
 # and finding out from an app that came up with no data. bb-sandbox owns the
 # check for the same reason it owns the writing — one implementation — and the
@@ -1129,7 +1190,7 @@ AGENT=/usr/local/sbin/builderbot-agent
 UNIT=/etc/systemd/system/builderbot-agent.service
 if [ -n "$CONTROLLER" ]; then
     say "agent: enrolling with ${CONTROLLER}"
-    apt-get install -y -qq python3
+    pkg python3
     hdr="$(mktemp)"
     curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
@@ -1243,8 +1304,23 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}')"
     if [ -z "$ctl_ip" ]; then
         warn "could not resolve the controller's host ${ctl_host} — the session ports are NOT filtered"
+    elif systemctl is-active --quiet firewalld 2>/dev/null; then
+        # firewalld owns nftables here (the RHEL family, or a Debian that
+        # chose it): a table of our own beside it would be flushed on its
+        # next reload. Its rich rules say the same thing — the two ports to
+        # the controller and to nobody else — and the default zone already
+        # drops what no rule allows. Rewritten on every run, like the table.
+        case "$ctl_ip" in *:*) fam=ipv6 ;; *) fam=ipv4 ;; esac
+        for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
+            firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
+        done
+        for port in 7681 7682; do
+            firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
+        done
+        firewall-cmd --reload >/dev/null
+        printf '   firewalld: from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
     else
-        apt-get install -y -qq nftables >/dev/null 2>&1 || true
+        [ "$FAMILY" = deb ] && { pkg nftables >/dev/null 2>&1 || true; }
         case "$ctl_ip" in *:*) fam=ip6 ;; *) fam=ip ;; esac
         install -d -m 0755 /etc/builderbot
         cat > /etc/builderbot/session-ports.nft <<EOF

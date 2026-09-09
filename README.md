@@ -3475,7 +3475,8 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
-vm/provision.sh                  turns a Debian/Ubuntu VM into the Docker sandbox, and enrolls it as a node
+vm/provision.sh                  turns a Debian, Ubuntu or Rocky Linux 9 machine into a node — the Docker sandbox, the stores, the session half — and enrolls it
+vm/unraid-domain.xml             the node as an Unraid VM (Ubuntu); unraid-domain-rocky9.xml is the same machine with the Rocky installer
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

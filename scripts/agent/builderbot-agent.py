@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.29"
+AGENT_VERSION = "0.4.30"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -278,6 +278,11 @@ def has_systemd():
         return pin == "1"
     return os.path.isdir("/run/systemd/system")
 DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
+# ...and the RHEL family's pair, for a node provisioned on Rocky (vm/provision.sh
+# takes either): a recipe names its packages per family under `system.apt`
+# and `system.dnf`, and the agent uses the list for the manager it has.
+DNF_BIN = os.environ.get("BUILDERBOT_DNF_BIN", "dnf")
+RPM_BIN = os.environ.get("BUILDERBOT_RPM_BIN", "rpm")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
@@ -2403,7 +2408,8 @@ class Agent:
         return "succeeded", 0
 
     def _system_deps(self, job, name, into):
-        """A recipe's `system.apt` packages, from the catalog the bundle
+        """A recipe's `system.apt` (or `system.dnf`, on the RHEL family)
+        packages, from the catalog the bundle
         carries: installed here, as root, on a node this agent may
         administer (the sandbox stamp — roadmap #23 refines it to a class);
         named and left to the owner anywhere else. The recipe itself runs
@@ -2420,13 +2426,29 @@ class Agent:
             pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
         except (OSError, ValueError):
             return True
-        want = [str(x) for x in ((pkg.get("system") or {}).get("apt") or []) if x][:64]
+        system = pkg.get("system") or {}
+        # Which family this machine is decides which list applies. A recipe
+        # that names packages for the other family only is not wrong, it is
+        # incomplete for this node: say so with the names it does have, so
+        # the owner can find their equivalents, and carry on to the recipe.
+        if shutil.which(DPKG_BIN):
+            fam, query, install = "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
+        elif shutil.which(RPM_BIN):
+            fam, query, install = "dnf", [RPM_BIN, "-q"], [DNF_BIN, "-y", "-q", "install"]
+        else:
+            fam, query, install = "", [], []
+        want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
         if not want:
+            other = next((k for k in ("apt", "dnf") if k != fam and system.get(k)), "")
+            if other:
+                job.say(f"{name} needs system packages its recipe names for {other} only; "
+                        f"this node's are its owner's to install — the {other} names: "
+                        f"{' '.join(str(x) for x in system[other][:64])}\n")
             return True
         missing = []
         for x in want:
-            p = _run([DPKG_BIN, "-s", x])
-            if not p:
+            p = _run(query + [x])
+            if not p or (fam == "dnf" and "not installed" in p):
                 missing.append(x)
         if not missing:
             return True
@@ -2438,10 +2460,10 @@ class Agent:
         job.say(f"== system packages for {name}: {' '.join(missing)}\n")
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
         try:
-            p = subprocess.run([APT_BIN, "install", "-y", "-qq", *missing], env=env,
+            p = subprocess.run([*install, *missing], env=env,
                                capture_output=True, text=True, timeout=900, check=False)
         except (OSError, subprocess.SubprocessError) as e:
-            job.say(f"{APT_BIN}: {e}\n")
+            job.say(f"{install[0]}: {e}\n")
             return False
         if p.returncode != 0:
             job.say((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])

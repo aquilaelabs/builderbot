@@ -249,7 +249,8 @@ headless, no desktop. It is what most Docker instructions assume, it turns on
 unattended security updates by default, which is worth having on a box nobody
 logs into, and Docker's repository already publishes for it (`resolute`).
 Debian 13 works identically if you would rather have the leaner machine;
-`provision.sh` accepts either.
+`provision.sh` accepts either. **Rocky Linux 9** works too — see the section
+after this one for what differs; the installer screens below are Ubuntu's.
 
 Take the installer's defaults except for four screens, where the default is
 wrong for this particular machine:
@@ -274,6 +275,40 @@ wrong for this particular machine:
 Use `bb` as the username so it matches `--user bb` below, and take the normal
 Ubuntu Server rather than *minimized* — minimized strips editors and man
 pages, and this is a box you will eventually log into to work something out.
+
+### On Rocky Linux 9 instead
+
+`vm/unraid-domain-rocky9.xml` is the same machine with the Rocky installer in
+the drive (`Rocky-9-latest-x86_64-minimal.iso`), and `provision.sh` takes the
+RHEL family — Rocky, Alma, RHEL, CentOS Stream — by the same command line.
+Pick **Minimal Install**, create the `bb` user as an administrator on the
+user screen, and set the address static there or at the console with `nmcli`
+afterwards. The differences inside are the distribution's, not BuilderBot's:
+
+- packages come from `dnf`, and Docker from its own `rhel` repository, which
+  serves Rocky and Alma unchanged (`podman-docker`, if the image carried it,
+  is removed so `docker` is Docker);
+- `ttyd` is not in any RHEL repository, so the session half fetches the
+  static binary from ttyd's GitHub release into `/usr/local/bin`. That is the
+  one download in the script that is not a package manager's — an offline
+  node needs it copied in by hand, and the script says so;
+- **firewalld** holds the session ports: the same two rich rules, 7681 and
+  7682 from the controller's address and nobody else's, rewritten on each
+  run. The nftables file the Debian path writes is not used, because
+  firewalld would flush a table beside its own on its next reload;
+- **SELinux stays enforcing.** The one thing it blocks that a node does is a
+  container reading an NFS mount, so `--nfs` turns on `virt_use_nfs`;
+  nothing else needs a boolean, and turning SELinux off is not a step here;
+- **NetworkManager, not netplan** — so the Nodes tab's Network section is
+  refused on this node with that reason. Its Storage section works: fstab
+  is fstab.
+- a recipe's **system packages** come from `dnf` where the recipe names them
+  for it (`system.dnf` beside `system.apt` in `config/packages.json` — the
+  emulator's are there). One that names them for apt only says so on the
+  job, with the Debian names, and leaves them to the owner; Playwright's
+  browsers are that case today, so on Rocky `bb sdk install playwright`
+  lands the module and the browsers, and the forty libraries around them are
+  yours.
 
 Then run one script inside it:
 
@@ -341,12 +376,22 @@ only the suite name differs — saying so when it does.
 
 ## The domain XML
 
-`vm/unraid-domain.xml` is the whole machine. Create the VM in **Form view**
-first so Unraid makes the domain folder and the vdisk, then switch to **XML
-view** and paste it over what is there — keeping the `<uuid>` Unraid gave you,
-because the OVMF nvram file is named after it and a new one orphans it.
+`vm/unraid-domain.xml` is the whole machine; `vm/unraid-domain-rocky9.xml`
+is the same one with the Rocky installer and a different name. Create the VM
+in **Form view** first so Unraid makes the domain folder and the vdisk, then
+switch to **XML view** and paste it over what is there — keeping the `<uuid>`
+Unraid gave you, because the OVMF nvram file is named after it and a new one
+orphans it.
 
-Five things in it differ from Unraid's placeholder, each for a reason:
+What it is sized for: **16 GiB, 6 cores, a 200G disk.** The sandbox used to
+be a box that built the odd image; now it is where a project's Gradle build,
+the Android emulator with a system image behind it, a Claude session and
+its Playwright browsers all run, sometimes in the same afternoon, and the
+packages store lands on its disk unless the stores are pointed at a share.
+8 GiB and 4 cores still work for a Docker-only sandbox; the qcow2 only
+takes what is used, so the disk number costs nothing until it is needed.
+
+Then what differs from Unraid's placeholder, each for a reason:
 
 | | placeholder | this | why |
 |---|---|---|---|
@@ -355,6 +400,10 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 | memory backing | `nosharepages` | `memfd` + `shared` | virtiofs cannot work without it, and fails *silently* — the mounts simply never appear |
 | cputune | vCPU 0 pinned to cpuset 0 | none | that is the host's busiest core |
 | disk | *(absent)* | qcow2, `discard=unmap` | so the image shrinks again when Docker prunes, instead of only ever growing |
+| cpu | `host-passthrough` | the same, with a note | it is what puts `/dev/kvm` inside the guest — but only if the **host** has nested virtualization on (`options kvm-amd nested=1` or `kvm-intel`, in `/boot/config/modprobe.d/`, then a reboot). Without it the emulator on this node has no acceleration |
+| rng | *(absent)* | `virtio` from `/dev/urandom` | a fresh guest can otherwise sit at boot waiting on entropy before sshd and the agent's TLS come up |
+| serial | *(absent)* | `pty` | `virsh console` from the Unraid shell, for the day ssh is what broke |
+| GPU | *(absent)* | a commented `hostdev` block | for when the card moves to the node (roadmap R20); the guest half — driver and headless X server — is not in `provision.sh` yet, so it stays commented |
 
 ## Unraid settings that matter
 
