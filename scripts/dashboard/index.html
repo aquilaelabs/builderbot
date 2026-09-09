@@ -70,6 +70,10 @@
   color-scheme:dark;
   --tap:38px;
   --doc-w:1080px;
+  /* The widest a control, or a row of them, may be on a document surface or
+     a sidebar card: a field that runs the whole width of a tab reads as a
+     form pretending to be a page (docs/design-language.md, Controls). */
+  --ctl-w:30rem;
   /* The inset of a band on a document surface — a notebook row, a modal's
      field, a document tab's row, a findings rule. It was retyped as 11px 14px
      at every band and as 9px 11px at a few that were written against the
@@ -377,8 +381,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    for a field that owns its row and wrong for one sitting between a label and
    a button — unscoped, this lost the tie on source order and the row broke
    into four stacked lines. */
-.uimenu .logdays input{width:5em;min-height:var(--tap);text-align:center;
-  flex:0 0 auto}
+/* Two selectors deep, to outrank the document-tab skin's width:100%
+   further down, which is right for a field that owns its row. */
+.logset .logdays input:not([type=checkbox]),.uimenu .logdays input{width:5em;
+  min-height:var(--tap);text-align:center;flex:0 0 auto}
 /* Pushed to the end of the row so it reads as acting on the field beside it,
    and never shrunk below a tap target. */
 .logdays button{margin-left:auto;flex:0 0 auto;min-height:var(--tap)}
@@ -387,12 +393,13 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    characters wide, which is the number field's width above. */
 .setrow label{flex:0 0 auto}
 .setrow input[type=text]{flex:1 1 12em;min-width:0}
+.logset .setrow select{width:auto;flex:0 1 auto}
 .setrow .pill{flex:0 0 auto}
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
-  flex:1 1 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
+  flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-body);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
@@ -813,6 +820,8 @@ input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"]))
 textarea,select{
   background:var(--sunk);color:var(--ink);border:1px solid var(--line);
   border-radius:6px}
+input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
+
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .uimenu input,.uimenu textarea,.uimenu select,
@@ -1169,7 +1178,7 @@ textarea,select{
 @media(max-width:600px){
   .todoadd{flex-wrap:wrap}
   .todoadd input{flex:1 1 100%}
-  .todoadd button{flex:1 1 auto}
+  .todoadd button{flex:0 0 auto}
 }
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
@@ -1880,17 +1889,29 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A control never spans its container. The cap goes on the ROW where there
+   is one — an action bar, a filter bar, a picker row, an add form — so the
+   controls in it stop short together and are not capped a second time
+   inside it; a lone control takes the cap itself. The union of a row's
+   controls is what uniform.mjs measures, against the surface holding it.
+   Terminals and logs are not controls and are not here. */
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts){
+  max-width:min(var(--ctl-w),88%)}
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+  max-width:min(var(--ctl-w),88%)}
 .actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
 .actbar .state{flex:1 1 100%;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 .actbar .lead{margin-right:auto}
+/* A select in a bar is one control among its buttons, sized like them —
+   not the field-that-owns-its-row width the skin gives a select. */
+.actbar select{width:auto;flex:0 0 auto}
+.actbar input{width:auto;flex:0 1 12em;min-width:0}
 @media(max-width:600px){
-  .actbar button,.actbar select{flex:1 1 auto;min-height:var(--tap)}
-  /* ...except a lone destructive one. Sharing the width makes a SET of
-     buttons even, which is the point; doing it to a single Forget this makes
-     the one irreversible control on the screen the biggest thing on it. It
-     keeps the finger height and gives up the width. A lone Apply still
-     stretches — that one is the section's whole purpose. */
-  .actbar button.danger:only-of-type{flex:0 0 auto}
+  /* The finger height, and nothing of the width: a phone's action bar used
+     to share the row between its buttons, which made every set of two span
+     the screen edge to edge — the shape the width rule above forbids. The
+     buttons keep their own size and sit at the right, as on a desktop. */
+  .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
 }
 button[aria-busy="true"]{opacity:.75}
 
@@ -1923,7 +1944,7 @@ button[aria-busy="true"]{opacity:.75}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
-#rnBuildCmd,#rnTestCmd,#rnGitName{margin-bottom:6px}
+#rnBuildCmd,#rnTestCmd{margin-bottom:6px}
 /* The node picker and Refresh on one line, the button to the right of the
    thing it re-reads. It wraps on a narrow phone rather than squeezing the
    select, which is the control somebody is actually aiming at.
@@ -2829,14 +2850,6 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint">Run with sh -c in the snapshot's root on the node. Files
         matching the outputs come back into dist/ with a note of what built them.</div>
     </div>
-    <!-- Whose commits these are. A project's own rather than the container's:
-         two projects may be two people's, and a session's git reads the repo. -->
-    <div class="field">
-      <label for="rnGitName">Commit identity — the name and email on this project's commits</label>
-      <input id="rnGitName" autocomplete="off" spellcheck="false" placeholder="name">
-      <input id="rnGitEmail" autocomplete="off" spellcheck="false"
-             placeholder="email — a GitHub noreply address keeps yours out of the log">
-    </div>
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
@@ -3014,6 +3027,16 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="pNameHint"></div>
       <div class="hint" id="pNamePreview" hidden></div>
     </div>
+    <!-- A code base somebody already has, for a fresh local repo: unpacked
+         into the new directory before git init. Uploaded on Create rather
+         than on choosing, so a change of mind costs nothing. -->
+    <div class="field" id="pArchiveField">
+      <label for="pArchive">Start from an archive <span class="dim">— optional</span></label>
+      <input id="pArchive" type="file"
+             accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
+      <div class="hint">zip or tar (gz, bz2, xz), unpacked into the new directory
+        before git init; a single top-level folder inside is dropped.</div>
+    </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
@@ -3190,6 +3213,15 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
+      </div>
+    </div>
+    <!-- What only an administrator touches: the controller's own settings
+         and the accounts. An account that is not one does not see the card
+         at all — a card of dead buttons would be a question with no answer. -->
+    <div class="card" data-card="admin" id="cardAdmin">
+      <h2>Administration</h2>
+      <div class="macros">
+        <button id="bSettings" onclick="openSettingsTab()">Controller settings</button>
         <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
     </div>
@@ -3259,6 +3291,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 <script src="tab-jobs.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
+<script src="tab-profile.js"></script>
 
 <script>
 "use strict";
@@ -3624,6 +3657,9 @@ const TABKINDS = {
   users:    { multi: false, label: () => "Users",
               render: (i) => renderUsersInto(i), live: () => usersRev,
               open: () => loadUsers() },
+  profile:  { multi: false, label: () => "Profile",
+              render: (i) => renderProfileInto(i), live: () => profileRev,
+              open: () => loadProfile() },
   findings: { multi: false, label: () => "Analysis",
               render: (i) => renderFindingsInto(i),
               // The ages list as well as the mtime: the mtime is a MAX, so a
@@ -4710,7 +4746,7 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: "", git_name: "", git_email: ""};
+                 gate: ""};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
@@ -4723,8 +4759,7 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
-               gate: gateKey(p?.prefs?.gate),
-               git_name: p?.prefs?.git_name || "", git_email: p?.prefs?.git_email || ""};
+               gate: gateKey(p?.prefs?.gate)};
   rnFillNode();
   rnFillPrefsRest(p);
 }
@@ -4761,8 +4796,6 @@ function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
-  $("rnGitName").value = p?.prefs?.git_name || "";
-  $("rnGitEmail").value = p?.prefs?.git_email || "";
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
     if (el.dataset.built !== "1"){
@@ -5684,8 +5717,8 @@ function drawUiMenu(){
         <span class="swa"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
-    <h4>Controller</h4>
-    <button type="button" id="uiSettings">All settings…</button>`;
+    <h4>Account</h4>
+    <button type="button" id="uiProfile">Profile…</button>`;
   el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
@@ -5693,8 +5726,8 @@ function drawUiMenu(){
   // BROWSER's — theme, layout — and everything the controller owns lives on
   // the Settings tab, where it has room to say what it costs. The log
   // section that used to render here moved with that rule.
-  el.querySelector("#uiSettings").onclick = () => { toggleUiMenu(false);
-                                                    openSettingsTab(); };
+  el.querySelector("#uiProfile").onclick = () => { toggleUiMenu(false);
+    openProfileTab(); };
 }
 
 // ---- logs --------------------------------------------------------------
@@ -7114,8 +7147,16 @@ async function openDevEnv(project, instance){
 // the node has tailscale. public is named as unbuilt rather than hidden, so
 // the record's third mode is visible for what it is. Drawn only for an
 // instance that publishes something or already has a route set.
+// A route picked and not yet applied, per instance — the tab redraws when
+// the daemon answers, and a pick a redraw put back could never be applied.
+const dmRouteDraft = {};
+
 function dmRouteLine(d){
   const r = d.route;
+  const draft = dmRouteDraft[`${d.project}|${d.instance}`] || {};
+  const mode = draft.mode ?? r?.mode, port = String(draft.port ?? r?.port ?? "");
+  const dirty = (draft.mode != null && draft.mode !== r?.mode)
+             || (draft.port != null && String(draft.port) !== String(r?.port ?? ""));
   if (!r || (!r.ports?.length && r.mode === "lan" && !r.url)) return "";
   const link = r.url
     ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url)}</a>`
@@ -7124,11 +7165,12 @@ function dmRouteLine(d){
                  ["funnel", r.funnel_ok ? "funnel — a public https URL via Tailscale" : "funnel — needs tailscale on the node"],
                  ["public", "public — not built"]];
   return `<div class="sub dmroute">${link}${r.why ? ` <span class="dim">— ${esc(r.why)}</span>` : ""}
-    <select data-route="mode" aria-label="route" title="how this instance is reached">${
-      modes.map(([v, l]) => `<option value="${v}"${v === r.mode ? " selected" : ""}${
+    <select data-route="mode" data-was="${esc(r.mode)}" aria-label="route" title="how this instance is reached">${
+      modes.map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}${
         v === "public" || (v === "funnel" && !r.funnel_ok) ? " disabled" : ""}>${esc(l)}</option>`).join("")}</select>${
-    r.ports?.length > 1 ? `<select data-route="port" aria-label="port" title="which published port">${
-      r.ports.map(p => `<option value="${p}"${p === r.port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}</div>`;
+    r.ports?.length > 1 ? `<select data-route="port" data-was="${esc(String(r.port))}" aria-label="port" title="which published port">${
+      r.ports.map(p => `<option value="${p}"${String(p) === port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}
+    <button type="button" data-routeapply${dirty ? "" : " disabled"} title="save the route">Apply</button></div>`;
 }
 
 function dockerJob(){
@@ -7684,15 +7726,30 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
   });
-  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = async () => {
+  // The route is saved on Apply, not on the pick (docs/design-language.md,
+  // Settings): a pick wakes the button when it differs from what is saved.
+  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = () => {
     const row = sel.closest("[data-inst]");
+    const d = dmRouteDraft[row.dataset.inst] || (dmRouteDraft[row.dataset.inst] = {});
+    d[sel.dataset.route] = sel.value;
+    const dirty = [...row.querySelectorAll("[data-route]")].some(x => x.value !== x.dataset.was);
+    if (!dirty) delete dmRouteDraft[row.dataset.inst];
+    const b = row.querySelector("[data-routeapply]");
+    if (b) b.disabled = !dirty;
+  });
+  el.querySelectorAll("[data-routeapply]").forEach(btn => btn.onclick = async () => {
+    const row = btn.closest("[data-inst]");
     const [project, instance] = row.dataset.inst.split("|");
-    const mode = row.querySelector('[data-route="mode"]')?.value || "lan";
+    const sel = row.querySelector('[data-route="mode"]');
+    const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
-    if (mode === "funnel" && sel.dataset.route === "mode" && !confirm(
+    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
         `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
         + `https URL on the node — anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){ sel.value = "lan"; return; }
+        + `route back to lan closes it.`)){ sel.value = sel.dataset.was; btn.disabled = true;
+          delete dmRouteDraft[row.dataset.inst]; return; }
+    delete dmRouteDraft[row.dataset.inst];
+    busy(btn, "Applying");
     try{
       const r = await fetch("/api/devapp", {method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -7953,7 +8010,7 @@ async function pkgAct(action, only){
 // failure so nothing typed is lost.
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pAboutField"] },
+           fields: ["pSrcField", "pNameField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
                     "pTokenField", "pKeyField"] },
@@ -7971,7 +8028,7 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pUrlField", "pPushField",
+  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pUrlField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
   // The deploy-key picker only appears when the agent actually holds keys:
@@ -10472,6 +10529,7 @@ project can have several"
   // used to be a commit before the finger left the button.
   // {component -> part}, "" being the project's own.
   let verPending = {};
+  let verPolicyPending = null;   // a picked policy, until Save writes it
 
   async function loadVersion(){
     const box = $("verBox");
@@ -10527,13 +10585,18 @@ project can have several"
     // Published to the panel-level Save/Revert, which live outside this
     // closure. Rebound on every draw so they always close over this
     // notebook's own state rather than whichever one drew last.
-    verStagedCount = () => Object.keys(verPending).length;
-    verClearStaged = () => { verPending = {}; drawVersion(); };
+    verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
+    verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
     verCommitStaged = async () => {
       const parts = Object.entries(verPending);
-      if (!parts.length) return "";
-      verPending = {};
+      const policy = verPolicyPending;
+      if (!parts.length && policy == null) return "";
+      verPending = {}; verPolicyPending = null;
       const done = [];
+      if (policy != null){
+        const j = await postVersion({action: "policy", policy}, true);
+        if (j && !j.error) done.push(`Claude access: ${POLICY_LABEL[policy] || policy}`);
+      }
       for (const [comp, part] of parts){
         const j = await postVersion({action: "bump", part, component: comp},
                                     true);
@@ -10648,8 +10711,13 @@ project can have several"
       // indistinguishable from one that did nothing.
       finally { b.disabled = false; }
     });
+    // Staged like a bump, written by the foot's Save (docs/design-language.md,
+    // Settings): picking the saved value back clears the stage.
     const pol = $("verPolicy");
-    if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
+    if (pol) pol.onchange = () => {
+      verPolicyPending = pol.value === pol.dataset.was ? null : pol.value;
+      drawVersion(); syncSave();
+    };
   }
 
   // "Ships something else from here?" — the door to a component's own
@@ -10756,12 +10824,13 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
         </div>
         ${v.component ? "" : `<label class="verpol">
           <span>Claude access</span>
-          <select id="verPolicy"
+          <select id="verPolicy" data-was="${esc(v.policy)}"
             aria-label="which parts of the version a Claude session may move">
             ${(v.policies || []).map(o => `<option value="${o}"${
-              o === v.policy ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
+              o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
             ).join("")}
-          </select>
+          </select>${verPolicyPending != null
+            ? `<span class="vermark">staged: on Save</span>` : ""}
         </label>`}
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
@@ -11840,7 +11909,7 @@ become that version's section when it is created">Changelog${
   };
 }
 
-function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; $("pArchive").value = ""; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
@@ -11953,6 +12022,7 @@ $("pCreate").onclick = async () => {
   const mode = pMode, linkName = pLink, gen = pGen;
   const name = $("pName").value.trim(), url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
+  const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
     ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
     : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
@@ -11975,13 +12045,26 @@ $("pCreate").onclick = async () => {
           ? "GitHub is not authenticated — pick a deploy key"
           : "GitHub is not authenticated and the agent holds no deploy keys — set GITHUB_PAT, or add a key to /secrets/ssh and restart the container");
     }
+    // The archive goes first, on its own: the create request is a small
+    // JSON body and the upload is not, so the server spools the bytes and
+    // hands back an id the create quotes.
+    let archive = "";
+    if (file){
+      b.textContent = "Uploading…";
+      const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(file.name),
+                            {method: "POST", body: file});
+      const uj = await u.json().catch(() => ({}));
+      if (!u.ok) return fail(uj.error || `upload failed (HTTP ${u.status})`);
+      archive = uj.id;
+      b.textContent = "Creating…";
+    }
     const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name: linkName, url, key})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode, url, about: $("pAbout").value,
+          body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 key: mode === "clone" ? key : "",
                                 token: mode === "clone" ? $("pToken").value.trim() : "",
                                 push: mode === "clone" && $("pPush").checked})});
@@ -12405,11 +12488,10 @@ async function rnSubmit(){
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const gate = rnGateNow();
-  const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate
-    || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
+;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -12441,7 +12523,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              node, build, test, gate, git_name, git_email,
+                              node, build, test, gate,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
@@ -13343,6 +13425,9 @@ async function refresh(){
     drawCard("custom", drawCustom);
     drawCard("doctor", drawDoctor);
     drawCard("docAuth", drawAuth);
+    // The Administration card is an administrator's: to anybody else it is
+    // not there, rather than there with dead buttons.
+    drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });
     drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
     // its Analysis view re-reads on its poll below.

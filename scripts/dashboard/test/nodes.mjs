@@ -290,12 +290,15 @@ ok(list[0].id === 'local',
 // ---- phase 2: the settings graduation ---------------------------------------
 {
   await page.evaluate(() => toggleUiMenu(true));
-  await page.waitForSelector('#uiSettings', { timeout: 10000 });
+  await page.waitForSelector('#uiProfile', { timeout: 10000 });
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logDays')),
      'the gear keeps appearance only — the log setting moved out');
-  await page.click('#uiSettings');
+  await page.evaluate(() => toggleUiMenu(false));
+  await page.evaluate(() => { const c = document.getElementById('cardAdmin');
+    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
+  await page.click('#bSettings');
   await page.waitForSelector('.settingstab .logdays #logDays', { timeout: 15000 });
-  ok(true, 'All settings… opens the Settings tab, with the log policy on it');
+  ok(true, 'Controller settings on the Administration card opens the Settings tab, with the log policy on it');
   ok(await page.$eval('.settingstab', e => !/template|environment|DOCKER_HOST/.test(e.textContent)),
      '...which describes what is on it and nothing about what lives elsewhere');
   // The idle rule for Claude sessions (idle.py): a controller setting the

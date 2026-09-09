@@ -44,6 +44,28 @@ sizing group, its 16px phone rule (iOS zooms into anything smaller) and its
 `:focus` group. Tap targets are `min-height: var(--tap)`. A row of filters
 is `<div class="field histbar">`.
 
+**A control never spans its container.** A button, a select, a text field,
+or a row of them side by side, is at most `var(--ctl-w)` wide and never the
+full width of the tab, card or band it sits in: it stops short, with the
+band's own inset and room beside it, at every width. Full-width controls
+read as a form pretending to be a page. The one exception is a control
+whose whole point is the width — a terminal, a log. `test/uniform.mjs`
+measures every control and control row on every tab against the surface
+holding it.
+
+## Settings
+
+Nothing on a tab takes effect until Save or Apply is pressed. A select that
+saves the moment it is changed, a checkbox that writes on the click, is a
+control that cannot be reconsidered, and the same section's Save then means
+two different things. So every group of settings — on the Settings, Users,
+Nodes and Artifacts tabs and in the project dialogs — has one Save or Apply
+at its foot, and reads its fields when that is pressed. The one exception
+is the colour scheme in the gear: a theme is looked at, not decided, and a
+swatch that needed a second press to be seen would be answering a question
+nobody asked. Buttons that *do* something — install, build, connect, end —
+are actions, not settings, and act on the press.
+
 ## Document tabs
 
 Reading surfaces, not terminals. A new kind does not write its own chrome: it
@@ -65,8 +87,9 @@ fold per concern with its status on the heading, open on a desktop and
 closed on a phone. A status is a word or a number, never a sentence.
 
 Every set of two or more text buttons is an action bar (`.actbar`): the
-status on its own `.state` line, the buttons after it, sharing the width on a
-phone. The destructive verb wears `.danger` and comes last, so nothing safe
+status on its own `.state` line, the buttons after it at the right, their
+own size at every width — a phone gives them the finger height, never the
+row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
@@ -104,8 +127,8 @@ that writes through — Bugs, Tests, Analysis — has no foot.
 
 The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
-a phone, an action bar's buttons share the width on a phone, and controls
-are 16px there so iOS does not zoom.
+a phone, no control spans the screen at either, and controls are 16px on a
+phone so iOS does not zoom.
 
 ## Progress
 

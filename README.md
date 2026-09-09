@@ -348,6 +348,9 @@ bb version policy  what a session may move here, and who decides
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
                    next version bump dates the accumulated lines
+bb changelog unreleased  the entries waiting for a bump, numbered
+bb changelog edit N "..."  reword one of them — a change that tweaks something
+                   already logged this cycle corrects its line rather than adding one
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
@@ -1094,7 +1097,14 @@ lives in its body. The cards:
   At the foot of the card, **New project…** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes the project section of a freshly built `CLAUDE.md` (environment
-  block from the image's template, your notes below the end marker). A clone
+  block from the image's template, your notes below the end marker). It can
+  also start from an archive you already have — zip, or tar with gzip, bzip2
+  or xz — unpacked into the new directory before `git init`: a single
+  top-level folder inside is dropped (the project directory *is* that
+  folder), desktop junk like `__MACOSX` is skipped, and with no notes typed
+  the `CLAUDE.md` is drafted from the unpacked files the way a clone's is.
+  Nothing is committed; the first session, or you, decides what the first
+  commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the
   container's own access — a deploy key or PAT that can already reach it —
   the directory takes the repository's name, and the `CLAUDE.md` project
@@ -1525,7 +1535,8 @@ failure, because the workflow file is the repo's and this is advice. A
 dispatch is a deliberate act, not a workflow that forgot.
 
 **How an instance is reached.** Each running instance on the Docker manager
-carries its route: the URL, and a picker for the mode. **lan** is the
+carries its route: the URL, a picker for the mode, and Apply, which is what
+writes the pick — a pick alone changes nothing. **lan** is the
 published port at the node's own address, what the manager always linked.
 **funnel** is Tailscale Funnel on the node — a public https URL at the node's
 MagicDNS name with no DNS, certificate or firewall change — applied by the
@@ -1555,7 +1566,15 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 ### The Settings tab
 
 The gear in the header keeps what belongs to this **browser** — theme and
-layout — and one entry, **All settings…**, opening the Settings tab: what the
+layout — and one entry, **Profile…**, opening the signed-in account's own
+tab: their name and email, the name and email their commits carry (blank
+means the ones above), and a password change that asks for the current one
+first. The commit identity is per account rather than per project, and
+reaches every session and shell that account opens as git's environment,
+which outranks whatever a repository has configured — so two people on one
+project are two authors. The **Administration** card on the sidebar, shown
+only to administrators, holds **Controller settings**, opening the Settings
+tab, and **Users**. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions — end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
@@ -3117,7 +3136,7 @@ one in the morning, every `bb` verb stopped, and there was no tab to open.
 
 #### Accounts
 
-The Tools card's **Users** tab adds people. There is exactly one **owner**,
+The Administration card's **Users** tab adds people. There is exactly one **owner**,
 undeletable and renameable; an **admin** can do everything except act on the
 owner; a **user** gets the projects you give them and the work inside them,
 but not deleting one, renaming one, or changing which node it builds on — a

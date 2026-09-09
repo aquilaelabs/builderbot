@@ -173,17 +173,22 @@ def components(project):
                   and (p / VERSION_FILE).is_file())
 
 
-def _git(project, *args, timeout=10):
+def _git(project, *args, timeout=10, env=None):
     """One git command in the project, or None if it failed.
 
     None rather than an exception on purpose: every caller here is asking a
     question that has a reasonable "cannot tell" answer — no repo, no commits,
     no tags — and none of them should turn that into a stack trace.
+
+    `env` is what a commit carries over the process's own — the account's
+    git identity (users.git_env), so an operator's bump is theirs and not
+    whatever the repository or the box happens to have configured.
     """
     try:
         r = subprocess.run(["git", "-C", str(root(project)), *args],
                            capture_output=True, text=True,
-                           timeout=timeout, check=False)
+                           timeout=timeout, check=False,
+                           env={**os.environ, **env} if env else None)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout.strip() if r.returncode == 0 else None
@@ -454,7 +459,7 @@ def _cl_guard(project, where):
     return None
 
 
-def _seal(project, where, ver_rel, value, msg):
+def _seal(project, where, ver_rel, value, msg, env=None):
     """Roll the changelog, stage, and commit — the tail init and bump share.
 
     Every failure names what actually happened to BOTH files, because by this
@@ -482,7 +487,7 @@ def _seal(project, where, ver_rel, value, msg):
                     "— gitignored? — so it is not in the commit")
         else:
             paths.append(cl_rel)
-    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30, env=env) is None:
         return {"error": f"{ver_rel} now reads {value}"
                          + (f" and {cl_rel} is dated for it" if cl_rel else "")
                          + ", but committing failed — commit by hand",
@@ -492,7 +497,7 @@ def _seal(project, where, ver_rel, value, msg):
             **({"note": note} if note else {})}
 
 
-def init(project, value, by="claude", comp=""):
+def init(project, value, by="claude", comp="", env=None):
     """Give a project — or a component — its first VERSION, and commit it.
 
     This exists because the guardrail would otherwise be a dead end: the file
@@ -547,7 +552,7 @@ def init(project, value, by="claude", comp=""):
     # BECAME this first version, so _seal dates them as its section. Left
     # unreleased they would ride into the NEXT bump and be labeled as changes
     # since a release they are actually part of.
-    r = _seal(project, where, rel, value, msg)
+    r = _seal(project, where, rel, value, msg, env=env)
     if r.get("ok"):
         r["component"] = comp
     return r
@@ -573,7 +578,7 @@ def candidates(project):
     return out
 
 
-def bump(project, part, by="claude", comp=""):
+def bump(project, part, by="claude", comp="", env=None):
     """Move the target and commit that one file.
 
     Committing rather than leaving the tree dirty is the whole reason this is
@@ -639,7 +644,7 @@ def bump(project, part, by="claude", comp=""):
     # two across commits would let one land without the other. Uncommitted
     # ENTRY lines are swept in deliberately (dating them is what a bump means
     # for them); a STAGED edit was refused above, before anything moved.
-    r = _seal(project, where, rel, new, msg)
+    r = _seal(project, where, rel, new, msg, env=env)
     if r.get("ok"):
         r.update(was=tgt, part=part, component=comp)
     return r
@@ -775,7 +780,7 @@ def _release_tag_exists(project, tgt, comp=""):
     return bool(not comp and (_git(project, "tag", "-l", tgt) or "").strip())
 
 
-def unbump(project, by="claude", comp=""):
+def unbump(project, by="claude", comp="", env=None):
     """Take the target back to its previous value — the code stays.
 
     For a bump somebody thought better of: nothing about the tree reverts,
@@ -842,7 +847,7 @@ def unbump(project, by="claude", comp=""):
     _git(project, "add", "--", rel)
     msg = (f"Return the {comp + ' ' if comp else ''}version to {prev}"
            + ("" if by == "operator" else " (session)"))
-    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30, env=env) is None:
         return {"error": f"{rel} now reads {prev}, but committing failed — "
                          "commit by hand", "target": prev}
     return {"ok": True, "was": tgt, "target": prev, "component": comp,

@@ -63,27 +63,33 @@ ok(setting('claude_channel', 'latest') === 'stable', 'bb_setting hands the boot 
 ok(setting('claude_auto_update', 'true') === 'false', '...and a saved false as the word false, so is_true reads it');
 ok(setting('nothing_saved', 'dflt') === 'dflt', '...and the default when nothing is saved — no environment variable is read any more');
 
-// ---- the commit identity is a project's -------------------------------------
-const who = await post('/api/prefs', { project: 'alpha', git_name: 'Test Person', git_email: 'test@example.invalid' });
-ok(who.status === 200 && who.body.git_name === 'Test Person',
-   'a project takes its commit identity in its settings dialog');
+// ---- the commit identity is the account's ----------------------------------
+// Set on the Profile tab, never in a project: two people on one project are
+// two authors. It reaches a session as git's environment, and `bb settings
+// --json` is how bb-tty asks for it — for the seat BB_ACCOUNT_UID names.
+const prof = await post('/api/profile', { action: 'save',
+  profile: { full_name: 'Test Person', email: 'test@example.invalid' } });
+ok(prof.status === 200 && prof.body.git.name === 'Test Person' && prof.body.git.email === 'test@example.invalid',
+   'an account sets its name and email on its profile, and its commits carry them unless a git identity says otherwise');
+const prof2 = await post('/api/profile', { action: 'save', profile: { git_name: 'T. Person', git_email: 'tp@users.noreply.invalid' } });
+ok(prof2.body.git.name === 'T. Person' && prof2.body.git.email === 'tp@users.noreply.invalid',
+   '...and a git identity of its own outranks them');
 const gitc = k => { try { return execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'config', k], { encoding: 'utf8' }).trim(); } catch { return ''; } };
-ok(gitc('user.name') === 'Test Person' && gitc('user.email') === 'test@example.invalid',
-   '...written into that repo\'s own config at once, not the container\'s global one');
+ok(gitc('user.name') === 'dashboard test' && gitc('user.email') === 'test@example.invalid',
+   '...without writing anything into the repository\'s own config, which keeps the fixture\'s');
+const owner = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
 const st = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
   { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
-    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } }));
-ok(st.git_name === 'Test Person' && st.git_email === 'test@example.invalid',
-   '...and bb settings carries it, which is how a session on a node writes it into the tree there');
-// The dialog fills from the poll's copy of the project, which follows the
-// save on the next poll (the prefs file is on the revision list).
-await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.git_name === 'Test Person',
-                           null, { timeout: 30000 });
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha', BB_ACCOUNT_UID: owner } }));
+ok(st.git_name === 'T. Person' && st.git_email === 'tp@users.noreply.invalid',
+   '...and bb settings --json carries it for the seat asking, which is how bb-tty puts it in a session');
+const bare = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
+  { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: '', BB_ACCOUNT_UID: owner }, cwd: '/' }));
+ok(bare.git_name === 'T. Person', '...for a shell with no project too');
 await page.click('#projects [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
-ok(await page.$eval('#rnGitName', e => e.value) === 'Test Person'
-   && await page.$eval('#rnGitEmail', e => e.value) === 'test@example.invalid',
-   'the dialog shows the project\'s identity');
+ok(!(await page.$('#rnGitName')), 'the project dialog no longer asks for one');
 await page.click('#rnCancel');
 
 await done(browser);

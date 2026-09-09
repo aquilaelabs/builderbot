@@ -5,7 +5,7 @@
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
          refreshUntil } from './lib.mjs';
-import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -211,6 +211,98 @@ await page.click('#pCreate');
 await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
   .some(n => n.textContent === 'pinme'), { timeout: 15000 });
 ok(true, 'a project created while a pins file exists still reaches the sidebar');
+
+// ---- starting a local repo from an archive -------------------------------
+// A code base somebody already has, dropped into a fresh repo: unpacked
+// before git init, the wrapper folder a tarball or a GitHub zip carries
+// dropped, desktop junk skipped, and — because an archive is a list of
+// paths somebody else wrote — anything reaching outside the directory
+// refused whole rather than written.
+{
+  const fx = `${DIR}/archives`;
+  mkdirSync(`${fx}/app/src`, { recursive: true });
+  writeFileSync(`${fx}/app/src/main.js`, 'console.log(1)\n');
+  writeFileSync(`${fx}/app/README.md`, '# App\n\nA thing that frobnicates widgets. Build with make.\n');
+  writeFileSync(`${fx}/app/build.sh`, '#!/bin/sh\nmake\n');
+  chmodSync(`${fx}/app/build.sh`, 0o755);
+  mkdirSync(`${fx}/app/__MACOSX`, { recursive: true });
+  writeFileSync(`${fx}/app/__MACOSX/._main.js`, 'junk');
+  execFileSync('tar', ['czf', `${fx}/app.tgz`, '-C', fx, 'app']);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  ok(await page.$eval('#pArchiveField', el => !el.hidden),
+     'a new local repo offers an archive to start from');
+  await page.click('#pClone');
+  ok(await page.$eval('#pArchiveField', el => el.hidden), '...and a clone does not');
+  await page.click('#pLocal');
+  await page.fill('#pName', 'fromtar');
+  await page.setInputFiles('#pArchive', `${fx}/app.tgz`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+    .some(n => n.textContent === 'fromtar'), { timeout: 15000 });
+  ok(existsSync(`${DIR}/ws/fromtar/src/main.js`) && existsSync(`${DIR}/ws/fromtar/.git`),
+     'a tarball is unpacked into the new repo, its one top-level folder dropped');
+  ok(!existsSync(`${DIR}/ws/fromtar/app`) && !existsSync(`${DIR}/ws/fromtar/__MACOSX`),
+     '...without the wrapper folder or the desktop junk');
+  ok((statSync(`${DIR}/ws/fromtar/build.sh`).mode & 0o111) !== 0,
+     '...and a script keeps its executable bit');
+  const md = readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8');
+  ok(md.includes('BUILDERBOT:ENV:END')
+     && md.slice(md.indexOf('BUILDERBOT:ENV:END')).trim().split('\n').length > 3,
+     'with no notes typed, a CLAUDE.md is drafted from the unpacked files');
+
+  // A zip with no wrapper folder lands as it is.
+  execFileSync('python3', ['-c', `
+import zipfile
+with zipfile.ZipFile('${fx}/flat.zip', 'w') as z:
+    z.writestr('a/b.txt', 'b')
+    z.writestr('c.txt', 'c')
+    z.writestr('.DS_Store', 'junk')
+`]);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  await page.fill('#pName', 'fromzip');
+  await page.setInputFiles('#pArchive', `${fx}/flat.zip`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+    .some(n => n.textContent === 'fromzip'), { timeout: 15000 });
+  ok(existsSync(`${DIR}/ws/fromzip/a/b.txt`) && existsSync(`${DIR}/ws/fromzip/c.txt`)
+     && !existsSync(`${DIR}/ws/fromzip/.DS_Store`),
+     'a zip with more than one thing at the top is unpacked as it is, junk aside');
+
+  // The classic: a member named ../something, which would write beside the
+  // workspace rather than in it.
+  execFileSync('python3', ['-c', `
+import zipfile
+with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
+    z.writestr('ok.txt', 'fine')
+    z.writestr('../evil.txt', 'no')
+`]);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  await page.fill('#pName', 'slip');
+  await page.setInputFiles('#pArchive', `${fx}/slip.zip`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => !document.getElementById('pErrWrap').hidden, { timeout: 15000 });
+  ok(/outside the project/.test(await page.$eval('#pErr', e => e.textContent)),
+     'an archive with a path escaping the directory is refused, saying so');
+  ok(!existsSync(`${DIR}/ws/slip`) && !existsSync(`${DIR}/ws/evil.txt`),
+     '...and leaves neither the half-made project nor the escaped file behind');
+
+  // ...and a file that is not an archive at all is refused at upload, with
+  // the formats named, before there is a directory to undo.
+  writeFileSync(`${fx}/notes.txt`, 'not an archive');
+  await page.setInputFiles('#pArchive', `${fx}/notes.txt`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => /not an archive/.test(
+    document.getElementById('pErr').textContent), { timeout: 15000 });
+  ok(/zip, tar/.test(await page.$eval('#pErr', e => e.textContent)) && !existsSync(`${DIR}/ws/slip`),
+     'a file that is not an archive is refused at upload, naming the formats');
+  await page.click('#pCancel');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden);
+}
 
 // ---- renaming ----------------------------------------------------------
 // The button is nothing; the migration is the job. A project's name is its key

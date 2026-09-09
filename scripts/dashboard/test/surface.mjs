@@ -68,7 +68,7 @@ const SURFACE = [
   // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersProjectPicker',
-  'renderUsersInto', 'wireUsers', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
+  'renderUsersInto', 'wireUsers', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',

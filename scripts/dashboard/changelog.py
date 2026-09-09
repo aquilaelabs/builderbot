@@ -28,6 +28,7 @@ browser); answering it twice here would be a second copy that drifts. So this
 module has no configure() and no state — the callers that already resolved
 the directory hand it over.
 """
+import re
 from pathlib import Path
 
 FILE = "CHANGELOG.md"
@@ -127,6 +128,72 @@ def add(d, text, sha=""):
         return {"ok": True}
     except OSError as e:
         return {"error": f"could not write {FILE}: {e}"}
+
+
+_STAMP = re.compile(r"\s*\(([0-9a-f]{7}(?:, [0-9a-f]{7})*)\)$")
+
+
+def numbered(d):
+    """The Unreleased entries as [(n, text, [shas])], n counting from 1 in
+    the section's order — the handle `edit` takes. Numbers are positional
+    and not stored: the section is short-lived by design, and an id scheme
+    on a list a bump erases would outlive its usefulness by one release."""
+    out = []
+    for i, line in enumerate(unreleased(d), 1):
+        body = line[2:].strip()
+        m = _STAMP.search(body)
+        shas = m.group(1).split(", ") if m else []
+        out.append((i, body[:m.start()] if m else body, shas))
+    return out
+
+
+def edit(d, n, text, sha=""):
+    """Reword Unreleased entry n, for a change that tweaks something already
+    logged this cycle: a second line about the same thing tells the reader
+    about one change twice, and the honest record is one line that is right.
+
+    The stamp the entry had stays and this commit's joins it, so "when did
+    that change" still answers for both. Only Unreleased is editable — a
+    dated section is a release somebody may have read, and history is not
+    corrected in place.
+    """
+    text = " ".join(str(text or "").split())
+    if not text:
+        return {"error": "an empty changelog entry says nothing to anybody"}
+    if len(text) > 300:
+        return {"error": "keep an entry under 300 characters — it is one line "
+                         "of a list a person reads, not the whole story"}
+    rows = numbered(d)
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return {"error": "which entry? `bb changelog unreleased` numbers them"}
+    if not 1 <= n <= len(rows):
+        return {"error": f"no unreleased entry {n} — `bb changelog unreleased` "
+                         f"lists {len(rows)}; a dated section is history and stays as it is"}
+    _, _, shas = rows[n - 1]
+    if sha and sha not in shas:
+        shas = shas + [sha]
+    entry = f"- {text}" + (f" ({', '.join(shas)})" if shas else "")
+    cur = read(d) or ""
+    out, inside, seen, done = [], False, 0, False
+    for ln in cur.splitlines():
+        if ln.strip() == UNRELEASED:
+            inside = True
+        elif inside and ln.startswith("## "):
+            inside = False
+        elif inside and ln.strip().startswith("- ") and not done:
+            seen += 1
+            if seen == n:
+                out.append(entry)
+                done = True
+                continue
+        out.append(ln)
+    try:
+        path(d).write_text("\n".join(out) + "\n", encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {FILE}: {e}"}
+    return {"ok": True, "n": n}
 
 
 def unroll(d, version):

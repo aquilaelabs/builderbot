@@ -446,7 +446,7 @@ CARDS_FILE = STATE / "cards.json"
 # the next read rather than needing anything done to it.
 # Tools between Doctor and Runner: the reach-for-it card next to the
 # health line, ahead of the two that are read rather than pressed.
-CARD_KEYS = ["doctor", "tools", "runner", "projects"]
+CARD_KEYS = ["doctor", "tools", "admin", "runner", "projects"]
 
 
 # The one implementation, in statefile.py, along with the file lock that makes
@@ -500,7 +500,7 @@ def save_cards(v):
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
 TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
-             "nodes", "settings", "jobs", "users", "phone"}
+             "nodes", "settings", "jobs", "users", "phone", "profile"}
 
 
 def _layouts():
@@ -3773,7 +3773,7 @@ class Handler(BaseHTTPRequestHandler):
         # how they are served — full paths, same shape as the favicons, so it
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
-                    "/tab-users.js", "/tab-phone.js"):
+                    "/tab-users.js", "/tab-phone.js", "/tab-profile.js"):
             try:
                 body, zipped = self._gzip((HERE / path[1:]).read_bytes())
             except OSError:
@@ -3818,6 +3818,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot(self._who()))
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload(self._who()))
+        if self.path.startswith("/api/profile"):
+            return self._profile()
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -4110,6 +4112,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._agent()
         if not self._authed():
             return self._deny()
+        # The one body that is not JSON: an archive to start a project from,
+        # streamed to the spool by projects.spool_archive. Its own door
+        # before the JSON read, and its own cap — MAX_BODY is sized for a
+        # form, and an upload is not read into memory at all.
+        if self.path.split("?")[0] == "/api/upload-archive":
+            return self._upload_archive()
         req = self._read_json()
         if req is None:
             return None
@@ -4180,6 +4188,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._claude_md(req)
         if path.startswith("/api/create"):
             return self._create(req)
+        if path.startswith("/api/profile"):
+            return self._profile(req)
         if path.startswith("/api/link"):
             return self._link(req)
         if path.startswith("/api/project-job"):
@@ -4234,7 +4244,6 @@ class Handler(BaseHTTPRequestHandler):
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"),
-                                git_name=req.get("git_name"), git_email=req.get("git_email"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -5347,19 +5356,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         if act == "bump":
-            r = version.bump(name, field(req, "part"), by="operator",
+            r = version.bump(name, field(req, "part"), by="operator", env=users.git_env(self._who()),
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"bumped": r})
         if act == "init":
-            r = version.init(name, field(req, "value"), by="operator",
+            r = version.init(name, field(req, "value"), by="operator", env=users.git_env(self._who()),
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"created": r})
         if act == "unbump":
-            r = version.unbump(name, by="operator",
+            r = version.unbump(name, by="operator", env=users.git_env(self._who()),
                                comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
@@ -5822,6 +5831,49 @@ class Handler(BaseHTTPRequestHandler):
                         pass          # the project exists; the sidebar is not
                                       # worth failing the create over
         return self._json(body, code)
+
+    def _profile(self, req=None):
+        """The signed-in account's own settings (the Profile tab): read on
+        GET, saved on POST. Anybody signed in — this is about themselves —
+        which is why it is not behind the admin gate the Users tab wears.
+        """
+        me = self._who()
+        if not me or not users.uid_of(me):
+            return self._json({"error": "not an account"}, 403)
+        if req is None:
+            rec = users.get(me["name"]) or {}
+            return self._json({"name": me["name"], "uid": users.uid_of(me),
+                               "role": rec.get("role", "user"),
+                               "profile": users.profile(me),
+                               "git": users.git_identity(me),
+                               "claude": claude_auth(home=home_for(users.uid_of(me))).get("email") or ""})
+        act = field(req, "action")
+        if act == "password":
+            r = users.change_password(me["name"], str(req.get("current") or ""),
+                                      str(req.get("password") or ""))
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "save":
+            r = users.profile_set(me["name"], req.get("profile") or {})
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json({"ok": True, "profile": users.profile(me),
+                               "git": users.git_identity(me)})
+        return self._json({"error": "unknown action"}, 400)
+
+    def _upload_archive(self):
+        """Spool an archive for the create dialog; {id, name, size, kind}.
+        The same gate as create, because it is the first half of one — and
+        an upload that stops short of a project would otherwise be a way
+        for a user account to fill the controller's disk."""
+        if self._refused("create"):
+            return None
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._json({"error": "bad request"}, 400)
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        r = projects.spool_archive(self.rfile, n, (q.get("name") or [""])[0])
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _link(self, req):
         """Link an existing local repo to an empty GitHub repo. See projects.py."""
