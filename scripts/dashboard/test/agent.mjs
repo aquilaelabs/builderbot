@@ -2034,6 +2034,54 @@ print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.pkg_scope(), 'root'
      `...with its packages under the store's darwin-arm64 scope (${R.root})`);
 }
 
+// ---- addresses that move ---------------------------------------------------
+// The node dials out, so a node whose own address moves keeps working and
+// the controller follows its hellos. Two things name an address anyway and
+// are healed here: the ttyds bound to the node's old address are restarted
+// onto the new one, and the session-ports rule that names the controller's
+// address is rewritten when that name resolves elsewhere.
+{
+  const NB = `${DIR}/nbin`; mkdirSync(NB, { recursive: true });
+  writeFileSync(`${NB}/nft`, `#!/bin/sh\necho "nft $*" >> "${DIR}/nft.log"\n`, { mode: 0o755 });
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+d = tempfile.mkdtemp()
+nftf = os.path.join(d, 'session-ports.nft')
+open(nftf, 'w').write('table inet builderbot_session {\\n    chain input {\\n        tcp dport { 7681, 7682 } iifname "lo" accept\\n        tcp dport { 7681, 7682 } ip saddr 10.0.0.9 accept\\n        tcp dport { 7681, 7682 } drop\\n    }\\n}\\n')
+os.environ['BUILDERBOT_SESSION_NFT'] = nftf
+os.environ['BUILDERBOT_NFT_BIN'] = ${JSON.stringify(`${NB}/nft`)}
+os.environ['BUILDERBOT_SESSION_BIND'] = ''
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.os.geteuid = lambda: 0
+a = m.Agent.__new__(m.Agent)
+a.state = {'controller': 'http://127.0.0.1:1', 'stores': {'packages': d}}
+a.fw_checked = 0.0
+a.session_firewall_check()
+first = open(nftf).read()
+a.fw_checked = 0.0
+a.session_firewall_check()
+calls = open(${JSON.stringify(`${DIR}/nft.log`)}).read() if os.path.exists(${JSON.stringify(`${DIR}/nft.log`)}) else ''
+# the node's own address moving: ttyds bound to the old one are marked for a restart
+os.makedirs(os.path.join(d, m.pkg_scope(), '.bb', 'current'))
+class P:
+    def poll(self): return None
+a.ttyd = [P()]; a.session_bound = '10.0.0.5'; a.session_stale = ''
+m.network_now = lambda: {'addresses': ['10.0.0.77/24'], 'interface': 'eth0', 'gateway': '', 'dns': []}
+a.session_start = lambda into, retry=False: setattr(a, 'restarted', into)
+a.session_bundle = ''; a.session_digest = ''; a.session_tried = 0
+a.session_check()
+print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'restarted', ''), 'bind': a.session_bind()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(/ip saddr 127\.0\.0\.1 accept/.test(R.first) && !/10\.0\.0\.9/.test(R.first),
+     'when the controller\'s name resolves elsewhere, the session-ports rule is rewritten to the new address');
+  ok((R.calls.match(/nft -f/g) || []).length === 1,
+     '...applied once, and a second check with nothing changed applies nothing');
+  ok(R.bind === '10.0.0.77' && /\.bb\/current$/.test(R.restarted),
+     `when the node's own address moves, the ttyds are restarted onto the new one (${R.bind})`);
+}
+
 // ---- the agent's version is WINDOW.BUILD ----------------------------------
 // The window is the project's compatibility promise — while BuilderBot is
 // 0.4.x, any 0.4 agent works with any 0.4 controller — and it is a constant

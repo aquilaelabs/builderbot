@@ -1327,7 +1327,11 @@ says so and offers the one thing there is to do. (It does keep a node record
 of its own, which is how a share it mounts is recognized as the same store a
 node mounts and installs are arbitrated across the pair; that is plumbing, not
 a row.) The tab shows one node, picked at the
-top: a header with its state, where it dials in from and its agent (with
+top: a header with its state, where it dials in from — the address of its
+last hello, so a node whose address moves is followed within a minute, its
+terminals rebound onto the new address by its agent and the session-ports
+rule on the node rewritten if the controller's own address is what moved —
+and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
 comes back on it), then **sections**, each a fold with its status on the
 heading so a phone reads the headings and opens one — Health (the meters,
@@ -3488,7 +3492,9 @@ docker compose build && docker compose up -d
 
 ## A Mac as a node
 
-`nodes/provision-macos.sh` enrolls a Mac as a **guest** node: one directory
+`nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
+its help; `--interactive` asks for the address, the token and the store and
+runs on a yes): one directory
 (`~/.builderbot`) and one launchd agent that runs as you at login, no root,
 nothing in `/etc`, and `--remove` takes exactly that away. It is written for
 the bash macOS ships, so it is its own file rather than a branch of the

@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.35"
+AGENT_VERSION = "0.4.36"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -297,6 +297,12 @@ XBPS_QUERY_BIN = os.environ.get("BUILDERBOT_XBPS_QUERY_BIN", "xbps-query")
 XBPS_INSTALL_BIN = os.environ.get("BUILDERBOT_XBPS_INSTALL_BIN", "xbps-install")
 EMERGE_BIN = os.environ.get("BUILDERBOT_EMERGE_BIN", "emerge")
 BREW_BIN = os.environ.get("BUILDERBOT_BREW_BIN", "brew")
+# The session ports' firewall rule the provisioner wrote, which names the
+# controller's address: the agent keeps it true when that address moves.
+NFT_BIN = os.environ.get("BUILDERBOT_NFT_BIN", "nft")
+FIREWALL_CMD = os.environ.get("BUILDERBOT_FIREWALL_CMD", "firewall-cmd")
+SESSION_NFT = os.environ.get("BUILDERBOT_SESSION_NFT", "/etc/builderbot/session-ports.nft")
+FIREWALL_EVERY_S = 60
 NETWORKD_DIR = os.environ.get("BUILDERBOT_NETWORKD_DIR", "/etc/systemd/network")
 NETWORKCTL_BIN = os.environ.get("BUILDERBOT_NETWORKCTL_BIN", "networkctl")
 INTERFACES_FILE = os.environ.get("BUILDERBOT_INTERFACES_FILE", "/etc/network/interfaces")
@@ -1616,6 +1622,22 @@ def net_backend():
     return None
 
 
+def controller_ip(url):
+    """The address the controller's hostname resolves to now — IPv4 first,
+    the way the provisioner chose it — or "" when it does not resolve."""
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if not host:
+        return ""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return ""
+    for fam, _t, _p, _c, sa in infos:
+        if fam == socket.AF_INET:
+            return sa[0]
+    return infos[0][4][0] if infos else ""
+
+
 def init_now():
     """Which init runs this machine — what a service of ours is, there."""
     if platform.system() == "Darwin":
@@ -2043,6 +2065,8 @@ class Agent:
         self.session_digest = ""          # the digest bundle() last fetched
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
+        self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
+        self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
         # The runner as a child of this process where there is no systemd
         # (a container node): run.sh in the foreground, supervised here.
         self.runner_proc = None
@@ -2231,6 +2255,7 @@ class Agent:
                     continue
                 delay = 1
             self.session_check()
+            self.session_firewall_check()
             self.session_idle_reap()
             self.runner_check()
             n = self.running()
@@ -2601,6 +2626,7 @@ class Agent:
             return
         env, who = self.session_env(into)
         bind = self.session_bind()
+        self.session_bound = bind
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
         base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
                 "-t", "reconnect=5"]
@@ -2832,6 +2858,60 @@ class Agent:
         if into and os.path.isdir(into) and self.ttyd:
             self.session_stale = into
 
+    def session_firewall_check(self):
+        """Once a minute: the session ports' rule names the controller's
+        address as it resolved when the node was provisioned, and a
+        controller that moved — a new lease, a new host behind the same
+        name — would find 7681 and 7682 dropped for it from then on. So the
+        name is resolved again here and the rule rewritten when the answer
+        changed: the nftables file the Debian path wrote and re-applied, or
+        firewalld's rich rules replaced. Root only, which is a managed node;
+        a guest has no such rule and skips."""
+        if time.time() - self.fw_checked < FIREWALL_EVERY_S or os.geteuid() != 0:
+            return
+        self.fw_checked = time.time()
+        ip = controller_ip(self.state.get("controller") or "")
+        if not ip:
+            return
+        fam = "ip6" if ":" in ip else "ip"
+        if os.path.isfile(SESSION_NFT):
+            try:
+                with open(SESSION_NFT) as f:
+                    text = f.read()
+            except OSError:
+                return
+            m = re.search(r"tcp dport \{ 7681, 7682 \} (ip6?) saddr (\S+) accept", text)
+            if not m or m.group(2) == ip:
+                return
+            new = text.replace(m.group(0), f"tcp dport {{ 7681, 7682 }} {fam} saddr {ip} accept")
+            try:
+                with open(SESSION_NFT, "w") as f:
+                    f.write(new)
+            except OSError as e:
+                log(f"session ports: could not rewrite {SESSION_NFT}: {e}")
+                return
+            rc = subprocess.run([NFT_BIN, "-f", SESSION_NFT], capture_output=True, check=False).returncode
+            log(f"session ports: the controller's address moved ({m.group(2)} -> {ip}); "
+                f"rule rewritten{'' if rc == 0 else ' but nft refused it (' + str(rc) + ')'}")
+            return
+        if _have(FIREWALL_CMD) and _run([FIREWALL_CMD, "--state"]) == "running":
+            rules = _run([FIREWALL_CMD, "--permanent", "--list-rich-rules"], timeout=20).splitlines()
+            ours = [r for r in rules if 'port="7681"' in r or 'port="7682"' in r]
+            have = {re.search(r'source address="([^"]+)"', r).group(1)
+                    for r in ours if re.search(r'source address="([^"]+)"', r)}
+            if not ours or have == {ip}:
+                return
+            for r in ours:
+                subprocess.run([FIREWALL_CMD, "--permanent", f"--remove-rich-rule={r}"], capture_output=True, check=False)
+            ffam = "ipv6" if ":" in ip else "ipv4"
+            for port in (7681, 7682):
+                subprocess.run([FIREWALL_CMD, "--permanent", f'--add-rich-rule=rule family="{ffam}" source '
+                                f'address="{ip}" port port="{port}" protocol="tcp" accept'],
+                               capture_output=True, check=False)
+            subprocess.run([FIREWALL_CMD, "--reload"], capture_output=True, check=False)
+            log(f"session ports: the controller's address moved ({', '.join(sorted(have)) or '?'} -> {ip}); "
+                "firewalld rules replaced")
+
     def session_idle_reap(self):
         """End this node's Claude sessions past the idle rule — the
         controller's idle.py, enforced here from node.json. Claude sessions
@@ -2861,7 +2941,22 @@ class Agent:
         spin this loop on a failing exec — and ttyds running an older
         bundle than the one a job just fetched are restarted onto it. The
         sessions are tmux's either way and survive; a client attached at
-        that moment reconnects."""
+        that moment reconnects.
+
+        And a node whose own address moved — DHCP handed it another, the
+        interface came back on a new one — has ttyds bound to an address
+        nothing reaches any more, while the controller already dials the
+        new one (it follows every hello). So the bind is compared to the
+        machine's address now, and a change restarts the ttyds onto it."""
+        if self.ttyd and self.session_bound and not SESSION_BIND and not self.session_stale:
+            now = self.session_bind()
+            if now != self.session_bound:
+                store = pkg_root(self.state)
+                into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
+                if into and os.path.isdir(into):
+                    log(f"sessions: this node's address moved ({self.session_bound} -> {now}); "
+                        "restarting ttyd onto it")
+                    self.session_stale = into
         if self.session_stale and self.ttyd and os.path.isdir(self.session_stale):
             log("sessions: the bundle or the store changed; restarting ttyd so new sessions see it")
             self.session_bundle = self.session_digest

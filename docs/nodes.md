@@ -1737,6 +1737,17 @@ account. The project row carries the same decision (`session_at`,
 `session_why`), so the Claude button is dead with the sentence before
 anything is asked. provision-linux.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
+Addresses move, and the design survives it without anybody re-enrolling:
+the node dials out, so a node whose own address changes is reached by the
+controller at whatever address its next hello or work poll arrived from
+(`agent.addr` follows every one, and `route_host` reads it); the agent
+compares the address its ttyds are bound to against the machine's current
+one each loop and restarts them onto a new one (`session_check`); and once
+a minute it resolves the controller's hostname again and rewrites the
+session-ports rule — the nftables file, or firewalld's rich rules — when
+the answer moved (`session_firewall_check`). A controller named by a bare
+IP in the node's `node.json` cannot be followed that way; that is the one
+case that wants `enroll` again.
 The node's sessions are on the Sessions card too: the agent's heartbeat
 carries the session account's tmux sessions (name, attached, directory,
 pane title), the controller lists them beside its own under its own naming

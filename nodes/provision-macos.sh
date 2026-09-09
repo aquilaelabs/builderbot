@@ -24,12 +24,19 @@ set -eu
 FOOT="${BUILDERBOT_HOME:-$HOME/.builderbot}"
 PLIST="$HOME/Library/LaunchAgents/dev.builderbot.agent.plist"
 LABEL="dev.builderbot.agent"
-CONTROLLER=""; TOKEN=""; PACKAGES=""; REMOVE=0; CHECK_ONLY=0
+CONTROLLER=""; TOKEN=""; PACKAGES=""; REMOVE=0; CHECK_ONLY=0; INTERACTIVE=0
 
 usage() {
     cat <<'EOF'
-usage: provision-macos.sh --controller URL --token bbe_… [--packages PATH] [--check] [--remove]
+usage: bash provision-macos.sh --controller URL --token bbe_… [--packages PATH]
+       bash provision-macos.sh --check
+       bash provision-macos.sh --interactive
+       bash provision-macos.sh --remove
 
+With no arguments this prints the help and changes nothing.
+
+  --interactive, -i    ask for the address, the token and the packages store,
+                       show the command, and run it on a yes
   --controller URL     the dashboard's address, as you open it in a browser
   --token bbe_…        an enrollment token from the Nodes tab (good once, for a day)
   --packages PATH      where this Mac's packages store is. Point it at the same
@@ -50,8 +57,14 @@ at login. No root is used or asked for.
 EOF
 }
 
+# No arguments: the help, and nothing changed.
+if [ $# -eq 0 ]; then
+    usage
+    exit 0
+fi
 while [ $# -gt 0 ]; do
     case "$1" in
+        --interactive|-i) INTERACTIVE=1; shift ;;
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
         --packages) PACKAGES="$2"; shift 2 ;;
@@ -64,6 +77,24 @@ done
 
 say()  { printf '\n== %s\n' "$1"; }
 warn() { printf '\n!! %s\n' "$1" >&2; }
+
+# ---- the interactive mode ---------------------------------------------------
+# Three questions, the command printed to keep, and the same script run with
+# it — one path for both ways of asking. bash 3.2 has no printf -v.
+if [ "$INTERACTIVE" = 1 ]; then
+    [ -t 0 ] || { echo "--interactive needs a terminal to ask on" >&2; exit 1; }
+    printf '\nBuilderBot on this Mac. Enter keeps the default in brackets.\n\n'
+    printf 'The dashboard address (as you open it in a browser): '; IFS= read -r ctl
+    printf 'The enrollment token from its Nodes tab (bbe_…): '; IFS= read -r tok
+    printf 'The packages store — a share the Linux nodes use, mounted here (say /Volumes/SDK),\nor blank for ~/.builderbot/packages on this disk: '; IFS= read -r pk
+    ARGS="--controller $ctl --token $tok"
+    [ -n "$pk" ] && ARGS="$ARGS --packages $pk"
+    printf '\nThis is the command, which you can keep:\n\n  bash %s %s\n\n' "$0" "$ARGS"
+    printf 'Run it now? [Y/n]: '; IFS= read -r go
+    case "${go:-y}" in y|Y|yes|YES) ;; *) echo "nothing was changed."; exit 0 ;; esac
+    if [ -n "$pk" ]; then exec bash "$0" --controller "$ctl" --token "$tok" --packages "$pk"
+    else exec bash "$0" --controller "$ctl" --token "$tok"; fi
+fi
 
 # ---- taking it away --------------------------------------------------------
 if [ "$REMOVE" = 1 ]; then

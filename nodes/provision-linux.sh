@@ -52,8 +52,18 @@ CHECK_ONLY=0
 
 usage() {
     cat <<'EOF'
-usage: provision-linux.sh [options]
+usage: sudo bash provision-linux.sh [options]
+       sudo bash provision-linux.sh --check
+       sudo bash provision-linux.sh --interactive
 
+With no arguments this prints the help and changes nothing. With options it
+provisions the machine (safe to run again — every step checks before it
+acts); --check runs only the pre-flight; --interactive asks the questions,
+shows the command it built, and runs it on a yes.
+
+  --interactive, -i    ask for everything below one question at a time, then
+                       confirm and run. For a first machine, or a terminal
+                       without a saved command line to paste.
   --user NAME          the account Docker runs under and ssh lands on. The
                        default is bb, and BuilderBot assumes bb — so changing
                        it means writing the account out in the node's address. It gets
@@ -123,8 +133,16 @@ fails silently — docker creates the missing directory and mounts it empty.
 EOF
 }
 
+# No arguments: the help, and nothing changed. Provisioning a machine is
+# what the options ask for, not what a bare invocation should do.
+if [ $# -eq 0 ]; then
+    usage
+    exit 0
+fi
+INTERACTIVE=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --interactive|-i) INTERACTIVE=1; shift ;;
         --user)  USER_NAME="$2"; shift 2 ;;
         # Named rather than falling into "unknown option", because the flag
         # was documented and is likely to be in somebody's saved command
@@ -151,6 +169,69 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
+# ---- the interactive mode ---------------------------------------------------
+# One question at a time, each with its default, then the whole command
+# line printed and confirmed — and run by invoking this same script with
+# it, so the interactive path and the scripted one are one path. The
+# command is printed so it can be kept for the next machine.
+ask() {   # ask VAR "question" "default"
+    local var="$1" q="$2" def="$3" ans
+    if [ -n "$def" ]; then printf '%s [%s]: ' "$q" "$def"; else printf '%s: ' "$q"; fi
+    IFS= read -r ans
+    printf -v "$var" '%s' "${ans:-$def}"
+}
+yes_no() {   # yes_no "question" default(y|n)
+    local ans
+    printf '%s [%s]: ' "$1" "$([ "$2" = y ] && echo Y/n || echo y/N)"
+    IFS= read -r ans
+    ans="${ans:-$2}"
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+if [ "$INTERACTIVE" = 1 ]; then
+    [ -t 0 ] || { echo "--interactive needs a terminal to ask on" >&2; exit 1; }
+    printf '\nBuilderBot node setup. Enter keeps the default in brackets; blank leaves a thing out.\n\n'
+    ARGS=()
+    ask USER_NAME "The account jobs run as (BuilderBot assumes bb)" "${USER_NAME:-bb}"
+    ARGS+=(--user "$USER_NAME")
+    if yes_no "Run Claude sessions on this machine (a session account, ttyd, tmux)?" y; then
+        ask SESSION_NAME "The session account" "${SESSION_NAME:-builder}"
+        ARGS+=(--session-user "$SESSION_NAME")
+    else
+        ARGS+=(--session-user none)
+    fi
+    ask key "A public ssh key for ${USER_NAME} (paste it, or the path of a .pub file; blank for none)" ""
+    if [ -n "$key" ]; then
+        [ -f "$key" ] && key="$(head -1 "$key")"
+        ARGS+=(--key "$key")
+    fi
+    if yes_no "Enroll it as a node now (needs a token from the dashboard's Nodes tab)?" y; then
+        ask ctl "The dashboard's address (as you open it in a browser)" "${CONTROLLER:-}"
+        ask tok "The enrollment token (bbe_…)" "${TOKEN:-}"
+        [ -n "$ctl" ] && [ -n "$tok" ] && ARGS+=(--controller "$ctl" --token "$tok")
+    fi
+    printf '\nShares this machine mounts at boot, as HOST:EXPORT:PATH (the projects share at /workspace, say);\nblank when there are no more.\n'
+    while :; do
+        ask share "  NFS share (HOST:/export:/mountpoint[:ro])" ""
+        [ -n "$share" ] || break
+        ARGS+=(--nfs "$share")
+    done
+    if yes_no "Put the stores somewhere other than /var/lib/builderbot/?" n; then
+        ask STORE_PACKAGES "  packages store (toolchains — the big one; a share serves several nodes)" "$STORE_PACKAGES"
+        ask STORE_DATA "  data store (job trees, AVDs)" "$STORE_DATA"
+        ask STORE_CACHE "  cache store (build caches)" "$STORE_CACHE"
+        ask STORE_ARTIFACTS "  artifacts store" "$STORE_ARTIFACTS"
+        ARGS+=(--packages "$STORE_PACKAGES" --data "$STORE_DATA" --cache "$STORE_CACHE" --artifacts "$STORE_ARTIFACTS")
+    fi
+    printf '\nThis is the command, which you can keep for the next machine:\n\n  sudo bash %s' "$0"
+    for a in "${ARGS[@]}"; do printf " %q" "$a"; done
+    printf '\n\n'
+    if yes_no "Run it now?" y; then
+        exec bash "$0" "${ARGS[@]}"
+    fi
+    echo "nothing was changed."
+    exit 0
+fi
+
 # One without the other is a typo, and the enrollment would fail an hour of
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
