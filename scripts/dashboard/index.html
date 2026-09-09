@@ -8188,8 +8188,8 @@ function renderPackagesInto(i){
       : d.root
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
-          : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
-      : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
+          : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an package store to keep them out of it.`)
+      : "The package store root could not be determined; this image may predate <code>bb sdk</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
     <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>

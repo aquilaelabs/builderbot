@@ -520,6 +520,24 @@ every project on the box — the thing the sandbox VM exists to prevent. At
 enterprise scale every one of these gets worse, and the fourth becomes a
 finding in somebody's report.
 
+### The packages store, scoped by platform
+
+A node's packages store is the operator's setting — a share, or a directory
+of the node's own — and the node's packages live one level down, under
+`<store>/<os>-<arch>` (`pkg_scope()` in the agent, `sdk_scope` in
+`scripts/lib/common.sh`, both spelled as uname does: `linux-x86_64`,
+`darwin-arm64`). Everything else — the layout, the probes, the census, the
+bundle under `.bb` — is relative to that scoped root (`pkg_root()`,
+`sdk_root`), so one share serves a Linux box and a Mac at once and the old
+refusal of two architectures on one store is gone. The census reports the
+scope beside the store's path. The Android system images are guest
+artifacts, identical on every host, and live once under `<store>/shared`
+with each scope's `android/system-images` a symlink to them. A flat store
+from before this is migrated by whichever machine reads it first
+(`scope_store()` in the agent's census, `sdk_scope_migrate` at the
+controller's boot): each entry renamed into the scope directory, no copy,
+idempotent, safe from both sides at once.
+
 ### What `/workspace` means in the new model
 
 - **On the controller: unchanged, and canonical.** The projects share, mounted
@@ -568,7 +586,7 @@ goes wrong with caches is a full disk, and at fleet scale the second thing is
 Caches answered "how does a node avoid re-downloading what a build pulls";
 this answers the question above it, which the plan had not: **how do the
 toolchains themselves — a JDK, the Android SDK, Flutter — get onto a node at
-all, and where do they live?** Today the answer is the controller's SDK share
+all, and where do they live?** Today the answer is the controller's package store
 and `bb sdk`, operator-gated; that has to generalize without forking.
 
 - **One catalog, per-node state.** `config/packages.json` stays the single
@@ -618,7 +636,7 @@ front of it, since the install is sdkmanager's.
   `packages` store — default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should
   not need NFS to hold a JDK. A share is allowed as the location where that
-  is what the operator wants (the controller's own SDK share is exactly this
+  is what the operator wants (the controller's own package store is exactly this
   case, so the local node needs nothing migrated). **Sharing one store
   between several nodes is the trap to name**: two agents installing into one
   NFS directory at once, or one upgrading under another mid-build, is version
@@ -1599,7 +1617,7 @@ otherwise. Put the session on the node and most of that is simply not needed.
 `bb sdk` on the node already answers for the node. `bb build` is a build.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
-this box's SDK share and bb-sandbox's packages store are **one store under two
+this box's package store and bb-sandbox's packages store are **one store under two
 names** — `/sdk` here through Unraid's FUSE layer, `/mnt/SDK` there over NFS,
 store id identical — so "the container has Flutter" and "the node has Flutter"
 were one fact, and nothing could be taken off the container without taking it

@@ -4322,7 +4322,7 @@ cmd_drift() {
 
 # Where Chromium actually is, in the order the answers can be trusted:
 # PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honors), then
-# the SDK share directly, then the historical /opt path. Resolved rather than
+# the package store directly, then the historical /opt path. Resolved rather than
 # hardcoded because the browsers moved out of the image: the /opt entry is a
 # symlink the startup hook makes, and a hook that could not make it — /opt is
 # root-owned — used to leave every screenshot command dead with the bytes

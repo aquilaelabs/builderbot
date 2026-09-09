@@ -324,7 +324,7 @@ def store_id(path, make=True):
     """A stable id for the store at `path`, from a marker inside it.
 
     Two machines mounting one share have no way to recognize each other by
-    path: this container reaches the SDK share through Unraid's FUSE layer
+    path: this container reaches the package store through Unraid's FUSE layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (192.168.1.10:/mnt/user/development/SDK). Neither string can be
     derived from the other without knowing it is Unraid, so pairing on the
@@ -380,7 +380,7 @@ def _seed_local():
     # This container's own packages store, reported like any node's — without
     # it the controller could not be recognized as sharing a store with a
     # node, so the "one install at a time across all of them" arbitration
-    # never engaged for the pair that most obviously needs it: the SDK share,
+    # never engaged for the pair that most obviously needs it: the package store,
     # mounted here and on the sandbox at once.
     root = sdk_root_of_controller()
     if root:
@@ -914,7 +914,10 @@ def _census(c):
                 "total_mb": _mb(s.get("total_mb")),
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
-                "used_mb": _mb(s.get("used_mb"))}
+                "used_mb": _mb(s.get("used_mb")),
+                # The node's own directory in the store — linux-x86_64,
+                # darwin-arm64 (roadmap R19); "" from an agent before it.
+                "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
     # {name: version} from `bb sdk versions` on the node — the controller's
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does

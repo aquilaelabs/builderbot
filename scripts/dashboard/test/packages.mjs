@@ -149,7 +149,7 @@ list = await rows();
 const flutter = list.find(r => r.name === 'flutter');
 const emu = list.find(r => r.name === 'android:emulator');
 ok(flutter.installed && flutter.where.includes(`${DIR}/sdk/flutter`),
-   'flutter installs to the SDK root, and the row says where');
+   'flutter installs to the package store root, and the row says where');
 ok(emu.installed && emu.where.includes(`${DIR}/androidsdk/emulator`),
    'an android package resolves to its place in the SDK tree');
 ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),

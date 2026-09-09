@@ -89,7 +89,7 @@ jobs:
       # say why. Reclaim the space first, and print the number so the next
       # capacity failure is a figure in the log rather than a mystery.
       #
-      # The image has since lost ~2.9GB compressed to the SDK share, which is
+      # The image has since lost ~2.9GB compressed to the package store, which is
       # headroom rather than a reason to stop: this step costs seconds, and
       # what it protects against gives no error message. Note also that the
       # paths below are the RUNNER's preinstalled toolchains, unrelated to

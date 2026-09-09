@@ -94,7 +94,9 @@ is_mountpoint() {
 # SDK_ROOT is that share, /sdk by default. Without one — nobody mapped it —
 # this falls back to the home volume, which also persists but is the
 # operator's own directory rather than a place to put 30GB.
-sdk_root() {
+# sdk_store_root — the package store as the operator mapped it: the share,
+# or the home volume's .sdk. What the marker and the settings name.
+sdk_store_root() {
     local root="${SDK_ROOT:-/sdk}"
     if [ -d "$root" ] && [ -w "$root" ]; then
         # /sdk is the image's own default and exists in the image whether or
@@ -111,7 +113,61 @@ sdk_root() {
     printf '%s' "${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
 }
 
-# sdk_have ROOT NAME — is a toolchain installed under the SDK root?
+# sdk_scope — this machine's directory in the store: <os>-<arch> as uname
+# spells them (linux-x86_64). One share serves a Linux box, a Mac and a
+# Windows machine only if their binaries do not land on top of each other,
+# so everything installed lives one level down from the share (roadmap
+# R19); the agent on a node keeps the same rule, in the same words.
+sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"; }
+
+# sdk_root — where THIS machine's packages are: the store's scope directory.
+# Every install, probe and PATH entry is relative to this.
+sdk_root() { printf '%s/%s' "$(sdk_store_root)" "$(sdk_scope)"; }
+
+# sdk_scope_migrate [STORE] — a store laid out flat, from before the scoping,
+# moved into its scope directory once: each entry renamed (same filesystem,
+# no copy), and the Android system images — the same bytes on every host —
+# put under <store>/shared with this scope's android/system-images a link
+# to them. Idempotent, and safe to run from the controller and a node at
+# once: an entry the other side already moved is simply not there. Run at
+# boot (45-sdk.sh) and before an install.
+sdk_scope_migrate() {
+    local store="${1:-$(sdk_store_root)}" scoped e moved=0
+    [ -d "$store" ] || return 0
+    scoped="$store/$(sdk_scope)"
+    # .bb, an older agent's bundle at the share's root, stays: a node still
+    # on that agent keeps its bb until it is updated.
+    for e in "$store"/*; do
+        [ -e "$e" ] || continue
+        e="$(basename "$e")"
+        case "$e" in shared|.bb|.bb-store*) continue ;; esac
+        case "$e" in linux-*|darwin-*|windows-*) continue ;; esac
+        mkdir -p "$scoped" 2>/dev/null || return 0
+        [ -e "$scoped/$e" ] && continue
+        mv "$store/$e" "$scoped/$e" 2>/dev/null && moved=$((moved + 1))
+    done
+    [ "$moved" -gt 0 ] && log "package store: moved $moved entries into $(sdk_scope)/ — scoped by platform now"
+    # The system images, shared.
+    local mine="$scoped/android/system-images" shared="$store/shared/android/system-images"
+    if [ -d "$mine" ] && [ ! -L "$mine" ]; then
+        if [ ! -d "$shared" ]; then
+            mkdir -p "$(dirname "$shared")" && mv "$mine" "$shared" \
+                && log "package store: the android system images are shared across platforms"
+        else
+            for e in "$mine"/*; do
+                [ -e "$e" ] || continue
+                [ -e "$shared/$(basename "$e")" ] || mv "$e" "$shared/"
+            done
+            rmdir "$mine" 2>/dev/null || log "package store: $mine still holds images the shared copy also has — remove it by hand"
+        fi
+    fi
+    if [ -d "$shared" ] && [ -d "$scoped/android" ] && [ ! -e "$mine" ] && [ ! -L "$mine" ]; then
+        ln -s "../../shared/android/system-images" "$mine" 2>/dev/null || true
+    fi
+    return 0
+}
+
+# sdk_have ROOT NAME — is a toolchain installed under the package store root?
 sdk_have() {
     [ -d "$1/$2" ] && [ -n "$(ls -A "$1/$2" 2>/dev/null)" ]
 }

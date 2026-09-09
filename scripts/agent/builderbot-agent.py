@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.34"
+AGENT_VERSION = "0.4.35"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -296,6 +296,7 @@ APK_BIN = os.environ.get("BUILDERBOT_APK_BIN", "apk")
 XBPS_QUERY_BIN = os.environ.get("BUILDERBOT_XBPS_QUERY_BIN", "xbps-query")
 XBPS_INSTALL_BIN = os.environ.get("BUILDERBOT_XBPS_INSTALL_BIN", "xbps-install")
 EMERGE_BIN = os.environ.get("BUILDERBOT_EMERGE_BIN", "emerge")
+BREW_BIN = os.environ.get("BUILDERBOT_BREW_BIN", "brew")
 NETWORKD_DIR = os.environ.get("BUILDERBOT_NETWORKD_DIR", "/etc/systemd/network")
 NETWORKCTL_BIN = os.environ.get("BUILDERBOT_NETWORKCTL_BIN", "networkctl")
 INTERFACES_FILE = os.environ.get("BUILDERBOT_INTERFACES_FILE", "/etc/network/interfaces")
@@ -494,12 +495,112 @@ def _sshd_listening():
 STORE_ID_FILE = ".bb-store-id"
 
 
+# ---------------------------------------------------------------------------
+# the package store, scoped by platform (roadmap R19)
+#
+# One share can serve a Linux box, a Mac and a Windows machine only if their
+# binaries do not land on top of each other: the store's root is therefore
+# <store>/<os>-<arch> — linux-x86_64, darwin-arm64 — and everything else
+# (the layout, the probes, the census, the bundle) is relative to that. The
+# operator's setting stays the share; the scope is this machine's own fact.
+# A store laid out flat, from before this, is migrated once by renaming its
+# entries into the scope directory (same filesystem, no copy), by whichever
+# machine sees it first; the other finds nothing left to move. What is the
+# same bytes on every host — the Android system images, tens of gigabytes —
+# lives once under <store>/shared and each scope's android tree links to it,
+# because sdkmanager and Gradle want one ANDROID_HOME and would otherwise
+# fetch a second copy per platform.
+
+SCOPE_RE = re.compile(r"^(linux|darwin|windows)-[A-Za-z0-9_]+$")
+
+
+def pkg_scope():
+    """This machine's scope directory name: <os>-<arch> as uname spells them."""
+    return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
+
+
+def pkg_root(state):
+    """Where THIS machine's packages live: the packages store's scope
+    directory, or "" when the node has no packages store."""
+    store = (state.get("stores") or {}).get("packages") or ""
+    return os.path.join(store, pkg_scope()) if store else ""
+
+
+def scope_store(store, say=None):
+    """Migrate a flat store into its scope directory and share the system
+    images, once; a no-op on a store already in shape. Idempotent and safe
+    to run from two machines at once: each rename is one entry, and an
+    entry the other side already moved is simply not there."""
+    say = say or (lambda t: log(t))
+    if not store or not os.path.isdir(store):
+        return
+    scoped = os.path.join(store, pkg_scope())
+    # `.bb` — the bundle an agent BEFORE the scoping keeps at the share's
+    # root — is left where it is, so a node still on that agent keeps its
+    # bb while the controller has moved on; a scoped agent keeps its own
+    # under its scope and never reads the old one.
+    flat = [e for e in os.listdir(store)
+            if e not in ("shared", ".bb") and not SCOPE_RE.match(e) and not e.startswith(".bb-store")]
+    if flat and not os.path.isdir(scoped):
+        try:
+            os.makedirs(scoped, exist_ok=True)
+        except OSError as ex:
+            say(f"packages store: cannot make {scoped}: {ex}")
+            return
+    if flat and os.path.isdir(scoped):
+        moved = []
+        for e in flat:
+            src, dst = os.path.join(store, e), os.path.join(scoped, e)
+            if os.path.exists(dst):
+                continue
+            try:
+                os.rename(src, dst)
+                moved.append(e)
+            except OSError as ex:
+                say(f"packages store: could not move {e} into {pkg_scope()}/: {ex}")
+        if moved:
+            say(f"packages store: moved {len(moved)} entr{'y' if len(moved) == 1 else 'ies'} "
+                f"into {pkg_scope()}/ — the store is now scoped by platform")
+    share_images(store, scoped, say)
+
+
+def share_images(store, scoped, say):
+    """The Android system images once, under <store>/shared, with this
+    scope's android/system-images a symlink to them."""
+    mine = os.path.join(scoped, "android", "system-images")
+    shared = os.path.join(store, "shared", "android", "system-images")
+    if os.path.islink(mine):
+        return
+    if os.path.isdir(mine):
+        try:
+            if not os.path.isdir(shared):
+                os.makedirs(os.path.dirname(shared), exist_ok=True)
+                os.rename(mine, shared)
+            else:
+                # Both exist: fold what is only here into the shared copy.
+                for e in os.listdir(mine):
+                    if not os.path.exists(os.path.join(shared, e)):
+                        os.rename(os.path.join(mine, e), os.path.join(shared, e))
+                if os.listdir(mine):
+                    say(f"packages store: {mine} still holds images the shared copy also has — "
+                        "remove it by hand and the link is made on the next start")
+                    return
+                os.rmdir(mine)
+            say("packages store: the android system images are shared across platforms")
+        except OSError as ex:
+            say(f"packages store: could not share the system images: {ex}")
+            return
+    if os.path.isdir(shared) and os.path.isdir(os.path.join(scoped, "android")) and not os.path.lexists(mine):
+        with contextlib.suppress(OSError):
+            os.symlink(os.path.relpath(shared, os.path.dirname(mine)), mine)
+
+
 def store_id(path):
     """A stable id for a store, from a marker inside it — the same file the
     controller reads for its own (nodes.store_id).
 
     Two machines mounting one share cannot recognize each other by path: the
-    controller reaches the SDK share through Unraid's FUSE layer while this
+    controller reaches the package store through Unraid's FUSE layer while this
     node reaches the same bytes over NFS, and neither mount string can be
     derived from the other. The file answers exactly, whatever the transport.
     Read-only here: the controller creates it, so a node with a read-only
@@ -520,6 +621,8 @@ def _stores(stores, used=False):
             out[role] = {"path": path, "id": store_id(path),
                          "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
                          "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
+            if role == "packages":
+                out[role]["scope"] = pkg_scope()      # where THIS machine's packages are, under path
         except OSError:
             # Not there is a different fact from full: reported as null so
             # the row says "missing" rather than "0MB free".
@@ -611,7 +714,7 @@ def _toolchains(state):
     """What this node can build with: on PATH, or in its packages store.
     The census's `toolchains` is what package-build placement selects on."""
     tc = {}
-    store = (state.get("stores") or {}).get("packages") or ""
+    store = pkg_root(state)
     by_report = {}
     for entry in store_layout(state):
         if entry.get("reports") and entry.get("tool"):
@@ -676,7 +779,7 @@ def store_dirs(state):
     <root>/<name>, and android's parts under <root>/android/, so the names
     ARE the inventory and this is one listdir.
     """
-    store = (state.get("stores") or {}).get("packages") or ""
+    store = pkg_root(state)
     out = {"top": [], "android": []}
     if not store:
         return out
@@ -718,7 +821,7 @@ def sdk_images(state):
     of the answer to "can this one go?".
     """
     stores = state.get("stores") or {}
-    store = stores.get("packages") or ""
+    store = pkg_root(state)
     if not store:
         return []
     base = os.path.join(store, "android", "system-images")
@@ -766,7 +869,7 @@ def _listdir(path):
 
 def sdk_env(state, who=None):
     """The environment a job runs with on this node: the packages store as
-    the SDK root, its android/ directory as ANDROID_HOME, its jdk as
+    the package store root, its android/ directory as ANDROID_HOME, its jdk as
     JAVA_HOME, every toolchain it holds on PATH, and AVDs under the data
     store. What the image gets from its Dockerfile, a node gets from here.
 
@@ -778,7 +881,7 @@ def sdk_env(state, who=None):
     find a compiler (bug #45).
     """
     stores = state.get("stores") or {}
-    store = stores.get("packages") or ""
+    store = pkg_root(state)
     env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
     if store:
         android = os.path.join(store, "android")
@@ -842,7 +945,7 @@ def sdk_versions(state):
     nothing reported at all until a job has run — which is the honest answer
     rather than a summary standing in for an inventory.
     """
-    store = (state.get("stores") or {}).get("packages") or ""
+    store = pkg_root(state)
     if not store:
         return {}
     bbdir = os.path.join(store, ".bb")
@@ -1120,6 +1223,11 @@ def pkg_backend():
         # No query short of portage-utils: everything asked for is emerged
         # with --noreplace, which is portage's own "if missing".
         return "emerge", [], [EMERGE_BIN, "--quiet", "--noreplace"]
+    if _have(BREW_BIN) or os.path.exists("/opt/homebrew/bin/brew"):
+        # macOS: Homebrew, as the account that owns it — the agent runs as
+        # that account on a guest node, which is what brew wants.
+        brew = BREW_BIN if _have(BREW_BIN) else "/opt/homebrew/bin/brew"
+        return "brew", [brew, "list", "--versions"], [brew, "install", "--quiet"]
     return "", [], []
 
 
@@ -1510,6 +1618,8 @@ def net_backend():
 
 def init_now():
     """Which init runs this machine — what a service of ours is, there."""
+    if platform.system() == "Darwin":
+        return "launchd"
     if os.path.isdir("/run/systemd/system"):
         return "systemd"
     if _have("rc-service"):
@@ -1526,6 +1636,15 @@ def distro_now():
     the row can say which tools a change would go through."""
     d = {"id": "", "family": "", "pretty": "", "pkg": "", "network": "", "init": ""}
     like = ""
+    if platform.system() == "Darwin":
+        # No os-release on a Mac; sw_vers is the same fact. Its own family:
+        # brew for packages, no network backend (a Mac's address is its
+        # owner's), launchd for a service.
+        brew = _have(BREW_BIN) or os.path.exists("/opt/homebrew/bin/brew")
+        d.update({"id": "macos", "family": "macos",
+                  "pretty": ("macOS " + _run(["sw_vers", "-productVersion"])).strip(),
+                  "pkg": "brew" if brew else "", "network": "", "init": "launchd"})
+        return d
     try:
         with open(OS_RELEASE, errors="replace") as f:
             for line in f:
@@ -1960,6 +2079,14 @@ class Agent:
         # controller reconciles against it: a job its row says is running
         # here that this agent does not know was lost with a restart, and is
         # failed there rather than left running forever (docs/nodes.md §9).
+        # The store in shape before the census reads it: a flat store from
+        # before the scoping is moved into its scope directory here, once,
+        # by the running agent — never by `enroll`, which may be run with a
+        # store it cannot write yet.
+        try:
+            scope_store((self.state.get("stores") or {}).get("packages") or "")
+        except OSError as e:
+            log(f"packages store: not scoped yet ({e})")
         st, r = self.ctl.call("hello", {"census": census(self.state),
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
@@ -2316,7 +2443,7 @@ class Agent:
         newest unpacked copy, which is what a shell on this node puts on its
         PATH."""
         say = job.say if job else (lambda t: log(t.rstrip("\n")))
-        store = (self.state.get("stores") or {}).get("packages") or ""
+        store = pkg_root(self.state)
         if not store:
             say("refused: this node has no packages store\n")
             return ""
@@ -2432,7 +2559,7 @@ class Agent:
         # there is nothing to restart and nothing to keep in step; `into` is
         # still the resolved path everywhere else, because the census has to
         # report the digest actually running rather than a symlink.
-        store = (self.state.get("stores") or {}).get("packages") or ""
+        store = pkg_root(self.state)
         link = os.path.join(store, ".bb", "current") if store else ""
         bbdir = link if link and os.path.isdir(link) else into
         env["PATH"] = ":".join([os.path.join(bbdir, "scripts"),
@@ -2700,7 +2827,7 @@ class Agent:
         """Ask the loop to restart the ttyds onto the current bundle with a
         freshly built environment — from a job's thread, so only the flag
         is set here."""
-        store = (self.state.get("stores") or {}).get("packages") or ""
+        store = pkg_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into) and self.ttyd:
             self.session_stale = into
@@ -2747,7 +2874,7 @@ class Agent:
             return
         log("sessions: a ttyd exited; starting again")
         self.session_tried = time.time()
-        store = (self.state.get("stores") or {}).get("packages") or ""
+        store = pkg_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into):
             # .bb/current is whatever was fetched last, so the census names
@@ -2881,7 +3008,7 @@ class Agent:
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
         per-node state — the census reports what landed."""
         stores = self.state.get("stores") or {}
-        store = stores.get("packages") or ""
+        store = pkg_root(self.state)
         if not store:
             job.say("refused: this node has no packages store\n")
             return "failed", 78
@@ -3385,13 +3512,14 @@ class Agent:
                 shutil.copyfile(RUNNER_TARBALL, tar_path)
                 job.say(f"using the runner tarball at {RUNNER_TARBALL}\n")
             else:
-                arch = {"x86_64": "x64", "aarch64": "arm64", "armv7l": "arm"}.get(platform.machine(), "x64")
+                arch = {"x86_64": "x64", "aarch64": "arm64", "arm64": "arm64", "armv7l": "arm"}.get(platform.machine(), "x64")
+                osname = "osx" if platform.system() == "Darwin" else "linux"
                 job.say("asking GitHub for the latest runner release…\n")
                 try:
                     with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
-                                 if a.get("name", "").startswith(f"actions-runner-linux-{arch}-")
+                                 if a.get("name", "").startswith(f"actions-runner-{osname}-{arch}-")
                                  and a["name"].endswith(".tar.gz"))
                 except (OSError, ValueError, StopIteration, KeyError) as e:
                     job.say(f"could not find the runner release: {e}\n")

@@ -265,7 +265,7 @@ function nodeAdvancedSection(n, stale, inflight){
         title="check that both machines mean the same directory by the projects share">Check</button>
     </div>
     <div class="sub ndcheck" hidden></div>
-    <div class="actbar">
+    ${!n.reported?.sandbox ? "" : `<div class="actbar">
       <span class="state">${n.config?.lock
         ? "System changes are locked to this node's own console: Apply storage, Apply network and a root command are refused until Unlock."
         : "Lock keeps this node's mounts, address and root managed at the OS level: Apply storage, Apply network and a root command are refused while it is on."}</span>
@@ -273,7 +273,7 @@ function nodeAdvancedSection(n, stale, inflight){
         title="${n.config?.lock ? "let the dashboard apply storage, network and root commands here again"
           : "refuse system changes from here — the machine's fstab, address and root stay its administrator's at the console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
-    </div>
+    </div>`}
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
         to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
@@ -569,8 +569,9 @@ function nodeConfSections(n){
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
       : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
-         provisioned as a sandbox — a container, or somebody's own machine — so its mounts
-         and its address are its own to change.</div>`}
+         provisioned as a sandbox — ${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"} — so its mounts
+         and its address are its own to change.${rep.system === "darwin"
+           ? " Its packages land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){

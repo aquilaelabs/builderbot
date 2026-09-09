@@ -55,7 +55,7 @@ services:
 
       # --- git identity -----------------------------------------------------
 
-      # --- SDK share --------------------------------------------------------
+      # --- package store --------------------------------------------------------
       # Where the downloadable toolchains live inside the container; pairs
       # with the /sdk volume below.
       SDK_ROOT: ${SDK_ROOT:-/sdk}
@@ -132,7 +132,7 @@ services:
       # dashboard rather than silently not showing up.
       - ${WORKSPACE_PATH:-/mnt/user/development/projects}:/workspace
 
-      # --- the SDK share ----------------------------------------------------
+      # --- the package store ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
       # system images, plus any toolchain `bb sdk install` adds. Outside the
       # image on purpose: the container is rebuilt on every update, this is

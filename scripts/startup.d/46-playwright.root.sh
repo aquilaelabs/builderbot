@@ -2,7 +2,7 @@
 #
 # roles: controller node
 #
-# Playwright's browsers live on the SDK share, not in the image.
+# Playwright's browsers live on the package store, not in the image.
 #
 # They are 1.3GB of pure download and /opt is discarded on every image
 # update, so baking them in meant re-fetching them weekly forever. The image

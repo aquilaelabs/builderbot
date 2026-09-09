@@ -105,7 +105,7 @@ Create the appdata directories:
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
-# The SDK share: Android platforms/emulator/system images and any toolchain
+# The package store: Android platforms/emulator/system images and any toolchain
 # you install later. On a normal share rather than appdata — it is bulk data,
 # it is not written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/development/SDK
@@ -296,7 +296,7 @@ without passing it through to a VM and taking it away from everything else.
    one, made with `docker volume create -o type=nfs …` — if you want it
    elsewhere. Nothing about the dashboard needs turning off: in the node
    role it does not start.
-4. Point its **SDK share** at the same share the management container uses.
+4. Point its **package store** at the same share the management container uses.
    One store under two names is recognized, and installs are arbitrated across
    it rather than colliding.
 5. Map the projects share at **/workspace** too, if sessions should run on
@@ -352,7 +352,7 @@ are underlined links that fix themselves in place. A row with an error carries
 no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project — the
-container marks its own paths that way (the SDK share, if you put it inside
+container marks its own paths that way (the package store, if you put it inside
 the projects share, as the default does), and you can drop the same file into
 anything you would rather the card ignored.
 
@@ -772,5 +772,5 @@ SIGTERM; the emulator is powered down and Claude sessions close their turn.
 A node's runner is unaffected — nodes do not stop with this container.
 
 **Image size.** Nothing large is baked in any more — no JDK, no Android SDK,
-and the Playwright browsers live on the SDK share — so a pull is well under
+and the Playwright browsers live on the package store — so a pull is well under
 a gigabyte. Updates are layer-diffed, so routine updates move far less data.

@@ -208,7 +208,7 @@ BB = os.environ.get("BB_BIN") or str(HERE.parent / "bb")
 
 
 def sdk_root_path():
-    """Where bb decided the SDK root is — asked once, since it cannot change
+    """Where bb decided the package store root is — asked once, since it cannot change
     without a container restart."""
     if not _sdk_root_cache:
         r = run([BB, "sdk", "root"], timeout=15)
@@ -608,7 +608,7 @@ def payload():
 
 
 def is_mount(path):
-    """Whether the SDK root is a mapped share rather than a directory on the
+    """Whether the package store root is a mapped share rather than a directory on the
     home volume — the difference between "kept outside the image" and "kept
     alongside everything else"."""
     if not path:
@@ -899,7 +899,11 @@ def payload_for_node(nid):
     choices = image_choices()
     here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
-            "root": store.get("path") or "", "free_mb": store.get("free_mb"),
+            # The node's own scope under the store (roadmap R19), where its
+            # packages actually are; an older agent reports no scope and
+            # the share itself is the honest fallback.
+            "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
+            "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
             "images": imgs,
             "addable": [c for c in choices["rows"] if c["id"] not in here],
@@ -928,7 +932,7 @@ def _store_share(n):
 
     The store's own id first (nodes.store_id — a marker file inside it),
     because it is the only answer that survives the transport differing. On
-    this box the SDK share is reached through Unraid's FUSE layer by the
+    this box the package store is reached through Unraid's FUSE layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by the sandbox
     (192.168.1.10:/mnt/user/development/SDK); neither string can be derived
     from the other, so the pair was invisible and the one-install-at-a-time
@@ -1170,20 +1174,14 @@ def node_job(principal, nid, action, names):
                              f"{where}. One at a time."}
     # ...and this container's own installer, which is not a job and so is
     # invisible to the loop above. It is the sharer that matters most here:
-    # the SDK share is mounted by the controller and by the sandbox at once.
+    # the package store is mounted by the controller and by the sandbox at once.
     if _pkg_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
         return {"error": "this container is installing into the same packages store "
                          f"right now — it shares it with {n['name']}. One at a time."}
-    # Installing x86-64 binaries into a store an arm64 machine reads is
-    # silently wrong: the store's path carries no architecture, so nothing
-    # else would catch it and the failure surfaces later as a toolchain that
-    # will not execute.
-    bad = [o for o in sharers if (o.get("arch") or "") and (n.get("arch") or "")
-           and o["arch"] != n["arch"]]
-    if bad:
-        return {"error": f"{n['name']} is {n.get('arch')} and shares this packages store with "
-                         f"{', '.join(o['name'] + ' (' + str(o.get('arch')) + ')' for o in bad)}"
-                         " — one store cannot hold both architectures. Give it a store of its own."}
+    # Two architectures on one store used to be refused here, because a flat
+    # store could not hold both. It is scoped by platform now — each machine
+    # installs under <store>/<os>-<arch> (roadmap R19) — so a Mac and a Linux
+    # box sharing a share is the design, not a mistake.
     r = nodes.job_add(principal, {"node": nid}, "package",
                       {"action": action, "names": names, "timeout": 3600})
     if r.get("ok") and added:
@@ -1234,7 +1232,7 @@ def start_job(action, names, auto=False):
 PKG_CHECK_EVERY = 7 * 86400
 # Late enough that the startup hooks have finished. A hook installing into
 # the store can be running sdkmanager when the dashboard comes up, and two of
-# those on one SDK root is a fight over the same lock.
+# those on one package store root is a fight over the same lock.
 PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "180"))
 AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
 

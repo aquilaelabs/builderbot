@@ -357,7 +357,7 @@ await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
 
 // Which shares count as "not a project" no longer comes only from what sits
 // inside /workspace. That worked while /workspace was the whole development
-// share; pointing it at the projects folder took the SDK share outside it and
+// share; pointing it at the projects folder took the package store outside it and
 // sent 267 findings about downloaded toolchains to the label meant for a path
 // that is genuinely wrong. The rule asks the mount table instead.
 //

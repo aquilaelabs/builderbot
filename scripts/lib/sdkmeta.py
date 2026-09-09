@@ -49,7 +49,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # BB_PACKAGES_JSON points this at another catalog. It exists so the install
 # machinery can be exercised against a fake one — five recipes fetched from
 # file:// URLs prove the fetching, unpacking, environment and verify steps
-# without spending gigabytes or touching the real SDK root.
+# without spending gigabytes or touching the real package store root.
 CATALOG = os.environ.get("BB_PACKAGES_JSON") or os.path.join(
     HERE, "..", "..", "config", "packages.json")
 TIMEOUT = 30
@@ -112,6 +112,32 @@ def fill(text, subs):
     for k, v in subs.items():
         text = text.replace("{" + k + "}", v)
     return text
+
+
+_ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
+
+
+def this_platform():
+    """"<os>/<arch>" for the machine running this, the way the catalog's
+    `platforms` spells it: linux/amd64, darwin/arm64."""
+    import platform as _p
+    return f"{_p.system().lower()}/{_ARCH.get(_p.machine().lower(), _p.machine().lower())}"
+
+
+def for_platform(value):
+    """A recipe field that may differ per platform: a plain value, or a
+    dict keyed "<os>/<arch>" with "<os>/*" as a fallback. A recipe whose
+    download is one URL on Linux and another on a Mac writes the dict;
+    everything else stays a string."""
+    if not isinstance(value, dict):
+        return value
+    plat = this_platform()
+    if plat in value:
+        return value[plat]
+    o = plat.partition("/")[0]
+    if f"{o}/*" in value:
+        return value[f"{o}/*"]
+    return ""
 
 
 # Documents fetched while resolving, kept briefly on disk.
@@ -228,7 +254,10 @@ def resolve(pkg):
         die(f"{pkg['name']}: unknown version resolver {kind!r}")
 
     if src.get("url"):
-        url = fill(src["url"], {"version": version})
+        url = fill(for_platform(src["url"]) or "", {"version": version})
+        if not url:
+            die(f"{pkg['name']}: no download for {this_platform()} — the recipe names "
+                f"{', '.join(sorted(src['url']))}")
     return version, url
 
 
@@ -454,7 +483,9 @@ def main(argv):
     pkg = package(argv[1])
 
     if op == "field":
-        v = dig(pkg, argv[2]) if len(argv) > 2 else None
+        # A per-platform value (a dict keyed "<os>/<arch>") answers for the
+        # machine running this: a tarball's strip count, a script's url.
+        v = for_platform(dig(pkg, argv[2])) if len(argv) > 2 else None
         if isinstance(v, bool):
             v = "1" if v else ""
         print("" if v is None else v)

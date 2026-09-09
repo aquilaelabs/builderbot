@@ -171,7 +171,7 @@ RUN set -eux; \
 
 # ---------------------------------------------------------------------------
 # Playwright: the module and the system libraries here, the browsers on the
-# SDK share.
+# package store.
 #
 # The three browsers are 1.3GB of pure download — the largest thing left that
 # /opt would throw away on every image update — so `install-deps` (apt
@@ -324,7 +324,7 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# Where the SDK share is. Runtime-only, so it lives down here: an ENV in the
+# Where the package store is. Runtime-only, so it lives down here: an ENV in the
 # top block invalidates every layer below it, and the host then re-pulls the lot.
 ENV SDK_ROOT=/sdk
 

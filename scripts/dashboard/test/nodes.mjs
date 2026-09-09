@@ -619,7 +619,7 @@ ok(list[0].id === 'local',
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
      'an installed package on a node reads "installed", not "installed at" with nothing after it');
   // ---- one store, two machines (roadmap #18) ------------------------------
-  // The controller reaches the SDK share through Unraid's FUSE layer and a
+  // The controller reaches the package store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be
   // derived from the other and the pair was invisible. A marker file inside
   // the store answers exactly, whatever the transport — and once the pair is
@@ -646,7 +646,9 @@ ok(list[0].id === 'local',
     // install onto a node of another one is refused by name rather than
     // fetching a couple of hundred megabytes that cannot execute. arm64
     // Linux needs no new agent to reach this (roadmap #18).
-    const wrong = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
+    // swift: an x86-64 tarball, and the catalog says so. (jdk used to be
+    // the example; Temurin packages arm64 and the recipe resolves it now.)
+    const wrong = await napi('/api/packages', { action: 'install', names: ['swift'], node: other.id });
     ok(/packaged for linux\/amd64/.test(wrong.error || ''),
        `an install onto the wrong platform is refused by name (${
          (wrong.error || 'no error').slice(0, 100)})`);
@@ -654,10 +656,15 @@ ok(list[0].id === 'local',
     ok(!/packaged for/.test(fine.error || ''),
        `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
     if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
+    // Two architectures on one store is the design now, not a clash: each
+    // machine installs under its own <os>-<arch> scope (roadmap R19), so
+    // the x86_64 node's install is queued while the arm64 node shares the
+    // share. Cancelled at once, so the one-at-a-time rule below starts clean.
     const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
-    ok(/cannot hold both architectures/.test(clash.error || ''),
-       `a store shared across architectures refuses the install (${
-         (clash.error || 'no error').slice(0, 100)})`);
+    ok(clash.job && !clash.error,
+       `a store shared across architectures takes the install — each machine has its own scope in it (${
+         clash.job || clash.error})`);
+    await napi('/api/v1/jobs', { action: 'cancel', id: clash.job });
     // Same architecture: allowed, but still one at a time across the pair.
     await fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + oen.token, 'Content-Type': 'application/json' },
