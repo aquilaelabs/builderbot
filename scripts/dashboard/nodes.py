@@ -1000,7 +1000,11 @@ def _census(c):
             # The node's own boot id, which a terminal's URL has to carry for
             # a session THERE (bb-tty compares against the machine it runs
             # on); the row hands it to the page per project.
-            "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40]}
+            "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
+            # Seconds since the machine booted, from an agent that reports
+            # it: a missing /workspace on a node up for a minute is a mount
+            # still landing, and the gate says so instead of "add it".
+            "up_s": max(-1, int(se.get("up_s"))) if isinstance(se.get("up_s"), (int, float)) else None}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],

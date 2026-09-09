@@ -1735,7 +1735,13 @@ quietly started on the wrong machine — and `_term_proxy` dials the node's
 ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
 account. The project row carries the same decision (`session_at`,
 `session_why`), so the Claude button is dead with the sentence before
-anything is asked. provision-linux.sh filters 7681/7682 to the controller's
+anything is asked. Two of its refusals are passing and say to wait rather
+than to unbind: the agent not answering (a reboot, an update), and a node
+that came up under ten minutes ago whose network mount has not landed —
+the census carries the uptime (`session.up_s`) for that, the agent
+re-reports the moment `/workspace` appears rather than at the next
+ten-minute hello, and the provisioner's unit orders after `remote-fs.target`
+so the first census usually has the mount already. provision-linux.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
 Addresses move, and the design survives it without anybody re-enrolling:
 the node dials out, so a node whose own address changes is reached by the

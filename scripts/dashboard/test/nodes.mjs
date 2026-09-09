@@ -1006,6 +1006,34 @@ ok(list[0].id === 'local',
   await page.waitForFunction(id => !(state?.attention || []).some(a => a.id === id),
                              minted.id, { timeout: 30000 });
   ok(true, 'an agent brought current takes its alert out of the bell by itself');
+
+  // ---- a node that just came up is waited for, not unbound -------------------
+  // The agent starts before the network mounts land, so its first census
+  // after a boot says /workspace is missing. With the uptime beside it the
+  // gate says "came up N seconds ago, not mounted yet" and no more; the
+  // same census from a machine up for hours is a missing mount, with the
+  // fix and the way out.
+  const sessionCensus = se => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, session: se }, version: shipped.version, digest: shipped.digest }) });
+  const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
+  await napi('/api/prefs', { project: 'alpha', node: minted.id });
+  await sessionCensus(SE);
+  let why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
+  ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
+     `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
+  await sessionCensus({ ...SE, up_s: 5000 });
+  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
+  ok(/does not mount the projects share/.test(why) && /add the mount/.test(why) && /Unbind the node/.test(why),
+     `...the same census from a machine up for hours is a missing mount, with the fix and the way out (${why.slice(0, 60)})`);
+  await sessionCensus({ ...SE, up_s: 5000, workspace: true, writable: true });
+  const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
+  ok(row?.session_at === 'shed' && row?.session_why === '',
+     'and once the share is mounted the button is live there');
+  await napi('/api/prefs', { project: 'alpha', node: '' });
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
 }
 
 // ---- a node's path mapping (§11: the record owns it) ------------------------

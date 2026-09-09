@@ -221,7 +221,9 @@ function nodeSessionsSection(n){
       A project bound to this node keeps a dead Claude button until this half is up.</div>`;
   } else {
     const gaps = [];
-    if (!se.workspace) gaps.push("the projects share is not mounted at /workspace — add it under Storage");
+    if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
+      ? `the projects share is not mounted at /workspace yet — this machine came up ${se.up_s} seconds ago, and a network mount lands a moment after boot`
+      : "the projects share is not mounted at /workspace — add it under Storage");
     else if (se.writable === false) gaps.push("the projects share is mounted read-only — untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
     if (!se.boot) gaps.push("the agent reports no boot id — Update agent");
     [status, cls] = gaps.length ? ["blocked", "bad"]
