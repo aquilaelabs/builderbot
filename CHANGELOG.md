@@ -314,3 +314,5 @@
 - On a phone the notebook's tabs wrap into rows instead of scrolling off the edge (359af56)
 - The notebook's Git view can fetch, pull and push, commit your changes, make and switch branches, revert a commit, and discard a change or delete a branch behind a confirm (9ddfd33)
 - The Git view can hand a commit, a change, a branch or a conflicted merge to Claude with one press, and a per-project policy says whether a session may push its branch or push to main (e8de858)
+- Choosing an archive for a new project uses a button that matches the page (72200dd)
+- Linking a project to GitHub can authenticate with an access token as well as a deploy key, and creates the repository when it is not there yet (72200dd)
