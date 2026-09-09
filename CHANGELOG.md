@@ -301,3 +301,8 @@
 - Controller settings and Users live on a new Administration card, shown only to administrators; the gear opens your Profile (9482be8)
 - Nothing on a tab takes effect until Save or Apply, the colour scheme aside; a role, a route or a Claude-access policy picked and not saved is not written (9482be8)
 - Controls and rows of controls no longer stretch across a tab or the sidebar, on a desktop or a phone (9482be8)
+- Every field on the dashboard has its label above it and a ? beside it for the explanation, and no button carries an ellipsis (2bea578)
+- Your Profile can change your account name, checks that an email is one, and shows whether your commits have an author (2bea578)
+- A Claude session does not start for an account with no name and email for its commits until the Profile has them (2bea578)
+- An administrator edits everything about an account, a new password included, in one dialog from the Users tab (2bea578)
+- The bell and gear panels, tab pills and a switched-to tab now move rather than snap (2bea578)

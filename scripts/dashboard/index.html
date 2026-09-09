@@ -398,8 +398,11 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    .col stacks the row; the field takes the row's width, which the cap on
    .setrow already limits. */
 .setrow.col{flex-direction:column;align-items:stretch;gap:4px}
-.setrow.col>input,.setrow.col>select{width:100%;flex:none}
-.setrow.col>input[type=number]{width:7em}
+/* Outranks the row rule's flex-basis, which is a WIDTH in a row and would
+   be a height here: a stacked field is as wide as its row and as tall as a
+   field. */
+.setrow.col>input:not([type=checkbox]):not([type=number]),.setrow.col>select{width:100%;flex:0 0 auto}
+.setrow.col>input[type=number]{width:7em;flex:0 0 auto}
 .lbl{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);margin:0}
 .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
   margin-left:5px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
@@ -5781,7 +5784,7 @@ function logSection(){
                value="${L.days}" inputmode="numeric">
       </div>
       <div class="actbar">
-        <span class="state">takes now — anything already past it is cropped</span>
+        <span class="state">takes now, and anything already past it is cropped</span>
         <button type="button" id="logApply"
           title="save it, and crop anything already past it">Apply</button>
       </div>

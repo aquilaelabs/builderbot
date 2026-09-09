@@ -149,7 +149,7 @@ function idleSection(){
                value="${m}" inputmode="numeric">
       </div>
       <div class="actbar">
-        <span class="state">takes now — a node hears on its next poll</span>
+        <span class="state">takes now, and a node hears on its next poll</span>
         <button type="button" id="idleApply" title="save it — a node hears on its next poll">Apply</button>
       </div>
     </div>`;
