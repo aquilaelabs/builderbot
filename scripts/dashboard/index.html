@@ -1159,6 +1159,46 @@ input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
    border and nothing draws a bottom one, so without this the first file in
    dist/ reads as another line of the Version block it happens to follow. */
 #artList{border-top:1px solid var(--line)}
+/* The Git view (roadmap R36). The graph is one SVG down the left edge of
+   rows of one height, so an edge between two commits is a curve between
+   two known points; the picked commit's detail is a band under the list
+   rather than inside it, which keeps the rows even. */
+.gitgraph{position:relative;display:flex;gap:8px}
+.gitgraph .glines{flex:0 0 auto;overflow:visible}
+.gitgraph .grows{flex:1 1 auto;min-width:0}
+.grow[data-sha]{display:flex;flex-direction:column;justify-content:center;gap:1px;
+  padding:0 6px;border-bottom:1px solid var(--line);cursor:pointer;min-width:0;
+  transition:background-color .15s ease}
+.grow[data-sha]:last-child{border-bottom:0}
+@media(hover:hover){ .grow[data-sha]:hover{background:var(--btn)} }
+.grow[data-sha].on{background:var(--btn-hi)}
+.grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:13px/1.3 system-ui,sans-serif}
+.grow .gsub .pill{margin-right:4px}
+.grow .gmeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-note);color:var(--dim)}
+.gl0{stroke:var(--accent)} .gl1{stroke:var(--note)} .gl2{stroke:var(--warn)}
+.gl3{stroke:var(--bad)} .gl4{stroke:var(--dim)}
+.glines path{fill:none;stroke-width:2;opacity:.8}
+.glines .gn{fill:var(--panel);stroke-width:2}
+.glines .gn.on{fill:var(--ink)}
+#gitDetail{border-top:1px solid var(--line);padding:var(--row-y) 0 0}
+.gcommit .name{font:600 13px/1.4 system-ui,sans-serif;overflow-wrap:anywhere}
+.gmsg{font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
+.gadd{color:var(--accent)} .gdel{color:var(--bad)}
+.gbranch .name code{font:var(--mono);font-size:13px}
+/* A diff: one fold per file, the lines coloured, and it scrolls inside its
+   own box on a phone rather than the pane. */
+.dfile{border-top:1px solid var(--line);margin-top:6px}
+.dfile>summary{cursor:pointer;list-style:none;padding:6px 0;font:var(--f-ui);color:var(--dim)}
+.dfile>summary::-webkit-details-marker{display:none}
+.dfile>summary::before{content:"\25B8";font-size:11px;margin-right:6px}
+.dfile[open]>summary::before{content:"\25BE"}
+pre.diff{margin:0;overflow-x:auto;font:12px/1.5 var(--mono);white-space:pre;
+  background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+pre.diff span{display:block;min-width:max-content;padding:0 4px}
+pre.diff .d-add{background:color-mix(in srgb, var(--accent), transparent 82%)}
+pre.diff .d-del{background:color-mix(in srgb, var(--bad), transparent 82%)}
+pre.diff .d-hunk{color:var(--note);background:color-mix(in srgb, var(--note), transparent 90%)}
+pre.diff .d-ctx{color:var(--dim)}
 .artrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   border-bottom:1px solid var(--line);padding:9px 2px}
 .artrow:last-child{border-bottom:0}
@@ -1354,6 +1394,14 @@ input[type="file"]{font:inherit;font-size:13px;color:var(--dim);max-width:100%}
   color:var(--dim);padding:11px 13px;font:600 12px/1 system-ui,sans-serif;
   min-height:var(--tap);border-radius:0;flex:0 0 auto}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+/* Seven labels do not fit a phone, and a strip that scrolls sideways hides
+   its last two behind an edge nobody pulls: it wraps into rows of tabs of
+   one width instead, so every view is on screen (docs/design-language.md,
+   The notebook). */
+@media(max-width:600px){
+  .nbtabs{flex-wrap:wrap;overflow:visible;padding:4px 8px 0;gap:2px}
+  .nbtabs button{flex:1 1 30%;text-align:center;padding:9px 6px}
+}
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
 /* The roadmap's summary is a full sentence where the other three are a few
@@ -2524,6 +2572,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button type="button" data-v="analysis">Analysis</button>
       <button type="button" data-v="artifacts">Artifacts</button>
       <button type="button" data-v="tests">Tests</button>
+      <button type="button" data-v="git">Git</button>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's
@@ -2710,6 +2759,17 @@ body.dragging .tab .lbl{cursor:grabbing}
            artifacts it stamps are one subject — those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+    </div>
+    <div class="nbview" data-view="git" hidden>
+      <!-- The repository, read out (roadmap R36): what is changed and not
+           committed, the history as a graph, and the branches with whose
+           worktree sits on which. Reads only in this step; every action a
+           later one adds is a fixed git command on the controller. -->
+      <div class="field nbhead vbar"><span id="gitHint">loading…</span>
+        <span class="sp"></span>
+        <button type="button" id="gitRefresh" title="read the repository again now">Refresh</button>
+      </div>
+      <div id="gitBody"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
@@ -10201,7 +10261,8 @@ $("todoRevert").onclick = revertNotebook;
     // Save and Revert belong to the views that stage — roadmap, briefing and
     // the version on Artifacts. Bugs, tests and findings write through, and
     // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests"].includes(v);
+    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git"].includes(v);
+    if (v === "git") loadGit();
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
@@ -10344,6 +10405,7 @@ $("todoRevert").onclick = revertNotebook;
   // and what the version block computes since the target last moved.
   onRev(() => `git:${project}`, () => {
     if (showing("artifacts")){ loadArtifacts(); loadVersion(); }
+    if (showing("git")) loadGit();
   });
   onRev("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   onRev("reports", () => { if (showing("analysis")) loadAnalysis(); });
@@ -10367,6 +10429,135 @@ $("todoRevert").onclick = revertNotebook;
   // The scanner's findings for this project. Read-only, from the page-wide
   // cache: the scan runs on the host, and every notebook reads the one digest.
   let anaStamp;
+
+  // ---- git -----------------------------------------------------------------
+  // The repository, read out (roadmap R36 step 1). Fetched on open and on
+  // the git revision — the tree's HEAD log moving — never on the poll: a
+  // history is a git call per question. What is open stays open across a
+  // redraw: the commit picked and the files unfolded are kept by sha and
+  // path, not by position.
+  let git = null, gitPick = "", gitOpenFiles = new Set();
+  async function loadGit(){
+    const hint = $("gitHint"), body = $("gitBody");
+    try{
+      const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=all");
+      git = await r.json();
+    }catch(e){ hint.textContent = "git: " + e; return; }
+    if (git.error){
+      hint.textContent = git.error === "not a git repository"
+        ? "not a git repository — nothing to show" : "git: " + git.error;
+      body.innerHTML = "";
+      return;
+    }
+    const st = git.status || {}, files = st.files || [], commits = git.commits || [];
+    const local = (git.branches || []).filter(b => !b.remote);
+    hint.textContent = `on ${st.branch || "no branch"} · ${files.length
+      ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
+      local.length} branch${local.length === 1 ? "" : "es"}${
+      st.upstream ? (st.ahead || st.behind
+        ? ` · ${st.ahead ? st.ahead + " ahead" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " behind " + st.upstream : (st.ahead ? " of " + st.upstream : "")}`
+        : ` · level with ${st.upstream}`) : ""}`;
+    drawGit();
+  }
+
+  function drawGit(){
+    const body = $("gitBody");
+    if (!git || git.error) return;
+    const st = git.status || {}, files = st.files || [], commits = git.commits || [];
+    const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
+    const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}"${
+        gitOpenFiles.has(f.path) ? " open" : ""}>
+        <summary><span class="t"><code>${esc(f.path)}</code></span>
+          <span class="sst${f.state === "conflict" ? " bad" : f.state === "untracked" ? " note" : ""}">${
+            esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
+        <div class="body gdiff"><div class="loading">loading…</div></div>
+      </details>`).join("");
+    const lanes = gitLanes(commits);
+    const H = 34, W = 14, lanesN = Math.max(1, ...commits.map(c => c.lane + 1));
+    const ago_ = t => t ? ago(t * 1000) : "";
+    const graph = commits.length ? `<div class="gitgraph" style="--glanes:${lanesN}">
+      <svg class="glines" width="${lanesN * W}" height="${commits.length * H}" aria-hidden="true">${
+        lanes.edges.map(e => {
+          const x1 = e.from.lane * W + W / 2, y1 = e.from.row * H + H / 2;
+          const x2 = e.to.lane * W + W / 2, y2 = e.to.row * H + H / 2;
+          return `<path d="M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}" class="gl${e.from.lane % 5}"/>`;
+        }).join("")}${
+        commits.map((c, i) => `<circle cx="${c.lane * W + W / 2}" cy="${i * H + H / 2}" r="4" class="gn gl${c.lane % 5}${c.sha === gitPick ? " on" : ""}"/>`).join("")}
+      </svg>
+      <div class="grows">${commits.map(c => `<div class="grow${c.sha === gitPick ? " on" : ""}" data-sha="${esc(c.sha)}" style="height:${H}px">
+          <span class="gsub">${c.refs.map(r => `<span class="pill${r.startsWith("HEAD") ? " ok" : ""}">${esc(r.replace(/^HEAD -> /, ""))}</span>`).join("")} ${esc(c.subject)}</span>
+          <span class="gmeta">${esc(c.author)} · ${esc(ago_(c.when))} · <code>${esc(c.short)}</code></span>
+        </div>`).join("")}</div>
+    </div>` : `<div class="sub dim">no commits yet</div>`;
+    const branchRows = [...local, ...remote].map(b => `<div class="row gbranch">
+        <div class="grow"><div class="name"><code>${esc(b.name)}</code>${
+            b.head ? ` <span class="pill ok">here</span>` : ""}${
+            b.who ? ` <span class="pill">${esc(b.who)}'s session</span>` : ""}${
+            b.remote ? ` <span class="pill">remote</span>` : ""}</div>
+          <div class="sub">${[
+            b.remote ? "" : (b.name === git.main ? "the main branch"
+              : `${b.main_ahead ? b.main_ahead + " ahead" : ""}${b.main_ahead && b.main_behind ? ", " : ""}${
+                 b.main_behind ? b.main_behind + " behind" : ""}${b.main_ahead || b.main_behind ? " " : "level with "}${esc(git.main || "main")}`),
+            b.upstream ? (b.ahead || b.behind
+              ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} against ${esc(b.upstream)}`
+              : `level with ${esc(b.upstream)}`) : "",
+            `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
+      </div>`).join("");
+    body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
+        files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`)
+      + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
+        graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
+      + docSection("git", "branches", "Branches", String(local.length), branchRows || `<div class="sub dim">no branches</div>`);
+    wireSections(body);
+    body.querySelectorAll(".gfile").forEach(d => {
+      d.addEventListener("toggle", () => {
+        if (d.open) gitOpenFiles.add(d.dataset.path); else gitOpenFiles.delete(d.dataset.path);
+        if (d.open && d.querySelector(".loading")) loadGitFile(d);
+      });
+      if (d.open && d.querySelector(".loading")) loadGitFile(d);
+    });
+    body.querySelectorAll(".grow[data-sha]").forEach(r => r.onclick = () => {
+      gitPick = gitPick === r.dataset.sha ? "" : r.dataset.sha;
+      drawGit();
+      if (gitPick) loadGitCommit(gitPick);
+    });
+    if (gitPick) loadGitCommit(gitPick);
+  }
+
+  async function loadGitFile(d){
+    const box = d.querySelector(".gdiff");
+    try{
+      const r = await fetch("/api/git?project=" + encodeURIComponent(project)
+                            + "&what=diff&path=" + encodeURIComponent(d.dataset.path));
+      const j = await r.json();
+      box.innerHTML = j.error ? `<div class="hint bad">${esc(j.error)}</div>` : renderDiff(j.diff);
+    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+  }
+
+  async function loadGitCommit(sha){
+    const box = $("gitDetail");
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = `<div class="loading">loading…</div>`;
+    try{
+      const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=show&sha=" + encodeURIComponent(sha));
+      const c = await r.json();
+      if (sha !== gitPick) return;               // moved on meanwhile
+      if (c.error){ box.innerHTML = `<div class="hint bad">${esc(c.error)}</div>`; return; }
+      const when = c.when ? new Date(c.when * 1000).toLocaleString() : "";
+      box.innerHTML = `<div class="gcommit">
+        <div class="name"><code>${esc(c.short)}</code> ${esc(c.message.split("\n")[0])}</div>
+        <div class="sub">${esc(c.author)} &lt;${esc(c.email)}&gt; · ${esc(when)}${
+          c.parents.length > 1 ? " · merge" : ""}${c.refs.length ? " · " + c.refs.map(esc).join(", ") : ""}</div>
+        ${c.message.includes("\n") ? `<pre class="gmsg">${esc(c.message.split("\n").slice(1).join("\n").trim())}</pre>` : ""}
+        <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
+          `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
+        ${renderDiff(c.diff)}
+      </div>`;
+    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+  }
+  const rf = $("gitRefresh");
+  if (rf) rf.onclick = () => { busy(rf, "Reading"); loadGit().finally(() => { if (rf.isConnected) unbusy(rf, "Refresh"); }); };
 
   // ---- artifacts -----------------------------------------------------------
   // What this project has built. Fetched on open like Analysis, and polled
@@ -13908,6 +14099,60 @@ function docSurface(i, kind){
 // a place to go and look for it.
 const sectOpen = (() => { try{ return JSON.parse(localStorage.getItem("bb.sect") || "{}"); }
                           catch(e){ return {}; } })();
+// Lanes for a commit graph: commits newest first, each with its parents.
+// The classic walk — a commit takes the lane that was waiting for it (the
+// leftmost, when several were), its first parent inherits that lane, and
+// every other parent gets a lane of its own — and the edges between rows,
+// for the page to draw as curves. Writes `lane` onto each commit.
+function gitLanes(commits){
+  const rowOf = new Map(commits.map((c, i) => [c.sha, i]));
+  const lanes = [];                       // the sha each lane is waiting for
+  const edges = [];
+  const slot = () => { const i = lanes.indexOf(null); return i < 0 ? lanes.push(null) - 1 : i; };
+  commits.forEach((c, row) => {
+    const mine = lanes.map((x, i) => x === c.sha ? i : -1).filter(i => i >= 0);
+    const lane = mine.length ? mine[0] : slot();
+    for (const i of mine.slice(1)) lanes[i] = null;
+    c.lane = lane;
+    const [first, ...rest] = c.parents;
+    lanes[lane] = first || null;
+    for (const p of rest) if (!lanes.includes(p)) lanes[slot()] = p;
+  });
+  commits.forEach((c, row) => {
+    for (const p of c.parents){
+      const pr = rowOf.get(p);
+      if (pr === undefined) continue;     // beyond what was fetched
+      edges.push({from: {lane: c.lane, row}, to: {lane: commits[pr].lane, row: pr}});
+    }
+  });
+  return {edges};
+}
+
+// A unified diff as markup: one fold per file, each line marked as added,
+// removed, context or hunk head. Text only ever lands through esc().
+function renderDiff(text){
+  if (!text || !text.trim()) return `<div class="sub dim">no textual change</div>`;
+  const files = [];
+  let cur = null;
+  for (const line of text.split("\n")){
+    if (line.startsWith("diff --git ")){
+      const m = /^diff --git a\/(.*) b\/(.*)$/.exec(line);
+      cur = {name: m ? m[2] : line.slice(11), lines: []};
+      files.push(cur);
+      continue;
+    }
+    if (!cur){ cur = {name: "", lines: []}; files.push(cur); }
+    cur.lines.push(line);
+  }
+  const pre = f => `<pre class="diff">${f.lines.filter(l => !/^(index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename from|rename to|old mode|new mode)/.test(l) || !f.name)
+      .map(l => `<span class="${l.startsWith("@@") ? "d-hunk" : l.startsWith("+") ? "d-add" : l.startsWith("-") ? "d-del" : "d-ctx"}">${esc(l)}\n</span>`).join("")}</pre>`;
+  // A diff with no file header — a single file's, asked by path — is the
+  // text alone; a fold with nothing to name would wear the browser's word.
+  return files.map(f => f.name
+    ? `<details class="dfile" open><summary><code>${esc(f.name)}</code></summary>${pre(f)}</details>`
+    : pre(f)).join("");
+}
+
 function docSection(kind, id, title, status, body, {cls = "", open} = {}){
   const key = `${kind}:${id}`;
   const isOpen = key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone());

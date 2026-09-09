@@ -1546,6 +1546,23 @@ switching back to lan closes it. **public**, a reverse proxy with a wildcard
 record, is named in the picker as not built so the third mode is visible for
 what it is (docs/nodes.md §7).
 
+### The notebook's Git view
+
+The seventh view of a project's notebook reads the repository out: what is
+changed and not committed, each file a fold with its diff; the last hundred
+commits across every branch as a graph, a node per commit and a curve to
+each parent, with the branch and tag names on their rows; one commit's
+message, author, files and diff when you pick it; and the branches, marked
+with the one the tree is on and whose session's worktree sits on which
+(`claude/<account>`), with how far each stands from `main` and from its
+upstream. It reads on open and again when the tree's history moves, never on
+the poll, and every question is git plumbing on the controller against the
+project on the share — a sha or a path from the address is checked against
+what the repository itself reports before it reaches a command. This step is
+read-only; the actions and the Send-to-Claude half are roadmap R36's next
+steps. On a phone the notebook's strip wraps into rows so all seven views
+stay on screen.
+
 ### The Jobs tab
 
 **Tools → Jobs** is the queue (docs/nodes.md §2, phase 4): everything the

@@ -340,7 +340,7 @@ for (const kind of kinds){
   // Save and Revert only where something can be staged behind them: a Save
   // under a list that writes through read as a button that did nothing.
   const foots = {};
-  for (const v of ['roadmap', 'briefing', 'artifacts', 'bugs', 'analysis', 'tests']){
+  for (const v of ['roadmap', 'briefing', 'artifacts', 'bugs', 'analysis', 'tests', 'git']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
@@ -349,7 +349,7 @@ for (const kind of kinds){
     foots[v] = await page.evaluate(() => [...document.querySelectorAll('.nb')]
       .find(n => n.checkVisibility())?.querySelector('#nbFoot')?.checkVisibility() || false);
   }
-  ok(foots.roadmap && foots.briefing && foots.artifacts && !foots.bugs && !foots.analysis && !foots.tests,
+  ok(foots.roadmap && foots.briefing && foots.artifacts && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
      `the notebook's foot shows on the views that stage and on no other (${JSON.stringify(foots)})`);
 }
 

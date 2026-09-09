@@ -2469,9 +2469,12 @@ phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 # view. The convention is the module's docstring; the scratch dir is where an
 # .xpi is unpacked for web-ext, never dist/ itself.
 import artifacts                                                 # noqa: E402
+import git as gitview                                            # noqa: E402
 import workspace                                                 # noqa: E402
 
 artifacts.configure(workspace=WORKSPACE)
+gitview.configure(workspace=WORKSPACE,
+                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -3837,6 +3840,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(findings_payload(self._who()))
         if self.path.startswith("/api/profile"):
             return self._profile()
+        if self.path.startswith("/api/git"):
+            # The notebook's Git view (roadmap R36): plumbing reads on the
+            # project's tree, for a project this account may see. A sha
+            # and a path are checked in git.py against what the repository
+            # itself reports; nothing from the query reaches a command line
+            # as anything else.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            what = q.get("what", [""])[0]
+            try:
+                n = int(q.get("n", ["0"])[0])
+            except ValueError:
+                n = 0
+            r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
+                                path=q.get("path", [""])[0], n=n)
+            return self._json(r, 400 if r.get("error") else 200)
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]

@@ -509,7 +509,8 @@ the same way as roadmap items; `bb rules pending` lists what is waiting.
 ## The roadmap
 
 Every project has a notebook in the dashboard — the briefing, the roadmap,
-bugs, one tab each. The roadmap is the shared list of design work, and both
+bugs, and the repository's own history, branches and diffs on its Git view,
+one tab each. The roadmap is the shared list of design work, and both
 you and the operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
 conversation that started before the rename does not break mid-task; use
 `bb roadmap`.)
