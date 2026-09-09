@@ -1984,12 +1984,11 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
 }
 
 // ---- the packages store, scoped by platform; and a Mac ----------------------------
-// A store laid out flat is moved into its scope directory once, entries
-// renamed rather than copied, the Android system images shared under
-// <store>/shared with the scope's own directory a link to them, and a second
-// run changes nothing. An older agent's bundle at the root is left alone.
-// Then the Mac: with platform.system() answering Darwin, the agent's family
-// is macos, its packages Homebrew, its init launchd, its scope darwin-<arch>.
+// The layout's standing rule: a scope's Android system images live once
+// under <store>/shared with the scope's own directory a link to them, and
+// a second run changes nothing. Then the Mac: with platform.system()
+// answering Darwin, the agent's family is macos, its packages Homebrew, its
+// init launchd, its scope darwin-<arch>.
 {
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
@@ -1997,23 +1996,17 @@ os.environ['BUILDERBOT_BREW_BIN'] = '/nonexistent/brew'
 spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 store = tempfile.mkdtemp()
-for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools', '.bb/current', 'go'):
-    os.makedirs(os.path.join(store, d))
-open(os.path.join(store, 'jdk/bin/java'), 'w').write('x')
-open(os.path.join(store, '.bb-store'), 'w').write('id')
-said = []
-m.scope_store(store, said.append)
 scope = m.pkg_scope()
-top = sorted(os.listdir(store))
-scoped = sorted(os.listdir(os.path.join(store, scope)))
+for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools'):
+    os.makedirs(os.path.join(store, scope, d))
+said = []
+m.share_images(store, said.append)
 img = os.path.join(store, scope, 'android', 'system-images')
-r1 = {'top': top, 'scoped': scoped, 'link': os.path.islink(img), 'target': os.path.realpath(img),
-      'shared': os.path.isdir(os.path.join(store, 'shared/android/system-images/android-30')),
-      'java': os.path.isfile(os.path.join(store, scope, 'jdk/bin/java')), 'said': said}
+r1 = {'link': os.path.islink(img), 'target': os.path.realpath(img),
+      'shared': os.path.isdir(os.path.join(store, 'shared/android/system-images/android-30')), 'said': said}
 said2 = []
-m.scope_store(store, said2.append)
-r2 = {'said': said2, 'top': sorted(os.listdir(store))}
-# the Mac
+m.share_images(store, said2.append)
+r2 = {'said': said2, 'link': os.path.islink(img)}
 m.platform.system = lambda: 'Darwin'
 m.platform.machine = lambda: 'arm64'
 m._run = lambda argv, timeout=5: '15.1' if argv[:1] == ['sw_vers'] else ''
@@ -2021,13 +2014,10 @@ mac = m.distro_now()
 print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
-  ok(R.r1.top.every(e => ['.bb', '.bb-store', 'shared', R.r1.scoped.length ? R.r1.top.find(x => /^linux-/.test(x)) : ''].includes(e))
-     && R.r1.scoped.includes('jdk') && R.r1.scoped.includes('go') && R.r1.scoped.includes('android') && R.r1.java,
-     `a flat store is moved into its scope directory, entries renamed, the old bundle and the marker left at the root (${R.r1.top.join(', ')} / ${R.r1.scoped.join(', ')})`);
   ok(R.r1.link && R.r1.shared && /shared\/android\/system-images$/.test(R.r1.target),
-     '...the android system images live once under shared/, with the scope\'s directory a link to them');
-  ok(R.r1.said.some(t => /moved 3 entries/.test(t)) && R.r1.top.includes('.bb') && R.r2.said.length === 0 && R.r2.top.join() === R.r1.top.join(),
-     `...it says what it moved, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
+     'a scope\'s android system images are moved once under shared/, with the scope\'s directory a link to them');
+  ok(R.r1.said.some(t => /shared across platforms/.test(t)) && R.r2.said.length === 0 && R.r2.link,
+     `...it says so once, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
   ok(R.mac.family === 'macos' && R.mac.init === 'launchd' && /macOS 15\.1/.test(R.mac.pretty) && R.mac.network === '' && R.mac.pkg === '',
      `a Mac is its own family: macos, launchd, no network backend, and no package manager until Homebrew is there (${JSON.stringify(R.mac)})`);
   ok(R.scope === 'darwin-arm64' && R.root === '/Volumes/SDK/darwin-arm64',
