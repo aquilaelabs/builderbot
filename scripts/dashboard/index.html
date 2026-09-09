@@ -414,9 +414,13 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    shown by a class a click toggles, at every pointer. */
 .help{position:relative}
 .help.on{color:var(--ink);border-color:var(--ink)}
+/* Placed in viewport coordinates by the click handler (--tipx/--tipy), and
+   fixed rather than absolute: centred on an icon at a phone's left edge, or
+   inside a dialog's scrolling box, the box was cut off — measured on a
+   393px screen with the project dialog open. */
 .help.on::after{
-  content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;
-  transform:translateX(-50%);max-width:min(280px,60vw);width:max-content;
+  content:attr(data-tip);position:fixed;left:var(--tipx,0);top:var(--tipy,0);
+  bottom:auto;transform:none;max-width:min(280px,calc(100vw - 16px));width:max-content;
   background:color-mix(in srgb, var(--bg), #000000 22%);color:var(--ink);
   border:1px solid var(--line);border-radius:6px;padding:6px 8px;
   font:12px/1.45 system-ui,sans-serif;text-align:left;white-space:normal;
@@ -3774,7 +3778,24 @@ tipOff();
 addEventListener("click", e => {
   const h = e.target.closest && e.target.closest(".help");
   document.querySelectorAll(".help.on").forEach(x => { if (x !== h) x.classList.remove("on"); });
-  if (h){ e.preventDefault(); h.classList.toggle("on"); }
+  if (!h) return;
+  e.preventDefault();
+  h.classList.toggle("on");
+  if (!h.classList.contains("on")) return;
+  // Where the box goes: above the icon, centred on it, and pushed inside
+  // the screen when centring would cut it off. Measured after it is drawn,
+  // because its width depends on its words.
+  const place = () => {
+    const r = h.getBoundingClientRect();
+    const cs = getComputedStyle(h, "::after");
+    const w = parseFloat(cs.width) || 200, ht = parseFloat(cs.height) || 40;
+    const x = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8));
+    const y = r.top - ht - 6 >= 4 ? r.top - ht - 6 : r.bottom + 6;
+    h.style.setProperty("--tipx", x + "px");
+    h.style.setProperty("--tipy", y + "px");
+  };
+  place();
+  requestAnimationFrame(place);
 });
 
 // Draw one document tab into its pane, if it is due a redraw. The one place
