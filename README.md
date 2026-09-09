@@ -1283,7 +1283,7 @@ switches the whole view to that node's daemon — one tab, re-rendered, never a
 tab per node. Each node's last-known container list is kept, so switching to
 an offline node paints instantly in the greyed state above rather than
 spinning at a machine that will not answer, and the reason is that node's
-own. **New container…** and **Send to Docker manager…** gain the same select,
+own. **New container** and **Send to Docker manager** gain the same select,
 defaulting to the project's own node from its settings dialog (a per-project
 binding, `auto` unless chosen); an instance stays bound to the node it was
 created on, and everything that acts on it — Up, Down, Rebuild, the data
@@ -1566,10 +1566,12 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 ### The Settings tab
 
 The gear in the header keeps what belongs to this **browser** — theme and
-layout — and one entry, **Profile…**, opening the signed-in account's own
-tab: their name and email, the name and email their commits carry (blank
-means the ones above), and a password change that asks for the current one
-first. The commit identity is per account rather than per project, and
+layout — and one entry, **Profile**, opening the signed-in account's own
+tab: their account name, their name and email, the name and email their
+commits carry (blank means the ones above), and a password change that asks
+for the current one first. A Claude session does not start for an account
+with no name and email for commits — every project is a repository — and the
+row's Claude button says so until the Profile has them. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured — so two people on one
 project are two authors. The **Administration** card on the sidebar, shown
@@ -1604,7 +1606,7 @@ CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
-**New container…** on that tab runs something with no project behind it: a
+**New container** on that tab runs something with no project behind it: a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box — in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
@@ -3136,7 +3138,7 @@ one in the morning, every `bb` verb stopped, and there was no tab to open.
 
 #### Accounts
 
-The Administration card's **Users** tab adds people. There is exactly one **owner**,
+The Administration card's **Users** tab adds people, and **Edit** on a row opens everything about one account in a dialog — its name, role, projects, name and email, git identity and a new password — saved together. There is exactly one **owner**,
 undeletable and renameable; an **admin** can do everything except act on the
 owner; a **user** gets the projects you give them and the work inside them,
 but not deleting one, renaming one, or changing which node it builds on — a

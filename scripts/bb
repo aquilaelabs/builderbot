@@ -3311,14 +3311,11 @@ def _identity(uid):
             continue
         if (uid and u.get("uid") == uid) or (not uid and u.get("role") == "owner"):
             pr = u.get("prefs") if isinstance(u.get("prefs"), dict) else {}
-            gname = str(pr.get("git_name") or pr.get("full_name") or name)
-            gemail = str(pr.get("git_email") or pr.get("email") or "")
-            if gname and not gemail:
-                import re as _re
-                gemail = (_re.sub(r"[^A-Za-z0-9._-]+", "-", gname).strip("-").lower() or "user") + "@builderbot.local"
-            return gname, gemail
+            return (str(pr.get("git_name") or pr.get("full_name") or ""),
+                    str(pr.get("git_email") or pr.get("email") or ""))
     return "", ""
 rec["git_name"], rec["git_email"] = _identity(os.environ.get("BB_ACCOUNT_UID", ""))
+rec["git_ready"] = bool(rec["git_name"] and rec["git_email"])
 if os.environ.get("BB_SETTINGS_JSON") == "1":
     print(json.dumps(rec))
     raise SystemExit(0)

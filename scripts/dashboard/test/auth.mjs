@@ -281,6 +281,11 @@ ${code}`], { encoding: 'utf8' });
   // reason.
   await bare('/api/users', { method: 'POST', headers: owner,
     body: JSON.stringify({ action: 'projects', name: 'sharer', projects: ['beta'] }) });
+  // ...and an author, or no Claude session starts for it (users.git_ready):
+  // the checks below are about whose session it is, not about that.
+  await bare('/api/users', { method: 'POST', headers: owner,
+    body: JSON.stringify({ action: 'edit', name: 'sharer',
+      profile: { full_name: 'Sharer', email: 'sharer@example.invalid' } }) });
   await putTabs(owner, [{ id: 't-own', kind: 'term', arg: 'shell-1', label: 'owner shell' }]);
   await putTabs(other, [{ id: 't-oth', kind: 'term', arg: 'shell-2', label: 'their shell' }]);
 
@@ -771,32 +776,38 @@ ${code}`], { encoding: 'utf8' }).trim();
   for (const h of [`${DIR}/home`, `${DIR}/home/users/${uidOf}`]) rmSync(`${h}/.claude.json`, { force: true });
 
   // ...and giving it a project, which is the whole point of the row.
-  await page.click('.userstab .urow[data-user="tabmade"] [data-uprojects]');
-  await page.waitForSelector('.userstab .upick [data-uproj]', { timeout: 10000 });
-  await page.check('.userstab .upick [data-uproj="alpha"]');
-  await page.click('.userstab [data-usave="tabmade"]');
+  // Everything about an account is edited in one dialog and saved together:
+  // the projects it sees, its role, its name and email, a new password.
+  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
+  await page.waitForSelector('#umodal:not([hidden])');
+  await page.check('#umodal [data-ueproj="alpha"]');
+  await page.fill('#umodal #ueFull', 'Tab Made');
+  await page.fill('#umodal #ueEmail', 'not-an-email');
+  await page.click('#umodal #ueSave');
+  await page.waitForFunction(() => !document.getElementById('ueErrWrap').hidden, null, { timeout: 10000 });
+  ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),
+     'the edit dialog refuses an email that is not one, and stays open');
+  await page.fill('#umodal #ueEmail', 'tab@example.invalid');
+  await page.click('#umodal #ueSave');
   await page.waitForFunction(() => {
     const r = document.querySelector('.userstab .urow[data-user="tabmade"]');
-    return r && /alpha/.test(r.textContent);
+    return r && /alpha/.test(r.textContent) && document.getElementById('umodal').hidden;
   }, null, { timeout: 15000 });
-  ok(true, '...and the project picker gives it one');
-
-  // A role changes on Save, not on the pick: the select alone writes
-  // nothing, and the Save beside it wakes only when the pick differs.
-  ok(await page.$eval('.userstab [data-urolesave="tabmade"]', b => b.disabled),
-     'the role Save is asleep while the pick is what is saved');
-  await page.selectOption('.userstab [data-urole="tabmade"]', 'admin');
-  await page.waitForTimeout(300);
-  ok(await page.$eval('.userstab .urow[data-user="tabmade"] .pill', p => p.textContent.trim()) === 'user'
-     && !(await page.$eval('.userstab [data-urolesave="tabmade"]', b => b.disabled)),
-     '...picking another role saves nothing yet, and wakes Save');
-  await page.click('.userstab [data-urolesave="tabmade"]');
+  ok(true, '...and the project picker in it gives the account one');
+  // A role change is the same dialog, the same Save.
+  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
+  await page.waitForSelector('#umodal:not([hidden])');
+  await page.selectOption('#umodal #ueRole', 'admin');
+  ok(await page.$eval('.userstab .urow[data-user="tabmade"] .pill', p => p.textContent.trim()) === 'user',
+     'picking a role in the dialog writes nothing until Save');
+  await page.click('#umodal #ueSave');
   await page.waitForFunction(() => document.querySelector(
     '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'admin', null, { timeout: 15000 });
   ok(true, '...and Save is what writes it');
-  // Back to a user for what follows, the same way.
-  await page.selectOption('.userstab [data-urole="tabmade"]', 'user');
-  await page.click('.userstab [data-urolesave="tabmade"]');
+  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
+  await page.waitForSelector('#umodal:not([hidden])');
+  await page.selectOption('#umodal #ueRole', 'user');
+  await page.click('#umodal #ueSave');
   await page.waitForFunction(() => document.querySelector(
     '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'user', null, { timeout: 15000 });
 

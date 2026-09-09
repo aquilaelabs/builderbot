@@ -179,10 +179,12 @@ function nodeRunnerSection(n, c){
   const body = `
       <div class="sub">GitHub's Actions runner as a service here; its labels decide which workflows land.</div>
       <div class="ndrunner">
+        <div class="setrow col">${lbl("", "GitHub URL", "the org or repo the runner registers with")}
         <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
-          placeholder="${esc(want.url || "https://github.com/your-org — the org or repo it registers with")}" aria-label="GitHub URL">
+          placeholder="${esc(want.url || "https://github.com/your-org")}" aria-label="GitHub URL"></div>
+        <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
-          placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
+          placeholder="gpu, android" aria-label="labels"></div>
       </div>
       ${rep.installed || want.want ? `<div class="sub ndrunpin">Any BuilderBot runner answers
         <code>self-hosted</code>; this node's name is the label that pins a job here:
@@ -254,9 +256,10 @@ function nodeAdvancedSection(n, stale, inflight){
     <div class="sub">What this container's paths are called on the node, for its daemon's
       bind mounts. With the projects share at <code>/workspace</code> on both, leave it blank.</div>
     <div class="ndpaths actbar">
+      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated. Blank when the projects share is at /workspace on both")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
-        aria-label="path mapping">
+        aria-label="path mapping"></div>
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
       <button type="button" data-nd="check-paths"
         title="check that both machines mean the same directory by the projects share">Check</button>
@@ -383,10 +386,12 @@ function nodeConfSections(n){
         <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
         <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
       </select>
+      <div class="setrow col">${lbl("", "Source", m.type === "virtiofs" ? "the share tag" : "host:/export")}
       <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
-        placeholder="${m.type === "virtiofs" ? "share tag" : "nas:/mnt/user/appdata"}" aria-label="source">
+        placeholder="${m.type === "virtiofs" ? "appdata" : "nas:/mnt/user/appdata"}" aria-label="source"></div>
+      <div class="setrow col">${lbl("", "Mountpoint", "blank means /mnt/ and the export's name")}
       <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
-        placeholder="mountpoint — blank means /mnt/<the export's name>" aria-label="mountpoint">
+        placeholder="/mnt/appdata" aria-label="mountpoint"></div>
       <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
       <button type="button" class="eye" data-mrm title="take this mount out">×</button>
       <div class="sub ndmstate ${cls}">${esc(st)}</div>
@@ -402,7 +407,7 @@ function nodeConfSections(n){
       r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
     return `
     <div class="ndstore">
-      <label title="${esc(STORE_ABOUT[role] || "")}">${esc(role)}</label>
+      ${lbl("", role, STORE_ABOUT[role] || "")}
       <input data-k="store:${esc(role)}" value="${esc(d.stores[role] || "")}" spellcheck="false"
         autocomplete="off" placeholder="${esc(r?.path || "/var/lib/builderbot/" + role)}">
       <div class="sub">${now ? "now " + esc(now) : "not reported"}</div>
@@ -486,14 +491,18 @@ function nodeConfSections(n){
           <option value="static" ${isStatic ? "selected" : ""}>static</option>
         </select>
         ${isStatic ? `
+        <div class="setrow col">${lbl("", "Address", "with its prefix length")}
         <input data-k="net:address" value="${esc(d.network.address || "")}"
-          spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address">
+          spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address"></div>
+        <div class="setrow col">${lbl("", "Gateway")}
         <input data-k="net:gateway" value="${esc(d.network.gateway || "")}"
-          spellcheck="false" autocomplete="off" placeholder="gateway 10.0.0.1" aria-label="gateway">
+          spellcheck="false" autocomplete="off" placeholder="10.0.0.1" aria-label="gateway"></div>
+        <div class="setrow col">${lbl("", "DNS", "comma-separated")}
         <input data-k="net:dns" value="${esc((d.network.dns || []).join(", "))}"
-          spellcheck="false" autocomplete="off" placeholder="dns 10.0.0.1, 1.1.1.1" aria-label="dns">
+          spellcheck="false" autocomplete="off" placeholder="10.0.0.1, 1.1.1.1" aria-label="dns"></div>
+        <div class="setrow col">${lbl("", "Interface", "blank means the default route's")}
         <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
-          autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">` : ""}
+          autocomplete="off" placeholder="${esc(net.interface || "eth0")}" aria-label="interface"></div>` : ""}
       </div>
       <div class="sub">${esc(now)}</div>
       <div class="actbar">
@@ -617,7 +626,7 @@ function renderNodesInto(i){
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
         esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
-    <button type="button" id="ndEnroll">Enroll node…</button>`);
+    <button type="button" id="ndEnroll">Enroll node</button>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -652,7 +661,7 @@ function renderNodesInto(i){
     const pending = n.state === "pending";
     const agentBar = n.kind === "agent" && !pending ? `
         <div class="actbar ndagent">
-          <span class="state${updating ? " note"
+          <span class="lead dim${updating ? " note"
                               : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
             updating ? `updating to agent ${esc(nodesAgent?.version || "")} — it swaps itself in and dials back; the row follows its next hello`
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`

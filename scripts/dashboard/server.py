@@ -3149,6 +3149,9 @@ def snapshot(who):
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
+        # Whether this account's commits would carry an author: the Claude
+        # button ghosts on this, naming the Profile, before bb-tty refuses.
+        "git_ready": users.git_ready(who) if users.uid_of(who) else True,
         # The chat panel's headline: who is here, and what has arrived since
         # this account last looked. The messages themselves are fetched when
         # the panel is open — this rides the poll because it is small and it
@@ -3464,6 +3467,13 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
+        # No author, no session: every project is a repository, and a commit
+        # with no name and email behind it is one git refuses halfway through
+        # the work. bb-tty asks the same question on the node, from the same
+        # answer (bb settings --json's git_ready).
+        if not users.git_ready(me):
+            return (f"{me['name']} has no name and email for commits yet — set them "
+                    "on your Profile (the gear in the header) and open this again")
         # A session on a node is in THAT machine's tmux with that account's
         # login there, neither of which this container can see: the
         # announcement and the one-Anthropic-account rule are the node's
@@ -3680,10 +3690,15 @@ class Handler(BaseHTTPRequestHandler):
             return gzip.compress(body, 6), True
         return body, False
 
-    def _json(self, obj, code=200):
+    def _json(self, obj, code=200, cookie=None):
         body, zipped = self._gzip(json.dumps(obj).encode())
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        # A fresh session cookie, when the answer changed what the old one
+        # was signed over — an account renaming itself.
+        if cookie:
+            self.send_header("Set-Cookie", f"bb_session={cookie}; Path=/; "
+                             f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
         # A session token's renewal, when _who decided one was due: bb and
         # the hooks read this header and write the token where bb looks.
         fresh = getattr(self, "_renewed", "")
@@ -5846,6 +5861,7 @@ class Handler(BaseHTTPRequestHandler):
                                "role": rec.get("role", "user"),
                                "profile": users.profile(me),
                                "git": users.git_identity(me),
+                               "git_ready": users.git_ready(me),
                                "claude": claude_auth(home=home_for(users.uid_of(me))).get("email") or ""})
         act = field(req, "action")
         if act == "password":
@@ -5856,8 +5872,20 @@ class Handler(BaseHTTPRequestHandler):
             r = users.profile_set(me["name"], req.get("profile") or {})
             if r.get("error"):
                 return self._json(r, 400)
-            return self._json({"ok": True, "profile": users.profile(me),
-                               "git": users.git_identity(me)})
+            # The account name last, because it is what the cookie is signed
+            # over: the answer carries a fresh one so the page stays signed
+            # in, and Basic callers simply use the new name.
+            to = field(req, "account").strip()
+            cookie = None
+            if to and to != me["name"]:
+                rr = users.rename(me["name"], to)
+                if rr.get("error"):
+                    return self._json(rr, 400)
+                me = users.get(to)
+                cookie = make_token(me)
+            return self._json({"ok": True, "name": me["name"], "profile": users.profile(me),
+                               "git": users.git_identity(me), "git_ready": users.git_ready(me)},
+                              cookie=cookie)
         return self._json({"error": "unknown action"}, 400)
 
     def _upload_archive(self):
@@ -5939,6 +5967,23 @@ class Handler(BaseHTTPRequestHandler):
                                           if p in mine])
         elif act == "rename":
             r = users.rename(name, field(req, "to"))
+        elif act == "edit":
+            # The Users tab's modal: everything about one account in one
+            # Save. Each part is the same store function the single verbs
+            # use, so the owner protections hold here too; the rename goes
+            # last so every other part lands under the name it was asked for.
+            r = {"ok": True, "name": name}
+            if isinstance(req.get("profile"), dict) and req["profile"]:
+                r = users.profile_set(name, req["profile"])
+            if not r.get("error") and field(req, "role"):
+                r = users.set_role(name, field(req, "role")) if (users.get(name) or {}).get("role") != field(req, "role") else r
+            if not r.get("error") and isinstance(req.get("projects"), list):
+                mine = {p["name"] for p in project_list(self._who())}
+                r = users.set_projects(name, [p for p in req["projects"] if p in mine])
+            if not r.get("error") and pw:
+                r = users.set_password(name, pw)
+            if not r.get("error") and field(req, "to").strip() and field(req, "to").strip() != name:
+                r = users.rename(name, field(req, "to").strip())
         elif act == "remove":
             r = users.remove(name)
         else:

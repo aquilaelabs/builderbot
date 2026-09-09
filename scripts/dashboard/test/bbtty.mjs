@@ -45,7 +45,7 @@ case "\${1:-}" in
            fi ;;
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
   rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
-  settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid"}\\n' ;;
+  settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
   # The gate bb-tty asks before starting a session: exit 0 means the
   # environment block is from another compatibility window and no session
   # should start. Answered from an env var the cases below flip, the way the
@@ -202,6 +202,15 @@ ok(/another\s+compatibility window/.test(out) && !alive('claude-alpha'),
    'a CLAUDE.md environment block from another window refuses a Claude session too');
 ok(/update/.test(out),
    '...naming the one-press fix on the row rather than only saying no');
+
+// No author, no session: an account with no name and email for commits is
+// told to fill in its Profile, here as well as on the ghosted button, for
+// the same reason as every other refusal in this file — the URL is reachable.
+rmSync(LOCKS, { force: true });
+out = connect(0, { FAKE_GIT_READY: '0' });
+await sleep(400);
+ok(/no name and email for commits/.test(out) && !alive('claude-alpha'),
+   'an account with no author for its commits is refused a Claude session, and told where to set one');
 
 // And unlocking really lets it back in: a gate that cannot be opened again is
 // a different bug, and one nobody notices until they need it.

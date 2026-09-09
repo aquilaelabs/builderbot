@@ -44,6 +44,26 @@ sizing group, its 16px phone rule (iOS zooms into anything smaller) and its
 `:focus` group. Tap targets are `min-height: var(--tap)`. A row of filters
 is `<div class="field histbar">`.
 
+**A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
+or three words and no more: a field that is filled in still says what it
+is, which a placeholder cannot. What the label cannot say rides the `?`
+beside it — `helpIcon(text)`, a circle with a tooltip — never a dash and a
+clause on the label, never a line of small print under the field. A
+checkbox keeps its sentence beside it. A placeholder, where there is one,
+is an example, not a name. The two exceptions are a search box in a bar and
+a one-line add box that is empty until it is sent: those carry their prompt
+inside, because there is nothing to mistake them for once typed in. A text
+field is wide enough for what goes in it: a name, an email, a password take
+the row up to the cap, and only a number field is a few characters wide.
+
+**A button says what it does and stops.** No ellipsis on a label: "Enroll
+node", not "Enroll node…" — whether a dialog follows is not the reader's
+problem, and the dots are not a word.
+
+**Every group of settings ends with one action bar** — the state line and
+its Apply or Save at the right — and nothing else in the group carries a
+button. One place to look for the press, on every section of every tab.
+
 **A control never spans its container.** A button, a select, a text field,
 or a row of them side by side, is at most `var(--ctl-w)` wide and never the
 full width of the tab, card or band it sits in: it stops short, with the
@@ -129,6 +149,15 @@ The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
 a phone, no control spans the screen at either, and controls are 16px on a
 phone so iOS does not zoom.
+
+## Motion
+
+Everything that appears, leaves, opens or changes state moves: a panel or
+menu arrives (`menuIn`), a document brought to the front fades in
+(`contentIn`), a section or card folds over its height (`slideBody`, the
+section tween), a button or tab eases its colour, a tooltip fades, a toast
+slides. A change that snaps is a change the eye has to find. Every one of
+them is off under `prefers-reduced-motion`.
 
 ## Progress
 
