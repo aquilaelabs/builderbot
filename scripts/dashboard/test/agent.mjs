@@ -1721,8 +1721,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     await page.click('#ndEnGo');
     await page.waitForSelector('#ndmodal .ndtoken', { timeout: 15000 });
     const shown = await page.$eval('#ndmodal .ndtoken', e => e.textContent);
-    ok(/bbe_/.test(shown) && /provision\.sh/.test(shown) && /--controller/.test(shown),
-       'Enroll node shows the one-time token inside the provisioner command');
+    ok(/bbe_/.test(shown) && /provision-linux\.sh/.test(shown) && /provision-macos\.sh/.test(shown) && /--controller/.test(shown),
+       'Enroll node shows the one-time token inside the provisioner commands, Linux and Mac');
     // The backdrop does not close the one thing here shown once.
     await page.mouse.click(5, 5);
     ok(await page.$('#ndmodal .ndtoken') !== null,
