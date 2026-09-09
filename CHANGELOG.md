@@ -312,3 +312,4 @@
 - Typing in one Settings section survives pressing Apply in another, and the user dialog closes on Escape (5bbff32)
 - A project's notebook has a Git view: the uncommitted changes with their diffs, the history as a graph, each commit's detail, and the branches with whose session is on which (359af56)
 - On a phone the notebook's tabs wrap into rows instead of scrolling off the edge (359af56)
+- The notebook's Git view can fetch, pull and push, commit your changes, make and switch branches, revert a commit, and discard a change or delete a branch behind a confirm (9ddfd33)
