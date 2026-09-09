@@ -310,3 +310,5 @@
 - A zip made by Finder, or a tarball made under ./, now starts a project; an archive that cannot be opened is refused in a sentence (5bbff32)
 - One person's commit identity no longer leaks into another's shell on the same box (5bbff32)
 - Typing in one Settings section survives pressing Apply in another, and the user dialog closes on Escape (5bbff32)
+- A project's notebook has a Git view: the uncommitted changes with their diffs, the history as a graph, each commit's detail, and the branches with whose session is on which (359af56)
+- On a phone the notebook's tabs wrap into rows instead of scrolling off the edge (359af56)
