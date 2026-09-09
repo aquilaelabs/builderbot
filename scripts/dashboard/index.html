@@ -409,6 +409,19 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
   transition:color .15s ease,border-color .15s ease}
 .help:hover,.help:focus-visible{color:var(--ink);border-color:var(--ink)}
+/* The ? opens on a TAP too. The hover tooltip above lives inside
+   @media(hover:hover), so a phone never had one; this is the same box,
+   shown by a class a click toggles, at every pointer. */
+.help{position:relative}
+.help.on{color:var(--ink);border-color:var(--ink)}
+.help.on::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;
+  transform:translateX(-50%);max-width:min(280px,60vw);width:max-content;
+  background:color-mix(in srgb, var(--bg), #000000 22%);color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+  font:12px/1.45 system-ui,sans-serif;text-align:left;white-space:normal;
+  overflow-wrap:anywhere;box-shadow:0 6px 18px rgba(0,0,0,.5);
+  display:block;opacity:1;pointer-events:none;z-index:90}
 .uadd{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .uadd .setrow{flex:1 1 12em}
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
@@ -3752,6 +3765,14 @@ function tipOff(){
   }, true);
 }
 tipOff();
+
+// A tap on a ? toggles its tooltip; a tap anywhere else closes whichever is
+// open. Bound once on the document, so icons drawn later count too.
+addEventListener("click", e => {
+  const h = e.target.closest && e.target.closest(".help");
+  document.querySelectorAll(".help.on").forEach(x => { if (x !== h) x.classList.remove("on"); });
+  if (h){ e.preventDefault(); h.classList.toggle("on"); }
+});
 
 // Draw one document tab into its pane, if it is due a redraw. The one place
 // that decides, so the two call sites — a pane that just changed tab and a
@@ -9475,7 +9496,7 @@ function drawMemory(j){
           ${lbl("", "Title")}
           <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
             value="${esc(m.title)}">
-          ${lbl("", "Hook", "what it says, in one line; what recall matches on")}
+          ${lbl("", "Hook", "one line, what it says. Recall matches on it")}
           <input class="ixh" maxlength="240" autocomplete="off"
             value="${esc(m.hook)}">
         </div>
@@ -11050,7 +11071,7 @@ become that version's section when it is created">Changelog${
             <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
               placeholder="tests" value="${esc(r.name || "")}"
               aria-label="rule name">
-            ${lbl("", "The rule", "in your words; a session reads it at the start")}
+            ${lbl("", "The rule")}
             <textarea class="rlText" spellcheck="false" maxlength="2000">${esc(r.text || "")}</textarea>
             <div class="two">
               <div>${lbl("", "Files it covers", "paths or globs, comma-separated. The rule arrives when a session is about to edit one")}
@@ -11576,7 +11597,7 @@ become that version's section when it is created">Changelog${
   function bugForm(b){
     const v = k => esc(b?.[k] || "");
     return `<div class="memadd bugform">
-      <label>Title<span class="help" data-tip="one line, what goes wrong" tabindex="0">?</span></label>
+      <label>Title</label>
       <input class="bfTitle" maxlength="200" autocomplete="off" value="${v("title")}"
         placeholder="the picker loses its selection on rotate">
       <div class="two">

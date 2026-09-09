@@ -121,9 +121,9 @@ function renderUsersInto(i){
         <div class="sub">An admin sees every project and works on the ones on their
           list; a user sees only their list.</div>
         <div class="uadd">
-          <div class="setrow col">${lbl("uNewName", "Account name", "what they sign in with")}
+          <div class="setrow col">${lbl("uNewName", "Account name")}
             <input id="uNewName" autocomplete="off"></div>
-          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters; they can change it on their Profile")}
+          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
             <input id="uNewPw" type="password" autocomplete="new-password"></div>
           <div class="setrow col">${lbl("uNewRole", "Role")}
           <select id="uNewRole">${

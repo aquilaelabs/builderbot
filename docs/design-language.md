@@ -46,8 +46,11 @@ is `<div class="field histbar">`.
 
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
 or three words and no more: a field that is filled in still says what it
-is, which a placeholder cannot. What the label cannot say rides the `?`
-beside it — `helpIcon(text)`, a circle with a tooltip — never a dash and a
+is, which a placeholder cannot. Where there is something the label cannot
+say — a password's rules, what blank means, what a rename costs — it rides
+the `?` beside it: `helpIcon(text)`, a circle with a tooltip that opens on
+hover and on a tap, so a phone reads it too. Most fields need none: "Your
+email" explains itself, and a `?` saying so is noise. Never a dash and a
 clause on the label, never a line of small print under the field. A
 checkbox keeps its sentence beside it. A placeholder, where there is one,
 is an example, not a name. The two exceptions are a search box in a bar and
