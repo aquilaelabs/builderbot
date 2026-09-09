@@ -260,7 +260,11 @@ def provenance(project, rel):
 # are relayed back here (server._bb_relay).
 BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json",
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
-                "scripts/dashboard/bb-prompt-relay")
+                "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
+                # The gate, and the template it compares a project's
+                # CLAUDE.md block against — so `bb claude-md` and the gate
+                # answer on a node the same as here.
+                "scripts/dashboard/bb-gate", "config/templates/project-CLAUDE.md")
 
 
 def bundle():

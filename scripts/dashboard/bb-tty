@@ -232,7 +232,12 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
-    # Three hooks ride in the same file. bb-work-note records what this session
+    # Four hooks ride in the same file. bb-gate refuses EVERY tool call
+    # while the controller is not answering (restarting after an update) or
+    # this project's CLAUDE.md block is behind the one the container ships,
+    # until a person has updated it — a session outlives an update, and
+    # must not carry on briefed by a BuilderBot that has since moved.
+    # bb-work-note records what this session
     # touches and says when another has the same file open — it does NOT
     # refuse, because each session is in a worktree of its own and two people
     # editing one function are making two commits, not corrupting one tree.
@@ -246,6 +251,7 @@ claude_scope() {
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
                --arg state "${DASHBOARD_STATE:-/config}" \
+               --arg gate "$(dirname "$(readlink -f "$0")")/bb-gate" \
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
                --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
                --arg check "$(dirname "$(readlink -f "$0")")/bb-check-relay" \
@@ -261,6 +267,8 @@ claude_scope() {
                         "NotebookEdit(\($state)/rules.json)"])
            },
             hooks: {PreToolUse: [
+              {hooks: [{type: "command",
+                        command: "\($gate) \($proj) \($who)", timeout: 60}]},
               {matcher: "Edit|Write|NotebookEdit",
                hooks: [{type: "command",
                         command: "\($note) \($proj) \($who)"}]}],

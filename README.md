@@ -3353,6 +3353,18 @@ away and honest about being a shell.
 
 ## Telling a project's sessions about this environment
 
+**A session is held to the current environment.** A Claude session lives in
+tmux and outlives a container update, so the block in its project's
+CLAUDE.md can be a version old by its next tool call. A hook on every tool
+call (`bb-gate`, installed by the session launcher beside the other three)
+refuses to run anything while the controller is not answering — restarting
+after an update — or while the project's block differs from the template the
+container now ships, and says which. The first is waited out; the second is
+the operator's to fix, from the project's row or with `bb claude-md
+--update`, after which the session reads CLAUDE.md again and carries on.
+A session cannot update the block itself, on purpose. The check costs one
+status request every twenty seconds while things are fine.
+
 A Claude session started in `/workspace/<project>` sees the project, not the
 container around it — so it does not know that `apt-get install` will not
 survive an update, that there is no display, or that ssh keys are deliberately

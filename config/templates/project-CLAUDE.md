@@ -24,16 +24,23 @@ bb claude-md
 ```
 
 That compares the environment block above against the template the container
-ships, and changes nothing. If it reports the block differs, run
-`bb claude-md --update` and mention that you did — the update rewrites only the
-marked block and never touches the project notes below the end marker. (The
-dashboard notices the same drift on its own and offers the update as a link on
-the project's row, so it may already have been done for you.)
+ships, and changes nothing. If it reports the block differs, say so and stop:
+the operator updates it — the link on the project's row on the dashboard, or
+`bb claude-md --update` in a shell of their own — and the update rewrites only
+the marked block, never the project notes below the end marker. Then read this
+file again before carrying on.
+
+**This is enforced, not advised.** A session outlives a container update, so
+a hook on every tool call refuses to run anything while the controller is not
+answering (restarting after an update) or while this block is behind the one
+the container ships, and says which. Wait for the one; ask the operator for
+the other. There is no way to press your own way through, on purpose.
 
 The block carries the compatibility window it was written for — the
 `BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor
-version. Drift inside a window is routine and stops nothing. A block from
-another window does: the dashboard ends the sessions running on that project,
+version. Drift inside a window is routine and ends nothing, but it does stop
+your tool calls until the block is updated (the hook above). A block from
+another window does more: the dashboard ends the sessions running on that project,
 ghosts its Claude button and refuses a new one until the block is updated —
 and, for a project on a node, until that node's agent is from the same
 window too.

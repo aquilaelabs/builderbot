@@ -1173,7 +1173,9 @@ cmd_logs() {
 # in a checkout of this repo, where the template being edited is the one under
 # config/templates. The dashboard's server has had the same override for the
 # same reason (its tests point it at a checkout).
+# The image's copy here; on a node, the one the bundle carries beside bb.
 TEMPLATE_MD="${TEMPLATE_MD:-/opt/builderbot/templates/project-CLAUDE.md}"
+[ -f "$TEMPLATE_MD" ] || TEMPLATE_MD="$(dirname "$(readlink -f "$0")")/../config/templates/project-CLAUDE.md"
 ENV_BEGIN='<!-- BUILDERBOT:ENV:BEGIN -->'
 ENV_END='<!-- BUILDERBOT:ENV:END -->'
 

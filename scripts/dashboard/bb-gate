@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: nothing runs while BuilderBot is away, or
+while this project's CLAUDE.md environment block is behind the one the
+container ships.
+
+    bb-gate PROJECT SESSION        # JSON on stdin, the way Claude Code calls a hook
+
+A session keeps running through a container update: it lives in tmux on the
+controller, or on a node that never restarted at all. So the environment it
+was briefed with can be a version old by the time its next tool call runs —
+the block in CLAUDE.md describes a BuilderBot that has since moved — and
+nothing in the session itself would notice. This hook does, on every tool
+call, and refuses the call with the reason until a person has done the one
+thing that fixes it:
+
+- The controller does not answer: it is restarting after an update, or
+  down. Every tool is refused until it answers again — there is nothing to
+  do but wait, and working blind against a machine that is changing is
+  worse than waiting.
+- The block differs from the shipped template (`bb claude-md --is-stale`):
+  refused until the operator updates it — the link on the project's row on
+  the dashboard, or `bb claude-md --update` in a shell — after which the
+  session is told to read CLAUDE.md again. The update is the operator's on
+  purpose, so the session cannot press its own way through.
+
+Cheap on purpose: the controller is asked at most every twenty seconds
+while things are fine (the answer is kept beside the token file), and the
+block comparison is two file reads. While REFUSING, every call re-checks,
+so the first tool call after the fix goes through. Refuses with exit 2 and
+the sentence on stderr, which Claude Code hands to the model; allows with
+exit 0 and nothing. Silent on any failure of its own, except the
+controller not answering, which is the point.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+try:
+    import bbapi                                                    # noqa: E402
+except ImportError:
+    bbapi = None
+
+CHECK_EVERY = 20
+
+
+def tree():
+    return (os.environ.get("BB_TREE")
+            or os.path.join(os.environ.get("WORKSPACE", "/workspace"), sys.argv[1]))
+
+
+def bb():
+    """The bb beside this hook — the bundle's on a node, the image's here."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
+    return here if os.path.isfile(here) else "bb"
+
+
+def token(project):
+    t = os.environ.get("BB_TOKEN", "")
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    try:
+        with open(os.path.join(d, "builderbot", f"token-{project}")) as f:
+            t = f.read().strip() or t
+    except OSError:
+        pass
+    return t
+
+
+def stamp_file(project):
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    return os.path.join(d, "builderbot", f"gate-{project}")
+
+
+def controller_answers(project):
+    """True when the controller answered a status request now."""
+    if bbapi is None:
+        return True                     # nothing to ask with; never refuse blind
+    r = bbapi.call("/api/status", auth="Bearer " + token(project), timeout=8)
+    if r.get("error") and "HTTP" not in str(r.get("error")):
+        return False                    # no connection: down, or restarting
+    return True                         # an answer, even a refusal, is a controller that is up
+
+
+def stale(project):
+    """True when this project's block exists and differs from the template."""
+    try:
+        r = subprocess.run(["bash", bb(), "claude-md", "--is-stale"], cwd=tree(),
+                           capture_output=True, timeout=30, env=dict(os.environ, BB_PROJECT=project))
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def main():
+    project = (sys.argv[1:2] or [""])[0]
+    if not project:
+        return 0
+    sf = stamp_file(project)
+    now = time.time()
+    last = {}
+    try:
+        with open(sf) as f:
+            last = json.load(f)
+    except (OSError, ValueError):
+        pass
+    # Fine last time, and recently: let it through without asking anybody.
+    if last.get("ok") and now - float(last.get("at") or 0) < CHECK_EVERY:
+        return 0
+    why = ""
+    if not controller_answers(project):
+        why = ("BuilderBot is not answering — it is restarting after an update, or down. "
+               "Nothing runs until it is back: wait, then try again. If this keeps up, the "
+               "operator checks the container.")
+    elif stale(project):
+        why = ("This project's CLAUDE.md environment block is behind the one BuilderBot now "
+               "ships, so what it told you about the environment is a version old. The "
+               "operator updates it — the link on the project's row on the dashboard, or "
+               "`bb claude-md --update` in a shell of their own — and until then nothing "
+               "runs here. Once it is updated, read CLAUDE.md again before carrying on.")
+    try:
+        os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)
+        with open(sf, "w") as f:
+            json.dump({"ok": not why, "at": now}, f)
+    except OSError:
+        pass
+    if why:
+        sys.stderr.write(why + "\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:                                               # noqa: BLE001
+        sys.exit(0)                     # a hook that cannot run is never worth a turn
