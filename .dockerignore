@@ -9,4 +9,7 @@ unraid
 !scripts/**/*.md
 # Shipped so sessions can copy it into a project from inside the container.
 !config/templates/*.md
+# ...and the changelog, which the welcome panel shows once per image update:
+# it has to travel with the image it describes (the Dockerfile copies it).
+!CHANGELOG.md
 .DS_Store
