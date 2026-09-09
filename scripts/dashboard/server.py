@@ -2448,10 +2448,12 @@ testreg.configure(write_json=write_json, state=STATE)
 # front of every session started here; claude_scope() in bb-tty denies the
 # file tools on the file. Roadmap #7.
 import rules                                                     # noqa: E402
+import codebase                                                  # noqa: E402
 import pending                                                   # noqa: E402
 import settings                                                  # noqa: E402
 
 rules.configure(write_json=write_json, state=STATE)
+codebase.configure(workspace=WORKSPACE)
 # The three stores above configure this one too; done here as well so the
 # endpoint works even if none of them has been touched yet this process.
 pending.configure(write_json=write_json, state=STATE)
@@ -4157,6 +4159,14 @@ class Handler(BaseHTTPRequestHandler):
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             return self._json(rules.payload(name))
+        if self.path.startswith("/api/codebase"):
+            # What git tracks in the project, by language: the Briefing
+            # tab's first section. Tracked files only, cached by commit.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json(codebase.payload(name))
         if self.path.startswith("/api/pending"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]

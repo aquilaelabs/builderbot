@@ -8,7 +8,7 @@
 // reach the session" is the only question this file is about and a stub of
 // the hook would be a stub of the answer.
 import { launch, newPage, ok, done, ready, URL, DIR, nbShown, nbTab, sleep } from './lib.mjs';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -39,6 +39,35 @@ await nbTab(page, 'briefing');
 await page.waitForSelector('#rulesBox .sect', { timeout: 15000 });
 ok(/Nothing set/.test(await page.$eval('#rulesBox', e => e.textContent)),
    'a project with no rules says so, and says what a rule is for');
+// ---- the code base, counted, above the rules ---------------------------------
+// What git tracks in the project by language, with the files and the lines:
+// the tab's first section. alpha is a repository with one tracked file, so
+// the count is small and exact, and dist/ and the rest of the fixture's
+// untracked litter are not in it.
+// Tracked means tracked: alpha's working tree has files, but only what is
+// in git's index counts, so two files are committed first — a script and
+// the README — and dist/, the untracked archive fixtures and the like stay
+// out of the number.
+writeFileSync(`${DIR}/ws/alpha/count.py`, 'print("one")\nprint("two")\n');
+const genv = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x' };
+execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'add', 'count.py', 'README.md'], { env: genv });
+execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'commit', '-q', '-m', 'two files to count'], { env: genv });
+await page.evaluate(() => { const b = document.querySelector('.nbtabs [data-v="roadmap"]'); b && b.click(); });
+await nbTab(page, 'briefing');
+await page.waitForFunction(() => /2 files/.test(document.querySelector('#rulesBox .sect .sst')?.textContent || ''), null, { timeout: 15000 });
+const sects = await page.$$eval('#rulesBox .sect', ss => ss.map(s => s.querySelector('.stitle, .shead, summary')?.textContent || s.textContent.slice(0, 40)));
+ok(/Code base/.test(sects[0] || '') && /Your rules/.test(sects[1] || ''),
+   `the code base section comes first, the rules after it (${sects.map(x => x.trim().slice(0, 20)).join(' | ')})`);
+const cb = await (await fetch(URL + 'api/codebase?project=alpha', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+ok(cb.files === 2 && cb.lines === 3 && cb.code_lines === 2
+   && cb.languages.some(l => l.name === 'Python' && l.lines === 2 && l.pct === 100)
+   && cb.languages.some(l => l.name === 'Markdown' && l.kind === 'prose'),
+   `the count is git's tracked files by language, and only those (${cb.files} files, ${cb.lines} lines: ${cb.languages.map(l => l.name + ' ' + l.lines).join(', ')})`);
+ok(new RegExp(`${cb.files} file`).test(await page.$eval('#rulesBox .sect', e => e.textContent))
+   && /tracked by git/.test(await page.$eval('#rulesBox .sect', e => e.textContent)),
+   '...and the section says the files, the lines, and that it is git that decides what counts');
+const nogit = await (await fetch(URL + 'api/codebase?project=gamma', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+ok(/not a git repository/.test(nogit.error || ''), 'a project that is not a repository says so rather than counting nothing');
 ok(await page.$('#memList') !== null,
    '...on the same tab as the memories, which is the point of the rename');
 
