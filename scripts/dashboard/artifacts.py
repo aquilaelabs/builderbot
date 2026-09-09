@@ -94,3 +94,45 @@ def resolve(project, rel):
     return p if p.is_file() else None
 
 
+def source_zip(project):
+    """The code base as a zip, for the Artifacts tab's Download source:
+    what git tracks plus what it would track — untracked files that are not
+    ignored — under one top-level directory named for the project, and
+    never .git itself, dist/ (the artifacts have their own downloads) or
+    anything .gitignore hides, which is where build output, node_modules
+    and caches live. Without git, the tree minus the directories every
+    build system litters. Symlinks are skipped: one pointing out of the
+    tree is not the code base, and the artifact download refuses the same
+    trick. (name, bytes), or None for no such project."""
+    import io
+    import subprocess
+    import time
+    import zipfile
+    root = (WORKSPACE / project).resolve()
+    if not root.is_dir():
+        return None
+    files, sha = [], ""
+    if (root / ".git").exists():
+        p = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "-co", "--exclude-standard"],
+                           capture_output=True, timeout=60, check=False)
+        if p.returncode == 0:
+            files = [f for f in p.stdout.decode("utf-8", "replace").split("\0") if f]
+        q = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=10, check=False)
+        sha = q.stdout.strip() if q.returncode == 0 else ""
+    if not files:
+        skip = {".git", DIST, "node_modules", "build", ".gradle", "__pycache__", ".venv", "target", ".dart_tool"}
+        for dp, dns, fns in os.walk(root):
+            dns[:] = [d for d in dns if d not in skip]
+            for fn in fns:
+                files.append(os.path.relpath(os.path.join(dp, fn), root))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(set(files)):
+            if f == DIST or f.startswith(DIST + "/"):
+                continue
+            fp = root / f
+            if fp.is_symlink() or not fp.is_file():
+                continue
+            z.write(fp, f"{project}/{f}")
+    return f"{project}-source-{sha or time.strftime('%Y%m%d-%H%M')}.zip", buf.getvalue()

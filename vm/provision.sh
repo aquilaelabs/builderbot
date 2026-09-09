@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Turn a fresh Debian or Ubuntu VM into BuilderBot's Docker sandbox.
+# Turn a fresh Linux machine into a BuilderBot node — the Debian, RHEL, Arch and
+# SUSE families, Alpine, Void and Gentoo; see "the machine's own tools" below.
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
@@ -47,6 +48,7 @@ STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
 declare -a SHARES=() NFS=()
+CHECK_ONLY=0
 
 usage() {
     cat <<'EOF'
@@ -66,6 +68,11 @@ usage: provision.sh [options]
                        agent runs ttyd for it and the dashboard's terminals
                        reach it; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
+  --check              only the pre-flight: say whether this machine is one
+                       the script can provision — its family, its tools, its
+                       init, a writable root — and change nothing. Exit 0 when
+                       it is, 1 when it is not. The same checks run first on
+                       every real run, before anything is installed.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
                        BuilderBot no longer needs one: an enrolled node dials
@@ -139,6 +146,7 @@ while [ $# -gt 0 ]; do
         --packages) STORE_PACKAGES="$2"; shift 2 ;;
         --cache) STORE_CACHE="$2"; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
+        --check) CHECK_ONLY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -178,35 +186,356 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
         printf '   run got further than this: restart the container and it is\n'
         printf '   gone. /etc, /usr and /var are all image layer.\n'
     else
-        printf '   Run it in a console on the VM itself. It needs systemd, which\n'
-        printf '   a container does not have, and it edits fstab.\n'
+        printf '   Run it in a console on the VM itself. It needs an init system,\n'
+        printf '   which a container does not have, and it edits fstab.\n'
     fi
     exit 1
 fi
 
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
-. /etc/os-release
-case "${ID:-}" in
-    debian|ubuntu) ;;
-    *) echo "this expects Debian or Ubuntu, not ${ID:-unknown}" >&2; exit 1 ;;
+ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
+[ -r /etc/os-release ] && . /etc/os-release
+# --- the machine's own tools -------------------------------------------------
+# One script, many distributions. Everything BuilderBot's own — the accounts,
+# the stores, fstab, the agent — is the same on all of them, because none of
+# it is the distribution's. What differs is the package manager, where Docker
+# and ttyd come from, who owns the firewall, and which init system runs a
+# service. FAMILY and INIT decide those, through the small functions below;
+# the rest of the script calls the functions and never a distribution's tool
+# by name. The families are read from ID and ID_LIKE, so a derivative lands
+# with its parent: Mint, Pop!_OS and Kali with Debian; Fedora, CentOS Stream,
+# Rocky and Alma with RHEL; Manjaro, EndeavourOS and CachyOS with Arch; Leap
+# and Tumbleweed with SUSE. Alpine, Void and Gentoo stand on their own.
+#
+# What has been RUN, and what has only been written: Ubuntu and Debian are
+# what this grew up on. Rocky is written against the RHEL family's documented
+# commands. The rest — Arch, SUSE, Alpine, Void, Gentoo — are best effort
+# from their documentation, warn rather than abort where a package is not
+# where it was expected, and want a first run to shake out. Say so in the
+# repository when one is proven.
+#
+# Nothing here exits. A machine the script cannot take is reported by the
+# pre-flight below, beside everything else it found, so one run says the
+# whole of what is wrong rather than the first thing.
+FAMILY=""; FAMILY_WHY=""
+_ids=" ${ID:-} ${ID_LIKE:-} "
+case "$_ids" in
+    *" debian "*|*" ubuntu "*|*" raspbian "*)          FAMILY=deb ;;
+    *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) FAMILY=rhel ;;
+    *" arch "*|*" archlinux "*|*" manjaro "*)           FAMILY=arch ;;
+    *" suse "*|*" opensuse "*|*" opensuse-leap "*|*" opensuse-tumbleweed "*|*" sles "*) FAMILY=suse ;;
+    *" alpine "*)   FAMILY=alpine ;;
+    *" void "*)     FAMILY=void ;;
+    *" gentoo "*)   FAMILY=gentoo ;;
+    *" nixos "*)
+        FAMILY_WHY="NixOS is configured declaratively, and this script installs things imperatively: a docker daemon, accounts, fstab and a service dropped into /etc would not survive the next nixos-rebuild. The honest form is a NixOS module declaring the same machine, which is not written yet." ;;
+    *" slackware "*)
+        FAMILY_WHY="Slackware ships no Docker and no service manager this script can hand a unit to; a machine without Docker is a guest node (roadmap R23), which this does not build yet." ;;
+    *)
+        if [ -z "${ID:-}" ]; then
+            FAMILY_WHY="/etc/os-release is missing or names no ID, so there is nothing to tell what this is."
+        else
+            FAMILY_WHY="${PRETTY_NAME:-$ID} is not a family this knows (ID=${ID} ID_LIKE=${ID_LIKE:-none}). It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo; a derivative of one of those is recognised by its ID_LIKE. A new family is a case in this script's 'the machine's own tools' block."
+        fi ;;
 esac
+INIT=""
+if [ -d /run/systemd/system ]; then INIT=systemd
+elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
+elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
+fi
+
+# pkg_refresh — the package index, once, before the first install.
+pkg_refresh() {
+    case "$FAMILY" in
+        deb)    export DEBIAN_FRONTEND=noninteractive; apt-get update -qq ;;
+        rhel)   dnf -y -q makecache >/dev/null 2>&1 || true ;;
+        # A partial upgrade is what breaks an Arch machine, so the index is
+        # refreshed WITH the upgrade, the way Arch expects a fresh install
+        # to begin; -Sy alone and a later -S is the mistake.
+        arch)   pacman -Syu --noconfirm --needed >/dev/null ;;
+        suse)   zypper -n -q refresh >/dev/null 2>&1 || true ;;
+        alpine) apk update -q ;;
+        void)   xbps-install -Sy -q >/dev/null 2>&1 || true ;;
+        gentoo) : ;;   # emerge --sync takes minutes; the tree the machine has is used
+    esac
+}
+# pkg NAME... — install what is named, quietly, with the manager the family
+# has. The names are the family's own where they differ (nfs-common against
+# nfs-utils against nfs-client), given by the caller.
+pkg() {
+    case "$FAMILY" in
+        deb)    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" ;;
+        rhel)   dnf -y -q install "$@" ;;
+        arch)   pacman -S --noconfirm --needed --quiet "$@" >/dev/null ;;
+        suse)   zypper -n -q install -y "$@" >/dev/null ;;
+        alpine) apk add -q "$@" ;;
+        void)   xbps-install -y "$@" >/dev/null ;;
+        gentoo) emerge --quiet --noreplace "$@" ;;
+    esac
+}
+# svc_enable NAME — a service the DISTRIBUTION ships (docker, the guest
+# agent), started now and at boot, whichever init runs this machine.
+svc_enable() {
+    case "$INIT" in
+        systemd) systemctl enable --now "$1" ;;
+        openrc)  rc-update add "$1" default >/dev/null 2>&1 || true; rc-service "$1" start >/dev/null 2>&1 || rc-service "$1" restart ;;
+        runit)   [ -d "/etc/sv/$1" ] || { echo "no runit service /etc/sv/$1" >&2; return 1; }
+                 ln -sfn "/etc/sv/$1" "/var/service/$1"; sv start "$1" >/dev/null 2>&1 || true ;;
+    esac
+}
+svc_restart() {
+    case "$INIT" in
+        systemd) systemctl restart "$1" ;;
+        openrc)  rc-service "$1" restart ;;
+        runit)   sv restart "$1" ;;
+    esac
+}
+svc_stop() {
+    case "$INIT" in
+        systemd) systemctl stop "$1" 2>/dev/null || true ;;
+        openrc)  rc-service "$1" stop 2>/dev/null || true ;;
+        runit)   sv stop "$1" 2>/dev/null || true ;;
+    esac
+}
+svc_active() {
+    case "$INIT" in
+        systemd) systemctl is-active --quiet "$1" ;;
+        openrc)  rc-service "$1" status >/dev/null 2>&1 ;;
+        runit)   sv status "$1" 2>/dev/null | grep -q '^run' ;;
+    esac
+}
+# svc_install NAME DESCRIPTION COMMAND — a service of OUR OWN (the agent),
+# written the way this init wants one: a unit, an OpenRC script under
+# supervise-daemon, or a runit directory. Rewritten on every run, then
+# enabled and (re)started.
+svc_install() {
+    local name="$1" desc="$2" cmd="$3"
+    case "$INIT" in
+        systemd)
+            cat > "/etc/systemd/system/${name}.service" <<EOF
+[Unit]
+Description=${desc}
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=${cmd}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            systemctl daemon-reload
+            systemctl enable "$name" >/dev/null 2>&1
+            systemctl restart "$name" ;;
+        openrc)
+            cat > "/etc/init.d/${name}" <<EOF
+#!/sbin/openrc-run
+# ${desc}
+description="${desc}"
+supervisor=supervise-daemon
+command="${cmd%% *}"
+command_args="${cmd#* }"
+respawn_delay=5
+depend() { need net; after docker; }
+EOF
+            chmod 0755 "/etc/init.d/${name}"
+            rc-update add "$name" default >/dev/null 2>&1 || true
+            rc-service "$name" restart >/dev/null 2>&1 || rc-service "$name" start ;;
+        runit)
+            install -d -m 0755 "/etc/sv/${name}"
+            cat > "/etc/sv/${name}/run" <<EOF
+#!/bin/sh
+# ${desc}
+exec ${cmd} 2>&1
+EOF
+            chmod 0755 "/etc/sv/${name}/run"
+            ln -sfn "/etc/sv/${name}" "/var/service/${name}"
+            sv restart "$name" >/dev/null 2>&1 || sv start "$name" >/dev/null 2>&1 || true ;;
+    esac
+}
+# The machine's own address, for the line to paste: hostname -I is a GNU
+# extension busybox lacks, so the route table is the fallback.
+my_ip() {
+    hostname -I 2>/dev/null | awk '{print $1}' | grep . \
+        || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1
+}
+is_vm() {
+    if command -v systemd-detect-virt >/dev/null 2>&1; then systemd-detect-virt --quiet --vm
+    else grep -qi hypervisor /proc/cpuinfo 2>/dev/null; fi
+}
+# What a package is called here, for the handful this script installs
+# itself: the family's name for the NFS client, GnuPG, python, and what a
+# session needs. A recipe's system packages are the recipe's business, per
+# family, in config/packages.json.
+pkg_names() {
+    case "$1:$FAMILY" in
+        base:deb)     echo "ca-certificates curl gnupg nfs-common" ;;
+        base:rhel)    echo "ca-certificates curl gnupg2 nfs-utils" ;;
+        base:arch)    echo "ca-certificates curl gnupg nfs-utils" ;;
+        base:suse)    echo "ca-certificates curl gpg2 nfs-client" ;;
+        base:alpine)  echo "ca-certificates curl gnupg nfs-utils bash shadow" ;;
+        base:void)    echo "ca-certificates curl gnupg nfs-utils" ;;
+        base:gentoo)  echo "app-misc/ca-certificates net-misc/curl app-crypt/gnupg net-fs/nfs-utils" ;;
+        guest:*)      echo "qemu-guest-agent" ;;
+        python:arch)  echo "python" ;;
+        python:gentoo) echo "dev-lang/python" ;;
+        python:*)     echo "python3" ;;
+        session:gentoo) echo "app-misc/tmux app-misc/jq dev-vcs/git" ;;
+        session:*)    echo "tmux jq git" ;;
+        # ttyd from the distribution where it packages it; the RHEL family,
+        # SUSE Leap and Gentoo do not, and get the release binary below.
+        ttyd:deb|ttyd:arch|ttyd:alpine|ttyd:void) echo "ttyd" ;;
+        ttyd:suse)    case "${ID:-}" in *tumbleweed*) echo "ttyd" ;; *) echo "" ;; esac ;;
+        ttyd:*)       echo "" ;;
+        nft:deb)      echo "nftables" ;;
+        nft:gentoo)   echo "net-firewall/nftables" ;;
+        nft:*)        echo "nftables" ;;
+        docker:arch)  echo "docker docker-buildx docker-compose" ;;
+        docker:suse)  echo "docker docker-buildx docker-compose" ;;
+        docker:alpine) echo "docker docker-cli-buildx docker-cli-compose" ;;
+        docker:void)  echo "docker docker-buildx docker-compose" ;;
+        docker:gentoo) echo "app-containers/docker app-containers/docker-cli app-containers/docker-buildx app-containers/docker-compose" ;;
+        docker:*)     echo "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" ;;
+    esac
+}
+
+# --- pre-flight: is this machine one this script can provision? -------------
+# Before a single package lands. The family says what the machine CLAIMS to
+# be; these check what it actually has, because the variants that go wrong
+# are the ones whose os-release looks fine — an immutable Fedora whose dnf
+# refuses, a MicroOS whose /usr is read-only, an Ubuntu Core with snaps and
+# no apt, a Debian that dropped systemd, a live image running from RAM. A
+# FAIL stops the run here with every finding printed, so one run says the
+# whole of what is wrong; a WARN is something the run can survive but the
+# operator should know, and is repeated at the end.
+say "checking this machine"
+CHECK_FAILED=0
+declare -a WARNINGS=()
+chk() {
+    case "$1" in
+        ok)   printf '   ok    %s\n' "$2" ;;
+        warn) printf '   WARN  %s\n' "$2"; WARNINGS+=("$2") ;;
+        fail) printf '   FAIL  %s\n' "$2"; CHECK_FAILED=1 ;;
+    esac
+}
+# 1. what it is, and whether that is a family this handles
+if [ -n "$FAMILY" ]; then chk ok "${PRETTY_NAME:-$ID}: the ${FAMILY} family"
+else chk fail "$FAMILY_WHY"; fi
+# 2. the tools the family implies are really here — a derivative can claim a
+#    parent whose package manager it replaced (Ubuntu Core has no apt;
+#    Silverblue's dnf is a stub that refuses)
+if [ -n "$FAMILY" ]; then
+    case "$FAMILY" in
+        deb)    need="apt-get dpkg" ;; rhel) need="dnf rpm" ;; arch) need="pacman" ;;
+        suse)   need="zypper rpm" ;; alpine) need="apk" ;; void) need="xbps-install xbps-query" ;;
+        gentoo) need="emerge" ;;
+    esac
+    missing=""
+    for t in $need; do command -v "$t" >/dev/null 2>&1 || missing="${missing} ${t}"; done
+    if [ -z "$missing" ]; then chk ok "package manager: ${need%% *}"
+    else chk fail "the ${FAMILY} family's package manager is not here (missing:${missing}) — a variant that replaced it, which this script cannot install onto"; fi
+fi
+# 3. the immutable and image-based variants, by the marks they leave: these
+#    have a package manager on PATH and still cannot be installed onto
+if [ -f /run/ostree-booted ]; then
+    chk fail "this is an OSTree (image-based) system — Fedora Silverblue/Kinoite/CoreOS/IoT, RHEL image mode: packages are layered by rpm-ostree and a reboot, not installed; use the ordinary Server/Minimal image instead"
+elif command -v transactional-update >/dev/null 2>&1 && ! touch /usr/.bb-probe 2>/dev/null; then
+    chk fail "this is a transactional system (openSUSE MicroOS/Aeon, SLE Micro): /usr is read-only and changes want transactional-update and a reboot; use Leap or Tumbleweed instead"
+elif [ -d /snap/core ] && ! command -v apt-get >/dev/null 2>&1; then
+    chk fail "this is Ubuntu Core: snaps only, no apt, no ordinary accounts; use Ubuntu Server instead"
+elif [ -f /etc/lbu/lbu.conf ] && [ ! -e /etc/apk/repositories ] ; then
+    chk fail "this Alpine runs from RAM (diskless mode): nothing installed survives a reboot; run setup-alpine with the sys disk mode first"
+else
+    rm -f /usr/.bb-probe
+    chk ok "an ordinary installed system, not an image-based one"
+fi
+# 4. a writable root: /etc and /usr/local take files, /var takes the stores
+for d in /etc /usr/local /var/lib; do
+    if [ -d "$d" ] && touch "$d/.bb-probe" 2>/dev/null; then rm -f "$d/.bb-probe"
+    else chk fail "$d is not writable — a read-only root, a live image, or a mount this cannot change"; fi
+done
+# 5. an init this can hand a service to, and one that is actually running
+#    (systemd's directory exists in a chroot too, where systemctl does not work)
+case "$INIT" in
+    systemd)
+        st="$(systemctl is-system-running 2>/dev/null || true)"
+        case "$st" in
+            running|degraded|starting|maintenance) chk ok "init: systemd (${st})" ;;
+            *) chk fail "systemd is on the disk but not running this machine (is-system-running says '${st:-nothing}') — a chroot, a container, or a rescue shell" ;;
+        esac ;;
+    openrc) chk ok "init: OpenRC" ;;
+    runit)  if [ -d /var/service ] || [ -d /run/runit ]; then chk ok "init: runit"
+            else chk fail "runit is installed but no service directory is live (/var/service)"; fi ;;
+    *)      chk fail "no init this knows: not systemd, OpenRC or runit. It writes a service for the agent and would have nothing to run it" ;;
+esac
+# 6. the architecture: what Docker, the agent and the Actions runner build for
+case "$(uname -m)" in
+    x86_64|aarch64) chk ok "architecture: $(uname -m)" ;;
+    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker and ttyd have builds; the Actions runner, the JDK and the emulator do not — this can be a Docker node and little else" ;;
+    *) chk fail "architecture $(uname -m): nothing this installs is built for it" ;;
+esac
+# 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then chk ok "cgroups v2"
+elif [ -d /sys/fs/cgroup/memory ]; then chk warn "cgroups v1: Docker still runs, but current distributions and the emulator's memory accounting expect v2"
+else chk fail "no cgroup filesystem is mounted — Docker cannot start containers here"; fi
+if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/null; then chk ok "overlay filesystem"
+else chk warn "the overlay filesystem is not available — Docker will fall back to a slower storage driver"; fi
+if [ -e /dev/kvm ]; then chk ok "/dev/kvm: the emulator can be accelerated"
+else chk warn "no /dev/kvm: the Android emulator would run unaccelerated (a VM needs nested virtualization on its host)"; fi
+# 8. room: Docker images, the packages store and a build all land on / by default
+avail_mb="$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')"
+if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the packages store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
+elif [ -n "$avail_mb" ]; then chk ok "$((avail_mb / 1024))G free on /"; fi
+# 9. the network: Docker's repository and the controller, if one was named.
+#    Warnings, not failures — an offline node is still a node, but every
+#    install below will fail and it is better said once here.
+if command -v curl >/dev/null 2>&1; then
+    if curl -fsI --max-time 10 https://download.docker.com/ >/dev/null 2>&1; then chk ok "internet: download.docker.com answers"
+    else chk warn "download.docker.com does not answer — no package will download; an offline node needs its packages brought in by hand"; fi
+    if [ -n "$CONTROLLER" ]; then
+        if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/api/v1/agent/download" 2>/dev/null \
+           || curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "${CONTROLLER%/}/" 2>/dev/null | grep -q '^[234]'; then
+            chk ok "controller: ${CONTROLLER} answers"
+        else chk warn "controller ${CONTROLLER} does not answer from here — enrollment will fail; check the address and that the dashboard is up"; fi
+    fi
+else
+    chk warn "no curl yet — it is installed below; the network is untested until then"
+fi
+# 10. the accounts: what the script uses to make them
+if command -v useradd >/dev/null 2>&1 && command -v groupadd >/dev/null 2>&1; then chk ok "useradd/groupadd"
+elif [ "$FAMILY" = alpine ]; then chk ok "useradd: from the shadow package, installed below"
+else chk warn "no useradd/groupadd — the shadow tools are missing and the accounts step will fail"; fi
+if [ "$CHECK_FAILED" = 1 ]; then
+    printf '\n'
+    warn "this machine is not one this script can provision — nothing was changed"
+    exit 1
+fi
+if [ "$CHECK_ONLY" = 1 ]; then
+    printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
+    [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"
+    exit 0
+fi
 
 say "packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-# Only what the agent, Docker and the mounts need. nfs-common matters if
+pkg_refresh
+# Only what the agent, Docker and the mounts need. The NFS client matters if
 # --nfs is used and costs nothing if not. What a PACKAGE needs from the
 # machine — Chromium's forty libraries, say — is that package's business:
-# its recipe in config/packages.json names them under `system`, and the
-# agent installs them when the package is (unzip used to be here for the
-# android tools; that recipe unzips with python now).
-apt-get install -y -qq ca-certificates curl gnupg nfs-common
+# its recipe in config/packages.json names them under `system`, per family,
+# and the agent installs them when the package is (unzip used to be here for
+# the android tools; that recipe unzips with python now).
+# shellcheck disable=SC2046  # the names are meant to split
+pkg $(pkg_names base)
 # ...and the guest agent only where there is a host to talk to, so Unraid can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM — this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
-if systemd-detect-virt --quiet --vm; then
-    apt-get install -y -qq qemu-guest-agent
+if is_vm; then
+    # shellcheck disable=SC2046
+    pkg $(pkg_names guest) 2>/dev/null && svc_enable qemu-guest-agent >/dev/null 2>&1 \
+        || warn "the qemu guest agent did not install — Unraid will pull the plug instead of shutting this VM down"
 fi
 
 say "docker"
@@ -225,7 +554,7 @@ docker_suite() {
         # -fs and not -fsS: a miss here is the normal path into the fallback,
         # and curl announcing its own 404 first would read as the failure.
         if curl -fs -o /dev/null --max-time 15 \
-            "https://download.docker.com/linux/${ID}/dists/${try}/Release"; then
+            "https://download.docker.com/linux/${DOCKER_DEB}/dists/${try}/Release"; then
             printf '%s' "$try"
             return 0
         fi
@@ -234,29 +563,56 @@ docker_suite() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-    case "$ID" in
-        ubuntu) suite="$(docker_suite "$VERSION_CODENAME" noble jammy)" || true ;;
-        *)      suite="$(docker_suite "$VERSION_CODENAME" bookworm bullseye)" || true ;;
+    case "$FAMILY" in
+        deb)
+            # Which of Docker's two Debian-family repositories, and which
+            # suite in it. A derivative uses its parent's: Mint and Pop!_OS
+            # carry UBUNTU_CODENAME for exactly this; Kali's own codename
+            # is nothing Docker publishes, and Raspberry Pi OS is Debian's
+            # stable — both fall through docker_suite to it.
+            case " ${ID} ${ID_LIKE:-} " in
+                *" ubuntu "*) DOCKER_DEB=ubuntu; code="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; fall="noble jammy" ;;
+                *)            DOCKER_DEB=debian; code="${VERSION_CODENAME:-}"; fall="bookworm bullseye" ;;
+            esac
+            # shellcheck disable=SC2086  # the fallbacks are meant to split
+            suite="$(docker_suite "$code" $fall)" || true
+            [ -n "${suite:-}" ] || {
+                echo "docker publishes nothing this machine can use (tried ${code:-no codename}, ${fall})" >&2
+                exit 1
+            }
+            [ "$suite" = "$code" ] \
+                || echo "note: docker has no ${code:-$ID} suite — using ${suite}, which is the same build"
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL "https://download.docker.com/linux/${DOCKER_DEB}/gpg" \
+                | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            chmod a+r /etc/apt/keyrings/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
+                 "https://download.docker.com/linux/${DOCKER_DEB} ${suite} stable" \
+                > /etc/apt/sources.list.d/docker.list
+            apt-get update -qq
+            # shellcheck disable=SC2046
+            pkg $(pkg_names docker) ;;
+        rhel)
+            # Docker's own repository here too: fedora's, rhel's, and the
+            # centos one that serves CentOS Stream, Rocky and Alma alike.
+            # The repo file is fetched as a file rather than through `dnf
+            # config-manager`, which dnf4 and dnf5 spell differently; the
+            # file is the same for both. podman-docker, if the image came
+            # with it, would answer `docker` with podman: taken out.
+            case "$ID" in fedora) repo=fedora ;; rhel) repo=rhel ;; *) repo=centos ;; esac
+            dnf -y -q remove podman-docker >/dev/null 2>&1 || true
+            curl -fsSL "https://download.docker.com/linux/${repo}/docker-ce.repo" -o /etc/yum.repos.d/docker-ce.repo
+            # shellcheck disable=SC2046
+            pkg $(pkg_names docker) ;;
+        *)
+            # Arch, SUSE, Alpine, Void and Gentoo package a current Docker
+            # themselves, which is the point of using theirs.
+            # shellcheck disable=SC2046
+            pkg $(pkg_names docker) \
+                || warn "docker did not install from the distribution's packages — this machine is not a Docker host until it does" ;;
     esac
-    [ -n "${suite:-}" ] || {
-        echo "docker publishes nothing this machine can use (tried ${VERSION_CODENAME})" >&2
-        exit 1
-    }
-    [ "$suite" = "$VERSION_CODENAME" ] \
-        || echo "note: docker has no ${VERSION_CODENAME} suite yet — using ${suite}, which is the same build"
-
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL "https://download.docker.com/linux/${ID}/gpg" \
-        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
-         "https://download.docker.com/linux/${ID} ${suite} stable" \
-        > /etc/apt/sources.list.d/docker.list
-    apt-get update -qq
-    apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
-        docker-buildx-plugin docker-compose-plugin
 fi
-systemctl enable --now docker
+command -v docker >/dev/null 2>&1 && svc_enable docker
 
 # --- the stamp ----------------------------------------------------------
 # A label on the daemon saying this machine is BuilderBot's sandbox.
@@ -285,10 +641,10 @@ stamp_daemon() {
     # An existing file is merged rather than replaced — it may carry storage
     # or logging settings this script knows nothing about, and a sandbox that
     # came up with different storage would be a surprising way to find out.
-    have_jq || apt-get install -y -qq jq >/dev/null 2>&1 || true
+    have_jq || pkg jq >/dev/null 2>&1 || true
     if ! have_jq; then
         warn "/etc/docker/daemon.json exists and jq is not available to merge"
-        warn "add \"labels\": [\"${label}\"] to it by hand, then: systemctl restart docker"
+        warn "add \"labels\": [\"${label}\"] to it by hand, then restart docker"
         return 1
     fi
     tmp="$(mktemp)"
@@ -302,7 +658,7 @@ have_jq() { command -v jq >/dev/null 2>&1; }
 if stamp_daemon; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
-    systemctl restart docker
+    svc_restart docker
     say "stamped this daemon as BuilderBot's sandbox"
 fi
 
@@ -422,17 +778,43 @@ else
     [ -n "$SSH_KEY" ] && authorize "$SESSION_NAME" "$SSH_KEY"
     # What a session needs on the box: tmux keeps it alive across a dropped
     # browser, ttyd is what the controller's terminal proxy dials, and jq
-    # and git are what bb-tty and bb reach for. All from the distribution —
-    # ttyd has been in Debian and Ubuntu's universe for years.
-    apt-get install -y -qq tmux ttyd jq git >/dev/null 2>&1 \
-        || warn "tmux, ttyd, jq or git did not install — sessions will not start until they do"
+    # and git are what bb-tty and bb reach for. From the distribution where
+    # it packages them — and ttyd, which the RHEL family, SUSE Leap and
+    # Gentoo do not carry, from the static binary in ttyd's own release,
+    # pinned to this machine's architecture: the one download here that
+    # is not a package manager's, so an offline node copies it in by hand.
+    # shellcheck disable=SC2046
+    pkg $(pkg_names session) >/dev/null 2>&1 \
+        || warn "tmux, jq or git did not install — sessions will not start until they do"
+    ttyd_pkg="$(pkg_names ttyd)"
+    if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
+        pkg "$ttyd_pkg" >/dev/null 2>&1 || true
+    fi
+    if ! command -v ttyd >/dev/null 2>&1; then
+        case "$(uname -m)" in
+            x86_64) tarch=x86_64 ;;
+            aarch64) tarch=aarch64 ;;
+            armv7l) tarch=armhf ;;
+            *) tarch="" ;;
+        esac
+        if [ -n "$tarch" ] && curl -fsSL -o /usr/local/bin/ttyd.new \
+                "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${tarch}"; then
+            chmod 0755 /usr/local/bin/ttyd.new && mv /usr/local/bin/ttyd.new /usr/local/bin/ttyd
+            printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
+        else
+            rm -f /usr/local/bin/ttyd.new
+            warn "ttyd did not install — fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
+        fi
+    fi
     # Claude Code, into the account's own home by its native installer: no
     # node runtime to keep up, and `claude update` from inside a session
     # keeps it current. Best effort — a node without internet at provision
     # time is still a node; the session says so when it starts.
-    if ! sudo -u "$SESSION_NAME" -H sh -c 'test -x "$HOME/.local/bin/claude"'; then
+    # su rather than sudo: root is already here, and a minimal Alpine or
+    # Void has no sudo to hand.
+    if ! su -s /bin/sh "$SESSION_NAME" -c 'test -x "$HOME/.local/bin/claude"'; then
         printf '   installing Claude Code for %s\n' "$SESSION_NAME"
-        sudo -u "$SESSION_NAME" -H bash -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
+        su -s /bin/bash - "$SESSION_NAME" -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
             || warn "Claude Code did not install for ${SESSION_NAME} — from a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
     fi
     # A login shell as this account gets what a dashboard session gets: the
@@ -934,7 +1316,7 @@ cmd_appdata() {
 # the half that is easy to get wrong by hand.
 cmd_settings() {
     local ip pairs="" path setting
-    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    ip="$(my_ip)"
     # BuilderBot fills in ssh:// and the bb account, so the address alone is
     # the setting unless this machine runs docker as somebody else.
     if [ "$DOCKER_USER" = bb ]; then setting="${ip:-<this-vm>}"
@@ -1098,6 +1480,15 @@ for spec in "${NFS[@]:-}"; do
     /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount — see the check below"
     p="${spec%:ro}"; MOUNTED+=("${p##*:}")
 done
+# SELinux stays enforcing on the RHEL family — nothing here needs it off —
+# but by default it stops a container from reading an NFS mount, which is
+# exactly what a dev instance's bind of the projects share is. One boolean,
+# persistent, says containers may; the mounts themselves are unaffected.
+if [ "${#NFS[@]}" -gt 0 ] && [ -n "${NFS[0]:-}" ] && command -v getenforce >/dev/null 2>&1 \
+        && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
+    setsebool -P virt_use_nfs 1 2>/dev/null \
+        || warn "could not set virt_use_nfs — containers will be refused the NFS shares until it is on"
+fi
 # Checked rather than assumed, which is the difference between finding out now
 # and finding out from an app that came up with no data. bb-sandbox owns the
 # check for the same reason it owns the writing — one implementation — and the
@@ -1126,10 +1517,11 @@ fi
 # run. The credential it ends up holding (/etc/builderbot/node.json, 0600)
 # opens that node's own row and nothing else.
 AGENT=/usr/local/sbin/builderbot-agent
-UNIT=/etc/systemd/system/builderbot-agent.service
+AGENT_DESC="BuilderBot node agent - dials in to the controller and runs its jobs"
 if [ -n "$CONTROLLER" ]; then
     say "agent: enrolling with ${CONTROLLER}"
-    apt-get install -y -qq python3
+    # shellcheck disable=SC2046
+    pkg $(pkg_names python)
     hdr="$(mktemp)"
     curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
@@ -1144,27 +1536,12 @@ if [ -n "$CONTROLLER" ]; then
         rm -f "${AGENT}.new"; exit 1
     fi
     chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
-    systemctl stop builderbot-agent 2>/dev/null || true
+    svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
         --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}"
-    cat > "$UNIT" <<EOF
-[Unit]
-Description=BuilderBot node agent — dials in to the controller and runs its jobs
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-ExecStart=${AGENT} run
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl daemon-reload
-    systemctl enable --now builderbot-agent
+    svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run"
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current —
     # the dashboard's Update button queues that as a job, and nothing runs
@@ -1191,7 +1568,7 @@ elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
                 rm -f "${AGENT}.new"
             else
                 chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
-                systemctl restart builderbot-agent 2>/dev/null || true
+                svc_restart builderbot-agent 2>/dev/null || true
                 say "agent: updated ${have:7:12} -> ${got:7:12} and restarted"
             fi
         else
@@ -1220,9 +1597,9 @@ if d.get("session_user", "") != want:
 PY
     )" ]; then
         say "agent: sessions now run as ${SESSION_NAME:-nobody} — restarting the agent"
-        systemctl restart builderbot-agent 2>/dev/null || true
+        svc_restart builderbot-agent 2>/dev/null || true
     fi
-    systemctl start builderbot-agent 2>/dev/null || true
+    svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run"
 fi
 
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----
@@ -1243,8 +1620,24 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}')"
     if [ -z "$ctl_ip" ]; then
         warn "could not resolve the controller's host ${ctl_host} — the session ports are NOT filtered"
+    elif systemctl is-active --quiet firewalld 2>/dev/null; then
+        # firewalld owns nftables here (the RHEL family, or a Debian that
+        # chose it): a table of our own beside it would be flushed on its
+        # next reload. Its rich rules say the same thing — the two ports to
+        # the controller and to nobody else — and the default zone already
+        # drops what no rule allows. Rewritten on every run, like the table.
+        case "$ctl_ip" in *:*) fam=ipv6 ;; *) fam=ipv4 ;; esac
+        for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
+            firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
+        done
+        for port in 7681 7682; do
+            firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
+        done
+        firewall-cmd --reload >/dev/null
+        printf '   firewalld: from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
     else
-        apt-get install -y -qq nftables >/dev/null 2>&1 || true
+        # shellcheck disable=SC2046
+        command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
         case "$ctl_ip" in *:*) fam=ip6 ;; *) fam=ip ;; esac
         install -d -m 0755 /etc/builderbot
         cat > /etc/builderbot/session-ports.nft <<EOF
@@ -1261,7 +1654,13 @@ table inet builderbot_session {
     }
 }
 EOF
-        cat > /etc/systemd/system/builderbot-session-ports.service <<'EOF'
+        if nft -f /etc/builderbot/session-ports.nft 2>/dev/null; then
+            # ...and again at every boot, the way this init runs a one-shot:
+            # a unit, an OpenRC local.d script, or a line in rc.local.
+            nft_cmd="$(command -v nft) -f /etc/builderbot/session-ports.nft"
+            case "$INIT" in
+                systemd)
+                    cat > /etc/systemd/system/builderbot-session-ports.service <<EOF
 [Unit]
 Description=BuilderBot: the session ports open to the controller only
 After=network-pre.target
@@ -1271,14 +1670,23 @@ Before=network.target builderbot-agent.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/nft -f /etc/builderbot/session-ports.nft
+ExecStart=${nft_cmd}
 
 [Install]
 WantedBy=multi-user.target
 EOF
-        systemctl daemon-reload
-        if nft -f /etc/builderbot/session-ports.nft 2>/dev/null; then
-            systemctl enable builderbot-session-ports >/dev/null 2>&1 || true
+                    systemctl daemon-reload
+                    systemctl enable builderbot-session-ports >/dev/null 2>&1 || true ;;
+                openrc)
+                    install -d -m 0755 /etc/local.d
+                    printf '#!/bin/sh\n# BuilderBot: the session ports open to the controller only\n%s\n' "$nft_cmd" \
+                        > /etc/local.d/builderbot-session-ports.start
+                    chmod 0755 /etc/local.d/builderbot-session-ports.start
+                    rc-update add local default >/dev/null 2>&1 || true ;;
+                runit)
+                    touch /etc/rc.local; chmod 0755 /etc/rc.local
+                    grep -qF "$nft_cmd" /etc/rc.local || printf '%s\n' "$nft_cmd" >> /etc/rc.local ;;
+            esac
             printf '   from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
         else
             warn "nft could not apply the rule — the session ports are NOT filtered"
@@ -1286,7 +1694,11 @@ EOF
     fi
 fi
 
-ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+ip="$(my_ip)"
+if [ "${#WARNINGS[@]}" -gt 0 ]; then
+    say "the pre-flight warned about ${#WARNINGS[@]} thing(s), still true:"
+    for w in "${WARNINGS[@]}"; do printf '   - %s\n' "$w"; done
+fi
 # What to paste. BuilderBot fills in the scheme and the bb account, so on a
 # default install the address IS the whole setting; the account is spelled out
 # only when it is not the one BuilderBot would assume.
@@ -1317,7 +1729,7 @@ EOF
 if [ -f /etc/builderbot/node.json ]; then
     cat <<EOF
 
-As a node: the agent is running (systemctl status builderbot-agent) and the
+As a node: the agent is running ($(case "$INIT" in systemd) echo "systemctl status builderbot-agent" ;; openrc) echo "rc-service builderbot-agent status" ;; runit) echo "sv status builderbot-agent" ;; esac)) and the
 Nodes tab should show this machine live within a minute. It dials out, so
 nothing was opened here for it. Jobs run as ${USER_NAME}.
 

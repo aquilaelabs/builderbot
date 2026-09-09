@@ -1,6 +1,8 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--
-  The Docker sandbox VM, as Unraid's VM manager wants it.
+  A BuilderBot node as an Unraid VM: the Docker sandbox, and since the
+  controller stopped building anything itself, the machine a project's
+  builds, tests, CI runner, Android emulator and Claude sessions all run on.
 
   Create the VM in Form view first so Unraid makes the domain folder and the
   vdisk, then switch to XML view and paste this over what is there. Keep two
@@ -9,24 +11,35 @@
   address your router hands a lease to and any reservation you made in Form
   view was made against.
 
-  Three things here differ from Unraid's placeholder for reasons, and are
-  called out where they sit: q35 rather than i440fx, shared memory backing,
-  and no CPU pinning.
+  What differs from Unraid's placeholder is called out where it sits: q35
+  rather than i440fx, shared memory backing, no CPU pinning, a virtio rng,
+  and sizes for a machine that compiles.
+
+  ONE FILE FOR EVERY DISTRIBUTION. The hardware is the same whatever is
+  installed on it — virtio has been in every Linux kernel for fifteen
+  years — so the only line that changes per distribution is the installer
+  ISO below, and provision.sh sorts out the rest inside the guest (the
+  Debian, RHEL, Arch and SUSE families, Alpine, Void and Gentoo; a
+  derivative is recognised by its ID_LIKE). The <vmtemplate> line is
+  Unraid's icon and nothing more; change os= and icon= to taste.
 -->
 <domain xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0" type="kvm">
   <uuid>b091db01-cbdd-07b7-c797-79ca40d31a00</uuid>
   <name>bb-sandbox</name>
-  <description>Docker sandbox for BuilderBot — containers it can wreck</description>
+  <description>BuilderBot node — builds, tests, CI, the emulator and sessions run here; containers it can wreck</description>
   <metadata>
-    <vmtemplate xmlns="http://unraid" name="Ubuntu" icon="ubuntu.png" os="ubuntu" storage="default"/>
+    <vmtemplate xmlns="http://unraid" name="Linux" icon="linux.png" os="linux" storage="default"/>
   </metadata>
 
-  <!-- 8 GiB and 4 cores: this box builds container images, which is memory
-       and parallelism, and the balloon below hands memory back when it is
-       idle. Turn both down if the server is tight; nothing here needs them. -->
-  <memory unit="KiB">8388608</memory>
-  <currentMemory unit="KiB">8388608</currentMemory>
-  <vcpu placement="static">4</vcpu>
+  <!-- 16 GiB and 6 cores. This is no longer a box that only builds the odd
+       image: a Gradle build wants 3-4 GiB, the Android emulator another 2-4
+       with a system image behind it, a Claude session and its Playwright
+       browsers the rest, and the three overlap on the same afternoon. The
+       balloon below hands memory back when it is idle. 8 GiB and 4 cores
+       still work for a Docker-only sandbox; below that Gradle swaps. -->
+  <memory unit="KiB">16777216</memory>
+  <currentMemory unit="KiB">16777216</currentMemory>
+  <vcpu placement="static">6</vcpu>
 
   <!-- No <cputune>. Unraid's placeholder pins the single vCPU to cpuset 0,
        which is the host's busiest core; a sandbox that only occasionally
@@ -34,8 +47,16 @@
        one core everything else is already contending for. Pin it from the
        Form view later if it starts competing with the emulator. -->
 
+  <!-- host-passthrough hands the guest the host's CPU as it is, which is
+       what lets /dev/kvm exist INSIDE the VM — and without /dev/kvm the
+       Android emulator on this node has no acceleration and never finishes
+       booting. The other half is the host's: nested virtualization has to be
+       on for the kvm module. On Unraid that is one file, then a reboot:
+         /boot/config/modprobe.d/kvm-amd.conf    options kvm-amd nested=1
+         /boot/config/modprobe.d/kvm-intel.conf  options kvm-intel nested=1
+       `bb emu gpu` and the Nodes tab's census say whether the guest got it. -->
   <cpu mode="host-passthrough" migratable="on">
-    <topology sockets="1" cores="4" threads="1"/>
+    <topology sockets="1" cores="6" threads="1"/>
     <cache mode="passthrough"/>
     <maxphysaddr mode="passthrough"/>
     <!-- topoext is AMD's. Unraid put it in the placeholder, so this host is
@@ -81,16 +102,42 @@
 
     <!-- The disk. qcow2 so it grows rather than being claimed up front, and
          discard='unmap' so the file SHRINKS again when Docker prunes images —
-         without it a sandbox only ever gets bigger. -->
+         without it a sandbox only ever gets bigger. Make it 200G, not the
+         64G a Docker sandbox got by with: the packages store lands here
+         (/var/lib/builderbot/packages — the Android SDK's system images
+         alone are tens of gigabytes, the JDK, Flutter and the Playwright
+         browsers on top) unless provision.sh points the stores at a share
+         instead. The guest grows into it; the file only takes what is used. -->
     <disk type="file" device="disk">
-      <driver name="qemu" type="qcow2" cache="writeback" discard="unmap"/>
+      <driver name="qemu" type="qcow2" cache="writeback" discard="unmap" io="threads"/>
       <source file="/mnt/user/domains/bb-sandbox/vdisk1.qcow2"/>
       <target dev="vda" bus="virtio"/>
       <boot order="2"/>
     </disk>
 
-    <!-- The Ubuntu Server installer. Correct the path, install, then delete
-         this whole block so it stops booting from the ISO. -->
+    <!-- The installer. The ONE line that differs per distribution: put the
+         ISO you downloaded into /mnt/user/isos and name it here, install
+         (headless, no desktop, ssh on — docs/sandbox-vm.md has the screens
+         that matter), then delete this whole block so it stops booting from
+         the ISO. The filenames as their projects publish them:
+           ubuntu-26.04-live-server-amd64.iso          Ubuntu Server (tested)
+           debian-13.x.x-amd64-netinst.iso             Debian
+           Rocky-9-latest-x86_64-minimal.iso           Rocky Linux
+           AlmaLinux-9-latest-x86_64-minimal.iso       AlmaLinux
+           CentOS-Stream-10-latest-x86_64-boot.iso     CentOS Stream
+           Fedora-Server-netinst-x86_64-*.iso          Fedora Server
+           archlinux-x86_64.iso                        Arch (manual install)
+           manjaro-*-minimal-*.iso, EndeavourOS_*.iso, cachyos-*.iso
+           openSUSE-Leap-16.x-NET-x86_64-Media.iso     openSUSE Leap
+           openSUSE-Tumbleweed-NET-x86_64-Current.iso  openSUSE Tumbleweed
+           alpine-virt-3.x.x-x86_64.iso                Alpine (the virt image)
+           void-live-x86_64-*-base.iso                 Void
+           install-amd64-minimal-*.iso                 Gentoo (a long install)
+         Mint, Pop!_OS and Kali are desktop images with a desktop the node
+         never shows anyone; they work, but a server image of their parent
+         is the better machine. Raspberry Pi OS is an ARM image and not an
+         Unraid VM. Rocky 9 and its siblings need x86-64-v2, which any
+         host that can run this VM has; host-passthrough below hands it on. -->
     <disk type="file" device="cdrom">
       <driver name="qemu" type="raw"/>
       <source file="/mnt/user/isos/ubuntu-26.04-live-server-amd64.iso"/>
@@ -164,7 +211,15 @@
     </video>
 
     <audio id="1" type="none"/>
-    <console type="pty"/>
+    <!-- A text console beside the VNC one, for `virsh console` from the
+         Unraid shell the day ssh is what broke. -->
+    <serial type="pty"><target port="0"/></serial>
+    <console type="pty"><target type="serial" port="0"/></console>
+    <!-- Entropy from the host. Without it a fresh guest can sit at boot
+         waiting on the random pool before sshd and the agent's TLS start. -->
+    <rng model="virtio">
+      <backend model="random">/dev/urandom</backend>
+    </rng>
     <!-- The guest agent both provisioning paths install, so Unraid can shut
          this down cleanly rather than pulling the plug. -->
     <channel type="unix">
@@ -173,5 +228,25 @@
     <memballoon model="virtio">
       <alias name="balloon0"/>
     </memballoon>
+
+    <!-- The GPU, when it moves here (roadmap R20): the emulator renders on
+         the card instead of falling back to software. Both functions of the
+         card go together — the video device and its audio function — and the
+         BuilderBot container has to give the card up first (its NVIDIA_*
+         settings off, then a restart), because a device is one guest's at a
+         time. Find the addresses under Tools -> System Devices and bind them
+         to VFIO there; then uncomment this with them filled in. The guest
+         still needs the driver and the headless X server provision.sh does
+         not yet install — R20's remaining step — so leave this commented
+         until it does.
+    <hostdev mode="subsystem" type="pci" managed="yes">
+      <source><address domain="0x0000" bus="0x0X" slot="0x00" function="0x0"/></source>
+      <address type="pci" domain="0x0000" bus="0x05" slot="0x00" function="0x0" multifunction="on"/>
+    </hostdev>
+    <hostdev mode="subsystem" type="pci" managed="yes">
+      <source><address domain="0x0000" bus="0x0X" slot="0x00" function="0x1"/></source>
+      <address type="pci" domain="0x0000" bus="0x05" slot="0x00" function="0x1"/>
+    </hostdev>
+    -->
   </devices>
 </domain>

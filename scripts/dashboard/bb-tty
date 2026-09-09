@@ -459,6 +459,21 @@ bad() {
 # gets them too, so a commit typed by hand is the same person's. Never
 # fatal: a session with no identity is one git asks about, not one refused.
 git_ready=""            # "false" once bb settings has said the account has no author
+
+# need_author WHAT — no author, no terminal: every project is a repository,
+# and a commit with no name and email behind it is one git refuses halfway
+# through the work — or, worse, one made under whatever a repository or the
+# box happens to have configured. A shell is refused as well as a session,
+# because a shell is where git is typed. Only when the controller SAID so:
+# an older controller that does not answer git_ready is not read as a
+# refusal, and a terminal opened before accounts existed has no seat to ask.
+need_author() {
+    [ "$git_ready" = false ] || return 0
+    bad "You have no name and email for commits yet, so $1 does not start." \
+        "Set them on your Profile — the gear in the dashboard's header — and" \
+        "open this again. Every project here is a repository, and a commit" \
+        "needs an author."
+}
 git_identity() {
     local s name email
     s="$(BB_PROJECT="${1:-}" BB_ACCOUNT_UID="${BB_ACCOUNT_UID:-$account}" bb settings --json 2>/dev/null)" || return 0
@@ -574,6 +589,7 @@ start() {
 case "$target" in
     shell)
         git_identity ""
+        need_author "a shell"
         start "$(sess shell)" "$WORKSPACE"
         ;;
 
@@ -589,10 +605,12 @@ case "$target" in
         esac
         if [ -z "$proj" ]; then
             git_identity ""
+            need_author "a shell"
             start "$(sess "shell-${num}")" "$WORKSPACE"
         fi
         dir="$WORKSPACE/$proj"
         git_identity "$proj"
+        need_author "a shell"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
         start "$(sess "shell-${proj}-${num}")" "$dir"
@@ -717,15 +735,7 @@ case "$target" in
                 "then open this again."
         fi
         git_identity "$proj"
-        # No author, no session: every project is a repository, and a commit
-        # with no name and email behind it is one git refuses halfway through
-        # the work. Only when the controller SAID so — an older controller
-        # that does not answer git_ready is not read as a refusal.
-        if [ "$git_ready" = false ]; then
-            bad "You have no name and email for commits yet. Set them on your" \
-                "Profile — the gear in the dashboard's header — and open this again." \
-                "Every project here is a repository, and a commit needs an author."
-        fi
+        need_author "a Claude session"
         cmd=(claude --remote-control "$proj")
         if [ -n "$resume" ]; then
             # Checked against a transcript that actually exists, so a mistyped

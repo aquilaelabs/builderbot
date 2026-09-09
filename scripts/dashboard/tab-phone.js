@@ -27,10 +27,12 @@ function openPhoneTab(){
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
 }
 
-// Connecting, pairing and disconnecting are an administrator's (the server
-// refuses anybody else); the tab ghosts them rather than offering a press
-// that would be refused.
-const mayPhone = () => state?.can?.admin !== false;
+// Connecting, pairing and disconnecting are any account's: a phone is its
+// owner's, not the administrators' — whoever connects one is the only
+// account that can disconnect it or answer a session asking for it, and
+// the server holds that. Kept as a function so the call sites read as the
+// question they ask.
+const mayPhone = () => true;
 
 async function phFetch(body, probe){
   const knew = phNode;
@@ -51,7 +53,8 @@ async function phFetch(body, probe){
   // ask it once.
   if (probe && !body && !knew && phNode) return phFetch(null, true);
   phRev++;
-  if (tabs.some(t => t.kind === "phone")) drawPanes();
+  // The Nodes tab draws the root asks from the same answer.
+  if (tabs.some(t => t.kind === "phone" || t.kind === "nodes")) drawPanes();
   drawBell();          // the same asks, in the header
 }
 
@@ -62,7 +65,9 @@ function renderPhoneInto(i){
     d.list.innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
-  const nodes = ph.nodes || [], asks = ph.asks || [];
+  // The root asks share the list (one bell, one fetch) and are the Nodes
+  // tab's to show: they are about a machine, not a handset.
+  const nodes = ph.nodes || [], asks = (ph.asks || []).filter(a => a.kind !== "root");
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   const dev = n?.phone;
   // This browser's own address wins when it is the phone: viewing the
@@ -81,7 +86,7 @@ function renderPhoneInto(i){
   const off = held || !n.live || !mayPhone();
   const offWhy = held ? `connected by ${esc(n.owner.name)} — only they can change it`
     : !n.live ? "the node is not dialing in"
-    : !mayPhone() ? "connecting a phone is an administrator's" : "";
+    : "";
   d.setBar(`${nodes.length ? `<label class="pick">Node <select id="phPick" aria-label="node">${
       nodes.map(x => `<option value="${esc(x.id)}"${x.id === n?.id ? " selected" : ""}>${
         esc(x.name)}${x.phone ? ` — ${esc(x.phone.model || "phone")}` : ""}${
@@ -148,7 +153,7 @@ function renderPhoneInto(i){
     rows.push(`<div class="row phask">
       <div class="grow"><div class="name">${esc(a.why)}</div>
         <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.project || "a session")} on ${esc(a.node_name)} · ${a.left > 60
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} on ${esc(a.node_name)} · ${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">

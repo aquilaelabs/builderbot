@@ -329,6 +329,30 @@ off. And do not go looking for the port the phone is on: reaching around
 this is possible, in the way most things on a machine are possible, and it
 is the one thing here that touches hardware somebody is holding.
 
+## One command as root, if you truly need it
+
+You have no sudo on a node and will not get one. Almost nothing needs it:
+packages are the Tools tab's, mounts and addresses the Nodes tab's, and a
+tool that clones, builds or syncs runs as you. When something genuinely
+does — a kernel module, a device permission, a daemon setting — ask for that
+one command the way you ask for the phone:
+
+```bash
+bb root                                     # what is waiting on an administrator
+bb root run --why "..." -- modprobe binder_linux
+```
+
+That puts your reason and the exact command in front of a person and waits:
+the account whose session this is, when it is an administrator's — on their
+Nodes tab and bell — and otherwise every administrator, because a sandbox is
+a shared machine and root on it is not a user's to allow (their own phone
+is). On **Allow** the node runs that command as root and hands you the
+output, on **Deny** you are told no. A second command is a second question.
+It works only on a node provisioned as a sandbox — somebody's own machine is
+not yours to run root on — and a project with no node has nothing to ask.
+Write the reason you would want to read, and ask for the smallest command
+that does the job, not a shell.
+
 ## What version this is
 
 Every project here uses the same scheme, and `bb version` is what makes it the
@@ -509,7 +533,8 @@ the same way as roadmap items; `bb rules pending` lists what is waiting.
 ## The roadmap
 
 Every project has a notebook in the dashboard — the briefing, the roadmap,
-bugs, one tab each. The roadmap is the shared list of design work, and both
+bugs, and the repository's own history, branches and diffs on its Git view,
+one tab each. The roadmap is the shared list of design work, and both
 you and the operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
 conversation that started before the rename does not break mid-task; use
 `bb roadmap`.)
@@ -950,10 +975,10 @@ only when the finding is genuinely a false positive, and say why.
 
 - Commit identity is the account's own, set on their Profile tab, and it
   reaches this session as git's environment (`GIT_AUTHOR_*`,
-  `GIT_COMMITTER_*`) — so two people on one project are two authors. A
-  session does not start for an account that has none set, so a commit
-  failing to find an author here is a fault to report, not one to fix with
-  `user.name` / `user.email` yourself.
+  `GIT_COMMITTER_*`) — so two people on one project are two authors. No
+  session, shell or `bb git` runs for an account that has none set, so a
+  commit failing to find an author here is a fault to report, not one to
+  fix with `user.name` / `user.email` yourself.
 - SSH keys may be **shielded**: served by a root-owned agent so that pushes
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem
@@ -975,6 +1000,12 @@ only when the finding is genuinely a false positive, and say why.
   with the keys it holds, and no credential ever lives on a node. Plain
   `git push` there fails asking for a username: that is the rule, not a
   fault to work around. `bb status` says which machine this is.
+- **What you may push is the project's git policy**, set on its Git view:
+  `bb git policy` prints it. By default you may push the branch you work
+  on and may not push to `main`; the controller refuses a push the policy
+  denies, so read it before pushing rather than discovering it. Committing
+  and merging locally are yours either way — the policy governs what
+  reaches the remote.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 

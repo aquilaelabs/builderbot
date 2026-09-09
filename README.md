@@ -358,6 +358,8 @@ bb login           Claude Code subscription auth flow. On a node it first syncs
                    this account's login with the controller's, newer wins
 bb login --sync    that half alone, quietly — what every connection already does
 bb git push|fetch|pull|ls-remote [ARGS]
+bb git policy      what a session may push here — its branch, main — from the
+                   project's Git view; the controller enforces it on the relay
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
@@ -440,6 +442,12 @@ bb phone run --why "..." -- adb args...
                    ask to reach it — the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb root            what root commands are waiting on an administrator
+bb root run --why "..." -- CMD...
+                   ask for ONE command as root on this project's node — an
+                   administrator allows or denies it on the Nodes tab or the
+                   bell, and the node runs that command and nothing else. Not
+                   sudo: a second command is a second question
 bb catchup         what has happened here lately: commits with the first line
                    of their bodies, what moved in the notebook, the builds this
                    box archived, and which image it is actually running
@@ -1124,9 +1132,13 @@ lives in its body. The cards:
   configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos — gh answers for plain https remotes.
   A local repo with **no remote at all** wears a chain icon beside its eye:
-  **link to GitHub**. It asks the same two questions as a clone — URL and
-  deploy key — sets `origin`, and pushes the current branch, but **only into
-  an empty repository**: `git ls-remote` must come back with no refs first,
+  **link to GitHub**. It asks for the URL and how the push authenticates —
+  the same switch the settings dialog wears: a **deploy key** the agent
+  holds, or an **access token** for this project alone, checked against
+  GitHub, stored under `/config` and read by git's helper, with the
+  repository created private through the API when it does not exist yet —
+  sets `origin`, records the project as able to push, and pushes the
+  current branch, but **only into an empty repository**: `git ls-remote` must come back with no refs first,
   so linking can never write over existing work. Without a PAT a deploy key
   is required (a push has to authenticate somehow); with one, the key is
   optional and a URL that does not exist yet is created for you via
@@ -1457,8 +1469,11 @@ mounted from somewhere else. A network change is the one that can cut the
 cord it arrives on, so it is applied with a three-minute dial-back: the node
 re-addresses itself and must reach the controller from the new address, or it
 puts the previous config back on its own and says so when it reconnects.
-Network changes need netplan on the node, and the job says so where there is
-none. Nothing here is offered to an ssh node or to local.
+The job names the address and never the tool: the agent detects what owns
+the node's network — netplan, NetworkManager, systemd-networkd, wicked,
+`/etc/network/interfaces` or dhcpcd — and writes it through that one, and
+refuses, saying so, on a node with none of them. Nothing here is
+offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
 node for everything it does off this box: containers, builds, tests, CI and
@@ -1466,7 +1481,10 @@ emulation — and gives its build and test commands and the output globs. `bb bu
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on
-the row (which job, which node, which snapshot). A failed build keeps its
+the row (which job, which node, which snapshot). The tab's **Download
+source** hands over the code base itself as a zip through the browser — what
+git tracks and would track, under one directory named for the project, never
+`.git`, `dist/` or what `.gitignore` hides. A failed build keeps its
 workspace on the node for a look, and says where. The census reports each
 node's cache size beside **Clear cache**, and the Tools tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
@@ -1546,6 +1564,35 @@ switching back to lan closes it. **public**, a reverse proxy with a wildcard
 record, is named in the picker as not built so the third mode is visible for
 what it is (docs/nodes.md §7).
 
+### The notebook's Git view
+
+The seventh view of a project's notebook reads the repository out: what is
+changed and not committed, each file a fold with its diff; the last hundred
+commits across every branch as a graph, a node per commit and a curve to
+each parent, with the branch and tag names on their rows; one commit's
+message, author, files and diff when you pick it; and the branches, marked
+with the one the tree is on and whose session's worktree sits on which
+(`claude/<account>`), with how far each stands from `main` and from its
+upstream. It reads on open and again when the tree's history moves, never on
+the poll, and every question is git plumbing on the controller against the
+project on the share — a sha or a path from the address is checked against
+what the repository itself reports before it reaches a command.
+
+The view acts too, each button one fixed git command with checked arguments,
+run under your author and the project's own credentials: **Fetch**, **Pull**
+(fast-forward only, refused with uncommitted changes) and **Push** (through
+the same path `bb git push` takes, offered only to a project with push
+rights) on the bar under the head row; **Commit all** with a message at the
+top of Changes and **Discard** on each file; **New branch** at the top of
+Branches, **Switch** on a branch (refused while the owner's Claude session
+stands in the directory, or with uncommitted changes) and **Delete**, which
+refuses a branch holding commits no other branch has until you say so
+twice; **Revert** and **Branch here** on a picked commit. A session's token
+has none of these — it has `bb git` — and a locked project takes no action.
+Send to Claude and the per-project git policy are roadmap R36's last step.
+On a phone the notebook's strip wraps into rows so all seven views stay on
+screen.
+
 ### The Jobs tab
 
 **Tools → Jobs** is the queue (docs/nodes.md §2, phase 4): everything the
@@ -1569,9 +1616,11 @@ The gear in the header keeps what belongs to this **browser** — theme and
 layout — and one entry, **Profile**, opening the signed-in account's own
 tab: their account name, their name and email, the name and email their
 commits carry (blank means the ones above), and a password change that asks
-for the current one first. A Claude session does not start for an account
-with no name and email for commits — every project is a repository — and the
-row's Claude button says so until the Profile has them. The commit identity is per account rather than per project, and
+for the current one first. Neither a Claude session nor a shell starts for an account with no
+name and email for commits, and `bb git` refuses for it — every project is a
+repository, and a shell is where git is typed — and the row's buttons say so
+until the Profile has them. Blank git fields fall back to the name and email
+above and to nothing else; no address is ever made up. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured — so two people on one
 project are two authors. The **Administration** card on the sidebar, shown
@@ -2818,6 +2867,22 @@ output. There is no setting that skips the question. The reason is required,
 not optional — approving a command you did not write, with no sentence saying
 what it is for, is a guess.
 
+**Root on a node has the same shape.** A session has no sudo there and gets
+none; what it can do is `bb root run --why "..." -- CMD`, which puts the
+reason and the exact command in front of a person — on the Nodes tab and the
+bell — and waits. Which person is decided by the session that asks: the
+account it belongs to, when that account is an administrator, and every
+administrator when it is a user's, because a sandbox is a shared machine and
+root on it is not a user's to allow. (Their own phone is: a phone request
+goes to whoever connected the handset, which is the asker when it is theirs.
+Letting a particular user allow root on a particular sandbox is a
+permissions design of its own, not written yet.) Allow runs that one command as root on the
+project's node, as a system job whose log opens with the reason and who
+allowed it, so the Jobs tab is the record; Deny says no. Only a node
+provisioned as a sandbox takes it — somebody's own machine is not the
+controller's to run root on — and there is no fake sudo either: a refusal
+that says why beats a success that did not happen.
+
 That is a door that is shut by default rather than a wall. A session on the
 node could set `ANDROID_ADB_SERVER_PORT` itself and go straight there;
 nothing on one machine can be a wall. What it buys is that reaching the phone
@@ -3438,7 +3503,8 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
-vm/provision.sh                  turns a Debian/Ubuntu VM into the Docker sandbox, and enrolls it as a node
+vm/provision.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
+vm/unraid-domain.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

@@ -483,8 +483,21 @@ function nodeConfSections(n){
       </div>`;
   // The four static fields only when static: five boxes of placeholders
   // under a dhcp node were the wall this section used to be on a phone.
+  // Which service on the machine the agent would write this into. The
+  // spec it is sent is the same everywhere; the agent detects the backend
+  // (netplan, NetworkManager, systemd-networkd, wicked, ifupdown, dhcpcd)
+  // and reports it in the census, so the row can say so before the job goes
+  // — or say that a change would be refused, on a machine with none.
+  const dist = rep.distro;
+  const NET_BACKENDS = {netplan: "netplan", networkmanager: "NetworkManager",
+    "systemd-networkd": "systemd-networkd", wicked: "wicked", ifupdown: "/etc/network/interfaces",
+    dhcpcd: "dhcpcd"};
+  const via = !dist ? ""
+    : NET_BACKENDS[dist.network] ? ` Through ${NET_BACKENDS[dist.network]} on this node.`
+    : ` <b class="warn">This node reports no network backend the agent drives${
+        dist.pretty ? " (" + esc(dist.pretty) + ")" : ""}; a change would be refused.</b>`;
   const network = `
-      <div class="sub">Applied with a three-minute dial-back, or reverted.</div>
+      <div class="sub">Applied with a three-minute dial-back, or reverted.${via}</div>
       <div class="ndnet${isStatic ? "" : " dhcp"}">
         <select data-k="net:mode" aria-label="mode">
           <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
@@ -529,8 +542,8 @@ function nodeConfSections(n){
     : failedFor("network") ? "bad" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
   // .ndconf and .ndconfbody: the names the suite finds the plane by; the
   // sections are its children, so a test can read them in order.
-  // Storage and Network edit the machine's own configuration — fstab,
-  // netplan — which only a node provisioned as a sandbox (a MANAGED node,
+  // Storage and Network edit the machine's own configuration — fstab, and
+  // whatever owns its network — which only a node provisioned as a sandbox (a MANAGED node,
   // roadmap #23) hands over. A container node or a guest machine keeps its
   // mounts and its address its own, and the tab says so rather than
   // offering buttons the agent refuses.
@@ -645,6 +658,22 @@ function renderNodesInto(i){
     // button for the round trip; this is what keeps it grey afterwards,
     // through the repaint that replaces the element.
     const inflight = t => (n.jobs || []).some(j => j.type === t);
+    // What a session is waiting on, as root, on THIS machine (roadmap R38):
+    // above everything else on the row, because somebody is blocked on it
+    // and it is the one thing here that runs as root. From the phone's
+    // answer, which carries every ask for this account; the server sends a
+    // root ask to administrators only, so a user sees none.
+    const rootAsks = (typeof ph !== "undefined" && ph?.asks || []).filter(a => a.kind === "root" && a.node === n.id);
+    const askRows = rootAsks.map(a => `<div class="row ndask">
+      <div class="grow"><div class="name">root: ${esc(a.why)}</div>
+        <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
+          ? `${Math.floor(a.left / 60)} min left to answer`
+          : `${a.left}s left to answer`}</div></div>
+      <span class="acts">
+        <button type="button" data-rdeny="${a.id}">Deny</button>
+        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
+      </span></div>`).join("");
     // An update was pressed less than three minutes ago and the agent has
     // not come back with the new digest: the job row is gone the moment the
     // agent swaps itself in, but the row only learns that from its next
@@ -682,7 +711,7 @@ function renderNodesInto(i){
     // Every live agent node gets the plane: the runner needs no stamp. What
     // inside it needs one — Storage and Network — nodeConfSections decides.
     const plane = n.kind === "agent" && !pending;
-    return `
+    return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
@@ -721,6 +750,14 @@ function wireNodesTab(root){
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
+  // The root asks answer through the phone's endpoint, which holds the one
+  // list of asks; phFetch redraws this tab when the answer comes back.
+  root.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "running";
+    phFetch({action: "allow", id: Number(b.dataset.rallow)});
+  });
+  root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   // ---- enrolling, in a dialog -------------------------------------------
   // Written here rather than into the tab, so a poll landing mid-type cannot
   // take the name with it: the box is outside this tab's DOM and survives

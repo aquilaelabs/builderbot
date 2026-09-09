@@ -1061,11 +1061,36 @@ is the stamp). A `system` job with `apply: storage` diffs desired mounts
 against reported and runs `bb-sandbox remove` / `add-nfs` / `add-share` for
 the difference, then moves the stores in node.json and makes them; it ends
 with a hello, so the row shows the applied state at once. `apply: network`
-writes `/etc/netplan/90-builderbot.yaml`, keeps the previous file, runs
-`netplan apply`, and dials the controller from wherever it landed for up to
-three minutes; no answer and the previous file goes back and is applied
-again, and the job reports the revert on reconnect — netplan only, and it
-says so on a node without it. The controller offers system jobs only to an
+carries the address, gateway and resolvers and never a tool: the agent
+detects which service owns the machine's network and renders the same spec
+through it — a file of its own under `/etc/netplan` and `netplan apply`;
+the ipv4 keys of the interface's NetworkManager connection through
+`nmcli`, then `con up`; a `.network` file and `networkctl reload` under
+systemd-networkd; wicked's `ifcfg`/`ifroute` files on SUSE Leap; the
+interface's stanza in `/etc/network/interfaces` and an `ifdown`/`ifup`; a
+marked block in `dhcpcd.conf`. Either way it
+keeps what was there, dials the controller from wherever it landed for up
+to three minutes, and with no answer puts the previous config back and
+applies it again, reporting the revert on reconnect. A node with neither
+backend refuses the job and says so. The same detection picks the package
+manager — apt, dnf, zypper, pacman, apk, xbps or emerge — for a recipe's
+system packages (named per family under `system` in the catalog), and the
+census reports both with the init system (`distro`), so the row says what
+a change would go through.
+Another distribution is another backend in the agent, not another job
+spec. A fourth system job, `apply: root` (roadmap R38), runs ONE command as
+root that an administrator allowed: a session asks with `bb root run --why
+"..." -- CMD`, and the request is routed by the SESSION that asked: to
+that session's own account when it is an administrator's, and to every
+administrator when it is a user's, because a sandbox is shared and root on
+it is not a user's to allow — the way a phone request waits on the phone's
+owner, which is the asker when the phone is theirs (same list, `kind:
+root`, on the Nodes tab and the bell; a per-user grant for root on a
+sandbox is a permissions design of its own, not written). Allow queues the job with the reason and the approver in
+its spec so its log is the record, and only a sandbox node takes it — the
+agent refuses it without the stamp like storage and network. It is not
+sudo: there is no second command without a second question, and nothing
+pretends. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
 agent refuses them without bb-sandbox whatever the row says. On the Nodes
 tab the row grows a *storage & network* fold: the editor is a draft that

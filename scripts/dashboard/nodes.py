@@ -972,6 +972,15 @@ def _census(c):
         "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
         "gateway": str(net.get("gateway") or "")[:64],
         "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
+    # The machine's own tools, as the agent detected them: its package
+    # manager and the service that owns its network. A system job's spec is
+    # the same for every node; this says what the agent there would turn it
+    # into, so the row can say so — and absent from an agent that predates
+    # the detection, which the row reads as "not reported", not as none.
+    d = c.get("distro") if isinstance(c.get("distro"), dict) else None
+    if d is not None:
+        out["distro"] = {k: re.sub(r"[^a-zA-Z0-9 ._()/-]", "", str(d.get(k) or ""))[:80]
+                         for k in ("id", "family", "pretty", "pkg", "network")}
     return out
 
 
@@ -1024,7 +1033,9 @@ _CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
 def _clean_config(cfg):
     """The desired config, validated to its shape, or an error string. Every
     field is bounded here so a system job's spec is never a blob from the
-    page — the agent writes what arrives into fstab and netplan."""
+    page — the agent writes what arrives into fstab and into whichever
+    backend owns its network (netplan, NetworkManager); the spec names the
+    address, never the tool."""
     cfg = cfg if isinstance(cfg, dict) else {}
     out = {}
     mounts = []
@@ -1767,6 +1778,46 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     # Taken back, not left in the queue: a probe nobody is waiting for any
     # more would otherwise run whenever the node's slot freed — an `adb
     # install` an hour after the operator read it as failed.
+    job_cancel(principal, r["job"])
+    return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
+
+
+def root_wait(principal, node_id, argv, why="", timeout=600):
+    """One approved command as root on a node (roadmap R38): a system job
+    with `apply: root`, waited for like run_wait. The gate is node_apply's —
+    an online agent node that enrolled as a sandbox, one system job at a
+    time — because root on somebody's own machine is theirs, and the agent
+    refuses it there too whatever this says. The reason and the approver
+    ride in the spec so the job's log, which the Jobs tab keeps, says who
+    allowed what and why."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node takes system jobs"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox, so root "
+                         "there is its owner's"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — a root command goes to an online node"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    spec = {"apply": "root", "timeout": int(timeout),
+            "config": {"argv": [str(a) for a in argv], "why": str(why)[:300],
+                       # The person, for the log's first line; the audit row
+                       # keeps the principal as it is.
+                       "by": str(principal).removeprefix("user:"), "timeout": int(timeout)}}
+    r = job_add(principal, {"node": node_id}, "system", spec)
+    if r.get("error"):
+        return {"error": r["error"]}
+    audit(principal, "root-run", node_id, {"argv": argv, "why": why, "job": r["job"]})
+    deadline = time.time() + timeout + 10
+    while time.time() < deadline:
+        j = job(r["job"])
+        if j and j["state"] in JOB_END:
+            return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
+                    "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
+        time.sleep(0.25)
     job_cancel(principal, r["job"])
     return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
 

@@ -59,6 +59,11 @@ inside, because there is nothing to mistake them for once typed in. A text
 field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
+**A file field is a button of ours and the name of what was picked.** The
+browser's own chooser stays hidden: its button wears the browser's skin,
+not the page's, and there is no styling it. A `.filepick` — a button that
+opens the chooser, and the picked name beside it — is the shape.
+
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
@@ -140,7 +145,12 @@ back to, so cancelling it removes it.
 
 Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all six views.
+first band of the view and sits at one height on all seven views.
+
+The view strip is one row on a desktop. On a phone it wraps into rows of
+equal-width tabs rather than scrolling sideways: seven labels do not fit
+393px, and a strip that hides its last two behind an edge is a strip whose
+last two views nobody opens. Every tab stays visible at every width.
 
 Adding goes at the top. The control that adds to a view is the first band
 under its head row, above the list, one shape on every view (`.addbar`, a
@@ -150,7 +160,7 @@ list to add to it.
 
 Save and Revert at the notebook's foot show only on the views that stage
 something behind them (Roadmap, Briefing, the version on Artifacts). A view
-that writes through — Bugs, Tests, Analysis — has no foot.
+that writes through or only reads — Bugs, Tests, Analysis, Git — has no foot.
 
 ## Both sizes
 

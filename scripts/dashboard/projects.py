@@ -1575,7 +1575,19 @@ def link(req):
                          "git@github.com:owner/repo.git"}, 400
     path = repo_path(url)
     pat = gh_authed()
-    if keyname:
+    token = _field(req, "token").strip()
+    helper = ""
+    if token:
+        # A token for this project alone, the way the clone dialog takes one:
+        # checked against GitHub first, then stored under /config and read by
+        # git's helper — never typed into a remote URL.
+        if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):
+            return {"error": "that is not a GitHub token"}, 400
+        if not _github_user(token):
+            return {"error": "GitHub does not accept that token"}, 400
+        helper = write_token(name, token)
+        remote = f"https://github.com/{path}.git"
+    elif keyname:
         match = next((k for k in agent_keys() if k["name"] == keyname), None)
         if match is None:
             return {"error": f"the agent holds no key named {keyname}"}, 400
@@ -1586,27 +1598,76 @@ def link(req):
         remote = f"https://github.com/{path}.git"
     else:
         return {"error": "no PAT is configured and no deploy key was picked — "
-                         "a push needs one of the two"}, 400
+                         "a push needs one of the two, or an access token"}, 400
     if not _start("link", name,
-                  lambda: _link(dest, name, path, remote, bool(keyname), pat)):
+                  lambda: _link(dest, name, path, remote, bool(keyname), pat,
+                                helper=helper, token=token)):
         return {"error": "another project job is already running"}, 409
     return {"ok": True, "name": name, "started": True}, 200
 
 
-def _link(dest, name, path, remote, keyed, pat):
+def _github_user(token):
+    """The login a token belongs to, or "" when GitHub refuses it."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request("https://api.github.com/user",
+                                 headers={"Authorization": f"Bearer {token}",
+                                          "Accept": "application/vnd.github+json",
+                                          "User-Agent": "BuilderBot"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return (json.loads(r.read(20000)) or {}).get("login") or ""
+    except (urllib.error.URLError, OSError, ValueError):
+        return ""
+
+
+def _github_create(token, path):
+    """Make an empty private repository — in the organisation the path
+    names when the token may, else under the token's own account; "" on
+    success, else why not."""
+    import urllib.error
+    import urllib.request
+    owner, _, repo = path.partition("/")
+    body = json.dumps({"name": repo, "private": True}).encode()
+    for url in (f"https://api.github.com/orgs/{owner}/repos", "https://api.github.com/user/repos"):
+        req = urllib.request.Request(url, data=body, method="POST",
+                                     headers={"Authorization": f"Bearer {token}",
+                                              "Accept": "application/vnd.github+json",
+                                              "Content-Type": "application/json",
+                                              "User-Agent": "BuilderBot"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                if r.status in (200, 201):
+                    return ""
+        except urllib.error.HTTPError as e:
+            if e.code == 404 and "/orgs/" in url:
+                continue                      # not an organisation: the account's own
+            try:
+                why = (json.loads(e.read(20000)) or {}).get("message") or ""
+            except ValueError:
+                why = ""
+            return f"GitHub would not create {path}: {why or e.code}"
+        except (urllib.error.URLError, OSError) as e:
+            return f"could not reach GitHub: {e}"
+    return f"GitHub would not create {path}"
+
+
+def _link(dest, name, path, remote, keyed, pat, helper="", token=""):
     """The worker half: prove the remote is empty, then set it and push.
 
     There is no lock around check-then-add: two racing links resolve at
     `git remote add`, which refuses a duplicate origin, and the loser's error
-    says exactly that.
+    says exactly that. With a project token, git runs under that project's
+    helper and nothing else, the way a clone does.
     """
     env = _git_env()
+    scope = ["-c", "credential.helper=", "-c", f"credential.helper={helper}"] if helper else []
     created = ""
     _step("checking the repository is empty")
     # split_err: emptiness is judged on stdout alone. ssh's first-contact
     # "Permanently added github.com ..." note arrives on stderr with exit 0,
     # and combined it made a genuinely empty repository look occupied.
-    r = run(["git", "ls-remote", "--", remote], timeout=120, env=env,
+    r = run(["git", *scope, "ls-remote", "--", remote], timeout=120, env=env,
             split_err=True, register=_register)
     if _aborted():
         return "stopped — nothing was changed", ""
@@ -1621,7 +1682,13 @@ def _link(dest, name, path, remote, keyed, pat):
                     "Create it (empty) on GitHub and add this deploy key to it "
                     "first" + (", or leave the key on none to use the PAT"
                                if pat else "") + ".", "")
-        if "not found" in blame.lower() and pat:
+        if "not found" in blame.lower() and token:
+            _step("creating it on GitHub")
+            why = _github_create(token, path)
+            if why:
+                return why, ""
+            created = f"created {path} on GitHub (private); "
+        elif "not found" in blame.lower() and pat:
             _step("creating it on GitHub")
             c = run(["gh", "repo", "create", path, "--private"], timeout=60,
                     register=_register)
@@ -1637,11 +1704,16 @@ def _link(dest, name, path, remote, keyed, pat):
     a = run(["git", "-C", dest, "remote", "add", "origin", remote], timeout=10)
     if a["code"] != 0:
         return a["out"].strip() or "remote add failed", ""
+    if helper:
+        _scope_to_token(dest, helper)
+    # Linked is pushable: the push below is the proof, and the Git view's
+    # Push and the Artifacts tab read this record.
+    grant_push(name, path, "token" if token else "key")
     if run(["git", "-C", dest, "rev-parse", "-q", "--verify", "HEAD"],
            timeout=10)["code"] != 0:
         return "", created + "remote set — nothing committed yet, so nothing was pushed"
     _step("pushing")
-    p = run(["git", "-C", dest, "push", "-u", "origin", "HEAD"],
+    p = run(["git", "-C", dest, *scope, "push", "-u", "origin", "HEAD"],
             timeout=1800, env=env, register=_register)
     if _aborted():
         # The remote stays either way: it is correct configuration, and a push

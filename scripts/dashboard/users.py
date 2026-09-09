@@ -198,9 +198,21 @@ def prefs(u):
 PROFILE_FIELDS = {"full_name": 120, "email": 200, "git_name": 120, "git_email": 200}
 
 
+def account_of(u):
+    """The account behind a principal: itself, or for a session's token the
+    account it was minted for, found by uid — a session has an author too,
+    and it is the person's."""
+    u = u or {}
+    if u.get("session") and u.get("uid"):
+        for name, rec in load()["users"].items():
+            if isinstance(rec, dict) and rec.get("uid") == u["uid"]:
+                return {**rec, "name": name}
+    return u
+
+
 def profile(u):
     """The account's own settings, for its Profile tab: never a credential."""
-    p = prefs(u)
+    p = prefs(account_of(u))
     return {k: str(p.get(k) or "")[:n] for k, n in PROFILE_FIELDS.items()}
 
 

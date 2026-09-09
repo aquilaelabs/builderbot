@@ -50,6 +50,8 @@ bb — BuilderBot helper
                          controller's, in whichever direction is newer
   bb login --sync        that half alone, quietly — what every connection does
   bb git push|fetch|pull|ls-remote [ARGS]
+  bb git policy      what a session may push here — its branch, main — from the
+                     project's Git view; the controller enforces it on the relay
                          git's network half, run where the credential is — from a
                          session on a node it goes through the controller
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
@@ -117,6 +119,9 @@ bb — BuilderBot helper
   bb findings history    what the scanner stopped and started saying here
                          (-n N, --since 7d, --find TEXT, as the other logs)
   bb phone               what phone is connected, and what is waiting on you
+  bb root                what root commands are waiting on an administrator
+  bb root run --why "..." -- CMD...    ask for ONE command as root on this
+                         project's node; an administrator allows or denies it
   bb phone run --why "..." -- adb args...    ask to reach it; the operator
                          allows it on the dashboard and this runs it there
   bb catchup             what has happened here lately: commits and the first
@@ -2966,6 +2971,76 @@ PY
     esac
 }
 
+# One command as root on the project's node (roadmap R38): the phone's
+# shape — reason and exact command in front of a person, Allow runs it on
+# the node, Deny says no — applied to root. Not sudo: there is no second
+# command without a second question, and nothing here pretends.
+cmd_root() {
+    local sub="${1:-status}" why="" auth
+    auth="$(bb_auth_or_die)"
+    shift || true
+    case "$sub" in
+        status)
+            BB_PHONE_AUTH="$auth" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
+if d.get("error"):
+    sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
+asks = [a for a in (d.get("asks") or []) if a.get("kind") == "root"]
+if not asks:
+    print("root:    nothing is waiting")
+for a in asks:
+    print("waiting: #{} {} — {} on {}: {}".format(a.get("id"), a.get("why"), a.get("project") or "a session",
+                                                 a.get("node_name"), " ".join(a.get("cmd") or [])))
+PY
+            ;;
+        run)
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) why="${2:-}"; shift 2 ;;
+                    --) shift; break ;;
+                    *) die "usage: bb root run --why \"what this is for\" -- command..." ;;
+                esac
+            done
+            [ -n "$why" ] || die "bb root run needs --why \"what this is for\""
+            [ $# -gt 0 ] || die "nothing to run — put the command after --"
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
+            BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
+                python3 - "$@" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
+
+r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:],
+          "project": os.environ.get("BB_PHONE_PROJECT", "")})
+if r.get("error"):
+    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+rid = r["id"]
+print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) — waiting up to 15 minutes "
+      "for Allow on the dashboard's Nodes tab or bell", file=sys.stderr)
+for _ in range(900):
+    time.sleep(1)
+    o = post({"action": "outcome", "id": rid})
+    if o.get("error"):
+        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
+    if o["state"] == "denied":
+        print("[builderbot] the administrator said no", file=sys.stderr); sys.exit(1)
+    if o["state"] == "done":
+        sys.stdout.write(o.get("out") or "")
+        sys.exit(o.get("code") or 0)
+print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
+sys.exit(1)
+PY
+            ;;
+        *) die "usage: bb root [status|run --why \"...\" -- command...]" ;;
+    esac
+}
+
 cmd_findings_history() {
     local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/findings.py"
@@ -3243,7 +3318,18 @@ cmd_git() {
     shift || true
     case "$verb" in
         push|fetch|pull|ls-remote) ;;
-        *) die "bb git takes push, fetch, pull or ls-remote — plain git does everything else" ;;
+        policy)
+            # What this project lets a session do with git's network half,
+            # from the project's settings: the controller enforces it on the
+            # relay, so this is the answer to read before pushing.
+            BB_SETTINGS_JSON=1 cmd_settings --json | python3 -c '
+import json, sys
+p = json.load(sys.stdin).get("gitpol") or {}
+print("push its branch:", p.get("push", "allow"))
+print("push to main:   ", p.get("main", "deny"))
+print("A local commit or merge is yours; what reaches the remote is what this governs.")'
+            return 0 ;;
+        *) die "bb git takes push, fetch, pull, ls-remote or policy — plain git does everything else" ;;
     esac
     for a in "$@"; do
         case "$a" in
@@ -5049,6 +5135,7 @@ case "${1:-help}" in
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;
+    root)     shift; cmd_root "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;

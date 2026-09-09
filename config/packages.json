@@ -250,7 +250,11 @@
       ],
       "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node.",
       "system": {
-        "apt": ["libpulse0", "libgl1", "libglu1-mesa", "libasound2t64", "libegl1", "libvulkan1"]
+        "apt": ["libpulse0", "libgl1", "libglu1-mesa", "libasound2t64", "libegl1", "libvulkan1"],
+        "dnf": ["pulseaudio-libs", "mesa-libGL", "mesa-libGLU", "alsa-lib", "mesa-libEGL", "vulkan-loader"],
+        "pacman": ["libpulse", "mesa", "glu", "alsa-lib", "vulkan-icd-loader"],
+        "zypper": ["libpulse0", "Mesa-libGL1", "libGLU1", "libasound2", "Mesa-libEGL1", "libvulkan1"],
+        "apk": ["pulseaudio-libs", "mesa-gl", "glu", "alsa-lib", "mesa-egl", "vulkan-loader"]
       },
       "source": {
         "kind": "sdkmanager",

@@ -41,6 +41,11 @@ CDIR_ROOT = os.environ["STUB_AGENT_DIR"]
 # the rest is a plausible small VM so the meters have something to draw.
 CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           "sshd": True, "docker": True,
+          # Provisioned as a sandbox, so the controller offers it system
+          # jobs — the root ask (R38) is one, and it runs below as this
+          # process rather than as root: the suite proves the asking and the
+          # answering, and the real agent's own file proves the running.
+          "sandbox": True,
           # adb, so the Phone tab lists this node: its adb is the harness's
           # stub on PATH, which answers as a phone that is always there.
           "toolchains": {"adb": "present", "web-ext": "present"},
@@ -198,6 +203,23 @@ def run_exec(job):
     return state, code, []
 
 
+def run_system(job):
+    """Only `apply: root`, and as whoever runs the suite: the command that
+    a person allowed, with the same first line the real agent writes."""
+    spec = job.get("spec") or {}
+    cfg = spec.get("config") or {}
+    if spec.get("apply") != "root":
+        return "failed", 64, []
+    argv = [str(a) for a in (cfg.get("argv") or [])]
+    if not argv:
+        return "failed", 64, []
+    call("log", {"job": job["id"], "chunks": [{"seq": 1, "chunk":
+         f"# root on this node, allowed by {cfg.get('by') or 'the operator'}: {cfg.get('why') or ''}\n"}]})
+    os.makedirs(CDIR_ROOT, exist_ok=True)
+    state, code = stream(job, [1], argv, CDIR_ROOT, dict(os.environ), timeout=120)
+    return state, code, []
+
+
 def main():
     call("hello", {"census": CENSUS, "version": "harness", "running": []})
     last_hello = time.time()
@@ -213,6 +235,8 @@ def main():
                     state, code, outputs = compose(j)
                 elif j.get("type") == "exec":
                     state, code, outputs = run_exec(j)
+                elif j.get("type") == "system":
+                    state, code, outputs = run_system(j)
                 else:
                     state, code, outputs = "failed", 1, []
             except Exception as e:                       # a stub bug is a failed job

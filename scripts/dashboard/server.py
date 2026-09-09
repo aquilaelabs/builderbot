@@ -2469,9 +2469,13 @@ phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 # view. The convention is the module's docstring; the scratch dir is where an
 # .xpi is unpacked for web-ext, never dist/ itself.
 import artifacts                                                 # noqa: E402
+import git as gitview                                            # noqa: E402
 import workspace                                                 # noqa: E402
 
 artifacts.configure(workspace=WORKSPACE)
+gitview.configure(workspace=WORKSPACE,
+                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
+                  tell=notify.tell, tmux_name=tmux_name)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -3039,7 +3043,7 @@ def snapshot(who):
         # the requests themselves: this rides on every poll, and it exists so
         # the Phone tab knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
-        "phone_asks": len(phone.requests_open(users.uid_of(who))),
+        "phone_asks": len(phone.requests_open(users.uid_of(who), users.is_admin(who))),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
@@ -3460,20 +3464,22 @@ class Handler(BaseHTTPRequestHandler):
         suggestion, because the ttyd URL is reachable directly.
         """
         arg = _term_arg(rest)
+        me = self._who()
+        uid = users.uid_of(me)
+        # No author, no terminal: every project is a repository, a commit
+        # with no name and email behind it is one git refuses halfway through
+        # the work, and a shell is where git is typed. bb-tty asks the same
+        # question on the node, from the same answer (bb settings --json's
+        # git_ready).
+        if uid and (arg == "shell" or arg.startswith("sh:") or arg.startswith("claude:")) \
+                and not users.git_ready(me):
+            return (f"{me['name']} has no name and email for commits yet — set them "
+                    "on your Profile (the gear in the header) and open this again")
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
-        me = self._who()
-        uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        # No author, no session: every project is a repository, and a commit
-        # with no name and email behind it is one git refuses halfway through
-        # the work. bb-tty asks the same question on the node, from the same
-        # answer (bb settings --json's git_ready).
-        if not users.git_ready(me):
-            return (f"{me['name']} has no name and email for commits yet — set them "
-                    "on your Profile (the gear in the header) and open this again")
         # A session on a node is in THAT machine's tmux with that account's
         # login there, neither of which this container can see: the
         # announcement and the one-Anthropic-account rule are the node's
@@ -3835,6 +3841,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(findings_payload(self._who()))
         if self.path.startswith("/api/profile"):
             return self._profile()
+        if self.path.startswith("/api/git"):
+            # The notebook's Git view (roadmap R36): plumbing reads on the
+            # project's tree, for a project this account may see. A sha
+            # and a path are checked in git.py against what the repository
+            # itself reports; nothing from the query reaches a command line
+            # as anything else.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            what = q.get("what", [""])[0]
+            try:
+                n = int(q.get("n", ["0"])[0])
+            except ValueError:
+                n = 0
+            r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
+                                path=q.get("path", [""])[0], n=n)
+            if what in ("", "all") and not r.get("error"):
+                # What the network bar may offer: a remote to talk to, and
+                # the project's push rights, granted once in the clone dialog.
+                r["remote"] = gitview.has_remote(WORKSPACE / name)
+                r["push"] = projects.may_push(name)
+            return self._json(r, 400 if r.get("error") else 200)
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -3887,6 +3916,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Disposition",
                              f'attachment; filename="{f.name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
+        if self.path.startswith("/api/source?"):
+            # The code base as a zip, from the Artifacts tab: what git
+            # tracks and would track, never .git, dist/ or what .gitignore
+            # hides. A person's download, so a session's token is refused —
+            # a session has the tree already.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if (self._who() or {}).get("session"):
+                return self._json({"error": "a session has the tree already"}, 403)
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            try:
+                got = artifacts.source_zip(name)
+            except (OSError, subprocess.SubprocessError) as e:
+                return self._json({"error": str(e)}, 500)
+            if got is None:
+                return self._json({"error": "no such project"}, 404)
+            fname, data = got
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -4209,6 +4263,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._create(req)
         if path.startswith("/api/profile"):
             return self._profile(req)
+        if path.startswith("/api/git"):
+            return self._git_act(req)
         if path.startswith("/api/link"):
             return self._link(req)
         if path.startswith("/api/project-job"):
@@ -4262,7 +4318,7 @@ class Handler(BaseHTTPRequestHandler):
                                 node=req.get("node") if "node" in req else req.get("dockernode"),
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
-                                gate=req.get("gate"),
+                                gate=req.get("gate"), gitpol=req.get("gitpol"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -4617,6 +4673,11 @@ class Handler(BaseHTTPRequestHandler):
         if not me:
             return self._json({"error": "not signed in"}, 401)
         argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
+        # git's network half runs under the account's author like everything
+        # else it does with a repository: none set, none run.
+        if argv and argv[0] == "git" and users.uid_of(me) and not users.git_ready(me):
+            return self._json({"error": "no name and email for commits yet — set them on "
+                                        "your Profile (the gear in the dashboard's header) first"}, 403)
         if not argv or argv[0] not in RELAY_VERBS:
             return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
                                "it answers for the machine the session is on"}, 400)
@@ -4628,6 +4689,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._refused("bb", project):
             return None
+        # ...and under the project's git policy (the Git view, roadmap R36):
+        # a session may push its own branch unless told not to, and may not
+        # push to main unless told it may. Judged here because here is
+        # where the push runs; a local commit or merge is not this door's.
+        if argv and argv[0] == "git" and argv[1:2] == ["push"] and me.get("session"):
+            pol = prefs.get(project)["gitpol"]
+            if pol.get("push") == "deny":
+                return self._json({"error": "this project's git policy does not let a session "
+                                            "push — the operator pushes from the Git view"}, 403)
+            if pol.get("main") == "deny":
+                repo = WORKSPACE / project
+                head = (run(["git", "-C", str(repo), "symbolic-ref", "--short", "-q", "HEAD"],
+                            timeout=10)["out"] or "").strip()
+                main = next((b for b in ("main", "master") if run(
+                    ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", f"refs/heads/{b}"],
+                    timeout=10)["code"] == 0), "main")
+                spec = [a for a in argv[2:] if not a.startswith("-")]
+                to_main = any(a == main or a.endswith(":" + main) or a.startswith(main + ":") for a in spec) \
+                    or (not spec and head == main) or (len(spec) == 1 and head == main)
+                if to_main:
+                    return self._json({"error": f"this project's git policy does not let a session "
+                                                f"push to {main} — push your branch and say so, "
+                                                "and the operator merges from the Git view"}, 403)
         # The tree the session is in: the project directory, or one of its
         # worktrees. Anything else — a path outside the share, a sibling
         # project — runs in the project directory instead of being trusted.
@@ -5167,7 +5251,8 @@ class Handler(BaseHTTPRequestHandler):
         is the desktop's, which is emphatically not the phone, and filling the
         field with it would be a confident wrong answer — the worst kind.
         """
-        out = phone.payload(users.uid_of(self._who()), node=node, probe=probe)
+        out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
+                            admin=users.is_admin(self._who()))
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -5483,11 +5568,15 @@ class Handler(BaseHTTPRequestHandler):
         to run."""
         # NOT one gate for the whole endpoint. `ask` is what a session does
         # (bb phone run --why ...) and `outcome` is it reading the answer;
-        # the control on those is that the operator sees the reason and
-        # decides, one command at a time. Pairing, connecting and deciding
-        # are the operator's, and a session may not reach them.
-        if field(req, "action") not in ("ask", "outcome") and self._refused("admin"):
-            return None
+        # the control on those is that a person sees the reason and decides,
+        # one command at a time. Pairing, connecting, disconnecting and
+        # deciding are a PERSON's — any account, not only an administrator:
+        # a phone is its owner's, and phone.py holds the ownership (only the
+        # account that connected one can disconnect it or answer for it,
+        # and root on a shared sandbox is an administrator's whoever asks).
+        # A session's token may reach none of them.
+        if field(req, "action") not in ("ask", "outcome") and (self._who() or {}).get("session"):
+            return self._json({"error": "a session asks; a person answers"}, 403)
         act = field(req, "action")
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
@@ -5506,20 +5595,35 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "disconnect":
             r = phone.disconnect(nid, uid, me)
         elif act == "ask":
-            # A session asking to reach the phone on its project's node. It
-            # runs nothing itself; the account that connected that phone is
-            # asked, and on Allow the node runs it. The project is the
-            # session's own; a person asking through the API names one they
-            # may see.
+            # A session asking to reach the phone on its project's node —
+            # or, with kind "root", for one command as root there (roadmap
+            # R38). It runs nothing itself; the account that connected that
+            # phone, or an administrator, is asked, and on Allow the node
+            # runs it. The project is the session's own; a person asking
+            # through the API names one they may see.
             proj = who.get("session") or field(req, "project")
             if proj and not who.get("session") and not users.may_see(who, proj):
                 proj = ""
             pnid = prefs.get(proj)["node"] if proj else ""
             pn = nodes.node(pnid) if pnid and not NODES_OK else None
-            r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                          pn["name"] if pn else "", proj)
+            # Whose session asks: the account behind the token (a session on
+            # a node is minted for one), or the person calling the API. The
+            # answer is routed to them where it can be — their own phone,
+            # or root when they are an administrator.
+            acct = users.account_of(who) or {}
+            asker_uid = str(acct.get("uid") or "")
+            asker_name = str(acct.get("name") or "")
+            if field(req, "kind") == "root":
+                r = phone.ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                                   pn["name"] if pn else "", proj,
+                                   bool(((pn or {}).get("reported") or {}).get("sandbox")),
+                                   asker_uid=asker_uid, asker_name=asker_name,
+                                   asker_admin=users.is_admin(acct))
+            else:
+                r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                              pn["name"] if pn else "", proj, asker=asker_name)
         elif act == "allow" or act == "deny":
-            r = phone.decide(req.get("id"), act == "allow", uid, me)
+            r = phone.decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
         elif act == "outcome":
             r = phone.outcome(req.get("id"), project=who.get("session") or "")
             if not r.get("error"):
@@ -5891,6 +5995,46 @@ class Handler(BaseHTTPRequestHandler):
                                "git": users.git_identity(me), "git_ready": users.git_ready(me)},
                               cookie=cookie)
         return self._json({"error": "unknown action"}, 400)
+
+    def _git_act(self, req):
+        """The Git view's actions (roadmap R36 step 2): fixed git commands on
+        the project's tree on the controller, under the acting account's
+        author and the project's own credentials. An account's, never a
+        session's — a session has bb git — on a project it may see and has
+        taken on, and not while the project is locked. Switching the tree's
+        branch is refused while the owner's Claude session runs in the
+        project directory, because that session is standing in it."""
+        me = self._who()
+        if not me or not users.uid_of(me) or me.get("session"):
+            return self._json({"error": "an account's, not a session's — a session uses bb git"}, 403)
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": "not a project"}, 400)
+        if self._readonly(name):
+            return None
+        if name in set(load_locks()):
+            return self._json({"error": "locked — the padlock on its row unlocks it"}, 403)
+        action = field(req, "action")
+        if action == "switch":
+            mine = tmux_name(f"claude-{name}")
+            if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
+                   for s in tmux_sessions() + node_tmux_sessions()):
+                return self._json({"error": "the owner's Claude session is running in this "
+                                            "directory — end it before switching the branch "
+                                            "under it"}, 409)
+        if action == "ask":
+            live = [x["name"] for x in tmux_sessions()]
+            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
+            return self._json(r, 400 if r.get("error") else 200)
+        env = {**projects._git_env(), **users.git_env(me)}
+        env.pop("DASHBOARD_AUTH", None)
+        r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
+                        may_push=projects.may_push(name))
+        if r.get("ok") and not NODES_OK:
+            nodes.audit(self._principal(), "git-" + action, name,
+                        {k: v for k, v in (req.get("args") or {}).items()
+                         if k in ("name", "sha", "path", "at")})
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _upload_archive(self):
         """Spool an archive for the create dialog; {id, name, size, kind}.

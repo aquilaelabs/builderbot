@@ -90,6 +90,24 @@ print("unknown", a, file=sys.stderr); sys.exit(2)
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
 echo "$*" >> "${DIR}/netplan.log"
 `, { mode: 0o755 });
+// nmcli, for the NetworkManager backend: one connection on eth0 whose ipv4
+// keys live in a state file, answering the queries the agent makes and
+// recording every call. The fixture agent never sees it (netplan is found
+// first); the direct-call test below points the agent at it by path.
+writeFileSync(`${DIR}/bin/nmcli`, `#!/bin/sh
+S="${DIR}/nm.state"; echo "$*" >> "${DIR}/nmcli.log"
+[ -f "$S" ] || printf 'ipv4.method=auto\\nipv4.addresses=\\nipv4.gateway=\\nipv4.dns=\\nipv4.ignore-auto-dns=no\\n' > "$S"
+case "$*" in
+  "-t -g RUNNING general") echo running ;;
+  "-t -g GENERAL.CONNECTION device show eth0") echo "Wired connection 1" ;;
+  "-t -g GENERAL.CONNECTION device show "*) ;;
+  "-t -g "*" con show Wired connection 1") grep "^$3=" "$S" | cut -d= -f2- ;;
+  "con mod Wired connection 1 "*) shift 3
+    while [ $# -ge 2 ]; do grep -v "^$1=" "$S" > "$S.n"; echo "$1=$2" >> "$S.n"; mv "$S.n" "$S"; shift 2; done ;;
+  "con up Wired connection 1") ;;
+  *) echo "nmcli stub: unknown: $*" >&2; exit 2 ;;
+esac
+`, { mode: 0o755 });
 // dpkg that has nothing, and an npm that refuses: a recipe's system
 // packages are all missing, and the one recipe that would download a
 // browser stops at its first command instead.
@@ -849,6 +867,12 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(before.reported.sandbox === true && Array.isArray(before.reported.mounts)
        && before.reported.network && Array.isArray(before.reported.network.dns),
        'the census says the node is a sandbox and reports its mounts and address');
+    // The machine's own tools, detected rather than assumed: the fixture
+    // has a dpkg and a netplan (both stubs, found by path), so that is
+    // what a system job there would go through, and the row can say so.
+    ok(before.reported.distro && before.reported.distro.pkg === 'apt'
+       && before.reported.distro.network === 'netplan' && typeof before.reported.distro.family === 'string',
+       `...and which package manager and network backend it has (${JSON.stringify(before.reported.distro)})`);
     const refused = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
     ok(/save a configuration first/.test(refused.error || ''),
        'apply with nothing saved is refused, saying so');
@@ -1792,6 +1816,164 @@ print(json.dumps({'state': st, 'code': code, 'log': ''.join(j.lines),
      `a network change the controller cannot confirm is reverted (${R.state})`);
   ok(/dhcp4: true/.test(R.file) && !/10\.1\.1\.5/.test(R.file) && R.applies === 2,
      '...the previous file is back and applied a second time');
+}
+
+// ---- the same network spec through NetworkManager ---------------------------
+// The job the controller sends is one shape — mode, address, gateway, dns —
+// and the agent picks the backend the machine has. With no netplan and an
+// nmcli that says it is running, that is NetworkManager: the connection's
+// ipv4 keys are modified and brought up, a repeat is "already applied", and
+// a change the controller cannot confirm is put back the same way.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile
+os.environ['BUILDERBOT_NETPLAN_BIN'] = '/nonexistent/netplan'
+os.environ['BUILDERBOT_NMCLI_BIN'] = ${JSON.stringify(`${DIR}/bin/nmcli`)}
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+a = m.Agent.__new__(m.Agent)
+a.state = {'stores': {}}
+class J:
+    def __init__(self): self.lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+state = lambda: dict(l.split('=', 1) for l in open(${JSON.stringify(`${DIR}/nm.state`)}).read().splitlines() if '=' in l)
+want = {'network': {'mode': 'static', 'address': '10.1.1.5/24', 'gateway': '10.1.1.1', 'dns': ['10.1.1.1', '10.1.1.2'], 'interface': 'eth0'}}
+a.hello = lambda: (200, {})
+j1 = J(); s1 = a._apply_network(j1, want); st1 = state()
+j2 = J(); s2 = a._apply_network(j2, want)
+a.hello = lambda: (503, {'error': 'unreachable'})
+j3 = J(); s3 = a._apply_network(j3, {'network': {'mode': 'dhcp', 'interface': 'eth0'}}); st3 = state()
+print(json.dumps({'distro': m.distro_now(), 'r1': s1, 'log1': ''.join(j1.lines), 'st1': st1,
+                  'r2': s2, 'log2': ''.join(j2.lines), 'r3': s3, 'log3': ''.join(j3.lines), 'st3': st3,
+                  'calls': open(${JSON.stringify(`${DIR}/nmcli.log`)}).read()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.distro.network === 'networkmanager',
+     `with no netplan and a running NetworkManager, that is the backend the agent detects (${JSON.stringify(R.distro)})`);
+  ok(R.r1[0] === 'succeeded' && R.st1['ipv4.method'] === 'manual' && R.st1['ipv4.addresses'] === '10.1.1.5/24'
+     && R.st1['ipv4.gateway'] === '10.1.1.1' && R.st1['ipv4.dns'] === '10.1.1.1,10.1.1.2'
+     && /con up Wired connection 1/.test(R.calls) && /dialed back/.test(R.log1),
+     `the same static spec lands as the connection's ipv4 keys, brought up and confirmed (${R.r1[0]}: ${JSON.stringify(R.st1)})`);
+  ok(R.r2[0] === 'succeeded' && /already applied/.test(R.log2),
+     '...and sending it again is "already applied", read back from the connection');
+  ok(R.r3[0] === 'failed' && /reverting/.test(R.log3) && R.st3['ipv4.method'] === 'manual'
+     && R.st3['ipv4.addresses'] === '10.1.1.5/24',
+     `...and a change the controller cannot confirm is put back the same way (${R.r3[0]}: ${JSON.stringify(R.st3)})`);
+}
+
+// ---- the family, from os-release; the file backends, from their files --------
+// The job spec is one shape for every distribution; what the agent does with
+// it is decided on the machine. Three things proven without one: a
+// derivative lands with its parent through ID_LIKE (Mint with Debian, Cachy
+// with Arch, ...); systemd-networkd is a .network file plus a reload, put
+// back on revert; and ifupdown replaces only the interface's own stanza in
+// /etc/network/interfaces, keeping the rest of the file byte for byte.
+{
+  const NB = `${DIR}/nbin`; mkdirSync(NB, { recursive: true });
+  // A systemctl that says networkd and wicked are active, on a PATH only
+  // this test's python sees — the fixture agent must keep the real answer.
+  writeFileSync(`${NB}/systemctl`, `#!/bin/sh
+echo "$*" >> "${DIR}/systemctl.log"
+case "$*" in "is-active systemd-networkd") echo active ;; *) echo inactive ;; esac
+`, { mode: 0o755 });
+  for (const b of ['networkctl', 'ifup', 'ifdown'])
+    writeFileSync(`${NB}/${b}`, `#!/bin/sh\necho "${b} $*" >> "${DIR}/netfiles.log"\n`, { mode: 0o755 });
+  const SAMPLES = {
+    mint: 'NAME="Linux Mint"\nID=linuxmint\nID_LIKE="ubuntu debian"\nPRETTY_NAME="Linux Mint 22"\n',
+    pop: 'ID=pop\nID_LIKE="ubuntu debian"\nPRETTY_NAME="Pop!_OS 24.04"\n',
+    kali: 'ID=kali\nID_LIKE=debian\nPRETTY_NAME="Kali GNU/Linux Rolling"\n',
+    raspbian: 'ID=raspbian\nID_LIKE=debian\nPRETTY_NAME="Raspbian GNU/Linux 12"\n',
+    fedora: 'ID=fedora\nPRETTY_NAME="Fedora Linux 42 (Server Edition)"\n',
+    centos: 'ID="centos"\nID_LIKE="rhel fedora"\nPRETTY_NAME="CentOS Stream 10"\n',
+    rocky: 'ID="rocky"\nID_LIKE="rhel centos fedora"\nPRETTY_NAME="Rocky Linux 9.5"\n',
+    alma: 'ID="almalinux"\nID_LIKE="rhel centos fedora"\nPRETTY_NAME="AlmaLinux 9.5"\n',
+    manjaro: 'ID=manjaro\nID_LIKE=arch\nPRETTY_NAME="Manjaro Linux"\n',
+    endeavour: 'ID=endeavouros\nID_LIKE=arch\nPRETTY_NAME="EndeavourOS"\n',
+    cachy: 'ID=cachyos\nID_LIKE=arch\nPRETTY_NAME="CachyOS Linux"\n',
+    leap: 'ID="opensuse-leap"\nID_LIKE="suse opensuse"\nPRETTY_NAME="openSUSE Leap 16.0"\n',
+    tumbleweed: 'ID="opensuse-tumbleweed"\nID_LIKE="opensuse suse"\nPRETTY_NAME="openSUSE Tumbleweed"\n',
+    alpine: 'ID=alpine\nPRETTY_NAME="Alpine Linux v3.21"\n',
+    void: 'ID="void"\nPRETTY_NAME="Void Linux"\n',
+    gentoo: 'ID=gentoo\nPRETTY_NAME="Gentoo Linux"\n',
+    nixos: 'ID=nixos\nPRETTY_NAME="NixOS 25.05 (Warbler)"\n',
+    slackware: 'ID=slackware\nPRETTY_NAME="Slackware 15.0 x86_64"\n',
+  };
+  const WANT = { mint: 'debian', pop: 'debian', kali: 'debian', raspbian: 'debian', fedora: 'rhel',
+    centos: 'rhel', rocky: 'rhel', alma: 'rhel', manjaro: 'arch', endeavour: 'arch', cachy: 'arch',
+    leap: 'suse', tumbleweed: 'suse', alpine: 'alpine', void: 'void', gentoo: 'gentoo',
+    nixos: 'nixos', slackware: 'slackware' };
+  mkdirSync(`${DIR}/osrel`, { recursive: true });
+  for (const [k, v] of Object.entries(SAMPLES)) writeFileSync(`${DIR}/osrel/${k}`, v);
+  const NONE = ['NETPLAN', 'NMCLI', 'DPKG', 'RPM', 'PACMAN', 'APK', 'XBPS_QUERY', 'EMERGE', 'WICKED']
+    .map(k => `os.environ['BUILDERBOT_${k}_BIN'] = '/nonexistent/${k.toLowerCase()}'`).join('\n');
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+${NONE}
+os.environ['PATH'] = ${JSON.stringify(NB)} + ':' + os.environ.get('PATH', '')
+os.environ['BUILDERBOT_NETWORKCTL_BIN'] = ${JSON.stringify(`${NB}/networkctl`)}
+os.environ['BUILDERBOT_NETWORKD_DIR'] = nd = tempfile.mkdtemp()
+os.environ['BUILDERBOT_INTERFACES_FILE'] = ifs = os.path.join(tempfile.mkdtemp(), 'interfaces')
+os.environ['BUILDERBOT_IFUP_BIN'] = ${JSON.stringify(`${NB}/ifup`)}
+os.environ['BUILDERBOT_IFDOWN_BIN'] = ${JSON.stringify(`${NB}/ifdown`)}
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+fam = {}
+for k in ${JSON.stringify(Object.keys(SAMPLES))}:
+    m.OS_RELEASE = os.path.join(${JSON.stringify(`${DIR}/osrel`)}, k)
+    fam[k] = m.distro_now()['family']
+a = m.Agent.__new__(m.Agent); a.state = {'stores': {}}
+class J:
+    def __init__(self): self.lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+want = {'network': {'mode': 'static', 'address': '10.2.2.5/24', 'gateway': '10.2.2.1', 'dns': ['10.2.2.1'], 'interface': 'eth0'}}
+# networkd: found (the stub systemctl says active), a file written, reverted
+nd_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j1 = J(); r1 = a._apply_network(j1, want)
+nd_file = os.path.join(nd, '90-builderbot-eth0.network')
+nd_text = open(nd_file).read()
+a.hello = lambda: (503, {})
+j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+nd_after = open(nd_file).read()
+# ifupdown: networkd out of the way, an interfaces file with a neighbour to keep
+m.NETWORKCTL_BIN = '/nonexistent/networkctl'
+orig = 'auto lo\\niface lo inet loopback\\n\\nauto eth0\\niface eth0 inet dhcp\\n\\nauto eth1\\niface eth1 inet static\\n    address 192.168.9.9/24\\n'
+open(ifs, 'w').write(orig)
+if_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j3 = J(); r3 = a._apply_network(j3, want)
+if_text = open(ifs).read()
+a.hello = lambda: (503, {})
+j4 = J(); r4 = a._apply_network(j4, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+if_after = open(ifs).read()
+print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_text, 'r2': r2,
+                  'nd_after': nd_after, 'log2': ''.join(j2.lines), 'if_backend': if_backend, 'r3': r3,
+                  'if_text': if_text, 'r4': r4, 'if_after': if_after, 'orig': orig,
+                  'calls': open(${JSON.stringify(`${DIR}/netfiles.log`)}).read()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  const wrong = Object.entries(WANT).filter(([k, v]) => R.fam[k] !== v).map(([k, v]) => `${k}: ${R.fam[k]} not ${v}`);
+  ok(wrong.length === 0,
+     `every distribution lands in its family through ID and ID_LIKE — ${Object.keys(WANT).length} samples${wrong.length ? ': ' + wrong.join(', ') : ''}`);
+  ok(R.nd_backend === 'systemd-networkd' && R.r1[0] === 'succeeded'
+     && /\[Match\]\nName=eth0\n\n\[Network\]\nAddress=10\.2\.2\.5\/24\nGateway=10\.2\.2\.1\nDNS=10\.2\.2\.1\n/.test(R.nd_text)
+     && /networkctl reload/.test(R.calls),
+     `with networkd active the same spec is a .network file and a reload (${R.nd_backend}, ${R.r1[0]})`);
+  ok(R.r2[0] === 'failed' && /reverting/.test(R.log2) && R.nd_after === R.nd_text,
+     '...and a change the controller cannot confirm puts the previous file back');
+  ok(R.if_backend === 'ifupdown' && R.r3[0] === 'succeeded'
+     && /iface eth0 inet static\n    address 10\.2\.2\.5\/24\n    gateway 10\.2\.2\.1\n    dns-nameservers 10\.2\.2\.1\n/.test(R.if_text)
+     && /auto lo\niface lo inet loopback/.test(R.if_text) && /iface eth1 inet static\n    address 192\.168\.9\.9\/24/.test(R.if_text)
+     && !/iface eth0 inet dhcp/.test(R.if_text) && /ifdown eth0\nifup eth0/.test(R.calls),
+     `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
+  ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
+     '...and its revert is the whole file as it was before the change');
 }
 
 // ---- the agent's version is WINDOW.BUILD ----------------------------------
