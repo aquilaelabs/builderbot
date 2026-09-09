@@ -150,7 +150,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / work
-* fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
+* fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), TZ
 
 Fill in `GITHUB_PAT` (each account's commit identity is set on its Profile tab), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit

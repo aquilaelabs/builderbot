@@ -1164,7 +1164,8 @@ by hand cost four commands and still could not see the failed builds.
 - **Conventions** live in the house rules on the Briefing tab (`bb rules`);
   what follows is the layout they refer to.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
-    `index.html` is one file of vanilla JS and CSS. No framework, no build step.
+    `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
+    document tab beside it. No framework, no build step.
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

@@ -63,6 +63,12 @@ the row up to the cap, and only a number field is a few characters wide.
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
+**What the width test measures:** on every document tab, at desktop and at
+phone width, the union of each control row's controls and each lone control
+against the smaller of `--ctl-w` and nine tenths of the tab's box. A prose
+editor in the notebook — a memory's body, a rule, a bug's repro — is a page
+rather than a control and keeps the reading width.
+
 **Every group of settings ends with one action bar** — the state line and
 its Apply or Save at the right — and nothing else in the group carries a
 button. One place to look for the press, on every section of every tab.

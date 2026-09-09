@@ -1927,8 +1927,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
+/* A prose editor in the notebook — a memory's body, a rule, a bug's repro —
+   is a page, not a control: it keeps the reading width. */
+.nb textarea{max-width:none}
 :is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 .actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
@@ -5802,7 +5805,7 @@ function logSection(){
       <div class="logdays setrow col">
         ${lbl("logDays", "Days of logs kept", "older files are deleted when this is applied")}
         <input id="logDays" type="number" min="1" max="3650" step="1"
-               value="${L.days}" inputmode="numeric">
+               value="${typeof sdVal === "function" ? sdVal("logDays", L.days) : L.days}" inputmode="numeric">
       </div>
       <div class="actbar">
         <span class="state">takes now, and anything already past it is cropped</span>
@@ -5841,6 +5844,7 @@ function wireLogSection(el){
         body: JSON.stringify({action: "days", days})});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
+      if (typeof settingsDraft === "object") delete settingsDraft.logDays;
       notify(j.removed
         ? `keeping ${j.days} days — ${j.removed} file(s) removed`
         : `keeping ${j.days} days — nothing was past it`);
@@ -5960,7 +5964,10 @@ const isBroken = p => p.issues.some(i => i.level === "error");
 // made, so the button waits for the press, bb-tty refuses the URL, and the
 // server ends what is running. Per project: another project's node being
 // out of window is that row's hold, not this one's.
-const heldWhy = p => p.held || (state?.git_ready === false
+// ...and a session that is ALREADY RUNNING is reached, not started: the same
+// button goes to its tab, and stranding somebody from a live conversation
+// over a missing author would be a worse fault than the one this prevents.
+const heldWhy = p => p.held || (state?.git_ready === false && !liveSessions().has(myClaude(p.name))
   ? "set your name and email for commits on your Profile (the gear) first — every project here is a repository, and a commit needs an author"
   : "");
 
@@ -7798,8 +7805,9 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
     if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
         `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
         + `https URL on the node — anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){ sel.value = sel.dataset.was; btn.disabled = true;
-          delete dmRouteDraft[row.dataset.inst]; return; }
+        + `route back to lan closes it.`)){
+          row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
+          btn.disabled = true; delete dmRouteDraft[row.dataset.inst]; return; }
     delete dmRouteDraft[row.dataset.inst];
     busy(btn, "Applying");
     try{

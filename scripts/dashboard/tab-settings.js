@@ -14,6 +14,18 @@ function settingsLive(){
   return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days]);
 }
 
+// Typed and not yet applied, by control id, across the tab's redraws: one
+// section's Apply repaints the whole tab from the poll, and must not throw
+// away what was typed into another (docs/design-language.md, Settings).
+const settingsDraft = {};
+const sdVal = (id, value) => settingsDraft[id] ?? value;
+function settingsKeep(el){
+  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays").forEach(i => {
+    const on = () => { settingsDraft[i.id] = i.type === "checkbox" ? i.checked : i.value; };
+    i.oninput = on; i.onchange = on;
+  });
+}
+
 function openSettingsTab(){
   openTab({kind: "settings", arg: "__settings", label: "Settings"});
 }
@@ -44,6 +56,7 @@ function renderSettingsInto(i){
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wireSettingsSections(d.el);
+  settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
   if (nd) nd.onclick = openNodesTab;
 }
@@ -82,13 +95,13 @@ function settingsSections(){
             // (docs/design-language.md, Controls).
             if (f.type === "bool")
               return `<div class="logdays setrow"><label class="ndcap">
-                <input id="${id}" type="checkbox" data-set="${f.key}"${v ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
+                <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
             const choices = s.meta[f.key]?.choices || [];
             const ctl = f.type === "choice"
               ? `<select id="${id}" data-set="${f.key}">${choices.map(c =>
-                  `<option value="${esc(c)}"${c === v ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`
-              : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(v ?? ""))}" spellcheck="false" autocomplete="off">`;
+                  `<option value="${esc(c)}"${c === sdVal(id, v) ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`
+              : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(sdVal(id, v) ?? ""))}" spellcheck="false" autocomplete="off">`;
             return `<div class="logdays setrow col">
               ${lbl(id, f.label, f.hint)}${ctl}${src(f.key)}
             </div>`;
@@ -118,6 +131,7 @@ function wireSettingsSections(el){
           headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
         const j = await r.json();
         if (j.error) return notify(j.error, true);
+        box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
         const boot = Object.keys(set).some(k => j.meta?.[k]?.applied === "boot");
         notify(boot ? "saved — it takes at the next start" : "saved");
         refresh();
@@ -146,7 +160,7 @@ function idleSection(){
       <div class="logdays setrow col">
         ${lbl("idleMin", "Minutes idle before a session ends", "0 never ends one. Shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
-               value="${m}" inputmode="numeric">
+               value="${sdVal("idleMin", m)}" inputmode="numeric">
       </div>
       <div class="actbar">
         <span class="state">takes now, and a node hears on its next poll</span>
@@ -169,6 +183,7 @@ function wireIdleSection(el){
         body: JSON.stringify({minutes})});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
+      delete settingsDraft.idleMin;
       notify(j.minutes ? `Claude sessions end after ${j.minutes} idle minute(s), here and on every node`
                        : "Claude sessions are never ended for being idle");
       refresh();

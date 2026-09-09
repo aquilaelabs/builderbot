@@ -157,6 +157,28 @@ ok((await api('/api/phone', { action: 'outcome', id: denied.body.id })).body.sta
    'Deny stops it, and the session is told no rather than left hanging');
 ok((await api('/api/phone', { action: 'allow', id: denied.body.id })).body.error,
    '...and an answered request cannot be answered again');
+
+// A request is answered only to the project that made it, and a session
+// reads the phone from the cache rather than asking a node it is not bound
+// to: ids are a small counter, and a probe is a job on somebody's machine.
+{
+  const mint = (proj) => execFileSync('python3', ['-c', `
+import importlib.util, json, os
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+def wj(p, d):
+    tmp = str(p) + ".tmp"; open(tmp, "w").write(json.dumps(d, indent=2)); os.replace(tmp, p)
+u.configure(state="${DIR}/state", write_json=wj)
+print(u.mint_session("${proj}"))`], { encoding: 'utf8' }).trim();
+  const beta = { Authorization: 'Bearer ' + mint('beta'), 'Content-Type': 'application/json' };
+  const peek = await api('/api/phone', { action: 'outcome', id: asked.body.id }, beta);
+  ok(peek.body.error && peek.body.out === undefined,
+     "another project's session cannot read the outcome of a request it did not make");
+  const before = (await api('/api/v1/jobs')).body.jobs.length;
+  const r = await fetch(base + '/api/phone?node=' + encodeURIComponent(sandbox.id) + '&probe=1', { headers: beta });
+  ok(r.status === 200 && (await api('/api/v1/jobs')).body.jobs.length === before,
+     'a session asking for a probe is answered from the cache, and no job is queued on the node');
+}
 await page.keyboard.press('Escape');
 page.errors = [];   // the refusals above are 400s on purpose
 
@@ -290,4 +312,7 @@ ok(dots.asking === 'dot ask' && dots.loud === true,
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
+// The admin account made above is not the fixture's; users.json outlives
+// this file, so it goes with it.
+await api('/api/users', { action: 'remove', name: 'visitor' });
 await done(browser);

@@ -1314,6 +1314,19 @@ def _archive_kind(path):
     return ""
 
 
+def _norm(name):
+    """A member name without a leading ./ — `tar czf x.tgz ./app` writes
+    every member that way, and the dot is not a folder anybody meant."""
+    n = str(name)
+    while n.startswith("./"):
+        n = n[2:]
+    return n
+
+
+def _junk(rel):
+    return any(p in _JUNK for p in rel.split("/"))
+
+
 def _strip_root(names):
     """The one top-level directory every member sits under, or "". A zip
     from GitHub or a tarball made with `tar czf app.tgz app/` wraps the tree
@@ -1322,15 +1335,16 @@ def _strip_root(names):
     expects."""
     roots = set()
     for n in names:
+        n = _norm(n)
         first = n.split("/", 1)[0]
-        if not first or first in _JUNK:
+        if not first or first == "." or first in _JUNK:
             continue
         roots.add(first)
         if len(roots) > 1:
             return ""
     root = next(iter(roots), "")
     # A single FILE at the top is not a wrapper; only a directory is.
-    return root if root and any(n.startswith(root + "/") for n in names) else ""
+    return root if root and any(_norm(n).startswith(root + "/") for n in names) else ""
 
 
 def _member_ok(rel):
@@ -1374,7 +1388,10 @@ def unpack_archive(aid, dest):
             return {"error": f"{name} is not an archive this can open — {ARCHIVE_KINDS}"}
     except _Refused as e:
         return {"error": f"{name}: {e}"}
-    except (OSError, zipfile.BadZipFile, tarfile.TarError, EOFError) as e:
+    except Exception as e:                # noqa: BLE001 — an encrypted member is
+        # a RuntimeError, an unknown method NotImplementedError: whatever the
+        # library says, the answer is a sentence and the caller removes the
+        # directory, never a 500 with a half-written project left behind.
         return {"error": f"could not unpack {name}: {e}"}
     finally:
         with contextlib.suppress(OSError):
@@ -1404,7 +1421,9 @@ def _unzip(src, dest):
         root = _strip_root([i.filename for i in infos])
         n = 0
         for i in infos:
-            rel = i.filename
+            rel = _norm(i.filename)
+            if _junk(rel) or rel in ("", "."):
+                continue                      # a desktop's leavings, beside the tree or in it
             if root:
                 if rel == root or rel == root + "/":
                     continue
@@ -1414,8 +1433,6 @@ def _unzip(src, dest):
             if rel.endswith("/"):
                 continue                      # directories come with their files
             if not _member_ok(rel):
-                if any(p in _JUNK for p in rel.split("/")):
-                    continue
                 raise _Refused(f"{i.filename} would land outside the project")
             out = dest / rel
             if dest not in out.resolve().parents:
@@ -1441,15 +1458,15 @@ def _untar(src, dest):
         root = _strip_root([m.name for m in members])
         keep = []
         for m in members:
-            rel = m.name
+            rel = _norm(m.name)
+            if _junk(rel) or rel in ("", "."):
+                continue
             if root:
                 if rel == root:
                     continue
                 if not rel.startswith(root + "/"):
                     raise _Refused(f"{rel} sits outside {root}/")
                 rel = rel[len(root) + 1:]
-            if any(p in _JUNK for p in rel.split("/")):
-                continue
             if not (m.isfile() or m.isdir() or m.issym()):
                 continue                      # devices, fifos: not source
             if not _member_ok(rel):

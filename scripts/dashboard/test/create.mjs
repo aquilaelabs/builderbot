@@ -272,6 +272,68 @@ with zipfile.ZipFile('${fx}/flat.zip', 'w') as z:
      && !existsSync(`${DIR}/ws/fromzip/.DS_Store`),
      'a zip with more than one thing at the top is unpacked as it is, junk aside');
 
+  // What a desktop makes: Finder's Compress puts a __MACOSX folder BESIDE
+  // the tree, and `tar czf x.tgz ./app` writes every member under ./ — both
+  // are the ordinary case, and neither is a second folder anybody meant.
+  execFileSync('python3', ['-c', `
+import zipfile
+with zipfile.ZipFile('${fx}/finder.zip', 'w') as z:
+    z.writestr('app/src/main.js', 'x')
+    z.writestr('__MACOSX/app/._main.js', 'junk')
+    z.writestr('.DS_Store', 'junk')
+`]);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  await page.fill('#pName', 'finder');
+  await page.setInputFiles('#pArchive', `${fx}/finder.zip`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+    .some(n => n.textContent === 'finder'), { timeout: 15000 });
+  ok(existsSync(`${DIR}/ws/finder/src/main.js`) && !existsSync(`${DIR}/ws/finder/__MACOSX`),
+     "a Finder-made zip, with its __MACOSX beside the tree, unpacks with the tree's folder dropped and the junk left out");
+  execFileSync('tar', ['czf', `${fx}/dotted.tgz`, '-C', fx, './app']);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  await page.fill('#pName', 'dotted');
+  await page.setInputFiles('#pArchive', `${fx}/dotted.tgz`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+    .some(n => n.textContent === 'dotted'), { timeout: 15000 });
+  ok(existsSync(`${DIR}/ws/dotted/src/main.js`) && !existsSync(`${DIR}/ws/dotted/app`),
+     'a tarball made under ./ drops its one folder the same way');
+
+  // A member the library cannot read — encrypted — is an answer, never a
+  // 500 with a half-written project left behind.
+  execFileSync('python3', ['-c', `
+import zipfile
+with zipfile.ZipFile('${fx}/locked.zip', 'w') as z:
+    z.writestr('a.txt', 'a')
+    z.writestr('b.txt', 'b')
+# Mark b.txt encrypted in both headers: zipfile then refuses to open it
+# with a RuntimeError, the way a real password-protected member does.
+d = bytearray(open('${fx}/locked.zip', 'rb').read())
+for sig, flag_at, len_at, name_at in ((b'PK\\x03\\x04', 6, 26, 30), (b'PK\\x01\\x02', 8, 28, 46)):
+    i = 0
+    while (i := d.find(sig, i)) != -1:
+        n = int.from_bytes(d[i + len_at:i + len_at + 2], 'little')
+        if d[i + name_at:i + name_at + n] == b'b.txt':
+            d[i + flag_at] |= 1
+        i += 4
+open('${fx}/locked.zip', 'wb').write(d)
+`]);
+  await page.click('#bNewProj');
+  await page.waitForSelector('#pmodal:not([hidden])');
+  await page.fill('#pName', 'locked');
+  await page.setInputFiles('#pArchive', `${fx}/locked.zip`);
+  await page.click('#pCreate');
+  await page.waitForFunction(() => !document.getElementById('pErrWrap').hidden, { timeout: 15000 });
+  ok(/could not unpack/.test(await page.$eval('#pErr', e => e.textContent)) && !existsSync(`${DIR}/ws/locked`),
+     'an archive the library cannot open is refused in a sentence, with no half-made project left');
+  await page.click('#pCancel');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden);
+
   // The classic: a member named ../something, which would write beside the
   // workspace rather than in it.
   execFileSync('python3', ['-c', `

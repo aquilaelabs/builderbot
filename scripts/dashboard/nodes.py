@@ -1764,6 +1764,10 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
                     "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
+    # Taken back, not left in the queue: a probe nobody is waiting for any
+    # more would otherwise run whenever the node's slot freed — an `adb
+    # install` an hour after the operator read it as failed.
+    job_cancel(principal, r["job"])
     return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
 
 

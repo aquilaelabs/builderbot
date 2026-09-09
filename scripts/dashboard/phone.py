@@ -114,6 +114,7 @@ def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone")
 # the node, so the tab does not ask on every poll — it asks when opened,
 # when something is pressed, and when a request is about to run.
 _dev_cache = {}
+_dev_fail = {}           # nodes whose last probe did not run, by id
 DEV_TTL = 60.0
 
 
@@ -124,8 +125,16 @@ def devices(nid, force=False):
     c = _dev_cache.get(nid)
     if c and not force and time.monotonic() - c["at"] < DEV_TTL:
         return list(c["devs"])
+    r = _adb(nid, "devices", "-l", timeout=20)
+    if r["code"] != 0:
+        # A probe that did not run — the node's one slot taken by a push, an
+        # agent behind, a node away — is not a node with no phone. The last
+        # answer stands, and phone_on() is told not to draw a conclusion.
+        _dev_fail[nid] = True
+        return list(c["devs"]) if c else []
+    _dev_fail.pop(nid, None)
     out = []
-    for line in _adb(nid, "devices", "-l", timeout=20)["out"].splitlines()[1:]:
+    for line in r["out"].splitlines()[1:]:
         line = line.strip()
         if not line or "\t" not in line and " " not in line:
             continue
@@ -152,8 +161,11 @@ def phone_on(nid, force=False):
     for d in devices(nid, force):
         if d["kind"] == "phone" and d["state"] == "device":
             return d
+    # Only on a probe that RAN and found nothing: a failed one says nothing
+    # about the handset, and an owner evicted on it would come back to a
+    # phone anybody could claim.
     rec = _rec(nid)
-    if rec and force:
+    if rec and force and not _dev_fail.get(nid):
         _put(nid, None)
     return None
 
@@ -588,8 +600,11 @@ def decide(rid, allow, uid, name=""):
     return {"ok": True}
 
 
-def outcome(rid):
-    """What became of a request, for the session that is waiting on it."""
+def outcome(rid, project=""):
+    """What became of a request, for the session that is waiting on it.
+    `project` is the asking session's, and a request is answered only to
+    the project that made it: ids are a small counter, and the output can
+    be a getprop, a logcat, a file — one project's phone, not another's."""
     try:
         rid = int(rid)
     except (TypeError, ValueError):
@@ -597,6 +612,8 @@ def outcome(rid):
     with _lock:
         r = _find(rid)
         if r is None:
+            return {"error": "no such request"}
+        if project and r.get("project") != project:
             return {"error": "no such request"}
         return {"ok": True, "state": r["state"], "out": r["out"],
                 "code": r["code"], "why": r["why"]}

@@ -1094,7 +1094,7 @@ lives in its body. The cards:
   folder rather than beside it), and you can create one by hand for anything else
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
-  At the foot of the card, **New project…** creates one. A fresh local repo
+  At the foot of the card, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes the project section of a freshly built `CLAUDE.md` (environment
   block from the image's template, your notes below the end marker). It can
@@ -1149,7 +1149,7 @@ lives in its body. The cards:
   passing through a toast you may not have been there to see. `git init` is
   the exception and stays synchronous — it is done before a spinner would
   render, and a row that flashes up for one frame is worse than none
-- **Tools**: **Additional packages…**, which opens the installer as a tab —
+- **Tools**: **Additional packages**, which opens the installer as a tab —
   every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
@@ -2699,7 +2699,7 @@ a refit and a reflow of everything on screen, which is a lot to charge for
 looking at a list. A phone pushes the terminal up for it instead, there being
 no screen to spare for covering one thing with another. Both slide. That is where they belong — a command list is
 about the shell in front of you, not about the box — and it is also what keeps
-the sidebar to six cards you can read instead of twelve you scroll past. On
+the sidebar to five cards you can read instead of twelve you scroll past. On
 a wide screen the buttons sit at the bar's left edge and the flyout is capped
 rather than stretched: a short list read across two thousand pixels is worse
 than one read in a column.
