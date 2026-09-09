@@ -15,6 +15,12 @@ everything can be downloaded, and an .xpi can additionally be pushed to the
 paired phone — unpacked into a scratch directory and handed to web-ext, since
 an XPI is a zip of exactly the source layout web-ext runs.
 """
+import io
+import os
+import re
+import subprocess
+import time
+import zipfile
 from pathlib import Path
 
 WORKSPACE = None
@@ -103,11 +109,10 @@ def source_zip(project):
     and caches live. Without git, the tree minus the directories every
     build system litters. Symlinks are skipped: one pointing out of the
     tree is not the code base, and the artifact download refuses the same
-    trick. (name, bytes), or None for no such project."""
-    import io
-    import subprocess
-    import time
-    import zipfile
+    trick. Built in memory, so it stops at SOURCE_CAP bytes with an error
+    rather than hold a data directory somebody forgot to ignore: a code
+    base fits; a tree that does not is not one. (name, bytes), None for no
+    such project, or {"error"}."""
     root = (WORKSPACE / project).resolve()
     if not root.is_dir():
         return None
@@ -126,7 +131,7 @@ def source_zip(project):
             dns[:] = [d for d in dns if d not in skip]
             for fn in fns:
                 files.append(os.path.relpath(os.path.join(dp, fn), root))
-    buf = io.BytesIO()
+    buf, total = io.BytesIO(), 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(set(files)):
             if f == DIST or f.startswith(DIST + "/"):
@@ -134,5 +139,17 @@ def source_zip(project):
             fp = root / f
             if fp.is_symlink() or not fp.is_file():
                 continue
+            total += fp.stat().st_size
+            if total > SOURCE_CAP:
+                return {"error": f"the tree is over {SOURCE_CAP >> 20}MB before build output — "
+                                 "something large is not ignored; .gitignore it, or fetch the "
+                                 "repository with git instead"}
             z.write(fp, f"{project}/{f}")
-    return f"{project}-source-{sha or time.strftime('%Y%m%d-%H%M')}.zip", buf.getvalue()
+    # A filename the header can carry: the quoted form is latin-1 and
+    # unquoted characters end the token, so the name is reduced to the
+    # safe set and the real project name stays inside the zip.
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", project) or "project"
+    return f"{safe}-source-{sha or time.strftime('%Y%m%d-%H%M')}.zip", buf.getvalue()
+
+
+SOURCE_CAP = 256 << 20

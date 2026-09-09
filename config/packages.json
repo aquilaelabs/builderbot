@@ -6,13 +6,13 @@
     "",
     "  name     what `bb sdk install|remove` is called with.",
     "  probe    where it lands, so the page can tell installed from not: a bare",
-    "           name is a directory under the SDK root, android:<pkg> a package",
+    "           name is a directory under the package store root, android:<pkg> a package",
     "           directory under ANDROID_HOME. System images are not packages;",
     "           they have a section of their own, above.",
     "  platforms  which <os>/<arch> this recipe actually works on. Seven of these",
     "           name linux-x86_64 in their URL, and swift names ubuntu24.04, so",
     "           \"Linux\" is not one platform here. `*` in the arch position means",
-    "           the payload is arch-independent \u2014 shell and jars, a git clone, or",
+    "           the payload is arch-independent — shell and jars, a git clone, or",
     "           a tool that resolves its own platform. An install onto a node",
     "           outside the list is refused by name rather than downloading a",
     "           couple of hundred megabytes and failing on exec.",
@@ -27,11 +27,11 @@
     "           package directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
-    "           places \u2014 sdk_env_snippet, the agent's STORE_TOOLS and",
-    "           STORE_PATHS, and sdk_check_one \u2014 and they drifted three times",
+    "           places — sdk_env_snippet, the agent's STORE_TOOLS and",
+    "           STORE_PATHS, and sdk_check_one — and they drifted three times",
     "           in one day.",
     "           A path may start `root:` to mean relative to the store rather",
-    "           than to this package \u2014 the android packages share one tree,",
+    "           than to this package — the android packages share one tree,",
     "           since sdkmanager installs into <root>/android whatever the",
     "           package is called.",
     "  system   the machine's own packages this one needs at runtime, by",
@@ -71,13 +71,13 @@
     "No size is written down here. One typed into a file is wrong the next time",
     "upstream ships: a row shows what the package takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
-    "before that \u2014 never a number somebody guessed.",
+    "before that — never a number somebody guessed.",
     "             \"url-matches\" fetches a file upstream publishes and matches the",
     "             URLs out of it, which is how rust's three minimal-profile",
     "             components are counted; \"android-repo\" reads sdkmanager's own",
     "             index, keyed by the package id an install resolves to; and",
     "             \"approximate\" is a number written down, for the one recipe whose",
-    "             download cannot be measured before it happens \u2014 a git clone has",
+    "             download cannot be measured before it happens — a git clone has",
     "             no content length. It is marked as an approximation everywhere",
     "             it is shown."
   ],
@@ -99,12 +99,12 @@
     "flavors": {
       "google_apis": {
         "label": "Google APIs",
-        "about": "Google Play services \u2014 Maps, sign-in, push \u2014 but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what bb emu create fetches.",
+        "about": "Google Play services — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what bb emu create fetches.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
       },
       "google_apis_playstore": {
         "label": "Google APIs + Play Store",
-        "about": "The same, plus the Play Store app itself \u2014 for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
+        "about": "The same, plus the Play Store app itself — for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
       },
       "android-tv": {
@@ -135,14 +135,25 @@
         "reports": "java"
       },
       "platforms": [
-        "linux/amd64"
+        "linux/amd64",
+        "linux/arm64",
+        "darwin/arm64",
+        "darwin/amd64"
       ],
-      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's packages store does not, so this is the first thing a node needs for Android work.",
+      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's packages store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
-        "url": "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse",
-        "strip": 1,
+        "url": {
+          "linux/amd64": "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse",
+          "linux/arm64": "https://api.adoptium.net/v3/binary/latest/21/ga/linux/aarch64/jdk/hotspot/normal/eclipse",
+          "darwin/arm64": "https://api.adoptium.net/v3/binary/latest/21/ga/mac/aarch64/jdk/hotspot/normal/eclipse",
+          "darwin/amd64": "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jdk/hotspot/normal/eclipse"
+        },
+        "strip": {
+          "linux/*": 1,
+          "darwin/*": 3
+        },
         "verify": [
           "{dir}/bin/java",
           "-version"
@@ -171,7 +182,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager \u2014 the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -250,11 +261,45 @@
       ],
       "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node.",
       "system": {
-        "apt": ["libpulse0", "libgl1", "libglu1-mesa", "libasound2t64", "libegl1", "libvulkan1"],
-        "dnf": ["pulseaudio-libs", "mesa-libGL", "mesa-libGLU", "alsa-lib", "mesa-libEGL", "vulkan-loader"],
-        "pacman": ["libpulse", "mesa", "glu", "alsa-lib", "vulkan-icd-loader"],
-        "zypper": ["libpulse0", "Mesa-libGL1", "libGLU1", "libasound2", "Mesa-libEGL1", "libvulkan1"],
-        "apk": ["pulseaudio-libs", "mesa-gl", "glu", "alsa-lib", "mesa-egl", "vulkan-loader"]
+        "apt": [
+          "libpulse0",
+          "libgl1",
+          "libglu1-mesa",
+          "libasound2t64",
+          "libegl1",
+          "libvulkan1"
+        ],
+        "dnf": [
+          "pulseaudio-libs",
+          "mesa-libGL",
+          "mesa-libGLU",
+          "alsa-lib",
+          "mesa-libEGL",
+          "vulkan-loader"
+        ],
+        "pacman": [
+          "libpulse",
+          "mesa",
+          "glu",
+          "alsa-lib",
+          "vulkan-icd-loader"
+        ],
+        "zypper": [
+          "libpulse0",
+          "Mesa-libGL1",
+          "libGLU1",
+          "libasound2",
+          "Mesa-libEGL1",
+          "libvulkan1"
+        ],
+        "apk": [
+          "pulseaudio-libs",
+          "mesa-gl",
+          "glu",
+          "alsa-lib",
+          "mesa-egl",
+          "vulkan-loader"
+        ]
       },
       "source": {
         "kind": "sdkmanager",
@@ -340,9 +385,10 @@
         "reports": "flutter"
       },
       "platforms": [
-        "linux/*"
+        "linux/*",
+        "darwin/*"
       ],
-      "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; the iOS half of a Flutter app still needs a Mac.",
+      "about": "Flutter with the bundled Dart SDK. Builds Android APKs on a Linux node; on a Mac node, with Xcode beside it, the iOS half too.",
       "source": {
         "kind": "git",
         "url": "https://github.com/flutter/flutter.git",
@@ -375,9 +421,12 @@
         "reports": "go"
       },
       "platforms": [
-        "linux/amd64"
+        "linux/amd64",
+        "linux/arm64",
+        "darwin/arm64",
+        "darwin/amd64"
       ],
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH \u2014 no extra toolchain, no target to install.",
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -386,7 +435,12 @@
           "url": "https://go.dev/VERSION?m=text",
           "expect_prefix": "go"
         },
-        "url": "https://go.dev/dl/{version}.linux-amd64.tar.gz",
+        "url": {
+          "linux/amd64": "https://go.dev/dl/{version}.linux-amd64.tar.gz",
+          "linux/arm64": "https://go.dev/dl/{version}.linux-arm64.tar.gz",
+          "darwin/arm64": "https://go.dev/dl/{version}.darwin-arm64.tar.gz",
+          "darwin/amd64": "https://go.dev/dl/{version}.darwin-amd64.tar.gz"
+        },
         "strip": 1,
         "verify": [
           "{dir}/bin/go",
@@ -412,7 +466,7 @@
       "platforms": [
         "linux/*"
       ],
-      "about": "The .NET SDK plus the maui-android workload \u2014 Android apps from C#.",
+      "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
       "source": {
         "kind": "script",
         "url": "https://dot.net/v1/dotnet-install.sh",
@@ -467,9 +521,12 @@
         "reports": "node"
       },
       "platforms": [
-        "linux/amd64"
+        "linux/amd64",
+        "linux/arm64",
+        "darwin/arm64",
+        "darwin/amd64"
       ],
-      "about": "The JavaScript runtime and npm. Not needed to BE a node \u2014 the agent is Python and the provisioner installs that \u2014 but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
+      "about": "The JavaScript runtime and npm. Not needed to BE a node — the agent is Python and the provisioner installs that — but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -477,7 +534,12 @@
           "resolver": "node-index",
           "url": "https://nodejs.org/dist/index.json"
         },
-        "url": "https://nodejs.org/dist/{version}/node-{version}-linux-x64.tar.xz",
+        "url": {
+          "linux/amd64": "https://nodejs.org/dist/{version}/node-{version}-linux-x64.tar.xz",
+          "linux/arm64": "https://nodejs.org/dist/{version}/node-{version}-linux-arm64.tar.xz",
+          "darwin/arm64": "https://nodejs.org/dist/{version}/node-{version}-darwin-arm64.tar.gz",
+          "darwin/amd64": "https://nodejs.org/dist/{version}/node-{version}-darwin-x64.tar.gz"
+        },
         "strip": 1,
         "verify": [
           "{dir}/bin/node",
@@ -499,14 +561,47 @@
       },
       "system": {
         "apt": [
-          "at-spi2-common", "fontconfig", "fonts-freefont-ttf", "fonts-liberation",
-          "fonts-noto-color-emoji", "fonts-unifont", "libasound2t64", "libatk-bridge2.0-0t64",
-          "libatk1.0-0t64", "libatspi2.0-0t64", "libcairo2", "libcups2t64", "libdrm2", "libgbm1",
-          "libgl1", "libgl1-mesa-dri", "libglx-mesa0", "libgraphite2-3", "libharfbuzz0b", "libnspr4",
-          "libnss3", "libpango-1.0-0", "libvulkan1", "libx11-xcb1", "libxcb-dri3-0", "libxcb-glx0",
-          "libxcb-present0", "libxcb-randr0", "libxcb-render0", "libxcb-shm0", "libxcb-sync1",
-          "libxcb-xfixes0", "libxcomposite1", "libxdamage1", "libxfixes3", "libxi6", "libxkbcommon0",
-          "libxrandr2", "libxrender1", "libxshmfence1", "mesa-libgallium"
+          "at-spi2-common",
+          "fontconfig",
+          "fonts-freefont-ttf",
+          "fonts-liberation",
+          "fonts-noto-color-emoji",
+          "fonts-unifont",
+          "libasound2t64",
+          "libatk-bridge2.0-0t64",
+          "libatk1.0-0t64",
+          "libatspi2.0-0t64",
+          "libcairo2",
+          "libcups2t64",
+          "libdrm2",
+          "libgbm1",
+          "libgl1",
+          "libgl1-mesa-dri",
+          "libglx-mesa0",
+          "libgraphite2-3",
+          "libharfbuzz0b",
+          "libnspr4",
+          "libnss3",
+          "libpango-1.0-0",
+          "libvulkan1",
+          "libx11-xcb1",
+          "libxcb-dri3-0",
+          "libxcb-glx0",
+          "libxcb-present0",
+          "libxcb-randr0",
+          "libxcb-render0",
+          "libxcb-shm0",
+          "libxcb-sync1",
+          "libxcb-xfixes0",
+          "libxcomposite1",
+          "libxdamage1",
+          "libxfixes3",
+          "libxi6",
+          "libxkbcommon0",
+          "libxrandr2",
+          "libxrender1",
+          "libxshmfence1",
+          "mesa-libgallium"
         ]
       },
       "platforms": [
@@ -701,6 +796,45 @@
           "version"
         ]
       }
+    },
+    {
+      "name": "xcodes",
+      "label": "xcodes (Xcode installer)",
+      "probe": "xcodes",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/xcodes",
+        "reports": "xcodes"
+      },
+      "platforms": [
+        "darwin/*"
+      ],
+      "about": "The tool that installs and switches Xcode versions on a Mac, from Apple's own downloads: `xcodes install --latest` in a shell on the node, with an Apple ID the first time. Xcode itself is 15GB and Apple's to serve, so it is not a recipe.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "url": "https://github.com/XcodesOrg/xcodes/releases/latest/download/xcodes.zip",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2/bin\"; mkdir -p \"$dst\"; python3 -c 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \"$1\" \"$dst\"; chmod +x \"$dst/xcodes\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/xcodes",
+          "version"
+        ],
+        "download": {
+          "resolver": "approximate",
+          "bytes": 12000000
+        }
+      },
+      "updatable": true
     }
   ]
 }

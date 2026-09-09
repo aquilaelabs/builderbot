@@ -1,0 +1,43 @@
+{
+  "_": [
+    "The dashboard's API as the companion app calls it — every path, the",
+    "method, and the fields the app reads from the answer. test/appapi.mjs",
+    "holds the running dashboard to this file, so a change that renames a",
+    "field or a path the app reads fails the suite until the app is updated",
+    "with it; and `api` here is the number server.py's APP_API and the app's",
+    "TARGET_API both carry. Move all three together. A field listed is one",
+    "the app draws or acts on; the app tolerates an extra one and blanks a",
+    "missing one, so this is the contract, not the whole answer."
+  ],
+  "api": 1,
+  "endpoints": [
+    {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk"]},
+    {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "projects", "attention", "phone_asks", "welcome"],
+     "projects": ["name", "git", "locked", "pending", "todo", "bugs", "session_at"]},
+    {"method": "GET", "path": "/api/phone", "fields": ["nodes", "asks"],
+     "asks": ["id", "kind", "why", "cmd", "project", "node", "node_name", "asker", "left"]},
+    {"method": "POST", "path": "/api/phone", "actions": ["allow", "deny"]},
+    {"method": "GET", "path": "/api/pending?project=", "fields": ["pending", "counts", "gate"],
+     "pending": ["id", "kind", "verb", "summary", "by", "settled"]},
+    {"method": "POST", "path": "/api/pending", "actions": ["approve", "deny"]},
+    {"method": "GET", "path": "/api/todo?project=", "fields": ["items", "rev", "session"],
+     "items": ["id", "number", "text", "steps", "shelved", "info"]},
+    {"method": "POST", "path": "/api/todo", "actions": ["add", "shelve", "remove"]},
+    {"method": "GET", "path": "/api/bugs?project=", "fields": ["bugs"],
+     "bugs": ["id", "number", "title", "severity", "status", "area"]},
+    {"method": "POST", "path": "/api/bugs", "actions": ["add", "status"]},
+    {"method": "GET", "path": "/api/rules?project=", "fields": ["rules", "standing", "conditional"],
+     "rules": ["name", "text", "files", "words"]},
+    {"method": "GET", "path": "/api/artifacts?project=", "fields": ["artifacts", "build"],
+     "artifacts": ["name", "path", "size"]},
+    {"method": "GET", "path": "/api/git?project=&what=status", "fields": ["branch", "upstream", "ahead", "behind", "files"]},
+    {"method": "GET", "path": "/api/v1/nodes", "fields": ["nodes", "agent"],
+     "nodes": ["id", "name", "state", "kind", "live", "config", "reported"]},
+    {"method": "POST", "path": "/api/v1/nodes", "actions": ["lock", "unlock", "drain", "online"]},
+    {"method": "GET", "path": "/api/users", "fields": ["users", "owner", "me", "roles"],
+     "users": ["name", "role", "projects", "profile"]},
+    {"method": "GET", "path": "/api/profile", "fields": ["name", "role", "profile", "git", "git_ready"]},
+    {"method": "POST", "path": "/api/profile", "actions": ["save", "password"]},
+    {"method": "POST", "path": "/api/prefs", "actions": ["(project settings)"]}
+  ]
+}

@@ -18,7 +18,7 @@
 
 # bb sdk — the toolchains that are too big to live in the image.
 #
-# Everything here installs into the SDK root (a mapped share, or the home
+# Everything here installs into the package store root (a mapped share, or the home
 # volume when there is none) and is symlinked or PATH-ed into place, so an
 # image update never re-downloads it. The image carries only what is needed
 # to bootstrap: sdkmanager, adb, and this command.
@@ -53,7 +53,7 @@ print(" ".join(p["name"] for p in json.load(open(sys.argv[1]))["packages"]))' "$
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
-# Where sdkmanager is told the SDK root is — and it has to be TOLD.
+# Where sdkmanager is told the package store root is — and it has to be TOLD.
 #
 # sdkmanager works <sdk> out from where it is installed, expecting to sit at
 # <sdk>/cmdline-tools/latest/bin, and refuses rather than guessing when it
@@ -85,7 +85,7 @@ sdkmgr() {
     sdkmanager "$(sdk_root_flag)" "$@"
 }
 
-# The android SDK licenses, once per SDK root.
+# The android SDK licenses, once per package store root.
 #
 # sdkmanager installs nothing into a root whose licenses have not been
 # accepted, and the refusal names the package rather than the licence: "The
@@ -168,7 +168,7 @@ PY
 # restart. The startup hook writes the same file from the same generator;
 # this is the other half — installs happen at runtime, and until now only
 # boot noticed them.
-# Where the generated env file lives. NOT in the SDK root, which is a share
+# Where the generated env file lives. NOT in the package store root, which is a share
 # two machines mount at different paths: every line in it is absolute
 # (/sdk/flutter/bin, RUSTUP_HOME=/sdk/rust/rustup), so a copy written here is
 # wrong for the sandbox that mounts the same bytes at /mnt/SDK, and whichever
@@ -201,7 +201,7 @@ sdk_write_env() {
 # A project bound to a node compiles THERE — bb build, bb test, bb run and
 # bb emu all go to it — so answering with this container's store told a
 # session about a machine its project does not use. Worse on this box, where
-# the SDK share and the node's packages store are ONE store under two names
+# the package store and the node's packages store are ONE store under two names
 # (/sdk here through Unraid's FUSE layer, /mnt/SDK there over NFS, the same
 # store id): the two listings read like two machines' toolchains and were the
 # same bytes.
@@ -258,7 +258,7 @@ def gb(mb):
 
 
 live = "" if n.get("live") else "  (quiet — this is its last census)"
-print("== sdk root ==")
+print("== package store root ==")
 print(f"  {store['path']}  on {n['name']} — this project's node, "
       f"where its builds run{live}")
 if store.get("free_mb"):
@@ -291,7 +291,7 @@ NODESTAT
 
 sdk_status_local() {
     local root; root="$(sdk_root)"
-    printf '== sdk root ==\n'
+    printf '== package store root ==\n'
     if is_mountpoint "$root"; then
         printf '  %s  (mapped share — outside the image, kept across updates)\n' "$root"
     else
@@ -745,7 +745,7 @@ sdk_relink_android() {
         if [ -L "$src" ]; then continue; fi           # already onto the store
         mkdir -p "$store"
         if [ -d "$src" ]; then
-            log "relinking ${sub} onto the SDK store — sdkmanager replaced the link"
+            log "relinking ${sub} onto the package store — sdkmanager replaced the link"
             if [ -d "$store/$sub" ] && [ -z "$(ls -A "$store/$sub" 2>/dev/null)" ]; then
                 rmdir "$store/$sub"
             fi
@@ -1138,7 +1138,7 @@ Tizen is Samsung's OS, and where it runs decides whether you want it:
   Phones                        discontinued in 2017.
 
 There is no headless installer worth automating — Samsung ships a GUI Java
-bundle — so putting it on the SDK share is a manual job:
+bundle — so putting it on the package store is a manual job:
 
   1. Download the Ubuntu package from
      https://developer.tizen.org/development/tizen-studio/download

@@ -357,7 +357,7 @@ await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
 
 // Which shares count as "not a project" no longer comes only from what sits
 // inside /workspace. That worked while /workspace was the whole development
-// share; pointing it at the projects folder took the SDK share outside it and
+// share; pointing it at the projects folder took the package store outside it and
 // sent 267 findings about downloaded toolchains to the label meant for a path
 // that is genuinely wrong. The rule asks the mount table instead.
 //
@@ -549,6 +549,42 @@ ok(about.includes('abc1234def5678901234567890abcdef12345678')
    '...and About carries the whole commit, the build time and where to look');
 await page.click('#aboutModal >> text=Close');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
+// ---- the welcome panel: a guide and the changelog behind one switch -------------
+// The same popup opens itself twice in an account's life: on the guide the
+// first time the account signs in, and on the changelog once after every
+// image update. Closing it is the acknowledgement. The fixture owner is
+// seeded as having read both, or every file here would open under it.
+{
+  const prefs = async p => (await fetch(URL + 'api/users', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+    body: JSON.stringify({ action: 'prefs', prefs: p }) })).json();
+  await prefs({ welcome_seen: false });
+  await page.reload(); await ready(page);
+  await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
+  ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
+     'an account that has not read the guide gets the panel on sign-in, open on the guide — the administrator\'s, for an owner');
+  await page.click('.abswitch [data-ab="log"]');
+  await page.waitForFunction(() => /Unreleased|Nothing logged/.test(document.querySelector('#abLog')?.textContent || ''), null, { timeout: 15000 });
+  ok(await page.$eval('#abLog', e => !e.hidden && /not yet a numbered release/.test(e.textContent)),
+     '...and the switch shows the changelog, from the file beside the server');
+  await page.click('#aboutClose');
+  await page.waitForSelector('#aboutModal', { state: 'hidden' });
+  await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).welcome.seen === true, null, { timeout: 10000 });
+  ok(true, 'closing it marks the guide read, so it does not open again');
+  await page.reload(); await ready(page);
+  await new Promise(r => setTimeout(r, 800));
+  ok(await page.$eval('#aboutModal', e => e.hidden), '...and a reload leaves it shut');
+  // An image this account has not seen: the changelog, once.
+  await prefs({ image_seen: 'ffffffffffffffffffffffffffffffffffffffff' });
+  await page.reload(); await ready(page);
+  await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
+  ok(await page.$eval('#abLog', e => !e.hidden) && await page.$eval('#abGuide', e => e.hidden),
+     'an image update opens the panel on the changelog');
+  await page.click('#aboutClose');
+  await page.waitForSelector('#aboutModal', { state: 'hidden' });
+  await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).welcome.image_seen === 'abc1234def5678901234567890abcdef12345678', null, { timeout: 10000 });
+  ok(true, '...and closing it acknowledges this image, so the next update is the next time');
+}
 // An image built before versions existed still has a commit, and the header
 // falls back to it rather than going blank.
 ok(await page.evaluate(() => { drawBuild({ rev: 'deadbee1234', built: '' });

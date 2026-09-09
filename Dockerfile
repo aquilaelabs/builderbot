@@ -171,7 +171,7 @@ RUN set -eux; \
 
 # ---------------------------------------------------------------------------
 # Playwright: the module and the system libraries here, the browsers on the
-# SDK share.
+# package store.
 #
 # The three browsers are 1.3GB of pure download — the largest thing left that
 # /opt would throw away on every image update — so `install-deps` (apt
@@ -290,6 +290,10 @@ COPY config/templates/ /opt/builderbot/templates/
 # so that the path relative to both bb and server.py is the same here as it is
 # in a checkout, which is what lets `bb dashboard dev` and the tests read it.
 COPY config/packages.json /opt/builderbot/config/packages.json
+# The changelog, for the welcome panel: shown once per image update, so it
+# has to travel with the image it describes. Two levels above server.py,
+# where a checkout keeps it too.
+COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach — see
 # scripts/startup.d/05-unraid-icon.root.sh.
@@ -320,7 +324,7 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# Where the SDK share is. Runtime-only, so it lives down here: an ENV in the
+# Where the package store is. Runtime-only, so it lives down here: an ENV in the
 # top block invalidates every layer below it, and the host then re-pulls the lot.
 ENV SDK_ROOT=/sdk
 

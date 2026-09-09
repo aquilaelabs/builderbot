@@ -12,6 +12,13 @@ import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileS
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// The packages store is scoped by platform (roadmap R19): a machine's
+// packages live under <store>/<os>-<arch>, so every fixture written INTO a
+// store goes there, while the store's own path — the setting — stays the
+// share. The agent moves a flat store into the scope once; these fixtures
+// are written after it starts, so they are written scoped from the start.
+const SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
+const PK = `${DIR}/agentpackages/${SCOPE}`;
 const NODE_JSON = `${DIR}/node.json`;
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const api = async (path, body) => {
@@ -281,7 +288,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     ok(nst.node_id === two.id && nst.stores?.data === `${NROOT}/data`
        && nst.stores?.packages === `${DIR}/nodepackages`,
        `...keeping its identity and stores under NODE_STORE_ROOT, and its packages store
-        where NODE_PACKAGES_STORE says — the SDK share, in the template (${
+        where NODE_PACKAGES_STORE says — the package store, in the template (${
          JSON.stringify(nst.stores || {})})`);
     ok((await nodeById(two.id))?.state === 'online',
        '...and the row comes online without systemd, ssh or a provisioner');
@@ -356,7 +363,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { again = String(e.stderr); }
   ok(/refused/.test(again) && !existsSync(NODE_JSON + '.2'),
-     'the enroll token is single-use: a second enrollment is refused');
+     `the enroll token is single-use: a second enrollment is refused (${again.trim().split('\n').pop()?.slice(0, 120) || 'no stderr'})`);
 }
 
 // The agent refuses a system path for a store whatever it is told — the
@@ -476,7 +483,7 @@ try {
       15000, 300) || 'never answered';
     ok(/^ttyd-stub GET/.test(answer), `...and the port answers as the agent's own again (${answer.slice(0, 30)})`);
     const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
-    const store = st.stores.packages;
+    const store = `${st.stores.packages}/${SCOPE}`;   // the node's scope in it (roadmap R19)
     ok(existsSync(`${store}/.bb/current/scripts/bb`)
        && lstatSync(`${store}/.bb/current`).isSymbolicLink(),
        'the packages store carries a .bb/current link at the newest bundle, for a shell at the console');
@@ -955,13 +962,13 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // It used to just repoint: the node started using an empty directory and
     // the toolchains stayed behind, with nothing saying so.
     {
-      mkdirSync(`${DIR}/agentpackages/android`, { recursive: true });
+      mkdirSync(`${PK}/android`, { recursive: true });
       // ...with a JDK in it, so "a toolchain the node reports" is the store's
       // answer and not this machine's: the gap test below turns on java being
       // there and flutter not, whichever box runs the suite.
-      mkdirSync(`${DIR}/agentpackages/jdk/bin`, { recursive: true });
-      writeFileSync(`${DIR}/agentpackages/jdk/bin/java`, '#!/bin/sh\necho \'openjdk version "21.0.0"\' >&2\n', { mode: 0o755 });
-      writeFileSync(`${DIR}/agentpackages/android/marker`, 'a toolchain lives here');
+      mkdirSync(`${PK}/jdk/bin`, { recursive: true });
+      writeFileSync(`${PK}/jdk/bin/java`, '#!/bin/sh\necho \'openjdk version "21.0.0"\' >&2\n', { mode: 0o755 });
+      writeFileSync(`${PK}/android/marker`, 'a toolchain lives here');
       mkdirSync(`${DIR}/agentcache`, { recursive: true });
       writeFileSync(`${DIR}/agentcache/gradle-blob`, 'rebuildable');
       await api('/api/v1/nodes', { action: 'config', id: minted.id,
@@ -975,9 +982,9 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
         return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
       }, 60000);
       ok(r && r.state === 'succeeded'
-         && readFileSync(`${DIR}/agentpackages2/android/marker`, 'utf8') === 'a toolchain lives here',
+         && readFileSync(`${DIR}/agentpackages2/${SCOPE}/android/marker`, 'utf8') === 'a toolchain lives here',
          `moving a store copies what was in it to the new place (${r?.state})`);
-      ok(existsSync(`${DIR}/agentpackages/android/marker`) && /left in place/.test(r.log),
+      ok(existsSync(`${PK}/android/marker`) && /left in place/.test(r.log),
          '...and never deletes the source, so a half-finished move still serves');
       ok(/agentpackages stays \(Directory not empty\)/.test(r.log) && /remove it yourself/.test(r.log),
          '...so the old directory is not tidied away either, and the log says which one holds it');
@@ -1166,13 +1173,13 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // applied in the bb-verb branch. Measured on a real node: java and go
     // NOT-ON-PATH, JAVA_HOME unset, on a node whose census reported both.
     {
-      mkdirSync(`${DIR}/agentpackages/jdk/bin`, { recursive: true });
-      mkdirSync(`${DIR}/agentpackages/go/bin`, { recursive: true });
+      mkdirSync(`${PK}/jdk/bin`, { recursive: true });
+      mkdirSync(`${PK}/go/bin`, { recursive: true });
       // An android system image in the node's own store, and an AVD in the
       // data store built on it (roadmap #20). The agent walks for these
       // rather than running `bb sdk images`, which is the same listing plus
       // a du over tens of gigabytes of NFS every ten minutes.
-      const IMG = `${DIR}/agentpackages/android/system-images`;
+      const IMG = `${PK}/android/system-images`;
       mkdirSync(`${IMG}/android-34/google_apis/x86_64`, { recursive: true });
       writeFileSync(`${IMG}/android-34/google_apis/x86_64/system.img`, 'x');
       mkdirSync(`${IMG}/android-33/google_apis/x86_64`, { recursive: true });
@@ -1187,9 +1194,9 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
       }, 30000);
       const log = ef?.log || '';
-      ok(/root=.*agentpackages/.test(log) && /java=.*agentpackages\/jdk/.test(log)
-         && /android=.*agentpackages\/android/.test(log),
-         `a build job gets the node's SDK root, JAVA_HOME and ANDROID_HOME (${
+      ok(/root=.*agentpackages/.test(log) && /java=.*agentpackages\/linux-[a-z0-9_]+\/jdk/.test(log)
+         && /android=.*agentpackages\/linux-[a-z0-9_]+\/android/.test(log),
+         `a build job gets the node's package store root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
       ok(/cilog=.*agentdata\/ci-logs/.test(log),
          '...and where this node archives CI logs, under the data store both accounts can read');
@@ -1198,7 +1205,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // platform-tools not at all, and the census called android-sdk present
       // — so a job needing adb was admitted and failed there rather than
       // being refused here.
-      mkdirSync(`${DIR}/agentpackages/android/cmdline-tools`, { recursive: true });
+      mkdirSync(`${PK}/android/cmdline-tools`, { recursive: true });
       const bare = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
         argv: ['sh', '-c', 'true'] });
       if (bare.job) await until(async () => {
@@ -1241,8 +1248,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
            JSON.stringify(im)})`);
       ok(!im.some(x => /android-33/.test(x.id)),
          '...and an empty image directory is not one: a half-removed tree is not a bootable image');
-      ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
-         && /path=[^\n]*agentpackages\/go\/bin/.test(log),
+      ok(/path=[^\n]*agentpackages\/linux-[a-z0-9_]+\/jdk\/bin/.test(log)
+         && /path=[^\n]*agentpackages\/linux-[a-z0-9_]+\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
       // ...composed from the catalog's layout, sent at hello, rather than
       // from a table in the agent that has to agree with three others.
@@ -1357,11 +1364,11 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // same bundle at start (roadmap #24), and a second unpack of the same
     // digest is exactly what the digest is for.
     ok(pfin && pfin.type === 'package'
-       && (/bb .* unpacked into .*agentpackages\/\.bb/.test(pfin.log)
-           || existsSync(`${DIR}/agentpackages/.bb/current/scripts/bb`))
+       && (/bb .* unpacked into .*agentpackages\/linux-[a-z0-9_]+\/\.bb/.test(pfin.log)
+           || existsSync(`${PK}/.bb/current/scripts/bb`))
        && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
-    ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');
+    ok(existsSync(`${PK}/.bb/bundle.tar`), '...and stays for the next one');
     // The store changed, so the ttyds are started again with an environment
     // built from it — a session opened now finds the new tool on PATH.
     const renewed = await until(async () => {
@@ -1372,13 +1379,13 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
     // The store's own directories decide what is installed there — not the
     // census's placement summary, which named six toolchains and called four
-    // installed packages missing on the operator's shared SDK store.
-    mkdirSync(`${DIR}/agentpackages/zig`, { recursive: true });
-    mkdirSync(`${DIR}/agentpackages/android/ndk`, { recursive: true });
+    // installed packages missing on the operator's shared package store.
+    mkdirSync(`${PK}/zig`, { recursive: true });
+    mkdirSync(`${PK}/android/ndk`, { recursive: true });
     // ...except a directory without the file that completes the package:
     // playwright's browsers from before the recipe carried the module.
-    mkdirSync(`${DIR}/agentpackages/playwright/chromium-1234`, { recursive: true });
-    mkdirSync(`${DIR}/agentpackages/node/bin`, { recursive: true });   // playwright requires node
+    mkdirSync(`${PK}/playwright/chromium-1234`, { recursive: true });
+    mkdirSync(`${PK}/node/bin`, { recursive: true });   // playwright requires node
     // The store listing rides the census, which refreshes at hello — and a
     // job that touches the node ends in one, which is why installing a
     // package updates this list without waiting ten minutes. Any such job
@@ -1392,7 +1399,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       const v = await api(`/api/packages?node=${minted.id}`);
       return v.items?.some(i => i.name === 'zig' && i.installed) ? v : null;
     }, 30000);
-    ok(view && view.node === minted.id && view.root === `${DIR}/agentpackages`,
+    ok(view && view.node === minted.id && view.root === PK,
        'the Tools tab reads that node\'s own packages store');
     ok(view && view.items.find(i => i.name === 'zig')?.installed === true
        && view.items.find(i => i.name === 'android:ndk')?.installed === true,
@@ -1417,7 +1424,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        `a recipe's system packages are named for the owner on a node the agent does not administer (${
          (sfin?.log || '').match(/needs system packages[^\n]*/)?.[0]?.slice(0, 90)})`);
     ok(sfin && sfin.state === 'failed' && /npm: stub/.test(sfin.log)
-       && !existsSync(`${DIR}/agentpackages/playwright/node_modules`),
+       && !existsSync(`${PK}/playwright/node_modules`),
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
   }
 
@@ -1463,7 +1470,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // The rest of that file is the node's job environment: without it a CI
     // job's PATH was the bare system's, and the browser suite skipped with
     // exit 0 on every run (bug B74).
-    ok(/^SDK_ROOT=.*(agentpackages|fakeshare\/packages)$/m.test(renv)
+    ok(/^SDK_ROOT=.*(agentpackages|fakeshare\/packages)\/linux-[a-z0-9_]+$/m.test(renv)
        && /^PATH=.*(agentpackages|fakeshare\/packages)/m.test(renv)
        && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
        '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');
@@ -1936,7 +1943,7 @@ want = {'network': {'mode': 'static', 'address': '10.2.2.5/24', 'gateway': '10.2
 nd_backend = m.net_backend().name
 a.hello = lambda: (200, {})
 j1 = J(); r1 = a._apply_network(j1, want)
-nd_file = os.path.join(nd, '90-builderbot-eth0.network')
+nd_file = os.path.join(nd, '00-builderbot-eth0.network')
 nd_text = open(nd_file).read()
 a.hello = lambda: (503, {})
 j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
@@ -1974,6 +1981,57 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
      `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
   ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
      '...and its revert is the whole file as it was before the change');
+}
+
+// ---- the packages store, scoped by platform; and a Mac ----------------------------
+// A store laid out flat is moved into its scope directory once, entries
+// renamed rather than copied, the Android system images shared under
+// <store>/shared with the scope's own directory a link to them, and a second
+// run changes nothing. An older agent's bundle at the root is left alone.
+// Then the Mac: with platform.system() answering Darwin, the agent's family
+// is macos, its packages Homebrew, its init launchd, its scope darwin-<arch>.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+os.environ['BUILDERBOT_BREW_BIN'] = '/nonexistent/brew'
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+store = tempfile.mkdtemp()
+for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools', '.bb/current', 'go'):
+    os.makedirs(os.path.join(store, d))
+open(os.path.join(store, 'jdk/bin/java'), 'w').write('x')
+open(os.path.join(store, '.bb-store'), 'w').write('id')
+said = []
+m.scope_store(store, said.append)
+scope = m.pkg_scope()
+top = sorted(os.listdir(store))
+scoped = sorted(os.listdir(os.path.join(store, scope)))
+img = os.path.join(store, scope, 'android', 'system-images')
+r1 = {'top': top, 'scoped': scoped, 'link': os.path.islink(img), 'target': os.path.realpath(img),
+      'shared': os.path.isdir(os.path.join(store, 'shared/android/system-images/android-30')),
+      'java': os.path.isfile(os.path.join(store, scope, 'jdk/bin/java')), 'said': said}
+said2 = []
+m.scope_store(store, said2.append)
+r2 = {'said': said2, 'top': sorted(os.listdir(store))}
+# the Mac
+m.platform.system = lambda: 'Darwin'
+m.platform.machine = lambda: 'arm64'
+m._run = lambda argv, timeout=5: '15.1' if argv[:1] == ['sw_vers'] else ''
+mac = m.distro_now()
+print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.r1.top.every(e => ['.bb', '.bb-store', 'shared', R.r1.scoped.length ? R.r1.top.find(x => /^linux-/.test(x)) : ''].includes(e))
+     && R.r1.scoped.includes('jdk') && R.r1.scoped.includes('go') && R.r1.scoped.includes('android') && R.r1.java,
+     `a flat store is moved into its scope directory, entries renamed, the old bundle and the marker left at the root (${R.r1.top.join(', ')} / ${R.r1.scoped.join(', ')})`);
+  ok(R.r1.link && R.r1.shared && /shared\/android\/system-images$/.test(R.r1.target),
+     '...the android system images live once under shared/, with the scope\'s directory a link to them');
+  ok(R.r1.said.some(t => /moved 3 entries/.test(t)) && R.r1.top.includes('.bb') && R.r2.said.length === 0 && R.r2.top.join() === R.r1.top.join(),
+     `...it says what it moved, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
+  ok(R.mac.family === 'macos' && R.mac.init === 'launchd' && /macOS 15\.1/.test(R.mac.pretty) && R.mac.network === '' && R.mac.pkg === '',
+     `a Mac is its own family: macos, launchd, no network backend, and no package manager until Homebrew is there (${JSON.stringify(R.mac)})`);
+  ok(R.scope === 'darwin-arm64' && R.root === '/Volumes/SDK/darwin-arm64',
+     `...with its packages under the store's darwin-arm64 scope (${R.root})`);
 }
 
 // ---- the agent's version is WINDOW.BUILD ----------------------------------

@@ -7,7 +7,7 @@
 #
 # The projects folder is mounted whole, so anything an operator puts under it
 # becomes a project — including paths this container asked them to create.
-# The SDK share is the one that bites: its default sits at
+# The package store is the one that bites: its default sits at
 # /mnt/user/development/SDK, which is inside /mnt/user/development, so the
 # same directory is both /sdk and /workspace/SDK and the Projects card lists
 # it as a repository with nothing in it.
@@ -52,6 +52,6 @@ EOF
 # The paths this container is responsible for. Both are only inside the
 # projects share when the operator put them there, which the mark() guard
 # checks rather than assumes.
-mark "$(sdk_root)" "the SDK share"
+mark "$(sdk_store_root)" "the package store"
 # An old runner's tree, if an install from before CI moved to nodes left one.
 [ -d "$WORKSPACE/_work" ] && mark "$WORKSPACE/_work" "a retired Actions runner's work directory"

@@ -61,14 +61,14 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
-| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the SDK share at `/sdk`, symlinked into place. `bb sdk` lists and installs them |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store at `/sdk`, symlinked into place. `bb sdk` lists and installs them |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
 
 - `/tmp`, `/var`, and the rest of the root filesystem
 - `/opt` — but most of what looks like it lives there is a symlink onto the
-  SDK share and *does* persist: the Android packages, the Playwright browsers,
+  package store and *does* persist: the Android packages, the Playwright browsers,
   anything `bb sdk install` put there. What actually comes from the image is
   the bootstrap — `sdkmanager`, `adb`, the CLI tools
 - System packages installed ad hoc with `apt-get install`
@@ -93,7 +93,7 @@ projects, and do not go looking for context in them — if something seems to be
 missing, ask.
 
 A sibling directory holding a `.bbignore` file is not a project at all — it is
-the container's own storage (the SDK share) or something the operator chose to
+the container's own storage (the package store) or something the operator chose to
 hide. Leave those alone too.
 
 If this session was started from the dashboard, that is also enforced: the file
@@ -122,7 +122,7 @@ manager, no monitor and one intended client. Do not read `$DISPLAY` being
 set as permission to open a window on it.
 
 - **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
-  onto the SDK share (they are 1.3GB of download, so the image does not carry
+  onto the package store (they are 1.3GB of download, so the image does not carry
   them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
   not need `playwright install` — the container installs them on the first
   boot of a fresh share, and `bb sdk install playwright` repairs them (if the

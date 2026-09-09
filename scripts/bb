@@ -2925,7 +2925,7 @@ PY
             # what it is for, Allow is a guess.
             while [ $# -gt 0 ]; do
                 case "$1" in
-                    --why) why="${2:-}"; shift 2 ;;
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
                     --) shift; break ;;
                     *) die "usage: bb phone run --why \"what this is for\" -- adb args..." ;;
                 esac
@@ -3000,7 +3000,7 @@ PY
         run)
             while [ $# -gt 0 ]; do
                 case "$1" in
-                    --why) why="${2:-}"; shift 2 ;;
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
                     --) shift; break ;;
                     *) die "usage: bb root run --why \"what this is for\" -- command..." ;;
                 esac
@@ -4322,7 +4322,7 @@ cmd_drift() {
 
 # Where Chromium actually is, in the order the answers can be trusted:
 # PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honors), then
-# the SDK share directly, then the historical /opt path. Resolved rather than
+# the package store directly, then the historical /opt path. Resolved rather than
 # hardcoded because the browsers moved out of the image: the /opt entry is a
 # symlink the startup hook makes, and a hook that could not make it — /opt is
 # root-owned — used to leave every screenshot command dead with the bytes

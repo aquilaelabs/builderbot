@@ -278,3 +278,22 @@ def roll(d, version, date):
     except OSError:
         return False
     return True
+
+
+def sections(text):
+    """The whole file as [{"title", "entries": [{"text", "shas"}]}], newest
+    first as the file is written: Unreleased, then each dated release. For
+    the welcome panel, which shows BuilderBot's own changelog and marks
+    where the reader last looked."""
+    out, cur = [], None
+    for line in (text or "").splitlines():
+        if line.startswith("## "):
+            cur = {"title": line[3:].strip(), "entries": []}
+            out.append(cur)
+            continue
+        if cur is not None and line.strip().startswith("- "):
+            body = line.strip()[2:].strip()
+            m = _STAMP.search(body)
+            cur["entries"].append({"text": body[:m.start()].rstrip() if m else body,
+                                   "shas": m.group(1).split(", ") if m else []})
+    return out

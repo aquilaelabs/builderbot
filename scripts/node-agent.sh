@@ -42,7 +42,7 @@ NODE_HOME="${NODE_STORE_ROOT:-/config/node}"
 export BUILDERBOT_NODE_JSON="${BUILDERBOT_NODE_JSON:-${NODE_HOME}/node.json}"
 mkdir -p "$NODE_HOME" "${NODE_HOME}/data" "${NODE_HOME}/cache" "${NODE_HOME}/artifacts"
 
-# The packages store defaults to the SDK share, which is the arrangement that
+# The packages store defaults to the package store, which is the arrangement that
 # already works: the toolchains a node builds with are the ones `bb sdk` puts
 # there, and a node container mapped to the same share as the controller is
 # one store under two names — which the controller recognizes by its marker

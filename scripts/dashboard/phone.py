@@ -337,7 +337,7 @@ def _node_row(n, uid, probe):
             "may_drive": may_drive(n["id"], uid)}
 
 
-def payload(uid, node="", probe=False, admin=False):
+def payload(uid, node="", probe=False, admin=False, project=""):
     """The tab's data for one account: every node a phone can be driven
     from, which of them holds one and whose it is, and the requests waiting
     on THIS account — phone requests on the phone's owner, root requests on
@@ -345,7 +345,7 @@ def payload(uid, node="", probe=False, admin=False):
     rows = []
     for n in (nodes.phone_nodes() if nodes is not None else []):
         rows.append(_node_row(n, uid, probe and n["id"] == node))
-    return {"nodes": rows, "asks": requests_open(uid, admin)}
+    return {"nodes": rows, "asks": requests_open(uid, admin, project)}
 
 
 def summary(nid, uid, node=None):
@@ -543,13 +543,19 @@ def _for(r, uid, admin):
     return r["to"] == uid
 
 
-def requests_open(uid=None, admin=False):
+def requests_open(uid=None, admin=False, project=""):
     """What is waiting: everything, or only what waits on this account —
-    `admin` says whether it is one, which is who a root request waits on."""
+    `admin` says whether it is one, which is who a root request waits on.
+    With `project`, a SESSION's read-only view instead: its own project's
+    pending requests, so `bb root` and `bb phone` in a session can say what
+    is waiting on somebody, though the session can answer none of it."""
     with _lock:
         for r in _reqs:
             if r["state"] == "pending" and time.time() - r["at"] > WAIT_SECONDS:
                 r["state"] = "expired"
+        if project:
+            return [_req_public(r) for r in _reqs
+                    if r["state"] == "pending" and r.get("project") == project]
         return [_req_public(r) for r in _reqs
                 if r["state"] == "pending" and (uid is None or _for(r, uid, admin))]
 
@@ -564,8 +570,9 @@ def ask(why, argv, nid, node_name, project, by="claude", asker=""):
         return {"error": "say what it is for — the operator is answering a "
                          "question about a command they did not write"}
     if not isinstance(argv, list) or not argv or not all(
-            isinstance(a, str) for a in argv):
-        return {"error": "nothing to run"}
+            isinstance(a, str) and a for a in argv):
+        return {"error": "nothing to run" if not argv else "an empty argument — the command "
+                         "shown must be the command run"}
     if len(argv) > 40 or any(len(a) > 500 for a in argv):
         return {"error": "that command is too long to put in front of somebody"}
     if not nid:
@@ -593,7 +600,7 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker=""):
 
 
 def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
-             asker_uid="", asker_name="", asker_admin=False):
+             asker_uid="", asker_name="", asker_admin=False, locked=""):
     """A session asking for ONE command as root on its project's node
     (roadmap R38). Not sudo, which would be every command from then on
     with nobody reading them, and not a sudo that pretends — this is the
@@ -610,8 +617,11 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
         return {"error": "say what it is for — the operator is answering a "
                          "question about a root command they did not write"}
     if not isinstance(argv, list) or not argv or not all(
-            isinstance(a, str) for a in argv):
-        return {"error": "nothing to run"}
+            isinstance(a, str) and a for a in argv):
+        # An empty argument is refused rather than dropped: what the person
+        # reads must be exactly what the node runs.
+        return {"error": "nothing to run" if not argv else "an empty argument — the command "
+                         "shown must be the command run"}
     if len(argv) > 40 or any(len(a) > 500 for a in argv):
         return {"error": "that command is too long to put in front of somebody"}
     if not nid:
@@ -620,6 +630,10 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
     if not sandbox:
         return {"error": f"{node_name or nid} was not provisioned as a BuilderBot sandbox, so "
                          "root there is its owner's and not something this can ask for"}
+    if locked:
+        # Said now rather than after somebody pressed Allow: the lock is the
+        # operator's decision that this machine is managed at its console.
+        return {"error": locked}
     if asker_admin and asker_uid:
         return _queue("root", why, argv, nid, node_name, project, by, asker_uid,
                       f"{asker_name or 'you'} (your own account — it is on your Nodes tab and bell)",
@@ -661,11 +675,19 @@ def decide(rid, allow, uid, name="", admin=False):
     if not allow:
         return {"ok": True}
     if r.get("kind") == "root":
-        res = _root(r["node"], r["cmd"], r["why"], by=f"user:{name}")
-    else:
-        res = _adb(r["node"], "-s", (_rec(r["node"]) or {}).get("serial") or "", *r["cmd"],
-                   timeout=120, by=f"user:{name}") if (_rec(r["node"]) or {}).get("serial") \
-            else _adb(r["node"], *r["cmd"], timeout=120, by=f"user:{name}")
+        # Answered at once, run on a thread: a root command may take ten
+        # minutes, and the browser's Allow — behind whatever proxy — must
+        # not hang for it. The request is `running` meanwhile, the session
+        # polls its outcome, and the record is what the thread updates.
+        def finish():
+            res = _root(r["node"], r["cmd"], r["why"], by=f"user:{name}")
+            with _lock:
+                r.update(state="done", out=res["out"][-8000:], code=res["code"])
+        threading.Thread(target=finish, daemon=True, name=f"root-{rid}").start()
+        return {"ok": True, "state": "running"}
+    res = _adb(r["node"], "-s", (_rec(r["node"]) or {}).get("serial") or "", *r["cmd"],
+               timeout=120, by=f"user:{name}") if (_rec(r["node"]) or {}).get("serial") \
+        else _adb(r["node"], *r["cmd"], timeout=120, by=f"user:{name}")
     with _lock:
         r.update(state="done", out=res["out"][-8000:], code=res["code"])
     return {"ok": True}

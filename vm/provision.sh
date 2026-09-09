@@ -280,7 +280,13 @@ svc_enable() {
         systemd) systemctl enable --now "$1" ;;
         openrc)  rc-update add "$1" default >/dev/null 2>&1 || true; rc-service "$1" start >/dev/null 2>&1 || rc-service "$1" restart ;;
         runit)   [ -d "/etc/sv/$1" ] || { echo "no runit service /etc/sv/$1" >&2; return 1; }
-                 ln -sfn "/etc/sv/$1" "/var/service/$1"; sv start "$1" >/dev/null 2>&1 || true ;;
+                 ln -sfn "/etc/sv/$1" "/var/service/$1"
+                 # runsvdir scans /var/service every five seconds; until it
+                 # has, sv cannot reach the service and every verb fails.
+                 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                     [ -e "/var/service/$1/supervise/ok" ] && break; sleep 1
+                 done
+                 sv start "$1" >/dev/null 2>&1 || true ;;
     esac
 }
 svc_restart() {
@@ -358,8 +364,11 @@ EOF
 # The machine's own address, for the line to paste: hostname -I is a GNU
 # extension busybox lacks, so the route table is the fallback.
 my_ip() {
+    # Never non-zero: an offline node has no route and still gets its
+    # summary; the caller prints a placeholder for an empty answer.
     hostname -I 2>/dev/null | awk '{print $1}' | grep . \
-        || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1
+        || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1 \
+        || true
 }
 is_vm() {
     if command -v systemd-detect-virt >/dev/null 2>&1; then systemd-detect-virt --quiet --vm
@@ -372,13 +381,22 @@ is_vm() {
 pkg_names() {
     case "$1:$FAMILY" in
         base:deb)     echo "ca-certificates curl gnupg nfs-common" ;;
-        base:rhel)    echo "ca-certificates curl gnupg2 nfs-utils" ;;
+        # No curl: EL9 and Fedora ship curl-minimal, which conflicts with
+        # the curl package and does everything this script asks of it.
+        base:rhel)    echo "ca-certificates gnupg2 nfs-utils" ;;
         base:arch)    echo "ca-certificates curl gnupg nfs-utils" ;;
         base:suse)    echo "ca-certificates curl gpg2 nfs-client" ;;
-        base:alpine)  echo "ca-certificates curl gnupg nfs-utils bash shadow" ;;
+        # busybox has no useradd (shadow), no bash, and no findmnt or
+        # setpriv (util-linux subpackages), which bb-sandbox reads mounts
+        # and drops privileges with.
+        base:alpine)  echo "ca-certificates curl gnupg nfs-utils bash shadow findmnt setpriv" ;;
         base:void)    echo "ca-certificates curl gnupg nfs-utils" ;;
         base:gentoo)  echo "app-misc/ca-certificates net-misc/curl app-crypt/gnupg net-fs/nfs-utils" ;;
+        guest:void)   echo "qemu-ga" ;;
         guest:*)      echo "qemu-guest-agent" ;;
+        # ...and the service is not always named for the package.
+        guestsvc:void|guestsvc:suse) echo "qemu-ga" ;;
+        guestsvc:*)   echo "qemu-guest-agent" ;;
         python:arch)  echo "python" ;;
         python:gentoo) echo "dev-lang/python" ;;
         python:*)     echo "python3" ;;
@@ -445,8 +463,8 @@ elif command -v transactional-update >/dev/null 2>&1 && ! touch /usr/.bb-probe 2
     chk fail "this is a transactional system (openSUSE MicroOS/Aeon, SLE Micro): /usr is read-only and changes want transactional-update and a reboot; use Leap or Tumbleweed instead"
 elif [ -d /snap/core ] && ! command -v apt-get >/dev/null 2>&1; then
     chk fail "this is Ubuntu Core: snaps only, no apt, no ordinary accounts; use Ubuntu Server instead"
-elif [ -f /etc/lbu/lbu.conf ] && [ ! -e /etc/apk/repositories ] ; then
-    chk fail "this Alpine runs from RAM (diskless mode): nothing installed survives a reboot; run setup-alpine with the sys disk mode first"
+elif [ "$FAMILY" = alpine ] && [ "$(awk '$2=="/"{print $3}' /proc/mounts 2>/dev/null)" = tmpfs ]; then
+    chk fail "this Alpine runs from RAM (diskless mode: / is a tmpfs): nothing installed survives a reboot; run setup-alpine with the sys disk mode first"
 else
     rm -f /usr/.bb-probe
     chk ok "an ordinary installed system, not an image-based one"
@@ -528,13 +546,14 @@ pkg_refresh
 # the android tools; that recipe unzips with python now).
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
+command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install — every download below will fail"
 # ...and the guest agent only where there is a host to talk to, so Unraid can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM — this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if is_vm; then
     # shellcheck disable=SC2046
-    pkg $(pkg_names guest) 2>/dev/null && svc_enable qemu-guest-agent >/dev/null 2>&1 \
+    pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
         || warn "the qemu guest agent did not install — Unraid will pull the plug instead of shutting this VM down"
 fi
 
@@ -658,7 +677,7 @@ have_jq() { command -v jq >/dev/null 2>&1; }
 if stamp_daemon; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
-    svc_restart docker
+    svc_restart docker || warn "docker did not restart — restart it by hand so the label is read"
     say "stamped this daemon as BuilderBot's sandbox"
 fi
 
@@ -1072,6 +1091,15 @@ cmd_add_share() {
     add_fstab "$tag $path virtiofs $opts,nofail 0 0" "$path" && mount_one "$path"
 }
 
+# This machine's own address, for the settings line. hostname -I is a GNU
+# extension busybox lacks; the route table is the fallback, and neither
+# failing is an error — an offline box prints a placeholder.
+my_ip() {
+    hostname -I 2>/dev/null | awk '{print $1}' | grep . \
+        || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1 \
+        || true
+}
+
 cmd_add_nfs() {
     local spec="${1:?usage: bb-sandbox add-nfs HOST:EXPORT:PATH[:ro]}" host rest exp path opts=defaults
     case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
@@ -1316,7 +1344,7 @@ cmd_appdata() {
 # the half that is easy to get wrong by hand.
 cmd_settings() {
     local ip pairs="" path setting
-    ip="$(my_ip)"
+    ip="$(my_ip || true)"
     # BuilderBot fills in ssh:// and the bb account, so the address alone is
     # the setting unless this machine runs docker as somebody else.
     if [ "$DOCKER_USER" = bb ]; then setting="${ip:-<this-vm>}"
@@ -1484,8 +1512,10 @@ done
 # but by default it stops a container from reading an NFS mount, which is
 # exactly what a dev instance's bind of the projects share is. One boolean,
 # persistent, says containers may; the mounts themselves are unaffected.
-if [ "${#NFS[@]}" -gt 0 ] && [ -n "${NFS[0]:-}" ] && command -v getenforce >/dev/null 2>&1 \
-        && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
+# Set whenever SELinux enforces, not only when --nfs was given on this
+# run: a share added later through the Nodes tab goes through bb-sandbox,
+# which does not know this, and the boolean costs nothing with no NFS.
+if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
     setsebool -P virt_use_nfs 1 2>/dev/null \
         || warn "could not set virt_use_nfs — containers will be refused the NFS shares until it is on"
 fi
@@ -1617,7 +1647,7 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
     say "session ports: 7681 and 7682 open to the controller only"
     ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
-    ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}')"
+    ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
     if [ -z "$ctl_ip" ]; then
         warn "could not resolve the controller's host ${ctl_host} — the session ports are NOT filtered"
     elif systemctl is-active --quiet firewalld 2>/dev/null; then
@@ -1694,7 +1724,7 @@ EOF
     fi
 fi
 
-ip="$(my_ip)"
+ip="$(my_ip || true)"
 if [ "${#WARNINGS[@]}" -gt 0 ]; then
     say "the pre-flight warned about ${#WARNINGS[@]} thing(s), still true:"
     for w in "${WARNINGS[@]}"; do printf '   - %s\n' "$w"; done
@@ -1745,7 +1775,7 @@ node lives on this machine. It needs the projects share mounted at /workspace
 — add it on the Nodes tab, the way any mount is — and the account signed in
 to Claude once, from a shell here:
 
-  sudo -iu ${SESSION_NAME}          then: claude login
+  su - ${SESSION_NAME}              then: claude login
 EOF
     fi
 fi

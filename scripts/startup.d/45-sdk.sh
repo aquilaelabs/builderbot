@@ -2,7 +2,7 @@
 #
 # roles: controller node
 #
-# Put whatever `bb sdk install` has put on the SDK share onto every shell's
+# Put whatever `bb sdk install` has put on the package store onto every shell's
 # PATH.
 #
 # The toolchains live outside the image on purpose — see `bb sdk` — which
@@ -17,11 +17,14 @@
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
+# The store scoped by platform before anything reads it (roadmap R19): a
+# flat store from before this is moved into linux-<arch>/ here, once.
+sdk_scope_migrate "$(sdk_store_root)"
 ROOT="$(sdk_root)"
 mkdir -p "$ROOT" 2>/dev/null || true
 [ -d "$ROOT" ] || exit 0
 
-# Not $ROOT/env.sh: the SDK root is a share the sandbox mounts too, at its
+# Not $ROOT/env.sh: the package store root is a share the sandbox mounts too, at its
 # own path, and every line generated here is absolute — so a copy in the
 # store is wrong for whichever machine did not write it last. Container-local
 # instead; sdk.sh's sdk_env_file() is the same answer, one generator.

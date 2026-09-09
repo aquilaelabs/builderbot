@@ -18,7 +18,7 @@
 # One run at a time: a second one is refused while the first is alive.
 #
 # Playwright comes from the image (/usr/lib/node_modules); the browsers live
-# on the SDK share and are found the way bb finds them. Missing either, the
+# on the package store and are found the way bb finds them. Missing either, the
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -194,7 +194,7 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
 # its own that land in the projects share, and an operator can write one by
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
-# ...and one with no marker at all, the shape the SDK share actually has when
+# ...and one with no marker at all, the shape the package store actually has when
 # somebody maps a share inside the projects folder and nothing has told the
 # container about it. It is not a project because the Projects card did not
 # accept it, which is the only test that matters now.
@@ -746,7 +746,11 @@ u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.d
 d = u.load()
 d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
                       # An author, or no Claude session starts for it (users.git_ready).
-                      "prefs": {"full_name": "Dashboard Test", "email": "test@example.invalid"},
+                      # ...and the welcome panel read, or it would open over
+                      # every page load in the suite (cards.mjs opens it on purpose).
+                      "prefs": {"full_name": "Dashboard Test", "email": "test@example.invalid",
+                                "welcome_seen": True,
+                                "image_seen": "abc1234def5678901234567890abcdef12345678"},
                       "password": u.hash_password("test"), "created": 0,
                       "seen": 0}
 u._save(d)

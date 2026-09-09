@@ -756,7 +756,7 @@ def _project_of(uri, known, nonproject=frozenset()):
     matches a directory in the workspace.
 
     A component that matches a directory in the share that is NOT a project —
-    the SDK share, the runner's tree, anything else living in there —
+    the package store, the runner's tree, anything else living in there —
     attributes to IGNORED rather than to nothing. The host scanner sweeps the
     whole share, so the flutter checkout alone lands thousands of findings,
     and filing those as "unattributed" buried the handful of genuinely
@@ -786,9 +786,9 @@ def share_siblings():
 
     The subtraction below derives "not a project" from what sits INSIDE
     /workspace, which worked while /workspace was the whole development share:
-    the SDK share was a directory in it, so it fell out for free. Pointing
+    the package store was a directory in it, so it fell out for free. Pointing
     /workspace at the projects folder — a better arrangement, and the one that
-    cut most of this noise — took the SDK share outside it, and 267 findings
+    cut most of this noise — took the package store outside it, and 267 findings
     about downloaded Flutter, Go and Android toolchains went straight to
     "unattributed", which is the label meant for a path that is genuinely
     wrong. Improving the layout regressed the classifier.
@@ -859,7 +859,7 @@ def nonproject_dirs(valid):
     away only the listed names and its thousands of findings stay in play; take
     away the valid ones and it falls out with the rest.
 
-    That width is the point. The SDK share is the case that made it matter: on
+    That width is the point. The package store is the case that made it matter: on
     this box it lives *inside* the development share, so the host's scanner
     walks it like anything else and a report grew nine thousand findings
     attributed to a "project" that is a pile of downloaded toolchains. Those
@@ -998,7 +998,7 @@ def findings_payload(who):
     files = [f for f in files if f.name not in dropped]
     # Only the projects worth reading findings for get attributed to: listed,
     # no error-level issue. Everything else under the share —
-    # a project shut out, one that is broken, the SDK share, a directory
+    # a project shut out, one that is broken, the package store, a directory
     # nobody has explained — attributes to IGNORED and is counted aside.
     #
     # Counted rather than silently dropped: a report that quietly shrinks
@@ -1494,6 +1494,7 @@ def project_list(who):
         else:
             todo_batches[name] = b
     bug_revs = bugs.revisions()
+    bug_counts = bugs.counts()          # open bugs per project, for the row and the app
     # ...and the roadmap's, so an open notebook stops being the one surface
     # here that never notices somebody else writing (roadmap #26). The Bugs
     # tab has polled bug_rev since it was built; the Roadmap and Memory views
@@ -1522,7 +1523,7 @@ def project_list(who):
         # .bbignore is the general form of the same idea, and the one thing
         # here an operator can drive: a directory holding that file is not a
         # project and is not listed. The container drops it into any path of
-        # its own that lands inside the projects share — the SDK share, when
+        # its own that lands inside the projects share — the package store, when
         # someone maps it inside the projects folder rather than beside it —
         # and anyone can create one by hand for a directory they would rather
         # not see. It hides; locking a project is the thing that *blocks*, and
@@ -1661,6 +1662,7 @@ def project_list(who):
                     # So an open Bugs tab notices a session filing or closing
                     # one without polling the tracker itself.
                     "bug_rev": bug_revs.get(d.name, 0),
+                    "bugs": bug_counts.get(d.name, 0),
                     # Two, because the two halves are re-read separately and
                     # a memory edit must not throw away a half-typed roadmap
                     # item beside it.
@@ -2217,6 +2219,28 @@ def uptime():
     # container's — /proc/uptime is the host's under a shared kernel.
     r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
     return r["out"].strip() or "?"
+
+
+# The API surface the companion app is written against (android/). One
+# number, moved with the app: android/api-surface.json names every path
+# and field the app reads and carries the same number, test/appapi.mjs
+# holds the running server to that file, and the app compares this against
+# its own TARGET_API to say when it is behind. A change to a path or a
+# field listed there bumps all three together — the app, the file, this.
+APP_API = 1
+
+
+def app_apk():
+    """The newest companion APK in BuilderBot's own dist/, if this
+    controller has the repository as a project: what the app points at when
+    it finds itself behind. Its filename only; the Artifacts tab serves it."""
+    d = WORKSPACE / "BuilderBot" / "dist"
+    try:
+        apks = sorted((p for p in d.iterdir() if p.suffix == ".apk" and p.is_file()),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return ""
+    return apks[0].name if apks else ""
 
 
 def image_stamp():
@@ -2865,7 +2889,7 @@ def findings_counts(ps):
             good += 0 if rep.get("error") else 1
             for row in rep["findings"]:
                 if row["project"] == IGNORED:
-                    continue        # the SDK share et al: see _project_of
+                    continue        # the package store et al: see _project_of
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
                 rows_by.setdefault(row["project"] or "", []).append(row)
@@ -3164,6 +3188,12 @@ def snapshot(who):
         # This account's colour scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
+        # Whether this account has read the getting-started guide, and
+        # which image's changelog it acknowledged: the welcome panel opens
+        # itself once for each — the guide on a first sign-in, the changelog
+        # once per image update — and these are what make it once.
+        "welcome": {"seen": bool(users.prefs(who).get("welcome_seen")),
+                    "image_seen": str(users.prefs(who).get("image_seen") or "")},
     }
 
 
@@ -3920,6 +3950,22 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return None
+        if self.path.startswith("/api/meta"):
+            # What the companion app asks first: the surface number this
+            # dashboard serves, the image it is, and where a newer app is.
+            return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
+                               "image": image_stamp().get("rev") or "", "apk": app_apk()})
+        if self.path.startswith("/api/welcome"):
+            # BuilderBot's own changelog, for the welcome panel: the file
+            # beside this checkout (CHANGELOG.md two levels up, which is
+            # /opt/builderbot/CHANGELOG.md in the image and the repository's
+            # under bb dashboard dev), and where this account last looked —
+            # the image commit it acknowledged — so the panel can draw a
+            # line under what is new since.
+            text = changelog.read(Path(__file__).resolve().parents[2])
+            seen = str(users.prefs(self._who()).get("image_seen") or "")
+            return self._json({"sections": changelog.sections(text) if text else [],
+                               "present": text is not None, "seen": seen})
         if self.path.startswith("/api/source?"):
             # The code base as a zip, from the Artifacts tab: what git
             # tracks and would track, never .git, dist/ or what .gitignore
@@ -3937,6 +3983,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
             if got is None:
                 return self._json({"error": "no such project"}, 404)
+            if isinstance(got, dict):
+                return self._json(got, 413)
             fname, data = got
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
@@ -4377,6 +4425,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_state(self._principal(), nid,
                                  {"drain": "draining", "online": "online",
                                   "retire": "retired"}[act])
+        elif act in ("lock", "unlock"):
+            # System changes locked to the node's own console: Apply
+            # storage, Apply network and a root command refused while on.
+            r = nodes.node_lock(self._principal(), nid, act == "lock")
         elif act == "enroll":
             r = nodes.enroll_mint(self._principal(), field(req, "name"),
                                   req.get("capabilities"),
@@ -5252,7 +5304,8 @@ class Handler(BaseHTTPRequestHandler):
         field with it would be a confident wrong answer — the worst kind.
         """
         out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
-                            admin=users.is_admin(self._who()))
+                            admin=users.is_admin(self._who()),
+                            project=(self._who() or {}).get("session") or "")
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -5577,6 +5630,13 @@ class Handler(BaseHTTPRequestHandler):
         # A session's token may reach none of them.
         if field(req, "action") not in ("ask", "outcome") and (self._who() or {}).get("session"):
             return self._json({"error": "a session asks; a person answers"}, 403)
+        # The outcome of a request is the asking session's to read (scoped
+        # to its project below) and an administrator's; not any account's
+        # by id, since the output of a root command on a shared machine is
+        # not a user's to browse.
+        if field(req, "action") == "outcome" and not (self._who() or {}).get("session") \
+                and not users.is_admin(self._who()):
+            return self._json({"error": "an outcome is read by the session that asked, or an administrator"}, 403)
         act = field(req, "action")
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
@@ -5618,7 +5678,8 @@ class Handler(BaseHTTPRequestHandler):
                                    pn["name"] if pn else "", proj,
                                    bool(((pn or {}).get("reported") or {}).get("sandbox")),
                                    asker_uid=asker_uid, asker_name=asker_name,
-                                   asker_admin=users.is_admin(acct))
+                                   asker_admin=users.is_admin(acct),
+                                   locked=nodes.node_locked(pn) if pn else "")
             else:
                 r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
                               pn["name"] if pn else "", proj, asker=asker_name)
@@ -6093,6 +6154,12 @@ class Handler(BaseHTTPRequestHandler):
             theme = str(want.get("theme") or "")
             if re.fullmatch(r"[a-z]{2,12}", theme):
                 keep["theme"] = theme
+            # The welcome panel's two marks: the getting-started guide has
+            # been read, and which image's changelog was acknowledged.
+            if isinstance(want.get("welcome_seen"), bool):
+                keep["welcome_seen"] = want["welcome_seen"]
+            if isinstance(want.get("image_seen"), str) and re.fullmatch(r"[0-9a-f]{0,40}", want["image_seen"]):
+                keep["image_seen"] = want["image_seen"]
             if not keep:
                 return self._json({"error": "nothing here is a setting"}, 400)
             return self._json(users.prefs_set(me["name"], keep))

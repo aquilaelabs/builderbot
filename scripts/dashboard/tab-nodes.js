@@ -265,6 +265,15 @@ function nodeAdvancedSection(n, stale, inflight){
         title="check that both machines mean the same directory by the projects share">Check</button>
     </div>
     <div class="sub ndcheck" hidden></div>
+    ${!n.reported?.sandbox ? "" : `<div class="actbar">
+      <span class="state">${n.config?.lock
+        ? "System changes are locked to this node's own console: Apply storage, Apply network and a root command are refused until Unlock."
+        : "Lock keeps this node's mounts, address and root managed at the OS level: Apply storage, Apply network and a root command are refused while it is on."}</span>
+      <button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}"
+        title="${n.config?.lock ? "let the dashboard apply storage, network and root commands here again"
+          : "refuse system changes from here — the machine's fstab, address and root stay its administrator's at the console"}">${
+        n.config?.lock ? "Unlock" : "Lock system changes"}</button>
+    </div>`}
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
         to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
@@ -282,7 +291,8 @@ function nodeAdvancedSection(n, stale, inflight){
       <button type="button" class="danger" data-nd="retire"
         title="take it off every list. Its row and its history stay — an id is never reused">Remove</button>
     </div>`;
-  return docSection("nodes", "advanced", "Advanced", n.state === "draining" ? "draining" : "",
+  return docSection("nodes", "advanced", "Advanced",
+                    n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
                     body, {cls: n.state === "draining" ? "warn" : ""});
 }
 function nodeStale(n){
@@ -373,11 +383,16 @@ function nodeDrift(n){
 // runner, storage (mounts and stores), network. One record underneath —
 // Save keeps the whole draft — so the status line reads the same in both
 // editors: is there anything to press Apply for, and what.
+// System changes locked to the node's own console (the Lock under
+// Advanced): the sections still show desired beside reported, and Apply
+// says why it will not go. The rule is the server's; this is the courtesy.
+const LOCKED_WHY = "system changes on this node are locked to its own console — Unlock under Advanced";
 function nodeConfSections(n){
   const c = nodeDraft(n);
   const d = c.draft;
   const rep = n.reported || {};
   const busyNow = n.applying;
+  const locked = !!n.config?.lock;
   const mounts = d.mounts.map((m, i) => {
     const [st, cls] = mountState(m, rep.mounts);
     return `
@@ -475,8 +490,8 @@ function nodeConfSections(n){
           esc((failedFor("storage") || [status])[0])}</span>
         ${saveBtn}
         <button type="button" data-napply="storage" ${
-          busyNow || c.dirty || stale || !drift?.storage.length ? "disabled" : ""}
-          title="${stale ? esc(staleWhy(n))
+          busyNow || c.dirty || stale || locked || !drift?.storage.length ? "disabled" : ""}
+          title="${locked ? LOCKED_WHY : stale ? esc(staleWhy(n))
             : !drift ? "nothing is saved to apply"
             : !drift.storage.length ? "the node already has the mounts and stores saved here"
             : "mounts and stores: a system job on the node, through bb-sandbox"}">Apply storage</button>
@@ -522,19 +537,19 @@ function nodeConfSections(n){
         <span class="state ndconfstate${(failedFor("network") || [0, statusCls])[1] ? " " + (failedFor("network") || [0, statusCls])[1] : ""}">${
           esc((failedFor("network") || [status])[0])}</span>
         ${saveBtn}
-        <button type="button" data-napply="network" ${busyNow || c.dirty || stale || !netPend ? "disabled" : ""}
-          title="${stale ? esc(staleWhy(n))
+        <button type="button" data-napply="network" ${busyNow || c.dirty || stale || locked || !netPend ? "disabled" : ""}
+          title="${locked ? LOCKED_WHY : stale ? esc(staleWhy(n))
             : !drift ? "nothing is saved to apply"
             : !netPend ? "the node is already on the address saved here"
             : "re-address the node; it must dial back in within three minutes or it reverts"}">Apply network</button>
       </div>`;
-  const stStatus = busyNow?.what === "storage" ? "applying"
+  const stStatus = locked ? "locked" : busyNow?.what === "storage" ? "applying"
     : failedFor("storage") ? "apply failed"
     : c.dirty ? "unsaved" : drift?.storage.length ? `${drift.storage.length} to apply`
     : `${(rep.mounts || []).length} mount${(rep.mounts || []).length === 1 ? "" : "s"}`;
   const stCls = busyNow?.what === "storage" ? "note"
     : failedFor("storage") ? "bad" : c.dirty || drift?.storage.length ? "warn" : "";
-  const netStatus = busyNow?.what === "network" ? "applying"
+  const netStatus = locked ? "locked" : busyNow?.what === "network" ? "applying"
     : failedFor("network") ? "apply failed"
     : c.dirty ? "unsaved" : netPend && drift.network !== "unknown" ? "to apply"
     : net.addresses?.length ? net.addresses[0] : "";
@@ -554,8 +569,9 @@ function nodeConfSections(n){
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
       : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
-         provisioned as a sandbox — a container, or somebody's own machine — so its mounts
-         and its address are its own to change.</div>`}
+         provisioned as a sandbox — ${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"} — so its mounts
+         and its address are its own to change.${rep.system === "darwin"
+           ? " Its packages land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -663,7 +679,10 @@ function renderNodesInto(i){
     // and it is the one thing here that runs as root. From the phone's
     // answer, which carries every ask for this account; the server sends a
     // root ask to administrators only, so a user sees none.
-    const rootAsks = (typeof ph !== "undefined" && ph?.asks || []).filter(a => a.kind === "root" && a.node === n.id);
+    // Every node's, not only the picked one's: the tab shows one machine at
+    // a time and a request on another would otherwise wait unseen here
+    // (the row names its node). The bell carries them too.
+    const rootAsks = (typeof ph !== "undefined" && ph?.asks || []).filter(a => a.kind === "root");
     const askRows = rootAsks.map(a => `<div class="row ndask">
       <div class="grow"><div class="name">root: ${esc(a.why)}</div>
         <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>

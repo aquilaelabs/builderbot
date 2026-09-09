@@ -15,7 +15,7 @@
 # both ahead of where this used to sit.
 #
 # What that costs is a few seconds of a dashboard that does not know everything
-# yet: the SDK share is listed as a project until hook 41 marks it, git columns
+# yet: the package store is listed as a project until hook 41 marks it, git columns
 # are blank until 30, and Claude's version is unknown until 20. Every one of
 # those is a poll away from correcting itself, and none of them is worth the
 # whole page for.

@@ -324,7 +324,7 @@ def store_id(path, make=True):
     """A stable id for the store at `path`, from a marker inside it.
 
     Two machines mounting one share have no way to recognize each other by
-    path: this container reaches the SDK share through Unraid's FUSE layer
+    path: this container reaches the package store through Unraid's FUSE layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (192.168.1.10:/mnt/user/development/SDK). Neither string can be
     derived from the other without knowing it is Unraid, so pairing on the
@@ -380,7 +380,7 @@ def _seed_local():
     # This container's own packages store, reported like any node's — without
     # it the controller could not be recognized as sharing a store with a
     # node, so the "one install at a time across all of them" arbitration
-    # never engaged for the pair that most obviously needs it: the SDK share,
+    # never engaged for the pair that most obviously needs it: the package store,
     # mounted here and on the sandbox at once.
     root = sdk_root_of_controller()
     if root:
@@ -595,6 +595,38 @@ def node_state(principal, node_id, state):
         revoke_tokens(node_id)
     _touch(node_id, principal, "node-" + state, {})
     return {"ok": True}
+
+
+def node_lock(principal, node_id, lock):
+    """Lock a node's system changes to its own console: with the lock on,
+    Apply storage, Apply network and a root command are refused here, and
+    the machine's mounts, address and root are its administrator's at the
+    OS level only. For a node somebody manages by hand, or one whose fstab
+    and netplan are not the dashboard's to rewrite. The desired config is
+    kept and still shown beside what the node reports; only applying it
+    stops. The runner and a funnel are BuilderBot's own footprint and are
+    not covered."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node has a configuration plane to lock"}
+    conf = dict(n.get("config") or {})
+    if bool(conf.get("lock")) == bool(lock):
+        return {"ok": True, "lock": bool(lock)}
+    conf["lock"] = bool(lock)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-lock" if lock else "node-unlock", {})
+    return {"ok": True, "lock": bool(lock)}
+
+
+def node_locked(n):
+    """The sentence a locked node refuses with, or "" when it is not."""
+    if n and (n.get("config") or {}).get("lock"):
+        return (f"system changes on {n['name']} are locked to its own console — "
+                "its mounts, address and root are managed at the OS level; Unlock "
+                "under Advanced on the Nodes tab to change that")
+    return ""
 
 
 def node_revoke(principal, node_id):
@@ -882,7 +914,10 @@ def _census(c):
                 "total_mb": _mb(s.get("total_mb")),
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
-                "used_mb": _mb(s.get("used_mb"))}
+                "used_mb": _mb(s.get("used_mb")),
+                # The node's own directory in the store — linux-x86_64,
+                # darwin-arm64 (roadmap R19); "" from an agent before it.
+                "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
     # {name: version} from `bb sdk versions` on the node — the controller's
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does
@@ -1442,6 +1477,8 @@ def node_apply(principal, node_id, what):
         return {"error": f"the node is {n['state']} — system jobs go to an online node"}
     if (n.get("agent") or {}).get("revoked"):
         return {"error": "this node's credential was revoked"}
+    if node_locked(n):
+        return {"error": node_locked(n)}
     desired = (n.get("config") or {}).get("desired") or {}
     if not desired:
         return {"error": "nothing to apply — save a configuration first"}
@@ -1800,6 +1837,8 @@ def root_wait(principal, node_id, argv, why="", timeout=600):
                          "there is its owner's"}
     if n["state"] != "online":
         return {"error": f"the node is {n['state']} — a root command goes to an online node"}
+    if node_locked(n):
+        return {"error": node_locked(n)}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node — one at a time"}
     spec = {"apply": "root", "timeout": int(timeout),

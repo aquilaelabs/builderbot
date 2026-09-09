@@ -53,7 +53,7 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Claude Code** | `@anthropic-ai/claude-code`, auto-updated on every start |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
-| **Playwright** | CLI + the system deps; the browsers themselves install to the [SDK share](#sdks-live-outside-the-image) and appear at `/opt/pw-browsers` |
+| **Playwright** | CLI + the system deps; the browsers themselves install to the [package store](#sdks-live-outside-the-image) and appear at `/opt/pw-browsers` |
 | **Android, Java, Flutter, .NET…** | Not in the image: a node's, from its packages store — the JDK, the SDK, the emulator and the system images are recipes on the Tools tab, installed with the node picked |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
@@ -113,7 +113,7 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 The dashboard starts early in the boot, before the Claude Code update, any
 project's own `setup.sh` and the SDK/Playwright/Android hooks — so the web UI
 is reachable in seconds rather than after the whole start-up. For a few of
-those seconds it knows less than it will: the SDK share is listed as a project
+those seconds it knows less than it will: the package store is listed as a project
 until the hook that marks it runs, git columns are blank, Claude's version is
 unknown. All of that corrects itself on the next poll. `bb logs` now times each
 hook and prints how far into the boot it started, so "what is the wait" is a
@@ -542,6 +542,17 @@ only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
 
+**One store, scoped by platform.** A machine's packages live under
+`<store>/<os>-<arch>` — `linux-x86_64` for this container and the sandbox,
+`darwin-arm64` for a Mac — so one share can serve every node whatever it
+runs, and a Linux box's binaries never land on top of a Mac's. The Android
+system images, the same bytes on every host and tens of gigabytes, live once
+under `<store>/shared/android/system-images` with each platform's
+`android/system-images` a link to them. A store laid out flat, from before
+this, is moved into its scope directory once — a rename on the same
+filesystem, no copy — by the first machine that sees it at boot, and
+`bb sdk root` names the scoped directory.
+
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
 update, and the update is weekly, so a package baked into the image is
 re-downloaded forever: the Android emulator alone is 800MB, a system image
@@ -821,7 +832,7 @@ engine, with iPhone device profiles. For a native iOS build you need a Mac.
 
 **CI's toolchains are not these.** A workflow that runs `actions/setup-node`
 downloads its own copy into its runner's tool cache on the node, versioned by
-whatever that workflow asked for. The SDK share is the other thing entirely:
+whatever that workflow asked for. The package store is the other thing entirely:
 what you installed, versioned by when you installed it. They are kept apart on
 purpose — a workflow bumping a version must not move the ground under a Claude
 session.
@@ -991,7 +1002,13 @@ Pinned above that log, and not the Clear button's to dismiss, is what is waiting
 
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
-that answers nothing — either way the popup behind it carries the whole stamp. Every sidebar card collapses to its header with a click
+that answers nothing — either way the popup behind it carries the whole stamp,
+and behind one switch, a **getting-started guide** (a user's, or an
+administrator's with the machinery added) and BuilderBot's **changelog**. The
+panel opens itself twice in an account's life: on the guide the first time
+the account signs in, and on the changelog once after every image update,
+with a line under what is new since that account last looked. Closing it is
+the acknowledgement. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
@@ -1098,7 +1115,7 @@ lives in its body. The cards:
   content is not a fault to report.
   A directory holding a **`.bbignore`** file is not a project and is not
   listed — the container writes one into any path of its own that lands in
-  the projects share (the SDK share, if you map it inside the projects
+  the projects share (the package store, if you map it inside the projects
   folder rather than beside it), and you can create one by hand for anything else
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
@@ -1162,7 +1179,7 @@ lives in its body. The cards:
   the exception and stays synchronous — it is done before a spinner would
   render, and a row that flashes up for one frame is worse than none
 - **Tools**: **Additional packages**, which opens the installer as a tab —
-  every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
+  every toolchain on the [package store](#sdks-live-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
@@ -1472,7 +1489,13 @@ puts the previous config back on its own and says so when it reconnects.
 The job names the address and never the tool: the agent detects what owns
 the node's network — netplan, NetworkManager, systemd-networkd, wicked,
 `/etc/network/interfaces` or dhcpcd — and writes it through that one, and
-refuses, saying so, on a node with none of them. Nothing here is
+refuses, saying so, on a node with none of them. **Lock system changes**,
+under the node's Advanced section, keeps all of that at the machine's own
+console: while it is on, Apply storage, Apply network and a root command
+are refused here with the reason, the desired configuration stays on the
+record beside what the node reports, and the runner and a funnel — which
+are BuilderBot's own footprint — are unaffected. For a node whose fstab and
+address are managed by hand, or by something else. Nothing here is
 offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
@@ -1524,7 +1547,7 @@ pair.** An NFS export mounted by the controller and by a node is one
 directory, and installing into it from both at once is version skew nobody
 can debug — so a package job waits for any other on a machine that shares
 the store, in both directions. What identifies the pair is a marker file
-inside the store itself, not the mount: this container reaches the SDK share
+inside the store itself, not the mount: this container reaches the package store
 through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store — the generated
@@ -2437,14 +2460,14 @@ place nowhere, which is the case worth a look.
 That rule is a subtraction, and deliberately so: rather than recognising each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
-It matters because of how the SDK share is mapped here — beside the projects
+It matters because of how the package store is mapped here — beside the projects
 folder in the same development share, so the host's scanner walks it like
 anything else and one report grew nine thousand findings for a pile of
 downloaded toolchains.
 
 **The subtraction alone stopped being enough when `/workspace` stopped being
 the whole share.** Pointing it at the projects folder — a better arrangement,
-and the one that cut most of this noise — put the SDK share *outside* the
+and the one that cut most of this noise — put the package store *outside* the
 directory being subtracted from, and 267 trivy findings about vendored
 Flutter, Go and Android toolchains went straight to "unattributed": improving
 the layout regressed the classifier. So the wider question is asked as well.
@@ -3463,6 +3486,70 @@ cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```
 
+## A Mac as a node
+
+`vm/provision-macos.sh` enrolls a Mac as a **guest** node: one directory
+(`~/.builderbot`) and one launchd agent that runs as you at login, no root,
+nothing in `/etc`, and `--remove` takes exactly that away. It is written for
+the bash macOS ships, so it is its own file rather than a branch of the
+Linux provisioner. `--check` runs only the pre-flight: the command line
+tools, python3, Homebrew, Xcode, room, and whether the controller answers.
+
+What a Mac node is for is what only a Mac builds — iOS, macOS, the Apple
+half of a Flutter app. `--packages /Volumes/SDK` points its packages store at
+the same share the Linux nodes use, mounted over SMB; its packages land under
+`darwin-arm64` (or `darwin-x86_64`) in it and nobody else's are touched. The
+Tools tab shows the node as a Mac and offers what the catalog packages for
+`darwin` — the JDK, Node, Go and Flutter resolve their macOS downloads
+through the same recipes, and `xcodes` installs and switches Xcode versions
+from Apple's own downloads (Xcode itself is Apple's to serve and needs an
+Apple ID once). The agent's package manager there is Homebrew, its service
+launchd; the Nodes tab offers no Storage or Network, because a Mac's mounts
+and address are its owner's, and asks for no root. Sessions on the Mac
+itself need the projects share at `/workspace`, which on macOS is one line
+in `/etc/synthetic.conf` and an SMB mount, and are not set up by the script.
+
+Untested on a real Mac yet: the script and the agent's macOS path are
+written against Apple's documentation and the agent's own tests, and the
+first enrollment is the proof.
+
+## The companion app
+
+`android/` is an Android app that does most of what the dashboard does,
+minus the terminals: the projects and their notebooks (roadmap, bugs,
+briefing, artifacts, the repository's state), the approvals, the nodes, the
+accounts and your profile — in the shape an Android app takes, screens and
+a bottom bar, not the tabs a browser page needs. Sign in with the
+dashboard's address and your account; the credential is kept in the
+device's encrypted preferences.
+
+**Notifications.** A foreground service polls the dashboard on the interval
+you set and posts what the bell would show: a session asking for your phone
+or for root on a node arrives as a notification with **Approve** and
+**Deny** on it, answered without opening the app; changes a session has
+waiting, and a node whose agent is behind or out of window, arrive as notes
+that open the right screen. There is no push service — the phone reaches
+your BuilderBot directly, on your network or over your tailnet — so nothing
+needs an account with anybody, and nothing is kept in the repository.
+
+**Keeping it in step with the dashboard.** `android/api-surface.json` names
+every path the app calls and the fields it reads, and carries a number that
+`server.py`'s `APP_API` and the app's `TARGET_API` both carry. The dashboard
+suite's `appapi.mjs` holds the running server to that file, so a change that
+renames a field or a path the app reads fails the suite until the app is
+updated with it; and the app compares the dashboard's number to its own on
+the More screen and says when it is behind, naming the newer APK in
+BuilderBot's own Artifacts tab. Moving the surface means moving all three
+together: the file, the constant, the app.
+
+**Building it.** `.github/workflows/android-app.yml` builds the debug APK on
+a node's runner — the JDK and the Android SDK come from the node's packages
+store, the same environment every `bb` job gets — on a push to `main` that
+touches `android/`, names it by `bb version --file`, drops it into
+BuilderBot's `dist/` where the runner's machine mounts the projects share,
+and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
+assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
+
 ## Layout
 
 ```
@@ -3503,6 +3590,8 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+vm/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 vm/provision.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 vm/unraid-domain.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
 config/skel/                     home directory skeleton
