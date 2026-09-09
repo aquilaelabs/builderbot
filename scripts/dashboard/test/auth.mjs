@@ -964,6 +964,22 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      `a tap on the ? shows its tooltip without a hover (${tipped.slice(0, 40)})`);
   await page.click('.profiletab h4');
   ok(!(await page.$('.profiletab .help.on')), '...and a tap elsewhere closes it');
+  // ...and on a phone the box stays on the screen: it is placed in viewport
+  // coordinates and pushed inside the edge, not centred on an icon at it.
+  await page.setViewportSize({ width: 393, height: 851 });
+  await page.evaluate(() => setView('terminal'));     // a phone shows one column at a time
+  await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
+  await page.click('.profiletab .help');
+  await page.waitForTimeout(100);
+  const fit = await page.$eval('.profiletab .help.on', el => {
+    const cs = getComputedStyle(el, '::after');
+    const x = parseFloat(el.style.getPropertyValue('--tipx'));
+    return { x, right: x + parseFloat(cs.width), pos: cs.position, vw: innerWidth };
+  });
+  ok(fit.pos === 'fixed' && fit.x >= 0 && fit.right <= fit.vw,
+     `on a phone the tooltip is placed inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
+  await page.click('.profiletab h4');
+  await page.setViewportSize({ width: 1280, height: 800 });
   // Made here, removed here: users.json is not reset between files.
   await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
