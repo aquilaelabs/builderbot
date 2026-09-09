@@ -523,6 +523,14 @@ Then what differs from Unraid's placeholder, each for a reason:
   192.168.1.101(sec=sys,rw,all_squash,anonuid=99,anongid=100)
   ```
 
+  The rule names the VM's address, so the address and the rule move
+  together: change the rule first, then the address. Done the other way
+  round the host refuses the mount ("access denied by server"), `nofail`
+  lets the boot go on without it, and every project bound to the node loses
+  its Claude button — the node's row and the button say what the server
+  said. Apply network on the Nodes tab asks each server first and refuses
+  an address the exports do not admit.
+
   `all_squash` with `anonuid=99,anongid=100` is the part that matters beyond
   access control. BuilderBot runs as uid 99 / gid 100, which is what the array
   files already are; the VM's own user is uid 1000 and containers inside it

@@ -60,6 +60,7 @@ import contextlib
 import glob
 import hashlib
 import http.client
+import ipaddress
 import json
 import os
 import platform
@@ -91,7 +92,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.38"
+AGENT_VERSION = "0.4.39"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -1123,7 +1124,86 @@ def mounts_now():
         got = json.loads(out)
     except ValueError:
         return []
-    return [m for m in got if isinstance(m, dict)] if isinstance(got, list) else []
+    got = [m for m in got if isinstance(m, dict)] if isinstance(got, list) else []
+    # A mount fstab has and the kernel does not is tried once, here, and
+    # the server's sentence kept beside it: "not mounted" on the row said
+    # nothing about WHY, and the why was the whole story when the sandbox
+    # moved to an address the host's export did not name — the mount was
+    # refused with "access denied by server", nofail let the boot go on,
+    # and nothing anywhere repeated the refusal. Root only: mount is.
+    if os.geteuid() == 0:
+        for m in got:
+            if m.get("mounted") or not str(m.get("path") or "").startswith("/"):
+                continue
+            err = mount_try(m["path"])
+            if err:
+                m["error"] = err
+            else:
+                m["mounted"] = True
+                m["real"] = m.get("source") or ""
+    return got
+
+
+def mount_try(path):
+    """`mount PATH` from fstab, and what it said when it failed — the last
+    line, which for NFS is the server's own reason. "" on success. Half a
+    minute at most: an NFS server that is down keeps mount retrying in the
+    foreground for two, and a census must not wait that out."""
+    try:
+        p = subprocess.run(["mount", path], capture_output=True, text=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired:
+        return "mount gave no answer in 30s — the server is not reachable"
+    except OSError as e:
+        return str(e)[:200]
+    if p.returncode == 0:
+        return ""
+    lines = [ln.strip() for ln in (p.stderr or p.stdout).splitlines() if ln.strip()]
+    return (lines[-1] if lines else f"mount exited {p.returncode}")[:200]
+
+
+def _client_allows(client, addr):
+    """Whether one client entry of an NFS export ('*', a CIDR, an address,
+    a hostname) admits addr. A name it cannot resolve is not a refusal."""
+    c = client.strip()
+    if not c or c.startswith("*") or c == "(everyone)":
+        return True
+    try:
+        ip = ipaddress.ip_address(addr.split("/")[0])
+        if "/" in c:
+            return ip in ipaddress.ip_network(c, strict=False)
+        return ipaddress.ip_address(c) == ip
+    except ValueError:
+        return True
+
+
+def export_gaps(addr):
+    """The NFS mounts in fstab whose server exports them to named clients
+    that do not include addr — the address this node is about to move to.
+    From `showmount -e` on each server; a server that does not answer, or
+    a machine without showmount, contributes nothing rather than a refusal.
+    The Unraid rule the docs prescribe names exactly one address, so a
+    node that moves without the rule moving loses every share at once."""
+    if not addr or not _have("showmount"):
+        return []
+    gaps, seen = [], {}
+    for m in mounts_now():
+        if not str(m.get("type") or "").startswith("nfs"):
+            continue
+        host, _, exp = str(m.get("source") or "").partition(":")
+        if not host or not exp.startswith("/"):
+            continue
+        if host not in seen:
+            seen[host] = _run(["showmount", "-e", "--no-headers", host], timeout=15)
+        for line in seen[host].splitlines():
+            parts = line.split()
+            if len(parts) < 2 or parts[0].startswith("Export list"):
+                continue
+            path, clients = parts[0], " ".join(parts[1:])
+            if exp != path and not exp.startswith(path.rstrip("/") + "/"):
+                continue
+            if not any(_client_allows(c, addr) for c in clients.split(",")):
+                gaps.append(f"{host} exports {path} to {clients}, not to {addr.split('/')[0]}")
+    return gaps
 
 
 def network_now():
@@ -3541,6 +3621,18 @@ class Agent:
         why = backend.ready(iface)
         if why:
             job.say(f"refused: {why}\n")
+            return "failed", 77
+        # The one check that would have saved the operator's evening: the
+        # host's NFS exports name this node's address, so a node that moves
+        # loses its mounts unless the rule moves first — and the mount
+        # fails quietly under nofail, at the next boot, on a share the
+        # sessions need. Asked of the servers before anything changes.
+        gaps = export_gaps(addr) if mode == "static" else []
+        if gaps:
+            job.say("refused: the host's NFS exports admit this node's current address and not "
+                    "the new one, so the shares would not mount after the move. Change the rule "
+                    "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
+                    "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
         desired = backend.render(iface, mode, addr, gw, dns)
         before = backend.snapshot(iface)

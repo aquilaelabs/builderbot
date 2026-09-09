@@ -138,7 +138,9 @@ function mountState(m, reported){
   const r = (reported || []).find(x => x.path === m.path);
   if (!r) return ["not applied yet", "warn"];
   const diff = r.source !== m.source || !!r.ro !== !!m.ro;
-  if (!r.mounted) return [`not mounted${r.source ? ` — fstab has ${r.source}` : ""}`, "bad"];
+  if (!r.mounted) return [r.error
+    ? `not mounted: ${r.error}${/access denied/i.test(r.error) ? " — the host's export rule names another address" : ""}`
+    : `not mounted${r.source ? ` — fstab has ${r.source}` : ""}`, "bad"];
   const from = r.real && r.real !== r.source ? `mounted from ${r.real} (fstab says ${r.source})`
                                              : `mounted${r.ro ? ", read-only" : ""}`;
   return [diff ? `${from} — applying will change it` : from, diff ? "warn" : ""];
@@ -221,7 +223,10 @@ function nodeSessionsSection(n){
       A project bound to this node keeps a dead Claude button until this half is up.</div>`;
   } else {
     const gaps = [];
-    if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
+    const wsErr = (n.reported?.mounts || []).find(m => m.path === "/workspace")?.error || "";
+    if (!se.workspace && wsErr) gaps.push(`the projects share is not mounted at /workspace: ${wsErr}${
+      /access denied/i.test(wsErr) ? " — the host's NFS export names another address; change the rule there" : ""}`);
+    else if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
       ? `the projects share is not mounted at /workspace yet — this machine came up ${se.up_s} seconds ago, and a network mount lands a moment after boot`
       : "the projects share is not mounted at /workspace — add it under Storage");
     else if (se.writable === false) gaps.push("the projects share is mounted read-only — untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");

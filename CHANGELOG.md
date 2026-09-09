@@ -338,3 +338,4 @@
 - A Claude session stops running commands while BuilderBot is restarting after an update, or while its project's CLAUDE.md is from another compatibility window; a block merely behind inside the window keeps working and the session is told once that an update is waiting (099d997, 224691c)
 - The health meters on a node's row line up: every bar is the same width, with the values in one column (b096be8)
 - A node that reboots, or whose network mount is still landing after a boot, no longer dead-ends its projects' Claude buttons on 'unbind the node': the button says it is waiting for the node and comes back on its own within seconds of the share mounting (825cacb)
+- A node's row and its projects' Claude button say why a share did not mount, in the server's own words — an NFS export that names the node's old address is called out with the fix on the host — and Apply network refuses an address the host's exports do not admit, before anything moves (5068e25)

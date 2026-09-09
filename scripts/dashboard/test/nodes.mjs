@@ -1022,6 +1022,19 @@ ok(list[0].id === 'local',
   let why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
   ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
      `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
+  // A mount the server refused is neither: the agent tried it and kept
+  // what the server said, and the fix is the export rule on the host —
+  // which is what actually happened when the sandbox moved to an address
+  // the rule did not name.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, session: SE, mounts: [...CENSUS.mounts,
+      { path: '/workspace', source: 'nas:/mnt/user/development/projects', type: 'nfs', ro: false, mounted: false, real: '',
+        error: 'access denied by server while mounting nas:/mnt/user/development/projects' }] },
+      version: shipped.version, digest: shipped.digest }) });
+  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
+  ok(/access denied by server/.test(why) && /NFS export names another address/.test(why) && !/came up/.test(why),
+     `a mount the server refused says what the server said and points at the export rule, boot or no boot (${why.slice(0, 60)})`);
   await sessionCensus({ ...SE, up_s: 5000 });
   why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
   ok(/does not mount the projects share/.test(why) && /add the mount/.test(why) && /Unbind the node/.test(why),
