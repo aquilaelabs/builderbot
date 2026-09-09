@@ -700,11 +700,25 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
         let r = gate({});
         ok(r.code === 0, `with the controller up and the block current, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
+        // Behind INSIDE the window: the call goes through, and the prompt
+        // hook says so once — the window's promise is that drift stops nothing.
         writeFileSync(`${gt}/CLAUDE.md`, tpl.replace('Before anything else in a session:', 'Before anything else in a session, once:') + '\n## Notes\n\nours.\n');
         fresh();
         r = gate({});
-        ok(r.code === 2 && /behind the one BuilderBot now ships/.test(r.err) && /operator updates it/.test(r.err),
-           `a block behind the shipped template refuses the call and says the operator updates it (${r.code}: ${r.err.slice(0, 50)})`);
+        ok(r.code === 0, `a block behind inside the window lets the call through (${r.code} ${r.err.slice(0, 40)})`);
+        const said = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
+          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
+        ok(/behind the one the container now ships/.test(said) && /keep working/.test(said),
+           '...and the next prompt carries a warning that an update is waiting');
+        const again = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
+          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
+        ok(again.trim() === '', '...once, not on every prompt');
+        // From ANOTHER window: refused until the operator updates it.
+        writeFileSync(`${gt}/CLAUDE.md`, tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+/, 'BUILDERBOT:ENV:WINDOW 0.1') + '\n## Notes\n\nours.\n');
+        fresh();
+        r = gate({});
+        ok(r.code === 2 && /another compatibility window/.test(r.err) && /operator updates it/.test(r.err),
+           `a block from another window refuses the call and says the operator updates it (${r.code}: ${r.err.slice(0, 50)})`);
         writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
         r = gate({});
         ok(r.code === 0, '...and the first call after the update goes through, with no wait — a refusal is never cached');

@@ -234,9 +234,9 @@ claude_scope() {
     here="${here:-$WORKSPACE/$proj}"
     # Four hooks ride in the same file. bb-gate refuses EVERY tool call
     # while the controller is not answering (restarting after an update) or
-    # this project's CLAUDE.md block is behind the one the container ships,
-    # until a person has updated it — a session outlives an update, and
-    # must not carry on briefed by a BuilderBot that has since moved.
+    # this project's CLAUDE.md block is from another compatibility window,
+    # until a person has updated it — and, on a prompt, warns once when the
+    # block is merely behind inside the window, which stops nothing.
     # bb-work-note records what this session
     # touches and says when another has the same file open — it does NOT
     # refuse, because each session is in a worktree of its own and two people
@@ -274,7 +274,9 @@ claude_scope() {
                         command: "\($note) \($proj) \($who)"}]}],
               UserPromptSubmit: [
               {hooks: [{type: "command",
-                        command: "\($relay) \($proj) \($who)"}]}],
+                        command: "\($relay) \($proj) \($who)"},
+                       {type: "command",
+                        command: "\($gate) --prompt \($proj) \($who)"}]}],
               Stop: [
               {hooks: [{type: "command",
                         command: "\($check) \($proj) \($who)", timeout: 3600}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
