@@ -834,6 +834,31 @@ ok(list[0].id === 'local',
      `...and says how many changes are waiting and what they are (${
        await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
 
+  // ---- locked to the console: the dashboard applies nothing ------------------
+  // The lock is the operator saying this machine's fstab, address and root
+  // are managed at the OS level: Apply is refused with the reason, the
+  // buttons say so, and Unlock puts it back. The rule is the server's.
+  {
+    const lk = await napi('/api/v1/nodes', { action: 'lock', id: minted.id });
+    ok(lk.ok && lk.lock === true, 'Lock system changes marks the node locked');
+    const ref = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+    ok(/locked to its own console/.test(ref.error || ''),
+       `...and Apply storage is refused with the reason (${(ref.error || 'no error').slice(0, 70)})`);
+    ok(/locked to its own console/.test((await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'network' })).error || ''),
+       '...and Apply network with it');
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => /locked to its own console/.test(
+      document.querySelector(sel + ' [data-napply="storage"]')?.title || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(ROW + ' [data-napply="storage"]', b => b.disabled)
+       && await page.$eval(ROW + ' [data-napply="network"]', b => b.disabled)
+       && await page.$eval(ROW + ' [data-nd="unlock"]', b => /Unlock/.test(b.textContent)),
+       '...the tab ghosts both Apply buttons, says why, and offers Unlock under Advanced');
+    const ul = await napi('/api/v1/nodes', { action: 'unlock', id: minted.id });
+    ok(ul.ok && ul.lock === false, 'Unlock puts it back');
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => !!document.querySelector(sel + ' [data-nd="lock"]'), ROW, { timeout: 10000 });
+  }
+
   // ---- an apply that failed says so, where the button is -------------------
   // A failed apply leaves the drift exactly as it was, so the section went
   // back to "1 change to apply" and mentioned the attempt nowhere — which

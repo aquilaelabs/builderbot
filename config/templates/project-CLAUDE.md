@@ -350,6 +350,8 @@ is). On **Allow** the node runs that command as root and hands you the
 output, on **Deny** you are told no. A second command is a second question.
 It works only on a node provisioned as a sandbox — somebody's own machine is
 not yours to run root on — and a project with no node has nothing to ask.
+A node whose system changes are locked to its own console refuses the ask
+outright and says so; that is the operator's decision, not a fault.
 Write the reason you would want to read, and ask for the smallest command
 that does the job, not a shell.
 

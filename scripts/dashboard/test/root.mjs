@@ -41,6 +41,8 @@ ok(/has no node/.test((await api('/api/phone', { action: 'ask', kind: 'root', wh
    'a project with no node has no machine to ask for root on, and is told so');
 ok((await api('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: [], project: 'alpha' })).body.error,
    '...and an ask with nothing to run is refused');
+ok(/empty argument/.test((await api('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: ['mv', 'a', ''], project: 'alpha' })).body.error || ''),
+   '...and one with an empty argument, which the node would drop — the command shown must be the command run');
 
 // ---- a second account, of the kind that is not asked ---------------------------
 execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'visitor', '--role', 'user'],
@@ -68,6 +70,8 @@ ok(!(await api('/api/phone', undefined, ops)).body.asks.some(a => a.id === asked
    "another administrator is not asked about an administrator's own request — it went to the session that asked");
 ok((await api('/api/phone', { action: 'allow', id: asked.body.id }, other)).body.error,
    '...and the user cannot answer it, either way');
+ok((await api('/api/phone', { action: 'outcome', id: asked.body.id }, other)).status === 403,
+   "...nor read its outcome by id — a root command's output on a shared machine is not a user's to browse");
 
 // ---- where it shows: the Nodes tab and the bell --------------------------------
 await page.evaluate(() => openNodesTab());
@@ -93,7 +97,14 @@ await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
 // ---- Allow runs that one command on the node, and the session gets the output ------
 await page.click('.ndask [data-rallow]');
 await page.waitForFunction(() => !document.querySelector('.ndask'), null, { timeout: 30000 });
-const out = await api('/api/phone', { action: 'outcome', id: asked.body.id });
+// Allow answers at once and the command runs on a thread, so the outcome is
+// polled the way the session polls it.
+let out;
+for (let i = 0; i < 80; i++){
+  out = await api('/api/phone', { action: 'outcome', id: asked.body.id });
+  if (out.body.state === 'done') break;
+  await new Promise(r => setTimeout(r, 250));
+}
 ok(out.body.state === 'done' && /root-ran-here/.test(out.body.out || ''),
    `Allow runs it on the node as a system job and the output comes back (${out.body.state}: ${(out.body.out || '').trim().split('\n').slice(-2).join(' / ')})`);
 ok(/^# root on this node, allowed by test: load the binder module/.test(out.body.out || ''),
@@ -102,6 +113,15 @@ const jobs = (await api('/api/v1/jobs?n=10')).body.jobs || [];
 const sysjob = jobs.find(j => j.type === 'system' && j.node === sandbox.id);
 ok(sysjob && sysjob.state === 'succeeded',
    `the run is a system job on that node, finished (${sysjob?.state || 'no system job found'})`);
+
+// ---- a node locked to its console refuses the ask itself -----------------------
+{
+  await api('/api/v1/nodes', { action: 'lock', id: sandbox.id });
+  const lk = await api('/api/phone', { action: 'ask', kind: 'root', why: 'while locked', cmd: ['true'], project: 'alpha' });
+  ok(/locked to its own console/.test(lk.body.error || ''),
+     `a node whose system changes are locked refuses the ask outright, with the reason (${(lk.body.error || '').slice(0, 60)})`);
+  await api('/api/v1/nodes', { action: 'unlock', id: sandbox.id });
+}
 
 // ---- Deny says no, once ------------------------------------------------------
 const denied = await api('/api/phone', { action: 'ask', kind: 'root', why: 'reboot it',
@@ -144,6 +164,9 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const beta = { Authorization: 'Bearer ' + mint('beta'), 'Content-Type': 'application/json' };
   const sess = await api('/api/phone', { action: 'ask', kind: 'root', why: 'from a session', cmd: ['true'] }, alpha);
   ok(sess.status === 200 && sess.body.id > 0, `a session token may ask for root on its project's node (${sess.status})`);
+  const mine = (await api('/api/phone', undefined, alpha)).body.asks || [];
+  ok(mine.some(a => a.id === sess.body.id) && !mine.some(a => a.project !== 'alpha'),
+     "...and reading the list from a session shows its own project's waiting requests and no other's — what bb root prints");
   ok((await api('/api/phone', { action: 'allow', id: sess.body.id }, alpha)).status === 403,
      '...but may not answer its own question');
   ok((await api('/api/phone', { action: 'outcome', id: sess.body.id }, beta)).body.error,

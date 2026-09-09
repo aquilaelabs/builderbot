@@ -1090,7 +1090,12 @@ sandbox is a permissions design of its own, not written). Allow queues the job w
 its spec so its log is the record, and only a sandbox node takes it — the
 agent refuses it without the stamp like storage and network. It is not
 sudo: there is no second command without a second question, and nothing
-pretends. The controller offers system jobs only to an
+pretends. A node can be LOCKED (`config.lock`, the Lock under Advanced,
+`nodes.node_lock`): while it is, `node_apply` for storage and network and
+`root_wait` refuse with `node_locked`'s sentence, a root ask is refused at
+ask time, and the tab ghosts both Apply buttons saying why — for a machine
+whose fstab, address and root are managed at its own console. The runner
+and funnel jobs are not covered. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
 agent refuses them without bb-sandbox whatever the row says. On the Nodes
 tab the row grows a *storage & network* fold: the editor is a draft that

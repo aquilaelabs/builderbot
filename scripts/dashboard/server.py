@@ -3937,6 +3937,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
             if got is None:
                 return self._json({"error": "no such project"}, 404)
+            if isinstance(got, dict):
+                return self._json(got, 413)
             fname, data = got
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
@@ -4377,6 +4379,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_state(self._principal(), nid,
                                  {"drain": "draining", "online": "online",
                                   "retire": "retired"}[act])
+        elif act in ("lock", "unlock"):
+            # System changes locked to the node's own console: Apply
+            # storage, Apply network and a root command refused while on.
+            r = nodes.node_lock(self._principal(), nid, act == "lock")
         elif act == "enroll":
             r = nodes.enroll_mint(self._principal(), field(req, "name"),
                                   req.get("capabilities"),
@@ -5252,7 +5258,8 @@ class Handler(BaseHTTPRequestHandler):
         field with it would be a confident wrong answer — the worst kind.
         """
         out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
-                            admin=users.is_admin(self._who()))
+                            admin=users.is_admin(self._who()),
+                            project=(self._who() or {}).get("session") or "")
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -5577,6 +5584,13 @@ class Handler(BaseHTTPRequestHandler):
         # A session's token may reach none of them.
         if field(req, "action") not in ("ask", "outcome") and (self._who() or {}).get("session"):
             return self._json({"error": "a session asks; a person answers"}, 403)
+        # The outcome of a request is the asking session's to read (scoped
+        # to its project below) and an administrator's; not any account's
+        # by id, since the output of a root command on a shared machine is
+        # not a user's to browse.
+        if field(req, "action") == "outcome" and not (self._who() or {}).get("session") \
+                and not users.is_admin(self._who()):
+            return self._json({"error": "an outcome is read by the session that asked, or an administrator"}, 403)
         act = field(req, "action")
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
@@ -5618,7 +5632,8 @@ class Handler(BaseHTTPRequestHandler):
                                    pn["name"] if pn else "", proj,
                                    bool(((pn or {}).get("reported") or {}).get("sandbox")),
                                    asker_uid=asker_uid, asker_name=asker_name,
-                                   asker_admin=users.is_admin(acct))
+                                   asker_admin=users.is_admin(acct),
+                                   locked=nodes.node_locked(pn) if pn else "")
             else:
                 r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
                               pn["name"] if pn else "", proj, asker=asker_name)

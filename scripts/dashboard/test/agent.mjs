@@ -1936,7 +1936,7 @@ want = {'network': {'mode': 'static', 'address': '10.2.2.5/24', 'gateway': '10.2
 nd_backend = m.net_backend().name
 a.hello = lambda: (200, {})
 j1 = J(); r1 = a._apply_network(j1, want)
-nd_file = os.path.join(nd, '90-builderbot-eth0.network')
+nd_file = os.path.join(nd, '00-builderbot-eth0.network')
 nd_text = open(nd_file).read()
 a.hello = lambda: (503, {})
 j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})

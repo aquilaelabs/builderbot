@@ -2574,14 +2574,19 @@ body.dragging .tab .lbl{cursor:grabbing}
          #27). Above the strip like the batch note, because it is about the
          notebook and not one tab of it: the modal it opens lists every tab's. -->
     <div class="field mdrift" id="nbPending" hidden></div>
+    <!-- In the order a project is worked: what to know (Briefing), what to
+         do (Roadmap), what is broken (Bugs), the code as it stands (Git),
+         what it produced (Artifacts, with the version), whether it holds
+         (Tests), and what a scanner says about it (Analysis) — the last
+         because it is read least, and only when a report exists. -->
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
-      <button type="button" data-v="analysis">Analysis</button>
+      <button type="button" data-v="git">Git</button>
       <button type="button" data-v="artifacts">Artifacts</button>
       <button type="button" data-v="tests">Tests</button>
-      <button type="button" data-v="git">Git</button>
+      <button type="button" data-v="analysis">Analysis</button>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's

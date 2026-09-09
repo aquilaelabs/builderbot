@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.33"
+AGENT_VERSION = "0.4.34"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -1106,7 +1106,9 @@ def pkg_backend():
         return "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
     if _have(RPM_BIN) and _have(ZYPPER_BIN) and not _have(DNF_BIN):
         return "zypper", [RPM_BIN, "-q"], [ZYPPER_BIN, "-n", "-q", "install", "-y"]
-    if _have(RPM_BIN):
+    if _have(RPM_BIN) and _have(DNF_BIN):
+        # Both, not rpm alone: rpm is an ordinary package on Arch and Alpine
+        # (rpm-tools), and a node with it and no dnf is not a dnf machine.
         return "dnf", [RPM_BIN, "-q"], [DNF_BIN, "-y", "-q", "install"]
     if _have(PACMAN_BIN):
         return "pacman", [PACMAN_BIN, "-Q"], [PACMAN_BIN, "-S", "--noconfirm", "--needed"]
@@ -1199,7 +1201,15 @@ class NetworkManagerNet:
 
     @staticmethod
     def conn(iface):
-        return _run([NMCLI_BIN, "-t", "-g", "GENERAL.CONNECTION", "device", "show", iface])
+        # By exit code, not by output: for a device that does not exist
+        # nmcli prints "Error: Device 'x' not found." and exits 10, and
+        # _run would hand that sentence back as the connection's name.
+        try:
+            p = subprocess.run([NMCLI_BIN, "-t", "-g", "GENERAL.CONNECTION", "device", "show", iface],
+                               capture_output=True, text=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return p.stdout.strip() if p.returncode == 0 else ""
 
     def ready(self, iface):
         if not self.conn(iface):
@@ -1307,7 +1317,11 @@ class NetworkdNet(FilesNet):
 
     @staticmethod
     def paths(iface):
-        return [os.path.join(NETWORKD_DIR, f"90-builderbot-{iface}.network")]
+        # networkd applies the FIRST .network file, in lexical order, that
+        # matches a device and ignores the rest; the distribution's own sit
+        # at 10- and 20-, so ours sorts ahead of them or it is never read
+        # — and the job would then report success with the old address.
+        return [os.path.join(NETWORKD_DIR, f"00-builderbot-{iface}.network")]
 
     def render(self, iface, mode, addr, gw, dns):
         lines = ["[Match]", f"Name={iface}", "", "[Network]"]
@@ -1331,6 +1345,7 @@ class IfupdownNet(FilesNet):
     in that file is replaced with ours (the rest of the file is kept as it
     is), then the interface is cycled with ifdown/ifup."""
     name = "ifupdown"
+    MARK = "# BuilderBot: this interface, as the controller set it"
 
     @staticmethod
     def available():
@@ -1346,6 +1361,8 @@ class IfupdownNet(FilesNet):
         line and its `iface` block up to the next top-level keyword."""
         out, skipping = [], False
         for line in text.splitlines():
+            if line.strip() == IfupdownNet.MARK:
+                continue                  # ours from last time: rendered again below
             w = line.split()
             top = bool(w) and not line[0].isspace()
             if top and w[0] in ("iface",) and len(w) > 1 and w[1] == iface:
@@ -1368,7 +1385,7 @@ class IfupdownNet(FilesNet):
                 base = self._without(f.read(), iface)
         except OSError:
             base = ""
-        lines = ["# BuilderBot: this interface, as the controller set it", f"auto {iface}"]
+        lines = [self.MARK, f"auto {iface}"]
         if mode == "dhcp":
             lines.append(f"iface {iface} inet dhcp")
         else:
@@ -1451,7 +1468,7 @@ class DhcpcdNet(FilesNet):
             text = ""
         out, skipping = [], False
         for line in text.splitlines():
-            if line.startswith(self.MARK + iface):
+            if line.rstrip() == self.MARK + iface:
                 skipping = True
                 continue
             if skipping and line.startswith(self.MARK + "end"):
@@ -1510,7 +1527,7 @@ def distro_now():
     d = {"id": "", "family": "", "pretty": "", "pkg": "", "network": "", "init": ""}
     like = ""
     try:
-        with open(OS_RELEASE) as f:
+        with open(OS_RELEASE, errors="replace") as f:
             for line in f:
                 k, _, v = line.strip().partition("=")
                 v = v.strip().strip('"')
@@ -2941,8 +2958,15 @@ class Agent:
             if not query:
                 missing.append(x)          # emerge: no query, --noreplace skips the installed
                 continue
-            p = _run(query + [x])
-            if not p or (fam in ("dnf", "zypper") and "not installed" in p):
+            # By exit code, never by output: dpkg -s and pacman -Q both print
+            # a sentence on stderr for a missing package, which read as
+            # "installed" when the text was the test, and rpm -q prints
+            # "not installed" on stdout — one rule covers all of them.
+            try:
+                p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
+                if p.returncode != 0:
+                    missing.append(x)
+            except (OSError, subprocess.SubprocessError):
                 missing.append(x)
         if not missing:
             return True
@@ -2954,8 +2978,10 @@ class Agent:
         job.say(f"== system packages for {name}: {' '.join(missing)}\n")
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
         try:
-            p = subprocess.run([*install, *missing], env=env,
-                               capture_output=True, text=True, timeout=900, check=False)
+            # emerge builds from source: fifteen minutes is a package
+            # manager's clock, not a compiler's.
+            p = subprocess.run([*install, *missing], env=env, capture_output=True, text=True,
+                               timeout=4 * 3600 if fam == "emerge" else 900, check=False)
         except (OSError, subprocess.SubprocessError) as e:
             job.say(f"{install[0]}: {e}\n")
             return False
@@ -3036,8 +3062,49 @@ class Agent:
             timeout = max(1, min(int(cfg.get("timeout") or 600), 3600))
         except (TypeError, ValueError):
             timeout = 600
-        rc = self._sh(job, argv, timeout=timeout)
-        return ("succeeded" if rc == 0 else "failed"), rc
+        # The same shape as Job.exec — its own process group, output pumped
+        # as it comes, the log posted on a clock so a cancel can arrive and
+        # land — minus the drop to the enrolled account, which is the point.
+        # Not _sh: that blocks until the command ends with nothing posted,
+        # so a cancel had nothing to reach and a timeout killed only the
+        # direct child.
+        job.say("$ " + " ".join(argv) + "\n")
+        job.flush()
+        try:
+            p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+        except OSError as e:
+            job.say(f"could not start {argv[0]}: {e}\n")
+            return "failed", 126
+        job.proc = p
+        if job.canceled:
+            job._kill(p)
+
+        def pump():
+            try:
+                for line in p.stdout:
+                    job.say(line.decode("utf-8", "replace"))
+            except (OSError, ValueError):
+                pass
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        deadline, killed = time.time() + timeout, False
+        while reader.is_alive():
+            reader.join(0.5)
+            if job.pending:
+                job.flush()
+            if time.time() > deadline and not killed:
+                job.say(f"timed out after {timeout}s — killing it\n")
+                job._kill(p)
+                killed = True
+        p.wait()
+        job.proc = None
+        if job.canceled:
+            job.say("stopped\n")
+            return "canceled", 130
+        if killed:
+            return "failed", 124
+        return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 
     def _apply_storage(self, job, cfg):
         """Mounts as a diff against what bb-sandbox has — remove what is no

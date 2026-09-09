@@ -1472,7 +1472,13 @@ puts the previous config back on its own and says so when it reconnects.
 The job names the address and never the tool: the agent detects what owns
 the node's network — netplan, NetworkManager, systemd-networkd, wicked,
 `/etc/network/interfaces` or dhcpcd — and writes it through that one, and
-refuses, saying so, on a node with none of them. Nothing here is
+refuses, saying so, on a node with none of them. **Lock system changes**,
+under the node's Advanced section, keeps all of that at the machine's own
+console: while it is on, Apply storage, Apply network and a root command
+are refused here with the reason, the desired configuration stays on the
+record beside what the node reports, and the runner and a funnel — which
+are BuilderBot's own footprint — are unaffected. For a node whose fstab and
+address are managed by hand, or by something else. Nothing here is
 offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
