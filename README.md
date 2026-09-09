@@ -548,10 +548,8 @@ share is recognized as sharing it, and installs are arbitrated across both.
 runs, and a Linux box's binaries never land on top of a Mac's. The Android
 system images, the same bytes on every host and tens of gigabytes, live once
 under `<store>/shared/android/system-images` with each platform's
-`android/system-images` a link to them. A store laid out flat, from before
-this, is moved into its scope directory once — a rename on the same
-filesystem, no copy — by the first machine that sees it at boot, and
-`bb sdk root` names the scoped directory.
+`android/system-images` a link to them, and `bb sdk root` names the scoped
+directory.
 
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
 update, and the update is weekly, so a package baked into the image is

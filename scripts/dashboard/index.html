@@ -1266,6 +1266,15 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A question somebody is blocked on. Bordered rather than merely spaced,
    because a question on a dashboard is easy to scroll past. */
 .row.phask{border-left:2px solid var(--accent)}
+/* The code base's language bar: one strip, a segment per language, and a
+   legend that wraps. Widths are percentages of the code, so the strip is
+   always full when there is any code at all. */
+.cbbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line);margin:8px 0 10px}
+.cbbar span{display:block;height:100%}
+.cblegend{display:flex;flex-wrap:wrap;gap:4px 16px;font:var(--f-ui)}
+.cblegend .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.cblegend .n{color:var(--dim);font:var(--f-note);margin-left:4px}
+.cbfoot{margin-top:8px}
 .row.ndask{border-left:2px solid var(--bad)}
 .row.ndask .name{color:var(--bad)}
 /* Adding goes at the top: the control that adds to a view is the first band
@@ -10461,7 +10470,9 @@ $("todoRevert").onclick = revertNotebook;
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
     if (v === "tests" && !tests) loadTests();
-    if (v === "briefing" && !ruleData) loadRules();
+    // The rules once; the code base every time the view is shown, since a
+    // commit moves it and the server answers from its cache when not.
+    if (v === "briefing"){ if (!ruleData) loadRules(); else loadCodebase().then(() => drawRules()); }
   }
   // Unsaved work does not follow you to another tab.
   //
@@ -11625,7 +11636,57 @@ become that version's section when it is created">Changelog${
   // A rule is CONDITIONAL exactly when it has a trigger. There is no kind
   // field and no picker for one — the presence of a trigger is the answer,
   // which is one fact to keep true instead of two.
+  // The code base, counted (git-tracked files by language): the tab's first
+  // section, above the rules. Fetched beside them; a repository's count is
+  // cached by commit on the server, so this is cheap after the first time.
+  let codeData = null;
+  async function loadCodebase(){
+    try{
+      const r = await fetch("/api/codebase?project=" + encodeURIComponent(project));
+      codeData = await r.json();
+    }catch(e){ codeData = {error: String(e)}; }
+  }
+  // GitHub's colours for the languages people recognise; a hue from the
+  // name for the rest, so two rare ones do not come out the same.
+  const LANG_COLOR = {Python: "#3572A5", JavaScript: "#f1e05a", TypeScript: "#3178c6", HTML: "#e34c26",
+    CSS: "#663399", Shell: "#89e051", Kotlin: "#A97BFF", Java: "#b07219", Dart: "#00B4AB", Swift: "#F05138",
+    Go: "#00ADD8", Rust: "#dea584", C: "#555555", "C++": "#f34b7d", "C#": "#178600", Ruby: "#701516",
+    PHP: "#4F5D95", SQL: "#e38c00", Dockerfile: "#384d54", Makefile: "#427819", Lua: "#000080", Zig: "#ec915c",
+    Gradle: "#02303a", SCSS: "#c6538c", Nix: "#7e7eff"};
+  function langColor(name){
+    if (LANG_COLOR[name]) return LANG_COLOR[name];
+    let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return `hsl(${h} 55% 55%)`;
+  }
+  const nfmt = n => Number(n || 0).toLocaleString();
+  function codebaseSection(){
+    const d = codeData;
+    let status = "counting", body = `<div class="hint">counting what git tracks…</div>`;
+    if (d && d.error){ status = "no count"; body = `<div class="hint">${esc(d.error)}</div>`; }
+    else if (d){
+      const code = (d.languages || []).filter(l => l.kind === "code");
+      const rest = (d.languages || []).filter(l => l.kind !== "code");
+      status = `${nfmt(d.files)} file${d.files === 1 ? "" : "s"} · ${nfmt(d.lines)} line${d.lines === 1 ? "" : "s"}`;
+      const bar = code.length
+        ? `<div class="cbbar" role="img" aria-label="${esc(code.map(l => `${l.name} ${l.pct}%`).join(", "))}">${
+            code.map(l => `<span style="width:${l.pct}%;background:${langColor(l.name)}" title="${esc(l.name)} ${l.pct}%"></span>`).join("")}</div>
+           <div class="cblegend">${code.map(l => `<span><span class="dot" style="background:${langColor(l.name)}"></span>${esc(l.name)} <b>${l.pct}%</b><span class="n">${nfmt(l.lines)} lines in ${nfmt(l.files)}</span></span>`).join("")}</div>`
+        : `<div class="hint">no code among the tracked files yet</div>`;
+      const sk = d.skipped || {};
+      const skipped = [sk.binary ? `${sk.binary} binar${sk.binary === 1 ? "y" : "ies"}` : "",
+                       sk.vendored ? `${sk.vendored} vendored or minified` : "",
+                       sk.large ? `${sk.large} over 4MB` : ""].filter(Boolean);
+      body = `<div class="hint">${nfmt(d.code_lines)} lines of code in ${nfmt(d.code_files)} file${d.code_files === 1 ? "" : "s"}, tracked by git${
+          d.commit ? ` at <code>${esc(d.commit.slice(0, 7))}</code>` : ""}. Nothing untracked or ignored is counted — build output, dist/, a stray archive.</div>
+        ${bar}
+        ${rest.length ? `<div class="hint cbfoot">Counted, not in the bar: ${rest.map(l => `${esc(l.name)} ${nfmt(l.lines)} line${l.lines === 1 ? "" : "s"}`).join(", ")}.${
+          skipped.length ? ` Skipped: ${skipped.join(", ")}.` : ""}</div>`
+        : skipped.length ? `<div class="hint cbfoot">Skipped: ${skipped.join(", ")}.</div>` : ""}`;
+    }
+    return docSection("briefing", "codebase", "Code base", status, body);
+  }
   async function loadRules(){
+    loadCodebase().then(() => drawRules());
     try{
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
       ruleData = await r.json();
@@ -11740,7 +11801,7 @@ become that version's section when it is created">Changelog${
                  d.loud ? " — that is a lot to pay on every conversation" : ""}`)
           : "Nothing set. A session can leave rules of its own with bb rules "
             + "add, marked as its; the ones you write here it cannot touch."}</div>`;
-    box.innerHTML = docSection("briefing", "rules", "Your rules",
+    box.innerHTML = codebaseSection() + docSection("briefing", "rules", "Your rules",
       rows.length ? `${rows.length}` : "none", body,
       // No `open` override: the framework's default is right here — open on a
       // desktop, shut on a phone. Forcing it shut when there are no rules

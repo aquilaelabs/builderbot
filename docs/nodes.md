@@ -532,11 +532,11 @@ bundle under `.bb` — is relative to that scoped root (`pkg_root()`,
 refusal of two architectures on one store is gone. The census reports the
 scope beside the store's path. The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
-with each scope's `android/system-images` a symlink to them. A flat store
-from before this is migrated by whichever machine reads it first
-(`scope_store()` in the agent's census, `sdk_scope_migrate` at the
-controller's boot): each entry renamed into the scope directory, no copy,
-idempotent, safe from both sides at once.
+with each scope's `android/system-images` a symlink to them — kept by the
+agent on every hello (`share_images()`) and by the controller at boot
+(`sdk_share_images`), so a first install on a fresh store lands there too.
+(The one-time move of a flat store into its scope ran on 9 Sep 2026 and
+was taken out the same day.)
 
 ### What `/workspace` means in the new model
 

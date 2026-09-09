@@ -40,13 +40,6 @@ on:
         type: boolean
         default: false
 
-# Two merges in quick succession queue two builds of the same branch, and only
-# the newest result means anything — cancel the superseded one rather than pay
-# for an image that is already out of date when it lands.
-concurrency:
-  group: build-image-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -54,6 +47,19 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Two merges in quick succession queue two builds of the same branch, and
+    # only the newest result means anything — cancel the superseded one rather
+    # than pay for an image that is already out of date when it lands.
+    #
+    # On THIS job, not the workflow. It used to be on the workflow, and then
+    # the `record` job below — a bookkeeping step that waits for the node's
+    # runner — kept a cancelled run alive in the group, and the next build
+    # (a manual dispatch included) sat in "waiting for build image #N" for as
+    # long as that runner was busy or away. A recorder must not be able to
+    # hold up the build it records.
+    concurrency:
+      group: build-image-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write

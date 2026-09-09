@@ -91,7 +91,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.36"
+AGENT_VERSION = "0.4.37"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -509,15 +509,11 @@ STORE_ID_FILE = ".bb-store-id"
 # <store>/<os>-<arch> — linux-x86_64, darwin-arm64 — and everything else
 # (the layout, the probes, the census, the bundle) is relative to that. The
 # operator's setting stays the share; the scope is this machine's own fact.
-# A store laid out flat, from before this, is migrated once by renaming its
-# entries into the scope directory (same filesystem, no copy), by whichever
-# machine sees it first; the other finds nothing left to move. What is the
-# same bytes on every host — the Android system images, tens of gigabytes —
-# lives once under <store>/shared and each scope's android tree links to it,
-# because sdkmanager and Gradle want one ANDROID_HOME and would otherwise
-# fetch a second copy per platform.
-
-SCOPE_RE = re.compile(r"^(linux|darwin|windows)-[A-Za-z0-9_]+$")
+# What is the same bytes on every host — the Android system images, tens of
+# gigabytes — lives once under <store>/shared and each scope's android tree
+# links to it, because sdkmanager and Gradle want one ANDROID_HOME and
+# would otherwise fetch a second copy per platform. (The one-time move of a
+# flat store into its scope ran on 9 Sep 2026 and was taken out again.)
 
 
 def pkg_scope():
@@ -532,47 +528,18 @@ def pkg_root(state):
     return os.path.join(store, pkg_scope()) if store else ""
 
 
-def scope_store(store, say=None):
-    """Migrate a flat store into its scope directory and share the system
-    images, once; a no-op on a store already in shape. Idempotent and safe
-    to run from two machines at once: each rename is one entry, and an
-    entry the other side already moved is simply not there."""
+def share_images(store, say=None):
+    """The standing rule of the layout, kept each hello: the Android system
+    images live once under <store>/shared/android/system-images, and this
+    scope's android/system-images is a symlink to them. A scope whose
+    android tree grew a real directory there (a first install on a fresh
+    store) has it moved under shared and linked; a scope with an android
+    tree and no images gets the link so an install lands in the shared
+    copy from the start."""
     say = say or (lambda t: log(t))
     if not store or not os.path.isdir(store):
         return
     scoped = os.path.join(store, pkg_scope())
-    # `.bb` — the bundle an agent BEFORE the scoping keeps at the share's
-    # root — is left where it is, so a node still on that agent keeps its
-    # bb while the controller has moved on; a scoped agent keeps its own
-    # under its scope and never reads the old one.
-    flat = [e for e in os.listdir(store)
-            if e not in ("shared", ".bb") and not SCOPE_RE.match(e) and not e.startswith(".bb-store")]
-    if flat and not os.path.isdir(scoped):
-        try:
-            os.makedirs(scoped, exist_ok=True)
-        except OSError as ex:
-            say(f"packages store: cannot make {scoped}: {ex}")
-            return
-    if flat and os.path.isdir(scoped):
-        moved = []
-        for e in flat:
-            src, dst = os.path.join(store, e), os.path.join(scoped, e)
-            if os.path.exists(dst):
-                continue
-            try:
-                os.rename(src, dst)
-                moved.append(e)
-            except OSError as ex:
-                say(f"packages store: could not move {e} into {pkg_scope()}/: {ex}")
-        if moved:
-            say(f"packages store: moved {len(moved)} entr{'y' if len(moved) == 1 else 'ies'} "
-                f"into {pkg_scope()}/ — the store is now scoped by platform")
-    share_images(store, scoped, say)
-
-
-def share_images(store, scoped, say):
-    """The Android system images once, under <store>/shared, with this
-    scope's android/system-images a symlink to them."""
     mine = os.path.join(scoped, "android", "system-images")
     shared = os.path.join(store, "shared", "android", "system-images")
     if os.path.islink(mine):
@@ -2103,14 +2070,12 @@ class Agent:
         # controller reconciles against it: a job its row says is running
         # here that this agent does not know was lost with a restart, and is
         # failed there rather than left running forever (docs/nodes.md §9).
-        # The store in shape before the census reads it: a flat store from
-        # before the scoping is moved into its scope directory here, once,
-        # by the running agent — never by `enroll`, which may be run with a
-        # store it cannot write yet.
+        # The layout's one standing rule, kept by the running agent (never
+        # by `enroll`, which may run with a store it cannot write yet).
         try:
-            scope_store((self.state.get("stores") or {}).get("packages") or "")
+            share_images((self.state.get("stores") or {}).get("packages") or "")
         except OSError as e:
-            log(f"packages store: not scoped yet ({e})")
+            log(f"packages store: could not share the images ({e})")
         st, r = self.ctl.call("hello", {"census": census(self.state),
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),

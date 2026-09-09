@@ -124,29 +124,16 @@ sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname
 # Every install, probe and PATH entry is relative to this.
 sdk_root() { printf '%s/%s' "$(sdk_store_root)" "$(sdk_scope)"; }
 
-# sdk_scope_migrate [STORE] — a store laid out flat, from before the scoping,
-# moved into its scope directory once: each entry renamed (same filesystem,
-# no copy), and the Android system images — the same bytes on every host —
-# put under <store>/shared with this scope's android/system-images a link
-# to them. Idempotent, and safe to run from the controller and a node at
-# once: an entry the other side already moved is simply not there. Run at
-# boot (45-sdk.sh) and before an install.
-sdk_scope_migrate() {
-    local store="${1:-$(sdk_store_root)}" scoped e moved=0
+# sdk_share_images [STORE] — the layout's standing rule: the Android system
+# images live once under <store>/shared/android/system-images, and this
+# scope's android/system-images is a link to them. A real directory that
+# grew there (a first install on a fresh store) is moved under shared and
+# linked. Run at boot (45-sdk.sh). (The one-time move of a flat store into
+# its scope ran on 9 Sep 2026 and was taken out again.)
+sdk_share_images() {
+    local store="${1:-$(sdk_store_root)}" scoped e
     [ -d "$store" ] || return 0
     scoped="$store/$(sdk_scope)"
-    # .bb, an older agent's bundle at the share's root, stays: a node still
-    # on that agent keeps its bb until it is updated.
-    for e in "$store"/*; do
-        [ -e "$e" ] || continue
-        e="$(basename "$e")"
-        case "$e" in shared|.bb|.bb-store*) continue ;; esac
-        case "$e" in linux-*|darwin-*|windows-*) continue ;; esac
-        mkdir -p "$scoped" 2>/dev/null || return 0
-        [ -e "$scoped/$e" ] && continue
-        mv "$store/$e" "$scoped/$e" 2>/dev/null && moved=$((moved + 1))
-    done
-    [ "$moved" -gt 0 ] && log "package store: moved $moved entries into $(sdk_scope)/ — scoped by platform now"
     # The system images, shared.
     local mine="$scoped/android/system-images" shared="$store/shared/android/system-images"
     if [ -d "$mine" ] && [ ! -L "$mine" ]; then

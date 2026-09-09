@@ -100,16 +100,33 @@ fi
 # /proc, not kill -0 — which answers "no" for a pid that is not yours and
 # read a live CI run as a stale lock — and the lock is written world-
 # writable, so the next account can take over one a killed run left.
-LOCK="${TMPDIR:-/tmp}/dashboard-test.lock"
-if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$LOCK" ]; then
-    other="$(cat "$LOCK" 2>/dev/null || true)"
+#
+# In a directory of its own, NOT a file straight under /tmp. /tmp is sticky,
+# and with fs.protected_regular (on by default since Ubuntu 20.04) a file
+# there that another account owns cannot be opened for writing whatever its
+# mode — so a lock a cancelled CI job left as `bb` could never be taken over
+# by a session, or the reverse, and every run died on "cannot take" until
+# somebody with that account removed it (measured on bb-sandbox, 9 Sep). A
+# world-writable directory that is not sticky has no such rule: anyone can
+# overwrite or unlink the lock inside it, which is what a stale lock wants.
+LOCKDIR="${TMPDIR:-/tmp}/dashboard-test.d"
+( umask 000; mkdir -p "$LOCKDIR" ) 2>/dev/null || true
+LOCK="$LOCKDIR/lock"
+# A run still on the previous layout holds the old path; for one release
+# both are read for a LIVE pid, and only the new one is written.
+for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
+    [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
+    other="$(cat "$l" 2>/dev/null || true)"
     if [ -n "$other" ] && [ -d "/proc/$other" ]; then
-        owner="$(stat -c %U "$LOCK" 2>/dev/null || echo somebody)"
+        owner="$(stat -c %U "$l" 2>/dev/null || echo somebody)"
         die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago) — one at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
     fi
-fi
+done
+# Taken over by unlinking first: a stale lock another account wrote is
+# unlinkable in a non-sticky directory, and a fresh file is then ours.
+rm -f "$LOCK" 2>/dev/null || true
 ( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
-    || die "cannot take $LOCK — it is $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, left by a run that is over; remove it from that account and re-run"
+    || die "cannot take $LOCK — $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # Every tmux call from here on — ours and the server's — talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.

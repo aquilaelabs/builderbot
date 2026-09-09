@@ -17,9 +17,9 @@
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
-# The store scoped by platform before anything reads it (roadmap R19): a
-# flat store from before this is moved into linux-<arch>/ here, once.
-sdk_scope_migrate "$(sdk_store_root)"
+# The store's one standing rule, kept at boot: the android system images
+# shared across platforms (roadmap R19).
+sdk_share_images "$(sdk_store_root)"
 ROOT="$(sdk_root)"
 mkdir -p "$ROOT" 2>/dev/null || true
 [ -d "$ROOT" ] || exit 0
