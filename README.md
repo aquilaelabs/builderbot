@@ -358,6 +358,8 @@ bb login           Claude Code subscription auth flow. On a node it first syncs
                    this account's login with the controller's, newer wins
 bb login --sync    that half alone, quietly — what every connection already does
 bb git push|fetch|pull|ls-remote [ARGS]
+bb git policy      what a session may push here — its branch, main — from the
+                   project's Git view; the controller enforces it on the relay
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]

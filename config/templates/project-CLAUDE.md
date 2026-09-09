@@ -976,6 +976,12 @@ only when the finding is genuinely a false positive, and say why.
   with the keys it holds, and no credential ever lives on a node. Plain
   `git push` there fails asking for a username: that is the rule, not a
   fault to work around. `bb status` says which machine this is.
+- **What you may push is the project's git policy**, set on its Git view:
+  `bb git policy` prints it. By default you may push the branch you work
+  on and may not push to `main`; the controller refuses a push the policy
+  denies, so read it before pushing rather than discovering it. Committing
+  and merging locally are yours either way — the policy governs what
+  reaches the remote.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 

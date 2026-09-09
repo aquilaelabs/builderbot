@@ -3,7 +3,7 @@
 // detail and diff, and the branches with whose worktree sits on which.
 // Real git on the fixture repos, read by the checkout's server; nothing
 // here writes through the dashboard, because this step has no actions.
-import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
@@ -228,6 +228,104 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitrevert]', { timeout: 10000 });
   ok(true, "a picked commit's detail carries Revert and Branch here");
+}
+
+// ---- step 3: the policy, and Send to Claude --------------------------------
+// What a session may send to the remote is the project's to say, on the Git
+// view, and the controller's to enforce where the push runs — the relay. A
+// commit, a change or a branch is handed to the session as one line naming
+// it and the ask, typed into the session the way a roadmap step arrives.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const post = async (path, body, headers = H) => {
+    const r = await fetch(URL.replace(/\/$/, '') + path, { method: 'POST', headers, body: JSON.stringify(body) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  };
+  const bbEnv = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
+                  WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'beta' };
+  const bb = (...a) => { try { return execFileSync('bash', [`${REPO}/scripts/bb`, ...a], { encoding: 'utf8', env: bbEnv, cwd: B }); }
+                         catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; } };
+  ok(/push its branch: allow/.test(bb('git', 'policy')) && /push to main:\s+deny/.test(bb('git', 'policy')),
+     'bb git policy reads the defaults: a session may push its branch and not main');
+  const setPol = await post('/api/prefs', { project: 'beta', gitpol: { push: 'deny' } });
+  ok(setPol.status === 200 && setPol.gitpol?.push === 'deny' && setPol.gitpol?.main === 'deny',
+     'the Git view saves the policy into the project\'s settings');
+  ok(/push its branch: deny/.test(bb('git', 'policy')), '...and bb git policy says so to a session');
+  ok((await post('/api/prefs', { project: 'beta', gitpol: { push: 'maybe' } })).error
+     && (await post('/api/prefs', { project: 'beta', gitpol: { merge: 'allow' } })).error,
+     'a value or a key that is not one is refused');
+
+  // The relay is the door: a session's bb git push is judged there.
+  const tok = execFileSync('python3', ['-c', `
+import importlib.util, json, os
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+def wj(p, d):
+    tmp = str(p) + ".tmp"; open(tmp, "w").write(json.dumps(d, indent=2)); os.replace(tmp, p)
+u.configure(state="${DIR}/state", write_json=wj)
+print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
+  const S = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+  const origin = `${DIR}/beta-origin.git`;
+  const relay = (argv) => post('/api/v1/bb', { argv, cwd: B }, S);
+  const denied = await relay(['git', 'push', 'origin', 'topic']);
+  ok(denied.status === 403 && /does not let a session push/.test(denied.error),
+     'with pushing denied, a session\'s bb git push is refused on the relay, naming the policy');
+  await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'deny' } });
+  const toMain = await relay(['git', 'push', 'origin', main]);
+  ok(toMain.status === 403 && new RegExp(`push to ${main}`).test(toMain.error),
+     `...and pushing to ${main} is refused while that is denied, with what to do instead`);
+  const own = await relay(['git', 'push', 'origin', 'topic']);
+  ok(own.status === 200 && own.code === 0
+     && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
+     `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
+  await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'allow' } });
+  ok((await relay(['git', 'push', 'origin', main])).code === 0, `...and ${main} too once allowed`);
+  await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'deny' } });
+
+  // Send to Claude lands in the project's session as one line naming the
+  // thing and the ask; the session reads the rest from the tree itself.
+  tmuxNew('claude-beta', B);
+  const head = (await api('what=log')).commits[0];
+  const sent = await post('/api/git', { project: 'beta', action: 'ask', kind: 'review', args: { sha: head.sha } });
+  ok(sent.ok && sent.sent, `a commit is sent to the session and arrives (${sent.text || sent.error})`);
+  const pane = tmuxCapture('claude-beta');
+  ok(/Git view of beta/.test(pane) && pane.includes(head.sha.slice(0, 7)) && /review it/.test(pane),
+     '...as a line naming the commit and the ask, and nothing of the diff');
+  writeFileSync(`${B}/a.txt`, 'one\ntwo\nfive\n');
+  const sentFile = await post('/api/git', { project: 'beta', action: 'ask', kind: 'diff', args: { path: 'a.txt' } });
+  ok(sentFile.ok && /uncommitted change to a.txt/.test(sentFile.text), 'a changed file is sent by its path');
+  const sentBranch = await post('/api/git', { project: 'beta', action: 'ask', kind: 'merge', args: { branch: 'topic' } });
+  ok(sentBranch.ok && /branch topic/.test(sentBranch.text) && new RegExp(`merge it into ${main}`).test(sentBranch.text),
+     'a branch is sent with the ask picked for it');
+  ok((await post('/api/git', { project: 'beta', action: 'ask', kind: 'review', args: { sha: 'zzz' } })).error
+     && (await post('/api/git', { project: 'beta', action: 'ask', kind: 'dance', args: { sha: head.sha } })).error
+     && (await post('/api/git', { project: 'beta', action: 'ask', kind: 'diff', args: { path: 'README.md' } })).error,
+     'a commit, a kind or a file that is not one is refused, not sent');
+  tmuxKill('claude-beta');
+  execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
+
+  // ...and the view carries them.
+  writeFileSync(`${B}/a.txt`, 'one\ntwo\nsix\n');
+  await page.evaluate(() => getNotebook('beta').view('git'));
+  await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] [data-gitaskfile]'), { timeout: 20000 });
+  // The second row: the first is still the pick from above, and a click on
+  // the picked row puts it away.
+  await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:nth-child(2)');
+  await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitaskcommit]', { timeout: 10000 });
+  const v = await page.$eval('.nb .nbview[data-view="git"]', el => ({
+    file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('[data-gitaskcommit]'),
+    branch: el.querySelectorAll('[data-gitaskbranch]').length,
+    pol: el.querySelectorAll('[data-gitpol]').length, apply: el.querySelector('#gitPolApply')?.disabled }));
+  ok(v.file && v.commit && v.branch >= 1 && v.pol === 2 && v.apply === true,
+     `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
+  // The policy is a section shut by default: open it to reach the pickers.
+  await page.evaluate(() => { const d = document.querySelector('.nb .nbview[data-view="git"] details[data-sect="git:policy"]'); if (d && !d.open) d.open = true; });
+  await page.waitForSelector('.nb .nbview[data-view="git"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
+  await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'deny');
+  ok(await page.$eval('.nb .nbview[data-view="git"] #gitPolApply', b => !b.disabled),
+     '...picking a policy wakes Apply and saves nothing yet');
+  await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'allow');
+  execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
 }
 
 // ---- the strip on a phone -------------------------------------------------

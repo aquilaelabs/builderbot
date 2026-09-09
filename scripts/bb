@@ -50,6 +50,8 @@ bb — BuilderBot helper
                          controller's, in whichever direction is newer
   bb login --sync        that half alone, quietly — what every connection does
   bb git push|fetch|pull|ls-remote [ARGS]
+  bb git policy      what a session may push here — its branch, main — from the
+                     project's Git view; the controller enforces it on the relay
                          git's network half, run where the credential is — from a
                          session on a node it goes through the controller
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
@@ -3243,7 +3245,18 @@ cmd_git() {
     shift || true
     case "$verb" in
         push|fetch|pull|ls-remote) ;;
-        *) die "bb git takes push, fetch, pull or ls-remote — plain git does everything else" ;;
+        policy)
+            # What this project lets a session do with git's network half,
+            # from the project's settings: the controller enforces it on the
+            # relay, so this is the answer to read before pushing.
+            BB_SETTINGS_JSON=1 cmd_settings --json | python3 -c '
+import json, sys
+p = json.load(sys.stdin).get("gitpol") or {}
+print("push its branch:", p.get("push", "allow"))
+print("push to main:   ", p.get("main", "deny"))
+print("A local commit or merge is yours; what reaches the remote is what this governs.")'
+            return 0 ;;
+        *) die "bb git takes push, fetch, pull, ls-remote or policy — plain git does everything else" ;;
     esac
     for a in "$@"; do
         case "$a" in

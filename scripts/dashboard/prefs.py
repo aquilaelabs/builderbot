@@ -25,7 +25,6 @@ case that cannot wait for a launch, so the dialog says so and the session is
 respawned onto the same transcript.
 """
 import json
-import subprocess
 import threading
 from pathlib import Path
 
@@ -40,6 +39,11 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # approval, deny refuses it. Creation only — see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
 GATE_KINDS = ("roadmap", "bugs", "rules")
+# The git policy's two questions, and what they read as when nothing is set:
+# a session may push the branch it works on, and may not push to main.
+GITPOL_KEYS = ("push", "main")
+GITPOL_MODES = ("allow", "deny")
+GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
 GATE_MODES = ("auto", "ask", "deny")
 
 _lock = threading.Lock()
@@ -102,11 +106,14 @@ def _clean(rec):
             # Anything unrecognised reads as auto, for the same reason an
             # unknown model reads as "leave as is": a hand-edited file must
             # not lock a session out of the notebook by typo.
-            # The commit identity, per project: applied to the repo's own config
-            # by set_prefs and by 40-projects.sh at boot, and carried to a node's
-            # session by bb settings.
-            "git_name": str(rec.get("git_name") or "")[:120],
-            "git_email": str(rec.get("git_email") or "")[:200],
+            # What a session may do with git's network half (roadmap R36):
+            # push its own branch, and push to main. Enforced where the
+            # controller runs git — the relay — and read by a session with
+            # bb git policy; a local commit or merge cannot be forbidden.
+            "gitpol": {k: ((rec.get("gitpol") or {}).get(k)
+                           if isinstance(rec.get("gitpol"), dict)
+                           and (rec.get("gitpol") or {}).get(k) in GITPOL_MODES else GITPOL_DEFAULT[k])
+                       for k in GITPOL_KEYS},
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
                          and (rec.get("gate") or {}).get(k) in GATE_MODES else "auto")
@@ -125,7 +132,7 @@ def all_projects():
 
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
-              outputs=None, dockernode=None, gate=None, git_name=None, git_email=None,
+              outputs=None, dockernode=None, gate=None, gitpol=None,
               workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it.
     `dockernode` is the old name for `node`, kept for a caller that still
@@ -154,10 +161,15 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         if outputs is not None:
             got = outputs if isinstance(outputs, list) else str(outputs).split(",")
             cur["outputs"] = [str(g).strip()[:200] for g in got if str(g).strip()][:16]
-        if git_name is not None:
-            cur["git_name"] = " ".join(str(git_name).split())[:120]
-        if git_email is not None:
-            cur["git_email"] = str(git_email).strip()[:200]
+        if gitpol is not None:
+            if not isinstance(gitpol, dict):
+                return {"error": "gitpol is {push|main: allow|deny}"}
+            for k, v in gitpol.items():
+                if k not in GITPOL_KEYS:
+                    return {"error": f"not a git policy: {k} — one of {', '.join(GITPOL_KEYS)}"}
+                if v not in GITPOL_MODES:
+                    return {"error": f"{k}: allow or deny, not {v}"}
+                cur["gitpol"][k] = v
         if gate is not None:
             if not isinstance(gate, dict):
                 return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
@@ -172,13 +184,16 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"]
                 or cur["build"] or cur["test"] or cur["outputs"]
-                or cur["git_name"] or cur["git_email"]
-                or any(v != "auto" for v in cur["gate"].values())):
-            # Stored without the all-auto gate, so the file says only what
-            # somebody chose — _clean puts the defaults back on the way out.
+                or any(v != "auto" for v in cur["gate"].values())
+                or cur["gitpol"] != GITPOL_DEFAULT):
+            # Stored without the all-auto gate or the default policy, so the
+            # file says only what somebody chose — _clean puts the defaults
+            # back on the way out.
             rec = dict(cur)
             if all(v == "auto" for v in cur["gate"].values()):
                 rec.pop("gate", None)
+            if cur["gitpol"] == GITPOL_DEFAULT:
+                rec.pop("gitpol", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
@@ -186,15 +201,6 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
     # Into the repo's own config at once, so the next commit from any session
     # in it wears the name. Repo-local rather than global: two projects may be
     # two people's, and the tree is what a session's git reads.
-    if (git_name is not None or git_email is not None) and workspace:
-        repo = Path(workspace) / project
-        if (repo / ".git").exists():
-            for k, v in (("user.name", cur["git_name"]), ("user.email", cur["git_email"])):
-                argv = ["git", "-C", str(repo), "config"] + (["--unset", k] if not v else [k, v])
-                try:
-                    subprocess.run(argv, check=False, capture_output=True, timeout=10)
-                except (OSError, subprocess.SubprocessError):
-                    pass
     return {"ok": True, "project": project} | cur
 
 

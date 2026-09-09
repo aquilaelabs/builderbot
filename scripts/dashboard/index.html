@@ -10450,6 +10450,23 @@ $("todoRevert").onclick = revertNotebook;
   // path, not by position.
   let git = null, gitPick = "", gitOpenFiles = new Set();
   let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
+  let gitPolDraft = {};                            // the policy picked and not applied
+
+  // Send to Claude: the thing picked and what is asked of it, composed on
+  // the controller and typed into the project's session the way a roadmap
+  // step arrives; then the tab, so the answer is watched.
+  async function gitAsk(kind, args, btn){
+    if (btn) busy(btn, "Sending");
+    try{
+      const r = await fetch("/api/git", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, action: "ask", kind, args: args || {}})});
+      const j = await r.json();
+      if (j.error) return notify(j.error, true);
+      if (!j.sent) notify("typed into the session but not sent — something else has the keyboard there; press Enter in that tab when it is clear", true);
+      startClaude(project, null);
+    }catch(e){ notify("ask: " + e, true); }
+    finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
+  }
   async function loadGit(){
     const hint = $("gitHint"), body = $("gitBody");
     try{
@@ -10523,6 +10540,8 @@ $("todoRevert").onclick = revertNotebook;
             esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
         <div class="body gdiff"><div class="loading">loading…</div></div>
         ${locked ? "" : `<div class="body"><div class="actbar">
+          <button type="button" data-gitaskfile="${esc(f.path)}"
+            title="hand this change to the project's Claude session to look at before it is committed">Send to Claude</button>
           <button type="button" class="danger" data-gitdiscard="${esc(f.path)}"
             title="put this file back as the last commit has it — nothing keeps the change">Discard</button>
         </div></div>`}
@@ -10570,17 +10589,66 @@ $("todoRevert").onclick = revertNotebook;
               ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} against ${esc(b.upstream)}`
               : `level with ${esc(b.upstream)}`) : "",
             `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
-        ${b.remote || locked ? "" : `<span class="acts">${b.head ? "" : `<button type="button"
+        ${b.remote || locked ? "" : `<span class="acts">${b.name === git.main ? "" : `<select data-gitaskkind aria-label="what to ask">
+            <option value="merge">merge into ${esc(git.main || "main")}</option><option value="rebase">rebase onto ${esc(git.main || "main")}</option>
+            <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
+            title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${b.head ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
             b.head || b.name === git.main ? "" : `<button type="button" class="danger"
             data-gitdelete="${esc(b.name)}" title="delete the branch — refused while it holds commits no other branch has">Delete</button>`}</span>`}
       </div>`).join("");
+    // Conflicts stop everything else, so they are said first, with the one
+    // button that helps: the merge in progress handed to the session.
+    const conflicts = files.filter(f => f.state === "conflict");
+    const conflictBar = conflicts.length && !locked ? `<div class="actbar gconflict">
+        <span class="state bad">${conflicts.length} file${conflicts.length === 1 ? "" : "s"} in conflict — the merge is not finished</span>
+        <button type="button" class="primary" data-gitask="conflicts"
+          title="hand the merge in progress to the project's Claude session, to resolve and finish">Resolve with Claude</button>
+      </div>` : "";
+    // What a session may do with the remote (roadmap R36): the two answers,
+    // staged until Apply like every setting on the page. Enforced on the
+    // relay; a local commit or merge cannot be forbidden, and the bar says so.
+    const pol = {...((state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {}), ...gitPolDraft};
+    const polDirty = Object.keys(gitPolDraft).length > 0;
+    const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
+        <div class="prefrow">
+          <label class="pick">Push its branch <select data-gitpol="push">${["allow", "deny"].map(o =>
+            `<option value="${o}"${(pol.push || "allow") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
+          <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${["allow", "deny"].map(o =>
+            `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
+        </div>
+        <div class="actbar">
+          <span class="state">what a session may send to the remote; a commit or a merge on its own branch is always its own</span>
+          <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
+        </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
-        commitBar + (files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`))
+        conflictBar + commitBar + (files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`))
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="sub dim">no branches</div>`));
+      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="sub dim">no branches</div>`))
+      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
     wireSections(body);
+    body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
+      const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
+      if (sel.value === (saved[sel.dataset.gitpol] || (sel.dataset.gitpol === "push" ? "allow" : "deny"))) delete gitPolDraft[sel.dataset.gitpol];
+      else gitPolDraft[sel.dataset.gitpol] = sel.value;
+      const b = $("gitPolApply"); if (b) b.disabled = !Object.keys(gitPolDraft).length;
+    });
+    const pa = $("gitPolApply");
+    if (pa) pa.onclick = async () => {
+      busy(pa, "Applying");
+      try{
+        const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({project, gitpol: {...pol, ...gitPolDraft}})});
+        const j = await r.json();
+        if (j.error) return notify(j.error, true);
+        gitPolDraft = {};
+        notify("saved — a session reads it with bb git policy");
+        refresh(); drawGit();
+      }catch(e){ notify("policy: " + e, true); }
+      finally{ if (pa.isConnected) unbusy(pa, "Apply"); }
+    };
+    body.querySelectorAll("[data-gitask]").forEach(b => b.onclick = () => gitAsk(b.dataset.gitask, {}, b));
     const msg = $("gitMsg");
     if (msg){
       msg.oninput = () => { gitMsgDraft = msg.value; };
@@ -10610,6 +10678,12 @@ $("todoRevert").onclick = revertNotebook;
     });
     body.querySelectorAll("[data-gitswitch]").forEach(b => b.onclick = () =>
       gitAct("switch", {name: b.dataset.gitswitch}, gitBusy(b), "Switching"));
+    body.querySelectorAll("[data-gitaskfile]").forEach(b => b.onclick = () =>
+      gitAsk("diff", {path: b.dataset.gitaskfile}, gitBusy(b)));
+    body.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = () => {
+      const row = b.closest(".gbranch"), kind = row.querySelector("[data-gitaskkind]")?.value || "merge";
+      gitAsk(kind, {branch: b.dataset.gitaskbranch}, gitBusy(b));
+    });
     body.querySelectorAll("[data-gitdelete]").forEach(b => b.onclick = () => {
       const name = b.dataset.gitdelete;
       if (confirm(`Delete the branch ${name}?`)) gitAct("delete", {name}, gitBusy(b), "Deleting");
@@ -10659,6 +10733,10 @@ $("todoRevert").onclick = revertNotebook;
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
         ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
           <span class="state">a revert is a new commit undoing this one; a branch here starts from it</span>
+          <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
+            <option value="explain">explain</option><option value="revert">revert</option></select>
+          <button type="button" data-gitaskcommit="${esc(c.sha)}"
+            title="hand this commit to the project's Claude session with the ask picked">Send to Claude</button>
           <button type="button" data-gitbranchat="${esc(c.sha)}" title="a new branch starting at this commit">Branch here</button>
           <button type="button" data-gitrevert="${esc(c.sha)}" title="a new commit that undoes this one — nothing is rewritten">Revert</button>
         </div>`}
@@ -10668,6 +10746,8 @@ $("todoRevert").onclick = revertNotebook;
         if (confirm(`Revert ${c.short} — ${c.message.split("\n")[0]}?\n\nA new commit undoes it; the history keeps both.`))
           gitAct("revert", {sha: b.dataset.gitrevert}, gitBusy(b), "Reverting");
       });
+      box.querySelectorAll("[data-gitaskcommit]").forEach(b => b.onclick = () =>
+        gitAsk(box.querySelector("[data-gitaskkind]")?.value || "review", {sha: b.dataset.gitaskcommit}, gitBusy(b)));
       box.querySelectorAll("[data-gitbranchat]").forEach(b => b.onclick = () => {
         const name = prompt(`A branch starting at ${c.short}. Its name:`);
         if (name && name.trim()) gitAct("branch", {name: name.trim(), at: b.dataset.gitbranchat, switch: true}, gitBusy(b), "Creating");

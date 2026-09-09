@@ -27,6 +27,8 @@ from pathlib import Path
 
 WORKSPACE = None
 WORKTREES = None
+TELL = None               # notify.tell: type a line into a session, injected
+TMUX_NAME = None
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -34,9 +36,10 @@ SHA_RE = re.compile(r"^[0-9a-f]{4,40}$")
 US = "\x1f"
 
 
-def configure(*, workspace, worktrees=None):
+def configure(*, workspace, worktrees=None, tell=None, tmux_name=None):
     globals().update(WORKSPACE=Path(workspace),
-                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees")
+                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
+                     TELL=tell, TMUX_NAME=tmux_name)
 
 
 def _git(repo, *args, timeout=20):
@@ -438,3 +441,59 @@ def _done(r, said):
     if r["code"]:
         return {"error": r["out"] or f"git failed ({r['code']})"}
     return {"ok": True, "out": r["out"] or said}
+
+
+# ---- Send to Claude (R36 step 3) --------------------------------------------
+# A commit, a diff, a branch or a conflict, handed to the project's session
+# as a line the operator could have typed — the way a roadmap step and the
+# version question arrive. The line names what was picked precisely enough
+# for the session to go and read it itself (a sha, a path, a branch), and
+# says what is being asked; it never carries the diff, which the session
+# can read from the tree, and which would be a page of text in a prompt.
+
+ASKS = {
+    "review":  "review it: what it changes, and anything worth fixing",
+    "explain": "explain what it changes and why, in plain words",
+    "revert":  "revert it — a new commit undoing it — and say what that undoes",
+    "rebase":  "rebase it onto {main}, resolving anything that conflicts, and say what moved",
+    "merge":   "merge it into {main} — fast-forward if you can, a merge commit if not — and say what it brought in",
+    "conflicts": "the tree is mid-merge with conflicts: resolve them, finish the merge, and say what you decided in each file",
+    "diff":    "look at the uncommitted change and say whether it is right, before it is committed",
+}
+
+
+def ask(repo, project, kind, args, sessions=()):
+    """Compose the ask and type it into the project's session."""
+    if TELL is None or TMUX_NAME is None:
+        return {"error": "no way to reach a session from here"}
+    args = args if isinstance(args, dict) else {}
+    main = _main_branch(repo) or "main"
+    what = ASKS.get(kind)
+    if not what:
+        return {"error": "not a thing to ask"}
+    what = what.format(main=main)
+    sha, path, branch = str(args.get("sha") or ""), str(args.get("path") or ""), str(args.get("branch") or "")
+    if sha:
+        if not SHA_RE.match(sha) or _git(repo, "cat-file", "-e", f"{sha}^{{commit}}") is None:
+            return {"error": "not a commit"}
+        subject = (_git(repo, "show", "--no-patch", "--format=%s", sha) or "").strip()
+        about = f"commit {sha[:7]} ({subject})"
+    elif path:
+        listed = {f["path"] for f in status(repo).get("files", [])}
+        if path not in listed:
+            return {"error": "not a changed file"}
+        about = f"the uncommitted change to {path}"
+    elif branch:
+        if not _ok_branch(branch) or not _has_branch(repo, branch):
+            return {"error": "no such branch"}
+        about = f"the branch {branch}"
+    elif kind == "conflicts":
+        about = "the merge in progress"
+    else:
+        return {"error": "nothing picked"}
+    line = f"From the operator, on the Git view of {project}: {about} — {what}."
+    session = TMUX_NAME("claude-" + project)
+    r = TELL(session, line, sessions)
+    if r.get("error"):
+        return r
+    return {"ok": True, "sent": bool(r.get("sent")), "session": session, "text": line}

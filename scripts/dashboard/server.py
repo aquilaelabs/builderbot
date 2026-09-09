@@ -2474,7 +2474,8 @@ import workspace                                                 # noqa: E402
 
 artifacts.configure(workspace=WORKSPACE)
 gitview.configure(workspace=WORKSPACE,
-                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
+                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
+                  tell=notify.tell, tmux_name=tmux_name)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -4292,7 +4293,7 @@ class Handler(BaseHTTPRequestHandler):
                                 node=req.get("node") if "node" in req else req.get("dockernode"),
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
-                                gate=req.get("gate"),
+                                gate=req.get("gate"), gitpol=req.get("gitpol"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -4663,6 +4664,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._refused("bb", project):
             return None
+        # ...and under the project's git policy (the Git view, roadmap R36):
+        # a session may push its own branch unless told not to, and may not
+        # push to main unless told it may. Judged here because here is
+        # where the push runs; a local commit or merge is not this door's.
+        if argv and argv[0] == "git" and argv[1:2] == ["push"] and me.get("session"):
+            pol = prefs.get(project)["gitpol"]
+            if pol.get("push") == "deny":
+                return self._json({"error": "this project's git policy does not let a session "
+                                            "push — the operator pushes from the Git view"}, 403)
+            if pol.get("main") == "deny":
+                repo = WORKSPACE / project
+                head = (run(["git", "-C", str(repo), "symbolic-ref", "--short", "-q", "HEAD"],
+                            timeout=10)["out"] or "").strip()
+                main = next((b for b in ("main", "master") if run(
+                    ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", f"refs/heads/{b}"],
+                    timeout=10)["code"] == 0), "main")
+                spec = [a for a in argv[2:] if not a.startswith("-")]
+                to_main = any(a == main or a.endswith(":" + main) or a.startswith(main + ":") for a in spec) \
+                    or (not spec and head == main) or (len(spec) == 1 and head == main)
+                if to_main:
+                    return self._json({"error": f"this project's git policy does not let a session "
+                                                f"push to {main} — push your branch and say so, "
+                                                "and the operator merges from the Git view"}, 403)
         # The tree the session is in: the project directory, or one of its
         # worktrees. Anything else — a path outside the share, a sibling
         # project — runs in the project directory instead of being trusted.
@@ -5953,6 +5977,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "the owner's Claude session is running in this "
                                             "directory — end it before switching the branch "
                                             "under it"}, 409)
+        if action == "ask":
+            live = [x["name"] for x in tmux_sessions()]
+            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
+            return self._json(r, 400 if r.get("error") else 200)
         env = {**projects._git_env(), **users.git_env(me)}
         env.pop("DASHBOARD_AUTH", None)
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
