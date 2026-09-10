@@ -27,8 +27,11 @@ mkdir -p "$ROOT" 2>/dev/null || true
 # Not $ROOT/env.sh: the package store root is a share the sandbox mounts too, at its
 # own path, and every line generated here is absolute — so a copy in the
 # store is wrong for whichever machine did not write it last. Container-local
-# instead; sdk.sh's sdk_env_file() is the same answer, one generator.
-ENV_FILE="$(run_as_builder bash -c '. /opt/builderbot/scripts/lib/common.sh; sdk_env_file')"
+# instead; sdk.sh's sdk_env_file() is the same answer, one generator — and
+# it lives in sdk.sh, which common.sh does not pull in, so both are sourced
+# (B82: the hook exited 127 on 'command not found' and the file was never
+# written).
+ENV_FILE="$(run_as_builder bash -c '. /opt/builderbot/scripts/lib/common.sh; . /opt/builderbot/scripts/lib/sdk.sh; sdk_env_file')"
 mkdir -p "$(dirname "$ENV_FILE")" 2>/dev/null || true
 # Written by bb so the file and `bb sdk env` can never disagree — one
 # generator, two ways of asking for it.
