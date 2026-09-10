@@ -639,8 +639,18 @@ ok(r0['building towards'] === '0.4.0',
   ok(sects.find(([t]) => t === 'Version')?.[1] === '0.4.0',
      '...and the version is the heading\'s status, so a shut one still answers');
 }
-ok(/^0\.4\.0-dev\.3\+[0-9a-f]{7}$/.test(r0['a build now'] || ''),
-   '...and what a build right now would be called');
+// The SHAPE, and the ordinal against git rather than against a literal. The
+// ordinal is the commit count, and alpha is the shared fixture: an earlier
+// file in a full run commits into it, so a hardcoded 3 was right when this
+// file ran alone and wrong when it ran after git.mjs (B85). What the
+// assertion is actually about is that the line is the version, built from the
+// target, the count and the sha.
+{
+  const n = execFileSync('git', ['-C', A, 'rev-list', '--count', 'HEAD'],
+                         { encoding: 'utf8' }).trim();
+  ok(new RegExp(`^0\\.4\\.0-dev\\.${n}\\+[0-9a-f]{7}$`).test(r0['a build now'] || ''),
+     `...and what a build right now would be called (${r0['a build now']}, ordinal ${n})`);
+}
 ok(/since 0\.4\.0: 1 commit\b/.test(await boxText()),
    '...with the commits since the target last moved, as the case for a bump');
 

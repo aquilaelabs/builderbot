@@ -151,11 +151,20 @@ await ready(page);
      `the Jobs tab lists them with their state, node and reason (${rows.length} rows)`);
   ok(rows.every(r => !/Cancel/.test(r.text)), 'an ended job offers no Cancel');
 
-  // unfold a log
-  const first = await page.$('.jobstab .jbrow[data-state="succeeded"] [data-jb="log"]');
-  await first.click();
-  await page.waitForSelector('.jobstab .jbrow .jblog', { timeout: 10000 });
-  const log = await page.$eval('.jobstab .jbrow .jblog', e => e.textContent);
+  // unfold a log — ONE THIS FILE QUEUED, by id, not the newest succeeded row.
+  // `mine` is the set of job ids these tests submitted; the box runs other
+  // jobs, and on a node with a phone paired the newest succeeded row is an
+  // `adb devices` probe whose log says "List of devices attached" (B86).
+  const ids = [...mine];
+  let logRow = null;
+  for (const id of ids){
+    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="succeeded"] [data-jb="log"]`);
+    if (b){ logRow = { id, b }; break; }
+  }
+  ok(logRow, `a job this file queued is on the tab with a log to unfold (${ids.length} queued)`);
+  await logRow.b.click();
+  await page.waitForSelector(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, { timeout: 10000 });
+  const log = await page.$eval(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, e => e.textContent);
   ok(/placed on local|hi from local/.test(log), `Log unfolds what the job wrote (${log.trim().slice(0, 40)})`);
 
   // a running job from the tab: Cancel on the row

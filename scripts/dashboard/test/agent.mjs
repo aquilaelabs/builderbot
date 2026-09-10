@@ -1073,6 +1073,16 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       ok(mkr && mkr.state === 'succeeded' && existsSync(`${DIR}/pre/a1/a2/art`)
          && /made .*\/pre\/a1/.test(mkr.log),
          `a store path is created, parents and all, and the log says what it made (${mkr?.state})`);
+      // EMPTY, which is what the next assertion is named after and what the
+      // agent's rule turns on: it takes back a directory it made only while
+      // there is nothing in it, because nothing is ever deleted from a store
+      // it is moving off. The move above copied the previous store's contents
+      // in, so on a machine where that store had any — which is every node,
+      // and not the controller — `art` was not empty and the agent said so,
+      // correctly. The test asserted the cleanup without arranging for it
+      // (B84).
+      rmSync(`${DIR}/pre/a1/a2/art`, { recursive: true, force: true });
+      mkdirSync(`${DIR}/pre/a1/a2/art`, { recursive: true });
       await api('/api/v1/nodes', { action: 'config', id: minted.id,
         config: { mounts: [], stores: { artifacts: `${DIR}/agentartifacts` }, network: { mode: 'dhcp' } } });
       const un = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
@@ -1081,7 +1091,9 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
         return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
       }, 60000);
       ok(unr && unr.state === 'succeeded' && !existsSync(`${DIR}/pre/a1`) && /removed .*\/pre\/a1\/a2\/art/.test(unr.log),
-         `moving off an empty store takes back the directories it made for it (${unr?.state})`);
+         `moving off an empty store takes back the directories it made for it (${
+           unr?.state}; a1 still there: ${existsSync(`${DIR}/pre/a1`)}; log: ${
+           (unr?.log || '').trim().split('\n').slice(-3).join(' / ').slice(0, 200)})`);
       ok(existsSync(`${DIR}/pre/operators-file`) && existsSync(`${DIR}/pre`),
          '...and stops at the one it did not make, whatever is in it');
 
