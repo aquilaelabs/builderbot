@@ -8,6 +8,10 @@
 - The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it (de06bb3)
 - The deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
+- Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
+- The Jobs tab shows a page at a time like every other long list, instead of every job ever run (c4352fc)
+- A version bump now moves everything the version is stamped in, in one commit, or refuses (c4352fc)
+- A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
 
 ## 0.5.0 — 2026-09-10
 
