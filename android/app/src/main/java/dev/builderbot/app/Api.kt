@@ -75,6 +75,13 @@ class Api(private val base: String, private val user: String, private val passwo
         post("/api/todo", json("project" to project, "action" to "shelve", "id" to id))
     suspend fun todoRemove(project: String, id: Any, why: String) =
         post("/api/todo", json("project" to project, "action" to "remove", "id" to id, "why" to why))
+    // A step, into the session's own input. `step` null means the next one
+    // that has not gone, which is what the panel sends and what somebody on a
+    // phone means by "send the next bit". The answer says whether the line
+    // actually landed — a step is marked sent only when it did.
+    suspend fun todoSend(project: String, id: Any, step: Int?, note: String) =
+        post("/api/todo", json("project" to project, "action" to "send", "id" to id,
+                               "step" to step, "note" to note))
     suspend fun bugs(project: String) = get("/api/bugs?project=${enc(project)}")
     suspend fun bugAdd(project: String, title: String, severity: String, area: String, repro: String) =
         post("/api/bugs", json("project" to project, "action" to "add", "title" to title,
@@ -82,7 +89,13 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun bugStatus(project: String, id: Any, status: String, note: String) =
         post("/api/bugs", json("project" to project, "action" to "status", "id" to id,
                                "status" to status, "note" to note))
+    // The number and an instruction to read it, never the report itself: the
+    // tracker is the copy that stays current, and a paste starts going stale
+    // the moment somebody adds a note to it.
+    suspend fun bugSend(project: String, id: Any, note: String) =
+        post("/api/bugs", json("project" to project, "action" to "send", "id" to id, "note" to note))
     suspend fun rules(project: String) = get("/api/rules?project=${enc(project)}")
+    suspend fun memory(project: String) = get("/api/memory?project=${enc(project)}")
     suspend fun artifacts(project: String) = get("/api/artifacts?project=${enc(project)}")
     suspend fun git(project: String) = get("/api/git?project=${enc(project)}&what=status")
     suspend fun nodes() = get("/api/v1/nodes")

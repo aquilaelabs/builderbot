@@ -1,8 +1,16 @@
 // One project: the notebook's views the app can act on — the roadmap, the
-// bugs, the briefing's rules, the artifacts, and the repository's state —
-// as sections down one screen with the actions a person takes from a phone:
-// add an item, file a bug, close one, read what is waiting. Sending a step
-// to Claude and the terminals stay the browser's.
+// bugs, the briefing's rules and memories, the artifacts, and the
+// repository's state — as sections down one screen with the actions a person
+// takes from a phone: add an item, file a bug, close one, hand a step or a
+// report to the session that is running, read what is waiting.
+//
+// Sending is the one that changes what a phone is FOR. The rest is reading
+// and filing, which can wait for a desk; a step handed over is work starting
+// while you are somewhere else. It is offered only where it can land — a
+// session has to be open on the project — because a button that quietly does
+// nothing is worse than one that is not there.
+//
+// The terminals stay the browser's.
 package dev.builderbot.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +75,15 @@ fun ProjectScreen(store: Store, name: String) {
     }
 }
 
+// What a send actually did, in the words the panel uses. `sent` is the whole
+// question: the server marks a step as gone only when the line landed in the
+// pane, so a false here means the session was busy with a dialog and the step
+// is still waiting — which is exactly the case worth not lying about.
+private fun sent(r: Result<org.json.JSONObject>): String {
+    val v = r.getOrElse { return it.message ?: "it did not go" }
+    return if (v.bool("sent")) "sent to Claude" else "not sent — the session did not take it"
+}
+
 @Composable
 private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
     val scope = rememberCoroutineScope()
@@ -74,10 +91,13 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
     var text by remember { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
     val items = td.value?.arr("items") ?: emptyList()
+    // Whether there is anything to send TO. The panel's rule, and the
+    // server's: no session, no send.
+    val live = td.value?.str("session")?.isNotBlank() == true
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
-                if (td.value?.str("session")?.isNotBlank() == true) Dim("a Claude session is open on this project")
+                if (live) Dim("a Claude session is open on this project")
                 OutlinedTextField(text, { text = it }, label = { Text("Add to the roadmap") }, modifier = Modifier.fillMaxWidth())
                 Row { Spacer(Modifier.weight(1f)); Button(enabled = text.isNotBlank(), onClick = { scope.launch {
                     said = try { api.todoAdd(project, text.trim()); text = ""; "added" } catch (e: Exception) { e.message ?: "" }
@@ -100,6 +120,10 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                 if (it.str("info").isNotBlank()) Dim("  " + it.str("info").take(200))
                 Row {
                     Spacer(Modifier.weight(1f))
+                    if (!shelved && live) TextButton(onClick = { scope.launch {
+                        said = sent(runCatching { api.todoSend(project, it.opt("id"), null, "") })
+                        reload()
+                    } }) { Text("Send to Claude") }
                     if (!shelved) TextButton(onClick = { scope.launch { runCatching { api.todoShelve(project, it.opt("id")) }; reload() } }) { Text("Shelve") }
                 }
             }
@@ -150,6 +174,10 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
                     Text(b.str("severity"), color = when (b.str("severity")) { "high" -> Bad; "medium" -> Warn; else -> Ok }, style = MaterialTheme.typography.labelMedium)
                 }
                 if (open) Row { Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { scope.launch {
+                        said = sent(runCatching { api.bugSend(project, b.opt("id"), "") })
+                        reload()
+                    } }) { Text("Send") }
                     TextButton(onClick = { scope.launch { runCatching { api.bugStatus(project, b.opt("id"), "wontfix", "closed from the app") }; reload() } }) { Text("Won't fix") }
                     TextButton(onClick = { scope.launch { runCatching { api.bugStatus(project, b.opt("id"), "fixed", "closed from the app") }; reload() } }) { Text("Fixed") }
                 }
@@ -162,7 +190,13 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
 @Composable
 private fun Briefing(api: dev.builderbot.app.Api, project: String) {
     val (rl, _) = load("rules-$project") { api.rules(project) }
+    // The two halves of the dashboard's Briefing tab, in the same order: what
+    // the operator holds a session to, then what a session noticed. Both are
+    // read here — a rule is the operator's to write and a memory is the
+    // session's, so neither is a thing to type on a phone.
+    val (mm, _r2) = load("mem-$project") { api.memory(project) }
     val rules = rl.value?.arr("rules") ?: emptyList()
+    val mems = mm.value?.arr("memories") ?: emptyList()
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
@@ -177,6 +211,22 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
                 Text(r.str("text"))
                 val trig = (r.strs("files") + r.strs("words")).filter { it.isNotBlank() }
                 if (trig.isNotEmpty()) Dim("when: " + trig.joinToString(", "))
+            }
+            HorizontalDivider()
+        }
+        item {
+            Column(Modifier.padding(16.dp, 12.dp)) {
+                Text("Memory", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (mm.error != null) Problem(mm.error)
+                if (mm.value != null && mems.isEmpty()) Dim("nothing remembered here yet")
+            }
+        }
+        items(mems) { m ->
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                Text(m.str("title").ifBlank { m.str("name") }, fontWeight = FontWeight.SemiBold)
+                val about = m.str("hook").ifBlank { m.str("description") }
+                if (about.isNotBlank()) Text(about)
+                Dim(listOf(m.str("type"), m.str("when")).filter { it.isNotBlank() }.joinToString(" · "))
             }
             HorizontalDivider()
         }
