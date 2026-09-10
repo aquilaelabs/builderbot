@@ -1,9 +1,38 @@
-// The companion app. TARGET_API is the number of the dashboard's API surface
+// The companion app.
+//
+// Its VERSION is BuilderBot's, not a number of its own: the app ships from
+// this repository, talks to this dashboard, and the APK the workflow names
+// already carries `bb version --file`. A hand-kept versionName drifted from
+// that immediately — it still said 0.1.0 on the day the project reached
+// 0.5.0 — so the build takes both from `bb version` when it is told them
+// (-PbbVersion, -PbbCode, which the workflow passes) and falls back to
+// reading them itself. A checkout with no bb and no git still builds; it
+// just says so in the name.
+//
+// TARGET_API is the number of the dashboard's API surface
 // this build was written against (server.py's APP_API); the dashboard's
 // suite holds the two equal (test/appapi.mjs), so a dashboard change that
 // moves the surface fails there until this app is updated with it — and
 // the app, seeing a dashboard ahead of it, says so and points at the newer
 // build. Bump both together, never one.
+// Asked once, at configuration time. `bb` is on PATH inside BuilderBot and on
+// its nodes; anywhere else the property the workflow passes is the answer,
+// and "0.0.0-unknown" is the honest last resort rather than a number somebody
+// would trust.
+fun ask(vararg argv: String): String? = try {
+    val p = ProcessBuilder(*argv).directory(rootDir.parentFile).redirectErrorStream(false).start()
+    val out = p.inputStream.bufferedReader().readText().trim()
+    if (p.waitFor() == 0 && out.isNotEmpty()) out else null
+} catch (e: Exception) { null }
+
+val bbVersion: String = (findProperty("bbVersion") as String?)?.takeIf { it.isNotBlank() }
+    ?: ask("bb", "version", "--semver") ?: ask("bash", "scripts/bb", "version", "--semver")
+    ?: "0.0.0-unknown"
+val bbCode: Int = ((findProperty("bbCode") as String?)?.toIntOrNull()
+    ?: ask("bb", "version", "--code")?.toIntOrNull()
+    ?: ask("bash", "scripts/bb", "version", "--code")?.toIntOrNull()
+    ?: 1)
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,8 +47,8 @@ android {
         applicationId = "dev.builderbot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = bbCode
+        versionName = bbVersion
         buildConfigField("int", "TARGET_API", "1")
     }
     buildTypes {

@@ -32,16 +32,33 @@ jobs:
         with:
           fetch-depth: 0   # bb version counts commits
 
+      # One identity for the app and the thing it talks to. The APK's name,
+      # its versionName and its versionCode all come from `bb version` here
+      # rather than from three places that drift — the app said 0.1.0 on the
+      # day the project reached 0.5.0. Passed in rather than left for gradle
+      # to work out, so the build does not depend on what is on its PATH.
+      - name: Read the repository's version
+        id: v
+        run: |
+          {
+            echo "semver=$(bash scripts/bb version --semver)"
+            echo "code=$(bash scripts/bb version --code)"
+            echo "file=$(bash scripts/bb version --file)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build the debug APK
         working-directory: android
-        run: ./gradlew --no-daemon --console=plain assembleDebug
+        run: |
+          ./gradlew --no-daemon --console=plain assembleDebug \
+            -PbbVersion='${{ steps.v.outputs.semver }}' \
+            -PbbCode='${{ steps.v.outputs.code }}'
 
       - name: Name it by the repository's version
         id: name
         run: |
-          v="$(bash scripts/bb version --file 2>/dev/null || git rev-parse --short HEAD)"
-          echo "file=builderbot-app-${v}.apk" >> "$GITHUB_OUTPUT"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "builderbot-app-${v}.apk"
+          echo "file=builderbot-app-${{ steps.v.outputs.file }}.apk" >> "$GITHUB_OUTPUT"
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "builderbot-app-${{ steps.v.outputs.file }}.apk"
 
       - name: Land it in BuilderBot's dist/ where the share is mounted
         run: |
