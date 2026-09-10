@@ -894,6 +894,22 @@ ok(/no session is running/.test(askDead.error || ''),
 ok((await page.errors).every(e => /400/.test(e)),
    '...and the only failed request afterwards is the refusal just asked for');
 
+// The template every project's CLAUDE.md is built from. It is read into the
+// prompt of every session on every project, so a rendered example in it is a
+// number thousands of conversations see — and one did exactly what a number
+// in a briefing does: a session asked to give a new project its first version
+// read 0.4.0 out of this file and proposed it, having derived nothing.
+{
+  const tpl = readFileSync(new globalThis.URL(
+    '../../../config/templates/project-CLAUDE.md', import.meta.url), 'utf8');
+  const rendered = tpl.match(/\b\d+\.\d+\.\d+-dev\.\d+/g) || [];
+  ok(rendered.length === 0,
+     `the CLAUDE.md template renders no example version${
+       rendered.length ? ' — got ' + rendered.join(', ') : ''}`);
+  ok(/nothing here suggests one/.test(tpl),
+     '...and says outright that the number is the project\'s own to derive');
+}
+
 // fresh() removes stray projects but does not reach inside a fixture, so the
 // commits and the VERSION file this planted in alpha and beta have to go —
 // otherwise every later file runs against projects this one changed.

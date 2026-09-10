@@ -2999,12 +2999,17 @@ body.booting .pane>.loading{margin:auto}
 <div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
   <div class="box">
     <h3 id="rnTitle">Project settings</h3>
-    <div class="field">
+    <div class="field" id="rnNameField">
       <label for="rnName">New name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
     </div>
+    <!-- What this project pushes with. Reached by the chain on its row, which
+         is where the remote lives for a project that has one and for a
+         project that has not — the gear is the project's own settings, and a
+         credential is the remote's. -->
+    <div class="field" id="rnGitNone" hidden><div class="hint"></div></div>
     <div class="field" id="rnTokenField" hidden>
       <label for="rnToken">Access token<span class="help" data-tip="leave empty to keep the current one" tabindex="0">?</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
@@ -3058,7 +3063,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator
         run on this node; what it can build is what the Tools tab installed there.</div>
     </div>
-    <div class="field">
+    <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run on that node, and the outputs a build leaves" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
@@ -3101,6 +3106,11 @@ body.booting .pane>.loading{margin:auto}
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
       <button id="rnCancel">Cancel</button>
+      <!-- Pushed to the far end, like every other verb here that cannot be
+           undone. Only on the chain's door: it is about the remote, and the
+           gear is about the project. -->
+      <span class="sp"></span>
+      <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
   </div>
 </div>
@@ -3243,7 +3253,7 @@ body.booting .pane>.loading{margin:auto}
       <label id="pSrcLabel">Source</label>
       <div class="pseg" role="group" aria-labelledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
-        <button id="pClone" type="button">Clone from GitHub</button>
+        <button id="pClone" type="button">Clone a repository</button>
       </div>
     </div>
     <!-- A clone is not asked for a description — the notes are drafted from
@@ -3273,6 +3283,24 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">zip or tar (gz, bz2, xz), unpacked into the new directory
         before git init; a single top-level folder inside is dropped.</div>
     </div>
+    <!-- Which host, because a hostname does not say what is running on it: a
+         Gitea at git.example.com looks exactly like a Forgejo or a bare git
+         daemon until somebody says which, and only the person who set it up
+         knows. Picked once per host and remembered against the host, so the
+         second project on the same server is not asked again. -->
+    <div class="field" id="pForgeField" hidden>
+      <label for="pForge">Host<span class="help" data-tip="what is running on the server — it decides whether a token can be checked and a missing repository created" tabindex="0">?</span></label>
+      <!-- One question, so one label and one hint: which host, and where it
+           is. Both controls take the row's width like every other field in
+           this dialog, so the pair reads as one answer being given. -->
+      <div class="prefrow">
+        <select id="pForge" aria-label="which git host this is"></select>
+        <input id="pForgeHost" autocomplete="off" spellcheck="false" hidden
+               aria-label="the address you reach it on"
+               placeholder="git.example.com">
+      </div>
+      <div class="hint" id="pForgeHint"></div>
+    </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
@@ -3282,7 +3310,8 @@ body.booting .pane>.loading{margin:auto}
     <!-- Deploy keys: the shielded agent's public halves, straight from
          ssh-add -L. Picking one makes the server write the .pub selector and
          the per-repo ssh alias itself — the by-hand step this replaces — and
-         shows the public key so it can be added on GitHub's deploy-key page.
+         shows the public key so it can be added on the repository's own
+         deploy-key page.
          The private halves stay where they are: unreadable. -->
     <!-- A token for THIS project, which is the only kind there is. The
          container-wide one this replaced was shared by every repo and every
@@ -3312,7 +3341,7 @@ body.booting .pane>.loading{margin:auto}
       </div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, checked against GitHub before the clone starts" tabindex="0">?</span></label>
+      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, kept in /config and named in this repo's git config" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>
@@ -5092,7 +5121,9 @@ function rnFillNode(){
       const opened = rnFor;
       loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
     }
-    wrap.hidden = !pick.length;
+    // Hidden with the rest of the project's own settings when this dialog was
+    // opened by the chain, which asks about the remote and nothing else.
+    wrap.hidden = rnMode === "git" || !pick.length;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
@@ -6385,7 +6416,15 @@ function wireProjectRows(root){
   });
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-  root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
+  // The chain is the remote, whichever state the project is in: linking one
+  // that has no remote, and the credential half — and the way off it — for
+  // one that has. It used to be the first only, and GitHub only, with the
+  // credential buried in the settings dialog beside the name and the model.
+  root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => {
+    const p = (state?.projects || []).find(x => x.name === b.dataset.l);
+    if (p?.linked) renameProject(b.dataset.l, "git");
+    else openLinkProject(b.dataset.l);
+  });
   root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
   root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
     setLocked(b.dataset.k, b.dataset.on === "1"));
@@ -6471,9 +6510,12 @@ function projectRow(p, live, cls, inTab){
                   ? "set your name and email for commits on your Profile (the gear) first — a shell is where git is typed"
                 : "shell — open another terminal here"}"
         >${TERM}</button>` : ""}
-      ${p.git_ok && !p.linked && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
-             title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
+      ${p.git_ok && !isBroken(p)
+        ? `<button class="eye" data-l="${esc(p.name)}"
+             aria-label="${p.linked ? `${p.forge_name || "remote"} settings` : "link to a git host"}"
+             title="${p.linked
+               ? `${esc(p.forge_host || p.forge_name || "its remote")} — the credential this project pushes with, which one git reaches for, and the way to unlink it`
+               : "no remote — link this repo to an empty repository on GitHub, Gitea, GitLab or another git host"}">${LINK}</button>`
         : ""}
       ${isBroken(p) ? "" : `<button class="eye${nb ? " on acc" : ""}"
          data-m="${esc(p.name)}" aria-label="notebook"
@@ -6483,8 +6525,8 @@ function projectRow(p, live, cls, inTab){
                  : nb ? "notebook — open, go to its tab"
                  : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
-        title="settings — the name, its git credential, and what Claude runs on
-here. Renaming moves the directory and everything keyed to it">${GEAR}</button>
+        title="settings — the name, its node, and what Claude runs on here.
+Renaming moves the directory and everything keyed to it">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -6574,7 +6616,7 @@ function drawProjects(all){
   // New project lives here too — present even when the list is empty, since
   // an empty workspace is exactly where it is needed most.
   const togHtml = `<div class="macros"><button id="bNewProj"
-       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project</button><button id="bAllProj"
+       title="create a project under /workspace — a fresh local repo, or a clone of a repo the container can reach">New project</button><button id="bAllProj"
        title="every project under /workspace, pinned or not, with the same controls">All projects</button
        ><button id="bTrash" class="ic"
        title="projects you deleted — still on disk under .trash, and still recoverable">${BIN}</button>${
@@ -7360,7 +7402,7 @@ function renderProjectsInto(i){
   // long scroll is the worst place for it.
   if (paint(el, `<div class="projtab"><div class="actbar macros"><button
       id="bNewProjTab"
-      title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach"
+      title="create a project under /workspace — a fresh local repo, or a clone of a repo the container can reach"
       >New project</button></div>${
     ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`)){
     wireProjectRows(el);
@@ -8464,9 +8506,9 @@ async function pkgAct(action, only){
   }catch(e){ notify("could not start: " + e, true); }
 }
 
-// ---- new project / link to GitHub --------------------------------------
+// ---- new project / link to a git host ----------------------------------
 // One dialog, three modes, one table. `init` and `clone` feed /api/create;
-// `link` points an existing repo at an empty GitHub one via /api/link. The
+// `link` points an existing repo at an empty one via /api/link. The
 // table is the whole difference between the modes — which fields show, what
 // the button says, where it posts — so a new mode is a row, not a hunt
 // through branches. The server re-validates everything; this side only
@@ -8478,14 +8520,19 @@ const PMODES = {
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
                     "pTokenField", "pKeyField"] },
-  link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
-           fields: ["pUrlField", "pLinkAuthField", "pKeyField", "pTokenField"] },
+  link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
+           fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
+                    "pTokenField"] },
 };
 let pMode = "init";
 let pLinkAuth = "key";                   // how a link authenticates: key or token
 let pLink = null;                        // the project being linked, if any
 let pKeys = [];                          // the agent's public keys, per open
 let pPat = false;                        // can https push authenticate (gh)?
+// The host catalog, from the same fetch as the keys. Empty until it lands,
+// which is why every reader goes through pForge() rather than indexing it.
+let pForges = [];
+let pForgeId = "github";
 
 function pDraw(){
   const m = PMODES[pMode];
@@ -8493,9 +8540,11 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pUrlField", "pLinkAuthField", "pPushField",
+  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pForgeField",
+                   "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
+  pDrawForge();
   // The deploy-key picker only appears when the agent actually holds keys:
   // an empty dropdown would be a question with no answers.
   if (!pKeys.length) $("pKeyField").hidden = true;
@@ -8506,10 +8555,14 @@ function pDraw(){
     $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
     $("pTokenField").hidden = pLinkAuth !== "token";
   }
+  const fg = pForge();
   $("pUrlHint").textContent = pMode === "link"
-    ? `An empty repository on GitHub to push ${pLink} to — linking never `
+    ? `An empty repository to push ${pLink} to — linking never `
       + `touches a repo that already has commits.`
-      + (pPat ? " One that does not exist yet is created for you, private." : "")
+      + (fg.creates && pLinkAuth === "token"
+         ? " One that does not exist yet is created for you, private."
+         : pPat && fg.id === "github" && pLinkAuth === "key"
+           ? " One that does not exist yet is created for you, private." : "")
     : "Fetched with the container's own access — a deploy key or PAT that can "
       + "already reach it; private repos need that set up first. A CLAUDE.md is "
       + "drafted from its README and build files (kept as-is if it already has "
@@ -8517,31 +8570,36 @@ function pDraw(){
   $("pNameHint").textContent = pMode === "clone"
     ? "The directory to clone into. Fills itself in from the address — change "
       + "it to keep more than one checkout of the same repository."
-    : "Named the way GitHub names a repository: anything it cannot use becomes "
-      + "a dash, so you are shown the directory you are about to get rather "
-      + "than being sent back to retype it.";
+    : "Named the way a git host names a repository: anything it cannot use "
+      + "becomes a dash, so you are shown the directory you are about to get "
+      + "rather than being sent back to retype it.";
   $("pPushHint").textContent =
     "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
     + "by accident. It cannot be turned on later — delete the project and "
     + "clone it again — and only one project at a time may push to a given "
-    + "repository. Needs a token or a deploy key; the token is checked against "
-    + "GitHub before the clone starts.";
-  $("pTokenHint").textContent =
-    "Leave empty for a public repository. A token here is used for THIS "
-    + "project and no other, even if it opens more — it is kept in /config and "
-    + "named in this repo's own git config. It is not shielded the way a deploy "
-    + "key is: a shell in this container can read it.";
+    + "repository. Needs a token or a deploy key.";
+  $("pTokenHint").textContent = pMode === "link"
+    ? `Used for ${pLink} and no other project, even if it opens more. `
+      + (fg.creates ? `Checked with ${fg.name} before anything is written.`
+                    : `${fg.name} cannot be asked whether it is good, so the `
+                      + "first fetch is the test.")
+    : "Leave empty for a public repository. A token here is used for THIS "
+      + "project and no other, even if it opens more — it is kept in /config and "
+      + "named in this repo's own git config. It is not shielded the way a deploy "
+      + "key is: a shell in this container can read it.";
+  $("pToken").placeholder = pMode === "link" ? fg.hint : "ghp_… or github_pat_…";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
       : "For a private repo with its own deploy key. Pick the key and the "
         + "container side is handled for you — the clone (and every later "
         + "push) offers exactly this key. ")
-    + "GitHub's side still needs the public key below under the repo's "
-    + "Settings → Deploy keys. "
-    + (pPat ? "A PAT is configured, so leaving this on none works too."
-            : pMode === "link" ? "No PAT is configured, so a key is required here."
-            : "");
+    + "The host still needs the public key below, on the repository's own "
+    + "deploy-key page. "
+    + (pPat && (pMode !== "link" || fg.id === "github")
+        ? "A PAT is configured, so leaving this on none works too."
+        : pMode === "link" ? "No PAT is configured for this host, so a key is required here."
+        : "");
 }
 
 // The source picker moves like the Dashboard | Terminal switch: the incoming
@@ -8549,6 +8607,28 @@ function pDraw(){
 // the right), same 220ms ease, same reduced-motion gate — one vocabulary for
 // every two-tab switch on the page. Scaled to the dialog: a few pixels, not
 // a viewport, because the fields swap inside a box that is not moving.
+// The host row: the catalog as a select, and a box for the address when the
+// picked one is somebody's own server rather than a single public site.
+function pDrawForge(){
+  if ($("pForgeField").hidden) return;
+  const sel = $("pForge");
+  if (sel.dataset.built !== String(pForges.length)){
+    sel.innerHTML = pForges.map(f =>
+      `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
+    sel.dataset.built = String(pForges.length);
+  }
+  sel.value = pForgeId;
+  const f = pForge();
+  $("pForgeHost").hidden = !!f.fixed;
+  if (f.fixed) $("pForgeHost").value = "";
+  $("pForgeHint").textContent = f.about;
+  // The address box follows the host, so the shape being asked for is the
+  // shape of the thing they are about to paste.
+  const h = pHost() || "your-host";
+  $("pUrl").placeholder = pLinkAuth === "key"
+    ? `git@${h}:owner/repo.git` : `https://${h}/owner/repo.git`;
+}
+
 function pSlide(){
   if (noMotion()) return;
   const dx = pMode === "clone" ? "18px" : "-18px";
@@ -8566,6 +8646,23 @@ function pSlide(){
 // of what it just opened — so the field is chosen by the person who wants to
 // type in it. `focus` stays in PMODES because it is also the name of the
 // field that mode leads with, which pDraw uses.
+
+// The picked entry, or a safe stand-in while the catalog is still in flight —
+// the dialog draws before the fetch answers, and a placeholder that promises
+// nothing is better than a draw that throws.
+const PFORGE_NONE = {id: "", name: "the host", host: "", fixed: false,
+                     hint: "an access token", about: "", creates: false};
+const pForge = () => pForges.find(f => f.id === pForgeId) || pForges[0]
+                     || PFORGE_NONE;
+// What the operator typed for a self-hosted one, or the entry's own fixed
+// host. Trimmed of a pasted scheme and trailing slash, because people paste
+// the address bar.
+const pHost = () => {
+  const f = pForge();
+  if (f.fixed && f.host) return f.host;
+  return $("pForgeHost").value.trim()
+    .replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
+};
 
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
@@ -8586,6 +8683,11 @@ function pOpen(mode){
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   $("pToken").value = "";
+  // Every open starts on GitHub rather than on whatever the last one picked:
+  // the host is the first thing decided and a remembered pick would be a
+  // silent one.
+  pForgeId = "github";
+  $("pForgeHost").value = "";
   $("pPush").checked = false;
   pNameTyped = false;
   $("pNamePreview").hidden = true;
@@ -8605,6 +8707,8 @@ function pOpen(mode){
   pFetch.then(j => {
     if (gen !== pGen || !j) return;
     pKeys = j.keys || []; pPat = !!j.pat;
+    pForges = j.forges || [];
+    if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
     $("pKey").innerHTML = `<option value="">none — ${pPat
         ? "authenticate with the configured PAT"
         : "public repo, or the container's default access"}</option>`
@@ -12871,6 +12975,10 @@ $("pClone").onclick = () => pSwitch("clone");
 $("pLinkKey").onclick = () => { pLinkAuth = "key"; pDraw(); };
 $("pLinkToken").onclick = () => { pLinkAuth = "token"; pDraw(); };
 $("pKey").onchange = pShowKey;
+$("pForge").onchange = () => { pForgeId = $("pForge").value; pDraw(); };
+// The address box follows what is typed here, so the shape being asked for
+// keeps up with the server being named.
+$("pForgeHost").addEventListener("input", pDrawForge);
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
   // falls back to the selection route, which works everywhere a click does.
@@ -12965,6 +13073,36 @@ $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
 // it is a single intention, and the submit does them in that order.
 $("rnToken").addEventListener("input", rnDrawAuth);
+// Unlinking asks, and the question lists what goes rather than asking twice:
+// a stored token is not recoverable and a push grant frees the repository for
+// another project. Nothing in the tree is touched, which is the half worth
+// saying out loud — somebody pressing this is worried about their commits.
+async function unlinkProject(name){
+  const p = (state?.projects || []).find(x => x.name === name);
+  const where = p?.forge_host || p?.forge_name || "its remote";
+  if (!confirm(`Unlink ${name} from ${where}?\n\n`
+      + `The remote goes, with its stored access token and its push rights — `
+      + `which frees the repository for another project. Nothing in the tree `
+      + `changes: every commit and branch stays exactly where it is, and you `
+      + `can link it somewhere else afterwards.`)) return;
+  const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
+                      $("rnUnlink").disabled = false;
+                      $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`; };
+  $("rnUnlink").disabled = true; $("rnUnlink").textContent = "Unlinking…";
+  try{
+    const r = await fetch("/api/unlink", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) return stop(j.error || `unlink failed (HTTP ${r.status})`);
+    closeRename();
+    notify(`${name} is unlinked — ${(j.removed || []).join(", ")}`
+           + (j.others?.length ? `. Its other remotes are untouched: ${j.others.join(", ")}` : ""));
+  }catch(e){ return stop("unlink failed: " + e); }
+  refresh();
+}
+
+$("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnCancel").onclick = closeRename;
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
@@ -12992,14 +13130,19 @@ $("pCreate").onclick = async () => {
     // the pre-fetch defaults. (The server refuses it too; this is just the
     // earlier of the two answers.)
     const linkToken = mode === "link" && pLinkAuth === "token" ? $("pToken").value.trim() : "";
+    const fg = pForge();
+    if (mode === "link" && !fg.fixed && !pHost())
+      return fail(`the address you reach ${fg.name} on, e.g. git.example.com`);
     if (mode === "link" && pLinkAuth === "token" && !linkToken)
-      return fail("an access token for this project — it is checked against GitHub before anything is pushed");
+      return fail("an access token for this project — a push has to authenticate somehow");
     if (mode === "link" && pLinkAuth === "key" && !key){
       const auth = await pFetch;
-      if (!(auth && auth.pat))
+      // The container's PAT is GitHub's and covers nothing else, so it is not
+      // an answer for a host it was never minted for.
+      if (!(auth && auth.pat && fg.id === "github"))
         return fail((auth && auth.keys || []).length
-          ? "GitHub is not authenticated — pick a deploy key, or switch to an access token"
-          : "GitHub is not authenticated and the agent holds no deploy keys — switch to an access token, or add a key to /secrets/ssh and restart the container");
+          ? `no credential is configured for ${fg.name} — pick a deploy key, or switch to an access token`
+          : `no credential is configured for ${fg.name} and the agent holds no deploy keys — switch to an access token, or add a key to /secrets/ssh and restart the container`);
     }
     // The archive goes first, on its own: the create request is a small
     // JSON body and the upload is not, so the server spools the bytes and
@@ -13017,7 +13160,9 @@ $("pCreate").onclick = async () => {
     const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name: linkName, url, key: pLinkAuth === "key" ? key : "", token: linkToken})})
+          body: JSON.stringify({name: linkName, url, forge: pForgeId,
+                                key: pLinkAuth === "key" ? key : "",
+                                token: linkToken})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
@@ -13083,8 +13228,8 @@ const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
 const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
   <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0"/></svg>`;
 
-// A chain link, for a repo with no remote: the action is "link this to
-// GitHub", and it disappears once the repo has anywhere to push to.
+// A chain link: the remote, on every repository — the link form for one that
+// has none, and the credential and Unlink for one that has.
 const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.7 9.3 9.3 6.7"/>
   <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
@@ -13282,11 +13427,25 @@ async function setLocked(name, on){
 // rather than hides — the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
+let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
-function renameProject(name){
+function renameProject(name, mode = "all"){
   rnFor = name;
+  rnMode = mode;
   const p = (state?.projects || []).find(x => x.name === name);
-  $("rnTitle").textContent = name;
+  // One dialog, two doors. The gear is the project's own settings; the chain
+  // is the remote's half of them, and opening it there hides everything that
+  // is not about the remote rather than scrolling past it.
+  const git = mode === "git";
+  // Named rather than assumed: a project on somebody's own Gitea should not
+  // read "GitHub settings", and the host is the one fact this door is about.
+  const where = p?.forge_name || "its remote";
+  $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
+  for (const id of ["rnNameField", "rnPrefField", "rnEditsField",
+                    "rnGateField", "rnBuildField"])
+    $(id).hidden = git;
+  // The node picker and the two credential blocks have hidden rules of their
+  // own further down, and each of those consults the mode too.
   $("rnName").value = name;
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
@@ -13306,32 +13465,48 @@ function renameProject(name){
   // there has nothing to authenticate against, and offering one would imply
   // it grants something. Push rights are granted once, at clone.
   const how = p?.push_how || "";
-  $("rnTokenField").hidden = !(p?.has_token || p?.push);
+  $("rnTokenField").hidden = git ? !(p?.has_token || p?.push) : true;
   // The deploy-key case is tested FIRST and stays true after a token is set:
-  // storing one does not change what git uses, and a hint that stopped saying
-  // so the moment a token existed would be wrong exactly when it mattered.
+  // storing one does not change what git uses (git never asks a credential
+  // helper about an ssh remote), and a hint that stopped saying so the moment
+  // a token existed would be wrong exactly when it mattered. One line each,
+  // per the site-text rule — the reasoning lives here and in the README.
   $("rnTokenHint").textContent = how === "key"
-    ? "This project pushes with a deploy key" + (p?.has_token
-        ? ", and already has a token stored. " : ". ")
-      + "A token here is kept for it alone. It does not take effect on its "
-      + "own — a credential helper is never asked about an ssh remote — so "
-      + "the switch below is the half that makes git use it."
+    ? p?.has_token
+      ? "This project pushes with a deploy key and already has a token stored; "
+        + "the switch below decides which git uses."
+      : "This project pushes with a deploy key, so a token here does nothing "
+        + "until the switch below says to use it."
     : p?.has_token
-      ? "Replaces the token this project uses. It stays this project's alone, "
-        + "and is not shielded — a shell here can read it."
-      : "Stored for this project alone, and not shielded — a shell here can "
+      ? "Replaces the token this project uses, kept for it alone and not "
+        + "shielded — a shell here can read it."
+      : "Kept for this project alone, and not shielded — a shell here can "
         + "read it.";
+  // Nothing to set is an answer, not an empty box: a linked project with no
+  // token and no push rights has a remote it can only read.
+  $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
+  if (!$("rnGitNone").hidden)
+    $("rnGitNone").firstElementChild.textContent =
+      `${name} has a remote it can only read, so there is no credential to set here.`;
+  // Unlink is the chain's, never the gear's: it is about the remote, and it
+  // is the way a project moves from one host to another, since linking
+  // refuses a repo that already has one.
+  $("rnUnlink").hidden = !(git && p?.linked);
+  $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
   rnLoadAuth(name);
   rnFillPrefs(p);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Save";
+  // Nothing to save is nothing to press: with no credential to set, Cancel is
+  // the only honest way out of this door — but Unlink still is one.
+  $("rnGo").hidden = !$("rnGitNone").hidden;
   $("rnmodal").hidden = false;
 }
 
 // What the remote uses now, and what the operator has picked instead. Both
 // null until this open's /api/project-auth answers — the dialog draws without
-// them rather than waiting, because the name field is the reason most people
-// opened it and it should not be behind a request.
+// them rather than waiting, so the token field is typeable before the request
+// lands and the switch appears under it when it does.
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
 // Staged, like the name and the token: pressing Clear changes what the dialog
 // says and nothing on disk. Rename is the only verb here that touches the
@@ -13340,11 +13515,14 @@ let rnClearToken = false;
 
 // Fetched per open, like the new-project dialog's keys: a project's remote can
 // be rewritten from a terminal between two opens, and a cached answer here
-// would offer to switch to the side it is already on.
+// would offer to switch to the side it is already on. Only from the chain: the
+// gear no longer shows either credential control, so asking would be a request
+// per settings open for an answer nothing reads.
 function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  if (rnMode !== "git") return;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({name})})
@@ -13363,6 +13541,8 @@ function rnDrawAuth(){
   // would mean nothing (a read-only clone, a local repo) the field above is
   // hidden, and a switch offering to use a credential the dialog will not let
   // you set is a dead end wearing a control's clothes.
+  // rnAuthOpts is null from the gear, which never asks for it, so that door
+  // leaves through the same test as a project with no remote.
   if (!rnAuthOpts || !rnAuthNow || $("rnTokenField").hidden){
     $("rnAuthField").hidden = true; return;
   }
@@ -13416,8 +13596,8 @@ function rnDrawAuth(){
           + "it, so a push is refused. ")
       + (changed
           ? (rnAuthPick === "https"
-              ? "Saving points origin at https://github.com and uses the token. "
-                + "The key and its alias stay where they are."
+              ? "Saving points origin at the host's https address and uses the "
+                + "token. The key and its alias stay where they are."
             : rnAuthPick === "ssh"
               ? "Saving points origin back at the deploy key. The token "
                 + (rnClearToken ? "is being cleared." : "stays stored and unused.")

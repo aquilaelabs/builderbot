@@ -378,8 +378,8 @@ bb version policy       # what a session may move here, and who decides
 
 It is built from three parts: a `VERSION` file at the repo root holding one
 line of `MAJOR.MINOR.PATCH`, the commit count (`git rev-list --count HEAD`),
-and the short sha — rendered as `0.4.0-dev.390+e1615f5`, or as whatever
-format the thing you are stamping demands. **Use `bb version --file` for the
+and the short sha — rendered as `MAJOR.MINOR.PATCH-dev.<count>+<sha>`, or as
+whatever format the thing you are stamping demands. **Use `bb version --file` for the
 artifact name** rather than inventing one; that is what makes two builds
 tellable apart in the Artifacts tab.
 
@@ -407,6 +407,11 @@ roadmap and the changelog, decide how finished this actually is and what has
 shipped, and say what you concluded and why. Then **propose, and ask** —
 they came to negotiate, and a number applied on arrival skips the
 conversation they wanted. Do not propose `1.0.0` unless they raise it.
+
+**The number is this project's own, and nothing here suggests one** — not an
+example in this file, not the version of the container you are running in,
+not a sibling project's. A number you did not derive from this code base is
+the wrong number, however plausible it looks.
 
 **A repo that ships two products has two versions.** An APK and a browser
 extension do not share a maturity, so a directory with its own `VERSION` file

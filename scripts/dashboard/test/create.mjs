@@ -417,16 +417,25 @@ await page.evaluate(() => setProjectPinned('beta', true));
 
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
-// never get past the server, whatever the page's own form checks.
-for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
-                   'file:///etc', 'https://github.com/owner-only',
-                   'git@github.com:owner/repo extra'])
+// never get past the server, whatever the page's own form checks. What is
+// checked is the SHAPE, not the host — any git server is linkable now — so
+// the corpus is transports, paths that are not repositories, and a path too
+// deep for the host it names.
+for (const url of ['ext::sh -c id', 'file:///etc', 'https://github.com/owner-only',
+                   'git@github.com:owner/repo extra', 'https://github.com/a/b/c',
+                   'https://gitea.example/onlyone'])
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
 // The name still comes off the URL when none is given — proven without
 // touching the network: a URL naming a repo that already exists here is
-// refused by the mkdir claim before git ever runs.
-for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git'])
+// refused by the mkdir claim before git ever runs. Which also proves the
+// address was ACCEPTED, since it got as far as claiming a directory: three of
+// these are not GitHub, and one is a GitLab subgroup path, which is the one
+// place a third segment is a real part of an address.
+for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git',
+                   'https://gitea.example/owner/alpha',
+                   'ssh://git@git.home.lan:2222/owner/alpha.git',
+                   'https://gitlab.com/group/sub/alpha'])
   ok(await post({ mode: 'clone', url }) === 400, `derived name collides, refused: ${url}`);
 // ...and a name that IS given wins, which is what makes two checkouts of one
 // repository possible. Same proof: it collides where the derived name would not.
@@ -502,7 +511,12 @@ ok(await post({ mode: 'clone', url: 'https://github.com/owner/pushless',
 // One project per repository. Driven at the module, because claiming the
 // second would otherwise need two real clones.
 const rights = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, sys, tempfile
+# projects.py imports its peer forges.py, so the directory it lives in has to
+# be importable — loading one file by path does not put its neighbours on the
+# path for it.
+sys.path.insert(0, ${
+  JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
 spec = importlib.util.spec_from_file_location('p', ${
   JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -510,31 +524,41 @@ d = tempfile.mkdtemp()
 saved = {}
 m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
-            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            ensure_deploy_alias=lambda *a: '',
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d,
+            state=d, home=d,
             write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
 # The remote's identity, however it is spelled — a deploy-key alias hides the
 # host but the path is still owner/repo, and case does not distinguish repos.
 out['ssh_alias'] = m.repo_of_remotes('origin\tgit@bb-thing:Owner/Repo.git (fetch)')
 out['https'] = m.repo_of_remotes('origin\thttps://github.com/owner/repo (push)')
-out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
-m.grant_push('first', 'owner/repo', 'key')
-out['holder'] = m.push_holder('owner/repo')
-out['free'] = m.push_holder('owner/other')
+# A subgroup path IS a repository — GitLab nests them — so identity keeps all
+# of it. What is not a repository is an address with no owner in it at all.
+out['nested'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
+out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:justone (fetch)')
+m.grant_push('first', 'github.com', 'owner/repo', 'key')
+out['holder'] = m.push_holder('github.com', 'owner/repo')
+out['free'] = m.push_holder('github.com', 'owner/other')
+# The same path on another server is another repository — mirroring one to the
+# other is a reason to link a second project, not a collision to refuse.
+out['elsewhere'] = m.push_holder('gitea.home.lan', 'owner/repo')
 out['may'] = [m.may_push('first'), m.may_push('second')]
 m.drop_push('first')
-out['after_drop'] = m.push_holder('owner/repo')
+out['after_drop'] = m.push_holder('github.com', 'owner/repo')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const rj = JSON.parse(rights.trim().split('\n').pop());
 ok(rj.ssh_alias === 'owner/repo' && rj.https === 'owner/repo',
    'a deploy-key alias and an https remote name the same repository');
+ok(rj.nested === 'one/two/three',
+   '...and a subgroup path keeps all of itself, because GitLab nests them');
 ok(rj.not_a_repo === '',
-   '...and something that is not an owner/repo path is not guessed at');
+   '...while an address with no owner in it is not guessed at');
 ok(rj.holder === 'first' && rj.free === '',
    'a granted repository names its holder, and an ungranted one names nobody');
+ok(rj.elsewhere === '',
+   '...and the same owner/repo on another host is a different repository');
 ok(rj.may[0] === true && rj.may[1] === false, 'only the granted project may push');
 ok(rj.after_drop === '',
    'deleting the project is what frees the repository for another');
@@ -565,17 +589,22 @@ for (const token of ['has space', 'two\nlines', 'sh', '#{}!'])
 // end, and this is the half that decides whether the token stays this
 // project's alone.
 const tok = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, sys, tempfile
+# projects.py imports its peer forges.py, so the directory it lives in has to
+# be importable — loading one file by path does not put its neighbours on the
+# path for it.
+sys.path.insert(0, ${
+  JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
 spec = importlib.util.spec_from_file_location('p', ${
   JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
 m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
-            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            ensure_deploy_alias=lambda *a: '',
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d, write_json=lambda *a: None)
-helper = m.write_token('alpha', 'ghp_ExampleTokenValue123')
+            state=d, home=d, write_json=lambda *a: None)
+helper = m.write_token('alpha', 'ghp_ExampleTokenValue123', 'github.com')
 f = os.path.join(d, 'gitcreds', 'alpha')
 out = {'helper': helper,
        'line': open(f).read().strip(),
@@ -588,7 +617,7 @@ out['gone'] = not os.path.exists(f)
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const tj = JSON.parse(tok.trim().split('\n').pop());
-ok(tj.line === 'https://x-access-token:ghp_ExampleTokenValue123@github.com',
+ok(tj.line === 'https://oauth2:ghp_ExampleTokenValue123@github.com',
    'a token is stored in git\'s own credential-store format');
 ok(tj.mode === '0o600' && tj.dirmode === '0o700',
    '...readable only by the user that runs git, in a directory to match');
@@ -604,7 +633,12 @@ ok(tj.gone, 'and forgetting one removes it');
 // GitHub on the other end of a unit test. `run` is stubbed to answer the one
 // question set_auth asks and to record the one command it issues.
 const authOut = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, sys, tempfile
+# projects.py imports its peer forges.py, so the directory it lives in has to
+# be importable — loading one file by path does not put its neighbours on the
+# path for it.
+sys.path.insert(0, ${
+  JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
 spec = importlib.util.spec_from_file_location('p', ${
   JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -629,21 +663,26 @@ def fake_run(cmd, **k):
         return {'code': 0, 'out': '', 'err': ''}
     if cmd[3:6] == ['config', '--local', '--get-all']:
         return {'code': 0, 'out': state['helper'], 'err': ''}
+    # What the deploy-key alias actually stands for. ssh reads it out of
+    # ~/.ssh/config with no network, and it is the only way back from
+    # bb-depkey to a hostname an https remote can name.
+    if cmd[:2] == ['ssh', '-G']:
+        return {'code': 0, 'out': 'hostname github.com', 'err': ''}
     return {'code': 0, 'out': '', 'err': ''}
 m.configure(run=fake_run, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
-            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            ensure_deploy_alias=lambda *a: '',
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d,
+            state=d, home=d,
             write_json=lambda p, v: open(p, 'w').write(json.dumps(v)))
 out = {}
-m.grant_push('alpha', 'owner/repo', 'key')
+m.grant_push('alpha', 'github.com', 'owner/repo', 'key')
 out['ssh_seen'] = m.remote_auth('/tmp/alpha')
 # No token yet: the switch has to refuse rather than write a remote that
 # cannot authenticate.
 out['no_token'] = m.set_auth('alpha', '/tmp/alpha', 'https')[1]
 out['bad_mode'] = m.set_auth('alpha', '/tmp/alpha', 'nonsense')[1]
-m.write_token('alpha', 'ghp_ExampleTokenValue123')
+m.write_token('alpha', 'ghp_ExampleTokenValue123', 'github.com')
 out['opts_on_key'] = m.auth_options('alpha', '/tmp/alpha')
 out['to_https'] = m.set_auth('alpha', '/tmp/alpha', 'https')
 out['now_https'] = m.remote_auth('/tmp/alpha', 'alpha')
@@ -655,6 +694,11 @@ out['back'] = m.set_auth('alpha', '/tmp/alpha', 'ssh')
 out['off'] = m.set_auth('alpha', '/tmp/alpha', 'none')
 out['now_off'] = m.remote_auth('/tmp/alpha', 'alpha')
 out['issued'] = issued
+# A credential is filed under the host it is for. git matches a stored line on
+# the scheme and the host, so one written against the wrong server is a file it
+# reads and ignores — a token that looks stored and authenticates nothing.
+m.write_token('gitea', 'abc123def456', 'git.home.lan:3000', 'http', 'sean')
+out['gitea_line'] = open(os.path.join(d, 'gitcreds', 'gitea')).read().strip()
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const aj = JSON.parse(authOut.trim().split('\n').pop());
@@ -666,6 +710,8 @@ ok(aj.opts_on_key.now === 'ssh' && aj.opts_on_key.token && aj.opts_on_key.ssh,
    'with both credentials present the dialog is offered a real choice');
 ok(aj.issued[0] === 'https://github.com/Owner/Repo.git',
    'switching to the token rewrites origin to https, with the repository still spelled the way it is spelled');
+ok(aj.gitea_line === 'http://sean:abc123def456@git.home.lan:3000',
+   'a token is filed under the host, the port and the scheme its remote uses');
 ok(aj.now_https === 'https' && aj.token_kept,
    '...and the token file it now uses is still the project\'s own');
 ok(aj.opts_on_token.ssh,
@@ -788,17 +834,40 @@ await page.click('#bJobOk');
 await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
-// alpha has a remote, beta does not: the chain button shows on exactly the
-// unlinked one. The dialog is the clone form's third mode — URL and key only.
+// The chain is GitHub whichever state a project is in — the link form for one
+// with no remote, its credential settings for one that has. alpha has a
+// remote and beta does not, so the two doors are checked on the two of them.
 // With the stub gh (never authenticated) a key is mandatory, and the attempt
 // stops at the unresolvable bb- alias, before any remote is added — the
 // success path needs a live GitHub and stays a manual test, like the clone's.
 ok(await page.$('#projects [data-l="beta"]') !== null
-   && await page.$('#projects [data-l="alpha"]') === null,
-   'the link button shows only on a repo with no remote');
+   && await page.$('#projects [data-l="alpha"]') !== null,
+   'the chain shows on every repo, linked or not');
+await page.click('#projects [data-l="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
+ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
+   && await page.$eval('#rnNameField', el => el.hidden),
+   '...and on a linked one it opens that project\'s GitHub settings, not the link form');
+await page.click('#rnCancel');
 await page.click('#projects [data-l="beta"]');
-ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to GitHub'),
+ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to a git host'),
    'the dialog names the project it is linking');
+// Which host, because a hostname does not say what runs on it. GitHub is one
+// server and needs no address; a Gitea is whichever one the operator runs, so
+// picking it asks for the address and the placeholder follows what is typed.
+ok(!await page.$eval('#pForgeField', el => el.hidden)
+   && await page.$eval('#pForgeHost', el => el.hidden),
+   'linking asks which host, and a public one needs no address');
+await page.selectOption('#pForge', 'gitea');
+ok(!await page.$eval('#pForgeHost', el => el.hidden),
+   '...and picking a self-hosted one asks where it is');
+await page.fill('#pForgeHost', 'git.home.lan:3000');
+ok(/git\.home\.lan:3000/.test(await page.$eval('#pUrl', el => el.placeholder)),
+   '...with the address box showing the shape for that server');
+ok(await post({ name: 'beta', url: 'https://github.com/owner/beta', forge: 'gitea' },
+              '/api/link') === 400,
+   'and github.com cannot be linked as Gitea: the host names itself');
+await page.selectOption('#pForge', 'github');
 // The deploy-key pick from the clone flow above must not ride along into
 // this open — the select starts empty and repopulates from a fresh fetch.
 await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);
@@ -855,6 +924,62 @@ ok(await post({ name: 'nosuch', url: 'https://github.com/owner/x',
 ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
               '/api/link') === 400,
    'no PAT and no key is refused server-side too');
+
+// ---- unlinking -----------------------------------------------------------
+// The way off a host, and the only way onto another one: link refuses a repo
+// that already has a remote, so this is the first half of moving. It is local
+// and instant — nothing is asked of the server the project is leaving, which
+// is one of the reasons to reach for it.
+//
+// alpha is the fixture with a remote and a seeded push grant. Its history is
+// what the assertions are really about: unlinking must not touch a commit.
+{
+  const cfg = () => readFileSync(`${DIR}/ws/alpha/.git/config`, 'utf8');
+  mkdirSync(`${DIR}/state/gitcreds`, { recursive: true });
+  writeFileSync(`${DIR}/state/gitcreds/alpha`,
+                'https://oauth2:ghp_ExampleTokenValue123@github.com\n');
+  // Every ref and every object, listed. The fixture may or may not carry a
+  // commit depending on which file ran before this one, so the invariant is
+  // "whatever was here is still here" rather than a particular sha.
+  const history = () => {
+    try{
+      return execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'rev-list', '--all'],
+                          { encoding: 'utf8' }).trim()
+        + '|' + readFileSync(`${DIR}/ws/alpha/README.md`, 'utf8');
+    }catch{ return 'unreadable'; }
+  };
+  const before = history();
+  ok(cfg().includes('[remote "origin"]'), 'alpha starts out linked');
+  const u = await page.evaluate(async () => {
+    const r = await fetch('/api/unlink', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'alpha' }) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  });
+  ok(u.status === 200 && !cfg().includes('[remote "origin"]'),
+     'unlinking takes the remote off');
+  ok(!existsSync(`${DIR}/state/gitcreds/alpha`),
+     '...and the stored token with it, since it authenticated to a host this no longer talks to');
+  ok(/push rights/.test((u.body.removed || []).join(' ')),
+     '...and says the push grant went, which is what frees the repository');
+  ok(history() === before && before !== 'unreadable',
+     '...while every commit and every file is exactly where it was');
+  ok(await page.evaluate(async () => {
+    const r = await fetch('/api/unlink', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'alpha' }) });
+    return r.status;
+  }) === 400, 'unlinking twice says there is no remote rather than pretending');
+  // ...and now it can be linked somewhere else, which is the whole point: the
+  // refusal above was the only thing standing between this project and
+  // another host. Refused here for the credential, not for the remote.
+  const again = await post({ name: 'alpha', url: 'https://git.home.lan/owner/alpha',
+                             forge: 'gitea' }, '/api/link');
+  ok(again === 400,
+     'an unlinked project is offered to another host — and asked for a credential');
+  execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'remote', 'add', 'origin',
+                       'git@github.com:owner/alpha.git']);
+}
 
 // The refusals above are answered with 400s on purpose — and the deploy-key
 // clone is made to fail with a 500 — and the browser logs each as a failed

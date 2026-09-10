@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Everything behind New project and Link to GitHub.
+"""Everything behind New project, and linking one to a git host.
 
 Making a project is two operations that look alike and behave nothing alike.
 `git init` is local, bounded, and done before a spinner would render. A clone
@@ -38,6 +38,12 @@ import time
 import zipfile
 from pathlib import Path
 
+# Which git host a remote is on, and the two things a host can be asked that
+# git cannot: whether a token is real, and creating an empty repository. A
+# peer library rather than an injection — it holds no server state, and the
+# alternative was this module carrying a second copy of the URL rules.
+import forges
+
 # A personal access token belonging to ONE project.
 #
 # What this replaced is a single GIT_PAT in the container's environment, shared
@@ -60,15 +66,26 @@ def _creds_dir():
     return d
 
 
-def write_token(project, token):
-    """Store one project's token, and return the git helper that reads it."""
+def write_token(project, token, host, scheme="https", user=""):
+    """Store one project's token for one host, and return the helper that
+    reads it.
+
+    git's credential store is a list of URLs and it matches on the host, so a
+    line naming the wrong one is a file git reads and then ignores — a token
+    that appears to be stored and authenticates nothing. The host is therefore
+    required rather than defaulted; the username is a formality every host
+    here accepts, and forges.cred_user picks the one this host wants.
+    """
     f = _creds_dir() / project
-    # Opened with the mode rather than chmod'd after: between creat and chmod
-    # the file is briefly world-readable, and this is the one file here where
-    # that window matters.
+    # http is a real answer for a Gitea on somebody's own LAN, and git matches
+    # the scheme as well as the host — a line written as https would be
+    # ignored on an http remote, which is the same silent nothing as the wrong
+    # host. link() is where the plaintext hop is said out loud.
+    if scheme not in ("https", "http"):
+        scheme = "https"
     fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
-        fh.write(f"https://x-access-token:{token}@github.com\n")
+        fh.write(f"{scheme}://{user or 'oauth2'}:{token}@{host}\n")
     return f"store --file={f}"
 
 
@@ -161,10 +178,8 @@ WORKSPACE = None
 agent_keys = None
 gh_authed = None
 ensure_deploy_alias = None
-repo_path = None
 build_claude_md = None
 PROJECT_NAME = None
-GITHUB_URL = None
 # Renaming's own share of the injection: where the state and the home volume
 # live.
 STATE = None
@@ -180,16 +195,19 @@ rename_project_data = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
-              repo_path, build_claude_md, project_name, github_url,
+              build_claude_md, project_name,
               state, home, write_json, rename_project_data=None):
     """Hand over the server's helpers."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
-        repo_path=repo_path, build_claude_md=build_claude_md,
-        PROJECT_NAME=project_name, GITHUB_URL=github_url,
+        build_claude_md=build_claude_md,
+        PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
         rename_project_data=rename_project_data)
+    # The peer library takes the same runner: it shells out to `ssh -G` to
+    # resolve a deploy-key alias, and to nothing else.
+    forges.configure(run=run, state=state, write_json=write_json)
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +394,21 @@ def rename(req):
             return {"error": f"{old} is already its name"}, 400
         moved, failed = [], []
         if token:
-            write_token(old, token)
+            # The remote decides where the credential is filed: git matches a
+            # stored line on scheme and host, so a token written against the
+            # wrong one is a file it reads and ignores.
+            addr = forges.parse(origin_url(src))
+            if not addr:
+                return {"error": f"{old} has no remote to store a token "
+                                 f"for"}, 400
+            host = forges.host_of(origin_url(src)) or addr["host"]
+            forge = forges.forge_of(host)
+            # An ssh remote's scheme is not a scheme git stores a credential
+            # under; https is where a token would be used if the switch below
+            # ever points the remote at one.
+            scheme = "http" if addr["scheme"] == "http" else "https"
+            write_token(old, token, host, scheme,
+                        forges.cred_user(forge, host, token, scheme))
             _scope_to_token(src, token_helper(old))
             moved.append("its access token")
         elif clear:
@@ -499,11 +531,13 @@ def rename(req):
 # A clone is read-only unless it was asked for otherwise, and the asking is a
 # decision with three properties the operator set out:
 #
-#   - it cannot be taken back. Turning it off would leave a repository that
-#     could push yesterday and cannot today, with nothing to explain the
-#     difference to whoever is standing in it. Deleting the project is the way
-#     out, and that never touches GitHub.
-#   - exactly one project may push to a given GitHub repository. Two working
+#   - it cannot be turned off on its own. A repository that could push
+#     yesterday and cannot today, with nothing to explain the difference to
+#     whoever is standing in it, is the state worth not having. It goes with
+#     the remote instead — unlink takes both, so the reason a push now fails
+#     is that there is nowhere to push to — and deleting the project takes
+#     both as well. Neither touches the host.
+#   - exactly one project may push to a given repository. Two working
 #     copies both able to push to one remote is how two people's work ends up
 #     racing through the same branch, and here both "people" may be the same
 #     session on different days.
@@ -532,33 +566,26 @@ def save_push(d):
 def repo_path_of(url):
     """owner/repo for one remote URL, as written. "" if it is not one.
 
-    The host is not what identifies it. A deploy-key setup addresses GitHub
-    through a ~/.ssh/config alias, so the hostname is bb-something and the
-    path after it is still owner/repo. Anything whose path is not exactly two
-    segments is not a repository address this can reason about, and is left
-    alone rather than guessed at.
+    The host is not what identifies it here. A deploy-key setup addresses the
+    forge through a ~/.ssh/config alias, so the hostname is bb-something and
+    the path after it is still the repository's.
 
     Case is preserved here and folded by the caller that wants it folded. The
     two callers want opposite things: comparing two remotes needs Owner/Repo
     and owner/repo to be equal, and building a URL to write into a remote must
     not quietly rename the repository to its lowercase spelling.
     """
-    path = ""
-    if "://" in url:
-        path = re.sub(r"^[a-z+]+://(?:[^@/]+@)?[^/]+/", "", url)
-    elif ":" in url:
-        path = url.split(":", 1)[1]
-    path = path.rstrip("/").removesuffix(".git")
-    bits = [b for b in path.split("/") if b]
-    return "/".join(bits) if len(bits) == 2 else ""
+    got = forges.parse(url)
+    return got["path"] if got else ""
 
 
 def repo_of_remotes(remotes):
-    """owner/repo for the first GitHub remote in `git remote -v` output.
+    """The repository path of the first remote in `git remote -v` output.
 
-    Lowercased, because GitHub treats owner and repo case-insensitively and
-    two clones differing only in case are the same repository — which is the
-    whole question being asked here.
+    Lowercased, because the hosts this links to treat an owner and a repo
+    case-insensitively and two clones differing only in case are the same
+    repository — which is the whole question being asked here. Paired with the
+    host by the caller, which is what actually makes an identity.
     """
     for line in remotes.splitlines():
         parts = line.split()
@@ -570,19 +597,28 @@ def repo_of_remotes(remotes):
     return ""
 
 
-def push_holder(repo):
-    """The project that already holds push on this repository, or ""."""
+def push_holder(host, repo):
+    """The project that already holds push on this repository, or "".
+
+    Keyed on the host as well as the path, because `sean/app` on GitHub and
+    `sean/app` on the Gitea in the cupboard are two repositories — mirroring
+    one to the other is a reason somebody links a second project, not a
+    collision to refuse.
+    """
     if not repo:
         return ""
+    h = (host or "").lower()
     for name, rec in load_push().items():
-        if isinstance(rec, dict) and rec.get("repo") == repo:
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("repo") == repo and (rec.get("host") or "").lower() == h:
             return name
     return ""
 
 
-def grant_push(project, repo, how):
+def grant_push(project, host, repo, how):
     d = load_push()
-    d[project] = {"repo": repo, "how": how, "at": int(time.time())}
+    d[project] = {"repo": repo, "host": host, "how": how, "at": int(time.time())}
     save_push(d)
 
 
@@ -642,8 +678,9 @@ def scoped_to_token(dest, project):
 def remote_auth(dest, project=""):
     """"ssh", "https", "none", or "" — what actually authenticates here.
 
-    The question is not which host: a deploy-key setup addresses GitHub through
-    a `bb-<key>` alias, so the hostname is not github.com and it is still ssh.
+    The question is not which host: a deploy-key setup addresses the forge
+    through a `bb-<key>-<host>` alias, so the hostname in the URL is not the
+    server's and it is still ssh.
     What decides it is the URL's form, which is exactly what git looks at when
     it decides whether a credential helper is involved at all.
 
@@ -732,16 +769,19 @@ def set_auth(project, dest, mode):
     else:
         # As written, NOT folded: repo_of_remotes lowercases for comparison,
         # and building the URL with that turned Stencil-Projects/BuilderBot
-        # into stencil-projects/builderbot in the operator's own remote. GitHub
-        # accepts either, so nothing broke — it just no longer said the name of
-        # the repository it points at.
+        # into stencil-projects/builderbot in the operator's own remote. The
+        # hosts here accept either, so nothing broke — it just no longer said
+        # the name of the repository it points at.
         repo = repo_path_of(origin_url(dest))
-        if not repo:
-            return "", "could not read owner/repo from this project's remote"
+        # The host the ssh alias stands for, not the alias: `bb-key-github-com`
+        # is not a hostname anything can fetch from over https.
+        host = forges.host_of(origin_url(dest))
+        if not repo or not host:
+            return "", "could not read the repository from this project's remote"
         # Remembered BEFORE the rewrite, or switching back has nothing to go on.
         if now == "ssh":
             _remember_ssh(project, origin_url(dest))
-        url = f"https://github.com/{repo}.git"
+        url = f"https://{host}/{repo}.git"
     r = run(["git", "-C", str(dest), "remote", "set-url", "origin", url],
             timeout=15)
     if r["code"] != 0:
@@ -758,8 +798,13 @@ def set_auth(project, dest, mode):
 
 
 def drop_push(project):
-    """Release the grant. Only ever because the project is going away — there
-    is no path from here that turns it off on a project that stays."""
+    """Release the grant.
+
+    Two callers and no third: the project is going away, or its remote is —
+    unlink takes the grant with the remote it was about. There is deliberately
+    no way to revoke it on a project that keeps its remote, because that
+    leaves a repository nobody can explain the refusal of.
+    """
     d = load_push()
     if d.pop(project, None) is not None:
         save_push(d)
@@ -772,7 +817,7 @@ HOOK = """#!/bin/sh
 #
 # Push rights are granted once, when a project is cloned, and cannot be turned
 # on afterwards — delete this project and clone it again asking for them. Only
-# one project at a time may push to a given GitHub repository.
+# one project at a time may push to a given repository.
 echo "refusing to push: this project was cloned without push rights." >&2
 echo "Delete it and clone again with push enabled if that is what you want." >&2
 exit 1
@@ -1117,10 +1162,15 @@ def create(req):
     url = _field(req, "url").strip()
     about, key_url = "", ""
     if mode == "clone":
-        if not GITHUB_URL.fullmatch(url):
-            return {"error": "not a GitHub repository address — "
-                             "use https://github.com/owner/repo or "
-                             "git@github.com:owner/repo.git"}, 400
+        addr = forges.parse(url)
+        if not addr:
+            return {"error": "not a repository address — use "
+                             "https://host/owner/repo, git@host:owner/repo.git "
+                             "or ssh://git@host/owner/repo.git"}, 400
+        forge = forges.forge_of(addr["host"])
+        bad = forges.path_ok(forge, addr["path"])
+        if bad:
+            return {"error": bad}, 400
         # The repository's own name, unless the operator gave one. It used to
         # be derived and nothing else, on the reasoning that the repo already
         # knows what it is called — which is true right up until you want two
@@ -1131,8 +1181,7 @@ def create(req):
         # are drafted from the code after the clone.
         name = sanitize_name(_field(req, "name"))
         if not name:
-            name = re.split(r"[/:]", url.rstrip("/"))[-1]
-            name = sanitize_name(name[:-4] if name.endswith(".git") else name)
+            name = sanitize_name(addr["path"].rsplit("/", 1)[-1])
         # An optional deploy key, by name. The name is only ever matched
         # against what the agent actually holds — nothing from the request is
         # written into a file or a config line; the matched key's own public
@@ -1154,18 +1203,24 @@ def create(req):
         # token actually do it. The second costs a network call and the first
         # does not.
         want_push = bool(req.get("push"))
-        repo_id = repo_path(url).lower()
+        repo_id = addr["path"].lower()
         if want_push:
-            holder = push_holder(repo_id)
+            holder = push_holder(addr["host"], repo_id)
             if holder:
                 return {"error": f"{holder} already has push rights on "
-                                 f"{repo_id}. Only one project may push to a "
-                                 f"repository — delete that one first"}, 409
-            if token:
+                                 f"{addr['host']}/{repo_id}. Only one project "
+                                 f"may push to a repository — delete that one "
+                                 f"first"}, 409
+            # Asked of the host before the right is granted, where the host can
+            # be asked at all: a token missing the scope otherwise fails at the
+            # first push, days later, with nothing connecting it to the box
+            # that was ticked. Where it cannot, the first push is the test —
+            # which is the honest answer, not a silently skipped check.
+            if token and forge["kind"] == "github":
                 bad = check_token_push(token, repo_id)
                 if bad:
                     return {"error": bad}, 400
-            elif not keyname_ok(req):
+            elif not token and not keyname_ok(req):
                 return {"error": "pushing needs either an access token or a "
                                  "deploy key — a public clone cannot push"}, 400
         keyname = _field(req, "key").strip()
@@ -1173,8 +1228,8 @@ def create(req):
             match = next((k for k in agent_keys() if k["name"] == keyname), None)
             if match is None:
                 return {"error": f"the agent holds no key named {keyname}"}, 400
-            alias = ensure_deploy_alias(match["name"], match["pub"])
-            key_url = f"git@{alias}:{repo_path(url)}.git"
+            alias = ensure_deploy_alias(match["name"], match["pub"], addr["host"])
+            key_url = f"git@{alias}:{addr['path']}.git"
     else:
         name = sanitize_name(_field(req, "name"))
         about = _field(req, "about").strip()
@@ -1218,14 +1273,17 @@ def create(req):
         return _init(dest, name, about)
     global _dest
     _dest = dest
-    helper = write_token(name, token) if mode == "clone" and token else ""
+    cred_scheme = "http" if mode == "clone" and addr["scheme"] == "http" else "https"
+    helper = (write_token(name, token, addr["host"], cred_scheme,
+                          forges.cred_user(forge, addr["host"], token, cred_scheme))
+              if mode == "clone" and token else "")
     if not _start("clone", name,
                   lambda: _clone(dest, key_url or url, helper, want_push)):
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         forget_token(name)                                  # written a moment ago
         return {"error": "another project job is already running"}, 409
     if want_push:
-        grant_push(name, repo_id, "token" if token else "key")
+        grant_push(name, addr["host"], repo_id, "token" if token else "key")
     return {"ok": True, "name": name, "started": True}, 200
 
 
@@ -1539,17 +1597,18 @@ def _write_md(dest, about, cloned):
 # ---- linking --------------------------------------------------------------
 
 def link(req):
-    """Point an existing local repo at an *empty* GitHub repository and push.
+    """Point an existing local repo at an *empty* repository and push.
 
-    Empty-only is the safety property: `git ls-remote` must come back with no
-    refs before anything is pushed, so this can never write over a repository
-    that already holds work. The one thing it will create is a repo that does
-    not exist at all — PAT path only, always private — because "not found"
-    from GitHub is the one answer that proves there is nothing there to harm.
+    Empty-only is the safety property, and it is git's rather than any one
+    host's: `git ls-remote` must come back with no refs before anything is
+    pushed, so this can never write over a repository that already holds work.
+    The one thing it will create is a repo that does not exist at all — always
+    private, and only where the host has an API to ask — because "not found"
+    is the one answer that proves there is nothing there to harm.
 
     Auth mirrors the clone: a picked deploy key means an ssh alias, no key
-    means the PAT answers for https — and with neither, this refuses up front
-    instead of letting the push discover it.
+    means the container's PAT answers for https on GitHub — and with neither,
+    this refuses up front instead of letting the push discover it.
 
     Everything above is local and instant, so it is answered here. The
     ls-remote, the create and the push are the network, and go to the worker.
@@ -1568,91 +1627,139 @@ def link(req):
            timeout=10)["out"].strip() != "true":
         return {"error": f"{name} is not a git repository"}, 400
     if run(["git", "-C", dest, "remote"], timeout=10)["out"].strip():
-        return {"error": f"{name} already has a remote"}, 400
-    if not GITHUB_URL.fullmatch(url):
-        return {"error": "not a GitHub repository address — use "
-                         "https://github.com/owner/repo or "
-                         "git@github.com:owner/repo.git"}, 400
-    path = repo_path(url)
-    pat = gh_authed()
+        return {"error": f"{name} already has a remote — unlink it first"}, 400
+    addr = forges.parse(url)
+    if not addr:
+        return {"error": "not a repository address — use "
+                         "https://host/owner/repo, git@host:owner/repo.git or "
+                         "ssh://git@host/owner/repo.git"}, 400
+    host, path = addr["host"], addr["path"]
+    # The picked host is what the operator says their own server runs, and it
+    # only decides the dialect: a public host names itself, and picking the
+    # wrong one for it is a contradiction rather than an override.
+    forge = forges.get(_field(req, "forge")) or forges.forge_of(host)
+    named = forges.forge_of(host)
+    if named["id"] != forges.OTHER["id"] and named["id"] != forge["id"]:
+        return {"error": f"{host} is {named['name']}, so it cannot be linked "
+                         f"as {forge['name']}"}, 400
+    if forge["fixed"] and forge["host"] and forge["host"] != host.split(":")[0].lower():
+        return {"error": f"{forge['name']} is {forge['host']}, and that "
+                         f"address is on {host}"}, 400
+    bad = forges.path_ok(forge, path)
+    if bad:
+        return {"error": bad}, 400
+    pat = gh_authed() and forge["id"] == "github"
     token = _field(req, "token").strip()
     helper = ""
     if token:
         # A token for this project alone, the way the clone dialog takes one:
-        # checked against GitHub first, then stored under /config and read by
-        # git's helper — never typed into a remote URL.
-        if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):
-            return {"error": "that is not a GitHub token"}, 400
-        if not _github_user(token):
-            return {"error": "GitHub does not accept that token"}, 400
-        helper = write_token(name, token)
-        remote = f"https://github.com/{path}.git"
+        # checked with the host first where there is an API to ask, then
+        # stored under /config and read by git's helper — never typed into a
+        # remote URL. Where there is no API the ls-remote below is the check,
+        # and it is a real one.
+        bad = forges.token_ok(forge, token)
+        if bad:
+            return {"error": bad}, 400
+        user = ""
+        if forges.can_create(forge):
+            user = forges.whoami(forge, host, token, addr["scheme"])
+            if not user:
+                return {"error": f"{forge['name']} does not accept that "
+                                 f"token"}, 400
+        helper = write_token(name, token, host, addr["scheme"],
+                             user or forge["user"])
+        remote = f"{addr['scheme']}://{host}/{path}.git"
     elif keyname:
         match = next((k for k in agent_keys() if k["name"] == keyname), None)
         if match is None:
             return {"error": f"the agent holds no key named {keyname}"}, 400
-        remote = f"git@{ensure_deploy_alias(match['name'], match['pub'])}:{path}.git"
+        alias = ensure_deploy_alias(match["name"], match["pub"], host)
+        remote = f"git@{alias}:{path}.git"
     elif pat:
         # Plain https: gh's credential helper (wired at startup) answers for
-        # it, so nothing secret lands in .git/config.
-        remote = f"https://github.com/{path}.git"
+        # it, so nothing secret lands in .git/config. GitHub only — it is the
+        # only host that PAT was minted for.
+        remote = f"https://{host}/{path}.git"
     else:
-        return {"error": "no PAT is configured and no deploy key was picked — "
-                         "a push needs one of the two, or an access token"}, 400
+        return {"error": "no deploy key was picked and no access token given "
+                         "— a push has to authenticate somehow"}, 400
+    forges.remember(host, forge["id"])
     if not _start("link", name,
-                  lambda: _link(dest, name, path, remote, bool(keyname), pat,
-                                helper=helper, token=token)):
+                  lambda: _link(dest, name, forge, host, path, remote,
+                                bool(keyname), pat, helper=helper, token=token,
+                                scheme=addr["scheme"])):
         return {"error": "another project job is already running"}, 409
     return {"ok": True, "name": name, "started": True}, 200
 
 
-def _github_user(token):
-    """The login a token belongs to, or "" when GitHub refuses it."""
-    import urllib.error
-    import urllib.request
-    req = urllib.request.Request("https://api.github.com/user",
-                                 headers={"Authorization": f"Bearer {token}",
-                                          "Accept": "application/vnd.github+json",
-                                          "User-Agent": "BuilderBot"})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return (json.loads(r.read(20000)) or {}).get("login") or ""
-    except (urllib.error.URLError, OSError, ValueError):
-        return ""
+def unlink(req):
+    """Take a project's remote off, and everything the link put there with it.
+
+    Local and instant — no host is contacted and nothing is asked of one, so
+    this works on a repository whose server is gone, which is one of the
+    reasons to reach for it. Four things go, and the answer names each: the
+    origin remote, the stored access token, the credential helper pointing at
+    it, and the push grant, which is what frees the repository for another
+    project to be linked to it.
+
+    What it does NOT touch is the point. No commit, no branch, no file, no
+    reflog: the history that was pushed is still here and can be pushed again
+    the moment something is linked. The deploy-key alias in ~/.ssh/config
+    stays too — it is named after the key and another project may be using it.
+    """
+    name = _field(req, "name").strip()
+    if not name or not PROJECT_NAME.fullmatch(name):
+        return {"error": "unknown project"}, 400
+    dest = WORKSPACE / name
+    if not dest.is_dir():
+        return {"error": f"{name} is not a project under the workspace"}, 400
+    if run(["git", "-C", str(dest), "rev-parse", "--is-inside-work-tree"],
+           timeout=10)["out"].strip() != "true":
+        return {"error": f"{name} is not a git repository"}, 400
+    # A clone or a link is writing this tree right now, and the remote it is
+    # about to set is the one this would be removing.
+    if busy_name() == name:
+        return {"error": f"a job is working on {name} — let it finish or stop "
+                         f"it first"}, 409
+    remotes = run(["git", "-C", str(dest), "remote"], timeout=10)["out"].split()
+    if "origin" not in remotes:
+        return {"error": f"{name} has no origin remote to unlink"}, 400
+    was = origin_url(dest)
+    r = run(["git", "-C", str(dest), "remote", "remove", "origin"], timeout=15)
+    if r["code"] != 0:
+        return {"error": r["out"].strip()[:200] or "could not remove the "
+                                                   "remote"}, 500
+    gone = [f"the remote, which was {was}"] if was else ["the remote"]
+    if token_helper(name):
+        forget_token(name)
+        gone.append("its access token")
+    unscope(dest)
+    if may_push(name):
+        drop_push(name)
+        gone.append("its push rights, so the repository is free for another "
+                    "project")
+    # The refusing hook goes with the rest: it says a project was cloned
+    # without push rights, and after this there is nothing to push to. Leaving
+    # it would refuse the first push after the next link.
+    set_push_hook(dest, True)
+    left = [x for x in remotes if x != "origin"]
+    return {"ok": True, "name": name, "removed": gone, "others": left}, 200
 
 
-def _github_create(token, path):
-    """Make an empty private repository — in the organisation the path
-    names when the token may, else under the token's own account; "" on
-    success, else why not."""
-    import urllib.error
-    import urllib.request
-    owner, _, repo = path.partition("/")
-    body = json.dumps({"name": repo, "private": True}).encode()
-    for url in (f"https://api.github.com/orgs/{owner}/repos", "https://api.github.com/user/repos"):
-        req = urllib.request.Request(url, data=body, method="POST",
-                                     headers={"Authorization": f"Bearer {token}",
-                                              "Accept": "application/vnd.github+json",
-                                              "Content-Type": "application/json",
-                                              "User-Agent": "BuilderBot"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                if r.status in (200, 201):
-                    return ""
-        except urllib.error.HTTPError as e:
-            if e.code == 404 and "/orgs/" in url:
-                continue                      # not an organisation: the account's own
-            try:
-                why = (json.loads(e.read(20000)) or {}).get("message") or ""
-            except ValueError:
-                why = ""
-            return f"GitHub would not create {path}: {why or e.code}"
-        except (urllib.error.URLError, OSError) as e:
-            return f"could not reach GitHub: {e}"
-    return f"GitHub would not create {path}"
+# What every host here says when the repository is not there. GitHub and
+# Gitea word it one way, GitLab another, and a bare git daemon a third — and
+# the difference decides whether this offers to create one or reports a wall.
+_ABSENT = ("not found", "does not exist", "repository not exported",
+           "could not read from remote repository", "access denied")
 
 
-def _link(dest, name, path, remote, keyed, pat, helper="", token=""):
+def _missing(blame):
+    low = blame.lower()
+    return any(w in low for w in _ABSENT)
+
+
+def _link(dest, name, forge, host, path, remote, keyed, pat,
+          helper="", token="", scheme="https"):
     """The worker half: prove the remote is empty, then set it and push.
 
     There is no lock around check-then-add: two racing links resolve at
@@ -1663,38 +1770,43 @@ def _link(dest, name, path, remote, keyed, pat, helper="", token=""):
     env = _git_env()
     scope = ["-c", "credential.helper=", "-c", f"credential.helper={helper}"] if helper else []
     created = ""
+    where = forge["name"]
     _step("checking the repository is empty")
     # split_err: emptiness is judged on stdout alone. ssh's first-contact
-    # "Permanently added github.com ..." note arrives on stderr with exit 0,
-    # and combined it made a genuinely empty repository look occupied.
+    # "Permanently added ..." note arrives on stderr with exit 0, and combined
+    # it made a genuinely empty repository look occupied.
     r = run(["git", *scope, "ls-remote", "--", remote], timeout=120, env=env,
             split_err=True, register=_register)
     if _aborted():
         return "stopped — nothing was changed", ""
     if r["code"] != 0:
         blame = (r["err"] + r["out"]).strip()
-        if "not found" in blame.lower() and keyed:
+        if _missing(blame) and keyed:
             # Creating it here would not help: a brand-new repo has no deploy
             # keys, so the push over this alias still fails — and a retry
             # would then trip over the half-done state. Say what the fix
             # actually is instead.
-            return ("GitHub reports the repository as not found over ssh. "
-                    "Create it (empty) on GitHub and add this deploy key to it "
-                    "first" + (", or leave the key on none to use the PAT"
-                               if pat else "") + ".", "")
-        if "not found" in blame.lower() and token:
-            _step("creating it on GitHub")
-            why = _github_create(token, path)
+            return (f"{where} reports the repository as not found over ssh. "
+                    f"Create it (empty) there and add this deploy key to it "
+                    f"first" + (", or leave the key on none to use the PAT"
+                                if pat else "") + ".", "")
+        if _missing(blame) and token:
+            if not forges.can_create(forge):
+                return (f"{where} has no repository at {path}, and this "
+                        f"cannot create one there — make it empty on "
+                        f"{host} and link again."), ""
+            _step(f"creating it on {where}")
+            why = forges.create_repo(forge, host, token, path, scheme)
             if why:
                 return why, ""
-            created = f"created {path} on GitHub (private); "
-        elif "not found" in blame.lower() and pat:
-            _step("creating it on GitHub")
+            created = f"created {path} on {where} (private); "
+        elif _missing(blame) and pat:
+            _step(f"creating it on {where}")
             c = run(["gh", "repo", "create", path, "--private"], timeout=60,
                     register=_register)
             if c["code"] != 0:
                 return c["out"].strip()[-2000:] or "gh repo create failed", ""
-            created = f"created {path} on GitHub (private); "
+            created = f"created {path} on {where} (private); "
         else:
             return blame[-2000:] or "cannot reach that repository", ""
     elif r["out"].strip():
@@ -1708,7 +1820,7 @@ def _link(dest, name, path, remote, keyed, pat, helper="", token=""):
         _scope_to_token(dest, helper)
     # Linked is pushable: the push below is the proof, and the Git view's
     # Push and the Artifacts tab read this record.
-    grant_push(name, path, "token" if token else "key")
+    grant_push(name, host, path.lower(), "token" if token else "key")
     if run(["git", "-C", dest, "rev-parse", "-q", "--verify", "HEAD"],
            timeout=10)["code"] != 0:
         return "", created + "remote set — nothing committed yet, so nothing was pushed"
