@@ -345,3 +345,4 @@
 - A dropped roadmap item can be put back from the history as it was — Put back on its row, or bb roadmap restore (daf1037)
 - The Briefing tab opens on the code base; the rules fold is shut with its count on the heading (daf1037)
 - The Docker manager no longer flickers back to 'daemon not answering' when a stale answer lands after a fresh one (e5bbb62)
+- The Phone tab remembers the phones a node has paired or connected, with Connect and Forget on each (4e0c7d3)
