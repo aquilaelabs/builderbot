@@ -1117,6 +1117,12 @@ textarea,select{
    can derive it, so it is a field — validated here and again on the server. */
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
+/* A `font:` shorthand carries the SIZE with it, and this selector outranks
+   the shared phone rule — so this field alone stayed 12px on a phone and iOS
+   zoomed into a layout that cannot zoom back. Every other control that sets
+   its own font says so again here (`.dmpick select`, the sidebar's selects);
+   this one had been forgotten, and uniform.mjs caught it. */
+@media(max-width:900px){ .verinit .vstart{font-size:16px} }
 .verinit .vdir{flex:0 1 auto;min-width:0}
 /* The changelog. pre-wrap keeps the file's own line breaks — it is a document
    someone wrote, not data to reflow. Otherwise it is a history: same padding,
@@ -1950,6 +1956,18 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
+/* The generated domain XML. `pre` wraps by default, which is right for a
+   shell line and wrong for a file somebody is about to paste into a
+   hypervisor: a wrapped element reads as two, and the eye cannot tell which.
+   It scrolls sideways instead, and taller than the 300px `pre` allows,
+   because it is the thing this dialog is FOR. */
+.vmxml{white-space:pre;max-height:40vh}
+/* The steps beside it: one line each, in the order they happen. A numbered
+   list rather than prose — it is a procedure being followed at a keyboard,
+   not an explanation to read once. */
+.vmsteps{margin:10px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:7px;
+  font:var(--f-ui);color:var(--ink)}
+.vmsteps code{font:var(--f-note);color:var(--dim)}
 /* ---- sections and action bars, for every document tab -------------------
    Two more pieces of the document language, added when the Nodes tab was
    one long column of editors and a wall of buttons on a phone.
@@ -5066,6 +5084,13 @@ function rnFillNode(){
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
+  // What an empty box means here. A project of a shape anybody would
+  // recognise — this repo's harness, a gradlew, a go.mod — has one obvious
+  // way to run its tests, and `bb test` uses it when nothing is set; the
+  // placeholder says which, rather than leaving the operator to discover
+  // that the field is optional.
+  $("rnTestCmd").placeholder = p?.prefs?.test_default
+    ? `test — blank runs ${p.prefs.test_default}` : "test, e.g. ./gradlew test";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);

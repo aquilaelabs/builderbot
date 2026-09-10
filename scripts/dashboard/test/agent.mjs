@@ -1402,6 +1402,18 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
     catch (e) { failed = String(e.stderr) + String(e.stdout); }
     ok(/no test command is set/.test(failed), 'bb test with nothing set says what to set, and where');
+    // ...unless the tree says how it is tested. "Run the tests" has one
+    // conventional answer per ecosystem, so a project nobody configured
+    // still answers — and says once that nothing was set, because a command
+    // nobody typed should not look like one somebody did.
+    writeFileSync(`${DIR}/ws/alpha/go.mod`, 'module alpha\n');
+    let fell = '';
+    try { fell = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }).toString(); }
+    catch (e) { fell = String(e.stderr) + String(e.stdout); }
+    rmSync(`${DIR}/ws/alpha/go.mod`, { force: true });
+    ok(/nothing set for tests on alpha, so: go test \.\/\.\.\./.test(fell),
+       'a project with a go.mod answers bb test with go test, saying it fell back');
     const sess = (await api('/api/v1/jobs?project=alpha&n=3')).jobs;
     ok(sess.some(j => j.requested_by === 'session:alpha'), 'a run from a session is attributed to the session');
   }

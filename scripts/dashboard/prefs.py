@@ -124,11 +124,85 @@ def get(project):
     return _clean(_load()["projects"].get(project))
 
 
-def all_projects():
+# How a project of each shape runs its tests, in the order a tree is asked.
+# The command is never WRITTEN anywhere: the record stays exactly what the
+# operator typed, and this answers when that is empty — so `bb test` on a
+# project nobody has configured runs the thing that project obviously runs,
+# and the settings field shows it as the placeholder it would use.
+#
+# Tests only. "Run the tests" has one conventional answer per ecosystem;
+# "build" does not — which target, which flavour, which of an Android
+# project's four — so `bb build` still refuses and says so rather than
+# guessing at somebody's release variant.
+TEST_DEFAULTS = (
+    # This repository's own harness, which is a shell script rather than a
+    # runner anyone would guess at.
+    ("scripts/dashboard/test/run.sh", "bash scripts/dashboard/test/run.sh"),
+    ("gradlew", "./gradlew test"),
+    ("Cargo.toml", "cargo test"),
+    ("go.mod", "go test ./..."),
+    ("pytest.ini", "pytest"),
+    ("tox.ini", "pytest"),
+)
+
+
+def test_default(project, workspace=None):
+    """The test command this project would obviously use, or ""."""
+    return test_default_at(Path(workspace or "/workspace") / str(project or ""))
+
+
+def test_default_at(root):
+    """...for a directory, which is what a caller standing IN the tree has.
+
+    Read from the tree each time rather than remembered: a repo that grows a
+    test runner should start answering, and one that loses it should stop.
+    Two entry points because the two callers know different things — the
+    server knows the workspace and the project name, and bb knows the
+    directory it is being run in and often not the workspace at all.
+    """
+    root = Path(root)
+    try:
+        if not root.is_dir():
+            return ""
+    except OSError:
+        return ""
+    for name, cmd in TEST_DEFAULTS:
+        if (root / name).exists():
+            return cmd
+    # package.json, only when it actually declares a test script: the field
+    # is optional and npm answers "no test specified" with an exit 1 for the
+    # rest, which is a failing suite that never existed.
+    try:
+        pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        if isinstance(pkg, dict) and (pkg.get("scripts") or {}).get("test"):
+            return "npm test"
+    except (OSError, ValueError, AttributeError):
+        pass
+    # ...and a python project with tests but no runner config of its own.
+    if (root / "pyproject.toml").is_file() and (root / "tests").is_dir():
+        return "pytest"
+    return ""
+
+
+def all_projects(workspace=None):
     """Every project's pair, for the status payload. Cheap — one small file,
-    no subprocess — which is what lets this ride the poll at all."""
+    no subprocess — which is what lets this ride the poll at all.
+
+    With a workspace, each record also carries `test_default`: what `bb test`
+    would run there with nothing set, so the settings field can offer it as
+    what leaving the box empty means. A handful of `exists()` calls beside a
+    snapshot that already runs git per project.
+    """
     d = _load()["projects"]
-    return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
+    out = {}
+    for k, v in d.items():
+        if not isinstance(k, str):
+            continue
+        rec = _clean(v)
+        if workspace is not None:
+            rec["test_default"] = test_default(k, workspace)
+        out[k] = rec
+    return out
 
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,

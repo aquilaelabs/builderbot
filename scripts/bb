@@ -3379,7 +3379,14 @@ cmd_settings() {
             proj=""
         }
     fi
+    # The tree this is being asked from, when the caller is standing in the
+    # project it is asking about: what says how the project is tested is the
+    # directory, and a relayed verb does not always carry the workspace.
+    local here_root=""
+    here_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$here_root" ] && [ "$(basename "$here_root")" = "$proj" ] || here_root=""
     BB_SETTINGS_JSON="$json" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+        BB_WORKSPACE="${WORKSPACE:-/workspace}" BB_PROJECT_ROOT="$here_root" \
         python3 - "$(dirname "$(readlink -f "$0")")/dashboard" "$proj" <<'PY'
 import importlib.util, json, os, sys
 here, proj = sys.argv[1], sys.argv[2]
@@ -3389,6 +3396,13 @@ prefs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prefs)
 prefs.configure(state=state, write_json=lambda *a: None)
 rec = dict(prefs.get(proj) or {})
+# What `bb test` runs here with nothing set. Never written to the file: the
+# record stays the operator's, and this is what an empty box means. From the
+# tree itself where the caller stands in one — the workspace is not in the
+# environment on every path a relayed verb takes, and the directory is.
+_root = os.environ.get("BB_PROJECT_ROOT") or os.path.join(
+    os.environ.get("BB_WORKSPACE") or "/workspace", proj)
+rec["test_default"] = prefs.test_default_at(_root) if proj else ""
 try:
     locks = json.load(open(os.path.join(state, "locked-projects.json")))
 except (OSError, ValueError):
@@ -3801,14 +3815,27 @@ try:
     rec = json.load(sys.stdin)
 except ValueError:
     rec = {}
-print(rec.get(os.environ["BB_ROLE_"]) or "")
+# Three things, in order: the command, where it came from, then the output
+# globs. What the settings say — or, for a test, the command a project of
+# this shape obviously runs, so a repo nobody configured still answers
+# bb test. Where it came from rides along because the caller says so out
+# loud, and asking a second time would be a second relay from a node.
+# No apostrophes in here: the whole block is inside shell single quotes.
+role = os.environ["BB_ROLE_"]
+set_here = rec.get(role) or ""
+cmd = set_here or (rec.get("test_default") if role == "test" else "") or ""
+print(cmd)
+print("set" if set_here else ("default" if cmd else "none"))
 for g in rec.get("outputs") or []:
     print(g)
 ')
-    local cmd="${rec[0]:-}"
+    local cmd="${rec[0]:-}" from="${rec[1]:-none}"
     [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
+    # Said before it runs: a command nobody typed should not look like one
+    # somebody did.
+    [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
     local -a args=(--role "$role") g
-    for g in "${rec[@]:1}"; do [ -n "$g" ] && args+=(--out "$g"); done
+    for g in "${rec[@]:2}"; do [ -n "$g" ] && args+=(--out "$g"); done
     cmd_run "${args[@]}" "$@" -- sh -c "$cmd"
 }
 

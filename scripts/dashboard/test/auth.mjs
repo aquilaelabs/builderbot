@@ -96,8 +96,12 @@ const plain = (await bigGet('/', AUTHH)).body.length;
 // bytes to spare, so the twelve colour schemes were the feature that met it.
 // Raised to a number the ratio would fail long before — which is the check
 // that actually means something.
+// 250000 was reached the ordinary way in the end — no blob, just a year of
+// features in the one file this page is by design — so it moves again, to a
+// number the ratio fails long before. The ratio is the half that means
+// something; this one only ever says "an image got pasted in".
 ok(r.headers.get('content-encoding') === 'gzip'
-   && zipped < plain / 2 && zipped < 250000,
+   && zipped < plain / 2 && zipped < 400000,
    `the page travels gzipped, at a fraction of its size (${Math.round(zipped/1024)}kB of ${Math.round(plain/1024)}kB)`);
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'identity' } });
 ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plain bytes');

@@ -662,7 +662,10 @@ function renderNodesInto(i){
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
         esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
-    <button type="button" id="ndEnroll">Enroll node</button>`);
+    <span class="actbar">
+      <button type="button" id="ndVm">Create sandbox VM</button>
+      <button type="button" id="ndEnroll">Enroll node</button>
+    </span>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -845,6 +848,97 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         <button type="button" id="ndTokDone">Done</button></div>`;
     body.querySelector("#ndTokDone").onclick = shut;
   };
+  // ---- a machine to enroll, before there is one -------------------------
+  // The XML Unraid needs for a sandbox VM, rendered per VM rather than
+  // copied: the uuid, the nvram file named after it and the MAC belong to
+  // one machine, and a second VM wearing them answers to the first one's
+  // address and writes over its firmware variables. The generator is
+  // vmtemplate.py, over the same nodes/unraid-vm.xml the repository keeps.
+  //
+  // The two identities are fields rather than surprises. Unraid mints its own
+  // pair when the VM is made in Form view — the nvram file on disk is named
+  // after its uuid, and any DHCP reservation was made against its MAC — so a
+  // minted pair is right for a machine that does not exist yet and Unraid's
+  // is right the moment it does. Blank mints one.
+  const vmDraft = {name: "bb-sandbox", cores: 6, memory_gb: 16, disk_gb: 200,
+                   iso: "ubuntu-26.04-live-server-amd64.iso", uuid: "", mac: ""};
+  const vmForm = (made) => {
+    document.getElementById("ndTitle").textContent = "Create a sandbox VM";
+    boxWidth(!!made);
+    const f = (k, label, help, extra = "") =>
+      `<div class="setrow col">${lbl("vm_" + k, label, help)}
+        <input id="vm_${k}" data-vk="${k}" autocomplete="off" spellcheck="false"
+          value="${esc(String(vmDraft[k]))}"${extra}></div>`;
+    body.innerHTML = `<div class="field vmform">
+        <div class="hint">A node is a machine the controller sends work to. This is the
+          one it is happiest with: an Unraid VM, made from the machine this repository
+          ships.</div>
+        <div class="prefrow">
+          ${f("name", "Name", "the domain's name, and its folder under /mnt/user/domains")}
+          ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
+          ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
+          ${f("disk_gb", "Disk GiB", "set in Unraid's own form — the XML only names the file",
+              ' type="number" min="20" max="4096"')}
+        </div>
+        ${f("iso", "Installer ISO", "a file you have put in /mnt/user/isos. Ubuntu Server is the tested one")}
+        <div class="prefrow">
+          ${f("uuid", "UUID", "blank mints one. Made the VM already? Paste Unraid's, or its firmware settings are left behind")}
+          ${f("mac", "MAC", "blank mints one on QEMU's prefix. Paste Unraid's to keep a DHCP reservation")}
+        </div>
+      </div>
+      ${made ? `<div class="field vmmade">
+        <div class="hint">Its own uuid <code>${esc(made.uuid)}</code> and MAC
+          <code>${esc(made.mac)}</code> — never a second VM's.</div>
+        <pre class="ndcmd vmxml" id="vmXml">${esc(made.xml)}</pre>
+        <ol class="vmsteps">
+          <li>Unraid → <b>VMS</b> → Add VM → Linux. Name it <code>${esc(made.name)}</code>,
+            give it ${made.cores} cores, ${made.memory_gb} GiB and a
+            ${esc(String(vmDraft.disk_gb))}G vdisk, and Create — that makes the folder and the disk.</li>
+          <li>Open it → Edit → <b>XML View</b>, paste this over what is there, Update. Its uuid
+            and MAC are above: paste Unraid's into them first and Generate again to keep the
+            firmware settings and the address it already has.</li>
+          <li>Start it and install: headless, no desktop, ssh on.</li>
+          <li>Export the shares to its address first — Unraid → Shares → the share →
+            <b>NFS Security Settings</b> — or every mount on it is refused.</li>
+          <li>Back here, <b>Enroll node</b> mints a token; run the provision command it
+            gives you on the VM, as root.</li>
+        </ol>
+      </div>` : ""}
+      <div class="foot">
+        ${made ? `<button type="button" id="vmCopy">Copy XML</button>` : ""}
+        <span class="sp"></span>
+        <button type="button" class="primary" id="vmGo">${made ? "Generate another" : "Generate"}</button>
+        <button type="button" id="vmCancel">${made ? "Done" : "Cancel"}</button>
+      </div>`;
+    body.querySelectorAll("[data-vk]").forEach(el =>
+      el.oninput = () => { vmDraft[el.dataset.vk] = el.value; });
+    body.querySelector("#vmCancel").onclick = shut;
+    const copy = body.querySelector("#vmCopy");
+    if (copy) copy.onclick = async () => {
+      // The clipboard API wants a secure context; over plain http the
+      // selection route is what works, the same as the deploy key's Copy.
+      const pre = body.querySelector("#vmXml");
+      try{ await navigator.clipboard.writeText(pre.textContent); }
+      catch(e){
+        const r = document.createRange(); r.selectNodeContents(pre);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        document.execCommand("copy");
+      }
+      notify("the XML is on the clipboard — paste it into the VM's XML View");
+    };
+    const go = body.querySelector("#vmGo");
+    go.onclick = () => pressing(go, async () => {
+      busy(go, "Generating");
+      const r = await nodeAct({action: "vm-xml", name: vmDraft.name,
+                              cores: Number(vmDraft.cores) || 0,
+                              memory_gb: Number(vmDraft.memory_gb) || 0,
+                              iso: vmDraft.iso, uuid: vmDraft.uuid, mac: vmDraft.mac});
+      if (r.error){ vmForm(null); return; }   // nodeAct has said why
+      vmForm(r);
+    });
+  };
+  const vm = root.querySelector("#ndVm");
+  if (vm) vm.onclick = () => { modal.hidden = false; vmForm(null); };
   const en = root.querySelector("#ndEnroll");
   if (en) en.onclick = () => { modal.hidden = false; mintForm(); };
   // The backdrop closes it, like every other dialog on the page. Not while

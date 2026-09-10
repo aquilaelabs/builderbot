@@ -426,9 +426,21 @@ only the suite name differs — saying so when it does.
 `nodes/unraid-vm.xml` is the whole machine, for every distribution: only
 the installer ISO line in it changes, and the file lists them. Create the VM
 in **Form view** first so Unraid makes the domain folder and the vdisk, then
-switch to **XML view** and paste it over what is there — keeping the `<uuid>`
-Unraid gave you, because the OVMF nvram file is named after it and a new one
-orphans it.
+switch to **XML view** and paste it over what is there.
+
+**The Nodes tab renders it for you.** *Create sandbox VM*, beside *Enroll
+node*, asks for the name, the cores, the memory and the ISO and hands back
+that file with this machine's identity in it — a uuid, the OVMF nvram path
+named after that uuid, and a MAC on QEMU's prefix — plus the steps from an
+empty Unraid to an enrolled node. The identity is two fields as well as two
+generated values, and that is the part worth understanding: Unraid mints its
+own pair when the VM is created in Form view, the nvram file on disk is
+named after ITS uuid and any DHCP reservation was made against ITS MAC. So a
+minted pair is right for a machine that does not exist yet, and pasting
+Unraid's in is right the moment it does. Copying the file by hand instead is
+still fine; those three fields are what to change, and a second VM sharing
+any of them is a second VM on the first one's firmware variables and
+address.
 
 What it is sized for: **16 GiB, 6 cores, a 200G disk.** The sandbox used to
 be a box that built the odd image; now it is where a project's Gradle build,
