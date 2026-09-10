@@ -52,8 +52,12 @@ const DRIVERS = {
     readyWhen: '.nb .nbview:not([hidden]) .field',
   },
   nodes: {
+    // The config plane, not the row: its editors arrive on the tab's own
+    // fetch a moment later, and a rule measured on the row alone was
+    // measuring a heading over nothing — which is how a mount row's
+    // controls came to sit at three different heights unremarked.
     open: () => page.evaluate(() => openNodesTab()),
-    readyWhen: '.nodestab .ndrow',
+    readyWhen: '.nodestab .ndconfbody',
   },
   settings: {
     open: () => page.evaluate(() => openSettingsTab()),
@@ -287,10 +291,18 @@ async function spanning(){
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
     const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
+    // A tab strip is navigation, and the phone rule for one is the opposite
+    // of a control's: it wraps into rows of equal-width tabs, every one of
+    // them visible (the design language, The notebook).
+    const NAV = '.nbtabs, .switch, .tabbar';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
     const out = [];
     const seen = new Set();
     for (const row of box.querySelectorAll(ROWS)){
+      // The document bar is a band, not a control row — filters at the left,
+      // the action at the tab's right edge — so its union spans by design.
+      // Its controls are measured one by one below, like any lone control.
+      if (row.classList.contains('docbarrow')) continue;
       const kids = [...row.querySelectorAll(CTL)].filter(vis);
       kids.forEach(k => seen.add(k));
       if (!kids.length) continue;
@@ -299,7 +311,11 @@ async function spanning(){
       if (r - l > LIM) out.push(`${row.className.split(' ')[0]} ${Math.round(r - l)}/${Math.round(W)}`);
     }
     for (const e of box.querySelectorAll(CTL)){
-      if (seen.has(e) || !vis(e) || e.closest('.term, .dmlog, pre, .dropbox, .sendbox')) continue;
+      // `.slot` is a terminal pane, not `.term` — that is the terminal
+      // COLUMN, which every document tab is inside, so the exclusion took
+      // every lone control on every tab with it and this half of the rule
+      // measured nothing at all.
+      if (seen.has(e) || !vis(e) || e.closest('.slot, .dmlog, pre, .dropbox, .sendbox, ' + NAV)) continue;
       // A prose editor in the notebook is a page, not a control.
       if (e.tagName === 'TEXTAREA' && (e.readOnly || e.closest('.nb'))) continue;
       const w = e.getBoundingClientRect().width;
@@ -317,6 +333,65 @@ for (const kind of kinds){
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab${
        S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+}
+
+// ---- controls in a row line up ---------------------------------------------
+// A row of controls sits on one line, and every control box on that line ends
+// at the same height. What breaks it is a row that centres its items while
+// some of them carry a label above (the design language, Controls): the
+// unlabelled select then floats between its neighbour's label and its field,
+// which is what the Nodes tab's mount rows did.
+//
+// Measured on the boxes, not on the wrappers: controls are grouped into lines
+// by vertical overlap, so a row that wrapped is several lines and each is
+// judged on its own. A checkbox is text with a box beside it rather than a
+// control box, and is left out.
+async function lineup(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const CTL = 'input:not([type=checkbox]):not([type=radio]), select, button';
+    const name = e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${
+      e.className && typeof e.className === 'string' && e.className.trim()
+        ? '.' + e.className.trim().split(/\s+/)[0] : ''}`;
+    const ctls = [...box.querySelectorAll(CTL)]
+      .filter(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
+                   && !e.closest('.slot, .dmlog, .pagemore'))
+      .map(e => ({ e, r: e.getBoundingClientRect() }))
+      .sort((a, b) => a.r.top - b.r.top);
+    // One line = boxes whose vertical spans overlap by more than half the
+    // shorter of the two. Two controls in different bands never do; two in
+    // one row always do, however differently they are aligned.
+    const lines = [];
+    for (const c of ctls){
+      const line = lines.find(l => l.some(o => {
+        const over = Math.min(o.r.bottom, c.r.bottom) - Math.max(o.r.top, c.r.top);
+        return over > Math.min(o.r.height, c.r.height) / 2;
+      }));
+      if (line) line.push(c); else lines.push([c]);
+    }
+    const off = [];
+    for (const line of lines){
+      if (line.length < 2) continue;
+      const lo = Math.min(...line.map(c => c.r.bottom));
+      const hi = Math.max(...line.map(c => c.r.bottom));
+      if (hi - lo > 1.5)
+        off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}`).join(' ')}`);
+    }
+    return { off };
+  });
+}
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  await sleep(250);              // the last band to arrive is part of the row
+  const L = await lineup();
+  ok(!L.err && L.off.length === 0,
+     `[${kind}] every control on a line ends at the same height${
+       L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
 }
 
 // ---- adding goes at the top ------------------------------------------------
@@ -472,6 +547,11 @@ for (const kind of kinds){
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab at phone width${
        S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+  await sleep(250);
+  const L = await lineup();
+  ok(!L.err && L.off.length === 0,
+     `[${kind}] every control on a line ends at the same height at phone width${
+       L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
 }
 // The Tests view needs rows to be measured on, and one of them a continuation
 // — a "..." name whose "follows:" line is drawn under it — because that line
