@@ -155,6 +155,10 @@ function renderJobsInto(i){
   d.list.innerHTML = rows + (!jobsList.length
     ? `<div class="empty">${jobsActive ? "nothing is running or waiting"
                                        : "no jobs yet — a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
+  // Paged like every other long list here. This one grows without bound —
+  // every compose action, exec and agent update lands on it forever — so it
+  // was the tab most in need of it and the one that had it least.
+  paginate(d.list, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
   d.setFoot(`jobs are placed once, on the node that fit when they were taken,
     and run where they were placed. Cancel stops one; nothing here edits one.`);
   wireJobsTab(d.el);

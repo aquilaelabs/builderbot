@@ -5898,7 +5898,16 @@ const pageState = {};      // list id -> how many rows are currently shown
 
 function paginate(host, rowSel, opts = {}){
   if (!host) return;
-  const key = opts.key || host.id;
+  // The notebook this list is in, folded into the key. A notebook is a CLONE
+  // of one template, so every id inside it is shared by every open notebook,
+  // and a key of "artList" was one bucket for all of them. The visible effect
+  // was Show more appearing not to work: a SHORT list in another notebook
+  // takes the `rows.length <= size + 5` branch, which deletes the key, and
+  // the long list snapped back to its first page on the next poll — within a
+  // second or two of the click, which reads as the button doing nothing.
+  // A list outside a notebook has one instance and keeps its plain key.
+  const nb = host.closest?.(".nb")?.dataset.project;
+  const key = (nb ? nb + ":" : "") + (opts.key || host.id);
   const rows = [...host.querySelectorAll(rowSel)];
   host.querySelector(":scope > .pagemore")?.remove();
   const size = opts.size || PAGE;
@@ -8958,6 +8967,10 @@ async function pendAct(action){
 
 function makeNotebook(project){
   const root = document.getElementById("nbTpl").content.firstElementChild.cloneNode(true);
+  // Whose notebook this clone is, on the element. Every id inside it is the
+  // template's, so two open notebooks carry two of each; anything keyed on an
+  // id alone is therefore keyed on BOTH of them — which is what paginate was.
+  root.dataset.project = project;
   document.getElementById("nbPark").appendChild(root);
   const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
   let loaded = false;
