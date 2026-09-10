@@ -3715,8 +3715,13 @@ const bootFor = arg => {
   const row = (state?.projects || []).find(p => p.name === proj);
   return row?.session_boot || state?.boot || "";
 };
-const ttydUrl = arg => `/term/?arg=${encodeURIComponent(
-  arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
+// `here`: the session on this container while the project's node cannot
+// take one — asked for by a tap on the dead button's menu, carried as a
+// query flag the controller reads and ttyd ignores, and stamped with THIS
+// container's boot, since that is the machine bb-tty runs on for it.
+const ttydUrl = (arg, here) => `/term/?arg=${encodeURIComponent(
+  arg.startsWith("claude:") && (here ? state?.boot : bootFor(arg))
+    ? `${arg}:b:${here ? state.boot : bootFor(arg)}` : arg)}${here ? "&here=1" : ""}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -4558,7 +4563,12 @@ function newShell(proj){
   if (!mayShell()){ notify("a shell is an administrator's", true); return; }
   const arg = nextShell(proj);
   if (!arg){ notify("Too many terminals open for that directory.", true); return; }
-  openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}`});
+  // A shell on a project whose node cannot take one opens on this container
+  // and says so: a shell is where the node gets looked at, and a JSON error
+  // in the frame was what the operator got instead of one.
+  const here = !!(state?.projects || []).find(p => p.name === proj)?.session_why;
+  if (here) notify(`${proj}'s node cannot take a session now; this shell is on the controller`);
+  openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}${here ? " (here)" : ""}`, here});
 }
 
 // ---- panes -----------------------------------------------------------
@@ -4754,7 +4764,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg, t.here))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -6349,7 +6359,7 @@ function projectRow(p, live, cls, inTab){
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || notMine(p) || p.session_why
+         (p.locked || notMine(p)
           // The sign-in that matters for a session on a NODE is the one in
           // that node's home, which this container cannot see (roadmap #24).
           || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
@@ -6359,7 +6369,9 @@ function projectRow(p, live, cls, inTab){
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : heldWhy(p) ? heldWhy(p)
-                 : p.session_why ? p.session_why
+                 // The node cannot take a session: the press offers one on
+                 // this container instead, with the reason — never a lockout.
+                 : p.session_why ? `${p.session_why} Press for a session on this container instead`
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
                  : !p.session_at && !signedIn() && !live.has(myClaude(p.name))
@@ -6421,7 +6433,9 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // does not see — so the line says where they are rather than
         // implying nobody is there (roadmap #24).
         : p.session_at && !p.session_why
-          ? `<div class="sub sessline">sessions run on ${esc(p.session_at)}</div>` : ""}
+          ? `<div class="sub sessline">sessions run on ${esc(p.session_at)}</div>`
+        : p.session_why
+          ? `<div class="sub sessline bad">${esc(p.session_why)}</div>` : ""}
     </div>
 `;
 }
@@ -12982,6 +12996,13 @@ const ago = s => {
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
+  if (p?.session_why && !liveSessions().has(myClaude(name))){
+    // The node cannot take one: the chooser offers this container, with
+    // the reason, and nothing starts until that is pressed.
+    resumeFor = resumeFor === name ? null : name;
+    drawProjects(state.projects);
+    return;
+  }
   if (liveSessions().has(myClaude(name)) || !p?.last_claude){
     resumeFor = null;
     return startClaude(name, null);
@@ -12990,34 +13011,39 @@ function openClaude(name, ev){
   drawProjects(state.projects);
 }
 
-function startClaude(name, sessionId){
+function startClaude(name, sessionId, here){
   resumeFor = null;
   // Redraw the card, not just the tabs: the chooser is a child of it and would
   // otherwise sit there until the next poll, over a choice already made.
   if (state) drawProjects(state.projects);
   openTab({kind:"term",
            arg: sessionId ? `claude:${name}:r:${sessionId}` : `claude:${name}`,
-           label:`Claude: ${name}`});
+           label: here ? `Claude: ${name} (here)` : `Claude: ${name}`, here: !!here});
 }
 
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
   const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
-  if (!p?.last_claude || !anchor){ resumeFor = null; return; }
+  if ((!p?.last_claude && !p?.session_why) || !anchor){ resumeFor = null; return; }
   const card = anchor.closest(".card");
   const m = document.createElement("div");
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
-  m.innerHTML =
-    `<button data-r="1">Resume — ${esc(p.last_claude.was_open
+  m.innerHTML = p.session_why
+    // The node refused: one choice, this container, and the reason above it.
+    ? `<div class="sub">${esc(p.session_why)}</div>` +
+      `<button data-h="1">Start on this container instead — the tree and the notebook, without ${
+        esc(p.session_at || "the node")}'s toolchains</button>`
+    : `<button data-r="1">Resume — ${esc(p.last_claude.was_open
         ? "open when the container stopped" : ago(p.last_claude.when))}</button>` +
-    `<button data-n="1">New conversation</button>`;
+      `<button data-n="1">New conversation</button>`;
   card.appendChild(m);
   const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
   m.style.top = (a.bottom - c.top + 4) + "px";
-  m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id);
-  m.querySelector("[data-n]").onclick = () => startClaude(p.name, null);
+  m.querySelector("[data-r]") && (m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id));
+  m.querySelector("[data-n]") && (m.querySelector("[data-n]").onclick = () => startClaude(p.name, null));
+  m.querySelector("[data-h]") && (m.querySelector("[data-h]").onclick = () => startClaude(p.name, null, true));
   // ...and brought into the sidebar, which scrolls. Pressing Claude on a
   // project whose session has ENDED opens this chooser instead of a tab —
   // that is the design, and it is the only thing the press does — so a
