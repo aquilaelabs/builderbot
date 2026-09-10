@@ -3085,6 +3085,18 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
+    <!-- How much a session may change in the tree without stopping to ask.
+         Claude Code's own permission mode, per project: a codebase somebody
+         has just uploaded is a project where confirming every file is all
+         the first session does. -->
+    <div class="field" id="rnEditsField">
+      <div class="setrow col">
+        <label class="lbl" for="rnEdits">File changes<span class="help"
+          data-tip="Only the file tools, and only inside this project. A shell command, a push, and anything outside the tree still ask — and a sibling project, VERSION and the house rules stay refused either way."
+          tabindex="0">?</span></label>
+        <select id="rnEdits" aria-label="how much a session may change without asking"></select>
+      </div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -5035,9 +5047,14 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: ""};
+                 gate: "", edits: "ask"};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
+// What a session may change without asking (prefs.edits), which the launcher
+// turns into Claude Code's own permission mode in the session's settings
+// file. The deny list is untouched by it.
+const EDIT_MODES = [["ask", "ask before each change"],
+                    ["accept", "edit this project's files without asking"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
@@ -5048,7 +5065,8 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
-               gate: gateKey(p?.prefs?.gate)};
+               gate: gateKey(p?.prefs?.gate),
+               edits: p?.prefs?.edits || "ask"};
   rnFillNode();
   rnFillPrefsRest(p);
 }
@@ -5101,7 +5119,8 @@ function rnFillPrefsRest(p){
     el.value = p?.prefs?.gate?.[k] || "auto";
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
-                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
+                                  ["rnEffort", EFFORTS, rnPrefWas.effort],
+                                  ["rnEdits", EDIT_MODES, rnPrefWas.edits]]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       el.innerHTML = table.map(([v, l]) =>
@@ -5123,7 +5142,8 @@ function rnDrawPrefs(){
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(myClaude(rnFor));
   const changed = $("rnModel").value !== rnPrefWas.model
-               || $("rnEffort").value !== rnPrefWas.effort;
+               || $("rnEffort").value !== rnPrefWas.effort
+               || $("rnEdits").value !== rnPrefWas.edits;
   $("rnPrefHint").textContent = shut
     ? "Locked — this project is yours to run, so no session starts here."
     : running
@@ -13387,6 +13407,9 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
+  // Read by the launcher when a session starts, like the model — so a change
+  // costs a restart, and is asked about the same way.
+  const edits = $("rnEdits").value;
   const node = $("rnNode").value;
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
@@ -13395,7 +13418,8 @@ async function rnSubmit(){
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate
 ;
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
+    || edits !== rnPrefWas.edits;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -13425,7 +13449,7 @@ async function rnSubmit(){
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort,
+        body: JSON.stringify({project: name, model, effort, edits,
                               node, build, test, gate,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —

@@ -45,6 +45,14 @@ GITPOL_KEYS = ("push", "main")
 GITPOL_MODES = ("allow", "deny")
 GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
 GATE_MODES = ("auto", "ask", "deny")
+# How much a session may change in this project without asking first. The
+# names are Claude Code's own permission modes, which is what the launcher
+# puts in the settings file: `default` asks before every edit, `accept`
+# lets the file tools write inside the project and still asks for
+# everything else — a shell command, a push, anything outside the tree.
+# The deny list is not affected either way: a sibling project, VERSION and
+# the rules file stay refused whatever this says.
+EDIT_MODES = ("ask", "accept")
 
 _lock = threading.Lock()
 
@@ -117,7 +125,10 @@ def _clean(rec):
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
                          and (rec.get("gate") or {}).get(k) in GATE_MODES else "auto")
-                     for k in GATE_KINDS}}
+                     for k in GATE_KINDS},
+            # Ask by default: a project nobody has decided about behaves the
+            # way Claude Code does out of the box.
+            "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask")}
 
 
 def get(project):
@@ -207,7 +218,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
               outputs=None, dockernode=None, gate=None, gitpol=None,
-              workspace=None):
+              edits=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it.
     `dockernode` is the old name for `node`, kept for a caller that still
     says it."""
@@ -253,12 +264,17 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 if v not in GATE_MODES:
                     return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
                 cur["gate"][k] = v
+        if edits is not None:
+            if edits not in EDIT_MODES:
+                return {"error": f"edits is one of {', '.join(EDIT_MODES)}, not {edits}"}
+            cur["edits"] = edits
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
+                or cur["edits"] != "ask"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose — _clean puts the defaults
@@ -268,6 +284,8 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 rec.pop("gate", None)
             if cur["gitpol"] == GITPOL_DEFAULT:
                 rec.pop("gitpol", None)
+            if cur["edits"] == "ask":
+                rec.pop("edits", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)

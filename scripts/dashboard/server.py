@@ -4492,6 +4492,7 @@ class Handler(BaseHTTPRequestHandler):
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
+                                edits=field(req, "edits") or None,
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the

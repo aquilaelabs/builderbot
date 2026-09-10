@@ -2148,6 +2148,18 @@ exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
+**How much a session may change without asking** is a per-project pick in
+the same dialog: *File changes* is **ask before each change**, which is what
+Claude Code does out of the box, or **edit this project's files without
+asking**. It becomes the session's own permission mode, so it covers the file
+tools inside this project and nothing else — a shell command, a push and
+anything outside the tree still ask, and the deny list is untouched either
+way, so a sibling project, `VERSION` and the house rules stay refused under
+both. It is read when a session starts, so changing it restarts the session
+the way changing the model does. The case it exists for: a codebase somebody
+has just uploaded, where confirming every file is all the first session gets
+done.
+
 **How much of what a session adds lands on its own** is the last row of the
 same dialog — *Claude may* add to the roadmap, file bugs and add rules, each
 **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
