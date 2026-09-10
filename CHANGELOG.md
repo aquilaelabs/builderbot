@@ -362,3 +362,4 @@
 - A project can be linked to a self-hosted Gitea or Forgejo, to Codeberg, GitLab or Bitbucket, or to any other git host — not to GitHub alone (0f38c55)
 - Unlink a project's remote from the chain on its row: the remote, its stored token and its push rights go, and nothing in the tree is touched (0f38c55)
 - A non-admin account could link a project and store a git token by calling the API directly; that route is now an administrator's like every other one that writes a credential (0f38c55)
+- Changing a project setting while its session is running no longer needs the session restarted to save: Cancel on the restart prompt keeps the setting and leaves the conversation alone (32af66c)
