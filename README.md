@@ -1163,27 +1163,36 @@ lives in its body. The cards:
   public line is ever written; nothing from the request is. With a PAT
   configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos — gh answers for plain https remotes.
-  Every repo wears a chain icon beside its eye, and it is GitHub whichever
-  state the project is in: for one with **no remote at all** it is
-  **link to GitHub**, and for one that already has a remote it opens that
-  project's GitHub settings — the access token and which credential git
-  reaches for, described under
-  [An access token for one project](#an-access-token-for-one-project).
-  Linking asks for the URL and how the push authenticates — the same switch
-  the linked half wears: a **deploy key** the agent
-  holds, or an **access token** for this project alone, checked against
-  GitHub, stored under `/config` and read by git's helper, with the
-  repository created private through the API when it does not exist yet —
-  sets `origin`, records the project as able to push, and pushes the
-  current branch, but **only into an empty repository**: `git ls-remote` must come back with no refs first,
-  so linking can never write over existing work. Without a PAT a deploy key
-  is required (a push has to authenticate somehow); with one, the key is
-  optional and a URL that does not exist yet is created for you via
-  `gh repo create` — always private, and only after GitHub itself has
-  answered "not found"
-  The name is one path segment and the URL must be one of GitHub's two
-  address shapes — `git clone` accepts transports a web form should never
-  reach, so anything else is refused server-side rather than passed along.
+  Every repo wears a chain icon beside its eye, and it is the **remote**
+  whichever state the project is in: for one with **no remote at all** it is
+  **link**, and for one that already has a remote it opens that project's
+  remote settings — the access token, which credential git reaches for, and
+  **Unlink**, all described under
+  [An access token for one project](#an-access-token-for-one-project) and
+  [Unlinking](#unlinking).
+  Linking asks **which host** — GitHub, Gitea, Forgejo, Codeberg, GitLab,
+  Bitbucket, or another git host — because a hostname does not say what is
+  running on it, and only the person who set the server up knows. A public
+  one names itself; a self-hosted one asks for its address, and the answer is
+  remembered against that host, so the second project on the same server is
+  not asked again.
+  Then it asks for the URL and how the push authenticates: a **deploy key**
+  the agent holds, or an **access token** for this project alone, checked
+  with the host where the host has an API to ask, stored under `/config` and
+  read by git's helper. It sets `origin`, records the project as able to
+  push, and pushes the current branch, but **only into an empty repository**:
+  `git ls-remote` must come back with no refs first, so linking can never
+  write over existing work. A repository that does not exist at all is
+  created for you, always private, and only after the host itself has
+  answered "not found" — through the host's own API on GitHub, Gitea,
+  Forgejo, Codeberg and GitLab, and through `gh repo create` on the GitHub
+  path that uses the container's PAT. On a host with no API (Bitbucket,
+  anything else) the repository has to exist already, and the refusal says so.
+  The name is one path segment and the URL must be an https or ssh address
+  with an owner and a repository in it — `git clone` accepts transports a web
+  form should never reach, so anything else is refused server-side rather than
+  passed along. A path deeper than `owner/repo` is refused too, except on
+  GitLab, where subgroups make it a real part of an address.
   **A clone and a first push run in the background**, like an SDK install
   does: everything checkable is checked while the dialog is still up (the
   name, the URL, the key, whether the directory is free, whether the repo
@@ -3164,6 +3173,12 @@ to take away something that worked. https remotes are not seeded: those
 authenticated with a container-wide token, and one of their own is
 the way back.
 
+A grant names the **host as well as the path**, because `sean/app` on GitHub
+and `sean/app` on a Gitea in the cupboard are two repositories — mirroring one
+to the other is a reason to link a second project, not a collision to refuse.
+Grants written before there was more than one host are stamped as GitHub's
+once, at startup, since nothing else could be linked when they were made.
+
 ### An access token for one project
 
 Cloning a private repository asks for an optional **access token**. It is
@@ -3183,13 +3198,20 @@ does not switch anything by itself: git never asks a credential helper about an
 ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
 key however many tokens are stored for it.
 
+None of this is GitHub's alone. The same dialog, the same file and the same
+switch serve a Gitea, a Forgejo, a GitLab or anything else git can reach; only
+two things differ by host, and both live in `forges.py` — whether a token can
+be checked before it is stored, and whether a missing repository can be
+created. Where the host has no API for either, the first fetch is the check
+and the repository has to exist already, which the dialog says in a line.
+
 The **Authentication** segment beside that field is what changes it. Three
 answers, not two: *Disabled*, *Deploy key* and *Access token*. It shows which
 one the remote actually reaches for and lets you move between them; the change
 is applied when you press Save, which is also how a token typed in the same
 dialog gets written before the switch that needs it. Under the hood it is one
 `git remote set-url`, between `git@…:owner/repo.git` and
-`https://github.com/owner/repo.git`, plus the credential helper.
+`https://host/owner/repo.git`, plus the credential helper.
 
 *Disabled* is a real answer rather than the absence of one — the remote keeps
 its https form and the helper comes off it, so a push is refused instead of
@@ -3199,6 +3221,11 @@ dangerous case sayable: **clearing a token while the switch still says
 where you put it and the reason is stated, rather than sliding to another mode
 on your behalf — being corrected without being asked is how you end up on a
 credential you did not choose.
+
+The https address it writes is the **host the remote is actually on**, not a
+constant: a deploy-key remote names a `bb-<key>-<host>` alias, and the server
+it stands for is resolved out of `~/.ssh/config` with `ssh -G`, which reads
+the file and touches no network.
 
 **A stored token is closed, not shown.** Only its file has the value, so the
 field cannot be pre-filled and typing over an invisible one is how a working
@@ -3227,6 +3254,36 @@ agent and cannot be read at all. This is a file owned by the same user your
 shells run as, so a session with Bash can read it. Better than an environment
 variable every process inherits, and not a secret store — for a repository
 where that matters, use a deploy key.
+
+The credential is filed under the **scheme, host and port** the remote uses,
+because that is what git matches a stored line on. A token written against
+the wrong one is a file git reads and then ignores — a credential that looks
+stored and authenticates nothing — so the host is never defaulted. The
+username beside it is a formality every host here accepts; where the host has
+an API it is the account the token actually belongs to, asked for at the same
+time the token is checked.
+
+### Unlinking
+
+**Unlink** sits at the far end of that dialog's foot, in red, with the verbs
+that cannot be undone. It takes four things off, and the answer names each:
+the `origin` remote, the stored access token, the credential helper pointing
+at it, and the push grant — which is what frees the repository for another
+project to be linked to it.
+
+**It touches nothing in the tree.** No commit, no branch, no file, no reflog:
+the history that was pushed is still here and can be pushed again the moment
+something is linked. It is local and instant — the host is not contacted at
+all, which is one of the reasons to reach for it, since the server may be the
+thing that has gone. Any remote other than `origin` is left alone and named
+back to you.
+
+The deploy-key alias in `~/.ssh/config` stays as well. It is named after the
+*key* and the host, not the project, and another project may be using it.
+
+Unlinking is also **how a project moves from one host to another**: linking
+refuses a repository that already has a remote, so this is the first half of
+the move and pointing it at the new host is the second.
 
 ### Locking a project
 
@@ -3672,7 +3729,8 @@ scripts/
   dashboard/                     web dashboard: server.py, index.html, bb-tty
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
-    projects.py                  new project / link to GitHub, and the worker that clones and pushes
+    projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
+    forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
     nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)

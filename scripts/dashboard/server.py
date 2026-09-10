@@ -1237,17 +1237,13 @@ def _compat_loop():
         time.sleep(max(1.0, COMPAT_SWEEP_S))
 
 
-# What a new project may be called, and where a clone may come from. The name
-# becomes a directory under /workspace and part of a tmux session name, so it
-# gets the strictest charset of the two — one path segment, starting with a
-# letter or digit, which also rules out `_work`, dotfiles and `..`. The URL is
-# one of GitHub's address shapes and nothing else: `git clone` accepts
-# transports a browser form must never reach (`ext::` runs commands), so
-# anything unrecognized is refused rather than passed along.
-PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # GitHub caps repos at 100
-GITHUB_URL = re.compile(
-    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
-    r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*?(?:\.git)?/?")
+# What a new project may be called. It becomes a directory under /workspace and
+# part of a tmux session name, so it gets the strictest charset here — one path
+# segment, starting with a letter or digit, which also rules out `_work`,
+# dotfiles and `..`. Where a clone may come from is forges.URL, next door: the
+# same allowlist reasoning (`git clone` accepts transports a browser form must
+# never reach — `ext::` runs commands) applied to more than one host.
+PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # a repo name, near enough
 
 def build_claude_md(about):
     """A new project's CLAUDE.md: the shipped template, with the section below
@@ -1312,41 +1308,39 @@ def gh_authed():
     return run(["gh", "auth", "token"], timeout=10)["code"] == 0
 
 
-def repo_path(url):
-    """owner/repo from an already-validated GitHub URL."""
-    path = re.sub(r"^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)",
-                  "", url).rstrip("/")
-    return path[:-4] if path.endswith(".git") else path
-
-
-def ensure_deploy_alias(name, pub):
-    """A per-repo ssh alias for one agent key, created idempotently; returns
-    the alias.
+def ensure_deploy_alias(name, pub, host):
+    """A per-repo ssh alias for one agent key on one host, created
+    idempotently; returns the alias.
 
     Why an alias at all: deploy keys are scoped to a single repository, and
-    ssh offers every agent key in order — GitHub authenticates the first
+    ssh offers every agent key in order — the host authenticates the first
     valid one and then refuses the repo it does not belong to. The fix is
     IdentitiesOnly plus an IdentityFile naming the *public* half, which acts
     purely as a selector for the agent key (the private half stays shielded).
 
+    The host is in the alias because one key can serve two of them: the same
+    ed25519 on GitHub and on the Gitea in the cupboard is two different
+    HostName lines, and an alias named after the key alone could only ever
+    carry one of them.
+
     Everything written lives in a namespace of our own — bb_<name>.pub and
-    Host bb-<name> — so a .pub or an alias the operator maintains by hand is
-    never touched, and rewriting ours is always safe.
+    Host bb-<name>-<host> — so a .pub or an alias the operator maintains by
+    hand is never touched, and rewriting ours is always safe.
 
     The lock makes the check-then-append on ~/.ssh/config actually atomic:
     two concurrent requests using the same key would otherwise both miss the
     marker and both append the block. ssh would still behave (first match
     wins), but "idempotent" should not mean "single-threaded".
     """
-    alias = f"bb-{name}"
+    alias = f"bb-{name}-{forges.slug(host)}"
     with _ssh_lock:
-        return _ensure_deploy_alias(alias, name, pub)
+        return _ensure_deploy_alias(alias, name, pub, host)
 
 
 _ssh_lock = threading.Lock()
 
 
-def _ensure_deploy_alias(alias, name, pub):
+def _ensure_deploy_alias(alias, name, pub, host):
     SSH_DIR.mkdir(mode=0o700, exist_ok=True)
     pub_path = SSH_DIR / f"bb_{name}.pub"
     try:
@@ -1356,15 +1350,20 @@ def _ensure_deploy_alias(alias, name, pub):
     if current != pub + "\n":
         pub_path.write_text(pub + "\n")
     cfg = SSH_DIR / "config"
-    marker = f"# builderbot:deploy-key:{name}"
+    # The marker carries the alias, not the key: one key on two hosts is two
+    # blocks, and a marker naming only the key would write the first and call
+    # the second already done.
+    marker = f"# builderbot:deploy-key:{alias}"
     try:
         have = cfg.read_text()
     except OSError:
         have = ""
     if marker not in have:
+        hostname, _, port = host.partition(":")
         block = (f"\n{marker}\nHost {alias}\n"
-                 f"    HostName github.com\n"
-                 f"    IdentityFile {pub_path}\n"
+                 f"    HostName {hostname}\n"
+                 + (f"    Port {port}\n" if port.isdigit() else "")
+                 + f"    IdentityFile {pub_path}\n"
                  f"    IdentitiesOnly yes\n")
         with open(cfg, "a") as f:
             f.write(block)
@@ -1372,38 +1371,20 @@ def _ensure_deploy_alias(alias, name, pub):
     return alias
 
 
-def _github_remote(remotes):
-    """Whether any of `git remote -v`'s lines points at GitHub — ssh host
-    aliases included.
+def _remote_host(remotes):
+    """The real host behind the first remote in `git remote -v` output.
 
-    The literal string only covers remotes written as github.com. The
-    standard multi-deploy-key setup — including the bb- aliases this
-    dashboard's own clone and link flows write — hides the real host behind
-    a ~/.ssh/config Host alias, and this box's own repos are addressed that
-    way. `ssh -G` resolves an alias to its HostName from the config alone,
-    no network involved. Hosts are charset-checked (and must not start with
-    a dash) before reaching an argv.
+    Not the host as written: the standard multi-deploy-key setup — including
+    the bb- aliases this dashboard's own clone and link flows write — hides
+    the server behind a ~/.ssh/config Host alias, so the URL says `bb-key-x`
+    and only that file knows what it stands for. forges.host_of resolves it
+    with `ssh -G`, which reads the config and touches no network.
     """
-    if "github.com" in remotes:
-        return True
-    hosts = set()
     for line in remotes.splitlines():
         parts = line.split()
-        if len(parts) < 2:
-            continue
-        url = parts[1]
-        if "://" in url:                     # ssh://git@host/... — https etc.
-            m = re.match(r"ssh://(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*)", url)
-        else:                                # scp form: git@host:path
-            m = re.match(r"(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*):", url)
-        if m:
-            hosts.add(m.group(1))
-    for h in hosts:
-        r = run(["ssh", "-G", h], timeout=10)
-        if r["code"] == 0 and any(l.strip() == "hostname github.com"
-                                  for l in r["out"].splitlines()):
-            return True
-    return False
+        if len(parts) >= 2 and forges.parse(parts[1]):
+            return forges.host_of(parts[1])
+    return ""
 
 
 # A directory holding this file is not a project: not listed, not offered a
@@ -1557,10 +1538,12 @@ def project_list(who):
             has_md = False
 
         # linked defaults to True and github to False: each gates an offered
-        # action (the link-to-GitHub button; the GitHub command buttons), and
-        # a project this loop could not examine must get no offer rather than
-        # a broken one — which is the opposite default for the two.
+        # action (the chain on the row; the GitHub command buttons), and a
+        # project this loop could not examine must get no offer rather than a
+        # broken one — which is the opposite default for the two. The forge
+        # defaults with them, and to the entry that promises nothing.
         branch, git_ok, linked, github = None, False, True, False
+        fhost, forge = "", forges.OTHER
         if not missing:
             # An empty directory is the one thing never reported. It is not a
             # problem to fix — it is a mount point waiting for content, or a
@@ -1581,15 +1564,20 @@ def project_list(who):
                 issues.append({"level": "error", "text": "no valid git repository"})
             else:
                 # Asked of git, not read out of .git/config: a worktree or a
-                # submodule keeps its config elsewhere, and both flags drive
-                # visible controls (the link-to-GitHub button; the GitHub
-                # command card's ghosting), so a wrong guess here offers an
-                # action that cannot work. -v for the URLs, which is what
-                # tells a GitHub remote from any other.
+                # submodule keeps its config elsewhere, and these drive
+                # visible controls (the chain on the row; the GitHub command
+                # card's ghosting), so a wrong guess here offers an action
+                # that cannot work. -v for the URLs, which is what says which
+                # host it is on.
                 remotes = run(["git", "-C", str(d), "remote", "-v"],
                               timeout=10)["out"]
                 linked = bool(remotes.strip())
-                github = linked and _github_remote(remotes)
+                # Which forge, for the chain's own words — and `github` still
+                # on its own, because the command card runs `gh` and that is
+                # GitHub's and nobody else's.
+                fhost = _remote_host(remotes) if linked else ""
+                forge = forges.forge_of(fhost)
+                github = fhost.lower().split(":")[0] == "github.com"
                 r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
                         timeout=10)
                 # `out` carries stderr too, so a detached HEAD would otherwise
@@ -1630,6 +1618,16 @@ def project_list(who):
         mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
+                    # Which host it is linked to, for the chain to say so in
+                    # its own words. "" when there is no remote to be on, and
+                    # the ADDRESS rather than the catalog's generic label when
+                    # nobody has said what that server runs — "Unlink from
+                    # Another git host" names nothing a person could check.
+                    "forge": forge["id"] if linked else "",
+                    "forge_name": ("" if not linked
+                                   else forge["name"] if forge["id"] != forges.OTHER["id"]
+                                   else fhost or forge["name"]),
+                    "forge_host": fhost,
                     "claude_md": has_md,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
@@ -2549,6 +2547,9 @@ def writer_name():
 # Creating and cloning, and the worker that runs the ones that touch the
 # network. The credential half stays here — agent_keys and the ssh aliases are
 # this box's, not any one project's — and is handed over.
+import forges                                                    # noqa: E402
+forges.configure(run=run, state=STATE, write_json=write_json)
+
 import projects                                                  # noqa: E402
 
 def _seed_push_rights():
@@ -2577,7 +2578,8 @@ def _seed_push_rights():
         if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
             continue
         remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
-        if not remotes.strip() or not _github_remote(remotes):
+        host = _remote_host(remotes) if remotes.strip() else ""
+        if host.lower().split(":")[0] != "github.com":
             continue
         # ssh, in either spelling — an https remote is the PAT arrangement.
         if not any(l.split()[1].startswith(("git@", "ssh://"))
@@ -2585,7 +2587,8 @@ def _seed_push_rights():
             continue
         repo = projects.repo_of_remotes(remotes)
         if repo and repo not in {v["repo"] for v in seeded.values()}:
-            seeded[d.name] = {"repo": repo, "how": "key", "at": int(time.time())}
+            seeded[d.name] = {"repo": repo, "host": host, "how": "key",
+                              "at": int(time.time())}
     write_json(STATE / "push-rights.json", seeded)
     if seeded:
         print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
@@ -2802,13 +2805,41 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
-                   repo_path=repo_path, build_claude_md=build_claude_md,
-                   project_name=PROJECT_NAME, github_url=GITHUB_URL,
+                   build_claude_md=build_claude_md,
+                   project_name=PROJECT_NAME,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data)
 
 _seed_push_rights()
+
+
+def _stamp_push_hosts():
+    """Put the host on push grants written before there was more than one.
+
+    A grant records which repository a project owns the right to push to, and
+    that identity used to be `owner/repo` alone — true while GitHub was the
+    only host anything could be linked to, and wrong the moment the same
+    `sean/app` can exist on GitHub and on a Gitea in the cupboard. Records
+    made before this ran name no host, and every one of them is GitHub's,
+    because nothing else could be linked.
+
+    Runs once, like _seed_push_rights above it, and for the same reason: a
+    rule that arrives after the data has to say what the old data meant, once,
+    rather than every read of it forever.
+    """
+    d = projects.load_push()
+    stale = [k for k, v in d.items() if isinstance(v, dict) and not v.get("host")]
+    if not stale:
+        return
+    for k in stale:
+        d[k]["host"] = "github.com"
+    projects.save_push(d)
+    print(f"[dashboard] {len(stale)} push grant(s) stamped as github.com — "
+          f"they were made when it was the only host", flush=True)
+
+
+_stamp_push_hosts()
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4322,7 +4353,11 @@ class Handler(BaseHTTPRequestHandler):
             # dialog is an administrator's, and so is this.
             if self._refused("create"):
                 return None
-            return self._json({"keys": agent_keys(), "pat": gh_authed()})
+            # The forge catalog rides along rather than costing a fetch of its
+            # own: the dialog that wants the keys is the dialog that wants the
+            # list of hosts, and it is drawn once from one answer.
+            return self._json({"keys": agent_keys(), "pat": gh_authed(),
+                               "forges": forges.catalog()})
         self._json({"error": "not found"}, 404)
 
     def _read_json(self):
@@ -4438,6 +4473,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._profile(req)
         if path.startswith("/api/git"):
             return self._git_act(req)
+        # Before the bare prefix, or startswith swallows it.
+        if path.startswith("/api/unlink"):
+            return self._unlink(req)
         if path.startswith("/api/link"):
             return self._link(req)
         if path.startswith("/api/project-job"):
@@ -6269,8 +6307,26 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(r, 400 if r.get("error") else 200)
 
     def _link(self, req):
-        """Link an existing local repo to an empty GitHub repo. See projects.py."""
+        """Link an existing local repo to an empty repo on a host. projects.py.
+
+        The create gate, because this is the create dialog's third mode and
+        one of the places a git token is written — the same reason that gate
+        covers the other two. It went ungated from the day it was added: the
+        dialog is only drawn for an administrator, so nothing offered it, and
+        nothing refused a request that arrived anyway.
+        """
+        if self._refused("create"):
+            return None
         body, code = projects.link(req)
+        return self._json(body, code)
+
+    def _unlink(self, req):
+        """Take the remote off a project, with the credential and the push
+        grant that came with it. See projects.unlink — local, instant, and it
+        touches no commit."""
+        if self._refused("create"):
+            return None
+        body, code = projects.unlink(req)
         return self._json(body, code)
 
     def _project_job(self, req):
