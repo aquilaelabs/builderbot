@@ -351,3 +351,5 @@
 - Enroll node asks which account jobs run as, and the provision command it prints carries it (098930d)
 - The notebook's histories name the account behind a change, not just 'you' or 'claude' (1ad0693)
 - Create sandbox VM covers seven hypervisors — Unraid, Proxmox, libvirt, QEMU, VMware, Hyper-V and VirtualBox — each with the MAC range it accepts (1ad0693)
+- A job that fails now says what it was doing: no more exit code with an empty log (c38eb53)
+- The provisioners lose their question-and-answer mode — the command Enroll node prints is the one to run (c38eb53)
