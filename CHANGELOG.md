@@ -353,3 +353,4 @@
 - Create sandbox VM covers seven hypervisors — Unraid, Proxmox, libvirt, QEMU, VMware, Hyper-V and VirtualBox — each with the MAC range it accepts (1ad0693)
 - A job that fails now says what it was doing: no more exit code with an empty log (c38eb53)
 - The provisioners lose their question-and-answer mode — the command Enroll node prints is the one to run (c38eb53)
+- A project can let a session edit its own files without asking each time — File changes, in the project's settings (6b88706)
