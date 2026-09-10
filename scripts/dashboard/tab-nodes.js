@@ -801,8 +801,14 @@ function wireNodesTab(root){
     document.getElementById("ndTitle").textContent = "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
-        <label for="ndEnName">Name</label>
-        <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox">
+        <div class="prefrow">
+          <div class="setrow col">${lbl("ndEnName", "Name")}
+            <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox"></div>
+          <div class="setrow col">${lbl("ndEnUser", "Jobs run as",
+            "the account the provisioner makes and every job runs as. bb unless that name is taken on the machine")}
+            <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
+              value="bb"></div>
+        </div>
         <div class="hint">The node dials in with this token, which is good once and
           for a day. What it can build is what the Tools tab installs on it afterwards.</div>
       </div>
@@ -817,12 +823,18 @@ function wireNodesTab(root){
     go.onclick = () => pressing(go, async () => {
       busy(go, "Minting");
       const name = body.querySelector("#ndEnName").value;
-      const r = await nodeAct({action: "enroll", name});
+      // The account rides along, so the row says the right one before the
+      // machine exists and the command below carries it. The record follows
+      // whatever the agent reports at enrollment either way; this is what
+      // stops the two disagreeing in between, and what stops somebody
+      // having to remember the flag.
+      const user = body.querySelector("#ndEnUser").value.trim() || "bb";
+      const r = await nodeAct({action: "enroll", name, user});
       if (r.error){ mintForm(); return; }   // nodeAct has said why
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
       // operator's to substitute.
-      mintToken({name: name || "node", token: r.token, url: location.origin});
+      mintToken({name: name || "node", token: r.token, url: location.origin, user});
       nodesRev++; drawPanes();              // the pending row joins the picker
     });
     body.querySelector("#ndEnName").onkeydown = e => {
@@ -836,13 +848,15 @@ function wireNodesTab(root){
         <div class="hint">shown once; the controller keeps only a hash. On a
           fresh machine, the provisioner installs docker and the agent
           together:</div>
-        <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+        <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
+          m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
         <div class="hint">on a Mac, as yourself — one directory and a launchd agent, no root:</div>
         <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         <div class="hint">or on a machine that already has python3, the agent alone:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent
-builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
+          m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
       </div>
       <div class="foot"><span class="sp"></span>
         <button type="button" id="ndTokDone">Done</button></div>`;

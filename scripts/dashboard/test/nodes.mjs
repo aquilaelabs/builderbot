@@ -276,7 +276,12 @@ ok(list[0].id === 'local',
   await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
      '...with the picker still live — the way back is the way in');
-  // and back: the sandbox's last-known answer paints instantly from cache
+  // and back: the sandbox's last-known answer paints instantly from cache.
+  // Waited for at the point of USE, not at the assertion above: the picker
+  // is drawn only while nodesList holds more than one node, and a reload of
+  // that list between the two takes the element with it (B69's sibling).
+  await page.waitForFunction(() => !!document.querySelector('#dmNode'),
+                             null, { timeout: 15000 });
   await page.evaluate(() => { const s = document.querySelector('#dmNode');
     s.value = nodesList.find(n => n.name === 'sandbox').id;
     s.dispatchEvent(new Event('change')); });
@@ -1136,6 +1141,29 @@ for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
 // puts them both on the first one's address.
 await page.evaluate(() => openNodesTab());
 await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
+// The enroll dialog asks for the account jobs run as, and the command it
+// prints carries it: the record follows whatever the agent reports at
+// enrollment, and this is what stops the row saying bb in the meantime and
+// somebody having to remember the flag.
+await page.click('.nodestab #ndEnroll');
+await page.waitForSelector('#ndBody #ndEnUser', { timeout: 10000 });
+ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'bb',
+   'Enroll node opens on bb as the account jobs run as');
+await page.fill('#ndBody #ndEnName', 'joesbox');
+await page.fill('#ndBody #ndEnUser', 'joe');
+await page.click('#ndBody #ndEnGo');
+await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
+ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),
+   '...and the provision command it prints carries a account that is not the default');
+ok(await page.evaluate(async () => { await loadNodes();
+     return (nodesList.find(n => n.name === 'joesbox')?.config || {}).user; }) === 'joe',
+   '...with the pending row already saying which account, before the machine exists');
+await page.click('#ndBody #ndTokDone');
+await page.evaluate(async () => {
+  const n = nodesList.find(x => x.name === 'joesbox');
+  if (n) await nodeAct({ action: 'retire', id: n.id });
+});
+
 await page.click('.nodestab #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
