@@ -1167,10 +1167,22 @@ def create(req):
             return {"error": "not a repository address — use "
                              "https://host/owner/repo, git@host:owner/repo.git "
                              "or ssh://git@host/owner/repo.git"}, 400
-        forge = forges.forge_of(addr["host"])
+        # Which host this is. The address wins wherever it names itself — a
+        # catalog host, or one the operator has already answered for — and the
+        # picked entry is consulted only for a server nobody has said anything
+        # about yet, which is the only case the form asks about.
+        named = forges.forge_of(addr["host"])
+        forge = (named if named["id"] != forges.OTHER["id"]
+                 else (forges.get(_field(req, "forge")) or named))
+        if forge["fixed"] and forge["host"] and forge["host"] != addr["host"].split(":")[0].lower():
+            return {"error": f"{forge['name']} is {forge['host']}, and that "
+                             f"address is on {addr['host']}"}, 400
         bad = forges.path_ok(forge, addr["path"])
         if bad:
             return {"error": bad}, 400
+        # Remembered against the host, so this is asked once per server rather
+        # than once per project.
+        forges.remember(addr["host"], forge["id"])
         # The repository's own name, unless the operator gave one. It used to
         # be derived and nothing else, on the reasoning that the repo already
         # knows what it is called — which is true right up until you want two

@@ -8518,8 +8518,8 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
-                    "pTokenField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pForgeField",
+                    "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
                     "pTokenField"] },
@@ -8533,6 +8533,13 @@ let pPat = false;                        // can https push authenticate (gh)?
 // which is why every reader goes through pForge() rather than indexing it.
 let pForges = [];
 let pForgeId = "github";
+// What the operator has already said their own servers run, by host. The
+// clone form asks which host only for an address on a server nobody has
+// answered for yet — the second project from the same Gitea is not asked.
+let pForgeHosts = {};
+// The host the current pick was made for, so a fresh address gets a fresh
+// question rather than the last one's answer.
+let pAskedHost = "";
 
 function pDraw(){
   const m = PMODES[pMode];
@@ -8555,7 +8562,10 @@ function pDraw(){
     $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
     $("pTokenField").hidden = pLinkAuth !== "token";
   }
-  const fg = pForge();
+  // What the token field is about: the picked entry when linking, and the
+  // address's own host when cloning, which is where the host comes from there.
+  const fg = pMode === "clone"
+    ? (pForgeOf(pUrlHost($("pUrl").value)) || pForge()) : pForge();
   $("pUrlHint").textContent = pMode === "link"
     ? `An empty repository to push ${pLink} to — linking never `
       + `touches a repo that already has commits.`
@@ -8583,11 +8593,9 @@ function pDraw(){
       + (fg.creates ? `Checked with ${fg.name} before anything is written.`
                     : `${fg.name} cannot be asked whether it is good, so the `
                       + "first fetch is the test.")
-    : "Leave empty for a public repository. A token here is used for THIS "
-      + "project and no other, even if it opens more — it is kept in /config and "
-      + "named in this repo's own git config. It is not shielded the way a deploy "
-      + "key is: a shell in this container can read it.";
-  $("pToken").placeholder = pMode === "link" ? fg.hint : "ghp_… or github_pat_…";
+    : "Leave empty for a public repository. A token is kept for this project "
+      + "alone, in /config, and a shell in this container can read it.";
+  $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -8609,6 +8617,23 @@ function pDraw(){
 // a viewport, because the fields swap inside a box that is not moving.
 // The host row: the catalog as a select, and a box for the address when the
 // picked one is somebody's own server rather than a single public site.
+// The host in an address, as typed — enough to tell a server the catalog
+// names from one nobody has answered for. Not a validator: the server parses
+// it properly, and this only decides whether to ask a question.
+function pUrlHost(url){
+  const u = (url || "").trim();
+  let m = /^[a-z]+:\/\/(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9.:-]*)/i.exec(u);
+  if (!m) m = /^(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9.-]*):/.exec(u);
+  return m ? m[1].toLowerCase() : "";
+}
+// Which catalog entry a host names itself as, or null when nobody has said.
+const pForgeOf = host => {
+  if (!host) return null;
+  const bare = host.split(":")[0];
+  return pForges.find(f => f.host && f.host.toLowerCase() === bare)
+      || pForges.find(f => f.id === pForgeHosts[host]) || null;
+};
+
 function pDrawForge(){
   if ($("pForgeField").hidden) return;
   const sel = $("pForge");
@@ -8616,6 +8641,28 @@ function pDrawForge(){
     sel.innerHTML = pForges.map(f =>
       `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
     sel.dataset.built = String(pForges.length);
+  }
+  // Cloning: the URL is the subject and the host is in it, so this is not a
+  // second place to type one. It is one question — what is running on that
+  // server — and it is asked only when the address is on a server that does
+  // not name itself and nobody has answered for. Which means a paste of a
+  // GitHub URL never sees it, and a Gitea is asked about once ever.
+  if (pMode === "clone"){
+    const host = pUrlHost($("pUrl").value);
+    const named = pForgeOf(host);
+    $("pForgeField").hidden = !host || !!named;
+    $("pForgeHost").hidden = true;
+    if (!$("pForgeField").hidden){
+      // A server nobody has answered for starts on the entry that promises
+      // nothing, not on GitHub: the question is what this one runs, and a
+      // default that names a different server is an answer nobody gave.
+      if (pAskedHost !== host){ pAskedHost = host; pForgeId = "git"; }
+      sel.value = pForgeId;
+      $("pForgeHint").textContent =
+        `Nothing here knows what ${host} runs, and it decides whether a token `
+        + `can be checked and a missing repository made. Asked once per server.`;
+    }
+    return;
   }
   sel.value = pForgeId;
   const f = pForge();
@@ -8683,6 +8730,7 @@ function pOpen(mode){
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   $("pToken").value = "";
+  pAskedHost = "";
   // Every open starts on GitHub rather than on whatever the last one picked:
   // the host is the first thing decided and a remembered pick would be a
   // silent one.
@@ -8708,6 +8756,7 @@ function pOpen(mode){
     if (gen !== pGen || !j) return;
     pKeys = j.keys || []; pPat = !!j.pat;
     pForges = j.forges || [];
+    pForgeHosts = j.hosts || {};
     if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
     $("pKey").innerHTML = `<option value="">none — ${pPat
         ? "authenticate with the configured PAT"
@@ -13044,8 +13093,10 @@ $("pUrl").oninput = () => {
   pNameShow();
 };
 // ...and when a name HAS been typed, the URL still decides nothing — but the
-// warning has to keep up with a URL edited afterwards.
+// warning has to keep up with a URL edited afterwards. So does the question
+// about the host, which appears and goes as the address is typed.
 $("pUrl").addEventListener("input", pNameShow);
+$("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
 
 $("cTabYml").onclick = () => cSwitch("yml");
 $("cTabEnv").onclick = () => cSwitch("env");
@@ -13167,6 +13218,9 @@ $("pCreate").onclick = async () => {
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 key: mode === "clone" ? key : "",
+                                // Only ever consulted for a host that does not
+                                // name itself — the server prefers the host.
+                                forge: mode === "clone" ? pForgeId : "",
                                 token: mode === "clone" ? $("pToken").value.trim() : "",
                                 push: mode === "clone" && $("pPush").checked})});
     const j = await r.json().catch(() => ({}));

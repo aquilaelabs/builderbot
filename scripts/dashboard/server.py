@@ -4355,9 +4355,12 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             # The forge catalog rides along rather than costing a fetch of its
             # own: the dialog that wants the keys is the dialog that wants the
-            # list of hosts, and it is drawn once from one answer.
+            # list of hosts, and it is drawn once from one answer. `hosts` is
+            # what the operator has already said their own servers run, so the
+            # clone form knows not to ask a question it has the answer to.
             return self._json({"keys": agent_keys(), "pat": gh_authed(),
-                               "forges": forges.catalog()})
+                               "forges": forges.catalog(),
+                               "hosts": forges.known()})
         self._json({"error": "not found"}, 404)
 
     def _read_json(self):
