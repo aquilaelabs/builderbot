@@ -44,7 +44,7 @@ await page.click('#bPkgs');
 // harness's stub agent here — and never offers "this container". With no
 // node at all it says to enroll one and offers nothing; shown by emptying
 // the page's node list, since the fixture always has the stub. The installer
-// the rest of this file exercises is still there for `bb sdk install` from a
+// the rest of this file exercises is still there for `bb packages install` from a
 // shell and for the suite, addressed as "local"; nothing on the page sets it.
 await page.waitForSelector('.doc .pkgtab #pkgNodeSel', { timeout: 20000 });
 ok(await page.$$eval('.doc #pkgNodeSel option', os => !os.some(o => o.value === 'local')),
@@ -316,7 +316,7 @@ const stored = JSON.parse(readFileSync(`${DIR}/state/pkg-versions.json`, 'utf8')
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
    '...and they are on disk, to outlive the process that asked');
 // So is the LOCAL read, which is the one that made this tab slow to open
-// after every container restart: `bb sdk versions` is a couple of seconds
+// after every container restart: `bb packages versions` is a couple of seconds
 // across every toolchain, and the answer had not changed. Keyed by what it is
 // an answer about — the set of installed paths, and the catalog's own digest
 // — so installing something, or editing a recipe, is not answered from it.
@@ -520,7 +520,7 @@ await page.waitForFunction(() => packages?.job && !packages.job.running,
 
 // ---- a recipe that cannot update in place (bug #43) ---------------------
 // The check asks UPSTREAM, not the recipe, so it can report a newer version
-// for a package `bb sdk update` has no case for. Ticking that used to route
+// for a package `bb packages update` has no case for. Ticking that used to route
 // to update and die on its usage line, naming five packages nobody asked
 // about. The row says so instead, before the press.
 {

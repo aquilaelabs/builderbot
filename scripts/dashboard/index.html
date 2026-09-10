@@ -7091,7 +7091,7 @@ let pkgFlavor = "";
 // NODES (roadmap #26), and this container is never offered: what it keeps is
 // the Playwright browsers its boot hook put on its store for bb shot, and no
 // button reaches its installer. "local" is still what that installer is
-// called — `bb sdk install` from a shell and the suite address it — but
+// called — `bb packages install` from a shell and the suite address it — but
 // nothing on this page sets it.
 let pkgNode = "";
 let pkgLoadSeq = 0;         // a load that lands after the node changed is dropped
@@ -7240,7 +7240,7 @@ function pkgRow(p, busy, job){
   const upToDate = !mine && p.installed && p.state !== "update";
   // An installed package whose recipe cannot update in place. The check can
   // still say a newer version exists — it asks upstream, not the recipe — and
-  // before this the row let you tick it and then died on `bb sdk update`'s
+  // before this the row let you tick it and then died on `bb packages update`'s
   // usage line, naming five packages you had not asked about (bug #43).
   const noUpgrade = !mine && p.installed && !p.updatable;
   // Three versions can be on a row and only ever two at once: what is
@@ -8351,7 +8351,7 @@ function renderPackagesInto(i){
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an package store to keep them out of it.`)
-      : "The package store root could not be determined; this image may predate <code>bb sdk</code>."}</div>
+      : "The package store root could not be determined; this image may predate <code>bb packages</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
     <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
@@ -14333,7 +14333,7 @@ function wireMacros(el){
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
 // output belongs where the operator can scroll it, page it, and follow a
-// `bb sdk install` that takes minutes — none of which a one-shot text box did.
+// `bb packages install` that takes minutes — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
   if (!t) return;                        // grayed out; a stray tap does nothing

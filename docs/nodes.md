@@ -587,12 +587,12 @@ Caches answered "how does a node avoid re-downloading what a build pulls";
 this answers the question above it, which the plan had not: **how do the
 toolchains themselves — a JDK, the Android SDK, Flutter — get onto a node at
 all, and where do they live?** Today the answer is the controller's package store
-and `bb sdk`, operator-gated; that has to generalize without forking.
+and `bb packages`, operator-gated; that has to generalize without forking.
 
 - **One catalog, per-node state.** `config/packages.json` stays the single
   description of what is installable and how. What becomes per-node is the
   *state*: the census reports which toolchains a node has and at what version
-  (`reported.toolchains`), probed by the agent the same way `bb sdk` probes
+  (`reported.toolchains`), probed by the agent the same way `bb packages` probes
   locally. The controller never guesses from what it asked for; it reads what
   the node says it has.
 - **Installing is a job.** A package install on a node is an ordinary job
@@ -686,7 +686,7 @@ replaces the previous kept failure of that project. The census reports the
 cache store's size and *Clear cache* on the row is a `cache-clear` job. A
 toolchain install on a node is a `package` job: the agent fetches the
 bundle (bb, its library, the catalog) by digest into the packages store
-and runs `bb sdk install` from it with `SDK_ROOT` at the store, gated on the
+and runs `bb packages install` from it with `SDK_ROOT` at the store, gated on the
 store's headroom when this controller has measured the package before; the
 Tools tab's node picker shows what the node's census says it has. Not
 landed: the node browser is the kept-workspace path in the job's log and
@@ -1571,7 +1571,7 @@ Actions runner and emulation on nodes. Only then does the image drop the
 JDK, the Android SDK and emulator, .NET, Flutter and Swift, and only then
 does the local node lose `package-build`. The other order strands every
 project between a container that cannot build and a node that cannot yet.
-`bb sdk` shrinks to what a session and the dashboard actually use here —
+`bb packages` shrinks to what a session and the dashboard actually use here —
 node, Python, and the Playwright browsers for `bb shot` against a URL.
 
 **Then the session's tools close.** The settings file `claude_scope()`
@@ -1614,7 +1614,7 @@ Why it beats §18, in one line: §18 spends a lot of machinery teaching a
 session on the wrong machine to act on the right one — a job per build, a job
 per emulator verb, snapshots in both directions, a lockdown to stop it doing
 otherwise. Put the session on the node and most of that is simply not needed.
-`bb sdk` on the node already answers for the node. `bb build` is a build.
+`bb packages` on the node already answers for the node. `bb build` is a build.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
 this box's package store and bb-sandbox's packages store are **one store under two

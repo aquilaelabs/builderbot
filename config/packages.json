@@ -1,10 +1,10 @@
 {
   "_comment": [
     "Everything the container needs in order to offer, fetch and install a package.",
-    "The dashboard's Tools tab renders it and `bb sdk` acts on it; adding a package",
+    "The dashboard's Tools tab renders it and `bb packages` acts on it; adding a package",
     "here is the whole job, as long as it fits one of the five kinds below.",
     "",
-    "  name     what `bb sdk install|remove` is called with.",
+    "  name     what `bb packages install|remove` is called with.",
     "  probe    where it lands, so the page can tell installed from not: a bare",
     "           name is a directory under the package store root, android:<pkg> a package",
     "           directory under ANDROID_HOME. System images are not packages;",
@@ -204,7 +204,7 @@
           "JAVA_HOME": "{dir}/../jdk"
         },
         "after": [
-          "system images and the emulator install through it: bb sdk install android:emulator, bb sdk images"
+          "system images and the emulator install through it: bb packages install android:emulator, bb packages images"
         ],
         "download": {
           "resolver": "approximate",
@@ -723,7 +723,7 @@
         ],
         "after": [
           "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
-          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
+          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb packages install zig + cargo-zigbuild"
         ],
         "download": {
           "resolver": "url-matches",

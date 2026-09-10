@@ -286,7 +286,7 @@ RUN set -eux; \
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
 COPY config/templates/ /opt/builderbot/templates/
-# The package catalog the Tools tab renders and `bb sdk` walks. Under config/
+# The package catalog the Tools tab renders and `bb packages` walks. Under config/
 # so that the path relative to both bb and server.py is the same here as it is
 # in a checkout, which is what lets `bb dashboard dev` and the tests read it.
 COPY config/packages.json /opt/builderbot/config/packages.json

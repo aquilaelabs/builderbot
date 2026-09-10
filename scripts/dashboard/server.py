@@ -1025,7 +1025,7 @@ def findings_payload(who):
             "aside": aside, "reports": reports}
 
 
-# `bb sdk install|update|remove` refuses when CLAUDECODE is set, and the
+# `bb packages install|update|remove` refuses when CLAUDECODE is set, and the
 # message it prints tells the session to ask the operator to use this page.
 # So this page must never carry that variable — and it can: `bb dashboard dev`
 # is normally run *by* a session, and the server it starts inherits whatever

@@ -175,8 +175,8 @@ sdk_have() {
 # emulator — because a container that comes up "ready" with `bb shot` broken
 # is worse than a slow first boot. But a fresh share and a share somebody just
 # cleared look identical, so an uninstall used to last until the next restart
-# and no further. This is how the intent outlives it: `bb sdk remove` leaves a
-# marker, `bb sdk install` clears it, and a hook that finds one keeps its
+# and no further. This is how the intent outlives it: `bb packages remove` leaves a
+# marker, `bb packages install` clears it, and a hook that finds one keeps its
 # hands off. On the share, because an image update must not forget it.
 sdk_removed_marker() {
     printf '%s/.removed/%s' "$(sdk_root)" "$(printf '%s' "$1" | tr ':/' '--')"

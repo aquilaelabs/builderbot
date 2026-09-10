@@ -309,7 +309,7 @@ def _insert_node(rec):
 
 STORE_ID_FILE = ".bb-store-id"
 
-# Where this container keeps its toolchains. `bb sdk root` is the authority
+# Where this container keeps its toolchains. `bb packages root` is the authority
 # and packages.py asks it, but nodes.py is imported at boot before any of
 # that and must not shell out on the seed path — so the same two answers bb
 # itself resolves between, in the same order.
@@ -918,7 +918,7 @@ def _census(c):
                 # The node's own directory in the store — linux-x86_64,
                 # darwin-arm64 (roadmap R19); "" from an agent before it.
                 "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
-    # {name: version} from `bb sdk versions` on the node — the controller's
+    # {name: version} from `bb packages versions` on the node — the controller's
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does
     # not exist.

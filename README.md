@@ -53,7 +53,7 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Claude Code** | `@anthropic-ai/claude-code`, auto-updated on every start |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
-| **Playwright** | CLI + the system deps; the browsers themselves install to the [package store](#sdks-live-outside-the-image) and appear at `/opt/pw-browsers` |
+| **Playwright** | CLI + the system deps; the browsers themselves install to the [package store](#the-package-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
 | **Android, Java, Flutter, .NET…** | Not in the image: a node's, from its packages store — the JDK, the SDK, the emulator and the system images are recipes on the Tools tab, installed with the node picked |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
@@ -66,8 +66,8 @@ private tmux server and photographs it with `bb shot` — the pattern the
 
 Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`.
 The heavyweight toolchains — Flutter, .NET, Swift, extra Android packages —
-are never in the image at all; `bb sdk install` puts them on a share that an
-update cannot touch. See [SDKs live outside the image](#sdks-live-outside-the-image).
+are never in the image at all; `bb packages install` puts them on a share that an
+update cannot touch. See [the package store lives outside the image](#the-package-store-lives-outside-the-image).
 
 ---
 
@@ -276,7 +276,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `GITHUB_URL` | — | Repo or org URL node runners register with |
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
-| `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
+| `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept — see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
 | `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
@@ -483,7 +483,7 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
-bb sdk             SDKs kept outside the image: status, check, install X, update X, remove X
+bb packages             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
@@ -547,7 +547,7 @@ rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
 per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
 in software and will mislead you.
 
-## SDKs live outside the image
+## The package store lives outside the image
 
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs — the JDK, the Android SDK, the emulator,
@@ -565,7 +565,7 @@ share is recognized as sharing it, and installs are arbitrated across both.
 runs, and a Linux box's binaries never land on top of a Mac's. The Android
 system images, the same bytes on every host and tens of gigabytes, live once
 under `<store>/shared/android/system-images` with each platform's
-`android/system-images` a link to them, and `bb sdk root` names the scoped
+`android/system-images` a link to them, and `bb packages root` names the scoped
 directory.
 
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
@@ -576,20 +576,20 @@ them. Map no share and everything falls back to the home volume — which also
 persists, but mixes 30GB of system images in with your shell history.
 
 ```bash
-bb sdk                     # what is installed, where, and how much room is left
-bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
-bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
-bb sdk install android:"system-images;android-35;google_apis;x86_64"
-bb sdk list                # every package the catalog offers
-bb sdk images              # the android system images on disk, with sizes
-bb sdk images --available  # ...and every one that could be installed
-bb sdk flavors             # google_apis · +playstore · tv · wear, and which to pick
-bb sdk plan swift          # what installing it would fetch and run, exactly
-bb sdk versions            # what is installed, asking nobody
-bb sdk check               # ...and whether anything newer exists
-bb sdk update flutter      # each the way its own tooling expects
-bb sdk remove flutter
-bb sdk env                 # the PATH lines; new shells get them automatically
+bb packages                     # what is installed, where, and how much room is left
+bb packages install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
+bb packages install android:tv         # or wear · playstore · ndk · cmake · emulator
+bb packages install android:"system-images;android-35;google_apis;x86_64"
+bb packages list                # every package the catalog offers
+bb packages images              # the android system images on disk, with sizes
+bb packages images --available  # ...and every one that could be installed
+bb packages flavors             # google_apis · +playstore · tv · wear, and which to pick
+bb packages plan swift          # what installing it would fetch and run, exactly
+bb packages versions            # what is installed, asking nobody
+bb packages check               # ...and whether anything newer exists
+bb packages update flutter      # each the way its own tooling expects
+bb packages remove flutter
+bb packages env                 # the PATH lines; new shells get them automatically
 ```
 
 **The recipes are a file, not code.**
@@ -597,7 +597,7 @@ bb sdk env                 # the PATH lines; new shells get them automatically
 needs in order to offer, fetch and install a package: the URL, the branch, the
 installer's arguments, the environment it wants, how many directory levels to
 strip out of the archive, what to run afterwards to prove it worked. Both the
-dashboard and `bb sdk` read it, so adding a package is one edit — as long as
+dashboard and `bb packages` read it, so adding a package is one edit — as long as
 it fits one of five shapes:
 
 | kind | what it does |
@@ -609,7 +609,7 @@ it fits one of five shapes:
 | `sdkmanager` | an Android package, or an image flavor by kind |
 
 The shapes stay in `bb` because they are genuinely different jobs, and a
-table that could express all five would be a programming language. **`bb sdk
+table that could express all five would be a programming language. **`bb packages
 plan <package>`** prints what a recipe resolves to — version, URL, the exact
 commands — without downloading anything, which is how a catalog edit gets
 checked before it is trusted.
@@ -649,18 +649,18 @@ with a `~` everywhere it appears and replaced by a measurement the moment the
 package has been installed here once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
-you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
+you.** `bb packages install|update|remove` refuses to run when `CLAUDECODE` is in
 the environment — that variable is in everything a Claude session runs, and
 the dashboard drops it at startup precisely so that this page is never
 mistaken for one — and tells the session to ask instead. It is a guardrail
 rather than a boundary (a session has a shell, and could call `sdkmanager`
 directly), and it says how the human at the keyboard overrides it:
-`env -u CLAUDECODE bb sdk install …`.
+`env -u CLAUDECODE bb packages install …`.
 
 **A removal sticks.** The Playwright browsers are fetched on the first boot
 of a fresh share, because a container that comes up "ready" with `bb shot`
 broken is worse than a slow first start. A share somebody has just cleared looks
-identical to a fresh one from a startup hook, so `bb sdk remove` leaves a
+identical to a fresh one from a startup hook, so `bb packages remove` leaves a
 marker under `.removed/` on the share and the hooks respect it; installing
 the package again clears it. Without that, an uninstall lasted until the next
 restart, which is not an uninstall.
@@ -729,7 +729,7 @@ install carries the estimate and the real number arrives a moment later.
 a network round trip to a different upstream — the Flutter branch head, the
 .NET installer's own dry run, Swift's release redirect, the browser revisions
 Playwright's module wants, sdkmanager's update table — so nothing is checked
-until `bb sdk check` or the tab's **Check for updates** asks. An unchecked
+until `bb packages check` or the tab's **Check for updates** asks. An unchecked
 row says nothing rather than implying it is current. Updates then run through
 each toolchain's own mechanism rather than a delete-and-reinstall: Flutter
 moves to the branch head, .NET installs the current LTS beside what is there,
@@ -751,7 +751,7 @@ controller has no Android SDK at all since it stopped building — see
 [CI runs on a node](#ci-runs-on-a-node).) The other toolchains land in their
 own directory under the
 share and are put on `PATH` by a generated `env.sh` that every shell sources;
-`bb sdk remove` is `rm -rf` of one directory, because nothing was installed
+`bb packages remove` is `rm -rf` of one directory, because nothing was installed
 anywhere else.
 
 | Toolchain | Size | What it gets you |
@@ -760,12 +760,12 @@ anywhere else.
 | `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
 | `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 800MB emulator, 3GB NDK | Platforms, build-tools, emulator, NDK, CMake |
-| Android system images | 1–2GB each | One per API level per flavor — see [below](#sdks-live-outside-the-image) |
+| Android system images | 1–2GB each | One per API level per flavor — see [below](#the-package-store-lives-outside-the-image) |
 | `playwright` | ~1.3GB | Chromium, Firefox and WebKit — fetched on a fresh share, since `bb shot` and the dashboard's tests need them; removing it stays removed |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
-| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb sdk install tizen` prints the steps and is not in the dashboard's list — everything there installs |
+| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb packages install tizen` prints the steps and is not in the dashboard's list — everything there installs |
 
 **From the dashboard.** The sidebar's **Tools** card holds **Additional
 packages…**, which opens as a **tab** the way the findings report does: a list of
@@ -800,7 +800,7 @@ and MSIX packaging need Windows itself.
 **Tizen is Samsung's, and where it runs decides whether you care.** TVs,
 signage and appliances still run it and Samsung still ships it — that is the
 reason to install it. Watches are not: Galaxy Watch moved to Wear OS with the
-Watch 4 in 2021, so a watch app is `bb sdk install android:wear`. Phones ended
+Watch 4 in 2021, so a watch app is `bb packages install android:wear`. Phones ended
 in 2017. There is no headless installer, so it is a CLI pointer rather than a
 row in the dashboard's list, where everything installs.
 
@@ -834,7 +834,7 @@ one if something has to talk to Play; take the plain one if you want
 against. Rarely both — and the image list says which AVDs are built on each,
 so the one that is actually spare is visible rather than guessed at.
 
-The Tools tab offers a level and a flavor and installs it; `bb sdk images
+The Tools tab offers a level and a flavor and installs it; `bb packages images
 --available` is the same list on the command line, sizes and all. Real Samsung
 or Oppo hardware is an `adb connect` away over the network, and Samsung's
 Remote Test Lab rents you real devices, but neither is something to install
@@ -887,7 +887,7 @@ below stopped receiving security patches in March 2026.
 
 **Where the space goes.** Nothing Android lives in the image at all: the SDK,
 the platforms, the build-tools, the emulator and the system images are
-installed into the node's [packages store](#sdks-live-outside-the-image), so
+installed into the node's [packages store](#the-package-store-lives-outside-the-image), so
 each is downloaded **once** and a weekly `:latest` rebuild re-fetches none of
 them. Budget roughly **2 GB per API level**. If that is tight, pick the plain
 **AOSP** flavor in the image picker instead of Google APIs — smaller, at the
@@ -1208,7 +1208,7 @@ lives in its body. The cards:
   the exception and stays synchronous — it is done before a spinner would
   render, and a row that flashes up for one frame is worse than none
 - **Tools**: **Additional packages**, which opens the installer as a tab —
-  every toolchain on the [package store](#sdks-live-outside-the-image) with its
+  every toolchain on the [package store](#the-package-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
@@ -2867,7 +2867,7 @@ and the desktop's cards for as long as it did.
 The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
-output is then somewhere you can scroll it, a slow one like `bb sdk install` is
+output is then somewhere you can scroll it, a slow one like `bb packages install` is
 watchable while it runs, and one that asks a question (`bb login`) or follows
 (`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
 to the tab you are looking at, and only if that is a plain shell: with a
@@ -3719,7 +3719,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
-  lib/sdk.sh                     the package manager: `bb sdk`, sourced by bb
+  lib/sdk.sh                     the package manager: `bb packages`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log

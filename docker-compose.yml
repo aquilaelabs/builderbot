@@ -134,7 +134,7 @@ services:
 
       # --- the package store ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
-      # system images, plus any toolchain `bb sdk install` adds. Outside the
+      # system images, plus any toolchain `bb packages install` adds. Outside the
       # image on purpose: the container is rebuilt on every update, this is
       # not, so nothing here is ever downloaded twice.
       - ${SDK_PATH:-/mnt/user/development/SDK}:/sdk

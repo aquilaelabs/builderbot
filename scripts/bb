@@ -10,7 +10,7 @@ set -euo pipefail
 # commands with the installed image's older helpers.
 # shellcheck source=lib/common.sh
 . "$(dirname "$(readlink -f "$0")")/lib/common.sh"
-# The package manager — `bb sdk` and everything the Tools tab drives — is a
+# The package manager — `bb packages` and everything the Tools tab drives — is a
 # third of this script's length and none of its subject, so it lives next door.
 # shellcheck source=lib/sdk.sh
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
@@ -146,7 +146,7 @@ bb — BuilderBot helper
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
-  bb sdk                 SDKs kept outside the image: status, install X, remove X
+  bb packages            the toolchains kept outside the image: status, install X, remove X
 EOF
 }
 
@@ -189,9 +189,9 @@ cmd_status() {
     version pw     playwright --version
     echo
     # What is installed beyond the image, and where. Here rather than only in
-    # `bb sdk` because this is the command a session runs first, and "is
+    # `bb packages` because this is the command a session runs first, and "is
     # flutter on this box" should not need a second guess.
-    echo "== sdk =="
+    echo "== packages =="
     local root have=""
     root="$(sdk_root)"
     for t in $SDK_TOOLCHAINS; do
@@ -200,7 +200,7 @@ cmd_status() {
     done
     printf '  %-8s %s%s\n' root "$root" \
         "$(is_mountpoint "$root" && printf ' (share)' || printf ' (home volume)')"
-    printf '  %-8s %s\n' installed "${have:-none — see: bb sdk}"
+    printf '  %-8s %s\n' installed "${have:-none — see: bb packages}"
     echo
     # CI runs on nodes (docs/nodes.md phase 7); `bb ci-labels` lists their
     # runners' labels and the Nodes tab shows each one's state.
@@ -3368,7 +3368,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # the state is; the token decides which project it may be about.
 #
 # What is NOT relayed is what belongs to the machine the session is on:
-# `bb sdk` answers for this node's store, `bb emu` drives this node's
+# `bb packages` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
 BB_RELAY_VERBS=" roadmap todo bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
@@ -4355,7 +4355,7 @@ except xml.parsers.expat.ExpatError as e:
 
     # Only where both halves exist, which is this repo: `bb help` and the
     # README's command list are two copies of one thing, and the copy nobody
-    # runs is the one that goes stale — `bb sdk migrate` outlived its code in
+    # runs is the one that goes stale — `bb packages migrate` outlived its code in
     # the README because nothing compared them.
     if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
         section "docs (bb help vs README)"
@@ -4539,7 +4539,7 @@ find_chromium() {
         fi
         printf '%s' "$exe"; return 0
     done
-    die "no Playwright chromium found — install the browsers with: bb sdk install playwright"
+    die "no Playwright chromium found — install the browsers with: bb packages install playwright"
 }
 
 # bb shot — headless screenshots, for showing the operator visual state from
@@ -5343,7 +5343,14 @@ case "${1:-help}" in
     drift)    shift; cmd_drift "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
     favicon)  shift; cmd_favicon "$@" ;;
-    sdk)      shift; cmd_sdk "$@" ;;
+    packages) shift; cmd_packages "$@" ;;
+    # The old spelling, accepted and not documented. This is the agent-compat
+    # exception the `unreleased` rule names: a node's agent runs `bb` out of
+    # the bundle the controller hands it, and an agent that has not updated
+    # yet still asks for `sdk`. Any 0.4 agent has to work with any 0.4
+    # controller, so it goes at the minor bump and not before — R30 carries
+    # it with the other things waiting on that moment.
+    sdk)      shift; cmd_packages "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac

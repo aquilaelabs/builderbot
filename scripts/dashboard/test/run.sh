@@ -45,7 +45,7 @@ export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
     || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH) — on a node they are the playwright recipe in the packages store, installed from the Tools tab"
 CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
-[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb sdk install playwright"
+[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb packages install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
 
 # The port is picked, not fixed. It was 8093 for everybody, which meant a run
@@ -279,7 +279,7 @@ agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, and an `bb sdk` that makes and removes
+# Stub: deterministic `bb doctor`, and an `bb packages` that makes and removes
 # directories instead of downloading gigabytes — enough for the Tools card to
 # watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
@@ -291,7 +291,7 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 # and nothing more, and a session gate built on the same state had no way to
 # prove it clears.
 if [ "${1:-}" = claude-md ]; then exec bash "${BB_REAL:?}" "$@"; fi
-if [ "${1:-}" = sdk ]; then
+if [ "${1:-}" = packages ]; then
     # Where this stub pretends a package lives. Shared by every verb, so
     # check and versions answer for what install and remove actually did —
     # a stub that claimed 1.0 for everything let a bug through where the page
