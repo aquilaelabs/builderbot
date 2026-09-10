@@ -680,6 +680,68 @@ button:disabled{opacity:.5;cursor:default}
    Deliberately NOT on the terminal iframes: color-scheme:dark on one of those
    turns its canvas white, which is documented where .pane iframe is styled. */
 input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
+/* An open <select> is the other half of that story, and until recently it had
+   no answer at all. The list is drawn by the BROWSER rather than by the page:
+   a system dialog on Android, a wheel on iOS, a menu of the platform's own on
+   each desktop, and no selector reaches inside any of them. color-scheme was
+   the whole of what could be said about one, and it buys the dark half of the
+   browser's palette rather than this page's, so on a phone the node picker
+   opened in Android's purple against whichever of the twelve schemes was on.
+
+   appearance:base-select takes the list off the browser and draws it in the
+   page, where the tokens reach it. The element is still a <select>: its
+   keyboard handling, its typeahead, its screen-reader semantics and the option
+   list itself stay the browser's, and only the paint is ours. That is the
+   reason for this rather than a menu built out of buttons, which would have to
+   re-implement all four and get them right on a phone as well.
+
+   The box IS the page's menu, to the value: .pinmenu's ground, edge, radius,
+   padding, shadow and menuIn. A picker that opened looking like nothing else
+   here would only have moved the problem.
+
+   All of it sits inside @supports, so a browser without base-select renders
+   exactly what it rendered before, which is the dark native picker: a fallback
+   rather than a break. The UA already lays the button out, label at the start
+   and arrow at the end, so nothing below says so a second time.
+
+   One behaviour does change: a base select is as wide as the option CHOSEN
+   rather than as wide as the longest one, so an auto-width picker shifts a
+   little when the pick is longer. Every full-width select is unaffected. */
+@supports (appearance: base-select){
+  /* nowrap and the clip are the one thing a base select does worse than a
+     native one: a native select TRUNCATES its label, a base one wraps to two
+     lines, and the Phone tab's node picker did exactly that at phone width
+     (the bar's max-width:88% squeezes it, and the base button needs a few
+     more pixels than the native one for the same text). Sticky rather than
+     absolute for the arrow so it is pinned inside the clip instead of being
+     clipped with the text, and it carries the field's own ground so what
+     slides under it disappears rather than showing through. */
+  select{appearance:base-select;white-space:nowrap;overflow:hidden}
+  select:disabled{opacity:.5;cursor:default}
+  select::picker-icon{position:sticky;inset-inline-end:0;background:inherit;
+    padding-inline-start:6px;color:var(--dim);transition:transform .14s}
+  select:open::picker-icon{transform:rotate(180deg)}
+  select::picker(select){appearance:base-select;background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:5px;margin-top:4px;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);
+    /* The cap is what stops a forty-level API list running off the screen;
+       the rest of it scrolls. */
+    max-height:min(60vh,320px);overflow-y:auto;
+    animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  /* border-box, or --tap is the height of the TEXT and every row comes out at
+     50px: an option's box is content-box by default. */
+  select option{display:flex;align-items:center;gap:8px;box-sizing:border-box;
+    min-height:var(--tap);padding:6px 9px;border-radius:6px;
+    background:none;color:var(--ink)}
+  select option:hover,select option:focus{background:var(--sunk)}
+  select option:checked{background:var(--accent-deep);color:var(--ink)}
+  select option:disabled{color:var(--dim);background:none}
+  select option::checkmark{flex:0 0 auto;color:var(--accent)}
+}
+@media(prefers-reduced-motion:reduce){
+  select::picker-icon{transition:none}
+  select::picker(select){animation:none}
+}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}

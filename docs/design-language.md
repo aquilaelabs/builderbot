@@ -74,6 +74,20 @@ browser's own chooser stays hidden: its button wears the browser's skin,
 not the page's, and there is no styling it. A `.filepick` — a button that
 opens the chooser, and the picked name beside it — is the shape.
 
+**An open `<select>` is the page's own menu, not the platform's.** The list
+a select opens is drawn by the browser, so page CSS cannot reach it: on
+Android it comes back as a system dialog with the OS accent on its radio
+buttons, on iOS as a wheel, on each desktop as that platform's menu. Twelve
+schemes and none of them apply. `appearance: base-select` moves the list into
+the page, where the tokens do: the picker is `.pinmenu`'s box and `menuIn`,
+its rows are `--tap` high and take `--accent-deep` when chosen, and the
+element stays a `<select>` so its keyboard handling, its typeahead and its
+screen-reader semantics are still the browser's. It is all inside `@supports`,
+so a browser without it renders the native picker rather than nothing. The one
+thing to know when placing one: a base select wraps a label that will not fit
+where a native select truncated it, and `test/uniform.mjs` measures every
+select as one line high at phone width.
+
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.

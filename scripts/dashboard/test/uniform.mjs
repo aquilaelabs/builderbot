@@ -388,6 +388,40 @@ async function lineup(){
     return { off };
   });
 }
+
+// A select is ONE line high, at any width.
+//
+// The page draws its own <select> pickers (appearance:base-select in the
+// stylesheet, so the list takes the scheme's colours instead of Android's).
+// The one thing a base select does worse than a native one is a label that
+// does not fit: a native select truncates it, a base one WRAPS, and a picker
+// two lines tall drags its whole row out of shape. It cost the Phone tab's
+// node picker at phone width once, where the bar's max-width:88% is what
+// squeezes it, so this is measured where it bites rather than only at desktop.
+//
+// One line is computed from the control's own metrics — its line-height,
+// padding and border — not from a constant, because the tabs run 12px, 13px
+// mono and 16px on a phone.
+async function unwrapped(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const tall = [...box.querySelectorAll('select')]
+      .filter(e => e.offsetHeight > 0)
+      .filter(e => {
+        const c = getComputedStyle(e);
+        const lh = c.lineHeight === 'normal'
+          ? parseFloat(c.fontSize) * 1.4 : parseFloat(c.lineHeight);
+        const one = lh + parseFloat(c.paddingTop) + parseFloat(c.paddingBottom)
+                  + parseFloat(c.borderTopWidth) + parseFloat(c.borderBottomWidth);
+        return e.getBoundingClientRect().height > one + 6;
+      })
+      .map(e => `${e.id || e.getAttribute('aria-label') || 'select'}@${
+        Math.round(e.getBoundingClientRect().height)}px`);
+    return { tall };
+  });
+}
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
@@ -590,6 +624,10 @@ for (const kind of kinds){
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height at phone width${
        L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
+  const W = await unwrapped();
+  ok(!W.err && W.tall.length === 0,
+     `[${kind}] every select is one line high at phone width${
+       W.err ? ` (${W.err})` : W.tall.length ? ` — wrapped: ${W.tall.join(', ')}` : ''}`);
 }
 // The Tests view needs rows to be measured on, and one of them a continuation
 // — a "..." name whose "follows:" line is drawn under it — because that line
