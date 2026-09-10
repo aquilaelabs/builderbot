@@ -340,3 +340,4 @@
 - A node that reboots, or whose network mount is still landing after a boot, no longer dead-ends its projects' Claude buttons on 'unbind the node': the button says it is waiting for the node and comes back on its own within seconds of the share mounting (825cacb)
 - A node's row and its projects' Claude button say why a share did not mount, in the server's own words — an NFS export that names the node's old address is called out with the fix on the host — and Apply network refuses an address the host's exports do not admit, before anything moves (5068e25)
 - When a project's node cannot take a session, the Claude button no longer goes dead: pressing it offers a session on the controller instead, with the reason, and a shell opens there with a notice (f58e44a)
+- The package store's PATH file is written again at boot — the startup hook had been failing on a missing helper since the helper moved (b7dd508)
