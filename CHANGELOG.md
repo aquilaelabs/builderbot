@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-10
 
 - The Artifacts tab now shows each product's version, who may move it, and this changelog (5a7b49c)
 - A repo that ships two products can version each one on its own — an extension beside an app no longer share one number (d9ae96d)
