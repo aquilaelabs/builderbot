@@ -1040,6 +1040,17 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
          '...so the old directory is not tidied away either, and the log says which one holds it');
       ok(!existsSync(`${DIR}/agentcache2/gradle-blob`) && /a cache is rebuildable/.test(r.log),
          '...while the cache is left behind rather than copied, and the log says why');
+      // The copy does not demand ownership it cannot set. A share exported
+      // all_squash — which is what the projects and SDK shares here ARE —
+      // refuses every chown, and `cp -a` then exits non-zero having copied
+      // every byte correctly: the move read that as a failed copy, refused
+      // to repoint, and left the data in the new place saying it had not
+      // moved. This agent asks first, and says which arrangement it found.
+      ok(/squashes ownership/.test(r.log) && /--no-preserve=ownership/.test(r.log)
+         && !/Operation not permitted/.test(r.log),
+         `...and where ownership cannot be set the copy stops asking for it, rather than `
+         + `exiting non-zero having copied every byte (${
+             (r.log.match(/^.*ownership.*$/m) || ["no line about ownership"])[0].slice(0, 90)})`);
       const n2 = await until(async () => {
         const n = await nodeById(minted.id);
         return n.reported.stores.packages.path === `${DIR}/agentpackages2` ? n : null;

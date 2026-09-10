@@ -92,7 +92,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.40"
+AGENT_VERSION = "0.4.41"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -143,6 +143,31 @@ STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
                     "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
                     "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
                     "/var/lock/", "/var/spool/", "/var/cache/")
+
+
+def _can_chown(path):
+    """Whether this filesystem lets root change a file's owner.
+
+    The discriminator between a local disk and a squashed NFS export, asked
+    rather than guessed from the mount type: squashing is the server's
+    policy and does not show in fstab. A chown to root:root is the test
+    because it is a no-op locally and refused wherever ownership is the
+    export's to decide.
+    """
+    probe = os.path.join(path, f".bb-chown-probe.{os.getpid()}")
+    try:
+        with open(probe, "w"):
+            pass
+    except OSError:
+        return True          # cannot even write: the copy will say so itself
+    try:
+        os.chown(probe, 0, 0)
+        return True
+    except OSError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(probe)
 
 
 def store_path_ok(path):
@@ -3574,7 +3599,22 @@ class Agent:
         # process beats a per-file round trip over NFS. Six hours, because
         # a packages store is tens of gigabytes and this is the one system
         # job that can legitimately take that long.
-        if self._sh(job, ["cp", "-a", os.path.join(old, "."), new + "/"], timeout=21600) != 0:
+        #
+        # ...but not ownership where ownership is not the mover's to keep. A
+        # share exported all_squash — which is what the projects and SDK
+        # shares here ARE, so that a file written from any machine is owned
+        # the way the array expects — refuses every chown, and `cp -a` then
+        # exits non-zero after copying every byte correctly. The store move
+        # read that as a failed copy and refused to repoint, with the data
+        # sitting in the new place: "Operation not permitted", four times,
+        # and a job that says the copy failed when it did not.
+        argv = ["cp", "-a"]
+        if not _can_chown(new):
+            argv.append("--no-preserve=ownership")
+            job.say(f"{new} squashes ownership (an all_squash export, most likely), so "
+                    f"the copy keeps times, modes and links and the export decides the "
+                    f"owner — which is the arrangement, not a loss.\n")
+        if self._sh(job, argv + [os.path.join(old, "."), new + "/"], timeout=21600) != 0:
             job.say(f"refused: the copy failed. {role} still points at {old}, "
                     f"which is untouched.\n")
             return False
