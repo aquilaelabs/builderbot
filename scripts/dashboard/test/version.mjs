@@ -101,6 +101,59 @@ r = bb('bump', 'major');
 ok(r.code !== 0 && /not major/.test(r.out),
    'a policy of minor still keeps major with the operator');
 
+// ---- the release: the second gesture, and the outward-facing one -----------
+// A bump decides the number and closes the changelog under it. The tag says
+// it HAPPENED — and until it exists a build reads X.Y.Z-dev.<n>, which sorts
+// before X.Y.Z. That is the half that was missing: nothing cut the tag, so
+// the two ideas of "released" never met.
+//
+// Its own repository, because a tag is repo-wide state and the shared fixture
+// is read by everything after this.
+{
+  const R = `${WS}/relproj`;
+  rmSync(R, { recursive: true, force: true });
+  mkdirSync(R, { recursive: true });
+  execFileSync('git', ['-C', R, 'init', '-q', '.'], { env });
+  writeFileSync(`${R}/f`, 'x');
+  writeFileSync(`${R}/VERSION`, '1.2.0\n');
+  execFileSync('git', ['-C', R, 'add', '-A'], { env });
+  execFileSync('git', ['-C', R, 'commit', '-qm', 'first'], { env });
+  const py = fileURLToPath(new URL('../version.py', import.meta.url));
+  const relOf = (extra = {}) => JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('v', ${JSON.stringify(py)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace=${JSON.stringify(WS)}, state=${JSON.stringify(`${DIR}/state`)},
+            write_json=lambda p, o: open(str(p), 'w').write(json.dumps(o)))
+print(json.dumps(m.release('relproj', **json.loads(${
+    JSON.stringify(JSON.stringify(extra))}))))`], { env }).toString().trim().split('\n').pop());
+  const rb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: R, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  {
+    const before = rb('--file').out.trim();
+    ok(/^1\.2\.0-dev\.\d+/.test(before),
+       `before the release a build says it is heading for the number, not at it (${before})`);
+  }
+  // No remote in the fixture: push is asked for and the answer says what
+  // happened rather than pretending. The tag is local either way.
+  let rel = relOf({ push: false });
+  ok(rel.ok && rel.tag === 'v1.2.0',
+     `Release tags the commit with the name parts() looks for (${rel.tag})`);
+  const shown = JSON.parse(rb('--json').out);
+  ok(shown.released === true && shown.tag === 'v1.2.0' && shown.forms.semver === '1.2.0',
+     `...and the build of that commit is the bare number (${shown.forms.semver})`);
+  rel = relOf({ push: false });
+  ok(!rel.ok && /already exists/.test(rel.error || ''),
+     '...and a tag that exists is not moved from here, whatever the reason');
+  writeFileSync(`${R}/f`, 'edited and not committed');
+  writeFileSync(`${R}/VERSION`, '1.3.0\n');
+  rel = relOf({ push: false });
+  ok(!rel.ok && /uncommitted changes/.test(rel.error || ''),
+     '...and a dirty tree is refused: a tag marks a commit, not what is beside it');
+  rmSync(R, { recursive: true, force: true });
+}
+
 // ---- start: the first version, and nothing after ---------------------------
 // Creating a version and moving one are different decisions — the first has
 // no claim to overwrite — and until this policy existed the only way to let a

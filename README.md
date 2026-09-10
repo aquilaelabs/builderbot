@@ -338,7 +338,17 @@ bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
                    --file, --semver, --json
-bb version bump major|minor|patch    move the target, if the policy allows it
+bb version bump major|minor|patch    move the target, if the policy allows it.
+                   A bump decides the number and closes the changelog under
+                   it; it does not release anything. **Release** on the
+                   Artifacts tab is the second gesture: an annotated tag
+                   (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
+                   are on, pushed to the remote. Until that tag exists every
+                   build reads X.Y.Z-dev.N+sha, which sorts BEFORE X.Y.Z —
+                   heading for it rather than at it; from the tag on, a build
+                   of that commit is the bare number. Releasing is the
+                   operator's whatever the policy says, and a pushed tag is
+                   never moved or deleted from the dashboard.
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays

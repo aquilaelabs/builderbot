@@ -11384,6 +11384,25 @@ project can have several"
       verSection(v),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
+    // Releasing: outward-facing, and the one thing on this tab other people
+    // fetch. Confirmed by name, because a pushed tag is not taken back from
+    // here — or anywhere, without thinking about who has it.
+    box.querySelectorAll("[data-verrelease]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verrelease || "";
+      const blk = all.find(x => (x.component || "") === comp);
+      const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
+      if (!confirm(`Release ${blk?.target}?\n\n`
+                   + `This tags the commit you are on as ${tag} and pushes the tag. `
+                   + `From then on a build of that commit is ${blk?.target} rather `
+                   + `than ${blk?.target}-dev.\n\nA pushed tag is not moved or `
+                   + `deleted from here.`)) return;
+      busy(b, "Releasing");
+      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
+      const j = await postVersion({action: "release", component: comp});
+      if (j?.released?.tag)
+        notify(j.released.note
+               || `${j.released.tag} tagged and pushed`);
+    });
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
       const blk = all.find(x => (x.component || "") === comp);
@@ -11595,7 +11614,12 @@ this directory">Ask Claude</button>
     if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
     if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
     if (v.unreleased) bits.push(`${v.unreleased} change${v.unreleased === 1 ? "" : "s"} logged`);
-    return line("building towards", v.target || "no VERSION file")
+    // "building towards" until the tag exists, "released as" after: the two
+    // gestures said in the label somebody reads first, because which of them
+    // has happened is the question this block kept failing to answer.
+    return line(v.released ? "released as" : "building towards",
+                v.target || "no VERSION file")
+      + (v.released ? line("tag", v.tag) : "")
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save — ${esc(staged)}${
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
@@ -11630,12 +11654,28 @@ proposes, and asks before touching anything">Ask Claude</button>
 version's changelog section dissolves back into Unreleased, so the next bump
 dates the whole group together. Only possible while ${esc(v.target)} is
 unreleased.">↩ ${esc(v.prev)}</button>` : ""}
+          ${v.released ? "" : `
+          <button type="button" data-verrelease="${esc(v.component || "")}"
+            ${v.dirty ? "disabled" : ""}
+            title="${v.dirty
+              ? "there are uncommitted changes — commit or discard them first, so the tag marks what is in the commit"
+              : `tag this commit ${esc(v.component ? v.component + "-v" + v.target : "v" + v.target)} and push it to the remote. `
+                + "Until then every build reads " + esc(v.target) + "-dev.<n>, which sorts BEFORE " + esc(v.target)}"
+            >Release ${esc(v.target)}</button>`}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="the user-facing record of what changed here — sessions add to
 it as work lands, and a bump dates the accumulated lines">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
         ${v.component ? "" : verPolicyPicker(v)}
+        <p class="verwhy">${v.released
+          ? `Released: <code>${esc(v.tag)}</code> is on this commit, so a build of it
+             is <code>${esc(v.target)}</code> exactly. Bump to start the next one.`
+          : `Two steps, and this is the first: <b>bump</b> decides the number and closes
+             the changelog under it, in one commit. <b>Release</b> says it happened —
+             an annotated tag on the commit, pushed — and only then does a build read
+             <code>${esc(v.target)}</code> instead of <code>${esc(v.target)}-dev.${
+             v.ordinal ?? "n"}</code>.`}</p>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not

@@ -5090,9 +5090,18 @@ if forms["semver"]:
           + ("   [released]" if v["released"] and not v["dirty"] else ""))
 else:
     print(f"{proj}: no version could be determined")
-print("  building towards  " + (
+# "building towards" until the tag exists, and that is the whole distinction
+# between the two gestures: a bump decides the number, the tag says it
+# happened. Said in the summary, because a session reading this is exactly
+# who needs to know which of the two has occurred.
+print(("  released as       " if v["released"] else "  building towards  ") + (
     v["target"] or ("(VERSION is there but unreadable — see above)"
                     if v.get("error") else "(no VERSION file — add one to opt in)")))
+if v["released"]:
+    print(f"  tag               {v['tag']}  (on this commit)")
+elif v["target"]:
+    print("  not released yet  the operator cuts it on the Artifacts tab: "
+          "Release tags this commit and pushes it")
 if v["ordinal"] is not None:
     print(f"  ordinal           {v['ordinal']}")
 if v["sha"]:

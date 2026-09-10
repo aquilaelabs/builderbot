@@ -5657,6 +5657,21 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"bumped": r})
+        if act == "release":
+            # The other half of a release, and the outward-facing one: the
+            # bump decided the number, this says it happened and pushes the
+            # tag. The operator's alone — a policy governs moving the
+            # number, and publishing a marker other people fetch is not
+            # the same decision.
+            r = version.release(name, comp=field(req, "component") or "",
+                                env={**projects._git_env(), **users.git_env(self._who())},
+                                may_push=projects.may_push(name))
+            if r.get("error"):
+                return self._json(r, 400)
+            if not NODES_OK:
+                nodes.audit(self._principal(), "version-release", name,
+                            {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
+            return self._json(version.payload(name) | {"released": r})
         if act == "init":
             r = version.init(name, field(req, "value"), by="operator", env=users.git_env(self._who()),
                              comp=field(req, "component") or "")
