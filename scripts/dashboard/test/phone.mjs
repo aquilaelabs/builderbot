@@ -278,6 +278,45 @@ ok(/no phone is connected on sandbox/.test(noPhone.body.error || ''),
    'with nothing connected, a session is told which node to connect one on');
 page.errors = [];
 
+// ---- a phone it has met is remembered ------------------------------------
+// Pairing and connecting both put the handset on the node's list, one row
+// per phone: a pairing knows only the address, the connect that follows
+// fills the model in on the same row, and Forget drops the row and nothing
+// else — the pairing key on the node is adb's, not this list's.
+{
+  const known = async () => (await api('/api/phone?node=' + sandbox.id)).body.nodes
+    .find(n => n.id === sandbox.id).known || [];
+  const after = await known();
+  ok(after.length === 1 && after[0].ip === '192.168.9.9' && after[0].model === 'Test Phone',
+     'the connect above put the phone on the node\'s remembered list, by model and address');
+  ok((await api('/api/phone', { action: 'forget', node: sandbox.id, ip: '192.168.9.9' })).body.ok
+     && (await known()).length === 0,
+     '...and Forget takes it off');
+  const paired = await api('/api/phone', { action: 'pair', node: sandbox.id, ip: '192.168.9.9', port: '37123', code: '123456' });
+  ok(paired.body.ok && (await known()).length === 1 && !(await known())[0].model,
+     'a pairing remembers the address before any model is known');
+  await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9', port: '5555' });
+  const merged = await known();
+  ok(merged.length === 1 && merged[0].model === 'Test Phone' && merged[0].ip === '192.168.9.9',
+     '...and the connect fills the model in on the same row rather than adding a second');
+  await page.click('.phonetab #phRefresh');
+  await page.waitForFunction(() => document.querySelector('.phonetab .phknown[data-ip="192.168.9.9"]'),
+                             null, { timeout: 20000 });
+  ok(await page.$eval('.phonetab .phknown', r => /Test Phone/.test(r.textContent)
+       && /connected/.test(r.querySelector('.pill')?.textContent || '')
+       && r.querySelector('[data-kconnect]') && r.querySelector('[data-kforget].danger')),
+     'the tab lists it by model, marks it as the phone connected now, and offers Connect and Forget');
+  await page.click('.phonetab #phDisconnect');
+  await page.waitForFunction(() => !document.querySelector('.phonetab #phDisconnect'), null, { timeout: 20000 });
+  // The stub adb goes on listing the device after a disconnect, so the
+  // connected mark (read from adb, not from the record) is not asserted here.
+  ok(await page.$('.phonetab .phknown[data-ip="192.168.9.9"]') !== null,
+     'disconnecting keeps the memory');
+  await page.click('.phonetab .phknown [data-kforget]');
+  await page.waitForFunction(() => !document.querySelector('.phonetab .phknown'), null, { timeout: 20000 });
+  ok(true, '...and Forget on the row takes it off the tab');
+}
+
 // ---- what the bell says, and how loudly -----------------------------------
 const dots = await page.evaluate(() => {
   const seen = {};

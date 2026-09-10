@@ -1459,7 +1459,10 @@ def project_list(who):
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
-    project_prefs = prefs.all_projects()
+    # With the workspace, so each row also says what `bb test` would run
+    # there with nothing set — the settings field offers it as what an
+    # empty box means.
+    project_prefs = prefs.all_projects(WORKSPACE)
     # One answer per node about its agent, for every project row on it.
     node_gaps = {}
     if not NODES_OK:
@@ -2721,6 +2724,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # only the roadmap's and the tracker's dated logs know that.
 import changelog                                                 # noqa: E402
 import version                                                   # noqa: E402
+import vmtemplate                                                # noqa: E402
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
@@ -4505,6 +4509,14 @@ class Handler(BaseHTTPRequestHandler):
                                         + NODES_OK}, 500)
         act = field(req, "action")
         nid = field(req, "id")
+        if act == "vm-xml":
+            # The domain XML for a new sandbox VM. No node exists yet and
+            # nothing is written: a render of the shipped machine with an
+            # identity of its own, which the operator pastes into Unraid.
+            return self._json(vmtemplate.render(
+                name=field(req, "name"), cores=req.get("cores"),
+                memory_gb=req.get("memory_gb"), iso=field(req, "iso"),
+                uid=field(req, "uuid"), hw=field(req, "mac")))
         if act == "add":
             r = nodes.node_add(self._principal(), field(req, "name"),
                                field(req, "addr"),
@@ -5734,11 +5746,11 @@ class Handler(BaseHTTPRequestHandler):
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
         nid = field(req, "node")
-        if act in ("pair", "connect", "disconnect"):
+        if act in ("pair", "connect", "disconnect", "forget"):
             if NODES_OK or not nid or not nodes.node(nid):
                 return self._json({"error": "pick a node — a phone is driven from "
                                             "a node that has adb"}, 400)
-            if not nodes.node(nid).get("live"):
+            if act != "forget" and not nodes.node(nid).get("live"):
                 return self._json({"error": f"{nodes.node(nid)['name']} is not dialing "
                                             "in — nothing reaches its adb right now"}, 400)
         if act == "pair":
@@ -5747,6 +5759,8 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
         elif act == "disconnect":
             r = phone.disconnect(nid, uid, me)
+        elif act == "forget":
+            r = phone.forget(nid, field(req, "ip"))
         elif act == "ask":
             # A session asking to reach the phone on its project's node —
             # or, with kind "root", for one command as root there (roadmap

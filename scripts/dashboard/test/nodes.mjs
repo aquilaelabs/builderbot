@@ -1128,6 +1128,64 @@ for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
     await page.evaluate(id => nodeAct({ action: 'retire', id }), n.id);
 }
 
+// ---- a machine to enroll, before there is one -------------------------------
+// The Nodes tab renders the domain XML for a sandbox VM rather than asking
+// somebody to copy nodes/unraid-vm.xml and remember which three fields belong
+// to one machine. What matters is that two renders are two machines: a shared
+// uuid points a second VM at the first one's OVMF nvram file, and a shared MAC
+// puts them both on the first one's address.
+await page.evaluate(() => openNodesTab());
+await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
+await page.click('.nodestab #ndVm');
+await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
+ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
+   'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
+await page.fill('#ndBody #vm_name', 'bb-sandbox-2');
+await page.fill('#ndBody #vm_memory_gb', '24');
+await page.click('#ndBody #vmGo');
+await page.waitForSelector('#ndBody .vmxml', { timeout: 15000 });
+const vm1 = await page.$eval('#ndBody .vmxml', p => p.textContent);
+ok(/<name>bb-sandbox-2<\/name>/.test(vm1) && /<memory unit="KiB">25165824<\/memory>/.test(vm1)
+   && /<source file="\/mnt\/user\/domains\/bb-sandbox-2\/vdisk1\.qcow2"\/>/.test(vm1),
+   'Generate renders the machine with the name, the memory and the vdisk path asked for');
+const idOf = x => [ (x.match(/<uuid>([^<]+)<\/uuid>/) || [])[1],
+                    (x.match(/<mac address="([^"]+)"/) || [])[1],
+                    (x.match(/nvram\/([^_]+)_VARS/) || [])[1] ];
+const [u1, m1, n1] = idOf(vm1);
+ok(u1 && m1 && n1 === u1,
+   `...with a uuid of its own, and the nvram file named after it (${u1})`);
+ok(/^52:54:00:/.test(m1), `...and a MAC on QEMU's own prefix (${m1})`);
+ok(!/<!--/.test(vm1),
+   '...and no comments: they are for whoever reads the repository, and Unraid drops them');
+await page.click('#ndBody #vmGo');
+await page.waitForFunction(x => document.querySelector('#ndBody .vmxml')?.textContent !== x,
+                           vm1, { timeout: 15000 });
+const [u2, m2] = idOf(await page.$eval('#ndBody .vmxml', p => p.textContent));
+ok(u2 !== u1 && m2 !== m1,
+   'a second render is a second machine — neither the uuid nor the MAC is reused');
+ok((await page.$$eval('#ndBody .vmsteps li', ls => ls.length)) >= 5
+   && await page.$eval('#ndBody .vmsteps', ol => /NFS Security Settings/.test(ol.textContent)),
+   '...and the steps say how to get from here to an enrolled node, exports first');
+const bad = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: '../evil' }));
+ok(!!bad.error && !bad.xml, 'a name that is not a name is refused rather than escaped into the file');
+// ...and Unraid's own pair goes back in, which is what a VM that already
+// exists needs: its nvram file is named after that uuid and its reservation
+// was made against that MAC.
+await page.fill('#ndBody #vm_uuid', 'B091DB01-CBDD-07B7-C797-79CA40D31A00');
+await page.fill('#ndBody #vm_mac', '52:54:00:46:D2:FB');
+await page.click('#ndBody #vmGo');
+await page.waitForFunction(() => /b091db01/.test(document.querySelector('#ndBody .vmxml')?.textContent || ''),
+                           null, { timeout: 15000 });
+const kept = await page.$eval('#ndBody .vmxml', p => p.textContent);
+ok(/<uuid>b091db01-cbdd-07b7-c797-79ca40d31a00<\/uuid>/.test(kept)
+   && /nvram\/b091db01-cbdd-07b7-c797-79ca40d31a00_VARS/.test(kept)
+   && /<mac address="52:54:00:46:d2:fb"\/>/.test(kept),
+   'Unraid\'s own uuid and MAC are taken as given, and the nvram path follows the uuid');
+const badId = await page.evaluate(() => nodeAct({ action: 'vm-xml', uuid: 'nope' }));
+ok(!!badId.error && !badId.xml, '...and something that is not a uuid is refused');
+page.errors = [];
+await page.click('#ndBody #vmCancel');
+
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');

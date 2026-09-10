@@ -51,6 +51,20 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           "toolchains": {"adb": "present", "web-ext": "present"},
           "stores": {"data": {"path": CDIR_ROOT, "free_mb": 50000,
                               "total_mb": 100000}},
+          # What a provisioned sandbox reports about its own fstab, so the
+          # Nodes tab's Storage and Network sections draw their editors here
+          # rather than a heading over nothing. Without a row on screen every
+          # rule the suite holds those editors to measured an empty box —
+          # which is how a mount row's controls came to sit at three
+          # different heights without anything failing.
+          "mounts": [{"path": "/workspace", "source": "nas:/mnt/user/projects",
+                      "type": "nfs", "ro": False, "mounted": True,
+                      "real": "nas:/mnt/user/projects"},
+                     {"path": "/devdata", "source": "nas:/mnt/user/devdata",
+                      "type": "nfs", "ro": False, "mounted": True,
+                      "real": "nas:/mnt/user/devdata"}],
+          "network": {"interface": "ens3", "addresses": ["10.0.0.41/24"],
+                      "gateway": "10.0.0.1", "dns": ["10.0.0.1"]},
           # A session half that is up but on a read-only projects share —
           # the arrangement a Docker-only sandbox was told to have, and the
           # one that stranded the first real session (nothing could be

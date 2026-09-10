@@ -59,6 +59,16 @@ inside, because there is nothing to mistake them for once typed in. A text
 field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
+**Controls on a row line up at their bottom edge.** A row mixes fields that
+carry a label above them with bare controls — a select, a button, a remove —
+and a centred line floats the bare one between its neighbour's label and its
+field. The bottom is the line the eye reads, whatever is stacked above it and
+whatever each control's own height is, so a row of controls sets
+`align-items: flex-end` and a row whose text column holds a field does the
+same with its action cluster. `test/uniform.mjs` groups every visible control
+into lines by vertical overlap and fails when one on a line ends at a
+different height.
+
 **A file field is a button of ours and the name of what was picked.** The
 browser's own chooser stays hidden: its button wears the browser's skin,
 not the page's, and there is no styling it. A `.filepick` — a button that
@@ -107,6 +117,15 @@ calls `docSurface(i, kind)`, which builds the standard skeleton (a
 `.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
 the band list, a quiet `.fnote` footer) and returns the slots to fill. States
 are `.loading` / `.empty` / `.hint.bad` inside the list.
+
+**The bar is a band, not a row of controls.** What the tab is about goes at
+its left — a node picker, the filters, a one-line count — and the action on
+it at the right, where a row's buttons and a section's status already sit, so
+every tab's Refresh is in one place and lines up with the column of actions
+under it. The band spans the tab; the controls in it are capped one by one
+like any other. A tab that builds its own chrome instead misses all of this:
+the Packages tab kept its picker in a band of its own and its Refresh landed
+somewhere no other tab's does.
 
 A new tab lands as: its own classic script file beside `index.html`, an entry
 in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
@@ -181,6 +200,13 @@ menu arrives (`menuIn`), a document brought to the front fades in
 section tween), a button or tab eases its colour, a tooltip fades, a toast
 slides. A change that snaps is a change the eye has to find. Every one of
 them is off under `prefers-reduced-motion`.
+
+**The page waits on its own ground.** Nothing can be drawn in a pane until
+the first snapshot lands, and an empty one used to be black and wearing the
+active pane's outline — the loudest element on the page, showing nothing, for
+as long as that took. Until then `body.booting` gives the pane the page's
+ground and the same quiet `loading…` line every other surface waits with, and
+the first draw that had state to draw takes the class off.
 
 ## Progress
 

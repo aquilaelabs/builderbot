@@ -1117,6 +1117,12 @@ textarea,select{
    can derive it, so it is a field — validated here and again on the server. */
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
+/* A `font:` shorthand carries the SIZE with it, and this selector outranks
+   the shared phone rule — so this field alone stayed 12px on a phone and iOS
+   zoomed into a layout that cannot zoom back. Every other control that sets
+   its own font says so again here (`.dmpick select`, the sidebar's selects);
+   this one had been forgotten, and uniform.mjs caught it. */
+@media(max-width:900px){ .verinit .vstart{font-size:16px} }
 .verinit .vdir{flex:0 1 auto;min-width:0}
 /* The changelog. pre-wrap keeps the file's own line breaks — it is a document
    someone wrote, not data to reflow. Otherwise it is a history: same padding,
@@ -1950,6 +1956,18 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
+/* The generated domain XML. `pre` wraps by default, which is right for a
+   shell line and wrong for a file somebody is about to paste into a
+   hypervisor: a wrapped element reads as two, and the eye cannot tell which.
+   It scrolls sideways instead, and taller than the 300px `pre` allows,
+   because it is the thing this dialog is FOR. */
+.vmxml{white-space:pre;max-height:40vh}
+/* The steps beside it: one line each, in the order they happen. A numbered
+   list rather than prose — it is a procedure being followed at a keyboard,
+   not an explanation to read once. */
+.vmsteps{margin:10px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:7px;
+  font:var(--f-ui);color:var(--ink)}
+.vmsteps code{font:var(--f-note);color:var(--dim)}
 /* ---- sections and action bars, for every document tab -------------------
    Two more pieces of the document language, added when the Nodes tab was
    one long column of editors and a wall of buttons on a phone.
@@ -2024,13 +2042,45 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook — a memory's body, a rule, a bug's repro —
    is a page, not a control: it keeps the reading width. */
 .nb textarea{max-width:none}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.pkgnode,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+/* The document bar is a BAND, not a row of controls: it is the skeleton's
+   own slot (docSurface), and what it holds is what the tab is about at the
+   left and the action on it at the right. Capped to control width like the
+   rows above, its right end fell in the middle of the tab — so Refresh
+   floated in space with no edge to sit against, while every other action on
+   the page (a row's buttons, a section's status) lines up on the tab's
+   right edge. The controls inside it are still capped one by one.
+   Three classes deep to outrank the cap above, whose `:is()` carries
+   `.side .card`'s two. */
+.doctab .field.docbarrow{max-width:none}
+/* ...and because the bar is not capped, the controls in it are, one by one:
+   a search box in a band that spans the tab is exactly the full-width
+   control the rule above forbids everywhere else. */
+.doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+  max-width:min(var(--ctl-w),88%)}
+/* ...and the controls on a row line up at the bottom of their boxes.
+   A row mixes fields that carry a label above them (`.setrow.col`) with
+   bare controls — a select, a button, a remove — and centring the line
+   floats the bare one between its neighbour's label and its field: the
+   Nodes tab's mount rows sat at three different heights, Connect sat
+   above the address beside it, and the filter bars were two pixels out
+   because a select is not quite a field's height. The bottom edge is the
+   line the eye reads, whatever is stacked above it and whatever each
+   control's own height is. `.col` is the stacked field itself and keeps
+   its stretch. uniform.mjs measures every line on every tab.  */
+:is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
+  .dmroute,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
+  .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
+/* A row whose text column holds a field is a row of controls, and its
+   action cluster belongs on the field's line — the Phone tab's Connect and
+   Pair sit beside one. A row of prose keeps its centred cluster. */
+.row:has(.setrow){align-items:flex-end}
 .actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
 .actbar .state{flex:1 1 100%;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 .actbar .lead{margin-right:auto}
@@ -2077,16 +2127,6 @@ button[aria-busy="true"]{opacity:.75}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
 #rnBuildCmd,#rnTestCmd{margin-bottom:6px}
-/* The node picker and Refresh on one line, the button to the right of the
-   thing it re-reads. It wraps on a narrow phone rather than squeezing the
-   select, which is the control somebody is actually aiming at.
-   Its own class rather than .pkghead: that one is the sentence about where
-   things install, and a row of controls is not a sentence — sharing it made
-   "the first .pkghead" mean two different things depending on whether any
-   node exists. */
-.pkgnode{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  padding:11px 14px;border-bottom:1px solid var(--line);font:var(--f-ui)}
-.pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
@@ -2377,6 +2417,13 @@ body.dragging .tab .lbl{cursor:grabbing}
   #pinmenu{display:none}
 }
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
+/* ...and it is the page's own ground until it holds something. A terminal
+   paints its own black and a document tab its own panel colour; before the
+   first snapshot there is neither, and a black rectangle the size of the
+   pane is not a neutral thing to look at while waiting. The class comes off
+   on the first draw that had state to draw. */
+body.booting .pane{background:var(--bg)}
+body.booting .pane>.loading{margin:auto}
 .pane.hidden{display:none}
 .pane.active{outline:2px solid var(--accent-mid);outline-offset:-2px}
 .pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
@@ -2559,7 +2606,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   text-decoration:none;margin:0 4px 4px 0}
 </style>
 </head>
-<body data-view="dash">
+<body data-view="dash" class="booting">
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="box">
@@ -3429,7 +3476,12 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
     </div>
     <div class="panes" id="panes">
-      <div class="pane active" id="pane0"></div>
+      <!-- No `active`: that outline says WHICH of two panes has the keyboard
+           and belongs to a split, and drawPanes takes it off on the first
+           draw — so the page opened on a big black box wearing the loudest
+           border on it, showing nothing, for as long as the first status
+           took. It waits with the same quiet line the cards use. -->
+      <div class="pane" id="pane0"><div class="loading">loading…</div></div>
       <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
@@ -5032,6 +5084,13 @@ function rnFillNode(){
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
+  // What an empty box means here. A project of a shape anybody would
+  // recognise — this repo's harness, a gradlew, a go.mod — has one obvious
+  // way to run its tests, and `bb test` uses it when nothing is set; the
+  // placeholder says which, rather than leaving the operator to discover
+  // that the field is optional.
+  $("rnTestCmd").placeholder = p?.prefs?.test_default
+    ? `test — blank runs ${p.prefs.test_default}` : "test, e.g. ./gradlew test";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8153,20 +8212,24 @@ function renderPackagesInto(i){
   // look like a different kind of screen.
   el.classList.add("flush");
   const d = packages;
-  if (!d){ el.innerHTML =
-    `<div class="doctab pkgtab"><div class="loading">loading…</div></div>`; return; }
-  if (d.error){ el.innerHTML = `<div class="doctab pkgtab"><div class="empty">${
-    esc("could not read the package list: " + d.error)}</div></div>`; return; }
+  // The shared scaffold, like every other document kind: the bar slot holds
+  // the picker and the Refresh that re-reads it, so the action sits where a
+  // tab's action sits rather than in a band this tab invented. `pkg` is the
+  // class name the sheet and the suite already use for it.
+  const surf = docSurface(i, "pkg");
+  if (!surf) return;
+  if (!d){ surf.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (d.error){ surf.list.innerHTML = `<div class="empty">${
+    esc("could not read the package list: " + d.error)}</div>`; return; }
   // No node to install on. Not this container: it builds nothing and keeps
   // nothing but the browsers its boot put there, so there is no list to show
   // and no button that would be honest to offer.
   if (d.nonode){
-    el.innerHTML = `<div class="doctab pkgtab"><div class="pkgnode">
-        <button type="button" id="pkgRefresh" title="look again for a node">Refresh</button>
-      </div>
-      <div class="empty pkgnone">Packages are installed on a node, and none is enrolled.
-        The Nodes tab's <b>Enroll node</b> makes one; its packages store is what shows here.
-        Nothing installs on this container.</div></div>`;
+    surf.setBar(`<span class="sp"></span>
+      <button type="button" id="pkgRefresh" title="look again for a node">Refresh</button>`);
+    surf.list.innerHTML = `<div class="empty pkgnone">Packages are installed on a node, and
+        none is enrolled. The Nodes tab's <b>Enroll node</b> makes one; its packages store is
+        what shows here. Nothing installs on this container.</div>`;
     const pre = el.querySelector("#pkgRefresh");
     if (pre) pre.onclick = () => { nodesList = null; packages = null; pkgRev++; drawPanes(); loadPackages(); };
     return;
@@ -8196,20 +8259,14 @@ function renderPackagesInto(i){
   // The server refuses it either way (nodes.agent_stale); this is the reason,
   // said before the press rather than after it.
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === pkgNode) || {});
-  // Refresh sits beside the picker rather than in the pane's title bar. That
-  // bar is the tab's name and its close control on every other kind, and a
-  // button in it is a shape only this tab had — so the control lives in the
-  // tab, next to the thing it re-reads.
-  const picker = `<div class="pkgnode">
-      ${pnodes.length ? `<label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
+  surf.setBar(`${pnodes.length ? `<label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
         ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === pkgNode ? " selected" : ""}>${
           esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
       </select></label>` : ""}
-      <button type="button" id="pkgRefresh"
-        title="read this store again — what is installed, and how big it is">Refresh</button>
-    </div>`;
-  el.innerHTML = `<div class="doctab pkgtab">
-    ${picker}
+    <span class="sp"></span>
+    <button type="button" id="pkgRefresh"
+      title="read this store again — what is installed, and how big it is">Refresh</button>`);
+  surf.list.innerHTML = `
     <div class="pkghead">${onNode
       ? (d.root
           // Nothing here about a shared store. Several nodes pointing at one
@@ -8271,8 +8328,7 @@ function renderPackagesInto(i){
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(pkgDots)}</span>`
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
-    </div>
-  </div>`;
+    </div>`;
 
   el.querySelectorAll(".pkg input").forEach(b => b.onchange = () => {
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
@@ -13979,6 +14035,10 @@ async function macro(name, custom){
 // draw that threw here would still take the poll down after the guarded
 // pass above it had kept the page up.
 function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
+                   // The first draw that had something to draw ends the boot
+                   // ground: from here a pane is a terminal's black or a
+                   // tab's panel, and the loading line has been replaced.
+                   if (state) document.body.classList.remove("booting");
                    if (state){ drawCard("sessions", () => drawSessions(state.sessions));
                                drawCard("runner", drawRunner); drawCard("linux", drawLinux);
                                drawCard("commands", drawCommands); drawCard("git", drawGit);

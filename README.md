@@ -1384,6 +1384,14 @@ node still refuses a job asking for something it did not enrol with — the
 enforcement of docs/nodes.md §15 door 7 — but every node now enrols with the
 full set, so it is a mechanism rather than a setting.)
 
+**Create sandbox VM** is the step before all of this when there is no
+machine yet: it renders `nodes/unraid-vm.xml` — the Unraid VM this project is
+happiest running on — with a uuid, an nvram path named after it and a MAC of
+its own, so two VMs are never two names for one machine, and prints the steps
+from Unraid's Add VM to an enrolled node. Paste Unraid's own uuid and MAC
+into the two fields when the VM already exists. `docs/sandbox-vm.md` is the
+long version.
+
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
 shown once inside the command to run on the machine —
@@ -1503,7 +1511,15 @@ offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog — one
 node for everything it does off this box: containers, builds, tests, CI and
-emulation — and gives its build and test commands and the output globs. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+emulation — and gives its build and test commands and the output globs. **The
+test command has a default and the build command does not**: "run the tests"
+has one conventional answer per ecosystem, so a tree with a `gradlew`, a
+`go.mod`, a `Cargo.toml`, a `pytest.ini`, a `package.json` declaring a test
+script — or this repository's own harness — answers `bb test` and `bb tests
+run` with nothing set, saying once which command it fell back to, and the
+field shows it as what leaving the box empty means. "Build" has no such
+answer — which target, which flavour, which of an Android project's four —
+so `bb build` still refuses and names the dialog. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on
@@ -2872,6 +2888,13 @@ navigate away from it**, taking its port with it. Pairing from the browser
 the code, the port it belonged to is gone. The tab notices that case and
 says so, and says the thing worth saying first: try Connect, you are probably
 already paired.
+
+**A phone it has met is remembered.** Every pairing and every connection
+puts the handset on the node's remembered list on the Phone tab — its
+model, its address, when it was last seen — and Connect on that row is the
+whole reconnect: the address goes back in the field and the node finds the
+port. Forget drops the row and nothing else; the pairing key stays on the
+node, so the phone can be connected again by typing its address.
 
 **You give it an IP, not a port.** Android hands out a new one every time
 wireless debugging is toggled, so a remembered port goes stale, and the port

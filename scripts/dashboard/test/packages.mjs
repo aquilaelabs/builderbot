@@ -63,18 +63,20 @@ ok(!!await page.$('.pane .doc.on .pkg'),
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')
      && tabOf(panes[active])?.kind === 'packages'),
    'Additional packages opens a tab, and lands on it');
-// Refresh belongs to the TAB, beside the node picker it re-reads. The pane's
-// title bar is the tab's name and its close control on every other kind, so a
-// button in it was a shape this tab alone had.
+// Refresh belongs to the TAB's own bar — the scaffold's slot, where the Phone
+// and Nodes tabs keep theirs — with the picker it re-reads at the left of the
+// same bar. The pane's title bar is the tab's name and its close control on
+// every kind, so a button in it was a shape this tab alone had.
 ok(await page.$('.pane .bar [data-reload]') === null,
    'the pane bar carries no button of its own');
-ok(await page.$eval('.doc .pkgnode #pkgRefresh', b => b.textContent.trim()) === 'Refresh',
-   '...and Refresh sits in the tab, beside the node picker');
-ok(await page.$eval('.doc .pkgnode', el => {
+ok(await page.$eval('.doc .docbarrow #pkgRefresh', b => b.textContent.trim()) === 'Refresh',
+   '...and Refresh sits in the tab\'s bar, where every other tab keeps its action');
+ok(await page.$eval('.doc .docbarrow', el => {
      const kids = [...el.children];
-     return kids.indexOf(el.querySelector('#pkgRefresh')) === kids.length - 1;
+     return kids.indexOf(el.querySelector('#pkgRefresh')) === kids.length - 1
+            && kids.indexOf(el.querySelector('#pkgNodeSel').closest('.pick')) === 0;
    }),
-   '...to the right of it, which is the order the eye reads');
+   '...at its right end, with the node picker at the left');
 const rows = () => page.$$eval('.doc .pkg:not(.img)', ls => ls.map(l => ({
   name: l.querySelector('input').value,
   installed: !!l.querySelector('.where.on'),
