@@ -10261,6 +10261,10 @@ function drawHistory(){
         e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
         e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
         <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
+        // Which person. "you" and "claude" say a person or a session; the
+        // name says which of two people, and a session carries its
+        // account's because a session has an author too.
+        e.who ? ` · ${esc(e.who)}` : ""}${
         e.approved ? ", approved by you" : ""}</span>${
         e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}${
         // A dropped item comes back from here, as it was: the log carries
@@ -10645,6 +10649,7 @@ $("todoRevert").onclick = revertNotebook;
             <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
             <span class="what">${e.id != null ? `${letter}${e.id} · ` : ""}${esc(e.text || "")}
               <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
+              e.who ? ` · ${esc(e.who)}` : ""}${
               e.approved ? ", approved by you" : ""}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");

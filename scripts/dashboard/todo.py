@@ -50,6 +50,7 @@ from pathlib import Path
 # The server's, injected rather than imported — same shape as packages.py.
 # `tell` is notify.tell: the one way a line reaches a running Claude session.
 write_json = None
+actor = None
 tell = None
 # Injected beside tell, from the same module. Optional: the CLI configures
 # this without one, and a switch there simply does not wait.
@@ -59,9 +60,15 @@ STATE = None
 FILE = None
 
 
-def configure(*, write_json, state, tell=None, tmux_name=None, settle=None):
+def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
+              actor=None):
     globals().update(write_json=write_json, STATE=Path(state),
-                     tell=tell, tmux_name=tmux_name, settle=settle)
+                     tell=tell, tmux_name=tmux_name, settle=settle,
+                     # Which PERSON is writing, asked at the moment an event
+                     # is logged: "you" says a person rather than a session,
+                     # and with two people on a project that is not enough to
+                     # answer "who dropped the third one?".
+                     actor=actor)
     globals()["FILE"] = Path(state) / "todos.json"
     # The approval queue (roadmap #27): the gate in add() reads it, and the
     # replay of an approved record comes back through `replay` below.
@@ -285,8 +292,12 @@ def _log(d, project, by, ev):
     entries saying so is a log nobody can read to find the one change that
     mattered. The batch is coalesced on commit into what actually happened.
     """
+    name = str((actor() if actor else "") or "")[:60]
     ev = {"at": int(time.time()),
           "by": "claude" if by == "claude" else "you",
+          # The account behind it, where one is known — including behind a
+          # session, whose author is the person it was minted for.
+          **({"who": name} if name else {}),
           # A replay of something the operator approved: said on the event,
           # so the log reads "claude, approved" rather than "claude".
           **({"approved": True} if pending.replaying() else {}), **ev}

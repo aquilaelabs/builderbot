@@ -348,3 +348,6 @@
 - The Phone tab remembers the phones a node has paired or connected, with Connect and Forget on each (4e0c7d3)
 - The Nodes tab makes a sandbox VM's Unraid XML for you, with its own uuid and MAC, and the steps from Add VM to an enrolled node (a657809)
 - A project with no test command set now runs the tests its tree implies, and says which command that is (a657809)
+- Enroll node asks which account jobs run as, and the provision command it prints carries it (098930d)
+- The notebook's histories name the account behind a change, not just 'you' or 'claude' (1ad0693)
+- Create sandbox VM covers seven hypervisors — Unraid, Proxmox, libvirt, QEMU, VMware, Hyper-V and VirtualBox — each with the MAC range it accepts (1ad0693)

@@ -75,16 +75,29 @@ import pending  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
+actor = None
 STATE = None
 FILE = None
 
 
-def configure(*, write_json, state):
-    globals().update(write_json=write_json, STATE=Path(state))
+def configure(*, write_json, state, actor=None):
+    globals().update(write_json=write_json, STATE=Path(state), actor=actor)
     globals()["FILE"] = Path(state) / "rules.json"
     # The approval queue (roadmap #27) — see todo.configure.
     pending.configure(write_json=write_json, state=state)
     pending.applier("rules", replay)
+
+def _by_whom():
+    """{"who": name} for the account behind this change, or {}.
+
+    "you" and "claude" say a person or a session and stop there; with two
+    people on a project that answers nothing about which of them it was.
+    The Nodes tab's audit has recorded the account since accounts existed
+    (server._principal), and this is the same thing for the notebook.
+    """
+    name = str((actor() if actor else "") or "")[:60]
+    return {"who": name} if name else {}
+
 
 
 def replay(project, verb, args):
@@ -254,6 +267,7 @@ def _log(d, project, by, ev):
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append({"at": int(time.time()),
               "by": "claude" if by == "claude" else "you",
+              **_by_whom(),
               **({"approved": True} if pending.replaying() else {}), **ev})
     del h[:-MAX_HISTORY]
 

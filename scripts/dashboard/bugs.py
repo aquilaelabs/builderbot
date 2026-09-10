@@ -45,13 +45,15 @@ import time
 from pathlib import Path
 
 write_json = None
+actor = None
 STATE = None
 FILE = None
 
 
-def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None):
+def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None,
+              actor=None):
     globals().update(write_json=write_json, STATE=Path(state),
-                     tell=tell, tmux_name=tmux_name,
+                     tell=tell, tmux_name=tmux_name, actor=actor,
                      # Where the projects are, for the version stamp below.
                      # bb passes it explicitly; the dashboard too; the
                      # environment is the fallback for whoever forgot.
@@ -61,6 +63,18 @@ def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None):
     # The approval queue (roadmap #27) — see todo.configure.
     pending.configure(write_json=write_json, state=state)
     pending.applier("bugs", replay)
+
+def _by_whom():
+    """{"who": name} for the account behind this change, or {}.
+
+    "you" and "claude" say a person or a session and stop there; with two
+    people on a project that answers nothing about which of them it was.
+    The Nodes tab's audit has recorded the account since accounts existed
+    (server._principal), and this is the same thing for the notebook.
+    """
+    name = str((actor() if actor else "") or "")[:60]
+    return {"who": name} if name else {}
+
 
 
 def replay(project, verb, args):
@@ -162,6 +176,7 @@ def _log(d, project, by, ev):
     """
     ev = {"at": int(time.time()),
           "by": "claude" if by == "claude" else "you",
+          **_by_whom(),
           **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
     if b is not None and ev["by"] == b.get("by", "claude"):
@@ -404,6 +419,7 @@ def add(project, title, by="you", severity="medium", **fields):
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you",
+          **_by_whom(),
                "at": int(time.time()),
                # Never backfilled onto older reports: a made-up "first seen
                # in" is worse than a blank one.

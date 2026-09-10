@@ -290,10 +290,11 @@ COPY config/templates/ /opt/builderbot/templates/
 # so that the path relative to both bb and server.py is the same here as it is
 # in a checkout, which is what lets `bb dashboard dev` and the tests read it.
 COPY config/packages.json /opt/builderbot/config/packages.json
-# The domain XML a sandbox VM is made from, which the Nodes tab renders with
-# a fresh uuid and MAC per VM (vmtemplate.py). Two levels above server.py,
-# where a checkout keeps it too.
+# What a sandbox VM is made from, one per hypervisor, which the Nodes tab
+# renders with an identity per VM (vmtemplate.py). Two levels above
+# server.py, where a checkout keeps them too.
 COPY nodes/unraid-vm.xml /opt/builderbot/nodes/unraid-vm.xml
+COPY nodes/vm/ /opt/builderbot/nodes/vm/
 # The changelog, for the welcome panel: shown once per image update, so it
 # has to travel with the image it describes. Two levels above server.py,
 # where a checkout keeps it too.

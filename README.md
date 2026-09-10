@@ -1385,12 +1385,19 @@ enforcement of docs/nodes.md §15 door 7 — but every node now enrols with the
 full set, so it is a mechanism rather than a setting.)
 
 **Create sandbox VM** is the step before all of this when there is no
-machine yet: it renders `nodes/unraid-vm.xml` — the Unraid VM this project is
-happiest running on — with a uuid, an nvram path named after it and a MAC of
-its own, so two VMs are never two names for one machine, and prints the steps
-from Unraid's Add VM to an enrolled node. Paste Unraid's own uuid and MAC
-into the two fields when the VM already exists. `docs/sandbox-vm.md` is the
-long version.
+machine yet. **Pick what runs it** — Unraid, Proxmox VE, libvirt/KVM, QEMU on
+its own, VMware, Hyper-V or VirtualBox — and it writes that machine: the same
+cores, memory, disk and installer everywhere, in whatever that manager reads
+(a domain XML, a `qm create`, a `virt-install`, a `.vmx`, a PowerShell
+script), with an identity of its own and the steps from that manager's own
+"new VM" to an enrolled node. The identity is the part worth having written
+for you: a uuid, the firmware variables named after it where the manager
+keeps them that way, and **a MAC in the range that manager accepts** —
+VMware refuses a static address outside `00:50:56:00-3F`, Hyper-V uses
+`00:15:5D`, VirtualBox `08:00:27`, and QEMU and everything on top of it
+`52:54:00`, so a hand-copied address is how two machines end up on one.
+Paste the manager's own uuid and MAC into the two fields when the VM already
+exists. `docs/sandbox-vm.md` is the long version.
 
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
@@ -2229,7 +2236,12 @@ first, since an arrangement is work.
 **Every view keeps its history.** The roadmap's log came first; the bug
 tracker and the memory view have the same button now, with the same bar —
 search, a time window, a cap — and the same rows: what happened, to which
-line, by whom, when. The memory log records what the *notebook* changed
+line, by whom, when. **By whom is the account, not just "you" or "claude"**:
+those two say a person or a session, which was the whole answer while there
+was one account, and with several on a project it does not say which of them
+dropped an item. A session carries its account's name too, because a session
+has an author — the person it was minted for. Entries written before this
+carry no name and read as they did. The memory log records what the *notebook* changed
 (wrote, edited, forgot) — Claude's own memory writes are files, not events,
 so they have no entry to make. For a session, `bb history --find X` is one
 search across all three logs, merged by time and tagged by source; `bb roadmap
@@ -3635,6 +3647,7 @@ android/                         the companion app: api-surface.json is its cont
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node — the Docker sandbox, the stores, the session half — and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/unraid-vm.xml             the node as an Unraid VM — one file for every distribution; only the installer ISO line changes
+nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
