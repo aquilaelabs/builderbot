@@ -404,7 +404,8 @@ bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
 bb roadmap            this project's roadmap — items are R1, R2, ...; bugs are B1, B2
 bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
-bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
+bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
+bb roadmap restore N  put a dropped one back from the history, as it was
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step

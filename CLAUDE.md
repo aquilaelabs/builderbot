@@ -616,9 +616,12 @@ A list that only grows is one that stops being read.
 
 Ticking one off **takes it off the list** — this list is read to find out what
 is left, and something finished is not left. It goes into the history under
-"done", where dropping it would have gone under "dropped", and there is no
-undoing either: if it turns out not to have been finished, add it again and
-say so. Only you tick things off. Nothing in the dashboard does it, because
+"done", where dropping it would have gone under "dropped", and done has no
+undo: if it turns out not to have been finished, add it again and say so.
+Dropping is for work that is abandoned, and a dropped item can be put back
+from the history as it was — the operator's Put back on the Roadmap's
+history, or `bb roadmap restore R4` — so drop is not how a finished plan
+leaves. Only you tick things off. Nothing in the dashboard does it, because
 only the session that did the work knows whether it is done.
 
 **A group is one goal with an order to it, and its title is that goal.**
@@ -698,8 +701,9 @@ a session finished it. Do this whether or not the step was sent to you — a
 phase you were told to start in chat is the case it exists for — and do it
 for the step you were sent as well, or the operator has only your reply to
 go on. There is no undo: if it turns out not to have been finished, the
-operator sends it again, which clears the mark and says so in the log. When
-the last step is done, the item is done: `bb roadmap done R4` takes it off.
+operator sends it again, which clears the mark and says so in the log. Marking
+the last step done finishes the plan: the item goes off the list and into the
+history as done, with no second command.
 A line the operator dealt with themselves is dropped rather than marked,
 because there is still no way to cross one off by hand.
 

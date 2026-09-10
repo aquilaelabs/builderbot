@@ -8942,9 +8942,7 @@ function stepRow(r, idx, live){
             : st.done ? "a session finished this — sending it again says it did not"
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
-              ? (nxt === null ? (steps.every(x => x.done)
-                                 ? `every step of this is done — bb roadmap done R${r.id} takes it off`
-                                 : "every step of this has gone")
+              ? (nxt === null ? "every step of this has gone"
                               : `pick step ${nxt + 1}, the next one in line`)
             : idx < 0 ? "pick this to send"
             : idx === nxt ? "pick this to send"
@@ -10154,6 +10152,7 @@ const ACT = {
   "edit-step":   ["reworded", ""],
   remove:        ["dropped", "gone"],
   "remove-step": ["dropped a step", "gone"],
+  restored:      ["put back", "new"],
   done:          ["ticked off", ""],
   undone:        ["reopened", ""],
   info:          ["detailed", ""],
@@ -10196,12 +10195,24 @@ function drawHistory(){
         e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
         <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
         e.approved ? ", approved by you" : ""}</span>${
-        e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}</span>
+        e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}${
+        // A dropped item comes back from here, as it was: the log carries
+        // the row (todo.remove). Only a drop — done is a session's word.
+        e.act === "remove" && e.step == null && e.row && !onList(e.id)
+          ? `<button type="button" class="hput" data-id="${esc(String(e.id))}" data-at="${esc(String(e.at || 0))}"${
+              nbUnsaved() ? ` disabled title="${esc(`save or revert first — ${nbUnsaved()} not on disk yet`)}"` : ""
+            }>Put back</button>` : ""}</span>
     </div>`;
   }).join("");
+  $("todoHist").querySelectorAll(".hput").forEach(b => b.onclick = async () => {
+    busy(b, "Putting back");
+    const j = await postTodo({action: "restore", id: Number(b.dataset.id), at: Number(b.dataset.at)});
+    if (j) loadHistory(); else unbusy(b, "Put back");
+  });
   // Paged like the other three, now that it has a pane to page.
   paginate($("todoHist"), ":scope > .hist", {key: "todoHist", noun: "entries"});
 }
+const onList = id => todoItems.some(r => String(r.id) === String(id));
 
 // The window the panel is asking for. Narrowed on the server, not here: the
 // log is capped at 300 events a project and most of a search is bytes that
@@ -11702,7 +11713,9 @@ become that version's section when it is created">Changelog${
           skipped.length ? ` Skipped: ${skipped.join(", ")}.` : ""}</div>`
         : skipped.length ? `<div class="hint cbfoot">Skipped: ${skipped.join(", ")}.</div>` : ""}`;
     }
-    return docSection("briefing", "codebase", "Code base", status, body);
+    // Open on both sizes: the numbers are the answer, not a place to go and
+    // look for one, and the rules under it are the fold that closes.
+    return docSection("briefing", "codebase", "Code base", status, body, {open: true});
   }
   async function loadRules(){
     loadCodebase().then(() => drawRules());
@@ -11822,10 +11835,10 @@ become that version's section when it is created">Changelog${
             + "add, marked as its; the ones you write here it cannot touch."}</div>`;
     box.innerHTML = codebaseSection() + docSection("briefing", "rules", "Your rules",
       rows.length ? `${rows.length}` : "none", body,
-      // No `open` override: the framework's default is right here — open on a
-      // desktop, shut on a phone. Forcing it shut when there are no rules
-      // hides the invitation at exactly the moment it is the whole point.
-      {cls: d.loud && !ruleDirty() ? "warn" : ""});
+      // Shut on both sizes: the rules are read once and edited rarely, and
+      // open they push the code base off the first screen. The count on the
+      // heading says there is something behind it.
+      {open: false, cls: d.loud && !ruleDirty() ? "warn" : ""});
     wireSections(box);
     ruleStagedCount = () => (ruleDirty() ? 1 : 0);
     ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); ruleOpen.clear(); ruleWas.clear(); drawRules(); };
@@ -12000,8 +12013,14 @@ become that version's section when it is created">Changelog${
     $("tstList").querySelectorAll(".tst[open] > .body").forEach(body => {
       const t = stored.get(body.parentElement.dataset.key);
       const p = body.querySelector(".tstP"), n = body.querySelector(".tstN");
-      if (t && p && n && (p.value !== t.protects || n.value !== t.notes))
-        drafts.set(t.key, {protects: p.value, notes: n.value});
+      // The mark and its reason are typing too: a tick the redraw took back
+      // between ticking it and Save posted the description and no mark, and
+      // said nothing about the difference (B79).
+      const a = body.querySelector(".tstAccept"), w = body.querySelector(".tstWhy");
+      const accept = a ? a.checked : !!t?.accepted, why = w ? w.value : (t?.accepted || "");
+      if (t && p && n && (p.value !== t.protects || n.value !== t.notes
+                          || accept !== !!t.accepted || why !== (t.accepted || "")))
+        drafts.set(t.key, {protects: p.value, notes: n.value, accept, why});
     });
     if (!all.length){
       $("tstHint").textContent = "Nothing ingested yet.";
@@ -12151,10 +12170,10 @@ become that version's section when it is created">Changelog${
           placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
             esc(draft ? draft.notes : t.notes)}</textarea>
         ${t.sits_on ? `
-        <label class="ndcap"><input type="checkbox" class="tstAccept"${t.accepted ? " checked" : ""}>
+        <label class="ndcap"><input type="checkbox" class="tstAccept"${(draft ? draft.accept : t.accepted) ? " checked" : ""}>
           the wait is the work — it has to sit on ${t.sits_on}s, so stop flagging it</label>
         <input class="tstWhy" maxlength="300" autocomplete="off" placeholder="why — a real boot, a timeout being proved"
-          value="${esc(t.accepted)}"${t.accepted ? "" : " hidden"}>` : ""}
+          value="${esc(draft ? draft.why : t.accepted)}"${(draft ? draft.accept : t.accepted) ? "" : " hidden"}>` : ""}
         <div class="actbar"><span class="sp"></span>
           <button type="button" class="stop tstCancel"
             title="put the fields away — what was typed here is dropped">Cancel</button>
@@ -13074,7 +13093,15 @@ function placeResumeMenu(){
   // as "opened Claude again and it did not go to the new tab" (bug #65).
   // Same rule and the same fix as the notebook's view strip: arriving
   // somewhere you cannot see reads as nothing having happened.
+  //
+  // Measured at rest. scrollIntoView reads the box where it is, and where it
+  // is right now is menuIn's first frame — 5px above where it will settle —
+  // so aligning that box left the settled chooser 5px below the fold (B77).
+  // Finish the entrance for the measurement and play it again from the start.
+  const enter = m.getAnimations()[0];
+  enter?.finish();
   m.scrollIntoView({block: "nearest", inline: "nearest"});
+  enter?.play();
 }
 
 

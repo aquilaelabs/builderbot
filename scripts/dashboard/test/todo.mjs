@@ -1446,18 +1446,69 @@ const widgetAfter = await open();
 ok(widgetAfter.find(i => i.text === 'paint it').can
    && widgetAfter.find(i => i.step === '-1' && i.text === 'ship the widget').can,
    'with steps 1 and 2 done, step 3 is the frontier and the group arrow stands for it');
-bbTodoEarly('step', 'done', widget.id, '3');
-await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(id => document.querySelector(
-  `#todoList .todo[data-id="${id}"][data-step="2"]`)?.classList.contains('done'), widget.id);
-ok(/every step of this is done/.test(await page.$eval(
-     `#todoList .todo[data-id="${widget.id}"][data-step="-1"] .go`, b => b.title)),
-   '...and with every step done the group arrow says so, and names the tick-off');
 const refusedBy = (...a) => { try { bbTodoEarly(...a); return ''; } catch (e) { return String(e.stderr); } };
-ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '3', 'up')),
+ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '1', 'down')),
    'a done step is pinned like a sent one');
 ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '2', 'down')),
    '...by mark, not by prefix');
+// The last step finishes the plan: the item leaves the list and the log says
+// done, with no second command — a plan with every step done is not "left".
+ok(/step 3 of R\d+ done — the last one, so R\d+ is done and off the list/.test(
+     bbTodoEarly('step', 'done', widget.id, '3')),
+   'marking the last step done says the plan is done with it');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-id="${id}"]`), widget.id);
+ok(!(await open()).some(i => i.text === 'ship the widget'),
+   '...and the item is off the list');
+{
+  const log = bbTodoEarly('history', '-n', '3');
+  ok(/done-step.*step 3 of R\d+  paint it/.test(log) && new RegExp(`done +R${widget.id}  ship the widget`).test(log),
+     '...into the history as done, beside the step that finished it');
+}
+ok(/nothing dropped as R\d+ is in the history/.test(refusedBy('restore', widget.id)),
+   '...and done cannot be put back — it is a session\'s word that the work happened');
+
+// ---- dropped is not gone: put back from the history ------------------------
+// Drop is for work that is abandoned, and a decision can be reversed: the
+// log carries the row, so restoring brings the plan back as it was — its
+// steps, its details, its number — from bb or from the pane's Put back.
+bbTodoEarly('add', 'a line dropped by mistake', '--step', 'first', '--step', 'second');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .todo .txt')]
+  .some(t => t.textContent === 'a line dropped by mistake'));
+const dropped = (await open()).find(i => i.text === 'a line dropped by mistake');
+bbTodoEarly('info', dropped.id, 'the details ride along');
+ok(new RegExp(`removed R${dropped.id} — bb roadmap restore R${dropped.id} puts it back`).test(
+     bbTodoEarly('rm', dropped.id, 'abandoned for now')),
+   'dropping names the way back');
+ok(new RegExp(`put back R${dropped.id}: a line dropped by mistake`).test(bbTodoEarly('restore', dropped.id)),
+   'bb roadmap restore puts it back under its own number');
+{
+  const row = read().projects.alpha.find(r => String(r.id) === String(dropped.id));
+  ok(row && row.steps.length === 2 && row.steps[1].text === 'second' && row.info === 'the details ride along',
+     '...with its steps and its details as they were');
+  // -n 6, not 2: four events in one second sort as they were written.
+  ok(/restored +R\d+  a line dropped by mistake/.test(bbTodoEarly('history', '-n', '6')),
+     '...and the log says it was put back');
+  ok(/is on the list/.test(refusedBy('restore', dropped.id)),
+     '...and not twice');
+}
+bbTodoEarly('rm', dropped.id, 'dropped again, for the pane');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-id="${id}"]`), dropped.id);
+if (!(await page.$eval('#todoLog', b => b.classList.contains('on')))) await page.click('#todoLog');
+await page.waitForFunction(id => document.querySelector(`#todoHist .hput[data-id="${id}"]`), dropped.id,
+                           { timeout: 20000 });
+ok(true, 'the history pane offers Put back on the dropped row');
+await page.click(`#todoHist .hput[data-id="${dropped.id}"]`);
+await page.waitForFunction(id => document.querySelector(`#todoList .todo[data-id="${id}"]`), dropped.id,
+                           { timeout: 20000 });
+await page.waitForFunction(id => !document.querySelector(`#todoHist .hput[data-id="${id}"]`), dropped.id,
+                           { timeout: 20000 });
+ok((await open()).filter(i => i.id === String(dropped.id)).length === 3,
+   '...and one press brings the plan back, both steps under it, and the button goes with it');
+await page.click('#sheetClose');
+await page.waitForFunction(() => document.querySelector('.nbsheet').hidden, { timeout: 10000 });
 
 // A reload that was already in flight must not take what was typed while it
 // was out. Held open with a route so the race is deterministic: it hid for

@@ -1635,15 +1635,24 @@ elif op == "done":
     r = todo.tick(proj, n, by="claude", who=_who); bail(r)
     print(f"done {R(n)}: {r['item']['text']}")
 elif op in ("rm", "remove"):
-    # The reason rides with the deletion. Nothing here can be undone, so the
-    # only thing that stops the next reader putting it straight back is a note
-    # saying why it went.
+    # For work that is abandoned — a finished plan is ticked, not dropped.
+    # The reason rides with the deletion: the row can be put back from the
+    # history (`restore`, or the panel's Put back), and a note saying why it
+    # went is what stops that happening by mistake.
     if not rest:
         print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None); fresh()
     r = todo.remove(proj, n, by="claude", why=" ".join(rest[1:]),
                     who=_who); bail(r)
-    print(f"removed {R(n)}")
+    print(f"removed {R(n)} — bb roadmap restore {R(n)} puts it back")
+elif op == "restore":
+    # The other half of rm: the dropped row comes back from the history as it
+    # was, steps and details and all, under its own number.
+    if not rest:
+        print("usage: bb roadmap restore <n>", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0]); fresh()
+    r = todo.restore(proj, n, by="claude", who=_who); bail(r)
+    print(f"put back {R(n)}: {r['item']['text']}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
     # read; it is arriving at one. The work still lands as it happens — hiding
@@ -1784,7 +1793,9 @@ elif op == "step":
         behind(item, None, None, None)
         r = todo.step_done(proj, item, step_index(srest[1]),
                            by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
-        print(f"step {srest[1]} of {R(item)} done")
+        print(f"step {srest[1]} of {R(item)} done"
+              + (f" — the last one, so {R(item)} is done and off the list"
+                 if r.get("finished") else ""))
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
@@ -1862,7 +1873,7 @@ elif op in ("history", "log"):
 else:
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
-          "rm N [WHY]|shelve N|begin|commit|revert|pending|"
+          "rm N [WHY]|restore N|shelve N|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)

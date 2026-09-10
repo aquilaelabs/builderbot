@@ -27,6 +27,7 @@ The server imports this and hands it the helpers it needs; nothing here reaches
 back into the server. bb reads and writes the same file through `bb roadmap`, so a
 session can add an item without a browser.
 """
+import copy
 import json
 import os
 import sys
@@ -726,8 +727,12 @@ def _edit(project, item_id, change, by="you", who=""):
         if isinstance(out, dict) and out.get("conflict"):
             out["conflict"].update(id=item_id, **_moved_by(d, project, item_id))
             return out
-        if ev and ok:
-            _log(d, project, by, ev)
+        # One event, or a list of them: the last step of a plan being marked
+        # done is two things that happened — the step, and the item it
+        # finished — and the log says both.
+        for e in ([ev] if isinstance(ev, dict) else (ev or [])):
+            if ok:
+                _log(d, project, by, e)
         d["projects"][project] = rows
         # Only when something happened. A refused change — no such step, a
         # step that has gone — used to mark the list unsaved all the same,
@@ -830,14 +835,16 @@ def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
     becomes the next in line, so the group carries on from where it really is
     rather than from where it was written.
 
-    It is also the only way anything leaves the list, which is why the history
-    keeps the words: a line dropped by mistake is retyped from the log rather
-    than remembered.
+    Dropping is for work that is abandoned — a finished plan is ticked, and
+    marking its last step done ticks it. So the history keeps the whole row,
+    steps and details and all, and `restore` puts it back from there: a line
+    dropped by mistake, or a decision reversed, is one press rather than a
+    retype.
 
-    And why it keeps the reason. "Dropped" and "dropped because the picker
-    this described no longer exists" are the same event to the list and
-    different events to whoever reads it next — and the second one is what
-    stops somebody putting it back.
+    And it keeps the reason. "Dropped" and "dropped because the picker this
+    described no longer exists" are the same event to the list and different
+    events to whoever reads it next — and the second one is what stops
+    somebody putting it back.
     """
     why = _clean(why, multiline=False)[:MAX_TEXT]
 
@@ -848,6 +855,7 @@ def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
             rows.remove(row)
             return {"ok": True,
                     "log": {"act": "remove", "id": row["id"], "text": row["text"],
+                            "row": copy.deepcopy(row),
                             **({"why": why} if why else {}),
                             **({"steps": len(row.get("steps") or [])}
                                if row.get("steps") else {})}}
@@ -1045,8 +1053,61 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
               "text": steps[i].get("text", ""), "of": row["text"]}
         if note:
             ev["why"] = _clean(note, multiline=False)
+        # The last one finishes the plan: off the list and into the log as
+        # done, the way `tick` does it, without a second command. A list is
+        # read to find out what is left, and a plan with every step done is
+        # not left — it used to sit there saying "bb roadmap done takes it
+        # off" until somebody typed that.
+        if all(st.get("done") for st in steps):
+            rows.remove(row)
+            return {"ok": True, "finished": True, "item": row,
+                    "log": [ev, {"act": "done", "id": row["id"], "text": row["text"],
+                                 "steps": len(steps)}]}
         return {"ok": True, "log": ev}
     return _edit(project, item_id, change, by, who=who)
+
+
+def restore(project, item_id, at=None, by="you", who=""):
+    """Put a dropped item back from the history, as it was when it went.
+
+    The newest "remove" of that item — or the one at `at`, when the log
+    holds several — carries the row itself (see remove), so what comes back
+    is the plan with its steps, marks and details, under its own number. A
+    ticked-off item is not restorable: done is a session's word that the
+    work happened, and undoing that is adding the work again.
+    """
+    item_id = _int(item_id)
+    if item_id is None:
+        return {"error": "not an item"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        if _find(rows, item_id) is not None:
+            return {"error": f"{ids.label("todo", item_id)} is on the list"}
+        if len(rows) >= MAX_OPEN:
+            return {"error": f"{MAX_OPEN} open items is the limit — this list "
+                             "goes in front of every session, so it has to stay "
+                             "readable"}
+        want = _int(at)
+        evs = [e for e in (d.get("history", {}).get(project) or [])
+               if e.get("act") == "remove" and e.get("step") is None
+               and _int(e.get("id")) == item_id and isinstance(e.get("row"), dict)
+               and (want is None or e.get("at") == want)]
+        if not evs:
+            return {"error": f"nothing dropped as {ids.label("todo", item_id)} "
+                             "is in the history to put back"}
+        row = copy.deepcopy(max(evs, key=lambda e: e.get("at", 0))["row"])
+        row["id"] = item_id
+        row.pop("shelved", None)
+        rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
+        _log(d, project, by, {"act": "restored", "id": item_id, "text": row.get("text", ""),
+                              **({"steps": len(row.get("steps") or [])}
+                                 if row.get("steps") else {})})
+        d["projects"][project] = rows
+        _touch(d, project)
+        _credit(d, project, who)
+        save(d)
+    return {"ok": True, "item": row}
 
 
 def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
