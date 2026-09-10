@@ -332,7 +332,7 @@
 - The package store is laid out per platform (linux-x86_64, darwin-arm64), so one share serves Linux nodes and a Mac without collisions; an existing store is moved into place once, automatically. Update each node's agent before the container (0746987)
 - The provisioners live in nodes/ now — provision-linux.sh and provision-macos.sh, with the Unraid VM template beside them — since a node is not always a VM (a176853)
 - A node keeps working when an address changes: the controller follows the node's new address on its next check-in, the node moves its terminals onto its new address, and it updates its firewall rule if the controller's address is what moved (27e14d9)
-- The provisioners print their help when run with nothing, and --interactive walks through the questions, shows the command it built, and runs it on a yes — on Linux and on a Mac (bcaec8b)
+- The provisioners print their help when run with nothing, on Linux and on a Mac (bcaec8b, 89e629a)
 - The Briefing tab opens with the code base counted: the languages as a bar with percentages, and the files and lines git tracks — nothing untracked or ignored is in the number (14d5002)
 - The one-time package store migration is gone now that every store is laid out per platform (14d5002)
 - A Claude session stops running commands while BuilderBot is restarting after an update, or while its project's CLAUDE.md is from another compatibility window; a block merely behind inside the window keeps working and the session is told once that an update is waiting (099d997, 224691c)
@@ -358,3 +358,4 @@
 - Release a version from the Artifacts tab: it tags the commit and pushes the tag, and the tab says whether you are heading for a number or released as it (32f37bc)
 - bb jobs j_1a2b3c4d prints that job's log, so a failed job on any project can be looked at from a session (32f37bc)
 - Moving a node's package or workspace store onto an NFS share that squashes ownership now works instead of reporting a failed copy (54adbb1)
+- A project's GitHub settings are on the chain button on its row, whether or not it has a remote yet — the gear is the project's own settings and no longer holds a credential (89e629a)
