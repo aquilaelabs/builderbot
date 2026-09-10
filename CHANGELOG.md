@@ -359,7 +359,7 @@
 - bb jobs j_1a2b3c4d prints that job's log, so a failed job on any project can be looked at from a session (32f37bc)
 - Moving a node's package or workspace store onto an NFS share that squashes ownership now works instead of reporting a failed copy (54adbb1)
 - A project's GitHub settings are on the chain button on its row, whether or not it has a remote yet — the gear is the project's own settings and no longer holds a credential (89e629a)
-- A project can be linked to a self-hosted Gitea or Forgejo, to Codeberg, GitLab or Bitbucket, or to any other git host — not to GitHub alone (0f38c55)
+- A project can be linked or cloned from a self-hosted Gitea or Forgejo, from Codeberg, GitLab or Bitbucket, or from any other git host — not from GitHub alone (0f38c55, 0b8a5bd)
 - Unlink a project's remote from the chain on its row: the remote, its stored token and its push rights go, and nothing in the tree is touched (0f38c55)
 - A non-admin account could link a project and store a git token by calling the API directly; that route is now an administrator's like every other one that writes a credential (0f38c55)
 - Changing a project setting while its session is running no longer needs the session restarted to save: Cancel on the restart prompt keeps the setting and leaves the conversation alone (32af66c)
