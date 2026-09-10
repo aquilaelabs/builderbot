@@ -5,6 +5,9 @@
 - BuilderBot is 0.5.0: the compatibility window moves, so a node's agent and every project's CLAUDE.md block need updating once, and everything kept for the old window is gone (dbf8170)
 - Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
+- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it (de06bb3)
+- The deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
+- The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
 
 ## 0.5.0 — 2026-09-10
 
