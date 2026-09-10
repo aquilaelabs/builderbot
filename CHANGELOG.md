@@ -355,3 +355,5 @@
 - The provisioners lose their question-and-answer mode — the command Enroll node prints is the one to run (c38eb53)
 - A project can let a session edit its own files without asking each time — File changes, in the project's settings (6b88706)
 - A project can let Claude give it its first version while every bump after stays yours — 'may start one, not move it' on the Artifacts tab (6d1f2d2)
+- Release a version from the Artifacts tab: it tags the commit and pushes the tag, and the tab says whether you are heading for a number or released as it (32f37bc)
+- bb jobs j_1a2b3c4d prints that job's log, so a failed job on any project can be looked at from a session (32f37bc)
