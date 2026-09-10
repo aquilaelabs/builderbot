@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# BuilderBot's own version stamps, moved with the number.
+#
+# `bb version bump` runs this from the repository root with the new version
+# and the part that moved, and commits whatever it changes alongside VERSION.
+# It exists because this project's minor is not only a number: it is the
+# COMPATIBILITY WINDOW, and the window is written down in two more places —
+#
+#   scripts/agent/builderbot-agent.py   AGENT_VERSION = "WINDOW.BUILD"
+#   config/templates/project-CLAUDE.md  <!-- BUILDERBOT:ENV:WINDOW W -->
+#
+# — which a bump used to leave behind. 0.5.0 only came out consistent because
+# a person moved both by hand first; a bump that forgot would have committed
+# a controller promising one window while its agent and every project's
+# briefing promised another (B91). A test holds the three equal, but after the
+# commit and only when somebody runs it. This is the write that makes the test
+# a formality.
+#
+# The BUILD does not reset at a window boundary — 0.5.28 follows 0.4.27 — so a
+# minor bump increments it rather than starting over. That rule is why this
+# lives here rather than in version.py: it is this project's, and version.py
+# serves every project.
+#
+# A patch bump moves nothing here: the window is the minor.
+set -euo pipefail
+
+new="${1:?usage: version-stamp NEW-VERSION PART}"
+part="${2:?usage: version-stamp NEW-VERSION PART}"
+
+AGENT=scripts/agent/builderbot-agent.py
+TEMPLATE=config/templates/project-CLAUDE.md
+
+case "$part" in
+    major|minor) ;;
+    *) exit 0 ;;                 # the window did not move
+esac
+
+window="${new%.*}"               # 0.5.0 -> 0.5
+
+[ -f "$AGENT" ] || { echo "no ${AGENT}" >&2; exit 1; }
+[ -f "$TEMPLATE" ] || { echo "no ${TEMPLATE}" >&2; exit 1; }
+
+cur="$(sed -n 's/^AGENT_VERSION = "\([0-9.]*\)".*/\1/p' "$AGENT" | head -1)"
+[ -n "$cur" ] || { echo "no AGENT_VERSION in ${AGENT}" >&2; exit 1; }
+build="${cur##*.}"
+case "$build" in
+    ''|*[!0-9]*) echo "AGENT_VERSION ${cur} has no build number" >&2; exit 1 ;;
+esac
+
+# One past the build it is on, whatever window it was in: the counter answers
+# "which of these two agents is newer", and a reset would put one number on
+# two different agents.
+agent_new="${window}.$((build + 1))"
+
+sed -i "s/^AGENT_VERSION = \"${cur}\"/AGENT_VERSION = \"${agent_new}\"/" "$AGENT"
+sed -i "s/<!-- BUILDERBOT:ENV:WINDOW [0-9][0-9]*\.[0-9][0-9]* -->/<!-- BUILDERBOT:ENV:WINDOW ${window} -->/" "$TEMPLATE"
+
+# Said out loud rather than done quietly: this is the moment the promise to
+# every node and every project's briefing changes, and the bump's own answer
+# is where somebody will read it.
+echo "agent ${cur} -> ${agent_new}, CLAUDE.md template window -> ${window}"

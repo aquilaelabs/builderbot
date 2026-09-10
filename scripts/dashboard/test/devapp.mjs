@@ -838,12 +838,16 @@ out['project'] = [m.rename_project_data('alpha', 'beta'),
 # is the VM's business: nothing is declared on this side, so a share added
 # over there next month needs no BuilderBot setting touched. Neither share is
 # in the fake mount table above, so nothing goes down the local branch.
-m.DEVDATA = '/devdata-vm'
+# Names no machine has. missing_dirs skips a bind whose source EXISTS, on the
+# real filesystem, so a fixture share called /auxiliary was silently dropped
+# from the answer on any box that happens to have one — which every Unraid
+# node does (B83). The mount table below is a fixture; these have to be too.
+m.DEVDATA = '/bbfix-devdata'
 cfg = {'services': {'s': {'volumes': [
-  {'type': 'bind', 'source': '/auxiliary/plex-library', 'target': '/m'},
-  {'type': 'bind', 'source': '/devdata-vm/sonarr/config', 'target': '/c'},
-  {'type': 'bind', 'source': '/devdata-vm/sonarr/data', 'target': '/d2'},
-  {'type': 'bind', 'source': '/loneroot', 'target': '/x'}]}}}
+  {'type': 'bind', 'source': '/bbfix-aux/plex-library', 'target': '/m'},
+  {'type': 'bind', 'source': '/bbfix-devdata/sonarr/config', 'target': '/c'},
+  {'type': 'bind', 'source': '/bbfix-devdata/sonarr/data', 'target': '/d2'},
+  {'type': 'bind', 'source': '/bbfix-lone', 'target': '/x'}]}}}
 out['split'] = m.missing_dirs('sonarr', cfg, 'main')
 calls.clear()
 m._config = lambda *a, **k: cfg
@@ -856,8 +860,8 @@ out['made'] = [sorted(made['made']), made['failed'], made['unreachable'],
 out['slash'] = m._guard(m._devdata_argv('mkdir', 'x', root='/'))
 out['nested'] = m._guard(m._devdata_argv('mkdir', 'x', root='/a/b'))
 out['anyshare'] = m._guard(m._devdata_argv('mkdir', 'x', root='/undeclared'))
-out['climb'] = m._guard(m._devdata_argv('mkdir', '../etc', root='/devdata-vm'))
-out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/devdata-vm'))
+out['climb'] = m._guard(m._devdata_argv('mkdir', '../etc', root='/bbfix-devdata'))
+out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/bbfix-devdata'))
 
 # What the guard lets through is these commands, rebuilt and compared — not
 # the verb. A run with a bind is root on whatever answers.
@@ -916,15 +920,15 @@ ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
 ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
    '...and not even those unless the daemon is the sandbox VM');
 ok(JSON.stringify(DDD.split[0]) === JSON.stringify(
-     ['/auxiliary/plex-library', '/devdata-vm/sonarr/config', '/devdata-vm/sonarr/data'])
-   && JSON.stringify(DDD.split[1]) === JSON.stringify(['/loneroot']),
+     ['/bbfix-aux/plex-library', '/bbfix-devdata/sonarr/config', '/bbfix-devdata/sonarr/data'])
+   && JSON.stringify(DDD.split[1]) === JSON.stringify(['/bbfix-lone']),
    "every bind under a share of the daemon's is BuilderBot's to make, with "
    + 'nothing declared anywhere — only a bind AT a share root is not, since '
    + 'docker itself creates that one as root');
 ok(DDD.made[0].length === 3 && !DDD.made[1].length
    && JSON.stringify(DDD.made[3]) === JSON.stringify([
-        ['/auxiliary:/d', '/d/plex-library'],
-        ['/devdata-vm:/d', '/d/sonarr/config', '/d/sonarr/data']]),
+        ['/bbfix-aux:/d', '/d/plex-library'],
+        ['/bbfix-devdata:/d', '/d/sonarr/config', '/d/sonarr/data']]),
    '...made by one container per share rather than one per directory');
 ok(/not a share root/.test(DDD.slash) && /not a share root/.test(DDD.nested)
    && !DDD.anyshare && DDD.climb && !DDD.deep,
@@ -1615,7 +1619,10 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   await page.waitForSelector('.dmtab .empty', { timeout: 15000 });
   ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
      'a daemon with no provisioner stamp is refused, and named as the reason');
-  ok(/provision\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+  // The provisioner's own name, which is provision-linux.sh since there is a
+  // macos one beside it. `provision\.sh` matched the name it had before that
+  // and nothing since.
+  ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
      '...saying what to run on the VM, since re-running it is the whole fix');
   rmSync(`${DIR}/dockerstate/unlabelled`, { force: true });
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });

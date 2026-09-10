@@ -40,10 +40,21 @@ jobs:
       - name: Read the repository's version
         id: v
         run: |
+          # BB_RELAYED, because this is a CI checkout under the runner's work
+          # directory and not a project the controller knows: without it `bb
+          # version` tries to relay, finds no session, and answers nothing.
+          # That is what shipped `builderbot-app-.apk` — an artifact named
+          # after an empty string, from a build that reported success.
+          # Every one falls back, so a version that cannot be read costs a
+          # worse name and not a wrong one.
+          sha="$(git rev-parse --short HEAD)"
+          v="$(BB_RELAYED=1 bash scripts/bb version --file 2>/dev/null || true)"
+          s="$(BB_RELAYED=1 bash scripts/bb version --semver 2>/dev/null || true)"
+          c="$(BB_RELAYED=1 bash scripts/bb version --code 2>/dev/null || true)"
           {
-            echo "semver=$(bash scripts/bb version --semver)"
-            echo "code=$(bash scripts/bb version --code)"
-            echo "file=$(bash scripts/bb version --file)"
+            echo "file=${v:-$sha}"
+            echo "semver=${s:-0.0.0-unknown+$sha}"
+            echo "code=${c:-1}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build the debug APK

@@ -5,6 +5,14 @@
 - BuilderBot is 0.5.0: the compatibility window moves, so a node's agent and every project's CLAUDE.md block need updating once, and everything kept for the old window is gone (dbf8170)
 - Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
+- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it (de06bb3)
+- The deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
+- The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
+- Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
+- The Jobs tab shows a page at a time like every other long list, instead of every job ever run (c4352fc)
+- A version bump now moves everything the version is stamped in, in one commit, or refuses (c4352fc)
+- A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
+- Taking a version bump back now returns everything the bump moved, not just the number (9fa9428)
 
 ## 0.5.0 — 2026-09-10
 

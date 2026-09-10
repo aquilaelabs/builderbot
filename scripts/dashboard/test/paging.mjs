@@ -7,7 +7,7 @@
 // that the helper is wired to every list, that a short list is left whole,
 // and that revealing more never drops rows or their behaviour.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 
 // alpha's tracker, made long enough to page. Written straight to the state
 // file: this is about the list's length, not about how reports get filed.
@@ -100,6 +100,55 @@ for (const [what, call] of [
   ['analysis', 'paginate(list, ":scope > .rule"'],
   ['every history', 'paginate(pane, ":scope > .hist"'],
 ]) ok(src.includes(call), what + ' is paged, by the rows it really renders');
+
+// ...and the Jobs tab, which lives in its own file. It is the list that grows
+// without bound — every compose action, exec and agent update stays on it —
+// so it was the one most in need of paging and the one that had none.
+{
+  const jsrc = readFileSync(new globalThis.URL('../tab-jobs.js', import.meta.url), 'utf8');
+  ok(jsrc.includes('paginate(d.list, ":scope > .jbrow"'),
+     'jobs are paged, by the rows the tab really renders');
+}
+
+// ---- one bucket per notebook, not one for all of them ----------------------
+// A notebook is a CLONE of one template, so every id inside it belongs to
+// every open notebook at once. The paging state was keyed on those ids, which
+// made a single bucket shared by all of them — and the branch that leaves a
+// short list whole DELETES its key. So a short artifacts list in one notebook
+// wiped a long one's expansion in another, and the reported symptom was Show
+// more not working: it expanded, then collapsed on the next redraw, a second
+// or two later.
+{
+  mkdirSync(`${DIR}/ws/alpha/dist/pagemany`, { recursive: true });
+  for (let i = 1; i <= 34; i++)
+    writeFileSync(`${DIR}/ws/alpha/dist/pagemany/f-${i}.bin`, 'x');
+  mkdirSync(`${DIR}/ws/beta/dist`, { recursive: true });
+  for (let i = 1; i <= 3; i++) writeFileSync(`${DIR}/ws/beta/dist/b-${i}.bin`, 'x');
+  await page.evaluate(() => { openNotebook('alpha'); openNotebook('beta'); });
+  await page.waitForSelector('.nb[data-project="beta"]', { timeout: 20000 });
+  await page.evaluate(() => { for (const p of ['alpha', 'beta']) getNotebook(p)?.view('artifacts'); });
+  await page.waitForFunction(() => (document.querySelectorAll(
+    '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .artrow') || []).length > 25,
+    null, { timeout: 20000 });
+  const shown = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll(
+      '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .artrow')];
+    return rows.filter(r => !r.hidden).length;
+  });
+  await page.evaluate(() => document.querySelector(
+    '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .pagemore .more')?.click());
+  const opened = await shown();
+  ok(opened > 25, `Show more reveals the next page (${opened} rows)`);
+  // beta's SHORT list redraws, which is all a poll does on a box where
+  // another project's view keeps moving.
+  await page.evaluate(() => { const n = getNotebook('beta'); n?.view('bugs'); n?.view('artifacts'); });
+  await page.evaluate(() => getNotebook('alpha')?.view('artifacts'));
+  await page.waitForTimeout(400);
+  ok(await shown() === opened,
+     `...and a short list in another notebook does not collapse it again (${await shown()} of ${opened})`);
+  rmSync(`${DIR}/ws/alpha/dist/pagemany`, { recursive: true, force: true });
+  rmSync(`${DIR}/ws/beta/dist`, { recursive: true, force: true });
+}
 
 ok((await page.errors).length === 0, 'no console errors from paging');
 await done(browser);

@@ -1,7 +1,7 @@
 # Working inside BuilderBot
 
 <!-- BUILDERBOT:ENV:BEGIN -->
-<!-- BUILDERBOT:ENV:WINDOW 0.4 -->
+<!-- BUILDERBOT:ENV:WINDOW 0.5 -->
 <!-- Everything between these markers is generated from BuilderBot's shipped
      template and is safe to replace wholesale:
          bb claude-md            # is this copy current?
@@ -68,7 +68,7 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
-| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store at `/sdk`, symlinked into place. `bb sdk` lists and installs them |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store at `/sdk`, symlinked into place. `bb packages` lists and installs them |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
@@ -76,7 +76,7 @@ recreated on every image update.
 - `/tmp`, `/var`, and the rest of the root filesystem
 - `/opt` — but most of what looks like it lives there is a symlink onto the
   package store and *does* persist: the Android packages, the Playwright browsers,
-  anything `bb sdk install` put there. What actually comes from the image is
+  anything `bb packages install` put there. What actually comes from the image is
   the bootstrap — `sdkmanager`, `adb`, the CLI tools
 - System packages installed ad hoc with `apt-get install`
 - Running processes, including the emulator and any dev server
@@ -132,7 +132,7 @@ set as permission to open a window on it.
   onto the package store (they are 1.3GB of download, so the image does not carry
   them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
   not need `playwright install` — the container installs them on the first
-  boot of a fresh share, and `bb sdk install playwright` repairs them (if the
+  boot of a fresh share, and `bb packages install playwright` repairs them (if the
   operator removed them deliberately, boot leaves them out and says so) — and
   if a project pins a different version, launch with
   `executablePath: '/opt/pw-browsers/chromium'`
@@ -154,31 +154,31 @@ browsers — live on a share outside it, so which of them exist on *this*
 container is a runtime fact, not something to infer from this file:
 
 ```bash
-bb sdk            # what is installed, where each one lives, and what is not
-bb sdk --local    # ...on this container, when the answer above is a node's
+bb packages            # what is installed, where each one lives, and what is not
+bb packages --local    # ...on this container, when the answer above is a node's
 ```
 
-**`bb sdk` answers for the store this project actually builds with.** With a
+**`bb packages` answers for the store this project actually builds with.** With a
 node, that is the node's — the same machine `bb build`, `bb test` and `bb emu`
 go to — so what it lists is what a build here can use. Without one there is
 nothing: packages are installed on nodes, never on the controller, and a
 project with no node cannot compile. `bb nodes` says which node is this
-project's. (`bb sdk --local` lists the controller's own store, which holds
+project's. (`bb packages --local` lists the controller's own store, which holds
 only what its boot keeps for `bb shot`.)
 
 `bb status` prints the same summary in two lines. Check before concluding a
 tool is missing, and check before reaching for a system package manager —
-the thing you want may be one `bb sdk install` away, or already installed
+the thing you want may be one `bb packages install` away, or already installed
 somewhere PATH does not look until the next shell.
 
 If a project needs one that is not there, **say so and ask** — you cannot
-install it yourself. `bb sdk install` refuses to run from a session and tells
+install it yourself. `bb packages install` refuses to run from a session and tells
 you to hand the decision back: these are gigabytes on someone else's disk.
 The operator does it from the dashboard's Tools tab (Additional packages),
 where the checkboxes and the uninstall controls live, or by running the
 command you offer them.
 
-Installing one is not a reason to edit this file: `bb sdk` is the source of
+Installing one is not a reason to edit this file: `bb packages` is the source of
 truth, and it is accurate the moment something lands.
 
 ## Android
@@ -563,9 +563,7 @@ the same way as roadmap items; `bb rules pending` lists what is waiting.
 Every project has a notebook in the dashboard — the briefing, the roadmap,
 bugs, and the repository's own history, branches and diffs on its Git view,
 one tab each. The roadmap is the shared list of design work, and both
-you and the operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
-conversation that started before the rename does not break mid-task; use
-`bb roadmap`.)
+you and the operator write it.
 
 ```bash
 bb roadmap                      # what is on it
@@ -1015,10 +1013,13 @@ only when the finding is genuinely a false positive, and say why.
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem
   to fix. Do not try to read, copy, or regenerate keys.
-- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set. If it is
-  not, say so rather than inventing another auth path. There is no
-  container-wide git token: a project that needs one carries its own, set in
-  the dashboard's clone dialog.
+- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set, and it
+  answers for GitHub and nothing else. If it is not set, say so rather than
+  inventing another auth path. There is no container-wide git token: a
+  project that needs one carries its own, set when it is cloned or from the
+  chain on its row. A remote may be on any git host — GitHub, a self-hosted
+  Gitea or Forgejo, Codeberg, GitLab, Bitbucket — so do not assume `gh`
+  reaches this project's.
 - **A session's token lasts twelve hours and renews itself while you work.**
   Every `bb` call and every prompt past its halfway mark brings back a fresh
   one, kept where `bb` looks, so a session in use never runs out. One idle
@@ -1078,7 +1079,7 @@ Do not install these. On the controller they are in the image:
 `mise` for per-project tool pinning
 
 No JDK and no Android SDK on the controller: compiling happens on a node.
-There the toolchain is the packages store, and `bb sdk` is the list: the
+There the toolchain is the packages store, and `bb packages` is the list: the
 JDK, the Android SDK, Playwright's browsers with their module, and the lint
 tools are all recipes there, installed from the dashboard's Tools tab with
 that node picked. One `bb lint` check skipping, or `bb shot` failing to

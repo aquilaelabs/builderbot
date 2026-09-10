@@ -162,6 +162,29 @@ fields in; Cancel (`.stop`) puts them away and drops what was typed, and
 Save puts them away having written it. A row Add made has nothing to go
 back to, so cancelling it removes it.
 
+## Long lists
+
+A list that can outgrow a screen shows a page at a time, through `paginate`
+and nothing else — one helper applied to the DOM after a list draws, rather
+than each renderer growing its own. It draws a `.pagemore` footer: what is
+shown of the total, then Show N more, Show all and Fewer as each becomes
+worth offering. It is a bar the framework owns, so it is exempt from the
+action-bar rule and its shape is the same on every list.
+
+Deliberately not numbered pages: these lists are read in an order that means
+something — bugs by severity, jobs newest first, the roadmap by the order
+the work has to happen in — so "page 4" names nothing.
+
+Two judgements are yours. A list that only just crosses the line is left
+whole, which `paginate` does for you. And a list somebody SCANS for a name
+rather than reads in order — the package catalog — is not paged at all,
+because hiding half of it behind a button is worse than a long page.
+
+The state is per list and per notebook. A notebook is a clone of one
+template, so its ids belong to every open notebook at once; a key that
+forgets which notebook it is in is one bucket shared by all of them, which
+is how Show more came to undo itself.
+
 ## The notebook
 
 Every view opens with the same head row: its one-line summary on the left
