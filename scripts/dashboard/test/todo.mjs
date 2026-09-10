@@ -1612,6 +1612,29 @@ await refreshUntil(page, () => /last read the roadmap/.test(
   document.getElementById('nbHere')?.textContent || ''));
 ok(true, 'the notebook says when a session here last read the roadmap');
 
+// ---- the view comes back with a reload; closing the tab forgets it --------
+// The strip and the active pane are the saved layout's; which view a
+// notebook was on is this browser's, so a reload lands where you were. A
+// notebook closed and opened again is a new instance and starts on the
+// strip's first view, as it always did.
+const nbOn = () => page.evaluate(() =>
+  document.querySelector('.pane .nb .nbview:not([hidden])')?.dataset.view);
+await nbTab(page, 'bugs');
+await page.reload(); await ready(page);
+// The pane comes back from the saved layout, which the phone page above
+// wrote last; the view is what is under test here, so the tab is focused —
+// once the layout has been adopted, or the adoption would undo the focus.
+await page.waitForFunction(() => tabs.some(x => x.kind === 'todo'), { timeout: 20000 });
+await page.evaluate(() => focusTab(tabs.find(x => x.kind === 'todo').id));
+await nbShown(page);
+ok(await nbOn() === 'bugs', 'a reload brings the notebook back on the view it was on');
+await page.evaluate(() => hideTab(tabs.find(x => x.kind === 'todo').id));
+await nbGone(page);
+await page.evaluate(() => openNotebook('alpha'));
+await nbShown(page);
+ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb .nbtabs button').dataset.v),
+   '...and a notebook closed and opened again starts on the strip\'s first view');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

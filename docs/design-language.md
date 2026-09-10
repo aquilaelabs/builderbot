@@ -118,7 +118,9 @@ an error band in its own tab, never a dead dashboard.
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
 fold per concern with its status on the heading, open on a desktop and
-closed on a phone. A status is a word or a number, never a sentence.
+closed on a phone. A status is a word or a number, never a sentence. A fold
+keeps its state for the page's life and a reload starts it from the default:
+the sidebar's cards are the one arrangement that is stored.
 
 Every set of two or more text buttons is an action bar (`.actbar`): the
 status on its own `.state` line, the buttons after it at the right, their
@@ -150,7 +152,9 @@ first band of the view and sits at one height on all seven views.
 The view strip is one row on a desktop. On a phone it wraps into rows of
 equal-width tabs rather than scrolling sideways: seven labels do not fit
 393px, and a strip that hides its last two behind an edge is a strip whose
-last two views nobody opens. Every tab stays visible at every width.
+last two views nobody opens. Every tab stays visible at every width. The
+view a notebook is on comes back with a reload, the way the tab strip and
+the active pane do; closing the notebook's tab forgets it.
 
 Adding goes at the top. The control that adds to a view is the first band
 under its head row, above the list, one shape on every view (`.addbar`, a

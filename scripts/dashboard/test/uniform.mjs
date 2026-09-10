@@ -587,6 +587,42 @@ for (const kind of kinds){
      `...and names the classes the page is measured on${undocumented.length ? ` — not: ${undocumented.join(', ')}` : ''}`);
 }
 
+// ---- a fold lasts for the page, and a reload starts it from the default ---
+// Open state is kept while the page lives and never stored (the design
+// language, Sections): closed by hand on a desktop, where the default is
+// open, it stays closed through the repaints and is open again after a
+// reload. Measured on the first open section a driven document tab renders,
+// so the rule is the language's and not one tab's — the notebook is left
+// out because its sections sit on views drawn on demand, and one that was
+// on screen before the reload need not have been drawn after it.
+{
+  let found = null;
+  for (const kind of kinds){
+    if (!DRIVERS[kind] || kind === 'todo') continue;
+    await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                               if (t) focusTab(t.id); }, kind);
+    await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+    const key = await page.evaluate(() =>
+      document.querySelector('.doc.on details.sect[open]')?.dataset.sect || '');
+    if (key){ found = { kind, key }; break; }
+  }
+  ok(found !== null, 'a driven kind renders an open section to measure the fold rule on');
+  if (found){
+    await page.evaluate(k => {
+      document.querySelector(`.doc.on details.sect[data-sect="${k}"]`).open = false;
+    }, found.key);
+    await page.waitForFunction(k => sectOpen[k] === false, found.key, { timeout: 5000 });
+    ok(true, `[${found.kind}] a fold closed by hand stays closed for the page (${found.key})`);
+    await page.reload(); await ready(page);
+    await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                               if (t) focusTab(t.id); }, found.kind);
+    await page.waitForSelector(DRIVERS[found.kind].readyWhen, { timeout: 20000 });
+    const again = await page.evaluate(k =>
+      document.querySelector(`.doc.on details.sect[data-sect="${k}"]`)?.open, found.key);
+    ok(again === true, `[${found.kind}] ...and a reload starts it from its default, open on a desktop`);
+  }
+}
+
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);

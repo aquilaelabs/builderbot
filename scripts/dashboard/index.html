@@ -8560,6 +8560,22 @@ const nbHeldFor = name => !!notebooks.get(name)?.held();
 // the account is the same in both, so the account cannot be the answer.
 const nbClient = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+// Which view a project's notebook is on, kept per browser so a reload comes
+// back to it: the strip and the active pane come back from the saved layout,
+// and this is the one "where was I" that lives inside a tab rather than on
+// the strip. Closing the notebook forgets it (destroy), so a tab opened
+// fresh starts on the strip's first view as it always has.
+const nbViewMemo = {
+  read(){ try{ return JSON.parse(localStorage.getItem("bb.nbview") || "{}"); }catch(e){ return {}; } },
+  keep(project, v){
+    try{
+      const m = this.read();
+      if (v) m[project] = v; else delete m[project];
+      localStorage.setItem("bb.nbview", JSON.stringify(m));
+    }catch(e){ /* no storage */ }
+  },
+};
+
 function getNotebook(project){
   let nb = notebooks.get(project);
   if (!nb){ nb = makeNotebook(project); notebooks.set(project, nb); }
@@ -8684,12 +8700,6 @@ function makeNotebook(project){
   document.getElementById("nbPark").appendChild(root);
   const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
   let loaded = false;
-  // Up here, not beside the code that uses them: setNbView() is called
-  // further down this function than the rules block is written, and the
-  // notebook opens on their view — so `!ruleData` in its first-draw guard
-  // would read a `let` before its initializer and take the whole tab down
-  // with it. That is bug #27's shape; the `tests` binding beside them gets
-  // away with being late only because the panel never opens on that view.
   let ruleData = null, rulePending = null, rulesRev = null;
   // Which rules are open for editing, by row. A rule is READ by default —
   // its name, its text, its triggers — and shows its fields only after Edit,
@@ -10460,6 +10470,7 @@ $("todoRevert").onclick = revertNotebook;
     // is reported on the switch rather than waiting for the next poll — the
     // other window would otherwise name the tab this one just left.
     if (nbWhere !== v){ nbWhere = v; beat(); }
+    nbViewMemo.keep(project, v);
     root.querySelectorAll(".nbtabs button").forEach(b => {
       const on = b.dataset.v === v;
       b.classList.toggle("on", on);
@@ -10524,17 +10535,6 @@ $("todoRevert").onclick = revertNotebook;
   }
   root.querySelectorAll(".nbtabs button").forEach(b =>
     b.onclick = async () => { if (await leaveNbView(b.dataset.v)) setNbView(b.dataset.v); });
-  // Which view a new notebook opens on: the first tab of the strip, read from
-  // the strip rather than marked on one of the buttons, so that reordering it
-  // moves the default with it and the two cannot drift apart.
-  //
-  // That it is only set HERE is the rest of the behaviour, and it is the
-  // instance's lifetime doing the work rather than anything remembering: this
-  // clone is parked and reused while the tab is on the strip, so leaving the
-  // tab and coming back finds the view where you left it — and closing the
-  // tab destroys the instance (see hideTab), so the next open is a new clone
-  // that starts here again.
-  setNbView(root.querySelector(".nbtabs button").dataset.v);
 
   // ---- one History, three tabs ---------------------------------------------
   // The memory and bug views get the same log the roadmap has, through the
@@ -12580,6 +12580,28 @@ become that version's section when it is created">Changelog${
     $("nbReview").onclick = () => openPending(project);
   }
 
+  // Which view a new notebook opens on: the one this browser last had it on,
+  // when that is still a view the strip has — so a reload lands where you
+  // were — and otherwise the first tab of the strip, read from the strip
+  // rather than marked on one of the buttons, so that reordering it moves
+  // the default with it and the two cannot drift apart.
+  //
+  // That it is only set HERE is the rest of the behaviour: this clone is
+  // parked and reused while the tab is on the strip, so leaving the tab and
+  // coming back finds the view where you left it — and closing the tab
+  // destroys the instance (see hideTab), which forgets the view, so the next
+  // open is a new clone that starts on the strip's first view again.
+  //
+  // Last in this function on purpose: the panel can open on any view now,
+  // and each view's first draw reads bindings declared all the way down
+  // here — a `let` read before its initializer takes the whole tab down,
+  // which is bug #27's shape.
+  {
+    const was = nbViewMemo.read()[project];
+    setNbView((was && root.querySelector(`.nbtabs button[data-v="${CSS.escape(was)}"]`)
+                 ? was : root.querySelector(".nbtabs button").dataset.v));
+  }
+
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
@@ -12664,6 +12686,7 @@ become that version's section when it is created">Changelog${
     escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
     destroy(){
       beat(true);
+      nbViewMemo.keep(project, null);
       notebooks.delete(project);
       root.remove();
     },
@@ -14579,13 +14602,15 @@ function docSurface(i, kind){
 
 // A section of a document tab (see "sections and action bars" in the
 // stylesheet): a fold with a title, a one-line status on the right, and the
-// controls inside. `kind:id` is what its open state is remembered under —
-// per browser, like the terminal's own conveniences — and the default is
-// open on a desktop and shut on a phone, so a phone shows headings. Pass
-// `open` to override, which is for a section that IS the answer rather than
-// a place to go and look for it.
-const sectOpen = (() => { try{ return JSON.parse(localStorage.getItem("bb.sect") || "{}"); }
-                          catch(e){ return {}; } })();
+// controls inside. `kind:id` is what its open state is kept under, for this
+// page's life: a fold you opened stays open across every repaint, and a
+// reload starts every fold from its default — open on a desktop and shut on
+// a phone, so a phone shows headings. Not stored, on purpose: a page that
+// came back with last week's folds read as a page somebody else had left,
+// and the sidebar's cards are the one thing here that is meant to stay as
+// you arranged it. Pass `open` to override, which is for a section that IS
+// the answer rather than a place to go and look for it.
+const sectOpen = {};
 // Lanes for a commit graph: commits newest first, each with its parents.
 // The classic walk — a commit takes the lane that was waiting for it (the
 // leftmost, when several were), its first parent inherits that lane, and
@@ -14651,10 +14676,7 @@ function docSection(kind, id, title, status, body, {cls = "", open} = {}){
 }
 function wireSections(root){
   root.querySelectorAll("details.sect").forEach(d => {
-    d.ontoggle = () => {
-      sectOpen[d.dataset.sect] = d.open;
-      try{ localStorage.setItem("bb.sect", JSON.stringify(sectOpen)); }catch(e){ /* no storage */ }
-    };
+    d.ontoggle = () => { sectOpen[d.dataset.sect] = d.open; };
     // Driven, not the browser's instant snap — the same helper the memories,
     // the bug reports, the version tab's fold and the Docker manager's wiring
     // fold already use. A <details> opens at full height by construction, so
