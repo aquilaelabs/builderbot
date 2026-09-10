@@ -396,8 +396,10 @@ bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once — read-only
-bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
-                   read-only; the Jobs tab is where one is stopped
+bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended —
+                   read-only; the Jobs tab is where one is stopped. An id
+                   prints that job's log, which is where a failed job says
+                   what happened rather than only that it failed
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
                    stream the log back; `--out GLOB` brings what matches into
                    dist/ with its provenance; `--node` names another node
@@ -1670,7 +1672,13 @@ where it is — a queued job never starts, a running one is killed and the row
 moves when the runner reports that it did — and nothing edits a job after the
 fact. The checkbox in the bar narrows the list to what is running or waiting.
 `bb jobs` prints the same list read-only, so a session can see what became of
-the work it asked for. `/api/v1/healthz` answers without a credential with
+the work it asked for, and `bb jobs j_1a2b3c4d` prints one job's log. **Both
+are the whole queue, not one project's.** That is deliberate and worth
+knowing: the tab and the API scope a job to projects the account may see, and
+these read the store directly, so a session can be asked to look at why
+something failed on another project — which is the situation somebody is in
+when they ask for help. The log is the only copy: a node buffers it and posts
+it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ### The Settings tab

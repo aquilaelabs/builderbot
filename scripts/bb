@@ -108,7 +108,9 @@ bb — BuilderBot helper
   bb settings [--json]   this project's settings as the dashboard has them (read-only)
   bb work                who else is changing this project, and which files
                          two of you have open at once
-  bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
+  bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended;
+                         an id prints that job's log, which is where a failure
+                         says what happened
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
   bb build               the project's build command, on its node (settings dialog)
@@ -3768,29 +3770,44 @@ for n in rows:
 PY
 }
 
-# The queue, read-only: the recent jobs and what became of them. Same
-# read-only opening of the store as `bb nodes`; a session sees what ran and
-# where, and stops nothing from here — Cancel is the tab's.
+# The queue, read-only: the recent jobs and what became of them, and one
+# job's log. Same read-only opening of the store as `bb nodes`; a session
+# sees what ran and where, and stops nothing from here — Cancel is the tab's.
+#
+# THE LOG IS THE POINT OF `bb jobs ID`. A job's output is posted to the
+# controller and kept nowhere else, and a failed job with an exit code and
+# nothing to read is not something anybody can act on — an apply that came
+# back "exit 1" with an empty pane cost an evening. The listing has never
+# been scoped to one project (it reads the store, not the API), and the log
+# is the same answer one level down: what a session may already see that a
+# job HAPPENED, it may now see the reason.
 cmd_jobs() {
-    local py n=30
+    local py n=30 jid=""
     case "${1:-}" in
         -n) n="${2:-30}" ;;
-        -h|--help) echo "bb jobs [-n N]   the recent jobs: state, node, what, how it ended"; return 0 ;;
+        -h|--help) echo "bb jobs [-n N | ID]   the recent jobs, or one job's log"; return 0 ;;
+        j_*) jid="$1" ;;
+        "") : ;;
+        *) die "bb jobs [-n N | ID] — an id looks like j_1a2b3c4d" ;;
     esac
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
     [ -f "$py" ] || die "nodes.py is missing from this image"
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$n" <<'PY'
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$n" "$jid" <<'PY'
 import importlib.util, os, sys, time
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
-    rows = nodes.jobs_for(n=int(sys.argv[2]))
+    jid = sys.argv[3] if len(sys.argv) > 3 else ""
+    rows = ([nodes.job(jid)] if jid else nodes.jobs_for(n=int(sys.argv[2])))
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
     raise SystemExit(0)
+if jid and not rows[0]:
+    print(f"no such job: {jid}")
+    raise SystemExit(1)
 if not rows:
     print("no jobs yet — a compose action, an exec on a node or an agent update makes one")
     raise SystemExit(0)
@@ -3818,6 +3835,20 @@ for j in rows:
     err = f' — {j["error"]}' if j.get("error") else ""
     print(f'{j["id"]:>12}  {when}  {state:<22} {names.get(j["node"], j["node"] or "any"):<12} '
           f'{what}{took}{err}')
+    if jid:
+        # The log, which is why an id was given. `nodes.job` reads it whole;
+        # a build's can be megabytes, so the tail is what prints unless the
+        # whole thing is small.
+        log = (j.get("log") or "")
+        if not log.strip():
+            print("\n  (this job wrote nothing — not "
+                  + ("still running" if j["state"] in ("queued", "assigned", "running")
+                     else "an empty pane waiting to fill") + ")")
+        else:
+            cut = log[-20000:]
+            print(f"\n  ---- log{' (last 20000 characters)' if cut != log else ''} ----")
+            for ln in cut.splitlines():
+                print("  " + ln)
 PY
 }
 
