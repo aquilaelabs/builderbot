@@ -161,10 +161,10 @@ ok(md.indexOf('A widget frobnicator') > marker,
     { timeout: 20000 });
   const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
   const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  ok(ghosted.off && /another compatibility window \(0\.1 against/.test(ghosted.why),
+  ok(ghosted.off && /older compatibility window \(0\.1 against/.test(ghosted.why),
      `a block from another window ghosts the Claude button, saying which (${ghosted.why.slice(0, 70)})`);
   ok(await page.$eval('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]',
-       a => /another compatibility window/.test(a.textContent)),
+       a => /older compatibility window/.test(a.textContent)),
      '...and the row\'s update link says the same');
   const alert = await page.evaluate(() => (state.attention || []).find(a => a.kind === 'md' && a.project === 'zeta'));
   ok(alert && alert.project === 'zeta' && alert.window && alert.from === '0.1',
@@ -201,6 +201,25 @@ ok(md.indexOf('A widget frobnicator') > marker,
      '...with the bell\'s row gone on its own');
   ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
      '...with the project\'s own notes below the marker untouched');
+
+  // AHEAD is not the same state and must not be held. It is what this repo's
+  // own checkout looks like between a minor bump and the image built from
+  // it: the block describes the BuilderBot the container is about to be, the
+  // session's own bb comes from the container either way, and the remedy the
+  // hold offered made it worse — restamping the block DOWN contradicts the
+  // tree it came from, and rebuilding puts it back. The operator hit exactly
+  // this and lost a session to it.
+  const ahead = String(Number(win) + 0.1).slice(0, 3);
+  writeFileSync(mdPath, current.replace(`BUILDERBOT:ENV:WINDOW ${win} -->`,
+    `BUILDERBOT:ENV:WINDOW ${ahead} -->`));
+  await page.evaluate(() => refresh());
+  await refreshUntil(page, () => (state.projects || []).some(p => p.name === 'zeta'),
+                     { timeout: 20000 });
+  ok(!await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held),
+     `a block from a LATER window is drift, not a hold (${ahead} against ${win})`);
+  ok(await page.$eval(btn, b => !b.disabled),
+     '...so the Claude button stays live on it');
+  writeFileSync(mdPath, current);
 }
 
 // A project made after anything has been pinned is pinned itself. Without

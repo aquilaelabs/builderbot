@@ -1248,7 +1248,14 @@ cmd_claude_md() {
         [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
         local ours theirs
         ours="$(md_window "$TEMPLATE_MD")"; theirs="$(md_window "$target")"
-        [ -n "$ours" ] && [ -n "$theirs" ] && [ "$ours" != "$theirs" ]
+        [ -n "$ours" ] && [ -n "$theirs" ] || return 1
+        [ "$ours" = "$theirs" ] && return 1
+        # Only BEHIND. A block from a later window is a container that has not
+        # been rebuilt yet — the state this repo's own checkout is in between
+        # a bump and its image — and the block over-promises rather than
+        # describing something gone. server.md_gap draws the same line; the
+        # two have to agree or the hook refuses what the controller allows.
+        [ "$(printf '%s\n%s\n' "$ours" "$theirs" | sort -V | head -1)" = "$theirs" ]
         return
     fi
 
@@ -3370,7 +3377,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb packages` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap todo bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+BB_RELAY_VERBS=" roadmap bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
 bb_relay() {
     local auth proj
@@ -5326,9 +5333,7 @@ case "${1:-help}" in
     ci-labels) shift; cmd_ci_labels "$@" ;;
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;
-    # `todo` still works: sessions started before the rename carry it in their
-    # prompt, and a live conversation should not break on a word change.
-    roadmap|todo) shift; cmd_roadmap "$@" ;;
+    roadmap)  shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
@@ -5344,13 +5349,6 @@ case "${1:-help}" in
     shot)     shift; cmd_shot "$@" ;;
     favicon)  shift; cmd_favicon "$@" ;;
     packages) shift; cmd_packages "$@" ;;
-    # The old spelling, accepted and not documented. This is the agent-compat
-    # exception the `unreleased` rule names: a node's agent runs `bb` out of
-    # the bundle the controller hands it, and an agent that has not updated
-    # yet still asks for `sdk`. Any 0.4 agent has to work with any 0.4
-    # controller, so it goes at the minor bump and not before — R30 carries
-    # it with the other things waiting on that moment.
-    sdk)      shift; cmd_packages "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac

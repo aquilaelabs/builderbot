@@ -90,15 +90,9 @@ import urllib.request
 # which is why it is not BuilderBot's patch number: most patches ship no new
 # agent. It does NOT reset at a window boundary — 0.5.28 follows 0.4.27 — so
 # that "which of these two is newer" always has an answer. A reset would put
-# the same number on two different agents, which is what made PROTOCOL below
-# useless.
-AGENT_VERSION = "0.4.42"
-
-# Superseded by the window above and kept only because removing a field the
-# controller still sends is itself a compatibility break: it goes at 0.5.0.
-# Nothing has ever compared it — both sides declared a 1 and neither looked —
-# which is the whole reason the window exists instead.
-PROTOCOL = 1
+# the same number on two different agents, and a number that cannot say which
+# is newer is the reason the flat protocol number this replaced was useless.
+AGENT_VERSION = "0.5.43"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")

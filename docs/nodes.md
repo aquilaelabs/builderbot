@@ -440,8 +440,8 @@ is a convenience; at fleet scale it is the difference between a protocol that
 can evolve and one frozen by its oldest node.
 
 **That version is `WINDOW.BUILD`, and only the first half is a promise.** The
-window is BuilderBot's own semver minor: while the project is `0.4.x`, any
-`0.4` agent works with any `0.4` controller, in both directions. `0.5.0` is
+window is BuilderBot's own semver minor: while the project is `0.5.x`, any
+`0.5` agent works with any `0.5` controller, in both directions. `0.6.0` is
 where that ends, and it is therefore where a breaking change to this protocol
 and the removal of the compatibility paths carrying old ones belong. Inside a
 window: add, do not change — a field gains a default rather than a new
@@ -467,10 +467,14 @@ minor by the same test that holds the agent's, and a project's copy from
 another window is treated the way an agent from one is: the block described
 a different BuilderBot, so sessions on that project are ended and refused
 until `bb claude-md --update` restamps it. A block merely behind inside the
-window is drift — the row offers the update and nothing stops. The older `protocol`
-integer, which both sides declared and neither ever compared, is superseded
-by this and is removed at `0.5.0` — removing a field the other side may still
-read being exactly the kind of break the window exists to schedule.
+window is drift — the row offers the update and nothing stops.
+
+`0.5.0` was such a boundary and is what it looks like in practice: the flat
+`protocol` integer both sides declared and neither ever compared went, along
+with every read that tolerated an agent from before a census field existed,
+the two spellings of a project's node, the session token minted before an
+account rode along, and two migrations that had run everywhere. Nothing was
+kept for a `0.4` agent, which is the whole meaning of the number moving.
 
 ### Tailscale
 

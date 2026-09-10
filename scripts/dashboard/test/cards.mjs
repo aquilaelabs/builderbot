@@ -564,9 +564,24 @@ await page.waitForSelector('#aboutModal', { state: 'hidden' });
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
      'an account that has not read the guide gets the panel on sign-in, open on the guide — the administrator\'s, for an owner');
   await page.click('.abswitch [data-ab="log"]');
-  await page.waitForFunction(() => /Unreleased|Nothing logged/.test(document.querySelector('#abLog')?.textContent || ''), null, { timeout: 15000 });
-  ok(await page.$eval('#abLog', e => !e.hidden && /not yet a numbered release/.test(e.textContent)),
-     '...and the switch shows the changelog, from the file beside the server');
+  // Whatever the top section is: Unreleased while entries are accumulating,
+  // a dated number the moment somebody bumps. Asserted on the SHAPE — a
+  // heading and at least one line under it — rather than on the wording of
+  // one of the two, which a bump changes and which reddened this file the
+  // day 0.5.0 was cut.
+  // Waited on the rendered shape, not on "any text": the panel is filled by
+  // a fetch, and a wait that any non-empty content satisfies returns while
+  // the list is still being written.
+  await page.waitForFunction(() => {
+    const e = document.querySelector('#abLog');
+    return e && !e.hidden && e.querySelector('h4') && e.querySelector('li');
+  }, null, { timeout: 15000 });
+  const logShown = await page.$eval('#abLog', e => ({
+    hidden: e.hidden, h4: !!e.querySelector('h4'), li: !!e.querySelector('li'),
+    text: (e.textContent || '').slice(0, 90) }));
+  ok(!logShown.hidden && logShown.h4 && logShown.li,
+     `...and the switch shows the changelog, from the file beside the server (${
+       JSON.stringify(logShown)})`);
   await page.click('#aboutClose');
   await page.waitForSelector('#aboutModal', { state: 'hidden' });
   await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).welcome.seen === true, null, { timeout: 10000 });

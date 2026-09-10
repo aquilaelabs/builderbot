@@ -20,7 +20,6 @@ count lives in each record rather than in a constant here, so raising it later
 upgrades people as they sign in instead of locking everybody out at once.
 """
 import base64
-import contextlib
 import hashlib
 import hmac
 import json
@@ -99,16 +98,6 @@ def load():
         return {"users": {}}
     if not isinstance(d.get("users"), dict):
         return {"users": {}}
-    # Backfilled rather than migrated: accounts predate the id, and the first
-    # read after an upgrade is the only place that can give them one without
-    # a migration step somebody has to remember to run.
-    missing = [n for n, u in d["users"].items()
-               if isinstance(u, dict) and not u.get("uid")]
-    if missing:
-        for n in missing:
-            d["users"][n]["uid"] = mint_uid()
-        with contextlib.suppress(Exception):     # a read must not fail on this
-            _save(d)
     return d
 
 
@@ -626,21 +615,14 @@ def session_principal(tok):
     try:
         body = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode()
         parts = body.split("|")
-        # Three fields before the signature now; two from a token minted
-        # before the account rode along, still good until it expires and
-        # not to be refused on the day this lands.
-        if len(parts) == 4:
-            project, exp, uid, sig = parts
-        elif len(parts) == 3:
-            project, exp, sig = parts
-            uid = ""
-        else:
+        if len(parts) != 4:
             return None
+        project, exp, uid, sig = parts
     except (ValueError, UnicodeDecodeError):
         return None
     if not exp.isdigit() or int(exp) < time.time():
         return None
-    signed = f"{project}|{exp}|{uid}" if len(parts) == 4 else f"{project}|{exp}"
+    signed = f"{project}|{exp}|{uid}"
     want = hmac.new(_session_key(), signed.encode(), hashlib.sha256).hexdigest()[:32]
     if not hmac.compare_digest(sig, want):
         return None

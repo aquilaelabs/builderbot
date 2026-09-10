@@ -1,7 +1,7 @@
 # Working inside BuilderBot
 
 <!-- BUILDERBOT:ENV:BEGIN -->
-<!-- BUILDERBOT:ENV:WINDOW 0.4 -->
+<!-- BUILDERBOT:ENV:WINDOW 0.5 -->
 <!-- Everything between these markers is generated from BuilderBot's shipped
      template and is safe to replace wholesale:
          bb claude-md            # is this copy current?
@@ -563,9 +563,7 @@ the same way as roadmap items; `bb rules pending` lists what is waiting.
 Every project has a notebook in the dashboard — the briefing, the roadmap,
 bugs, and the repository's own history, branches and diffs on its Git view,
 one tab each. The roadmap is the shared list of design work, and both
-you and the operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
-conversation that started before the rename does not break mid-task; use
-`bb roadmap`.)
+you and the operator write it.
 
 ```bash
 bb roadmap                      # what is on it
@@ -1015,10 +1013,13 @@ only when the finding is genuinely a false positive, and say why.
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem
   to fix. Do not try to read, copy, or regenerate keys.
-- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set. If it is
-  not, say so rather than inventing another auth path. There is no
-  container-wide git token: a project that needs one carries its own, set in
-  the dashboard's clone dialog.
+- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set, and it
+  answers for GitHub and nothing else. If it is not set, say so rather than
+  inventing another auth path. There is no container-wide git token: a
+  project that needs one carries its own, set when it is cloned or from the
+  chain on its row. A remote may be on any git host — GitHub, a self-hosted
+  Gitea or Forgejo, Codeberg, GitLab, Bitbucket — so do not assume `gh`
+  reaches this project's.
 - **A session's token lasts twelve hours and renews itself while you work.**
   Every `bb` call and every prompt past its halfway mark brings back a fresh
   one, kept where `bb` looks, so a session in use never runs out. One idle

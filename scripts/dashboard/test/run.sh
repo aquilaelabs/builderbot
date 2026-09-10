@@ -218,6 +218,12 @@ mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 mkdir -p "$S/ws/vendored-junk/deep" && echo x > "$S/ws/vendored-junk/deep/thing.py"
 # delta is the locked one: kept, run by the operator, and read-only.
 echo '["delta"]' > "$S/state/locked-projects.json"
+# alpha may push, on the deploy key its remote uses. Stated here rather than
+# left to a migration: the one-off that used to grant this on first boot went
+# at 0.5.0, and a fixture that leans on a migration is a fixture that breaks
+# on the day the migration is finally deleted.
+printf '{"alpha":{"repo":"owner/alpha","host":"github.com","how":"key","at":1756000000}}\n' \
+    > "$S/state/push-rights.json"
 # A git that stalls on one magic URL and is the real git for everything else.
 # Cloning is a background job now, and the two properties that matters for —
 # it outlives the page, and it can be stopped — can only be checked against a

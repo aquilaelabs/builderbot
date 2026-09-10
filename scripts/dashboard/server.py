@@ -258,7 +258,7 @@ LOGIN_HTML = """<!doctype html>
 # BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
 # is either refused on arrival or never sent.
 RELAY_VERBS = frozenset((
-    "roadmap", "todo", "bug", "bugs", "tests", "rules", "history", "version",
+    "roadmap", "bug", "bugs", "tests", "rules", "history", "version",
     "changelog", "work",
     "findings", "findings-history", "catchup", "claude-md", "claudemd",
     "settings", "nodes", "jobs", "ci-labels",
@@ -1127,24 +1127,46 @@ def md_window(path):
 
 
 def md_gap(path):
-    """A sentence when a project's block is from ANOTHER compatibility window
-    than the template this controller ships, else "".
+    """A sentence when a project's block is from an EARLIER compatibility
+    window than the template this controller ships, else "".
 
     The window is the same promise the agent's is (nodes.agent_window): while
-    BuilderBot is 0.4.x, a 0.4 block briefs a session truthfully enough for
+    BuilderBot is 0.5.x, a 0.5 block briefs a session truthfully enough for
     it to work, and drift inside the window — a feature the block does not
     mention yet — is routine: the row offers the update, and nothing stops
-    for it. Across a window that promise was never made, and a session
-    briefed with the old block would be told about a different container
-    — so that is the one state a session is refused, ghosted and ended over,
-    until the block is updated (compat_reap_once, bb-tty, the row's button).
+    for it. A block from an earlier window is the state a session is refused,
+    ghosted and ended over, until it is updated (compat_reap_once, bb-tty,
+    the row's button): it describes a BuilderBot that no longer exists, so it
+    would brief a session about verbs that are gone.
+
+    A block from a LATER window is not that, and holding one was a bug the
+    operator hit: it happens on the project whose checkout IS the next
+    version, where the container has simply not been rebuilt yet. Nothing is
+    broken there — the block over-promises rather than misleading, and the
+    session's own `bb` comes from the container either way — and the remedy
+    the message offered made it worse, since restamping the block DOWN to the
+    container's window immediately contradicts the tree it was generated
+    from, and updating the container puts it back. A gate whose fix
+    oscillates is not a gate. So: ahead is drift, told once, stopping
+    nothing.
     """
     ours, theirs = md_window(TEMPLATE_MD), md_window(path)
     if not ours or not theirs or ours == theirs:
         return ""
-    return (f"CLAUDE.md's environment block is from another compatibility window "
+    if _win(theirs) > _win(ours):
+        return ""
+    return (f"CLAUDE.md's environment block is from an older compatibility window "
             f"({theirs} against {ours}) — a session briefed with it would be told about "
             "a different BuilderBot. The update link on the row fixes it in one press")
+
+
+def _win(w):
+    """A window as a comparable pair. Unreadable sorts lowest, which only
+    reaches a comparison the callers have already guarded with `if not`."""
+    try:
+        return tuple(int(x) for x in str(w).split(".")[:2])
+    except ValueError:
+        return (0, 0)
 
 
 def node_holds():
@@ -1589,12 +1611,15 @@ def project_list(who):
                 elif (md := md_state(d / "CLAUDE.md")) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
-                    # every time the image gains a feature. From another
+                    # every time the image gains a feature. From an OLDER
                     # window it is the same link with the sharper words —
-                    # that one stops the project's sessions until pressed.
+                    # that one stops the project's sessions until pressed. A
+                    # block from a later window is drift like any other: the
+                    # container has not been rebuilt yet, which md_gap says
+                    # more about.
                     md_hold = md_gap(d / "CLAUDE.md")
                     issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": ("CLAUDE.md environment block is from another "
+                                   "text": ("CLAUDE.md environment block is from an older "
                                             f"compatibility window ({md_window(d / 'CLAUDE.md')} "
                                             f"against {md_window(TEMPLATE_MD)}) — update")
                                    if md_hold else
@@ -1883,8 +1908,9 @@ def session_target(project, here=False):
                f"from {when}. If it is restarting, its sessions are back when it dials in")
         passing = True
     elif not isinstance(se, dict):
-        why = (f"{project}'s sessions run on {name}, whose agent predates sessions on a "
-               "node — update the agent from the Nodes tab")
+        why = (f"{project}'s sessions run on {name}, which has not reported a "
+               "session half yet — give it a moment, or provision it with "
+               "--session-user")
     elif not se.get("up"):
         why = (f"{project}'s sessions run on {name}, which runs none yet"
                + (f": {se['why']}" if se.get("why") else
@@ -2552,49 +2578,6 @@ forges.configure(run=run, state=STATE, write_json=write_json)
 
 import projects                                                  # noqa: E402
 
-def _seed_push_rights():
-    """One-off: the projects that were already being pushed to keep pushing.
-
-    Before this existed, whether a working copy could push was whatever its
-    remote and the agent's keys happened to allow — and on this box that means
-    every repo addressed over ssh through a deploy-key alias. Starting to
-    refuse those would be taking away something that worked, to enforce a rule
-    made afterwards, which is not what a new rule is for.
-
-    So: absent the file, every project whose GitHub remote is an ssh one is
-    granted, recorded as `key`, and the file exists from then on. https
-    remotes are not seeded — those authenticated with the container-wide PAT,
-    which is the arrangement being moved away from, and a token of their own
-    is the way back to pushing.
-    """
-    if (STATE / "push-rights.json").exists() or not WORKSPACE.is_dir():
-        return
-    seeded = {}
-    try:
-        here = sorted(WORKSPACE.iterdir())
-    except OSError:
-        return
-    for d in here:
-        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
-            continue
-        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
-        host = _remote_host(remotes) if remotes.strip() else ""
-        if host.lower().split(":")[0] != "github.com":
-            continue
-        # ssh, in either spelling — an https remote is the PAT arrangement.
-        if not any(l.split()[1].startswith(("git@", "ssh://"))
-                   for l in remotes.splitlines() if len(l.split()) > 1):
-            continue
-        repo = projects.repo_of_remotes(remotes)
-        if repo and repo not in {v["repo"] for v in seeded.values()}:
-            seeded[d.name] = {"repo": repo, "host": host, "how": "key",
-                              "at": int(time.time())}
-    write_json(STATE / "push-rights.json", seeded)
-    if seeded:
-        print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
-              f"already pushing over ssh", flush=True)
-
-
 # ---- the operator's house rules ---------------------------------------------
 # The one thing in the notebook a session reads and cannot write. It rides in
 # front of every session started here; claude_scope() in bb-tty denies the
@@ -2731,13 +2714,6 @@ logs.prune()
 import prefs                                                     # noqa: E402
 
 prefs.configure(write_json=write_json, state=STATE)
-# The old shape was one global pair. Moved onto each project here, once, with
-# the project list this only has at runtime — so an install that had a standing
-# preference keeps exactly it, per project, and can then diverge.
-try:
-    prefs.migrate([d.name for d in WORKSPACE.iterdir() if d.is_dir()])
-except OSError:
-    pass                    # no workspace to read: nothing to migrate onto
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -2811,35 +2787,6 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data)
 
-_seed_push_rights()
-
-
-def _stamp_push_hosts():
-    """Put the host on push grants written before there was more than one.
-
-    A grant records which repository a project owns the right to push to, and
-    that identity used to be `owner/repo` alone — true while GitHub was the
-    only host anything could be linked to, and wrong the moment the same
-    `sean/app` can exist on GitHub and on a Gitea in the cupboard. Records
-    made before this ran name no host, and every one of them is GitHub's,
-    because nothing else could be linked.
-
-    Runs once, like _seed_push_rights above it, and for the same reason: a
-    rule that arrives after the data has to say what the old data meant, once,
-    rather than every read of it forever.
-    """
-    d = projects.load_push()
-    stale = [k for k, v in d.items() if isinstance(v, dict) and not v.get("host")]
-    if not stale:
-        return
-    for k in stale:
-        d[k]["host"] = "github.com"
-    projects.save_push(d)
-    print(f"[dashboard] {len(stale)} push grant(s) stamped as github.com — "
-          f"they were made when it was the only host", flush=True)
-
-
-_stamp_push_hosts()
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4524,12 +4471,11 @@ class Handler(BaseHTTPRequestHandler):
             # Everything else in this dialog is the project's own; the node is
             # not, because a node is shared and moving a project onto one
             # reaches every other project there.
-            if ("node" in req or "dockernode" in req) \
-                    and self._refused("node", name):
+            if "node" in req and self._refused("node", name):
                 return
             r = prefs.set_prefs(name, model=req.get("model"),
                                 effort=req.get("effort"),
-                                node=req.get("node") if "node" in req else req.get("dockernode"),
+                                node=req.get("node"),
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),

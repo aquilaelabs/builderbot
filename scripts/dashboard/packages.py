@@ -836,8 +836,8 @@ def payload_for_node(nid):
         # absence, so say nothing rather than "not installed".
         # The node's own `bb packages versions` first — the same generator this
         # controller runs for its own list, so one store is described one
-        # way. The census's toolchains dict is the fallback for an agent too
-        # old to report it, and it is a placement summary rather than an
+        # way. The census's toolchains dict is the fallback for a node that
+        # has not run it yet, and it is a placement summary rather than an
         # inventory: it answers for six names, says "present" where it cannot
         # parse, and hands back an unstripped "go version go1.27.0
         # linux/amd64". That difference is what the operator was looking at.
@@ -900,8 +900,8 @@ def payload_for_node(nid):
     here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # The node's own scope under the store (roadmap R19), where its
-            # packages actually are; an older agent reports no scope and
-            # the share itself is the honest fallback.
+            # packages actually are. The share itself where the node has not
+            # reported one yet.
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
@@ -939,7 +939,7 @@ def _store_share(n):
     arbitration never engaged for it.
 
     The mount source stays as the fallback, for a node whose store has no
-    marker yet — a read-only share, or an agent too old to report the id.
+    marker yet — a read-only share is the case that has to keep working.
     """
     rep = n.get("reported") or {}
     store = (rep.get("stores") or {}).get("packages") or {}

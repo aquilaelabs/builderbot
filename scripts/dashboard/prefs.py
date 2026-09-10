@@ -100,11 +100,8 @@ def _clean(rec):
             # this project does on a node goes — its containers, builds,
             # tests, CI and emulation. One setting, by the operator's
             # decision (1 Sep): per-role pickers were more control than
-            # anybody wanted. A node id, "" meaning none; older records
-            # spelled it dockernode or nodes.build, and both still read.
-            "node": str(rec.get("node") or rec.get("dockernode")
-                        or (rec.get("nodes") or {}).get("build") or "")[:40]
-                    if isinstance(rec.get("nodes", {}), dict) else str(rec.get("node") or "")[:40],
+            # anybody wanted. A node id, "" meaning none.
+            "node": str(rec.get("node") or "")[:40],
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -217,11 +214,9 @@ def all_projects(workspace=None):
 
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
-              outputs=None, dockernode=None, gate=None, gitpol=None,
+              outputs=None, gate=None, gitpol=None,
               edits=None, workspace=None):
-    """Change any of one project's settings; None leaves it, "" clears it.
-    `dockernode` is the old name for `node`, kept for a caller that still
-    says it."""
+    """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
     with _lock:
@@ -235,8 +230,6 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
             if effort not in EFFORTS and effort != "":
                 return {"error": f"not an effort this can set: {effort}"}
             cur["effort"] = effort
-        if node is None and dockernode is not None:
-            node = dockernode
         if node is not None:
             cur["node"] = str(node)[:40]
         if build is not None:
@@ -304,26 +297,3 @@ def forget(project):
             write_json(FILE, d)
 
 
-def migrate(projects):
-    """One-time move of the old global pair onto every project that exists.
-
-    Called at startup with the current project list. Behaviour-preserving on
-    purpose: an install that had "opus, max" standing for everything keeps
-    exactly that, per project, and can then diverge. A file already in the new
-    shape is left alone, so this is a no-op on every boot after the first.
-    """
-    try:
-        with open(FILE) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return
-    if not isinstance(d, dict) or "projects" in d:
-        return
-    old = {"model": d.get("model") if d.get("model") in MODELS else "",
-           "effort": d.get("effort") if d.get("effort") in EFFORTS else ""}
-    new = {"projects": {}}
-    if old["model"] or old["effort"]:
-        for name in projects:
-            new["projects"][name] = dict(old)
-    with _lock:
-        write_json(FILE, new)
