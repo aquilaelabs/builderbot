@@ -292,7 +292,10 @@ ok(await page.$eval(`${box} .tstP`, e => e.value)
   writeFileSync(LOG, runlog([['wait.mjs', 'a boot that really takes thirty seconds', 30.0]]));
   bb('ingest', LOG);
   const row = '#tstList .tst[data-key="wait.mjs#1"]';
-  await page.evaluate(() => notebooks.get('alpha').reloadTests());
+  // Through the poll, which keeps testsRev in step: a direct reloadTests()
+  // leaves the rev behind, and the next poll redraws the list a second
+  // time, in the middle of the ticking below (B79).
+  await page.evaluate(() => refresh());
   await page.waitForSelector(row, { timeout: 10000 });
   ok(await page.$eval(row, e => /wait\?/.test(e.querySelector('.pill.warn')?.textContent || '')),
      'a flagged row wears the warning pill');
