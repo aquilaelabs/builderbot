@@ -1164,6 +1164,56 @@ ok(!await page.$eval('#rnModel', e => e.disabled)
    'with no session running it simply applies at the next start');
 await page.click('#rnCancel');
 
+// Saving and interrupting are two decisions, and only one of them is asked
+// about. Declining the restart used to return before anything was written, so
+// somebody who wanted the setting kept and their conversation left alone got
+// neither — and restarting the session by hand afterwards changed nothing,
+// because there was nothing stored to read (B88).
+{
+  tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
+  await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
+                     { timeout: 20000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.selectOption('#rnEdits', 'accept');
+  // The harness accepts every dialog; this one has to be refused, which is
+  // the whole case. Put the standing handler back afterwards.
+  const auto = page.listeners('dialog')[0];
+  page.off('dialog', auto);
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
+                             { timeout: 15000 });
+  page.on('dialog', auto);
+  ok(/Cancel saves the setting/.test(asked),
+     'a running session is asked about, and the question says Cancel still saves');
+  await refreshUntil(page, () => (state?.projects || [])
+    .find(p => p.name === 'alpha')?.prefs?.edits === 'accept', { timeout: 20000 });
+  ok(true, '...and declining the restart still saves the setting');
+  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
+     '...while the session it declined to restart is still running');
+  // Back to the default, so nothing after this runs against a project whose
+  // sessions were left on another mode. The session goes FIRST: with nothing
+  // running there is nothing to interrupt, so this save asks nothing and the
+  // standing accept-everything dialog handler is not put in the way of it.
+  tmuxKill('claude-alpha');
+  await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')),
+                     { timeout: 20000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.selectOption('#rnEdits', 'ask');
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
+                             { timeout: 15000 });
+  // `|| 'ask'` because a record back at every default is REMOVED rather than
+  // stored — the file says only what somebody chose — so the row carries no
+  // edits key at all, which every reader of it defaults the same way.
+  await refreshUntil(page, () => ((state?.projects || [])
+    .find(p => p.name === 'alpha')?.prefs?.edits || 'ask') === 'ask',
+    { timeout: 20000 });
+}
+
 // Ghosted where no session can start. Unlike the credential fields above there
 // is no typing that brings this back, so the reason is the whole message.
 await page.click(`.doc .projtab [data-k="gamma"]`);

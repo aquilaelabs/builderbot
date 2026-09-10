@@ -13665,11 +13665,22 @@ async function rnSubmit(){
   // Asked before anything is written, and only when it costs something: a
   // session that is not running has nothing to interrupt, and a dialog that
   // was opened and closed unchanged should never ask at all.
-  if (prefChanged && running
-      && !confirm(`Restart the Claude session in ${name}?\n\n`
-        + `Changing what it runs on takes effect when it starts, so saving `
-        + `restarts it. The conversation is resumed — anything it is in the `
-        + `middle of doing right now is lost.`)) return;
+  //
+  // The answer decides the RESTART and nothing else. It used to decide the
+  // save as well — declining returned before anything was written — so
+  // somebody who wanted the setting kept and the conversation left alone got
+  // neither: the dialog stayed open looking unsaved, the setting never
+  // landed, and restarting the session by hand afterwards changed nothing,
+  // because there was nothing to read. Saving and interrupting are two
+  // decisions and only one of them was being asked about.
+  const restartNow = !(prefChanged && running)
+    ? false
+    : confirm(`Restart the Claude session in ${name} now?\n\n`
+        + `What it runs on is read when a session starts, so this takes `
+        + `effect at the next one either way. OK restarts it now — the `
+        + `conversation is resumed, but anything it is in the middle of `
+        + `doing is lost. Cancel saves the setting and leaves the session `
+        + `alone.`);
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -13687,15 +13698,20 @@ async function rnSubmit(){
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
-                              restart: running && prefChanged})});
+                              restart: restartNow})});
       const j = await r.json();
       if (j.error) return stop(j.error);
-      // Said out loud when it did not happen: the setting is saved either way,
-      // and a session quietly left on the old model is exactly the confusion
-      // this whole change exists to remove.
+      // Said out loud when it did not happen, and which of the two reasons it
+      // is: a session quietly left on the old model is exactly the confusion
+      // this whole thing exists to remove, and a session deliberately left
+      // running is not a fault to colour red.
       if (running && prefChanged && !j.restarted)
-        notify(`${name}: saved, but the session was not restarted — `
-               + (j.why || "it is still on what it started with"), true);
+        notify(restartNow
+                 ? `${name}: saved, but the session was not restarted — `
+                   + (j.why || "it is still on what it started with")
+                 : `${name}: saved. Its running session keeps what it started `
+                   + `with until you restart it.`,
+               restartNow);
     }
     if (!needRename){
       closeRename();
