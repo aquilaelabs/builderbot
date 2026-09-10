@@ -542,7 +542,56 @@ def _cl_guard(project, where):
     return None
 
 
-def _seal(project, where, ver_rel, value, msg, env=None):
+# The one hook a repository gets on its own version, and the reason it
+# exists: a project may carry the same number somewhere else, and a bump that
+# moves one and not the other commits a lie.
+#
+# BuilderBot is the case. Its minor IS the compatibility window, stamped again
+# in the agent's AGENT_VERSION and in the CLAUDE.md template's WINDOW line, and
+# 0.5.0 only came out consistent because a person moved both by hand before
+# pressing Bump (B91). A test holds the three equal — but after the commit,
+# and only if somebody runs it.
+#
+# Generic on purpose: this module serves every project and must not know what
+# an agent is. A repo declares its own stamps by carrying an executable
+# `tools/version-stamp`, run from the repo root with the new version and the
+# part that moved. Whatever it changes is committed with VERSION, so the bump
+# stays one commit. A repo without one is unaffected.
+STAMP_HOOK = "tools/version-stamp"
+
+
+def _stamp(project, value, part, env=None):
+    """Run the repo's own stamp hook. ([paths it changed], "") or ([], why)."""
+    r = root(project)
+    hook = r / STAMP_HOOK
+    if not (hook.is_file() and os.access(hook, os.X_OK)):
+        return [], ""
+    # status, not diff: a stamp may CREATE a file, and an untracked one is
+    # invisible to `git diff`. That is how the first version of this committed
+    # VERSION alone while the hook's own output sat in the worktree.
+    def touched():
+        out = _git(project, "status", "--porcelain", "--untracked-files=all") or ""
+        got = set()
+        for line in out.splitlines():
+            if len(line) > 3:
+                got.add(line[3:].split(" -> ")[-1].strip().strip('"'))
+        return got
+
+    before = touched()
+    try:
+        p = subprocess.run([str(hook), value, part], cwd=str(r),
+                           capture_output=True, text=True, timeout=60,
+                           check=False,
+                           env={**os.environ, **env} if env else None)
+    except (OSError, subprocess.SubprocessError) as e:
+        return [], f"{STAMP_HOOK} could not be run, so nothing was moved: {e}"
+    if p.returncode != 0:
+        return [], (f"{STAMP_HOOK} failed, so nothing was moved: "
+                    + ((p.stdout or "") + (p.stderr or "")).strip()[-300:])
+    return sorted(touched() - before), ""
+
+
+def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
     """Roll the changelog, stage, and commit — the tail init and bump share.
 
     Every failure names what actually happened to BOTH files, because by this
@@ -564,6 +613,13 @@ def _seal(project, where, ver_rel, value, msg, env=None):
                          + (f", and {cl_rel} is dated for it" if cl_rel else ""),
                 "target": value}
     paths = [ver_rel]
+    # Whatever the repo's own stamp hook moved, in the same commit: the point
+    # of the hook is that these numbers travel together.
+    for x in extra:
+        if _git(project, "add", "--", x) is None:
+            note = (note + "; " if note else "") + f"{x} was changed by {STAMP_HOOK} but could not be staged"
+        else:
+            paths.append(x)
     if cl_rel is not None:
         if _git(project, "add", "--", cl_rel) is None:
             note = (f"{cl_rel} was dated for {value} but could not be staged "
@@ -728,9 +784,22 @@ def bump(project, part, by="claude", comp="", env=None):
     # two across commits would let one land without the other. Uncommitted
     # ENTRY lines are swept in deliberately (dating them is what a bump means
     # for them); a STAGED edit was refused above, before anything moved.
-    r = _seal(project, where, rel, new, msg, env=env)
+    # The repo's own stamps, before the commit is made — a hook that fails
+    # stops the bump rather than leaving a number moved and its twin behind.
+    # Only for the project itself: a component's version is its own and does
+    # not carry the repository's promises.
+    extra = []
+    if not comp:
+        extra, why = _stamp(project, new, part, env=env)
+        if why:
+            try:
+                p.write_text(tgt + "\n", encoding="utf-8")
+            except OSError:
+                pass
+            return {"error": why}
+    r = _seal(project, where, rel, new, msg, env=env, extra=extra)
     if r.get("ok"):
-        r.update(was=tgt, part=part, component=comp)
+        r.update(was=tgt, part=part, component=comp, stamped=extra)
     return r
 
 

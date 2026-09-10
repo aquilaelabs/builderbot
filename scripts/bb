@@ -3379,8 +3379,37 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
 BB_RELAY_VERBS=" roadmap bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
+# revalidate_tree — open the files a relayed verb may have written, so this
+# machine sees them.
+#
+# The projects share is NFS, and a relayed verb runs on the CONTROLLER: the
+# write lands on the server while this node keeps serving cached attributes
+# for the file until its attribute cache expires. git decides a file is
+# unchanged from (mtime, size), so inside that window `git status` says clean
+# and `git add -A` stages the OLD blob — with no error. It shipped: a01cbeb
+# committed this repo's CLAUDE.md at the previous compatibility window an hour
+# after the file had been rewritten and verified (B90).
+#
+# `git update-index --really-refresh` does NOT fix it — measured 6 times out
+# of 6, it re-stats and gets the same cached answer. Opening the file does:
+# NFS close-to-open consistency revalidates a file's attributes with the
+# server on open, which is the guarantee this leans on, and it cleared the
+# window 6 times out of 6.
+#
+# So: read them. It is the whole list of files any bb verb writes into a
+# project tree — its notes, its changelog and its version, at the root and one
+# level down for a component — and they are small enough that doing it after
+# every relayed verb costs nothing and forgets nothing.
+revalidate_tree() {
+    local f
+    for f in CLAUDE.md CHANGELOG.md VERSION */CLAUDE.md */CHANGELOG.md */VERSION; do
+        [ -f "$f" ] && cat -- "$f" >/dev/null 2>&1
+    done
+    return 0
+}
+
 bb_relay() {
-    local auth proj
+    local auth proj rc
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
     BB_RELAY_PROJECT="$proj" python3 - "$auth" "$@" <<'PY'
@@ -3399,6 +3428,9 @@ sys.stderr.write(r.get("err") or "")
 sys.stdout.flush()
 sys.exit(int(r.get("code") or 0))
 PY
+    rc=$?
+    revalidate_tree
+    return $rc
 }
 
 # run_here ROLE [GLOB...] -- CMD... — `bb run` on the node the session is on:

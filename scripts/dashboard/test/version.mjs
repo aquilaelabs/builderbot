@@ -6,7 +6,7 @@
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
 import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL } from './lib.mjs';
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -880,6 +880,57 @@ await page.evaluate(async () => {
 // and folding it into this assertion would blunt the thing it exists to catch.
 const cleanSoFar = [...(await page.errors)];
 ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFar.length ? ' — got: ' + JSON.stringify(cleanSoFar.slice(0, 3)) : ''}`);
+
+
+// ---- a repo's own stamps travel with the number ----------------------------
+// A project may carry its version somewhere else, and a bump that moves one
+// and not the other commits a lie. BuilderBot is the case: its minor IS the
+// compatibility window, written again in the agent and in the CLAUDE.md
+// template, and 0.5.0 only came out consistent because a person moved both by
+// hand before pressing Bump (B91).
+//
+// The hook is generic — an executable tools/version-stamp, run from the repo
+// root with the new version and the part — so this exercises the mechanism on
+// a repository of its own rather than on BuilderBot's two files, and rather
+// than on the shared fixture, whose ordinal everything above depends on.
+{
+  const S = `${WS}/stampproj`;
+  rmSync(S, { recursive: true, force: true });
+  mkdirSync(`${S}/tools`, { recursive: true });
+  execFileSync('git', ['-C', S, 'init', '-q', '.'], { env });
+  writeFileSync(`${S}/VERSION`, '0.4.0\n');
+  writeFileSync(`${S}/tools/version-stamp`,
+    '#!/usr/bin/env bash\nset -e\n[ "$2" = minor ] || exit 0\n'
+    + 'printf "window %s\\n" "${1%.*}" > stamped.txt\necho moved\n');
+  chmodSync(`${S}/tools/version-stamp`, 0o755);
+  execFileSync('git', ['-C', S, 'add', '-A'], { env });
+  execFileSync('git', ['-C', S, 'commit', '-qm', 'first'], { env });
+  setPolicyFor('stampproj', 'minor');
+  const sb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: S, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+
+  let s1 = sb('bump', 'minor');
+  ok(s1.code === 0, `the bump runs the repo's own stamp hook (${s1.out.trim().slice(0, 56)})`);
+  ok(readFileSync(`${S}/stamped.txt`, 'utf8').trim() === 'window 0.5',
+     '...which moved the number it carries elsewhere');
+  const inCommit = execFileSync('git', ['-C', S, 'show', '--name-only', '--format=', 'HEAD'],
+                                { encoding: 'utf8' }).split('\n').filter(Boolean);
+  ok(inCommit.includes('stamped.txt') && inCommit.includes('VERSION'),
+     `...and it is in the SAME commit as VERSION, so neither can land alone (${inCommit.join(', ')})`);
+
+  // A hook that fails stops the bump rather than leaving the number moved and
+  // its twin behind — the state the whole thing exists to prevent.
+  writeFileSync(`${S}/tools/version-stamp`,
+    '#!/usr/bin/env bash\necho "no thanks" >&2\nexit 3\n');
+  chmodSync(`${S}/tools/version-stamp`, 0o755);
+  s1 = sb('bump', 'minor');
+  ok(s1.code !== 0 && /version-stamp failed/.test(s1.out),
+     `a stamp hook that fails refuses the bump, and says so (${s1.out.trim().slice(0, 56)})`);
+  ok(readFileSync(`${S}/VERSION`, 'utf8').trim() === '0.5.0',
+     '...leaving VERSION exactly where it was');
+  rmSync(S, { recursive: true, force: true });
+}
 
 // A project with no session says so rather than silently doing nothing.
 const askDead = await page.evaluate(async () => {
