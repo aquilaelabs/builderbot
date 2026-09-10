@@ -143,64 +143,11 @@ def load():
             d = json.load(f)
         if isinstance(d, dict) and isinstance(d.get("projects"), dict):
             d.setdefault("unsaved", {})
-            return _migrate(d)
+            return d
     except (OSError, ValueError):
         pass
-    return {"projects": {}, "unsaved": {}, "ordered": True}
+    return {"projects": {}, "unsaved": {}}
 
-
-def _migrate(d):
-    """Two one-shot reorderings, each with its own flag so neither runs twice.
-
-    `ordered`: stored order became display order; it used to be newest-last
-    and sorted on the way out.
-
-    `ticked_off`: an item a session finished used to sit on the list, faded,
-    until a week had passed. It comes off now and lives in the log instead.
-
-    `oldest_first`: items used to be added at the top, so the number a session
-    quotes — the id, which is what `bb roadmap done` takes — counted *up* the
-    screen and #1 sat at the bottom. Adding at the end instead makes the
-    numbers run down the page, which is the only arrangement where "R3" can be
-    found by looking. Lists built by the old prepend are turned round once;
-    a list that is not in strict id-descending order was arranged by hand and
-    is left exactly as its operator left it.
-    """
-    dirty = False
-    if not d.get("ordered"):
-        for name, rows in d["projects"].items():
-            d["projects"][name] = list(reversed(rows))
-        d["ordered"] = dirty = True
-    if not d.get("ticked_off"):
-        # Ticked items used to fade in place until a week had passed. They
-        # come off now, but they are not simply dropped: each one is written
-        # into the log first, under the time it was actually ticked, so a list
-        # that shortens on the update can still say what left it.
-        for name, rows in d["projects"].items():
-            for r in rows:
-                if r.get("done"):
-                    h = d.setdefault("history", {}).setdefault(name, [])
-                    h.append({"at": int(r.get("done_at") or time.time()),
-                              "by": "claude", "act": "done", "id": r.get("id"),
-                              "text": r.get("text", "")})
-            d["projects"][name] = [r for r in rows if not r.get("done")]
-        # The log is written in whatever order the lists were walked; it is
-        # read newest-first, so it has to be in time order to start with.
-        for h in d.get("history", {}).values():
-            h.sort(key=lambda e: e.get("at", 0))
-        d["ticked_off"] = dirty = True
-    if not d.get("oldest_first"):
-        for name, rows in d["projects"].items():
-            ids = [int(r.get("id", 0)) for r in rows]
-            if ids == sorted(ids, reverse=True):
-                d["projects"][name] = list(reversed(rows))
-        d["oldest_first"] = dirty = True
-    if dirty:
-        try:
-            save(d)
-        except Exception:  # noqa: BLE001 - a read must not fail on a failed write
-            pass
-    return d
 
 
 def save(d):

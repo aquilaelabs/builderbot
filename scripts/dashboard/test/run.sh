@@ -45,7 +45,7 @@ export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
     || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH) — on a node they are the playwright recipe in the packages store, installed from the Tools tab"
 CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
-[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb sdk install playwright"
+[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb packages install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
 
 # The port is picked, not fixed. It was 8093 for everybody, which meant a run
@@ -218,6 +218,12 @@ mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 mkdir -p "$S/ws/vendored-junk/deep" && echo x > "$S/ws/vendored-junk/deep/thing.py"
 # delta is the locked one: kept, run by the operator, and read-only.
 echo '["delta"]' > "$S/state/locked-projects.json"
+# alpha may push, on the deploy key its remote uses. Stated here rather than
+# left to a migration: the one-off that used to grant this on first boot went
+# at 0.5.0, and a fixture that leans on a migration is a fixture that breaks
+# on the day the migration is finally deleted.
+printf '{"alpha":{"repo":"owner/alpha","host":"github.com","how":"key","at":1756000000}}\n' \
+    > "$S/state/push-rights.json"
 # A git that stalls on one magic URL and is the real git for everything else.
 # Cloning is a background job now, and the two properties that matters for —
 # it outlives the page, and it can be stopped — can only be checked against a
@@ -279,7 +285,7 @@ agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, and an `bb sdk` that makes and removes
+# Stub: deterministic `bb doctor`, and an `bb packages` that makes and removes
 # directories instead of downloading gigabytes — enough for the Tools card to
 # watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
@@ -291,7 +297,7 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 # and nothing more, and a session gate built on the same state had no way to
 # prove it clears.
 if [ "${1:-}" = claude-md ]; then exec bash "${BB_REAL:?}" "$@"; fi
-if [ "${1:-}" = sdk ]; then
+if [ "${1:-}" = packages ]; then
     # Where this stub pretends a package lives. Shared by every verb, so
     # check and versions answer for what install and remove actually did —
     # a stub that claimed 1.0 for everything let a bug through where the page

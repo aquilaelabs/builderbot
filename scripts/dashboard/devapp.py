@@ -127,7 +127,7 @@ def on_node(node_id):
 
 
 def _default_node():
-    return node_for("docker-host") if node_for else ""
+    return node_for() if node_for else ""
 
 
 def _instance_node(project, instance):
@@ -142,7 +142,7 @@ def _instance_node(project, instance):
     nid = _read_rec(project, instance).get("node") or ""
     if not nid and project_node:
         nid = project_node(project) or ""
-    return nid or (node_for("docker-host") if node_for else "")
+    return nid or (node_for() if node_for else "")
 
 
 def _on_instance(fn):
@@ -1368,12 +1368,7 @@ def _mount_roots():
 
 def _pairs():
     """The mapping's pairs, from the node being addressed: its record's
-    `config.paths` (docs/nodes.md §11 — the row is where it is edited).
-
-    DOCKER_HOST_PATHS used to be read here as well, for one release, so a
-    box that had not rebooted since the upgrade still mapped. That release
-    has been and gone with the ssh kind (roadmap #24), and the variable is
-    out of the five places."""
+    `config.paths` (docs/nodes.md §11 — the row is where it is edited)."""
     nid = getattr(_node_ctx, "node", None) or _default_node()
     got = node_paths(nid) if node_paths and nid else {}
     return [(k, v) for k, v in got.items()]
@@ -1868,7 +1863,7 @@ def overview(node_id=None):
     # from, what its env still wants) is on this side of the wire and needs no
     # daemon at all. The rows come back either way; what the daemon owns is
     # whether they are running, and that stays unknown rather than guessed.
-    picked = node_id or (node_for("docker-host") if node_for else "")
+    picked = node_id or (node_for() if node_for else "")
     with contextlib.ExitStack() as ctx:
         if picked:
             ctx.enter_context(on_node(picked))

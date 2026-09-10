@@ -564,9 +564,24 @@ await page.waitForSelector('#aboutModal', { state: 'hidden' });
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
      'an account that has not read the guide gets the panel on sign-in, open on the guide — the administrator\'s, for an owner');
   await page.click('.abswitch [data-ab="log"]');
-  await page.waitForFunction(() => /Unreleased|Nothing logged/.test(document.querySelector('#abLog')?.textContent || ''), null, { timeout: 15000 });
-  ok(await page.$eval('#abLog', e => !e.hidden && /not yet a numbered release/.test(e.textContent)),
-     '...and the switch shows the changelog, from the file beside the server');
+  // Whatever the top section is: Unreleased while entries are accumulating,
+  // a dated number the moment somebody bumps. Asserted on the SHAPE — a
+  // heading and at least one line under it — rather than on the wording of
+  // one of the two, which a bump changes and which reddened this file the
+  // day 0.5.0 was cut.
+  // Waited on the rendered shape, not on "any text": the panel is filled by
+  // a fetch, and a wait that any non-empty content satisfies returns while
+  // the list is still being written.
+  await page.waitForFunction(() => {
+    const e = document.querySelector('#abLog');
+    return e && !e.hidden && e.querySelector('h4') && e.querySelector('li');
+  }, null, { timeout: 15000 });
+  const logShown = await page.$eval('#abLog', e => ({
+    hidden: e.hidden, h4: !!e.querySelector('h4'), li: !!e.querySelector('li'),
+    text: (e.textContent || '').slice(0, 90) }));
+  ok(!logShown.hidden && logShown.h4 && logShown.li,
+     `...and the switch shows the changelog, from the file beside the server (${
+       JSON.stringify(logShown)})`);
   await page.click('#aboutClose');
   await page.waitForSelector('#aboutModal', { state: 'hidden' });
   await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).welcome.seen === true, null, { timeout: 10000 });
@@ -1163,6 +1178,56 @@ ok(!await page.$eval('#rnModel', e => e.disabled)
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    'with no session running it simply applies at the next start');
 await page.click('#rnCancel');
+
+// Saving and interrupting are two decisions, and only one of them is asked
+// about. Declining the restart used to return before anything was written, so
+// somebody who wanted the setting kept and their conversation left alone got
+// neither — and restarting the session by hand afterwards changed nothing,
+// because there was nothing stored to read (B88).
+{
+  tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
+  await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
+                     { timeout: 20000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.selectOption('#rnEdits', 'accept');
+  // The harness accepts every dialog; this one has to be refused, which is
+  // the whole case. Put the standing handler back afterwards.
+  const auto = page.listeners('dialog')[0];
+  page.off('dialog', auto);
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
+                             { timeout: 15000 });
+  page.on('dialog', auto);
+  ok(/Cancel saves the setting/.test(asked),
+     'a running session is asked about, and the question says Cancel still saves');
+  await refreshUntil(page, () => (state?.projects || [])
+    .find(p => p.name === 'alpha')?.prefs?.edits === 'accept', { timeout: 20000 });
+  ok(true, '...and declining the restart still saves the setting');
+  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
+     '...while the session it declined to restart is still running');
+  // Back to the default, so nothing after this runs against a project whose
+  // sessions were left on another mode. The session goes FIRST: with nothing
+  // running there is nothing to interrupt, so this save asks nothing and the
+  // standing accept-everything dialog handler is not put in the way of it.
+  tmuxKill('claude-alpha');
+  await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')),
+                     { timeout: 20000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.selectOption('#rnEdits', 'ask');
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
+                             { timeout: 15000 });
+  // `|| 'ask'` because a record back at every default is REMOVED rather than
+  // stored — the file says only what somebody chose — so the row carries no
+  // edits key at all, which every reader of it defaults the same way.
+  await refreshUntil(page, () => ((state?.projects || [])
+    .find(p => p.name === 'alpha')?.prefs?.edits || 'ask') === 'ask',
+    { timeout: 20000 });
+}
 
 // Ghosted where no session can start. Unlike the credential fields above there
 // is no typing that brings this back, so the reason is the whole message.

@@ -61,7 +61,7 @@ relink_chromium() {
 # lasted until the next restart and no further — which is not an uninstall.
 if [ -e "$(sdk_removed_marker playwright)" ]; then
     log "playwright browsers: removed by the operator — leaving them out"
-    log "  put them back with: bb sdk install playwright"
+    log "  put them back with: bb packages install playwright"
 elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
     log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
     if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
@@ -69,7 +69,7 @@ elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | gre
         log "playwright browsers ready"
     else
         warn "could not install the playwright browsers — bb shot and the dashboard"
-        warn "tests will not work until: bb sdk install playwright"
+        warn "tests will not work until: bb packages install playwright"
     fi
 fi
 

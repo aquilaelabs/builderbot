@@ -491,8 +491,8 @@ git_ready=""            # "false" once bb settings has said the account has no a
 # through the work — or, worse, one made under whatever a repository or the
 # box happens to have configured. A shell is refused as well as a session,
 # because a shell is where git is typed. Only when the controller SAID so:
-# an older controller that does not answer git_ready is not read as a
-# refusal, and a terminal opened before accounts existed has no seat to ask.
+# a controller that is not answering at all must not read as a refusal, and a
+# terminal with no seat behind it has nobody to ask.
 need_author() {
     [ "$git_ready" = false ] || return 0
     bad "You have no name and email for commits yet, so $1 does not start." \
@@ -781,14 +781,13 @@ case "$target" in
         # read by the next session without anybody remembering to mention it.
         # Only the open items, and nothing at all when there are none.
         # Named rather than inferred: `bb roadmap` takes the project from the
-        # working directory, and this is not run from one. An older image
-        # whose bb has no `todo` prints usage and fails, which is caught here
-        # and simply means no block.
+        # working directory, and this is not run from one. A controller that
+        # is not answering makes this fail, which is caught here and simply
+        # means no block rather than no session.
         todo_block="$(BB_ROADMAP_PROJECT="$proj" bb roadmap --prompt 2>/dev/null || true)"
         # The bug tracker rides in the same block: open bugs by number and
-        # severity, with the fields on disk behind `bb bug show`. An older
-        # image whose bb has no `bug` prints usage and fails, which is caught
-        # here and simply means no bugs block.
+        # severity, with the fields on disk behind `bb bug show`. Caught the
+        # same way, and for the same reason.
         bug_block="$(BB_BUG_PROJECT="$proj" bb bug --prompt 2>/dev/null || true)"
         [ -z "$bug_block" ] || todo_block="${todo_block:+$todo_block
 

@@ -440,8 +440,8 @@ is a convenience; at fleet scale it is the difference between a protocol that
 can evolve and one frozen by its oldest node.
 
 **That version is `WINDOW.BUILD`, and only the first half is a promise.** The
-window is BuilderBot's own semver minor: while the project is `0.4.x`, any
-`0.4` agent works with any `0.4` controller, in both directions. `0.5.0` is
+window is BuilderBot's own semver minor: while the project is `0.5.x`, any
+`0.5` agent works with any `0.5` controller, in both directions. `0.6.0` is
 where that ends, and it is therefore where a breaking change to this protocol
 and the removal of the compatibility paths carrying old ones belong. Inside a
 window: add, do not change — a field gains a default rather than a new
@@ -467,10 +467,14 @@ minor by the same test that holds the agent's, and a project's copy from
 another window is treated the way an agent from one is: the block described
 a different BuilderBot, so sessions on that project are ended and refused
 until `bb claude-md --update` restamps it. A block merely behind inside the
-window is drift — the row offers the update and nothing stops. The older `protocol`
-integer, which both sides declared and neither ever compared, is superseded
-by this and is removed at `0.5.0` — removing a field the other side may still
-read being exactly the kind of break the window exists to schedule.
+window is drift — the row offers the update and nothing stops.
+
+`0.5.0` was such a boundary and is what it looks like in practice: the flat
+`protocol` integer both sides declared and neither ever compared went, along
+with every read that tolerated an agent from before a census field existed,
+the two spellings of a project's node, the session token minted before an
+account rode along, and two migrations that had run everywhere. Nothing was
+kept for a `0.4` agent, which is the whole meaning of the number moving.
 
 ### Tailscale
 
@@ -587,12 +591,12 @@ Caches answered "how does a node avoid re-downloading what a build pulls";
 this answers the question above it, which the plan had not: **how do the
 toolchains themselves — a JDK, the Android SDK, Flutter — get onto a node at
 all, and where do they live?** Today the answer is the controller's package store
-and `bb sdk`, operator-gated; that has to generalize without forking.
+and `bb packages`, operator-gated; that has to generalize without forking.
 
 - **One catalog, per-node state.** `config/packages.json` stays the single
   description of what is installable and how. What becomes per-node is the
   *state*: the census reports which toolchains a node has and at what version
-  (`reported.toolchains`), probed by the agent the same way `bb sdk` probes
+  (`reported.toolchains`), probed by the agent the same way `bb packages` probes
   locally. The controller never guesses from what it asked for; it reads what
   the node says it has.
 - **Installing is a job.** A package install on a node is an ordinary job
@@ -686,7 +690,7 @@ replaces the previous kept failure of that project. The census reports the
 cache store's size and *Clear cache* on the row is a `cache-clear` job. A
 toolchain install on a node is a `package` job: the agent fetches the
 bundle (bb, its library, the catalog) by digest into the packages store
-and runs `bb sdk install` from it with `SDK_ROOT` at the store, gated on the
+and runs `bb packages install` from it with `SDK_ROOT` at the store, gated on the
 store's headroom when this controller has measured the package before; the
 Tools tab's node picker shows what the node's census says it has. Not
 landed: the node browser is the kept-workspace path in the job's log and
@@ -1571,7 +1575,7 @@ Actions runner and emulation on nodes. Only then does the image drop the
 JDK, the Android SDK and emulator, .NET, Flutter and Swift, and only then
 does the local node lose `package-build`. The other order strands every
 project between a container that cannot build and a node that cannot yet.
-`bb sdk` shrinks to what a session and the dashboard actually use here —
+`bb packages` shrinks to what a session and the dashboard actually use here —
 node, Python, and the Playwright browsers for `bb shot` against a URL.
 
 **Then the session's tools close.** The settings file `claude_scope()`
@@ -1614,7 +1618,7 @@ Why it beats §18, in one line: §18 spends a lot of machinery teaching a
 session on the wrong machine to act on the right one — a job per build, a job
 per emulator verb, snapshots in both directions, a lockdown to stop it doing
 otherwise. Put the session on the node and most of that is simply not needed.
-`bb sdk` on the node already answers for the node. `bb build` is a build.
+`bb packages` on the node already answers for the node. `bb build` is a build.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
 this box's package store and bb-sandbox's packages store are **one store under two

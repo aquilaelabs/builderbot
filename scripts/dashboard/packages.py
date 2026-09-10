@@ -86,7 +86,7 @@ def load_packages():
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
             row["platforms"] = plats[:8]
-        # Whether `bb sdk update` has a case for this recipe. Five do — a git
+        # Whether `bb packages update` has a case for this recipe. Five do — a git
         # clone, two installers and sdkmanager's own — and the rest are a
         # tarball fetched and unpacked whole, where getting a newer one means
         # removing this one first. Declared rather than inferred from the
@@ -179,7 +179,7 @@ def load_versions():
 # and megabytes wide: a request that waited for them would time out, and two
 # at once would fight over the same sdkmanager lock.
 _pkg_lock = threading.Lock()
-# What `bb sdk check` last reported: {name: {installed, latest, status}}.
+# What `bb packages check` last reported: {name: {installed, latest, status}}.
 # Filled only when asked — every probe in it reaches the network, so doing it
 # on the fifteen-second poll would be a background service nobody requested —
 # and reloaded from disk at startup, so what it found outlives this process.
@@ -211,7 +211,7 @@ def sdk_root_path():
     """Where bb decided the package store root is — asked once, since it cannot change
     without a container restart."""
     if not _sdk_root_cache:
-        r = run([BB, "sdk", "root"], timeout=15)
+        r = run([BB, "packages", "root"], timeout=15)
         _sdk_root_cache.append(r["out"].strip() if r["code"] == 0 else "")
     return _sdk_root_cache[0]
 
@@ -290,7 +290,7 @@ def local_versions():
     if _pkg_local["key"] == key:
         return _pkg_local["versions"]
     out = {}
-    r = run([BB, "sdk", "versions"], timeout=180)
+    r = run([BB, "packages", "versions"], timeout=180)
     for ln in r["out"].splitlines():
         f = ln.rstrip().split("\t")
         if len(f) == 4 and f[1] not in ("", "-"):
@@ -395,7 +395,7 @@ def installed_images(refresh=True):
     if not refresh or time.monotonic() - _images["at"] < IMAGES_TTL:
         return _images["rows"]
     rows = []
-    r = run([BB, "sdk", "images"], timeout=300)
+    r = run([BB, "packages", "images"], timeout=300)
     if r["code"] == 0:
         for line in r["out"].splitlines():
             f = line.rstrip("\n").split("\t")
@@ -444,7 +444,7 @@ def image_choices():
 
 def _load_choices():
     rows, flavors = [], []
-    r = run([BB, "sdk", "images", "--available"], timeout=120)
+    r = run([BB, "packages", "images", "--available"], timeout=120)
     if r["code"] == 0:
         for line in r["out"].splitlines():
             f = line.rstrip().split("\t")
@@ -457,7 +457,7 @@ def _load_choices():
                              # fetched.
                              "kb": int(f[3]) // 1024,
                              "size": human_kb(int(f[3]) // 1024)})
-    r = run([BB, "sdk", "flavors"], timeout=30)
+    r = run([BB, "packages", "flavors"], timeout=30)
     if r["code"] == 0:
         for line in r["out"].splitlines():
             f = line.rstrip().split("\t")
@@ -654,7 +654,7 @@ def job_is_automatic():
 def _pkg_worker():
     """Run the queued work one item at a time, keeping a tail of the output.
 
-    Everything it can do is `bb sdk <verb> <name>` for a name that came out of
+    Everything it can do is `bb packages <verb> <name>` for a name that came out of
     PACKAGES — the page posts an index into the table, never a command, which
     is the same rule the macro buttons follow. The verb is decided here rather
     than by the page: "install" on something already present means update it,
@@ -680,7 +680,7 @@ def _pkg_worker():
             row = next((p for p in PACKAGES if p["name"] == name), {})
             probe = row.get("probe", name)
             # Only where the recipe HAS an update. Sending the rest to
-            # `bb sdk update` earned a usage line naming five packages the
+            # `bb packages update` earned a usage line naming five packages the
             # operator had not asked about (bug #43); they go to install now,
             # which refuses with a sentence about the one they did.
             verb = ("update" if _pkg_path(probe) and row.get("updatable")
@@ -702,7 +702,7 @@ def _pkg_worker():
         # broken. The row says what it is doing and animates. The output is
         # looked at only when the thing fails, which is the only time anybody
         # wanted it.
-        r = run([BB, "sdk", verb, name], timeout=3600, register=_hold_child)
+        r = run([BB, "packages", verb, name], timeout=3600, register=_hold_child)
         with _pkg_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
@@ -813,7 +813,7 @@ def payload_for_node(nid):
     plat = platform_of(n)
     store = (rep.get("stores") or {}).get("packages") or {}
     items = []
-    # What is IN the store, by directory, which is where bb sdk puts things:
+    # What is IN the store, by directory, which is where bb packages puts things:
     # <root>/<name>, and android's parts under <root>/android/. The census's
     # `toolchains` is a six-name placement summary and reading it as an
     # inventory called the emulator, the NDK, Playwright and Zig missing on
@@ -834,10 +834,10 @@ def payload_for_node(nid):
             here = False                    # the directory without what completes it
         # A node that has not reported its store yet is not evidence of
         # absence, so say nothing rather than "not installed".
-        # The node's own `bb sdk versions` first — the same generator this
+        # The node's own `bb packages versions` first — the same generator this
         # controller runs for its own list, so one store is described one
-        # way. The census's toolchains dict is the fallback for an agent too
-        # old to report it, and it is a placement summary rather than an
+        # way. The census's toolchains dict is the fallback for a node that
+        # has not run it yet, and it is a placement summary rather than an
         # inventory: it answers for six names, says "present" where it cannot
         # parse, and hands back an unstripped "go version go1.27.0
         # linux/amd64". That difference is what the operator was looking at.
@@ -900,8 +900,8 @@ def payload_for_node(nid):
     here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # The node's own scope under the store (roadmap R19), where its
-            # packages actually are; an older agent reports no scope and
-            # the share itself is the honest fallback.
+            # packages actually are. The share itself where the node has not
+            # reported one yet.
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
@@ -939,7 +939,7 @@ def _store_share(n):
     arbitration never engaged for it.
 
     The mount source stays as the fallback, for a node whose store has no
-    marker yet — a read-only share, or an agent too old to report the id.
+    marker yet — a read-only share is the case that has to keep working.
     """
     rep = n.get("reported") or {}
     store = (rep.get("stores") or {}).get("packages") or {}
@@ -1011,7 +1011,7 @@ def layout_for_node():
 
 def node_has(n):
     """The package names already in this node's packages store, by the
-    directories bb sdk puts them in. Empty when the node has not reported
+    directories bb packages puts them in. Empty when the node has not reported
     its store — which is not evidence of absence, so a caller must treat it
     as "unknown" rather than "nothing"."""
     rep = n.get("reported") or {}

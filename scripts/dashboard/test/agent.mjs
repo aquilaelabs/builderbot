@@ -597,7 +597,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        'a token for alpha cannot ask about another project');
     const sdk = await relay({ argv: ['sdk'] });
     ok(sdk.status === 400 && /not relayed/.test(sdk.error),
-       'bb sdk is refused — it answers for the machine the session is on');
+       'bb packages is refused — it answers for the machine the session is on');
     const emu = await relay({ argv: ['emu', 'start'] });
     ok(emu.status === 400, '...and so is bb emu');
     const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
@@ -1247,7 +1247,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       mkdirSync(`${PK}/go/bin`, { recursive: true });
       // An android system image in the node's own store, and an AVD in the
       // data store built on it (roadmap #20). The agent walks for these
-      // rather than running `bb sdk images`, which is the same listing plus
+      // rather than running `bb packages images`, which is the same listing plus
       // a du over tens of gigabytes of NFS every ten minutes.
       const IMG = `${PK}/android/system-images`;
       mkdirSync(`${IMG}/android-34/google_apis/x86_64`, { recursive: true });
@@ -1448,7 +1448,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(pfin && pfin.type === 'package'
        && (/bb .* unpacked into .*agentpackages\/linux-[a-z0-9_]+\/\.bb/.test(pfin.log)
            || existsSync(`${PK}/.bb/current/scripts/bb`))
-       && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
+       && /== bb packages remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${PK}/.bb/bundle.tar`), '...and stays for the next one');
     // The store changed, so the ttyds are started again with an environment

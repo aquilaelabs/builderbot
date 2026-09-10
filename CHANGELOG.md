@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- BuilderBot is 0.5.0: the compatibility window moves, so a node's agent and every project's CLAUDE.md block need updating once, and everything kept for the old window is gone (dbf8170)
+- Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
+- The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
+
+## 0.5.0 — 2026-09-10
+
 - The Artifacts tab now shows each product's version, who may move it, and this changelog (5a7b49c)
 - A repo that ships two products can version each one on its own — an extension beside an app no longer share one number (d9ae96d)
 - A project with no version yet can be given one from the Artifacts tab, or ask the project's Claude session to propose one (5a7b49c)
@@ -231,7 +237,7 @@
 - A toolchain listing on a node no longer stops at the first package it cannot read (f5efbcc)
 - Android system images can be installed onto a node from the Tools tab, not just onto this container (242c762)
 - Android packages install on a node again — sdkmanager could not find the SDK root there, and the licenses had never been accepted for that store (7484644)
-- bb sdk now reports the store a project actually builds with — its node's, when it has one (94c99a0)
+- bb packages now reports the store a project actually builds with — its node's, when it has one (94c99a0)
 - A second container can be run as a build node — same template, BUILDERBOT_ROLE=node — so builds and Android emulation move off the management container and share the GPU without passing it through to a VM (bfa9ea3)
 - The dashboard has accounts: each person signs in as themselves, and only sees the projects they were given (abd7e04)
 - Typing into the notebook while it refreshes no longer loses what you typed (47ec8ca)
@@ -327,7 +333,7 @@
 - Fixes from a review: a package a node was missing is now actually installed on Debian and Arch, a network change on systemd-networkd takes effect, allowing a root command no longer hangs the page while it runs, and the provisioner survives an offline node and Rocky's curl-minimal (f1f3b69)
 - The version popup is now a welcome panel: a getting-started guide (one for users, one for administrators) and this changelog behind a switch. It opens on the guide the first time you sign in, and on the changelog once after each update, marking what is new since you last looked (56f0ff7)
 - A companion Android app: the projects, notebooks, approvals, nodes and your profile from a phone, with a session's phone and root requests arriving as notifications you approve or deny from the shade — and a contract test that stops the dashboard drifting away from the app (3b7b2df)
-- The place toolchains are installed is called the package store everywhere now; the SDK_ROOT setting, the /sdk mount and bb sdk keep their names (0746987)
+- The place toolchains are installed is called the package store everywhere, and the command is 'bb packages'; the SDK_ROOT setting and the /sdk mount keep their names, so an existing install still starts (0746987, 9fe450d)
 - A Mac can be enrolled as a node with vm/provision-macos.sh: one directory and one launchd agent, no root, its own darwin scope in the package store, Homebrew for system packages, and the JDK, Node, Go, Flutter and xcodes from the Tools tab (0746987)
 - The package store is laid out per platform (linux-x86_64, darwin-arm64), so one share serves Linux nodes and a Mac without collisions; an existing store is moved into place once, automatically. Update each node's agent before the container (0746987)
 - The provisioners live in nodes/ now — provision-linux.sh and provision-macos.sh, with the Unraid VM template beside them — since a node is not always a VM (a176853)
@@ -359,6 +365,8 @@
 - bb jobs j_1a2b3c4d prints that job's log, so a failed job on any project can be looked at from a session (32f37bc)
 - Moving a node's package or workspace store onto an NFS share that squashes ownership now works instead of reporting a failed copy (54adbb1)
 - A project's GitHub settings are on the chain button on its row, whether or not it has a remote yet — the gear is the project's own settings and no longer holds a credential (89e629a)
-- A project can be linked to a self-hosted Gitea or Forgejo, to Codeberg, GitLab or Bitbucket, or to any other git host — not to GitHub alone (0f38c55)
+- A project can be linked or cloned from a self-hosted Gitea or Forgejo, from Codeberg, GitLab or Bitbucket, or from any other git host — not from GitHub alone (0f38c55, 0b8a5bd)
 - Unlink a project's remote from the chain on its row: the remote, its stored token and its push rights go, and nothing in the tree is touched (0f38c55)
 - A non-admin account could link a project and store a git token by calling the API directly; that route is now an administrator's like every other one that writes a credential (0f38c55)
+- Changing a project setting while its session is running no longer needs the session restarted to save: Cancel on the restart prompt keeps the setting and leaves the conversation alone (32af66c)
+- The phone app can hand a roadmap step or a bug to a running Claude session, and shows a project's memories beside its house rules (72d58ee)

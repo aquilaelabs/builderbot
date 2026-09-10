@@ -23,7 +23,7 @@ What this module owns:
     name the node chose and this side sanitized, plus dist/.provenance/ with
     the chain (job, node, source digest, command, sha256).
   - bundle(): bb and its library plus the package catalog as one tar, which
-    is what a node needs to run `bb sdk install` against its own packages
+    is what a node needs to run `bb packages install` against its own packages
     store — the toolchain recipes stay in one catalog (§6) and travel to the
     node by digest, like the agent itself does.
 """

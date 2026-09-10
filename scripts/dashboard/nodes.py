@@ -309,7 +309,7 @@ def _insert_node(rec):
 
 STORE_ID_FILE = ".bb-store-id"
 
-# Where this container keeps its toolchains. `bb sdk root` is the authority
+# Where this container keeps its toolchains. `bb packages root` is the authority
 # and packages.py asks it, but nodes.py is imported at boot before any of
 # that and must not shell out on the seed path — so the same two answers bb
 # itself resolves between, in the same order.
@@ -455,12 +455,11 @@ def node_paths_set(principal, node_id, text):
     return {"ok": True, "paths": paths}
 
 
-def node_for(capability=None):
+def node_for():
     """The default node for work nobody bound to one — the newest enrolled,
-    else local. `capability` is ignored and kept for the call sites that
-    still name one: a node does everything now, so there is nothing to
-    narrow by (2 Sep). What a project can do on its node is what is
-    installed there, and the project names the node."""
+    else local. There is nothing to narrow by: a node does everything, what a
+    project can do on its node is what is installed there, and the project
+    names the node."""
     try:
         # The newest node with a REACHABLE daemon — docker_nodes() already
         # drops the ones there is no way into. "Newest online" was not
@@ -814,31 +813,23 @@ def enroll(auth, census, addr, version="", digest="", user=""):
           "config = ?, os = ?, arch = ? WHERE id = ?",
           (json.dumps({"token_id": tid, "version": str(version)[:40],
                        "digest": str(digest)[:80], "addr": addr,
-                       "last_seen": int(time.time()), "protocol": PROTOCOL}),
+                       "last_seen": int(time.time())}),
            json.dumps(rep), json.dumps(cfg), rep["system"], rep["arch"], nid))
     _touch(nid, auth["principal"], "node-enroll", {"addr": addr})
     return {"ok": True, "node_id": nid, "token": secret,
             "name": n["name"], "capabilities": n["capabilities"],
-            "user": cfg.get("user", "bb"), "protocol": PROTOCOL, "poll": POLL_S}
+            "user": cfg.get("user", "bb"), "poll": POLL_S}
 
 
 # ---------------------------------------------------------------------------
 # the channel: hello, and the long-poll that carries the heartbeat
 #
-# Protocol 1, long-poll only (docs/nodes.md §4): the agent POSTs `work` with
+# Long-poll only (docs/nodes.md §4): the agent POSTs `work` with
 # its current sample and the request is held until there is a job for it or
 # the poll window closes — so one request per node per POLL_S is the whole
 # cost of liveness, metrics and job pickup together. The design wrote the
 # poll as a GET; a heartbeat is a body, and a GET with a body is not a thing,
 # so the verb is POST and the doc was corrected to say so.
-
-# Superseded by the agent's version window (its WINDOW.BUILD constant, and
-# agent_window() below): this number was declared 1 on both sides and never
-# compared by either, which is why compatibility now rides on a number that
-# means something. Still sent, because removing a field the other side may
-# read is itself the kind of break the window exists to schedule — it goes at
-# 0.5.0.
-PROTOCOL = 1
 
 
 def agent_window(version):
@@ -890,13 +881,9 @@ def _census(c):
     for k in ("os", "docker", "gpu", "hostname"):
         if c.get(k):
             out[k] = str(c[k])[:120]
-    # The two placement dimensions (door 9), as fields. An older agent sends
-    # only the `os` string, whose first two words are the same two facts.
-    words = (out.get("os") or "").split()
-    out["system"] = re.sub(r"[^a-z0-9]", "", str(c.get("system") or
-                           (words[0] if words else "")).lower())[:20]
-    out["arch"] = re.sub(r"[^a-zA-Z0-9_]", "", str(c.get("arch") or
-                         (words[1] if len(words) > 1 else "")))[:20]
+    # The two placement dimensions (door 9), as fields the agent reports.
+    out["system"] = re.sub(r"[^a-z0-9]", "", str(c.get("system") or "").lower())[:20]
+    out["arch"] = re.sub(r"[^a-zA-Z0-9_]", "", str(c.get("arch") or ""))[:20]
     out["sshd"] = bool(c.get("sshd"))
     stores = c.get("stores") if isinstance(c.get("stores"), dict) else {}
     out["stores"] = {}
@@ -916,9 +903,9 @@ def _census(c):
                 # cache's number beside Clear cache. None when not measured.
                 "used_mb": _mb(s.get("used_mb")),
                 # The node's own directory in the store — linux-x86_64,
-                # darwin-arm64 (roadmap R19); "" from an agent before it.
+                # darwin-arm64 (roadmap R19).
                 "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
-    # {name: version} from `bb sdk versions` on the node — the controller's
+    # {name: version} from `bb packages versions` on the node — the controller's
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does
     # not exist.
@@ -931,7 +918,7 @@ def _census(c):
     # each (roadmap #20). Whitelisted like store_dirs and packages_versions,
     # and for the same reason: a field the agent reports and this drops is a
     # field that does not exist. Absent rather than empty when the agent did
-    # not send it at all: an agent too old to report images is not a node with
+    # not send it at all: a node that has not answered is not a node with
     # none, and the tab must not say "nothing installed" on its behalf.
     if isinstance(c.get("images"), list):
         out["images"] = []
@@ -990,8 +977,9 @@ def _census(c):
             "ro_port": _mb(se.get("ro_port")) or 0,
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
-            # Absent from an agent that predates the probe; the proxy reads
-            # None as "not known", not as read-only.
+            # None is "not probed", which the proxy reads as unknown rather
+            # than as read-only — a share the agent could not test is not a
+            # share it found closed.
             "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
             "bundle": str(se.get("bundle") or "")[:80],
@@ -1016,8 +1004,8 @@ def _census(c):
     # The machine's own tools, as the agent detected them: its package
     # manager and the service that owns its network. A system job's spec is
     # the same for every node; this says what the agent there would turn it
-    # into, so the row can say so — and absent from an agent that predates
-    # the detection, which the row reads as "not reported", not as none.
+    # into, so the row can say so — and absent until the agent has looked,
+    # which the row reads as "not reported", not as none.
     d = c.get("distro") if isinstance(c.get("distro"), dict) else None
     if d is not None:
         out["distro"] = {k: re.sub(r"[^a-zA-Z0-9 ._()/-]", "", str(d.get(k) or ""))[:80]
@@ -1520,7 +1508,7 @@ idle_minutes = lambda: 0            # noqa: E731 — idle.minutes, injected by s
 
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
-    running, and answer with what the controller expects of it — protocol,
+    running, and answer with what the controller expects of it — the
     transports, the poll window, the node's own capabilities (so it can
     refuse outside them, door 7) and the controller's agent file digest
     (so self-update is a comparison, door 4).
@@ -1537,7 +1525,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
     ag = n.get("agent") or {}
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
-               "protocol": PROTOCOL})
+               })
     rep = n.get("reported") or {}
     sample = rep.get("sample")
     # When this census was taken. The heartbeat is every 25 seconds but the
@@ -1554,7 +1542,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
                            rep["arch"], nid))
     _bump()
     ours = agent_file()
-    return {"ok": True, "protocol": PROTOCOL, "transports": ["longpoll"],
+    return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],
                                      "state": n["state"],
                                      "capabilities": n["capabilities"],

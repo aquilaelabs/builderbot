@@ -161,10 +161,10 @@ ok(md.indexOf('A widget frobnicator') > marker,
     { timeout: 20000 });
   const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
   const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  ok(ghosted.off && /another compatibility window \(0\.1 against/.test(ghosted.why),
+  ok(ghosted.off && /older compatibility window \(0\.1 against/.test(ghosted.why),
      `a block from another window ghosts the Claude button, saying which (${ghosted.why.slice(0, 70)})`);
   ok(await page.$eval('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]',
-       a => /another compatibility window/.test(a.textContent)),
+       a => /older compatibility window/.test(a.textContent)),
      '...and the row\'s update link says the same');
   const alert = await page.evaluate(() => (state.attention || []).find(a => a.kind === 'md' && a.project === 'zeta'));
   ok(alert && alert.project === 'zeta' && alert.window && alert.from === '0.1',
@@ -201,6 +201,25 @@ ok(md.indexOf('A widget frobnicator') > marker,
      '...with the bell\'s row gone on its own');
   ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
      '...with the project\'s own notes below the marker untouched');
+
+  // AHEAD is not the same state and must not be held. It is what this repo's
+  // own checkout looks like between a minor bump and the image built from
+  // it: the block describes the BuilderBot the container is about to be, the
+  // session's own bb comes from the container either way, and the remedy the
+  // hold offered made it worse — restamping the block DOWN contradicts the
+  // tree it came from, and rebuilding puts it back. The operator hit exactly
+  // this and lost a session to it.
+  const ahead = String(Number(win) + 0.1).slice(0, 3);
+  writeFileSync(mdPath, current.replace(`BUILDERBOT:ENV:WINDOW ${win} -->`,
+    `BUILDERBOT:ENV:WINDOW ${ahead} -->`));
+  await page.evaluate(() => refresh());
+  await refreshUntil(page, () => (state.projects || []).some(p => p.name === 'zeta'),
+                     { timeout: 20000 });
+  ok(!await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held),
+     `a block from a LATER window is drift, not a hold (${ahead} against ${win})`);
+  ok(await page.$eval(btn, b => !b.disabled),
+     '...so the Claude button stays live on it');
+  writeFileSync(mdPath, current);
 }
 
 // A project made after anything has been pinned is pinned itself. Without
@@ -562,6 +581,46 @@ ok(rj.elsewhere === '',
 ok(rj.may[0] === true && rj.may[1] === false, 'only the granted project may push');
 ok(rj.after_drop === '',
    'deleting the project is what frees the repository for another');
+
+// ---- which host a clone is from ----------------------------------------
+// Cloning takes any address linking takes. The host is IN the address there,
+// so the form does not ask for one — it asks the one thing an address cannot
+// say, which is what is running on a server nobody has answered for, and only
+// then. A paste of a GitHub URL is never asked; a Gitea is asked once ever.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.click('#pClone');
+await page.waitForFunction(() => document.querySelectorAll('#pForge option').length > 1);
+ok(await page.$eval('#pForgeField', el => el.hidden),
+   'an empty address asks nothing about a host');
+await page.fill('#pUrl', 'https://github.com/owner/thing.git');
+ok(await page.$eval('#pForgeField', el => el.hidden),
+   '...and a host that names itself is not a question');
+await page.fill('#pUrl', 'https://git.home.lan:3000/owner/thing.git');
+ok(!await page.$eval('#pForgeField', el => el.hidden)
+   && await page.$eval('#pForgeHost', el => el.hidden),
+   '...while one nobody has answered for is asked about, without asking for the address twice');
+ok(await page.$eval('#pForge', el => el.value) === 'git',
+   '...starting on the entry that promises nothing, rather than on GitHub');
+ok(/git\.home\.lan:3000/.test(await page.$eval('#pForgeHint', el => el.textContent)),
+   '...naming the server it is asking about');
+await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+// And the answer is kept against the host: cloning from it declares it, so
+// the next address on the same server is not a question again. Refused for
+// the name collision, which is after the address has been accepted.
+ok(await post({ mode: 'clone', url: 'https://git.home.lan:3000/owner/alpha.git',
+                forge: 'gitea' }) === 400,
+   'a clone from a self-hosted host is accepted as an address');
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.click('#pClone');
+await page.waitForFunction(() => Object.keys(pForgeHosts).length > 0);
+await page.fill('#pUrl', 'https://git.home.lan:3000/owner/other.git');
+ok(await page.$eval('#pForgeField', el => el.hidden),
+   '...and once answered, that server is never asked about again');
+ok(/Gitea/.test(await page.$eval('#pToken', el => el.placeholder)),
+   '...with the token field asking for the kind of token that host issues');
+await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
 
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.

@@ -2,10 +2,10 @@
 #
 # roles: controller node
 #
-# Put whatever `bb sdk install` has put on the package store onto every shell's
+# Put whatever `bb packages install` has put on the package store onto every shell's
 # PATH.
 #
-# The toolchains live outside the image on purpose — see `bb sdk` — which
+# The toolchains live outside the image on purpose — see `bb packages` — which
 # means the image cannot bake their PATH entries in: what is installed is
 # only known at runtime, and changes without a rebuild. So this regenerates
 # one small file on every start and makes sure the user's shell reads it.
@@ -33,9 +33,9 @@ mkdir -p "$ROOT" 2>/dev/null || true
 # written).
 ENV_FILE="$(run_as_builder bash -c '. /opt/builderbot/scripts/lib/common.sh; . /opt/builderbot/scripts/lib/sdk.sh; sdk_env_file')"
 mkdir -p "$(dirname "$ENV_FILE")" 2>/dev/null || true
-# Written by bb so the file and `bb sdk env` can never disagree — one
+# Written by bb so the file and `bb packages env` can never disagree — one
 # generator, two ways of asking for it.
-if run_as_builder bb sdk env > "$ENV_FILE.new" 2>/dev/null; then
+if run_as_builder bb packages env > "$ENV_FILE.new" 2>/dev/null; then
     mv -f "$ENV_FILE.new" "$ENV_FILE"
 else
     rm -f "$ENV_FILE.new"

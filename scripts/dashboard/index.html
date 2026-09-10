@@ -7091,7 +7091,7 @@ let pkgFlavor = "";
 // NODES (roadmap #26), and this container is never offered: what it keeps is
 // the Playwright browsers its boot hook put on its store for bb shot, and no
 // button reaches its installer. "local" is still what that installer is
-// called — `bb sdk install` from a shell and the suite address it — but
+// called — `bb packages install` from a shell and the suite address it — but
 // nothing on this page sets it.
 let pkgNode = "";
 let pkgLoadSeq = 0;         // a load that lands after the node changed is dropped
@@ -7240,7 +7240,7 @@ function pkgRow(p, busy, job){
   const upToDate = !mine && p.installed && p.state !== "update";
   // An installed package whose recipe cannot update in place. The check can
   // still say a newer version exists — it asks upstream, not the recipe — and
-  // before this the row let you tick it and then died on `bb sdk update`'s
+  // before this the row let you tick it and then died on `bb packages update`'s
   // usage line, naming five packages you had not asked about (bug #43).
   const noUpgrade = !mine && p.installed && !p.updatable;
   // Three versions can be on a row and only ever two at once: what is
@@ -8351,7 +8351,7 @@ function renderPackagesInto(i){
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an package store to keep them out of it.`)
-      : "The package store root could not be determined; this image may predate <code>bb sdk</code>."}</div>
+      : "The package store root could not be determined; this image may predate <code>bb packages</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
     <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
@@ -8518,8 +8518,8 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
-                    "pTokenField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pForgeField",
+                    "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
                     "pTokenField"] },
@@ -8533,6 +8533,13 @@ let pPat = false;                        // can https push authenticate (gh)?
 // which is why every reader goes through pForge() rather than indexing it.
 let pForges = [];
 let pForgeId = "github";
+// What the operator has already said their own servers run, by host. The
+// clone form asks which host only for an address on a server nobody has
+// answered for yet — the second project from the same Gitea is not asked.
+let pForgeHosts = {};
+// The host the current pick was made for, so a fresh address gets a fresh
+// question rather than the last one's answer.
+let pAskedHost = "";
 
 function pDraw(){
   const m = PMODES[pMode];
@@ -8555,7 +8562,10 @@ function pDraw(){
     $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
     $("pTokenField").hidden = pLinkAuth !== "token";
   }
-  const fg = pForge();
+  // What the token field is about: the picked entry when linking, and the
+  // address's own host when cloning, which is where the host comes from there.
+  const fg = pMode === "clone"
+    ? (pForgeOf(pUrlHost($("pUrl").value)) || pForge()) : pForge();
   $("pUrlHint").textContent = pMode === "link"
     ? `An empty repository to push ${pLink} to — linking never `
       + `touches a repo that already has commits.`
@@ -8583,11 +8593,9 @@ function pDraw(){
       + (fg.creates ? `Checked with ${fg.name} before anything is written.`
                     : `${fg.name} cannot be asked whether it is good, so the `
                       + "first fetch is the test.")
-    : "Leave empty for a public repository. A token here is used for THIS "
-      + "project and no other, even if it opens more — it is kept in /config and "
-      + "named in this repo's own git config. It is not shielded the way a deploy "
-      + "key is: a shell in this container can read it.";
-  $("pToken").placeholder = pMode === "link" ? fg.hint : "ghp_… or github_pat_…";
+    : "Leave empty for a public repository. A token is kept for this project "
+      + "alone, in /config, and a shell in this container can read it.";
+  $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -8609,6 +8617,23 @@ function pDraw(){
 // a viewport, because the fields swap inside a box that is not moving.
 // The host row: the catalog as a select, and a box for the address when the
 // picked one is somebody's own server rather than a single public site.
+// The host in an address, as typed — enough to tell a server the catalog
+// names from one nobody has answered for. Not a validator: the server parses
+// it properly, and this only decides whether to ask a question.
+function pUrlHost(url){
+  const u = (url || "").trim();
+  let m = /^[a-z]+:\/\/(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9.:-]*)/i.exec(u);
+  if (!m) m = /^(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9.-]*):/.exec(u);
+  return m ? m[1].toLowerCase() : "";
+}
+// Which catalog entry a host names itself as, or null when nobody has said.
+const pForgeOf = host => {
+  if (!host) return null;
+  const bare = host.split(":")[0];
+  return pForges.find(f => f.host && f.host.toLowerCase() === bare)
+      || pForges.find(f => f.id === pForgeHosts[host]) || null;
+};
+
 function pDrawForge(){
   if ($("pForgeField").hidden) return;
   const sel = $("pForge");
@@ -8616,6 +8641,28 @@ function pDrawForge(){
     sel.innerHTML = pForges.map(f =>
       `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
     sel.dataset.built = String(pForges.length);
+  }
+  // Cloning: the URL is the subject and the host is in it, so this is not a
+  // second place to type one. It is one question — what is running on that
+  // server — and it is asked only when the address is on a server that does
+  // not name itself and nobody has answered for. Which means a paste of a
+  // GitHub URL never sees it, and a Gitea is asked about once ever.
+  if (pMode === "clone"){
+    const host = pUrlHost($("pUrl").value);
+    const named = pForgeOf(host);
+    $("pForgeField").hidden = !host || !!named;
+    $("pForgeHost").hidden = true;
+    if (!$("pForgeField").hidden){
+      // A server nobody has answered for starts on the entry that promises
+      // nothing, not on GitHub: the question is what this one runs, and a
+      // default that names a different server is an answer nobody gave.
+      if (pAskedHost !== host){ pAskedHost = host; pForgeId = "git"; }
+      sel.value = pForgeId;
+      $("pForgeHint").textContent =
+        `Nothing here knows what ${host} runs, and it decides whether a token `
+        + `can be checked and a missing repository made. Asked once per server.`;
+    }
+    return;
   }
   sel.value = pForgeId;
   const f = pForge();
@@ -8683,6 +8730,7 @@ function pOpen(mode){
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   $("pToken").value = "";
+  pAskedHost = "";
   // Every open starts on GitHub rather than on whatever the last one picked:
   // the host is the first thing decided and a remembered pick would be a
   // silent one.
@@ -8708,6 +8756,7 @@ function pOpen(mode){
     if (gen !== pGen || !j) return;
     pKeys = j.keys || []; pPat = !!j.pat;
     pForges = j.forges || [];
+    pForgeHosts = j.hosts || {};
     if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
     $("pKey").innerHTML = `<option value="">none — ${pPat
         ? "authenticate with the configured PAT"
@@ -13044,8 +13093,10 @@ $("pUrl").oninput = () => {
   pNameShow();
 };
 // ...and when a name HAS been typed, the URL still decides nothing — but the
-// warning has to keep up with a URL edited afterwards.
+// warning has to keep up with a URL edited afterwards. So does the question
+// about the host, which appears and goes as the address is typed.
 $("pUrl").addEventListener("input", pNameShow);
+$("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
 
 $("cTabYml").onclick = () => cSwitch("yml");
 $("cTabEnv").onclick = () => cSwitch("env");
@@ -13167,6 +13218,9 @@ $("pCreate").onclick = async () => {
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 key: mode === "clone" ? key : "",
+                                // Only ever consulted for a host that does not
+                                // name itself — the server prefers the host.
+                                forge: mode === "clone" ? pForgeId : "",
                                 token: mode === "clone" ? $("pToken").value.trim() : "",
                                 push: mode === "clone" && $("pPush").checked})});
     const j = await r.json().catch(() => ({}));
@@ -13665,11 +13719,22 @@ async function rnSubmit(){
   // Asked before anything is written, and only when it costs something: a
   // session that is not running has nothing to interrupt, and a dialog that
   // was opened and closed unchanged should never ask at all.
-  if (prefChanged && running
-      && !confirm(`Restart the Claude session in ${name}?\n\n`
-        + `Changing what it runs on takes effect when it starts, so saving `
-        + `restarts it. The conversation is resumed — anything it is in the `
-        + `middle of doing right now is lost.`)) return;
+  //
+  // The answer decides the RESTART and nothing else. It used to decide the
+  // save as well — declining returned before anything was written — so
+  // somebody who wanted the setting kept and the conversation left alone got
+  // neither: the dialog stayed open looking unsaved, the setting never
+  // landed, and restarting the session by hand afterwards changed nothing,
+  // because there was nothing to read. Saving and interrupting are two
+  // decisions and only one of them was being asked about.
+  const restartNow = !(prefChanged && running)
+    ? false
+    : confirm(`Restart the Claude session in ${name} now?\n\n`
+        + `What it runs on is read when a session starts, so this takes `
+        + `effect at the next one either way. OK restarts it now — the `
+        + `conversation is resumed, but anything it is in the middle of `
+        + `doing is lost. Cancel saves the setting and leaves the session `
+        + `alone.`);
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -13687,15 +13752,20 @@ async function rnSubmit(){
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
-                              restart: running && prefChanged})});
+                              restart: restartNow})});
       const j = await r.json();
       if (j.error) return stop(j.error);
-      // Said out loud when it did not happen: the setting is saved either way,
-      // and a session quietly left on the old model is exactly the confusion
-      // this whole change exists to remove.
+      // Said out loud when it did not happen, and which of the two reasons it
+      // is: a session quietly left on the old model is exactly the confusion
+      // this whole thing exists to remove, and a session deliberately left
+      // running is not a fault to colour red.
       if (running && prefChanged && !j.restarted)
-        notify(`${name}: saved, but the session was not restarted — `
-               + (j.why || "it is still on what it started with"), true);
+        notify(restartNow
+                 ? `${name}: saved, but the session was not restarted — `
+                   + (j.why || "it is still on what it started with")
+                 : `${name}: saved. Its running session keeps what it started `
+                   + `with until you restart it.`,
+               restartNow);
     }
     if (!needRename){
       closeRename();
@@ -14263,7 +14333,7 @@ function wireMacros(el){
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
 // output belongs where the operator can scroll it, page it, and follow a
-// `bb sdk install` that takes minutes — none of which a one-shot text box did.
+// `bb packages install` that takes minutes — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
   if (!t) return;                        // grayed out; a stray tap does nothing

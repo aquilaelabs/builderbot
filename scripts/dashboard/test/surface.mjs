@@ -58,7 +58,7 @@ const SURFACE = [
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
   'openNewContainer', 'openNewProject', 'openNotebook', 'openPackages', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
-  'pDrawForge', 'unlinkProject',
+  'pDrawForge', 'pUrlHost', 'unlinkProject',
   'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
   'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgTickDots', 'placeCard',

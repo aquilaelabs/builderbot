@@ -90,15 +90,9 @@ import urllib.request
 # which is why it is not BuilderBot's patch number: most patches ship no new
 # agent. It does NOT reset at a window boundary — 0.5.28 follows 0.4.27 — so
 # that "which of these two is newer" always has an answer. A reset would put
-# the same number on two different agents, which is what made PROTOCOL below
-# useless.
-AGENT_VERSION = "0.4.41"
-
-# Superseded by the window above and kept only because removing a field the
-# controller still sends is itself a compatibility break: it goes at 0.5.0.
-# Nothing has ever compared it — both sides declared a 1 and neither looked —
-# which is the whole reason the window exists instead.
-PROTOCOL = 1
+# the same number on two different agents, and a number that cannot say which
+# is newer is the reason the flat protocol number this replaced was useless.
+AGENT_VERSION = "0.5.43"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -637,7 +631,7 @@ def _stores(stores, used=False):
 
 
 # Where a toolchain installed into the packages store keeps its command,
-# relative to the store (bb sdk's layout), for the census to find without
+# relative to the store (bb packages's layout), for the census to find without
 # PATH knowing about it. `android` is a directory, not a command.
 def _lay_path(store, entry, rel):
     """A layout path against the store. `root:` means the store itself;
@@ -774,7 +768,7 @@ def store_dirs(state):
     The census's `toolchains` above is a placement summary — six names, so a
     job can select on them — and it was being read as an inventory of the
     whole catalog, which called four installed packages missing on a store
-    the controller could see for itself. `bb sdk` puts each package in
+    the controller could see for itself. `bb packages` puts each package in
     <root>/<name>, and android's parts under <root>/android/, so the names
     ARE the inventory and this is one listdir.
     """
@@ -806,7 +800,7 @@ def sdk_images(state):
     """The android system images in this node's packages store, and which of
     its AVDs are built on each.
 
-    A directory walk, deliberately — not `bb sdk images`, which is the same
+    A directory walk, deliberately — not `bb packages images`, which is the same
     listing plus a `du -sk` per image. The controller's own copy can afford
     that; a node cannot. The packages store is commonly an NFS export here
     and the tree runs to tens of gigabytes, so a size measured every census
@@ -930,7 +924,7 @@ def runner_env_text(state):
 
 
 def sdk_versions(state):
-    """What `bb sdk versions` reports on this node: {name: version}.
+    """What `bb packages versions` reports on this node: {name: version}.
 
     The SAME generator the controller runs for its own list, so the two
     describe one store the same way. Before this, a node's versions came
@@ -960,7 +954,7 @@ def sdk_versions(state):
         if not os.path.isfile(bb):
             continue
         try:
-            p = subprocess.run(["bash", bb, "sdk", "versions"], capture_output=True,
+            p = subprocess.run(["bash", bb, "packages", "versions"], capture_output=True,
                                text=True, timeout=120, check=False, env=env)
         except (OSError, subprocess.SubprocessError):
             return {}
@@ -3218,7 +3212,7 @@ class Agent:
 
     # -- toolchains (docs/nodes.md §6) --------------------------------------------
     def package(self, job, spec):
-        """`bb sdk install|remove NAME` against this node's packages store,
+        """`bb packages install|remove NAME` against this node's packages store,
         with the bb the controller ships: the bundle (bb, its library, the
         catalog) is fetched by digest into the store and run from there as
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
@@ -3247,9 +3241,9 @@ class Agent:
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue
-            job.say(f"== bb sdk {action} {name}\n")
+            job.say(f"== bb packages {action} {name}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                            "sdk", action, name],
+                                            "packages", action, name],
                                    "cwd": store, "timeout": spec.get("timeout") or 3600,
                                    "env": sdk_env(self.state)})
             if st_ != "succeeded":
