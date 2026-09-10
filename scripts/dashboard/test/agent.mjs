@@ -1204,6 +1204,15 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
          && /Unbind the node/.test(refused.body),
          '...and the proxy refuses with the same sentence rather than starting it here');
+      // ...unless asked for here, explicitly: the dead button's menu sends
+      // here=1, and the session runs on this container — which the harness
+      // runs no ttyd for, so the answer is the local proxy's own 502, not
+      // the node's refusal.
+      const here = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
+                               { headers: auth, redirect: 'manual' });
+      const hereBody = await here.text();
+      ok(here.status === 502 && /terminal server is not running/.test(hereBody),
+         'asked for explicitly, a session on a project whose node refuses opens on this container instead');
       await api('/api/prefs', { project: 'beta', node: '' });
     }
     const run = await api('/api/v1/jobs', { action: 'run', project: 'alpha',

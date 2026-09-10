@@ -1823,10 +1823,13 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project):
+def session_target(project, here=False):
     """Where a session on this project runs (roadmap #24, phase 10b):
 
         {"where": "local"}                                   — this container
+        {"where": "local", "instead_of", "why"}              — this container,
+                                                               asked for while the
+                                                               node cannot take one
         {"where": "node", "id", "name", "host", "port", "ro_port"}
         {"where": "refused", "name", "why"}                  — bound to a node
                                                                that cannot take one
@@ -1847,6 +1850,14 @@ def session_target(project):
     the sandbox and met "add the mount... unbind the node" had nothing to
     add and nothing to unbind. The census is asked for again on the
     strength of any refusal it decided, so the next look is current.
+
+    And a refusal is never a lockout: with `here` the session runs on this
+    container instead, explicitly — the dead button's menu offers it, with
+    the reason beside it. The operator who could not start Claude to ask
+    what was wrong with the node was locked out of the one place the
+    answer lives. A session started this way is a session on the
+    controller, with the tree and the notebook and without the node's
+    toolchains, and its transcript lives here, not there; the tab says so.
     """
     nid = (prefs.get(project) or {}).get("node") or "" if project else ""
     if not nid or NODES_OK:
@@ -1922,6 +1933,8 @@ def session_target(project):
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
                 "boot": str(se.get("boot") or "")}
+    if here:
+        return {"where": "local", "instead_of": name, "why": why}
     return {"where": "refused", "name": name,
             "why": why + ("." if passing else
                           ". Unbind the node in the project's settings dialog to work here instead.")}
@@ -1979,6 +1992,14 @@ def claude_sessions(sessions):
         if who:
             out.setdefault(stem, []).append(who)
     return out
+
+
+def _term_here(rest):
+    """Whether a /term request asks for the session on THIS container when
+    the project's node cannot take one — `here=1` in the query, which the
+    dead Claude button's menu sends. An explicit tap, never a default."""
+    _, sep, query = rest.partition("?")
+    return sep and any(kv == "here=1" for kv in query.split("&"))
 
 
 def _term_arg(rest):
@@ -3709,7 +3730,8 @@ class Handler(BaseHTTPRequestHandler):
         # its token stamped into the URL — and everything else stays on the
         # loopback. session_target says why a node cannot take one, and the
         # row's button carries the same sentence.
-        target = session_target(_arg_project(_term_arg(self.path[len("/term"):])))
+        rest0 = self.path[len("/term"):]
+        target = session_target(_arg_project(_term_arg(rest0)), here=_term_here(rest0))
         if target["where"] == "refused":
             return self._json({"error": target["why"]}, 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
