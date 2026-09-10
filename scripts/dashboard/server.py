@@ -2526,6 +2526,72 @@ import testreg                                                   # noqa: E402
 testreg.configure(write_json=write_json, state=STATE)
 
 
+# Which PERSON the notebook's logs should name for a change. "you" and
+# "claude" answer "a person or a session" and stop there, which was the whole
+# answer while there was one person; with several on a project it says
+# nothing about which of them dropped an item. The audit trail on the Nodes
+# tab has recorded the account since accounts existed, for exactly this
+# reason, and this is the same thing for the other four logs.
+#
+# A thread-local rather than another argument through thirty signatures: the
+# modules ask at the moment they write an event. Set on every _who(), which
+# every authenticated path calls, so a handler thread reused by the next
+# request cannot carry the last one's name. Resolved lazily, so the users
+# file is read when something is actually written and not once per request.
+_writing = threading.local()
+
+
+def writer_name():
+    u = getattr(_writing, "who", None)
+    return str((users.account_of(u) or {}).get("name") or "") if u else ""
+
+# ---- new project, and linking one ------------------------------------------
+# Creating and cloning, and the worker that runs the ones that touch the
+# network. The credential half stays here — agent_keys and the ssh aliases are
+# this box's, not any one project's — and is handed over.
+import projects                                                  # noqa: E402
+
+def _seed_push_rights():
+    """One-off: the projects that were already being pushed to keep pushing.
+
+    Before this existed, whether a working copy could push was whatever its
+    remote and the agent's keys happened to allow — and on this box that means
+    every repo addressed over ssh through a deploy-key alias. Starting to
+    refuse those would be taking away something that worked, to enforce a rule
+    made afterwards, which is not what a new rule is for.
+
+    So: absent the file, every project whose GitHub remote is an ssh one is
+    granted, recorded as `key`, and the file exists from then on. https
+    remotes are not seeded — those authenticated with the container-wide PAT,
+    which is the arrangement being moved away from, and a token of their own
+    is the way back to pushing.
+    """
+    if (STATE / "push-rights.json").exists() or not WORKSPACE.is_dir():
+        return
+    seeded = {}
+    try:
+        here = sorted(WORKSPACE.iterdir())
+    except OSError:
+        return
+    for d in here:
+        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
+            continue
+        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
+        if not remotes.strip() or not _github_remote(remotes):
+            continue
+        # ssh, in either spelling — an https remote is the PAT arrangement.
+        if not any(l.split()[1].startswith(("git@", "ssh://"))
+                   for l in remotes.splitlines() if len(l.split()) > 1):
+            continue
+        repo = projects.repo_of_remotes(remotes)
+        if repo and repo not in {v["repo"] for v in seeded.values()}:
+            seeded[d.name] = {"repo": repo, "how": "key", "at": int(time.time())}
+    write_json(STATE / "push-rights.json", seeded)
+    if seeded:
+        print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
+              f"already pushing over ssh", flush=True)
+
+
 # ---- the operator's house rules ---------------------------------------------
 # The one thing in the notebook a session reads and cannot write. It rides in
 # front of every session started here; claude_scope() in bb-tty denies the
@@ -2535,7 +2601,7 @@ import codebase                                                  # noqa: E402
 import pending                                                   # noqa: E402
 import settings                                                  # noqa: E402
 
-rules.configure(write_json=write_json, state=STATE)
+rules.configure(write_json=write_json, state=STATE, actor=writer_name)
 codebase.configure(workspace=WORKSPACE)
 # The three stores above configure this one too; done here as well so the
 # endpoint works even if none of them has been touched yet this process.
@@ -2558,7 +2624,7 @@ import presence                                                  # noqa: E402
 import bugs                                                      # noqa: E402
 
 bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name, workspace=WORKSPACE)
+               tmux_name=tmux_name, workspace=WORKSPACE, actor=writer_name)
 
 # The notebook's fourth view keeps a log too, and it is the odd one: nothing
 # here writes findings, so the entries are derived by comparing one read of
@@ -2633,6 +2699,7 @@ import memory                                                    # noqa: E402
 memory.configure(run=run, workspace=WORKSPACE,
                  claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name,
                  write_json=write_json, state=STATE)
+memory.configure_log(write_json=write_json, state=STATE, actor=writer_name)
 
 # ---- the shared to-do list -------------------------------------------------
 # The one surface both sides write: the operator adds an item, a session adds
@@ -2641,7 +2708,7 @@ memory.configure(run=run, workspace=WORKSPACE,
 import todo                                                      # noqa: E402
 
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name, settle=notify.settle)
+               tmux_name=tmux_name, settle=notify.settle, actor=writer_name)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring
@@ -2731,51 +2798,6 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   tell_fn=notify.tell, tmux_name_fn=tmux_name,
                   )
 
-# ---- new project, and linking one ------------------------------------------
-# Creating and cloning, and the worker that runs the ones that touch the
-# network. The credential half stays here — agent_keys and the ssh aliases are
-# this box's, not any one project's — and is handed over.
-import projects                                                  # noqa: E402
-
-def _seed_push_rights():
-    """One-off: the projects that were already being pushed to keep pushing.
-
-    Before this existed, whether a working copy could push was whatever its
-    remote and the agent's keys happened to allow — and on this box that means
-    every repo addressed over ssh through a deploy-key alias. Starting to
-    refuse those would be taking away something that worked, to enforce a rule
-    made afterwards, which is not what a new rule is for.
-
-    So: absent the file, every project whose GitHub remote is an ssh one is
-    granted, recorded as `key`, and the file exists from then on. https
-    remotes are not seeded — those authenticated with the container-wide PAT,
-    which is the arrangement being moved away from, and a token of their own
-    is the way back to pushing.
-    """
-    if (STATE / "push-rights.json").exists() or not WORKSPACE.is_dir():
-        return
-    seeded = {}
-    try:
-        here = sorted(WORKSPACE.iterdir())
-    except OSError:
-        return
-    for d in here:
-        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
-            continue
-        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
-        if not remotes.strip() or not _github_remote(remotes):
-            continue
-        # ssh, in either spelling — an https remote is the PAT arrangement.
-        if not any(l.split()[1].startswith(("git@", "ssh://"))
-                   for l in remotes.splitlines() if len(l.split()) > 1):
-            continue
-        repo = projects.repo_of_remotes(remotes)
-        if repo and repo not in {v["repo"] for v in seeded.values()}:
-            seeded[d.name] = {"repo": repo, "how": "key", "at": int(time.time())}
-    write_json(STATE / "push-rights.json", seeded)
-    if seeded:
-        print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
-              f"already pushing over ssh", flush=True)
 
 
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
@@ -3290,6 +3312,14 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _who(self):
+        """The account making this request, or None. Kept for the notebook's
+        logs on the way past (writer_name), so an entry can say WHICH person
+        wrote it — see _who_raw for how the principal itself is proved."""
+        u = self._who_raw()
+        _writing.who = u
+        return u
+
+    def _who_raw(self):
         """The account making this request, or None.
 
         Deliberately NOT remembered on the handler. BaseHTTPRequestHandler

@@ -612,9 +612,16 @@ ok(log.some(e => e.act === 'dropped a step'
    '...and carries the words of what was dropped, which is the point of it');
 ok(/\d{1,2}\s*\w+.*\d{2}:\d{2}/.test(log[0].when),
    '...with the date and the time on every line');
-ok(log.every(e => e.by === 'claude' || e.by === 'you'),
+ok(log.every(e => /^(claude|you)( · \S+)?$/.test(e.by)),
    '...and who did it on every line, which is the half neither of you can '
    + 'reconstruct afterwards');
+// ...and WHICH person. "you" says a person rather than a session, which was
+// the whole answer while there was one account; the name is what tells two
+// of them apart, and a session carries its account's because a session has
+// an author too. The audit on the Nodes tab has done this since accounts
+// existed, and the notebook's four logs had not.
+ok(log.some(e => e.by === 'you · test') && log.some(e => e.by === 'claude · test'),
+   '...naming the account behind it, for a person and for a session alike');
 ok(log.some(e => e.act === 'reworded'
                  && /rework the picker, properly/.test(e.what)
                  && e.was === 'rework the picker'),
@@ -622,7 +629,7 @@ ok(log.some(e => e.act === 'reworded'
 ok(log.some(e => e.act === 'dropped' || e.act === 'dropped a step'),
    '...and so is every drop, which is what makes the bin recoverable by hand');
 ok(log.some(e => e.act === 'added' && /make the picker wrap properly/.test(e.what)
-                 && e.by === 'you'),
+                 && e.by.startsWith('you')),
    'the operator\'s own additions are in it too, marked as theirs');
 ok(log.some(e => e.act === 'sent'),
    '...and so is every handover, which is the record of what a session was asked');

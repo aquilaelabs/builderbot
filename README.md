@@ -2229,7 +2229,12 @@ first, since an arrangement is work.
 **Every view keeps its history.** The roadmap's log came first; the bug
 tracker and the memory view have the same button now, with the same bar —
 search, a time window, a cap — and the same rows: what happened, to which
-line, by whom, when. The memory log records what the *notebook* changed
+line, by whom, when. **By whom is the account, not just "you" or "claude"**:
+those two say a person or a session, which was the whole answer while there
+was one account, and with several on a project it does not say which of them
+dropped an item. A session carries its account's name too, because a session
+has an author — the person it was minted for. Entries written before this
+carry no name and read as they did. The memory log records what the *notebook* changed
 (wrote, edited, forgot) — Claude's own memory writes are files, not events,
 so they have no entry to make. For a session, `bb history --find X` is one
 search across all three logs, merged by time and tagged by source; `bb roadmap

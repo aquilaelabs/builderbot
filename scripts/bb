@@ -1402,6 +1402,34 @@ cmd_roadmap() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
+
+# Which account this session belongs to, for the notebook's logs: "claude"
+# says a session wrote it, and with two people each running one that does not
+# say whose. Read from the users file the way `bb settings` reads the commit
+# identity — no configure, two fields.
+def _account_name(state_dir):
+    uid = os.environ.get("BB_ACCOUNT_UID", "")
+    try:
+        with open(os.path.join(state_dir, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return ""
+    for name, u in store.items():
+        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
+                                    or (not uid and u.get("role") == "owner")):
+            return str(name)
+    return ""
+
+def _wrote(e):
+    """Who made a change, for a log line: the mark, and the person behind it
+    where the entry carries one. "you" and "claude" say a person or a
+    session; with two people on a project the name is the half that answers
+    which. Entries written before this carry no name and read as they did."""
+    by = str(e.get("by", "") or "")
+    who = str(e.get("who", "") or "")
+    return f"{by} {who}".strip() if who else by
+
+
 import importlib.util, json, sys, time
 
 spec = importlib.util.spec_from_file_location("todo", sys.argv[1])
@@ -1426,7 +1454,7 @@ write_json = statefile.write_json
 
 import os
 _state = os.environ.get("DASHBOARD_STATE", "/config")
-todo.configure(write_json=write_json, state=_state)
+todo.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 
 # The tracker's half of a notebook batch. A batch spans both files, so the
 # roadmap's begin/commit/revert have to reach the tracker as well — loaded
@@ -1436,7 +1464,7 @@ _here = os.path.dirname(sys.argv[1])
 _bugs = importlib.util.module_from_spec(
     importlib.util.spec_from_file_location("bugs", os.path.join(_here, "bugs.py")))
 _bugs.__loader__.exec_module(_bugs)
-_bugs.configure(write_json=write_json, state=_state)
+_bugs.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 _nb = importlib.util.module_from_spec(
     importlib.util.spec_from_file_location("notebook", os.path.join(_here, "notebook.py")))
 _nb.__loader__.exec_module(_nb)
@@ -1862,7 +1890,7 @@ elif op in ("history", "log"):
     for e in h:
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
         where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
-        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
+        print(f"  {when}  {_wrote(e):>6}  {e.get('act', ''):<11}"
               f"{where} {R(e.get('id'))}  {e.get('text', '')}")
         if e.get("was"):
             print(f"{'':>32}was: {e['was']}")
@@ -1894,6 +1922,34 @@ cmd_history() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$dir" "$proj" "$@" <<'PY'
+
+# Which account this session belongs to, for the notebook's logs: "claude"
+# says a session wrote it, and with two people each running one that does not
+# say whose. Read from the users file the way `bb settings` reads the commit
+# identity — no configure, two fields.
+def _account_name(state_dir):
+    uid = os.environ.get("BB_ACCOUNT_UID", "")
+    try:
+        with open(os.path.join(state_dir, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return ""
+    for name, u in store.items():
+        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
+                                    or (not uid and u.get("role") == "owner")):
+            return str(name)
+    return ""
+
+def _wrote(e):
+    """Who made a change, for a log line: the mark, and the person behind it
+    where the entry carries one. "you" and "claude" say a person or a
+    session; with two people on a project the name is the half that answers
+    which. Entries written before this carry no name and read as they did."""
+    by = str(e.get("by", "") or "")
+    who = str(e.get("who", "") or "")
+    return f"{by} {who}".strip() if who else by
+
+
 import importlib.util, json, os, sys, time
 
 
@@ -1913,10 +1969,10 @@ statefile = load_mod(dirname, "statefile")
 sys.modules["statefile"] = statefile
 write_json = statefile.write_json
 todo = load_mod(dirname, "todo")
-todo.configure(write_json=write_json, state=state)
+todo.configure(write_json=write_json, state=state, actor=lambda: _account_name(state))
 import ids  # noqa: E402 — todo.py put its directory on sys.path
 bugs = load_mod(dirname, "bugs")
-bugs.configure(write_json=write_json, state=state)
+bugs.configure(write_json=write_json, state=state, actor=lambda: _account_name(state))
 memory = load_mod(dirname, "memory")
 memory.configure_log(write_json=write_json, state=state)
 findings = load_mod(dirname, "findings")
@@ -1980,7 +2036,7 @@ for tag, e in rows:
     else:
         ident = (f" {ids.label(kind, e['id'])}" if e.get("id") is not None
                  and kind in ids.LETTERS else "")
-    print(f"  {when}  {tag:>7}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
+    print(f"  {when}  {tag:>7}  {_wrote(e):>6}  {e.get('act', ''):<11}"
           f"{where}{ident}  {e.get('text', '')}")
     if e.get("was"):
         print(f"{'':>41}was: {e['was']}")
@@ -2069,6 +2125,14 @@ CHECKPY
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$py" "$proj" "$@" <<'RULESPY'
+def _wrote(e):
+    """Who made a change, for a log line: the mark, and the person behind it
+    where the entry carries one. "you" and "claude" say a person or a
+    session; with two people on a project the name is the half that answers
+    which. Entries written before this carry no name and read as they did."""
+    by = str(e.get("by", "") or "")
+    who = str(e.get("who", "") or "")
+    return f"{by} {who}".strip() if who else by
 import importlib.util, json, os, sys, time
 
 spec = importlib.util.spec_from_file_location("rules", sys.argv[1])
@@ -2080,8 +2144,25 @@ _sfs = importlib.util.spec_from_file_location(
 statefile = importlib.util.module_from_spec(_sfs)
 _sfs.loader.exec_module(statefile)
 sys.modules["statefile"] = statefile
-reg.configure(write_json=statefile.write_json,
-              state=os.environ.get("DASHBOARD_STATE", "/config"))
+def _account_name(state_dir):
+    """Which account this session belongs to, for the rules log: "claude"
+    says a session wrote it, and with two people each running one that does
+    not say whose. Read from the users file directly — no configure."""
+    uid = os.environ.get("BB_ACCOUNT_UID", "")
+    try:
+        with open(os.path.join(state_dir, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return ""
+    for name, u in store.items():
+        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
+                                    or (not uid and u.get("role") == "owner")):
+            return str(name)
+    return ""
+
+_rules_state = os.environ.get("DASHBOARD_STATE", "/config")
+reg.configure(write_json=statefile.write_json, state=_rules_state,
+              actor=lambda: _account_name(_rules_state))
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
@@ -2196,7 +2277,7 @@ elif op == "history":
         print("nothing has changed the rules here yet")
     for e in rows:
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
-        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<7} "
+        print(f"  {when}  {_wrote(e):>6}  {e.get('act', ''):<7} "
               f"{e.get('name', '')}  {e.get('text', '')[:60]}")
         for k in ("was", "why"):
             if e.get(k):
@@ -2348,8 +2429,25 @@ _sfs = importlib.util.spec_from_file_location(
 statefile = importlib.util.module_from_spec(_sfs)
 _sfs.loader.exec_module(statefile)
 sys.modules["statefile"] = statefile
-reg.configure(write_json=statefile.write_json,
-              state=os.environ.get("DASHBOARD_STATE", "/config"))
+def _account_name(state_dir):
+    """Which account this session belongs to, for the rules log: "claude"
+    says a session wrote it, and with two people each running one that does
+    not say whose. Read from the users file directly — no configure."""
+    uid = os.environ.get("BB_ACCOUNT_UID", "")
+    try:
+        with open(os.path.join(state_dir, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return ""
+    for name, u in store.items():
+        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
+                                    or (not uid and u.get("role") == "owner")):
+            return str(name)
+    return ""
+
+_rules_state = os.environ.get("DASHBOARD_STATE", "/config")
+reg.configure(write_json=statefile.write_json, state=_rules_state,
+              actor=lambda: _account_name(_rules_state))
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
@@ -2549,6 +2647,34 @@ cmd_bug() {
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" \
         python3 - "$py" "$proj" "$@" <<'PY'
+
+# Which account this session belongs to, for the notebook's logs: "claude"
+# says a session wrote it, and with two people each running one that does not
+# say whose. Read from the users file the way `bb settings` reads the commit
+# identity — no configure, two fields.
+def _account_name(state_dir):
+    uid = os.environ.get("BB_ACCOUNT_UID", "")
+    try:
+        with open(os.path.join(state_dir, "users.json")) as f:
+            store = json.load(f).get("users") or {}
+    except (OSError, ValueError):
+        return ""
+    for name, u in store.items():
+        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
+                                    or (not uid and u.get("role") == "owner")):
+            return str(name)
+    return ""
+
+def _wrote(e):
+    """Who made a change, for a log line: the mark, and the person behind it
+    where the entry carries one. "you" and "claude" say a person or a
+    session; with two people on a project the name is the half that answers
+    which. Entries written before this carry no name and read as they did."""
+    by = str(e.get("by", "") or "")
+    who = str(e.get("who", "") or "")
+    return f"{by} {who}".strip() if who else by
+
+
 import importlib.util, json, sys, time
 
 spec = importlib.util.spec_from_file_location("bugs", sys.argv[1])
@@ -2590,7 +2716,7 @@ def _load(name):
 
 
 _todo = _load("todo")
-_todo.configure(write_json=write_json, state=_state)
+_todo.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 _nb = _load("notebook")
 _nb.configure(todo_mod=_todo, bugs_mod=bugs)
 
@@ -2868,7 +2994,7 @@ elif op in ("history", "log"):
         print(f"nothing in {proj}'s tracker matches that")
     for e in h:
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
-        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<9}"
+        print(f"  {when}  {_wrote(e):>6}  {e.get('act', ''):<9}"
               f"  {B(e.get('id'))}  {e.get('text', '')}")
         if e.get("note"):
             print(f"{'':>30}note: {e['note']}")

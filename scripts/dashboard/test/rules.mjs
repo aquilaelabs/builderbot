@@ -7,7 +7,7 @@
 // the hooks are the shipped scripts, run as processes, because "does the rule
 // reach the session" is the only question this file is about and a stub of
 // the hook would be a stub of the answer.
-import { launch, newPage, ok, done, ready, URL, DIR, nbShown, nbTab, sleep } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, nbShown, nbTab, sleep, openFold } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -73,6 +73,11 @@ ok(await page.$('#memList') !== null,
 
 // Two rules: one standing, one with a trigger. There is no picker for which
 // kind — the trigger is the answer, and the row says which it became.
+//
+// The rules section is shut by default now — the code base above it is the
+// answer this tab opens on, and the count on this heading says what is
+// behind it — so everything in it, Add included, is one fold away.
+await openFold(page, '#rulesBox details.sect[data-sect="briefing:rules"]');
 await page.click('#rlAdd');
 await page.waitForSelector('#rulesBox .rulerow', { timeout: 10000 });
 await page.fill('#rulesBox .rulerow .rlName', 'voice');
@@ -272,9 +277,12 @@ ok(/^\* No em dashes/m.test(bb('--prompt')) || /\*dont-edit-during-a-suite/.test
    + 'wearing the operator\'s authority');
 {
   const h = bb('history');
-  ok(/claude\s+add\s+dont-edit-during-a-suite/.test(h) && /you\s+add\s+voice/.test(h),
-     'every change is in a history that says who made it — which is what makes '
-     + 'this safe to share, rather than a lock');
+  // The mark AND the account: "you" and "claude" say a person or a session,
+  // and the name says which person — the same thing the Nodes tab's audit
+  // has recorded since accounts existed.
+  ok(/claude test\s+add\s+dont-edit-during-a-suite/.test(h) && /you test\s+add\s+voice/.test(h),
+     'every change is in a history that says who made it, and which account — '
+     + 'which is what makes this safe to share, rather than a lock');
 }
 ok(/dropped dont-edit-during-a-suite/.test(
      bb('rm', 'dont-edit-during-a-suite', 'it belongs in CLAUDE.md now')),

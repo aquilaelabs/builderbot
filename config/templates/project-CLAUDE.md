@@ -511,7 +511,9 @@ bb rules edit NAME "..." | bb rules rm NAME ["why"]
 bb rules history        # what has changed them, by either of you
 ```
 
-**Both of you write them, and each is marked with who did.** Yours are marked
+**Both of you write them, and each is marked with who did** — the mark
+(yours or a session's) and the account behind it, so two people on one
+project are told apart. Yours are marked
 `*` wherever they appear; you may reword or drop those. The operator's you may not touch — say in your reply if one looks
 wrong, and they change it on the Briefing tab. Every change either of you
 makes is in `bb rules history` with a name against it, which is what makes

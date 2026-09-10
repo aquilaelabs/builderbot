@@ -32,6 +32,7 @@ WORKSPACE = None
 CLAUDE_PROJECTS = None
 tmux_name = None
 write_json = None
+actor = None
 STATE = None
 LOG_FILE = None
 
@@ -50,9 +51,21 @@ def configure(*, run, workspace, claude_projects, tmux_name,
         configure_log(write_json=write_json, state=state)
 
 
-def configure_log(*, write_json, state):
-    globals().update(write_json=write_json, STATE=Path(state))
+def configure_log(*, write_json, state, actor=None):
+    globals().update(write_json=write_json, STATE=Path(state), actor=actor)
     globals()["LOG_FILE"] = Path(state) / "memory-log.json"
+
+def _by_whom():
+    """{"who": name} for the account behind this change, or {}.
+
+    "you" and "claude" say a person or a session and stop there; with two
+    people on a project that answers nothing about which of them it was.
+    The Nodes tab's audit has recorded the account since accounts existed
+    (server._principal), and this is the same thing for the notebook.
+    """
+    name = str((actor() if actor else "") or "")[:60]
+    return {"who": name} if name else {}
+
 
 
 _log_lock = threading.Lock()
@@ -77,7 +90,8 @@ def _log(project, by, ev):
             d = {"projects": {}}
         h = d["projects"].setdefault(project, [])
         h.append({"at": int(time.time()),
-                  "by": "claude" if by == "claude" else "you", **ev})
+                  "by": "claude" if by == "claude" else "you",
+                  **_by_whom(), **ev})
         del h[:-MAX_HISTORY]
         try:
             write_json(LOG_FILE, d)
