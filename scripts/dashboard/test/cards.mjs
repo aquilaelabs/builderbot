@@ -1030,18 +1030,29 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }, [path, body]);
 
-// Renaming is a dialog now, not a prompt — it has two fields. The token one
-// appears only for a project that already has a token: offering to set one on
-// a local repo would be offering a credential to nothing.
+// Renaming is a dialog now, not a prompt. One dialog, two doors: the gear is
+// the project's own settings and the chain is GitHub's half of them, so where
+// a credential is changed does not depend on whether a remote exists yet.
 await page.click('.doc .projtab [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    '...with the keyboard down, like every other dialog here');
-// alpha can push — the retroactive seeding granted it, on the deploy key its
-// remote uses — so it is offered a token, and told what setting one does and
-// does not do. beta cannot push, and is not offered one at all.
+ok(await page.$eval('#rnTokenField', el => el.hidden)
+   && await page.$eval('#rnAuthField', el => el.hidden),
+   '...and holds no credential: the gear is the project, the chain is its remote');
+await page.click('#rnCancel');
+
+// The chain, on a project that already has one. alpha can push — the
+// retroactive seeding granted it, on the deploy key its remote uses — so it
+// is offered a token, and told what setting one does and does not do.
+await page.click('.doc .projtab [data-l="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
+ok(/GitHub/.test(await page.$eval('#rnTitle', e => e.textContent))
+   && await page.$eval('#rnNameField', el => el.hidden)
+   && await page.$eval('#rnPrefField', el => el.hidden),
+   'the chain opens the same dialog on the remote alone, with the rest put away');
 ok(!await page.$eval('#rnTokenField', el => el.hidden),
    'a project pushing with a deploy key is offered a token');
 const kh = await page.$eval('#rnTokenHint', e => e.textContent);
@@ -1072,7 +1083,7 @@ await page.fill('#rnToken', '');
 // Clearing, which is the other half of a stored token: it cannot be shown and
 // must not be typed over blind, so the field is closed and this is the way in.
 await page.click('#rnCancel');
-await page.evaluate(() => renameProject('alpha'));
+await page.evaluate(() => renameProject('alpha', 'git'));
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
 ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
@@ -1137,9 +1148,12 @@ v = await seen();
 ok(v.onNone && !v.bad,
    '...and picking it settles the dialog, because nothing is missing any more');
 
-// What Claude runs on here, at the bottom of the same dialog. Per project, and
-// applied when a session starts rather than typed into a running one — so the
-// dialog's job is to say which of those two you are doing.
+// What Claude runs on here, back through the gear. Per project, and applied
+// when a session starts rather than typed into a running one — so the dialog's
+// job is to say which of those two you are doing.
+await page.click('#rnCancel');
+await page.click('.doc .projtab [data-rn="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
 ok(await page.$eval('#rnGo', e => e.textContent.trim()) === 'Save',
@@ -1166,14 +1180,15 @@ await page.click('#rnCancel');
 await page.click(`.doc .projtab [data-k="gamma"]`);
 await page.waitForFunction(() => !(state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
-// Back on alpha's, open, because what follows closes it and moves on.
-await page.evaluate(() => renameProject('alpha'));
+// ep.silon is linked and cannot push, which is the third state the chain has
+// to have an answer for: not a form to fill in, and not an empty box either.
+await page.click('.doc .projtab [data-l="ep.silon"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
-await page.click('#rnCancel');
-await page.evaluate(() => renameProject('beta'));
-await page.waitForSelector('#rnmodal:not([hidden])');
-ok(await page.$eval('#rnTokenField', el => el.hidden),
-   '...and a read-only project is offered nothing: a credential there grants nothing');
+ok(await page.$eval('#rnTokenField', el => el.hidden)
+   && !await page.$eval('#rnGitNone', el => el.hidden),
+   '...and a read-only project is told there is nothing to set, not shown a blank field');
+ok(await page.$eval('#rnGo', el => el.hidden),
+   '...with no Save to press, since nothing there can be saved');
 // Back to alpha's dialog: everything below is about the name field, and a
 // collision check run against the wrong project's name proves nothing.
 await page.click('#rnCancel');

@@ -788,14 +788,21 @@ await page.click('#bJobOk');
 await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
-// alpha has a remote, beta does not: the chain button shows on exactly the
-// unlinked one. The dialog is the clone form's third mode — URL and key only.
+// The chain is GitHub whichever state a project is in — the link form for one
+// with no remote, its credential settings for one that has. alpha has a
+// remote and beta does not, so the two doors are checked on the two of them.
 // With the stub gh (never authenticated) a key is mandatory, and the attempt
 // stops at the unresolvable bb- alias, before any remote is added — the
 // success path needs a live GitHub and stays a manual test, like the clone's.
 ok(await page.$('#projects [data-l="beta"]') !== null
-   && await page.$('#projects [data-l="alpha"]') === null,
-   'the link button shows only on a repo with no remote');
+   && await page.$('#projects [data-l="alpha"]') !== null,
+   'the chain shows on every repo, linked or not');
+await page.click('#projects [data-l="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
+ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
+   && await page.$eval('#rnNameField', el => el.hidden),
+   '...and on a linked one it opens that project\'s GitHub settings, not the link form');
+await page.click('#rnCancel');
 await page.click('#projects [data-l="beta"]');
 ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to GitHub'),
    'the dialog names the project it is linking');

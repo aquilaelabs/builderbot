@@ -2999,12 +2999,17 @@ body.booting .pane>.loading{margin:auto}
 <div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
   <div class="box">
     <h3 id="rnTitle">Project settings</h3>
-    <div class="field">
+    <div class="field" id="rnNameField">
       <label for="rnName">New name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
     </div>
+    <!-- What this project pushes with. Reached by the chain on its row, which
+         is where GitHub lives for a project with a remote and for one
+         without — the gear is the project's own settings, and a credential
+         is the remote's. -->
+    <div class="field" id="rnGitNone" hidden><div class="hint"></div></div>
     <div class="field" id="rnTokenField" hidden>
       <label for="rnToken">Access token<span class="help" data-tip="leave empty to keep the current one" tabindex="0">?</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
@@ -3058,7 +3063,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator
         run on this node; what it can build is what the Tools tab installed there.</div>
     </div>
-    <div class="field">
+    <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run on that node, and the outputs a build leaves" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
@@ -5092,7 +5097,9 @@ function rnFillNode(){
       const opened = rnFor;
       loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
     }
-    wrap.hidden = !pick.length;
+    // Hidden with the rest of the project's own settings when this dialog was
+    // opened by the chain, which asks about the remote and nothing else.
+    wrap.hidden = rnMode === "git" || !pick.length;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
@@ -6385,7 +6392,16 @@ function wireProjectRows(root){
   });
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-  root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
+  // The chain is GitHub, whichever state the project is in: linking one that
+  // has no remote, and the credential half for one that has. It used to be
+  // the first only, with the second buried in the settings dialog beside the
+  // name and the model — so "where do I change the token" had two answers
+  // depending on a state the icon did not show.
+  root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => {
+    const p = (state?.projects || []).find(x => x.name === b.dataset.l);
+    if (p?.linked) renameProject(b.dataset.l, "git");
+    else openLinkProject(b.dataset.l);
+  });
   root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
   root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
     setLocked(b.dataset.k, b.dataset.on === "1"));
@@ -6471,9 +6487,12 @@ function projectRow(p, live, cls, inTab){
                   ? "set your name and email for commits on your Profile (the gear) first — a shell is where git is typed"
                 : "shell — open another terminal here"}"
         >${TERM}</button>` : ""}
-      ${p.git_ok && !p.linked && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
-             title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
+      ${p.git_ok && !isBroken(p)
+        ? `<button class="eye" data-l="${esc(p.name)}"
+             aria-label="${p.linked ? "GitHub settings" : "link to GitHub"}"
+             title="${p.linked
+               ? "GitHub — the credential this project pushes with, and which one git reaches for"
+               : "no remote — link this repo to an empty GitHub repository"}">${LINK}</button>`
         : ""}
       ${isBroken(p) ? "" : `<button class="eye${nb ? " on acc" : ""}"
          data-m="${esc(p.name)}" aria-label="notebook"
@@ -6483,8 +6502,8 @@ function projectRow(p, live, cls, inTab){
                  : nb ? "notebook — open, go to its tab"
                  : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
-        title="settings — the name, its git credential, and what Claude runs on
-here. Renaming moves the directory and everything keyed to it">${GEAR}</button>
+        title="settings — the name, its node, and what Claude runs on here.
+Renaming moves the directory and everything keyed to it">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -13282,11 +13301,22 @@ async function setLocked(name, on){
 // rather than hides — the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
+let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
-function renameProject(name){
+function renameProject(name, mode = "all"){
   rnFor = name;
+  rnMode = mode;
   const p = (state?.projects || []).find(x => x.name === name);
-  $("rnTitle").textContent = name;
+  // One dialog, two doors. The gear is the project's own settings; the chain
+  // is GitHub's half of them, and opening it there hides everything that is
+  // not about the remote rather than scrolling past it.
+  const git = mode === "git";
+  $("rnTitle").textContent = git ? `GitHub settings for ${name}` : name;
+  for (const id of ["rnNameField", "rnPrefField", "rnEditsField",
+                    "rnGateField", "rnBuildField"])
+    $(id).hidden = git;
+  // The node picker and the two credential blocks have hidden rules of their
+  // own further down, and each of those consults the mode too.
   $("rnName").value = name;
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
@@ -13306,7 +13336,7 @@ function renameProject(name){
   // there has nothing to authenticate against, and offering one would imply
   // it grants something. Push rights are granted once, at clone.
   const how = p?.push_how || "";
-  $("rnTokenField").hidden = !(p?.has_token || p?.push);
+  $("rnTokenField").hidden = git ? !(p?.has_token || p?.push) : true;
   // The deploy-key case is tested FIRST and stays true after a token is set:
   // storing one does not change what git uses, and a hint that stopped saying
   // so the moment a token existed would be wrong exactly when it mattered.
@@ -13321,17 +13351,26 @@ function renameProject(name){
         + "and is not shielded — a shell here can read it."
       : "Stored for this project alone, and not shielded — a shell here can "
         + "read it.";
+  // Nothing to set is an answer, not an empty box: a linked project with no
+  // token and no push rights has a remote it can only read.
+  $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
+  if (!$("rnGitNone").hidden)
+    $("rnGitNone").firstElementChild.textContent =
+      `${name} has a remote it can only read, so there is no credential to set here.`;
   rnLoadAuth(name);
   rnFillPrefs(p);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Save";
+  // Nothing to save is nothing to press: with no credential to set, Cancel is
+  // the only honest way out of this door.
+  $("rnGo").hidden = !$("rnGitNone").hidden;
   $("rnmodal").hidden = false;
 }
 
 // What the remote uses now, and what the operator has picked instead. Both
 // null until this open's /api/project-auth answers — the dialog draws without
-// them rather than waiting, because the name field is the reason most people
-// opened it and it should not be behind a request.
+// them rather than waiting, so the token field is typeable before the request
+// lands and the switch appears under it when it does.
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
 // Staged, like the name and the token: pressing Clear changes what the dialog
 // says and nothing on disk. Rename is the only verb here that touches the
@@ -13340,11 +13379,14 @@ let rnClearToken = false;
 
 // Fetched per open, like the new-project dialog's keys: a project's remote can
 // be rewritten from a terminal between two opens, and a cached answer here
-// would offer to switch to the side it is already on.
+// would offer to switch to the side it is already on. Only from the chain: the
+// gear no longer shows either credential control, so asking would be a request
+// per settings open for an answer nothing reads.
 function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  if (rnMode !== "git") return;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({name})})
@@ -13363,6 +13405,8 @@ function rnDrawAuth(){
   // would mean nothing (a read-only clone, a local repo) the field above is
   // hidden, and a switch offering to use a credential the dialog will not let
   // you set is a dead end wearing a control's clothes.
+  // rnAuthOpts is null from the gear, which never asks for it, so that door
+  // leaves through the same test as a project with no remote.
   if (!rnAuthOpts || !rnAuthNow || $("rnTokenField").hidden){
     $("rnAuthField").hidden = true; return;
   }

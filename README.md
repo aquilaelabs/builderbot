@@ -1163,9 +1163,14 @@ lives in its body. The cards:
   public line is ever written; nothing from the request is. With a PAT
   configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos — gh answers for plain https remotes.
-  A local repo with **no remote at all** wears a chain icon beside its eye:
-  **link to GitHub**. It asks for the URL and how the push authenticates —
-  the same switch the settings dialog wears: a **deploy key** the agent
+  Every repo wears a chain icon beside its eye, and it is GitHub whichever
+  state the project is in: for one with **no remote at all** it is
+  **link to GitHub**, and for one that already has a remote it opens that
+  project's GitHub settings — the access token and which credential git
+  reaches for, described under
+  [An access token for one project](#an-access-token-for-one-project).
+  Linking asks for the URL and how the push authenticates — the same switch
+  the linked half wears: a **deploy key** the agent
   holds, or an **access token** for this project alone, checked against
   GitHub, stored under `/config` and read by git's helper, with the
   repository created private through the API when it does not exist yet —
@@ -1252,7 +1257,12 @@ lives in its body. The cards:
   `/workspace/.trash/<name>` with every file kept — a second delete of the same
   name is numbered rather than overwriting the first, and `/config` is not
   touched, so putting one back is a `mv`. Deliberately not on the sidebar card
-- a **pencil** per project, which renames it — the directory, and everything
+- a **gear** per project, which is that project's own settings: its name, its
+  node and the build and test commands that run there, what Claude starts on,
+  what a session may enter into the notebook, and how much of the tree it may
+  change without asking. GitHub is not in it — that is the chain, on the same
+  row, so a credential has one home whether or not the project has a remote
+  yet. Renaming moves the directory and everything
   keyed to its old name: the roadmap and bugs, the versions, the dev instance's
   data and env, the archived CI logs, and Claude's own transcripts and
   memories. It refuses while a terminal is open on it or its dev instance still
@@ -3167,8 +3177,8 @@ reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it
 to, and renaming that project takes it along.
 
-A project that already has push rights can be given a token from the **rename**
-dialog — including one that pushes with a **deploy key**. Setting one there
+A project that already has push rights can be given a token from the **chain**
+on its row — including one that pushes with a **deploy key**. Setting one there
 does not switch anything by itself: git never asks a credential helper about an
 ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
 key however many tokens are stored for it.
@@ -3195,7 +3205,7 @@ field cannot be pre-filled and typing over an invisible one is how a working
 credential gets replaced by accident. It is disabled, with **Clear the stored
 token** under it: pressing that opens the field for a new one, ghosts the
 *Access token* side and puts the choice back on *Deploy key*. Like everything
-else in this dialog it is staged — the project changes when you press Rename,
+else in this dialog it is staged — the project changes when you press Save,
 and the link offers the way back until you do.
 
 Clear the only credential a project has and both sides go quiet, with a line
