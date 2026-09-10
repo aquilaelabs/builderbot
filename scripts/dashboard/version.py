@@ -117,9 +117,18 @@ TARGET_RE = re.compile(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$")
 # What a session may move, weakest to strongest. The default is the strongest
 # because a version is a claim about the project: the operator should opt into
 # delegating it rather than out.
-POLICIES = ("locked", "patch", "minor", "open")
-_ALLOWS = {"locked": (), "patch": ("patch",),
+# `start` is the one that delegates nothing and still unblocks something:
+# a project with NO version can be given its first one by a session, and
+# every move after that stays the operator's. Creating a version and moving
+# one are different decisions — the first has no claim to overwrite — and
+# without this the only way to let a session write the first VERSION was to
+# hand it the bumping as well.
+POLICIES = ("locked", "start", "patch", "minor", "open")
+_ALLOWS = {"locked": (), "start": (), "patch": ("patch",),
            "minor": ("patch", "minor"), "open": ("patch", "minor", "major")}
+# Which policies let a session create the FIRST version. Not derived from
+# _ALLOWS: `start` delegates no part and is exactly this permission.
+_MAY_INIT = ("start", "patch", "minor", "open")
 
 PARTS = ("major", "minor", "patch")
 
@@ -423,6 +432,10 @@ def may(project, part, by="claude"):
     if pol == "locked":
         return (f"{project}'s version is locked to the operator. They can "
                 f"change that on the project's Artifacts tab.")
+    if pol == "start":
+        return (f"{project}'s policy is 'start': a session may give it its first "
+                f"version and no more. Moving it is the operator's, on the "
+                f"project's Artifacts tab.")
     return (f"{project}'s policy is '{pol}', so a session may move "
             f"{' or '.join(_ALLOWS[pol]) or 'nothing'} but not {part}.")
 
@@ -506,14 +519,15 @@ def init(project, value, by="claude", comp="", env=None):
     make a file by hand in a terminal. A rule with no sanctioned path is a
     rule people route around.
 
-    `locked` refuses this the way it refuses a bump. Under any delegating
-    policy a session may create one: if the operator has handed over some of
-    the moving, handing over the starting point is the same decision, and a
-    new project with no version at all is the case worth unblocking.
+    `locked` refuses this the way it refuses a bump. `start` allows it and
+    nothing else, which is the whole reason that policy exists; the
+    delegating policies allow it too, because handing over the moving and
+    withholding the starting point would be a strange place to draw a line.
     """
-    if by != "operator" and policy(project) == "locked":
-        return {"error": f"{project}'s version is locked to the operator. They "
-                         f"can give it one on the project's Artifacts tab."}
+    if by != "operator" and policy(project) not in _MAY_INIT:
+        return {"error": f"{project}'s version is locked to the operator. They can "
+                         f"give it one on the project's Artifacts tab, or set Claude "
+                         f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
         return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.1.0 — "

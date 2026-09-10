@@ -385,8 +385,10 @@ tellable apart in the Artifacts tab.
 
 A project with no `VERSION` file still answers, falling back to `git describe`.
 Giving it one is `bb version init 0.1.0` — which the same policy governs, so
-under the default `locked` it is the operator's, from the Artifacts tab. Do
-not write the file by hand; that is the one path deliberately closed.
+under the default `locked` it is the operator's, from the Artifacts tab. There
+is a setting for exactly this case: *may start one, not move it* lets you
+write the first version and leaves every move after it theirs. Do not write
+the file by hand; that is the one path deliberately closed.
 
 **The operator may ask you what it should start at.** Pressing *Ask Claude*
 on that tab sends the question here, the way a roadmap step arrives. The

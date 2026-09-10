@@ -4989,8 +4989,13 @@ def fail(msg):
 def policy_line():
     pol = version.policy(proj)
     allowed = version.allows(pol)
+    # `start` delegates no PART and still delegates something: the first
+    # version. Said plainly, or a session reads "the operator only" and does
+    # not try the one thing it may do.
     return (f"{pol}" + (f" — a session may move {', '.join(allowed)}"
-                        if allowed else " — the operator only"))
+                        if allowed else
+                        " — a session may give it its first version, and move nothing after"
+                        if pol == "start" else " — the operator only"))
 
 
 if argv and argv[0] == "bump":

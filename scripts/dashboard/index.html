@@ -5033,6 +5033,10 @@ window.addEventListener("focus", nudgeTerminals);
 // move?". The values are unchanged — only the reading is.
 const POLICY_LABEL = {
   locked: "locked — only me",
+  // Creating the first version and moving one after are different
+  // decisions: the first has nothing to overwrite. This is the one that
+  // delegates only that.
+  start: "may start one, not move it",
   patch: "patch only",
   minor: "patch and minor",
   open: "anything, including major",
@@ -11631,21 +11635,13 @@ unreleased.">↩ ${esc(v.prev)}</button>` : ""}
 it as work lands, and a bump dates the accumulated lines">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
-        ${v.component ? "" : `<label class="verpol">
-          <span>Claude access</span>
-          <select id="verPolicy" data-was="${esc(v.policy)}"
-            aria-label="which parts of the version a Claude session may move">
-            ${(v.policies || []).map(o => `<option value="${o}"${
-              o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
-            ).join("")}
-          </select>${verPolicyPending != null
-            ? `<span class="vermark">staged: on Save</span>` : ""}
-        </label>`}
+        ${v.component ? "" : verPolicyPicker(v)}
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
           stop Bash. It covers this project and its components alike.</p>
         ${verAddFold(v)}`}` : `
+        ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
           <span class="verinit">
             <input class="vstart" value="0.1.0" size="8" maxlength="20"
@@ -11670,6 +11666,23 @@ become that version's section when it is created">Changelog${
                 v.unreleased === 1 ? "" : "s"} as its first section` : ""}.</p>
         ${verAddFold(v)}`);
 
+  }
+
+  // The one picker, drawn in both states of this tab. It used to be written
+  // only into the has-a-version branch, so a project with no version had no
+  // way to say who may give it one — which is the setting that matters most
+  // at exactly that moment.
+  function verPolicyPicker(v){
+    return `<label class="verpol">
+      <span>Claude access</span>
+      <select id="verPolicy" data-was="${esc(v.policy)}"
+        aria-label="what a Claude session may do with this project's version">
+        ${(v.policies || []).map(o => `<option value="${esc(o)}"${
+          o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${
+          esc(POLICY_LABEL[o] || o)}</option>`).join("")}
+      </select>${verPolicyPending != null
+        ? `<span class="vermark">staged: on Save</span>` : ""}
+    </label>`;
   }
 
   async function postVersion(body, quiet){

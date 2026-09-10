@@ -344,7 +344,11 @@ bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component — a directory with its own VERSION
-bb version policy  what a session may move here, and who decides
+bb version policy  what a session may move here, and who decides. The
+                   operator picks it on the Artifacts tab, before or after
+                   there is a version: locked (theirs entirely), may start
+                   one (a session writes the FIRST version and moves nothing
+                   after), patch, patch and minor, or anything
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
                    next version bump dates the accumulated lines
