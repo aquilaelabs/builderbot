@@ -435,8 +435,24 @@ const post = body => page.evaluate(async b => {
   ok(full > shut && kf[1] === full,
      `...landing at the height it aimed for (${shut} → ${full}px)`);
   await closeFold(page, sel);
-  ok(await page.$eval(sel, d => d.offsetHeight) === shut,
-     '...and closes back to exactly the height it started at');
+  // Against the row as it is NOW, not against `shut`. The click on the project
+  // row above reopened the notebook, and its re-read repaints this list when it
+  // lands — on a loaded box that is under the fold rather than before it. The
+  // repaint swaps the row for an equal one (closeFold copes), but a height
+  // sampled on the old row and one on its replacement agree only while nothing
+  // around it moved (the first-child border, the doc's scrollbar), which is not
+  // what this is about (B71). Shut means the box is its summary plus its own
+  // padding and border, with no inline height left by the tween.
+  const back = await page.$eval(sel, d => {
+    const cs = getComputedStyle(d), sum = d.querySelector("summary");
+    const chrome = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"]
+      .reduce((n, k) => n + parseFloat(cs[k]), 0);
+    return { open: d.open, inline: d.style.height + d.style.overflow,
+             box: d.getBoundingClientRect().height,
+             want: sum.getBoundingClientRect().height + chrome };
+  });
+  ok(!back.open && back.inline === "" && Math.abs(back.box - back.want) < 0.05,
+     `...and closes back to exactly its shut height, nothing of the tween left (${back.box} vs ${back.want}px)`);
 }
 
 // ---- handing one to a session ----------------------------------------------

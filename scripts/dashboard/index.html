@@ -7345,8 +7345,11 @@ function openDocker(){
   loadDocker();
 }
 
+let dockerAsk = 0;                       // which ask is newest, so an older
+                                         // answer landing late cannot win
 async function loadDocker(){
   const asked = dockerNode;
+  const ask = ++dockerAsk;
   let got;
   try{
     got = await (await fetch("/api/docker"
@@ -7357,6 +7360,11 @@ async function loadDocker(){
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
   if (asked !== dockerNode) return;
+  // A newer ask is in flight or has landed — Refresh under a revision reload,
+  // or a reload under Refresh. This answer is about an earlier moment, and a
+  // daemon that came back between the two would be painted as gone again
+  // (B69).
+  if (ask !== dockerAsk) return;
   // First answer resolves "" to the default node's real id, so the picker
   // and the cache speak one language.
   if (!dockerNode && got.node) dockerNode = got.node;
@@ -7421,7 +7429,10 @@ function fillNodeSelect(sel, wrap, prefer){
   // to it, so there is nothing to narrow by (docs/nodes.md §13).
   const dnodes = (nodesList || []).filter(n =>
     n.kind !== "local" && n.state !== "retired");
-  if (nodesList === null) loadNodes();
+  // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
+  // so a draw here during a node-list reload lost the picker until something
+  // else moved dockerRev (B69's nodes.mjs sibling).
+  if (nodesList === null) loadNodes().then(() => { dockerRev++; drawPanes(); });
   wrap.hidden = dnodes.length < 2;
   // An agent node carries its heartbeat's numbers, and this is the picker
   // the design says they belong beside (docs/nodes.md §9): the choice of
