@@ -874,8 +874,12 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   // after its uuid, and any DHCP reservation was made against its MAC — so a
   // minted pair is right for a machine that does not exist yet and Unraid's
   // is right the moment it does. Blank mints one.
-  const vmDraft = {name: "bb-sandbox", cores: 6, memory_gb: 16, disk_gb: 200,
-                   iso: "ubuntu-26.04-live-server-amd64.iso", uuid: "", mac: ""};
+  const vmDraft = {hv: "unraid", name: "bb-sandbox", cores: 6, memory_gb: 16,
+                   disk_gb: 200, iso: "ubuntu-26.04-live-server-amd64.iso",
+                   vmid: 9000, uuid: "", mac: ""};
+  // The picker's own list, from the server: which hypervisors have a
+  // template here, what each hands back, and which identity fields it takes.
+  let vmKinds = null;
   const vmForm = (made) => {
     document.getElementById("ndTitle").textContent = "Create a sandbox VM";
     boxWidth(!!made);
@@ -883,49 +887,63 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       `<div class="setrow col">${lbl("vm_" + k, label, help)}
         <input id="vm_${k}" data-vk="${k}" autocomplete="off" spellcheck="false"
           value="${esc(String(vmDraft[k]))}"${extra}></div>`;
+    const kinds = vmKinds || [{id: "unraid", label: "Unraid", wants: ["uuid", "mac"],
+                              mac_prefix: "52:54:00", artifact: "domain XML"}];
+    const kind = kinds.find(k => k.id === vmDraft.hv) || kinds[0];
+    const takes = k => (kind.wants || []).includes(k);
     body.innerHTML = `<div class="field vmform">
-        <div class="hint">A node is a machine the controller sends work to. This is the
-          one it is happiest with: an Unraid VM, made from the machine this repository
-          ships.</div>
+        <div class="hint">A node is a machine the controller sends work to. Pick what runs
+          it and this writes the machine — sized the same everywhere, with an identity of
+          its own.</div>
+        <div class="setrow col">${lbl("vm_hv", "Runs on")}
+          <select id="vm_hv" data-vk="hv">${kinds.map(k =>
+            `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${
+              esc(k.label)}</option>`).join("")}</select></div>
         <div class="prefrow">
-          ${f("name", "Name", "the domain's name, and its folder under /mnt/user/domains")}
+          ${f("name", "Name", "the machine's name, and the folder its disk goes in")}
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
           ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
-          ${f("disk_gb", "Disk GiB", "set in Unraid's own form — the XML only names the file",
-              ' type="number" min="20" max="4096"')}
+          ${f("disk_gb", "Disk GiB", kind.id === "unraid"
+              ? "set in Unraid's own form — the XML only names the file" : "",
+              ' type="number" min="8" max="8192"')}
+          ${takes("vmid") ? f("vmid", "VM id", "Proxmox numbers its machines, 100 and up",
+              ' type="number" min="100"') : ""}
         </div>
-        ${f("iso", "Installer ISO", "a file you have put in /mnt/user/isos. Ubuntu Server is the tested one")}
+        ${f("iso", "Installer ISO", "a file you have already put where that manager keeps them. Ubuntu Server is the tested one")}
         <div class="prefrow">
-          ${f("uuid", "UUID", "blank mints one. Made the VM already? Paste Unraid's, or its firmware settings are left behind")}
-          ${f("mac", "MAC", "blank mints one on QEMU's prefix. Paste Unraid's to keep a DHCP reservation")}
+          ${takes("uuid") ? f("uuid", "UUID",
+              "blank mints one. Made the VM already? Paste the manager's, or its firmware settings are left behind") : ""}
+          ${f("mac", "MAC", `blank mints one in ${kind.mac_prefix}, which is the range this one accepts`)}
         </div>
       </div>
       ${made ? `<div class="field vmmade">
-        <div class="hint">Its own uuid <code>${esc(made.uuid)}</code> and MAC
-          <code>${esc(made.mac)}</code> — never a second VM's.</div>
-        <pre class="ndcmd vmxml" id="vmXml">${esc(made.xml)}</pre>
-        <ol class="vmsteps">
-          <li>Unraid → <b>VMS</b> → Add VM → Linux. Name it <code>${esc(made.name)}</code>,
-            give it ${made.cores} cores, ${made.memory_gb} GiB and a
-            ${esc(String(vmDraft.disk_gb))}G vdisk, and Create — that makes the folder and the disk.</li>
-          <li>Open it → Edit → <b>XML View</b>, paste this over what is there, Update. Its uuid
-            and MAC are above: paste Unraid's into them first and Generate again to keep the
-            firmware settings and the address it already has.</li>
-          <li>Start it and install: headless, no desktop, ssh on.</li>
-          <li>Export the shares to its address first — Unraid → Shares → the share →
-            <b>NFS Security Settings</b> — or every mount on it is refused.</li>
-          <li>Back here, <b>Enroll node</b> mints a token; run the provision command it
-            gives you on the VM, as root.</li>
-        </ol>
+        <div class="hint">${esc(made.label)}: its own${made.uuid && takes("uuid")
+          ? ` uuid <code>${esc(made.uuid)}</code> and` : ""} MAC
+          <code>${esc(made.mac)}</code> — never a second machine's.</div>
+        <pre class="ndcmd vmxml" id="vmXml">${esc(made.text)}</pre>
+        <ol class="vmsteps">${(made.steps || []).map(x =>
+          `<li>${esc(x)}</li>`).join("")}</ol>
       </div>` : ""}
       <div class="foot">
-        ${made ? `<button type="button" id="vmCopy">Copy XML</button>` : ""}
+        ${made ? `<button type="button" id="vmCopy">Copy</button>` : ""}
         <span class="sp"></span>
         <button type="button" class="primary" id="vmGo">${made ? "Generate another" : "Generate"}</button>
         <button type="button" id="vmCancel">${made ? "Done" : "Cancel"}</button>
       </div>`;
-    body.querySelectorAll("[data-vk]").forEach(el =>
-      el.oninput = () => { vmDraft[el.dataset.vk] = el.value; });
+    body.querySelectorAll("[data-vk]").forEach(el => {
+      el.oninput = () => { vmDraft[el.dataset.vk] = el.value; };
+    });
+    // Switching manager redraws the form: which fields it takes differ, and
+    // so does the range a MAC has to be in — one typed for the old one would
+    // be refused, so it goes back to being minted.
+    const hvSel = body.querySelector("#vm_hv");
+    if (hvSel) hvSel.onchange = () => {
+      vmDraft.hv = hvSel.value;
+      const k = (vmKinds || []).find(x => x.id === vmDraft.hv);
+      if (k && vmDraft.mac && !vmDraft.mac.toLowerCase().startsWith(k.mac_prefix.toLowerCase()))
+        vmDraft.mac = "";
+      vmForm(null);
+    };
     body.querySelector("#vmCancel").onclick = shut;
     const copy = body.querySelector("#vmCopy");
     if (copy) copy.onclick = async () => {
@@ -938,21 +956,34 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         document.execCommand("copy");
       }
-      notify("the XML is on the clipboard — paste it into the VM's XML View");
+      notify(`the ${made.artifact} is on the clipboard`);
     };
     const go = body.querySelector("#vmGo");
     go.onclick = () => pressing(go, async () => {
       busy(go, "Generating");
-      const r = await nodeAct({action: "vm-xml", name: vmDraft.name,
+      const r = await nodeAct({action: "vm-xml", hv: vmDraft.hv, name: vmDraft.name,
                               cores: Number(vmDraft.cores) || 0,
                               memory_gb: Number(vmDraft.memory_gb) || 0,
+                              disk_gb: Number(vmDraft.disk_gb) || 0,
+                              vmid: Number(vmDraft.vmid) || 0,
                               iso: vmDraft.iso, uuid: vmDraft.uuid, mac: vmDraft.mac});
+      if (r.catalog) vmKinds = r.catalog;     // the picker's list, on any answer
       if (r.error){ vmForm(null); return; }   // nodeAct has said why
       vmForm(r);
     });
   };
   const vm = root.querySelector("#ndVm");
-  if (vm) vm.onclick = () => { modal.hidden = false; vmForm(null); };
+  if (vm) vm.onclick = async () => {
+    modal.hidden = false;
+    vmForm(null);
+    // The list of managers comes from the server — it is the templates that
+    // are actually shipped, not a copy of them here. Asked once per dialog,
+    // and the form redraws with the real picker when it lands.
+    if (!vmKinds){
+      const r = await nodeAct({action: "vm-xml", hv: vmDraft.hv});
+      if (r.catalog){ vmKinds = r.catalog; if (!body.querySelector(".vmmade")) vmForm(null); }
+    }
+  };
   const en = root.querySelector("#ndEnroll");
   if (en) en.onclick = () => { modal.hidden = false; mintForm(); };
   // The backdrop closes it, like every other dialog on the page. Not while

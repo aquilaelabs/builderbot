@@ -1168,6 +1168,13 @@ await page.click('.nodestab #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
    'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
+// Every hypervisor with a template here is offered, and the list is the
+// server's — the templates that actually ship, not a copy of them in the page.
+await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv option') || []).length > 1,
+                           null, { timeout: 15000 });
+const kinds = await page.$$eval('#ndBody #vm_hv option', os => os.map(o => o.value));
+ok(kinds.includes('unraid') && kinds.includes('proxmox') && kinds.length >= 5,
+   `the picker offers every hypervisor a template ships for (${kinds.join(', ')})`);
 await page.fill('#ndBody #vm_name', 'bb-sandbox-2');
 await page.fill('#ndBody #vm_memory_gb', '24');
 await page.click('#ndBody #vmGo');
@@ -1210,7 +1217,42 @@ ok(/<uuid>b091db01-cbdd-07b7-c797-79ca40d31a00<\/uuid>/.test(kept)
    && /<mac address="52:54:00:46:d2:fb"\/>/.test(kept),
    'Unraid\'s own uuid and MAC are taken as given, and the nvram path follows the uuid');
 const badId = await page.evaluate(() => nodeAct({ action: 'vm-xml', uuid: 'nope' }));
-ok(!!badId.error && !badId.xml, '...and something that is not a uuid is refused');
+ok(!!badId.error && !badId.text, '...and something that is not a uuid is refused');
+
+// ---- and the same machine on somebody else's hypervisor ---------------------
+// A node is a machine, not an Unraid machine. The picker switches template,
+// and what changes with it is the artifact, the steps, and the MAC range —
+// the last being the one nobody gets right by hand: VMware refuses a static
+// address outside its own, Hyper-V and VirtualBox hand out their own, and a
+// machine wearing the wrong prefix is the one that collides.
+await page.selectOption('#ndBody #vm_hv', 'proxmox');
+await page.waitForFunction(() => !!document.querySelector('#ndBody #vm_vmid'),
+                           null, { timeout: 10000 });
+ok(true, 'switching to Proxmox asks for the VM id it numbers machines with');
+await page.click('#ndBody #vmGo');
+await page.waitForFunction(() => /qm create/.test(document.querySelector('#ndBody .vmxml')?.textContent || ''),
+                           null, { timeout: 15000 });
+{
+  const pve = await page.$eval('#ndBody .vmxml', p => p.textContent);
+  ok(/qm create 9000/.test(pve) && /--cores 6/.test(pve) && /--memory 24576/.test(pve)
+     && /--smbios1 uuid=[0-9a-f-]{36}/.test(pve),
+     'Proxmox comes back as a qm create with the same machine in it');
+  ok(/virtio=52:54:00:/.test(pve), '...on QEMU\'s MAC range, which is what Proxmox is');
+  ok(await page.$eval('#ndBody .vmsteps', ol => /Proxmox host as root/.test(ol.textContent)),
+     '...and the steps are that manager\'s, not Unraid\'s');
+}
+for (const [hv, want, mark] of [['vmware', /^00:50:56:/, /ethernet0\.address/],
+                                ['hyperv', /^00:15:5d:/, /Set-VMNetworkAdapter/],
+                                ['virtualbox', /^08:00:27:/, /VBoxManage createvm/]]){
+  const r = await page.evaluate(h => nodeAct({ action: 'vm-xml', hv: h, name: 'bb-node' }), hv);
+  ok(!r.error && mark.test(r.text) && want.test(r.mac),
+     `${hv} renders its own kind of file, with a MAC in its own range (${r.mac})`);
+  const wrong = await page.evaluate(h => nodeAct({ action: 'vm-xml', hv: h, mac: '52:54:00:11:22:33' }), hv);
+  ok(!!wrong.error && /MAC in/.test(wrong.error),
+     `...and refuses one from another vendor's range rather than writing a machine that collides`);
+}
+ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).error,
+   'a hypervisor with no template here says so rather than guessing');
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 

@@ -428,16 +428,24 @@ the installer ISO line in it changes, and the file lists them. Create the VM
 in **Form view** first so Unraid makes the domain folder and the vdisk, then
 switch to **XML view** and paste it over what is there.
 
-**The Nodes tab renders it for you.** *Create sandbox VM*, beside *Enroll
-node*, asks for the name, the cores, the memory and the ISO and hands back
-that file with this machine's identity in it — a uuid, the OVMF nvram path
+**The Nodes tab renders it for you, and not only for Unraid.** *Create
+sandbox VM*, beside *Enroll node*, asks what runs the machine — Unraid,
+Proxmox VE, libvirt/KVM, QEMU alone, VMware, Hyper-V or VirtualBox, one
+template each under `nodes/vm/` — then for the name, the cores, the memory,
+the disk and the ISO, and hands back that manager's own kind of file with
+this machine's identity in it — a uuid, the OVMF nvram path
 named after that uuid, and a MAC on QEMU's prefix — plus the steps from an
 empty Unraid to an enrolled node. The identity is two fields as well as two
-generated values, and that is the part worth understanding: Unraid mints its
-own pair when the VM is created in Form view, the nvram file on disk is
-named after ITS uuid and any DHCP reservation was made against ITS MAC. So a
-minted pair is right for a machine that does not exist yet, and pasting
-Unraid's in is right the moment it does. Copying the file by hand instead is
+generated values, and that is the part worth understanding: a manager mints
+its own pair when it makes a VM, the firmware variables on disk are named
+after ITS uuid and any DHCP reservation was made against ITS MAC. So a
+minted pair is right for a machine that does not exist yet, and pasting the
+manager's in is right the moment it does. **The MAC is minted in the range
+that hypervisor accepts** — VMware refuses a static address outside
+`00:50:56:00-3F`, Hyper-V hands out `00:15:5D`, VirtualBox `08:00:27`, and
+QEMU and everything built on it `52:54:00` — and one from the wrong range is
+refused here rather than written into a machine that collides with the next
+one that manager makes. Copying the file by hand instead is
 still fine; those three fields are what to change, and a second VM sharing
 any of them is a second VM on the first one's firmware variables and
 address.

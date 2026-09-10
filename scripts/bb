@@ -2429,25 +2429,8 @@ _sfs = importlib.util.spec_from_file_location(
 statefile = importlib.util.module_from_spec(_sfs)
 _sfs.loader.exec_module(statefile)
 sys.modules["statefile"] = statefile
-def _account_name(state_dir):
-    """Which account this session belongs to, for the rules log: "claude"
-    says a session wrote it, and with two people each running one that does
-    not say whose. Read from the users file directly — no configure."""
-    uid = os.environ.get("BB_ACCOUNT_UID", "")
-    try:
-        with open(os.path.join(state_dir, "users.json")) as f:
-            store = json.load(f).get("users") or {}
-    except (OSError, ValueError):
-        return ""
-    for name, u in store.items():
-        if isinstance(u, dict) and ((uid and u.get("uid") == uid)
-                                    or (not uid and u.get("role") == "owner")):
-            return str(name)
-    return ""
-
-_rules_state = os.environ.get("DASHBOARD_STATE", "/config")
-reg.configure(write_json=statefile.write_json, state=_rules_state,
-              actor=lambda: _account_name(_rules_state))
+reg.configure(write_json=statefile.write_json,
+              state=os.environ.get("DASHBOARD_STATE", "/config"))
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"

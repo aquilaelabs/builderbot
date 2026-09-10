@@ -4540,13 +4540,16 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         nid = field(req, "id")
         if act == "vm-xml":
-            # The domain XML for a new sandbox VM. No node exists yet and
-            # nothing is written: a render of the shipped machine with an
-            # identity of its own, which the operator pastes into Unraid.
+            # What a new sandbox VM is made from, for whichever hypervisor is
+            # picked. No node exists yet and nothing is written: a render of
+            # a shipped machine with an identity of its own, which the
+            # operator pastes into their manager or runs on its host.
             return self._json(vmtemplate.render(
                 name=field(req, "name"), cores=req.get("cores"),
                 memory_gb=req.get("memory_gb"), iso=field(req, "iso"),
-                uid=field(req, "uuid"), hw=field(req, "mac")))
+                uid=field(req, "uuid"), hw=field(req, "mac"),
+                hv=field(req, "hv"), disk_gb=req.get("disk_gb"),
+                vmid=req.get("vmid")) | {"catalog": vmtemplate.catalog()})
         if act == "add":
             r = nodes.node_add(self._principal(), field(req, "name"),
                                field(req, "addr"),
