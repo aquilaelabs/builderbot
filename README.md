@@ -2873,6 +2873,13 @@ the code, the port it belonged to is gone. The tab notices that case and
 says so, and says the thing worth saying first: try Connect, you are probably
 already paired.
 
+**A phone it has met is remembered.** Every pairing and every connection
+puts the handset on the node's remembered list on the Phone tab — its
+model, its address, when it was last seen — and Connect on that row is the
+whole reconnect: the address goes back in the field and the node finds the
+port. Forget drops the row and nothing else; the pairing key stays on the
+node, so the phone can be connected again by typing its address.
+
 **You give it an IP, not a port.** Android hands out a new one every time
 wireless debugging is toggled, so a remembered port goes stale, and the port
 on the pairing screen is a different number from the one on the main screen

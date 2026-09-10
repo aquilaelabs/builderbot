@@ -5734,11 +5734,11 @@ class Handler(BaseHTTPRequestHandler):
         who = self._who() or {}
         uid, me = users.uid_of(who), who.get("name") or "somebody"
         nid = field(req, "node")
-        if act in ("pair", "connect", "disconnect"):
+        if act in ("pair", "connect", "disconnect", "forget"):
             if NODES_OK or not nid or not nodes.node(nid):
                 return self._json({"error": "pick a node — a phone is driven from "
                                             "a node that has adb"}, 400)
-            if not nodes.node(nid).get("live"):
+            if act != "forget" and not nodes.node(nid).get("live"):
                 return self._json({"error": f"{nodes.node(nid)['name']} is not dialing "
                                             "in — nothing reaches its adb right now"}, 400)
         if act == "pair":
@@ -5747,6 +5747,8 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
         elif act == "disconnect":
             r = phone.disconnect(nid, uid, me)
+        elif act == "forget":
+            r = phone.forget(nid, field(req, "ip"))
         elif act == "ask":
             # A session asking to reach the phone on its project's node —
             # or, with kind "root", for one command as root there (roadmap

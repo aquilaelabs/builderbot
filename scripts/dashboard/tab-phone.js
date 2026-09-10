@@ -146,6 +146,28 @@ function renderPhoneInto(i){
             port is not the one the main screen shows.`}</div>
      </div>`,
   ];
+  // The phones this node has paired or connected, newest first. The pairing
+  // outlives everything (the key is in the node account's ~/.android), so a
+  // remembered phone is one press: its address goes in the field above and
+  // the node finds the port. Forget drops the memory, not the pairing.
+  const known = (n.known || []).filter(k => k.ip);
+  if (known.length)
+    rows.push(`<div class="row"><div class="grow">
+        <div class="name">Remembered on ${esc(n.name)}</div>
+        <div class="sub">paired or connected here before — Connect is all they need</div>
+      </div></div>`,
+      ...known.map(k => `<div class="row phknown" data-ip="${esc(k.ip)}">
+        <div class="grow">
+          <div class="name">${esc(k.model || k.ip)}${
+            dev && (dev.serial === k.serial || (dev.model && dev.model === k.model))
+              ? ` <span class="pill ok">connected</span>` : ""}</div>
+          <div class="sub">${esc(k.ip)}${k.model ? "" : " · paired, never connected from here"} · ${
+            esc(ago(k.last || k.first || 0))}${k.by ? ` by ${esc(k.by)}` : ""}</div>
+          <div class="actbar">
+            <button type="button" data-kconnect="${esc(k.ip)}"${off ? " disabled" : ""} title="${offWhy}">Connect</button>
+            <button type="button" class="danger" data-kforget="${esc(k.ip)}">Forget</button>
+          </div>
+        </div></div>`));
   // What a session is waiting on, above everything else it could be doing:
   // somebody is blocked on it, and that somebody asked YOU — a request only
   // ever reaches the account that connected the phone it is about.
@@ -192,6 +214,13 @@ function wirePhoneTab(root){
     phBusy = "pairing"; phRev++; drawPanes();
     phFetch({action: "pair", ip: phIp.trim(), port: phPort.trim(), code: phCode.trim()});
   });
+  root.querySelectorAll("[data-kconnect]").forEach(b => b.onclick = () => {
+    phIp = b.dataset.kconnect;
+    phBusy = "looking for the phone"; phRev++; drawPanes();
+    phFetch({action: "connect", ip: phIp});
+  });
+  root.querySelectorAll("[data-kforget]").forEach(b => b.onclick = () =>
+    phFetch({action: "forget", ip: b.dataset.kforget}));
   root.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
     phBusy = "running it"; phRev++; drawPanes();
     phFetch({action: "allow", id: Number(b.dataset.allow)});

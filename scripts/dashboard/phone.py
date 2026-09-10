@@ -67,7 +67,13 @@ _lock = threading.Lock()
 
 
 def load():
-    """{"nodes": {node id: {owner, owner_name, ip, serial, model, at}}}."""
+    """{"nodes": {node id: {owner, owner_name, ip, serial, model, at}},
+        "ips": {node id: the address last used there},
+        "known": {node id: [{ip, model, serial, first, last, by}]}}
+
+    `known` is the phones this node has paired or connected, newest first:
+    the pairing key is in the node account's ~/.android, so a remembered
+    phone needs Connect and nothing else, and the tab offers exactly that."""
     try:
         d = __import__("json").loads(FILE.read_text())
     except (OSError, ValueError):
@@ -92,6 +98,54 @@ def _put(nid, rec):
     else:
         d["nodes"][nid] = rec
     save(d)
+
+
+KNOWN_MAX = 8      # per node; a desk does not hold more phones than this
+
+
+def _remember(d, nid, ip, model, serial, name):
+    """Note a phone on this node's remembered list, in place if it is one
+    already there. A phone is the same phone by model when the model is
+    known and by address until it is — a pairing knows only the address,
+    and the connect that follows fills the model in on the same row. The
+    address is updated either way: DHCP moves it, the phone does not
+    change."""
+    rows = [r for r in (d.setdefault("known", {}).get(nid) or []) if isinstance(r, dict)]
+    now = int(time.time())
+    same = [r for r in rows if (model and r.get("model", "").lower() == model.lower())
+            or (not model or not r.get("model")) and r.get("ip") == ip]
+    if same:
+        row = same[0]
+        rows.remove(row)
+        row.update(ip=ip, last=now, by=name or row.get("by", ""))
+        if model:
+            row["model"] = model
+        if serial:
+            row["serial"] = serial
+    else:
+        row = {"ip": ip, "model": model or "", "serial": serial or "",
+               "first": now, "last": now, "by": name or ""}
+    d["known"][nid] = ([row] + rows)[:KNOWN_MAX]
+
+
+def known(nid):
+    return [r for r in (load().get("known", {}).get(nid) or []) if isinstance(r, dict)]
+
+
+def forget(nid, ip):
+    """Drop one remembered phone by address. The pairing key on the node
+    stays — this is the list's memory, not adb's — so the phone can be
+    connected again by typing its address."""
+    if not _valid_ip(ip):
+        return {"error": f"not an IPv4 address: {ip}"}
+    d = load()
+    rows = [r for r in (d.get("known", {}).get(nid) or []) if isinstance(r, dict)]
+    keep = [r for r in rows if r.get("ip") != ip]
+    if len(keep) == len(rows):
+        return {"error": f"nothing remembered at {ip} on this node"}
+    d.setdefault("known", {})[nid] = keep
+    save(d)
+    return {"ok": True}
 
 
 # ---- adb, on the node ------------------------------------------------------
@@ -233,6 +287,7 @@ def pair(nid, ip, port, code, uid, name):
         return {"error": (r["out"].strip().splitlines() or ["pairing failed"])[-1]}
     d = load()
     d.setdefault("ips", {})[nid] = ip
+    _remember(d, nid, ip, "", "", name)
     save(d)
     return {"ok": True, "message": r["out"].strip().splitlines()[-1]}
 
@@ -304,6 +359,7 @@ def connect(nid, ip, port, uid, name):
                "model": dev.get("model") or "", "at": int(time.time())})
     d = load()
     d.setdefault("ips", {})[nid] = ip
+    _remember(d, nid, ip, dev.get("model") or "", dev.get("serial") or f"{ip}:{n}", name)
     save(d)
     return {"ok": True, "serial": f"{ip}:{n}"}
 
@@ -332,6 +388,7 @@ def _node_row(n, uid, probe):
     dev = phone_on(n["id"], force=probe) if n["live"] else None
     return {"id": n["id"], "name": n["name"], "live": n["live"],
             "phone": dev, "ip": load().get("ips", {}).get(n["id"], ""),
+            "known": known(n["id"]),
             "owner": owner_of(n["id"]) if rec else None,
             "mine": bool(rec and rec.get("owner") == uid),
             "may_drive": may_drive(n["id"], uid)}
