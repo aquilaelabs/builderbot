@@ -13338,18 +13338,20 @@ function renameProject(name, mode = "all"){
   const how = p?.push_how || "";
   $("rnTokenField").hidden = git ? !(p?.has_token || p?.push) : true;
   // The deploy-key case is tested FIRST and stays true after a token is set:
-  // storing one does not change what git uses, and a hint that stopped saying
-  // so the moment a token existed would be wrong exactly when it mattered.
+  // storing one does not change what git uses (git never asks a credential
+  // helper about an ssh remote), and a hint that stopped saying so the moment
+  // a token existed would be wrong exactly when it mattered. One line each,
+  // per the site-text rule — the reasoning lives here and in the README.
   $("rnTokenHint").textContent = how === "key"
-    ? "This project pushes with a deploy key" + (p?.has_token
-        ? ", and already has a token stored. " : ". ")
-      + "A token here is kept for it alone. It does not take effect on its "
-      + "own — a credential helper is never asked about an ssh remote — so "
-      + "the switch below is the half that makes git use it."
+    ? p?.has_token
+      ? "This project pushes with a deploy key and already has a token stored; "
+        + "the switch below decides which git uses."
+      : "This project pushes with a deploy key, so a token here does nothing "
+        + "until the switch below says to use it."
     : p?.has_token
-      ? "Replaces the token this project uses. It stays this project's alone, "
-        + "and is not shielded — a shell here can read it."
-      : "Stored for this project alone, and not shielded — a shell here can "
+      ? "Replaces the token this project uses, kept for it alone and not "
+        + "shielded — a shell here can read it."
+      : "Kept for this project alone, and not shielded — a shell here can "
         + "read it.";
   // Nothing to set is an answer, not an empty box: a linked project with no
   // token and no push rights has a remote it can only read.

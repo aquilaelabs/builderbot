@@ -1056,8 +1056,8 @@ ok(/GitHub/.test(await page.$eval('#rnTitle', e => e.textContent))
 ok(!await page.$eval('#rnTokenField', el => el.hidden),
    'a project pushing with a deploy key is offered a token');
 const kh = await page.$eval('#rnTokenHint', e => e.textContent);
-ok(/deploy key/.test(kh) && /ssh remote/.test(kh),
-   '...told plainly that a token does not take effect on an ssh remote by itself');
+ok(/deploy key/.test(kh) && /does nothing until the switch below/.test(kh),
+   '...told in a line that setting one does not switch anything by itself');
 // The switch that makes it take effect. alpha's remote is ssh and it has no
 // token, so the choice is real but one-sided until a token exists — and the
 // side you cannot take is disabled rather than absent, because a control that
