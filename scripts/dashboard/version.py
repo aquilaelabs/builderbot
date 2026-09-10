@@ -997,6 +997,23 @@ def unbump(project, by="claude", comp="", env=None):
     if changelog is not None and changelog.unroll(where, tgt):
         _git(project, "add", "--", cl_rel)
         paths.append(cl_rel)
+    # The repo's own stamps come BACK with the number, or taking a bump back
+    # leaves the compatibility window where the bump put it — a controller
+    # returned to 0.5.0 still promising 0.6 to every node and every briefing.
+    # The hook is given the version being returned TO, and its own rules
+    # apply: BuilderBot's moves the window down and the agent's build up,
+    # since a build that went backwards could not say which agent is newer.
+    if not comp:
+        extra, why = _stamp(project, prev, part, env=env)
+        if why:
+            try:
+                (where / VERSION_FILE).write_text(tgt + "\n", encoding="utf-8")
+            except OSError:
+                pass
+            return {"error": why}
+        for x in extra:
+            if _git(project, "add", "--", x) is not None:
+                paths.append(x)
     _git(project, "add", "--", rel)
     msg = (f"Return the {comp + ' ' if comp else ''}version to {prev}"
            + ("" if by == "operator" else " (session)"))

@@ -428,6 +428,18 @@ ok(reopened.indexOf('## Unreleased') !== -1
 execFileSync('git', ['-C', M, 'tag', '-a', 'v2.2.0', '-m', 'r'], { env });
 // the root target is 0.4.x so the root stays -dev; the extension's target IS
 // 2.2.0 now, and the trap is that this tag would have released it.
+// ...and taken back the same way. A repo that ships two products bumps and
+// unbumps each on its own: the operator asked whether the CLI could, and the
+// answer has to keep being yes.
+const repoBefore = mb('--semver').out;
+ok(/2\.2\.0 -> 2\.1\.0/.test(mb('--for', 'extension', 'unbump').out)
+   && mb('--for', 'extension').out.includes('2.1.0'),
+   'a component is taken back on its own too');
+const repoAfter = mb('--semver').out;
+ok(repoAfter.startsWith(repoBefore.split('-')[0] + '-'),
+   `...leaving the repository's own version alone (${repoBefore} then ${repoAfter})`);
+ok(mb('--for', 'extension', 'bump', 'minor').out.includes('2.1.0 -> 2.2.0'),
+   '...and forward again afterwards');
 ok(/2\.2\.0-dev\./.test(mb('--for', 'extension', '--semver').out),
    "a project tag matching a component's number does not release the component");
 execFileSync('git', ['-C', M, 'tag', '-a', 'extension-v2.2.0', '-m', 'r'], { env });
@@ -939,6 +951,28 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
      `a stamp hook that fails refuses the bump, and says so (${s1.out.trim().slice(0, 56)})`);
   ok(readFileSync(`${S}/VERSION`, 'utf8').trim() === '0.5.0',
      '...leaving VERSION exactly where it was');
+
+  // And the stamps come BACK with the number. Without this, taking a bump
+  // back leaves what the bump moved where it was — for BuilderBot, a
+  // controller returned to its old version still promising the new
+  // compatibility window to every node and every briefing.
+  writeFileSync(`${S}/tools/version-stamp`,
+    '#!/usr/bin/env bash\nset -e\n[ "$2" = minor ] || exit 0\n'
+    + 'printf "window %s\\n" "${1%.*}" > stamped.txt\necho moved\n');
+  chmodSync(`${S}/tools/version-stamp`, 0o755);
+  execFileSync('git', ['-C', S, 'add', '-A'], { env });
+  // A no-op when the working hook is byte-identical to the committed one,
+  // which it is: the failing hook above never reached a commit.
+  try { execFileSync('git', ['-C', S, 'commit', '-qm', 'hook back'], { env }); } catch { /* clean */ }
+  s1 = sb('unbump');
+  ok(s1.code === 0, `an unreleased bump can be taken back (${s1.out.trim().slice(0, 56)})`);
+  ok(readFileSync(`${S}/VERSION`, 'utf8').trim() === '0.4.0'
+     && readFileSync(`${S}/stamped.txt`, 'utf8').trim() === 'window 0.4',
+     '...and what the bump stamped elsewhere comes back with it');
+  const undone = execFileSync('git', ['-C', S, 'show', '--name-only', '--format=', 'HEAD'],
+                              { encoding: 'utf8' }).split('\n').filter(Boolean);
+  ok(undone.includes('stamped.txt') && undone.includes('VERSION'),
+     `...in one commit, the way it went (${undone.join(', ')})`);
   rmSync(S, { recursive: true, force: true });
 }
 
