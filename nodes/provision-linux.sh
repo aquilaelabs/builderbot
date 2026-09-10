@@ -54,22 +54,22 @@ usage() {
     cat <<'EOF'
 usage: sudo bash provision-linux.sh [options]
        sudo bash provision-linux.sh --check
-       sudo bash provision-linux.sh --interactive
 
 With no arguments this prints the help and changes nothing. With options it
 provisions the machine (safe to run again — every step checks before it
-acts); --check runs only the pre-flight; --interactive asks the questions,
-shows the command it built, and runs it on a yes.
+acts); --check runs only the pre-flight.
 
-  --interactive, -i    ask for everything below one question at a time, then
-                       confirm and run. For a first machine, or a terminal
-                       without a saved command line to paste.
-  --user NAME          the account Docker runs under and ssh lands on. The
-                       default is bb, and BuilderBot assumes bb — so changing
-                       it means writing the account out in the node's address. It gets
-                       NO sudo and cannot run bb-sandbox: this is the account a
-                       session's JOBS run as, and reconfiguring the machine's
-                       mounts is not what it is for.
+The command to run is the one the dashboard's Nodes tab gives you: Enroll
+node mints a token and prints this line with the address and the token in
+it, which is a paste rather than a questionnaire.
+
+  --user NAME          the account Docker runs under and ssh lands on, bb by
+                       default. Enroll node asks for it too, so the row says
+                       the right one before this runs; the agent reports it
+                       at enrollment either way. It gets NO sudo and cannot
+                       run bb-sandbox: this is the account a session's JOBS
+                       run as, and reconfiguring the machine's mounts is not
+                       what it is for.
   --session-user NAME|none   the account a Claude SESSION works as on this
                        node (builder), made with --session-uid/--session-gid
                        (99:100 — the controller's PUID:PGID, so files it saves
@@ -85,10 +85,10 @@ shows the command it built, and runs it on a yes.
                        every real run, before anything is installed.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
-                       BuilderBot no longer needs one: an enrolled node dials
-                       OUT and every job arrives down that connection, so the
-                       controller holds no key that logs in anywhere. Nothing
-                       here opens a Docker port either.
+                       Nothing here needs one: an enrolled node dials OUT and
+                       every job arrives down that connection, so the
+                       controller holds no key that logs in anywhere, and
+                       nothing opens a Docker port.
   --share TAG:PATH[:ro]  a virtiofs/9p share the HYPERVISOR passes in, mounted
                        at PATH. Requires one — on bare metal there is nothing
                        to pass a share in, so use --nfs instead. Repeatable.
@@ -139,19 +139,9 @@ if [ $# -eq 0 ]; then
     usage
     exit 0
 fi
-INTERACTIVE=0
 while [ $# -gt 0 ]; do
     case "$1" in
-        --interactive|-i) INTERACTIVE=1; shift ;;
         --user)  USER_NAME="$2"; shift 2 ;;
-        # Named rather than falling into "unknown option", because the flag
-        # was documented and is likely to be in somebody's saved command
-        # line: this script no longer makes an account to administer the
-        # machine. Whatever already has root here does that job.
-        --admin|--admin-key)
-            echo "--admin is gone: this script makes no administrator account." >&2
-            echo "  Root, your own account, or a cloud image's ubuntu/ec2-user administers this box." >&2
-            exit 1 ;;
         --session-user) SESSION_NAME="$2"; shift 2 ;;
         --session-uid) SESSION_UID="$2"; shift 2 ;;
         --session-gid) SESSION_GID="$2"; shift 2 ;;
@@ -169,69 +159,6 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
-# ---- the interactive mode ---------------------------------------------------
-# One question at a time, each with its default, then the whole command
-# line printed and confirmed — and run by invoking this same script with
-# it, so the interactive path and the scripted one are one path. The
-# command is printed so it can be kept for the next machine.
-ask() {   # ask VAR "question" "default"
-    local var="$1" q="$2" def="$3" ans
-    if [ -n "$def" ]; then printf '%s [%s]: ' "$q" "$def"; else printf '%s: ' "$q"; fi
-    IFS= read -r ans
-    printf -v "$var" '%s' "${ans:-$def}"
-}
-yes_no() {   # yes_no "question" default(y|n)
-    local ans
-    printf '%s [%s]: ' "$1" "$([ "$2" = y ] && echo Y/n || echo y/N)"
-    IFS= read -r ans
-    ans="${ans:-$2}"
-    case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
-}
-if [ "$INTERACTIVE" = 1 ]; then
-    [ -t 0 ] || { echo "--interactive needs a terminal to ask on" >&2; exit 1; }
-    printf '\nBuilderBot node setup. Enter keeps the default in brackets; blank leaves a thing out.\n\n'
-    ARGS=()
-    ask USER_NAME "The account jobs run as (BuilderBot assumes bb)" "${USER_NAME:-bb}"
-    ARGS+=(--user "$USER_NAME")
-    if yes_no "Run Claude sessions on this machine (a session account, ttyd, tmux)?" y; then
-        ask SESSION_NAME "The session account" "${SESSION_NAME:-builder}"
-        ARGS+=(--session-user "$SESSION_NAME")
-    else
-        ARGS+=(--session-user none)
-    fi
-    ask key "A public ssh key for ${USER_NAME} (paste it, or the path of a .pub file; blank for none)" ""
-    if [ -n "$key" ]; then
-        [ -f "$key" ] && key="$(head -1 "$key")"
-        ARGS+=(--key "$key")
-    fi
-    if yes_no "Enroll it as a node now (needs a token from the dashboard's Nodes tab)?" y; then
-        ask ctl "The dashboard's address (as you open it in a browser)" "${CONTROLLER:-}"
-        ask tok "The enrollment token (bbe_…)" "${TOKEN:-}"
-        [ -n "$ctl" ] && [ -n "$tok" ] && ARGS+=(--controller "$ctl" --token "$tok")
-    fi
-    printf '\nShares this machine mounts at boot, as HOST:EXPORT:PATH (the projects share at /workspace, say);\nblank when there are no more.\n'
-    while :; do
-        ask share "  NFS share (HOST:/export:/mountpoint[:ro])" ""
-        [ -n "$share" ] || break
-        ARGS+=(--nfs "$share")
-    done
-    if yes_no "Put the stores somewhere other than /var/lib/builderbot/?" n; then
-        ask STORE_PACKAGES "  packages store (toolchains — the big one; a share serves several nodes)" "$STORE_PACKAGES"
-        ask STORE_DATA "  data store (job trees, AVDs)" "$STORE_DATA"
-        ask STORE_CACHE "  cache store (build caches)" "$STORE_CACHE"
-        ask STORE_ARTIFACTS "  artifacts store" "$STORE_ARTIFACTS"
-        ARGS+=(--packages "$STORE_PACKAGES" --data "$STORE_DATA" --cache "$STORE_CACHE" --artifacts "$STORE_ARTIFACTS")
-    fi
-    printf '\nThis is the command, which you can keep for the next machine:\n\n  sudo bash %s' "$0"
-    for a in "${ARGS[@]}"; do printf " %q" "$a"; done
-    printf '\n\n'
-    if yes_no "Run it now?" y; then
-        exec bash "$0" "${ARGS[@]}"
-    fi
-    echo "nothing was changed."
-    exit 0
-fi
-
 # One without the other is a typo, and the enrollment would fail an hour of
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
@@ -626,8 +553,7 @@ pkg_refresh
 # --nfs is used and costs nothing if not. What a PACKAGE needs from the
 # machine — Chromium's forty libraries, say — is that package's business:
 # its recipe in config/packages.json names them under `system`, per family,
-# and the agent installs them when the package is (unzip used to be here for
-# the android tools; that recipe unzips with python now).
+# and the agent installs them when the package is.
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
 command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install — every download below will fail"
@@ -827,14 +753,14 @@ fi
 # wandered — the fstab that decides whether /workspace is the projects share,
 # and read-only, needs root, which neither account here has.
 #
-# NO ADMINISTRATOR ACCOUNT IS MADE. This script used to add one with sudo,
-# and it was never needed: the agent runs as root under systemd and drops to
-# --user for every job, bb-sandbox refuses to run as anyone but root whoever
-# invokes it, and the controller never names it. Whatever account already has
-# root here — yours, a cloud image's ubuntu or ec2-user, or root itself —
-# administers this machine, which is the operator's business and not this
-# script's. What matters, and is enforced below, is unchanged: the DOCKER
-# account has no sudo, and the SESSION account is in neither docker nor sudo.
+# NO ADMINISTRATOR ACCOUNT IS MADE, and none is needed: the agent runs as
+# root under systemd and drops to --user for every job, bb-sandbox refuses to
+# run as anyone but root whoever invokes it, and the controller never names
+# an administrator. Whatever account already has root here — yours, a cloud
+# image's ubuntu or ec2-user, or root itself — administers this machine,
+# which is the operator's business and not this script's. What is enforced
+# below: the DOCKER account has no sudo, and the SESSION account is in
+# neither docker nor sudo.
 
 # --- the session account (roadmap #24) ------------------------------------
 # The second account, and the one the design turns on: a Claude session on
@@ -942,7 +868,7 @@ fi
 
 say "bb-sandbox"
 # The tool that configures this machine after today: mounts, which one holds
-# container appdata, and the lines to paste into BuilderBot. Installed here and
+# container appdata, and the path mapping for this machine's row. Installed here and
 # then USED below, so the fstab logic has one implementation rather than a copy
 # in each entry point — its comments were paid for one silent failure at a time
 # and are not worth writing twice.
@@ -1427,12 +1353,8 @@ cmd_appdata() {
 # rather than pretending. Derived from what is actually mounted here, which is
 # the half that is easy to get wrong by hand.
 cmd_settings() {
-    local ip pairs="" path setting
+    local ip pairs="" path
     ip="$(my_ip || true)"
-    # BuilderBot fills in ssh:// and the bb account, so the address alone is
-    # the setting unless this machine runs docker as somebody else.
-    if [ "$DOCKER_USER" = bb ]; then setting="${ip:-<this-vm>}"
-    else setting="ssh://${DOCKER_USER}@${ip:-<this-vm>}"; fi
     while read -r path; do
         [ -n "$path" ] || continue
         # Parity: BuilderBot mounts the same share at the same path, so the
@@ -1442,10 +1364,9 @@ cmd_settings() {
     done < <(ours)
     cat <<EOF
 
-On BuilderBot's dashboard, Nodes tab:
+On BuilderBot's dashboard, Nodes tab, on this machine's row (${ip:-<this-vm>}):
 
-  Add ssh node, address:      ${setting}
-  Path mapping on its row:    ${pairs:-<none yet>}
+  Path mapping:    ${pairs:-<none yet>}
 
 Only for the paths BuilderBot ALSO mounts at the same place — a share that is
 this machine's alone belongs in neither list, and BuilderBot will say so.
@@ -1471,7 +1392,7 @@ menu_whiptail() {
             appdata  "choose which mount holds container appdata" \
             readonly "make a mount read-only (right for /workspace)" \
             check    "verify every mount is really there" \
-            settings "the lines to paste into BuilderBot" \
+            settings "the path mapping for this machine's row" \
             quit     "" 3>&1 1>&2 2>&3)" || return 0
         case "$choice" in
             list)  cmd_list; pause ;;
@@ -1512,7 +1433,7 @@ menu_plain() {
   1) list what is mounted        5) choose the container appdata mount
   2) add an NFS mount            6) make a mount read-only
   3) add a virtiofs share        7) check every mount
-  4) remove a mount              8) the lines to paste into BuilderBot
+  4) remove a mount              8) the path mapping for this machine's row
                                  q) quit
 EOF
         read -r -p "> " n || return 0
@@ -1813,22 +1734,16 @@ if [ "${#WARNINGS[@]}" -gt 0 ]; then
     say "the pre-flight warned about ${#WARNINGS[@]} thing(s), still true:"
     for w in "${WARNINGS[@]}"; do printf '   - %s\n' "$w"; done
 fi
-# What to paste. BuilderBot fills in the scheme and the bb account, so on a
-# default install the address IS the whole setting; the account is spelled out
-# only when it is not the one BuilderBot would assume.
-if [ "$USER_NAME" = bb ]; then SETTING="${ip:-<this-vm>}"
-else SETTING="ssh://${USER_NAME}@${ip:-<this-vm>}"; fi
-
+# Where the machine is, which is all anybody needs from here: an enrolled
+# node dials OUT, so the controller is told the address by the agent rather
+# than given one.
 cat <<EOF
 
 == done
 
-Add it on BuilderBot's dashboard — Nodes tab, Add ssh node — with the address:
-
-  ${SETTING}
-
-A web UI a container here publishes is reachable at http://${ip:-<this-vm>}:<port>
-directly, because this VM has its own address on your network.
+This machine is at ${ip:-<this-vm>}. A web UI a container here publishes is
+reachable at http://${ip:-<this-vm>}:<port> directly, because this VM has its
+own address on your network.
 
 What this machine mounts:
 EOF
@@ -1890,6 +1805,6 @@ is that the machine's own configuration — the fstab deciding whether /workspac
 is the projects share, and read-only — is not one command away from a session
 that wandered.
 
-  sudo bb-sandbox settings     the lines to paste into BuilderBot
+  sudo bb-sandbox settings     the path mapping for this machine's row
   sudo bb-sandbox check        is every mount really there
 EOF

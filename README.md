@@ -3540,8 +3540,8 @@ docker compose build && docker compose up -d
 ## A Mac as a node
 
 `nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
-its help; `--interactive` asks for the address, the token and the store and
-runs on a yes): one directory
+its help; the command to run is the one **Enroll node** gives you): one
+directory
 (`~/.builderbot`) and one launchd agent that runs as you at login, no root,
 nothing in `/etc`, and `--remove` takes exactly that away. It is written for
 the bash macOS ships, so it is its own file rather than a branch of the

@@ -337,15 +337,11 @@ tool:
   the job, with the names it does have, and leaves them to the owner —
   Playwright's browsers are that case outside Debian today.
 
-Then run one script inside it. Bare, it prints its help and changes nothing;
-`--interactive` asks the questions below one at a time, prints the command
-it built so you can keep it for the next machine, and runs it on a yes:
-
-```bash
-sudo bash provision-linux.sh --interactive
-```
-
-Or with the options in hand:
+Then run one script inside it. Bare, it prints its help and changes nothing.
+The command to run is the one the dashboard gives you: **Enroll node** on the
+Nodes tab mints a token and prints the line with the address and the token
+already in it, which is a paste rather than a questionnaire. The options
+below are what to add to it when this machine is not the plain case:
 
 The repository is private, so the VM cannot fetch the script itself — copy it
 over. **From the Unraid terminal**, where that path is the host's own; inside
