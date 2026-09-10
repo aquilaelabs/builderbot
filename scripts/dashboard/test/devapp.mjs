@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides — the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -1565,9 +1565,15 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
                              null, { timeout: 20000 });
   ok(Date.now() - t0 < 15000,
      'a daemon that is not there is asked nothing — no ps timeout to sit through');
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(await page.$$eval('.dmtab .row[data-inst]', rs => rs.length > 0),
-     '...and the manager still lists what is on record');
+  // Waited for, not drawn by hand. The build the Send above queued is still
+  // moving the devapp revision, and every move nulls dockerList and refetches
+  // — a drawPanes() here can land on the null and paint "loading…" with no
+  // rows (B69). loadDocker repaints when its answer lands; that is the draw
+  // this asks about.
+  await page.waitForFunction(() => dockerList?.blind === true
+    && document.querySelectorAll('.dmtab .row[data-inst]').length > 0,
+    null, { timeout: 20000 });
+  ok(true, '...and the manager still lists what is on record');
   ok(/does not answer|not answering/.test(
        await page.$eval('.dmtab .empty', e => e.textContent)),
      '...with the daemon\'s own words for why it is all greyed');
@@ -1575,10 +1581,21 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await page.waitForFunction(() => dockerList && !dockerList.blind,
                              null, { timeout: 20000 });
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(await page.$$eval('.dmtab .row[data-inst]',
-                       rs => rs.some(r => !r.classList.contains('off'))),
-     '...and it comes back live when the daemon does, with no un-gating to do');
+  // Asked again until it holds rather than sampled once: the status poll can
+  // have caught the daemon down inside the window above, and its verdict
+  // greys every row until the next poll — the tab repaints only when its own
+  // revision moves, so refresh() and a fresh ask go together (B69).
+  {
+    const until = Date.now() + patience(20000);
+    let live = false;
+    while (!(live = await page.$$eval('.dmtab .row[data-inst]',
+               rs => rs.length > 0 && rs.some(r => !r.classList.contains('off'))))
+           && Date.now() < until){
+      await page.evaluate(() => { refresh(); return loadDocker(); }).catch(() => {});
+      await sleep(500);
+    }
+    ok(live, '...and it comes back live when the daemon does, with no un-gating to do');
+  }
 }
 
 // A daemon that answers is not the same thing as the sandbox. Everything the

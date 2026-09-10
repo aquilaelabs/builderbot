@@ -177,8 +177,16 @@ ok(md.indexOf('A widget frobnicator') > marker,
   await page.click('#bBell');
   // The sweep runs every second under the suite: the session it ends is the
   // one on the held project, and nothing else on the box.
+  //
+  // Waited on both names. claude-zeta may already be gone from `state` here
+  // — the sweep fires within a second of the write, and the payload that
+  // said `held` lists sessions after the git walk — and refreshUntil looks
+  // before it refreshes, so a wait on the absence alone can return without
+  // any poll having listed the session just made, which then reads as
+  // ended (B78).
   tmuxNew('claude-alpha-keep', `${DIR}/ws/alpha`);
-  await refreshUntil(page, () => !(state.sessions || []).some(s => s.name === 'claude-zeta'),
+  await refreshUntil(page, () => !(state.sessions || []).some(s => s.name === 'claude-zeta')
+                                 && (state.sessions || []).some(s => s.name === 'claude-alpha-keep'),
                      { timeout: 20000 });
   ok(await page.evaluate(() => (state.sessions || []).some(s => s.name === 'claude-alpha-keep')),
      '...and the session running on the held project is ended, while another project\'s is not');

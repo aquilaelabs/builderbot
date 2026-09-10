@@ -503,9 +503,16 @@ ok(list[0].id === 'local',
   await runnerCensus({ 'actions-runner': { installed: true, active: true, busy: false,
                                            name: 'shed', url: 'https://github.com/example-org',
                                            labels: ['builderbot', 'shed'] } });
+  // "shed" is not the condition: the card has carried the name since the
+  // install press above, on whichever poll landed since, and refresh() asked
+  // while the fifteen-second poll is out returns at once and re-polls after
+  // it — so the first draw here can be from an answer computed before this
+  // hello. Wait for the state the assertion is about (B73).
   await page.evaluate(() => refresh());
-  await page.waitForFunction(() => /shed/.test(document.getElementById('runner')?.textContent || ''),
-                             null, { timeout: 10000 });
+  await page.waitForFunction(() => {
+    const t = document.getElementById('runner')?.textContent || '';
+    return /listening — idle/.test(t) && /runs-on: \[self-hosted, shed\]/.test(t);
+  }, null, { timeout: 15000 });
   ok(await page.$eval('#runner', e => /listening — idle/.test(e.textContent)
        && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      'the Runner card carries a node runner, with the runs-on that lands a job on it');

@@ -388,6 +388,11 @@ await phone.evaluate(() => {
 });
 await phone.evaluate(() => document.querySelector('#projects [data-c="alpha"]').click());
 await phone.waitForSelector('.resumemenu', { timeout: 10000 });
+// Where it rests, not where it is mid-entrance: menuIn slides the chooser
+// down 5px over 140ms, and how far along that is when a round trip lands is
+// a fact about the box. Where it stops is what the operator sees (B77).
+await phone.waitForFunction(() => document.querySelector('.resumemenu')
+  ?.getAnimations().every(a => a.playState !== 'running'), null, { timeout: 10000 });
 ok(await phone.$eval('.resumemenu', el => {
      const m = el.getBoundingClientRect();
      const side = el.closest('.col.side').getBoundingClientRect();

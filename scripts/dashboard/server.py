@@ -5334,6 +5334,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "remove":
             r = todo.remove(name, req.get("id"), req.get("step"),
                             why=field(req, "why"), was=was, who=who)
+        elif act == "restore":
+            r = todo.restore(name, req.get("id"), at=req.get("at"), who=who)
         elif act == "shelve":
             r = todo.shelve(name, req.get("id"), bool(req.get("on", True)))
         elif act == "history":

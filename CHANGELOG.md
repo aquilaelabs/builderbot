@@ -341,3 +341,7 @@
 - A node's row and its projects' Claude button say why a share did not mount, in the server's own words — an NFS export that names the node's old address is called out with the fix on the host — and Apply network refuses an address the host's exports do not admit, before anything moves (5068e25)
 - When a project's node cannot take a session, the Claude button no longer goes dead: pressing it offers a session on the controller instead, with the reason, and a shell opens there with a notice (f58e44a)
 - Refreshing the dashboard starts every fold from its default and comes back to the tab, pane and notebook view you were on; the sidebar stays as you arranged it (a4fac39)
+- A roadmap plan leaves the list by itself when its last step is marked done, and the history says done (daf1037)
+- A dropped roadmap item can be put back from the history as it was — Put back on its row, or bb roadmap restore (daf1037)
+- The Briefing tab opens on the code base; the rules fold is shut with its count on the heading (daf1037)
+- The Docker manager no longer flickers back to 'daemon not answering' when a stale answer lands after a fresh one (e5bbb62)
