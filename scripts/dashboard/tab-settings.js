@@ -27,7 +27,10 @@ function settingsKeep(el){
 }
 
 function openSettingsTab(){
-  openTab({kind: "settings", arg: "__settings", label: "Settings"});
+  // The name the button that opens it uses, and the one the tab's own first
+    // line uses. "Settings" alone competes with a project's settings dialog
+    // and with the gear, which is this browser's appearance.
+    openTab({kind: "settings", arg: "__settings", label: "Controller settings"});
 }
 
 function renderSettingsInto(i){

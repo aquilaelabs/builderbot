@@ -530,6 +530,38 @@ ok(seenReds.size <= 1,
   await page.waitForSelector('.fxtab .rule', { timeout: 8000 }).catch(() => {});
 }
 
+// A stacked box may not be aligned across its own axis, on every tab, at
+// DESKTOP width — which is where it shows.
+//
+// align-items on a COLUMN flex box is the horizontal axis, so a rule written
+// for a line of controls pushes a stacked one to an edge. That is what the
+// Settings tab was: three sections in the right third of the surface, each
+// starting at a different x, with six hundred pixels of nothing beside them,
+// because `.row:has(.setrow){align-items:flex-end}` also matched
+// `.row.stack2`. Cheap to measure, and the operator found it rather than
+// this suite — which is the reason it is here.
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 }).catch(() => {});
+  await sleep(200);
+  const skewed = await page.evaluate(() => {
+    const surf = document.querySelector('.doc.on .doctab, .doc.on .nb');
+    if (!surf) return [];
+    const out = [];
+    surf.querySelectorAll('.row, .sect, .field, .doclist > *').forEach(e => {
+      const cs = getComputedStyle(e);
+      if (cs.display !== 'flex' || cs.flexDirection !== 'column') return;
+      if (['flex-end', 'end', 'center', 'right'].includes(cs.alignItems))
+        out.push(`${e.className || e.tagName} is a column aligned ${cs.alignItems}`);
+    });
+    return [...new Set(out)].slice(0, 4);
+  });
+  ok(skewed.length === 0, `[${kind}] no stacked box is aligned across its own axis${
+    skewed.length ? ` — ${skewed.join('; ')}` : ''}`);
+}
+
 // The same page, held to the same rules at phone width: nothing may scroll
 // the page sideways, and every text control is 16px so iOS does not zoom a
 // layout that cannot zoom back.

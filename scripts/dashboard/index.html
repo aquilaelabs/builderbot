@@ -1751,10 +1751,10 @@ pre.diff .d-ctx{color:var(--dim)}
 #pendList .prow details{margin-top:4px}
 #pendList .prow pre{white-space:pre-wrap;font:var(--f-mono);font-size:12px;margin:4px 0 0;
   color:var(--dim)}
-#pendAll{display:flex;align-items:center;justify-content:flex-start;gap:8px;padding:6px 2px 8px;font:var(--f-ui)}
+#pendAll{display:flex;align-items:center;justify-content:flex-start;gap:8px;font:var(--f-ui)}
 #pendAll input{margin:0;flex:0 0 auto}
 #pendAll span{flex:0 0 auto;white-space:nowrap}
-#pendEmpty{padding:14px 4px;color:var(--dim);font:var(--f-ui)}
+#pendEmpty{color:var(--dim);font:var(--f-ui)}
 /* The padding went with the band: #memDrift is a section now and .sect>.body
    carries its own. #todoBatch still wears .mdrift as a plain .field band. */
 .mdrift div{color:var(--warn);font:var(--f-ui);margin-bottom:4px}
@@ -2079,8 +2079,15 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line — the Phone tab's Connect and
-   Pair sit beside one. A row of prose keeps its centred cluster. */
-.row:has(.setrow){align-items:flex-end}
+   Pair sit beside one. A row of prose keeps its centred cluster.
+
+   NOT on a stacked row. `.stack2` turns a row into a COLUMN, where
+   align-items is the horizontal axis, so this pushed every one of its
+   children to the right edge — which is what the Settings tab was: three
+   sections in the right third of the surface with 600px of nothing beside
+   them, each starting at a different x. The rule is about a line of
+   controls, and a stacked row has no line. */
+.row:has(.setrow):not(.stack2){align-items:flex-end}
 .actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
 .actbar .state{flex:1 1 100%;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 .actbar .lead{margin-right:auto}
@@ -3209,10 +3216,16 @@ body.booting .pane>.loading{margin:auto}
 <div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pendTitle">
   <div class="box wide">
     <h3 id="pendTitle">Waiting for your approval</h3>
-    <div class="hint" id="pendHint"></div>
-    <label id="pendAll"><input type="checkbox" id="pendAllBox"> <span>Select all</span></label>
-    <div id="pendList"></div>
-    <div id="pendEmpty" hidden>Nothing is waiting here.</div>
+    <!-- Each line in a .field, which is where the band inset lives. At box
+         level the hint, the tick and the bordered list all sat flush against
+         the edge while the title and the foot were padded — the same thing
+         the trash dialog was doing. -->
+    <div class="field"><div class="hint" id="pendHint"></div></div>
+    <div class="field">
+      <label id="pendAll"><input type="checkbox" id="pendAllBox"> <span>Select all</span></label>
+    </div>
+    <div class="field"><div id="pendList"></div></div>
+    <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
       <button id="pendDeny" class="danger">Deny</button>
@@ -3223,8 +3236,12 @@ body.booting .pane>.loading{margin:auto}
 <div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
-    <div class="hint">A deleted project moves to <code>.trash</code> on the projects
-      share with its notebook, so putting it back brings everything.</div>
+    <!-- In a .field like every other line in every other modal here: that is
+         where the band inset lives, and a bare .hint sat flush against the
+         box while the list below it was indented. -->
+    <div class="field"><div class="hint">A deleted project moves to
+      <code>.trash</code> on the projects share with its notebook, so putting
+      it back brings everything.</div></div>
     <div id="tList" class="field"></div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="tClose">Close</button></div>
@@ -3942,7 +3959,7 @@ const TABKINDS = {
   phone:    { multi: false, label: () => "Phone",
               render: (i) => renderPhoneInto(i), live: () => phRev,
               open: () => phFetch(null, true) },
-  settings: { multi: false, label: () => "Settings",
+  settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive },
   users:    { multi: false, label: () => "Users",
               render: (i) => renderUsersInto(i), live: () => usersRev,

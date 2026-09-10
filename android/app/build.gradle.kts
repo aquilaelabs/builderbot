@@ -20,18 +20,23 @@
 // and "0.0.0-unknown" is the honest last resort rather than a number somebody
 // would trust.
 fun ask(vararg argv: String): String? = try {
-    val p = ProcessBuilder(*argv).directory(rootDir.parentFile).redirectErrorStream(false).start()
+    val pb = ProcessBuilder(*argv).directory(rootDir.parentFile).redirectErrorStream(false)
+    pb.environment()["BB_RELAYED"] = "1"
+    val p = pb.start()
     val out = p.inputStream.bufferedReader().readText().trim()
     if (p.waitFor() == 0 && out.isNotEmpty()) out else null
 } catch (e: Exception) { null }
 
+// BB_RELAYED, for the same reason the workflow sets it: from a checkout that
+// is not a project the controller knows, an unset `bb version` tries to relay
+// and answers nothing.
+fun bb(what: String): String? =
+    ask("bb", "version", what) ?: ask("bash", "scripts/bb", "version", what)
+
 val bbVersion: String = (findProperty("bbVersion") as String?)?.takeIf { it.isNotBlank() }
-    ?: ask("bb", "version", "--semver") ?: ask("bash", "scripts/bb", "version", "--semver")
-    ?: "0.0.0-unknown"
+    ?: bb("--semver") ?: "0.0.0-unknown"
 val bbCode: Int = ((findProperty("bbCode") as String?)?.toIntOrNull()
-    ?: ask("bb", "version", "--code")?.toIntOrNull()
-    ?: ask("bash", "scripts/bb", "version", "--code")?.toIntOrNull()
-    ?: 1)
+    ?: bb("--code")?.toIntOrNull() ?: 1)
 
 plugins {
     id("com.android.application")
