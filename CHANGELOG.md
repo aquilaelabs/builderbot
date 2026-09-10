@@ -346,3 +346,5 @@
 - The Briefing tab opens on the code base; the rules fold is shut with its count on the heading (daf1037)
 - The Docker manager no longer flickers back to 'daemon not answering' when a stale answer lands after a fresh one (e5bbb62)
 - The Phone tab remembers the phones a node has paired or connected, with Connect and Forget on each (4e0c7d3)
+- The Nodes tab makes a sandbox VM's Unraid XML for you, with its own uuid and MAC, and the steps from Add VM to an enrolled node (a657809)
+- A project with no test command set now runs the tests its tree implies, and says which command that is (a657809)
