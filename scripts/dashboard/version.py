@@ -117,9 +117,18 @@ TARGET_RE = re.compile(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$")
 # What a session may move, weakest to strongest. The default is the strongest
 # because a version is a claim about the project: the operator should opt into
 # delegating it rather than out.
-POLICIES = ("locked", "patch", "minor", "open")
-_ALLOWS = {"locked": (), "patch": ("patch",),
+# `start` is the one that delegates nothing and still unblocks something:
+# a project with NO version can be given its first one by a session, and
+# every move after that stays the operator's. Creating a version and moving
+# one are different decisions — the first has no claim to overwrite — and
+# without this the only way to let a session write the first VERSION was to
+# hand it the bumping as well.
+POLICIES = ("locked", "start", "patch", "minor", "open")
+_ALLOWS = {"locked": (), "start": (), "patch": ("patch",),
            "minor": ("patch", "minor"), "open": ("patch", "minor", "major")}
+# Which policies let a session create the FIRST version. Not derived from
+# _ALLOWS: `start` delegates no part and is exactly this permission.
+_MAY_INIT = ("start", "patch", "minor", "open")
 
 PARTS = ("major", "minor", "patch")
 
@@ -423,8 +432,82 @@ def may(project, part, by="claude"):
     if pol == "locked":
         return (f"{project}'s version is locked to the operator. They can "
                 f"change that on the project's Artifacts tab.")
+    if pol == "start":
+        return (f"{project}'s policy is 'start': a session may give it its first "
+                f"version and no more. Moving it is the operator's, on the "
+                f"project's Artifacts tab.")
     return (f"{project}'s policy is '{pol}', so a session may move "
             f"{' or '.join(_ALLOWS[pol]) or 'nothing'} but not {part}.")
+
+
+def release(project, comp="", env=None, may_push=True, push=True):
+    """Cut the release: an annotated tag on this commit, pushed.
+
+    THE TWO GESTURES, and why there are two. A bump moves the number and
+    closes the changelog under it, in one commit: that is deciding what this
+    release IS. Tagging says it HAPPENED — and until the tag exists every
+    build reads `X.Y.Z-dev.<ordinal>+<sha>`, which sorts before X.Y.Z,
+    because heading for something is not arriving. From the tag on, a build
+    of that commit renders as the bare number.
+
+    So this does not move VERSION and does not write the changelog: both
+    were settled by the bump. It marks the commit and publishes the mark.
+
+    The tag's name is the same one `parts()` looks for — `vX.Y.Z`, and
+    `<dir>-vX.Y.Z` for a component — or `released` would stay false on a
+    tag this very function made.
+
+    Never `--force`, and no way to move or delete a tag from here: a
+    published tag is somebody else's checkout, and taking one back is a
+    thing to do deliberately in a terminal, having thought about it.
+    """
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        thing = f"{project}/{comp}" if comp else project
+        return {"error": f"{thing} has no version to release yet — give it one first"}
+    where = _sub(project, comp)
+    if where is None:
+        return {"error": f"no such component here: {comp}"}
+    sha = _git(project, "rev-parse", "--short=7", "HEAD")
+    if sha is None:
+        return {"error": "not a git repository, or no commits yet"}
+    name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
+        # Which commit it is on, because "it already exists" and "it is on
+        # the commit you are looking at" are different situations and only
+        # one of them is a problem.
+        on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or "?"
+        here = "this commit" if on and sha.startswith(on) or on.startswith(sha) else on
+        return {"error": f"{name} already exists, on {here}. A published tag is not "
+                         f"moved from here — bump to the next number, or move it "
+                         f"yourself in a terminal if it was never pushed."}
+    # A dirty tree is not what the tag would mark: the tag names a commit,
+    # and the files beside it are not in it.
+    if (_git(project, "status", "--porcelain") or "").strip():
+        return {"error": "there are uncommitted changes — commit or discard them "
+                         "first, so the tag marks what is actually in the commit"}
+    msg = f"{comp} {tgt}" if comp else f"{project} {tgt}"
+    if _git(project, "tag", "-a", name, "-m", msg, env=env) is None:
+        return {"error": f"could not create the tag {name}"}
+    out = {"ok": True, "tag": name, "sha": sha, "target": tgt, "pushed": False}
+    if not push:
+        return out
+    if not may_push:
+        # The tag is made either way: a project with no push rights still
+        # gets its marker, and the sentence says what is missing rather than
+        # undoing the half that worked.
+        out["note"] = (f"{name} is on this commit here. This project has no push "
+                       f"rights, so nothing was sent to GitHub.")
+        return out
+    r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
+    if r is None:
+        out["note"] = (f"{name} is on this commit here, but the push failed — "
+                       f"`git push origin {name}` when the remote is reachable.")
+        return out
+    out["pushed"] = True
+    return out
 
 
 def next_version(tgt, part):
@@ -506,14 +589,15 @@ def init(project, value, by="claude", comp="", env=None):
     make a file by hand in a terminal. A rule with no sanctioned path is a
     rule people route around.
 
-    `locked` refuses this the way it refuses a bump. Under any delegating
-    policy a session may create one: if the operator has handed over some of
-    the moving, handing over the starting point is the same decision, and a
-    new project with no version at all is the case worth unblocking.
+    `locked` refuses this the way it refuses a bump. `start` allows it and
+    nothing else, which is the whole reason that policy exists; the
+    delegating policies allow it too, because handing over the moving and
+    withholding the starting point would be a strange place to draw a line.
     """
-    if by != "operator" and policy(project) == "locked":
-        return {"error": f"{project}'s version is locked to the operator. They "
-                         f"can give it one on the project's Artifacts tab."}
+    if by != "operator" and policy(project) not in _MAY_INIT:
+        return {"error": f"{project}'s version is locked to the operator. They can "
+                         f"give it one on the project's Artifacts tab, or set Claude "
+                         f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
         return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.1.0 — "

@@ -92,7 +92,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, which is what made PROTOCOL below
 # useless.
-AGENT_VERSION = "0.4.39"
+AGENT_VERSION = "0.4.40"
 
 # Superseded by the window above and kept only because removing a field the
 # controller still sends is itself a compatibility break: it goes at 0.5.0.
@@ -1907,6 +1907,12 @@ class Job(threading.Thread):
     def run(self):
         spec = self.job.get("spec") or {}
         error = ""
+        # What this job is, before it is anything else: a job that fails
+        # without having said a word leaves the row with an exit code and an
+        # empty log, and there is nothing to look at but the number. Every
+        # path below can now only ADD to this line.
+        self.say(f"{self.job.get('type') or 'exec'}"
+                 + (f": {spec['apply']}" if spec.get("apply") else "") + "\n")
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
@@ -3545,8 +3551,17 @@ class Agent:
             job.say(f"{role}: cannot read {old}: {e.strerror}\n")
             return False
         size = dir_bytes(old)
-        if size is not None:
+        try:
             free = shutil.disk_usage(new).free
+        except OSError as e:
+            # The share the store is being pointed at, not reachable from
+            # here. Said plainly: an unguarded disk_usage raised out of the
+            # job and came back as "agent error: FileNotFoundError", which
+            # names the exception rather than the path.
+            job.say(f"refused: {new} cannot be read ({e.strerror}). Nothing was moved "
+                    f"and {role} still points at {old}.\n")
+            return False
+        if size is not None:
             job.say(f"{role}: bringing {size // 1048576}MB across from {old}; "
                     f"{free // 1048576}MB free at {new}\n")
             if size > free:

@@ -181,10 +181,25 @@ await ready(page);
 
 // bb jobs reads the same store
 {
-  const out = execFileSync('bash', ['scripts/bb', 'jobs'],
+  const bbj = (...a) => execFileSync('bash', ['scripts/bb', 'jobs', ...a],
     { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const out = bbj();
   ok(/canceled/.test(out) && /exit 7/.test(out) && /controller/.test(out) && /exec sh -c/.test(out),
      'bb jobs lists the recent jobs with state, node and reason');
+  // ...and one job's LOG, which is the half that was missing: a failed job
+  // with an exit code and nothing to read is not something anybody can act
+  // on. The listing has never been per project (it reads the store, not the
+  // API), and this is the same answer one level down.
+  const id = (out.match(/\bj_[0-9a-f]{8}\b/) || [])[0];
+  ok(!!id, `the listing names ids that can be asked about (${id || "none"})`);
+  const one = bbj(id);
+  ok(one.split('\n').filter(l => /\bj_[0-9a-f]{8}\b/.test(l)).length === 1,
+     'bb jobs ID answers about that job alone, not the whole list');
+  ok(/---- log|wrote nothing/.test(one),
+     '...and prints what it wrote, or says plainly that it wrote nothing');
+  let missing = '';
+  try { bbj('j_deadbeef'); } catch (e) { missing = (e.stdout + '' + e.stderr).toString(); }
+  ok(/no such job/.test(missing), '...and an id that is not there says so rather than listing everything');
 }
 
 ok(page.errors.length === 0,

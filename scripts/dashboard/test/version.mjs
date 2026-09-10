@@ -101,6 +101,91 @@ r = bb('bump', 'major');
 ok(r.code !== 0 && /not major/.test(r.out),
    'a policy of minor still keeps major with the operator');
 
+// ---- the release: the second gesture, and the outward-facing one -----------
+// A bump decides the number and closes the changelog under it. The tag says
+// it HAPPENED — and until it exists a build reads X.Y.Z-dev.<n>, which sorts
+// before X.Y.Z. That is the half that was missing: nothing cut the tag, so
+// the two ideas of "released" never met.
+//
+// Its own repository, because a tag is repo-wide state and the shared fixture
+// is read by everything after this.
+{
+  const R = `${WS}/relproj`;
+  rmSync(R, { recursive: true, force: true });
+  mkdirSync(R, { recursive: true });
+  execFileSync('git', ['-C', R, 'init', '-q', '.'], { env });
+  writeFileSync(`${R}/f`, 'x');
+  writeFileSync(`${R}/VERSION`, '1.2.0\n');
+  execFileSync('git', ['-C', R, 'add', '-A'], { env });
+  execFileSync('git', ['-C', R, 'commit', '-qm', 'first'], { env });
+  const py = fileURLToPath(new URL('../version.py', import.meta.url));
+  const relOf = (extra = {}) => JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('v', ${JSON.stringify(py)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace=${JSON.stringify(WS)}, state=${JSON.stringify(`${DIR}/state`)},
+            write_json=lambda p, o: open(str(p), 'w').write(json.dumps(o)))
+print(json.dumps(m.release('relproj', **json.loads(${
+    JSON.stringify(JSON.stringify(extra))}))))`], { env }).toString().trim().split('\n').pop());
+  const rb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: R, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  {
+    const before = rb('--file').out.trim();
+    ok(/^1\.2\.0-dev\.\d+/.test(before),
+       `before the release a build says it is heading for the number, not at it (${before})`);
+  }
+  // No remote in the fixture: push is asked for and the answer says what
+  // happened rather than pretending. The tag is local either way.
+  let rel = relOf({ push: false });
+  ok(rel.ok && rel.tag === 'v1.2.0',
+     `Release tags the commit with the name parts() looks for (${rel.tag})`);
+  const shown = JSON.parse(rb('--json').out);
+  ok(shown.released === true && shown.tag === 'v1.2.0' && shown.forms.semver === '1.2.0',
+     `...and the build of that commit is the bare number (${shown.forms.semver})`);
+  rel = relOf({ push: false });
+  ok(!rel.ok && /already exists/.test(rel.error || ''),
+     '...and a tag that exists is not moved from here, whatever the reason');
+  writeFileSync(`${R}/f`, 'edited and not committed');
+  writeFileSync(`${R}/VERSION`, '1.3.0\n');
+  rel = relOf({ push: false });
+  ok(!rel.ok && /uncommitted changes/.test(rel.error || ''),
+     '...and a dirty tree is refused: a tag marks a commit, not what is beside it');
+  rmSync(R, { recursive: true, force: true });
+}
+
+// ---- start: the first version, and nothing after ---------------------------
+// Creating a version and moving one are different decisions — the first has
+// no claim to overwrite — and until this policy existed the only way to let a
+// session write the first VERSION was to hand it the bumping too.
+{
+  const S = `${WS}/startpol`;
+  rmSync(S, { recursive: true, force: true });
+  mkdirSync(S, { recursive: true });
+  execFileSync('git', ['-C', S, 'init', '-q', '.'], { env });
+  writeFileSync(`${S}/f`, 'x');
+  execFileSync('git', ['-C', S, 'add', '-A'], { env });
+  execFileSync('git', ['-C', S, 'commit', '-qm', 'first'], { env });
+  const sb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: S, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  setPolicyFor('startpol', 'locked');
+  let t = sb('init', '0.1.0');
+  ok(t.code !== 0 && /locked to the operator/.test(t.out) && !existsSync(`${S}/VERSION`),
+     'locked refuses a session the first version, and says where to change that');
+  setPolicyFor('startpol', 'start');
+  ok(/start/.test(sb('policy').out) && /first version/.test(sb('policy').out),
+     'start tells a session what it may do, rather than reading as the operator only');
+  t = sb('init', '0.1.0');
+  ok(t.code === 0 && readFileSync(`${S}/VERSION`, 'utf8').trim() === '0.1.0',
+     '...and a session may give the project its first version');
+  t = sb('bump', 'patch');
+  ok(t.code !== 0 && /first version and no more/.test(t.out)
+     && readFileSync(`${S}/VERSION`, 'utf8').trim() === '0.1.0',
+     '...and may not move it afterwards, which is the whole point of the policy');
+  rmSync(S, { recursive: true, force: true });
+}
+
 // ---- the bump commits one path -------------------------------------------
 // An uncommitted VERSION rides along in whatever a session commits next,
 // which is how a version bump ends up inside a commit about something else.
@@ -626,6 +711,26 @@ ok(noVer.next.patch === null,
 
 await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`);
 NB = nb('beta');
+
+// Who may give it one is answerable BEFORE there is one. The picker used to
+// be written only into the has-a-version branch, so the tab offered the
+// setting exactly when it no longer mattered and withheld it when it did.
+//
+// Read without requiring visibility, and the view re-shown between tries:
+// an earlier file can leave this notebook parked out of a pane, which is the
+// same thing initWith below works around.
+let polOpts = [];
+for (let t = 0; t < 30 && !polOpts.length; t++){
+  polOpts = await page.$$eval(`${NB} #verBox #verPolicy option`,
+                              os => os.map(o => o.value)).catch(() => []);
+  if (polOpts.length) break;
+  await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`).catch(() => {});
+  await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
+  await sleep(300);
+}
+ok(polOpts.join(",") === "locked,start,patch,minor,open",
+   `a project with no version still offers the policy, the one that delegates `
+   + `the first version and nothing else included (${polOpts.join(", ") || "nothing"})`);
 
 // The harness's tab state survives between test files, so an earlier file
 // can leave this notebook parked out of a pane: the input then resolves but

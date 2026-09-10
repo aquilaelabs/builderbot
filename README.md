@@ -338,13 +338,27 @@ bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
                    --file, --semver, --json
-bb version bump major|minor|patch    move the target, if the policy allows it
+bb version bump major|minor|patch    move the target, if the policy allows it.
+                   A bump decides the number and closes the changelog under
+                   it; it does not release anything. **Release** on the
+                   Artifacts tab is the second gesture: an annotated tag
+                   (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
+                   are on, pushed to the remote. Until that tag exists every
+                   build reads X.Y.Z-dev.N+sha, which sorts BEFORE X.Y.Z —
+                   heading for it rather than at it; from the tag on, a build
+                   of that commit is the bare number. Releasing is the
+                   operator's whatever the policy says, and a pushed tag is
+                   never moved or deleted from the dashboard.
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component — a directory with its own VERSION
-bb version policy  what a session may move here, and who decides
+bb version policy  what a session may move here, and who decides. The
+                   operator picks it on the Artifacts tab, before or after
+                   there is a version: locked (theirs entirely), may start
+                   one (a session writes the FIRST version and moves nothing
+                   after), patch, patch and minor, or anything
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
                    next version bump dates the accumulated lines
@@ -382,8 +396,10 @@ bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once — read-only
-bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
-                   read-only; the Jobs tab is where one is stopped
+bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended —
+                   read-only; the Jobs tab is where one is stopped. An id
+                   prints that job's log, which is where a failed job says
+                   what happened rather than only that it failed
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
                    stream the log back; `--out GLOB` brings what matches into
                    dist/ with its provenance; `--node` names another node
@@ -1656,7 +1672,13 @@ where it is — a queued job never starts, a running one is killed and the row
 moves when the runner reports that it did — and nothing edits a job after the
 fact. The checkbox in the bar narrows the list to what is running or waiting.
 `bb jobs` prints the same list read-only, so a session can see what became of
-the work it asked for. `/api/v1/healthz` answers without a credential with
+the work it asked for, and `bb jobs j_1a2b3c4d` prints one job's log. **Both
+are the whole queue, not one project's.** That is deliberate and worth
+knowing: the tab and the API scope a job to projects the account may see, and
+these read the store directly, so a session can be asked to look at why
+something failed on another project — which is the situation somebody is in
+when they ask for help. The log is the only copy: a node buffers it and posts
+it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ### The Settings tab
@@ -2147,6 +2169,18 @@ reasons: claude puts a confirmation behind that command, and a dialog is
 exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
+
+**How much a session may change without asking** is a per-project pick in
+the same dialog: *File changes* is **ask before each change**, which is what
+Claude Code does out of the box, or **edit this project's files without
+asking**. It becomes the session's own permission mode, so it covers the file
+tools inside this project and nothing else — a shell command, a push and
+anything outside the tree still ask, and the deny list is untouched either
+way, so a sibling project, `VERSION` and the house rules stay refused under
+both. It is read when a session starts, so changing it restarts the session
+the way changing the model does. The case it exists for: a codebase somebody
+has just uploaded, where confirming every file is all the first session gets
+done.
 
 **How much of what a session adds lands on its own** is the last row of the
 same dialog — *Claude may* add to the roadmap, file bugs and add rules, each
@@ -3540,8 +3574,8 @@ docker compose build && docker compose up -d
 ## A Mac as a node
 
 `nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
-its help; `--interactive` asks for the address, the token and the store and
-runs on a yes): one directory
+its help; the command to run is the one **Enroll node** gives you): one
+directory
 (`~/.builderbot`) and one launchd agent that runs as you at login, no root,
 nothing in `/etc`, and `--remove` takes exactly that away. It is written for
 the bash macOS ships, so it is its own file rather than a branch of the

@@ -137,7 +137,11 @@ function renderJobsInto(i){
         ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
         ${jobOutputs(j)}
         ${open ? `<pre class="dmlog jblog" data-tail="1">${
-            esc((jobsLogs[j.id] || "").slice(-4000) || "(no output yet)")}</pre>` : ""}
+            // "yet" only while there could be more. A job that has ENDED
+            // with an empty log is not waiting for anything, and saying it
+            // is sends somebody back to look again at nothing.
+            esc((jobsLogs[j.id] || "").slice(-4000)
+                || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>` : ""}
       </div>
       <div class="actbar">
         <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${

@@ -383,10 +383,22 @@ format the thing you are stamping demands. **Use `bb version --file` for the
 artifact name** rather than inventing one; that is what makes two builds
 tellable apart in the Artifacts tab.
 
+**Bumping is not releasing, and the `-dev` is how you tell.** Two gestures,
+and both are the operator's to press: a **bump** decides the number and
+closes the changelog under it, in one commit; a **release** says it happened
+— an annotated tag `vX.Y.Z` (or `DIR-vX.Y.Z` for a component) on that
+commit, pushed. Until the tag exists every build reads `X.Y.Z-dev.<n>+<sha>`,
+which sorts BEFORE `X.Y.Z`: heading for it rather than at it. From the tag
+on, a build of that commit is the bare number. `bb version` says which of the
+two has happened — *building towards* or *released as* — so when somebody
+asks whether something shipped, that line is the answer rather than a guess.
+
 A project with no `VERSION` file still answers, falling back to `git describe`.
 Giving it one is `bb version init 0.1.0` — which the same policy governs, so
-under the default `locked` it is the operator's, from the Artifacts tab. Do
-not write the file by hand; that is the one path deliberately closed.
+under the default `locked` it is the operator's, from the Artifacts tab. There
+is a setting for exactly this case: *may start one, not move it* lets you
+write the first version and leaves every move after it theirs. Do not write
+the file by hand; that is the one path deliberately closed.
 
 **The operator may ask you what it should start at.** Pressing *Ask Claude*
 on that tab sends the question here, the way a roadmap step arrives. The

@@ -3085,6 +3085,18 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
+    <!-- How much a session may change in the tree without stopping to ask.
+         Claude Code's own permission mode, per project: a codebase somebody
+         has just uploaded is a project where confirming every file is all
+         the first session does. -->
+    <div class="field" id="rnEditsField">
+      <div class="setrow col">
+        <label class="lbl" for="rnEdits">File changes<span class="help"
+          data-tip="Only the file tools, and only inside this project. A shell command, a push, and anything outside the tree still ask — and a sibling project, VERSION and the house rules stay refused either way."
+          tabindex="0">?</span></label>
+        <select id="rnEdits" aria-label="how much a session may change without asking"></select>
+      </div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -5021,6 +5033,10 @@ window.addEventListener("focus", nudgeTerminals);
 // move?". The values are unchanged — only the reading is.
 const POLICY_LABEL = {
   locked: "locked — only me",
+  // Creating the first version and moving one after are different
+  // decisions: the first has nothing to overwrite. This is the one that
+  // delegates only that.
+  start: "may start one, not move it",
   patch: "patch only",
   minor: "patch and minor",
   open: "anything, including major",
@@ -5035,9 +5051,14 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: ""};
+                 gate: "", edits: "ask"};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
+// What a session may change without asking (prefs.edits), which the launcher
+// turns into Claude Code's own permission mode in the session's settings
+// file. The deny list is untouched by it.
+const EDIT_MODES = [["ask", "ask before each change"],
+                    ["accept", "edit this project's files without asking"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
@@ -5048,7 +5069,8 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
-               gate: gateKey(p?.prefs?.gate)};
+               gate: gateKey(p?.prefs?.gate),
+               edits: p?.prefs?.edits || "ask"};
   rnFillNode();
   rnFillPrefsRest(p);
 }
@@ -5101,7 +5123,8 @@ function rnFillPrefsRest(p){
     el.value = p?.prefs?.gate?.[k] || "auto";
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
-                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
+                                  ["rnEffort", EFFORTS, rnPrefWas.effort],
+                                  ["rnEdits", EDIT_MODES, rnPrefWas.edits]]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       el.innerHTML = table.map(([v, l]) =>
@@ -5123,7 +5146,8 @@ function rnDrawPrefs(){
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(myClaude(rnFor));
   const changed = $("rnModel").value !== rnPrefWas.model
-               || $("rnEffort").value !== rnPrefWas.effort;
+               || $("rnEffort").value !== rnPrefWas.effort
+               || $("rnEdits").value !== rnPrefWas.edits;
   $("rnPrefHint").textContent = shut
     ? "Locked — this project is yours to run, so no session starts here."
     : running
@@ -11360,6 +11384,25 @@ project can have several"
       verSection(v),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
+    // Releasing: outward-facing, and the one thing on this tab other people
+    // fetch. Confirmed by name, because a pushed tag is not taken back from
+    // here — or anywhere, without thinking about who has it.
+    box.querySelectorAll("[data-verrelease]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verrelease || "";
+      const blk = all.find(x => (x.component || "") === comp);
+      const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
+      if (!confirm(`Release ${blk?.target}?\n\n`
+                   + `This tags the commit you are on as ${tag} and pushes the tag. `
+                   + `From then on a build of that commit is ${blk?.target} rather `
+                   + `than ${blk?.target}-dev.\n\nA pushed tag is not moved or `
+                   + `deleted from here.`)) return;
+      busy(b, "Releasing");
+      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
+      const j = await postVersion({action: "release", component: comp});
+      if (j?.released?.tag)
+        notify(j.released.note
+               || `${j.released.tag} tagged and pushed`);
+    });
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
       const blk = all.find(x => (x.component || "") === comp);
@@ -11571,7 +11614,12 @@ this directory">Ask Claude</button>
     if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
     if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
     if (v.unreleased) bits.push(`${v.unreleased} change${v.unreleased === 1 ? "" : "s"} logged`);
-    return line("building towards", v.target || "no VERSION file")
+    // "building towards" until the tag exists, "released as" after: the two
+    // gestures said in the label somebody reads first, because which of them
+    // has happened is the question this block kept failing to answer.
+    return line(v.released ? "released as" : "building towards",
+                v.target || "no VERSION file")
+      + (v.released ? line("tag", v.tag) : "")
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save — ${esc(staged)}${
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
@@ -11606,26 +11654,34 @@ proposes, and asks before touching anything">Ask Claude</button>
 version's changelog section dissolves back into Unreleased, so the next bump
 dates the whole group together. Only possible while ${esc(v.target)} is
 unreleased.">↩ ${esc(v.prev)}</button>` : ""}
+          ${v.released ? "" : `
+          <button type="button" data-verrelease="${esc(v.component || "")}"
+            ${v.dirty ? "disabled" : ""}
+            title="${v.dirty
+              ? "there are uncommitted changes — commit or discard them first, so the tag marks what is in the commit"
+              : `tag this commit ${esc(v.component ? v.component + "-v" + v.target : "v" + v.target)} and push it to the remote. `
+                + "Until then every build reads " + esc(v.target) + "-dev.<n>, which sorts BEFORE " + esc(v.target)}"
+            >Release ${esc(v.target)}</button>`}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="the user-facing record of what changed here — sessions add to
 it as work lands, and a bump dates the accumulated lines">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
-        ${v.component ? "" : `<label class="verpol">
-          <span>Claude access</span>
-          <select id="verPolicy" data-was="${esc(v.policy)}"
-            aria-label="which parts of the version a Claude session may move">
-            ${(v.policies || []).map(o => `<option value="${o}"${
-              o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
-            ).join("")}
-          </select>${verPolicyPending != null
-            ? `<span class="vermark">staged: on Save</span>` : ""}
-        </label>`}
+        ${v.component ? "" : verPolicyPicker(v)}
+        <p class="verwhy">${v.released
+          ? `Released: <code>${esc(v.tag)}</code> is on this commit, so a build of it
+             is <code>${esc(v.target)}</code> exactly. Bump to start the next one.`
+          : `Two steps, and this is the first: <b>bump</b> decides the number and closes
+             the changelog under it, in one commit. <b>Release</b> says it happened —
+             an annotated tag on the commit, pushed — and only then does a build read
+             <code>${esc(v.target)}</code> instead of <code>${esc(v.target)}-dev.${
+             v.ordinal ?? "n"}</code>.`}</p>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
           stop Bash. It covers this project and its components alike.</p>
         ${verAddFold(v)}`}` : `
+        ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
           <span class="verinit">
             <input class="vstart" value="0.1.0" size="8" maxlength="20"
@@ -11650,6 +11706,23 @@ become that version's section when it is created">Changelog${
                 v.unreleased === 1 ? "" : "s"} as its first section` : ""}.</p>
         ${verAddFold(v)}`);
 
+  }
+
+  // The one picker, drawn in both states of this tab. It used to be written
+  // only into the has-a-version branch, so a project with no version had no
+  // way to say who may give it one — which is the setting that matters most
+  // at exactly that moment.
+  function verPolicyPicker(v){
+    return `<label class="verpol">
+      <span>Claude access</span>
+      <select id="verPolicy" data-was="${esc(v.policy)}"
+        aria-label="what a Claude session may do with this project's version">
+        ${(v.policies || []).map(o => `<option value="${esc(o)}"${
+          o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${
+          esc(POLICY_LABEL[o] || o)}</option>`).join("")}
+      </select>${verPolicyPending != null
+        ? `<span class="vermark">staged: on Save</span>` : ""}
+    </label>`;
   }
 
   async function postVersion(body, quiet){
@@ -13387,6 +13460,9 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
+  // Read by the launcher when a session starts, like the model — so a change
+  // costs a restart, and is asked about the same way.
+  const edits = $("rnEdits").value;
   const node = $("rnNode").value;
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
@@ -13395,7 +13471,8 @@ async function rnSubmit(){
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate
 ;
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
+    || edits !== rnPrefWas.edits;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -13425,7 +13502,7 @@ async function rnSubmit(){
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort,
+        body: JSON.stringify({project: name, model, effort, edits,
                               node, build, test, gate,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —

@@ -258,6 +258,31 @@ a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
    'a model the tables do not know is dropped, and the valid half still goes');
 
+// ---- how much a session may change without asking --------------------------
+// Per project, because a codebase somebody has just uploaded is where
+// confirming every file is all the first session does. It becomes Claude
+// Code's own permission mode in the settings file; the deny list, which is
+// what actually walls a session in, is untouched by it.
+{
+  const scopeFile = join(DIR, 'home', '.cache', 'builderbot', 'claude-scope-alpha.json');
+  writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+    { projects: { alpha: { edits: 'accept' } } }));
+  connect(0);
+  await sleep(400);
+  const s1 = JSON.parse(readFileSync(scopeFile, 'utf8'));
+  ok(s1.permissions.defaultMode === 'acceptEdits',
+     'edits: accept lets the file tools write in the project without asking');
+  ok(s1.permissions.deny.some(d => /Edit\(.*VERSION\)/.test(d))
+     && s1.permissions.deny.some(d => /_work/.test(d)),
+     '...and the deny list is untouched by it — VERSION and the other trees stay refused');
+  writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+    { projects: { alpha: { edits: 'nonsense' } } }));
+  connect(0);
+  await sleep(400);
+  ok(JSON.parse(readFileSync(scopeFile, 'utf8')).permissions.defaultMode === 'default',
+     '...and a value the launcher does not know reads as asking, not as anything wider');
+}
+
 // --respawn is how the dashboard restarts a session onto a changed setting:
 // the same launcher, re-reading the file and resuming what was running.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
@@ -392,6 +417,12 @@ tmuxKill('claude-alpha');
        'the settings file wires the Stop hook that runs a rule\'s check before the session hands back (R31)');
     ok(JSON.stringify(scope.hooks || {}).includes('bb-work-note'),
        '...and the settings carry the hook that records what the session touches');
+    // How much a session may change without asking, per project. A codebase
+    // somebody has just uploaded is exactly where confirming every file is
+    // all the first session does — and the deny list is untouched by it, so
+    // a sibling project, VERSION and the rules file stay refused either way.
+    ok(scope.permissions.defaultMode === 'default',
+       'a project nobody has decided about asks before every edit, as Claude Code does');
     tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
 
     // ---- what overlaps (roadmap #24 step 2) --------------------------------
