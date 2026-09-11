@@ -677,6 +677,28 @@ for (const kind of kinds){
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${
        W.err ? ` (${W.err})` : W.tall.length ? ` — wrapped: ${W.tall.join(', ')}` : ''}`);
+  // A sentence is a proseline, not an input. An <input> shows about thirty
+  // characters at this width, so a 300-character bug title was a field you
+  // could not read what you were editing in. The threshold is the length: a
+  // name is 100, a branch is 120, and anything longer than that is prose.
+  const P = await page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const bad = [...box.querySelectorAll('input[maxlength]')]
+      .filter(e => Number(e.getAttribute('maxlength')) > 120)
+      .map(e => `${e.id || e.className.split(' ')[0] || 'input'}=${e.getAttribute('maxlength')}`);
+    const grew = [...box.querySelectorAll('textarea.proseline')]
+      .filter(e => e.offsetHeight > 0 && e.scrollHeight > e.clientHeight + 2)
+      .map(e => e.id || e.className.split(' ')[0] || 'proseline');
+    return { bad, grew };
+  });
+  ok(!P.err && P.bad.length === 0,
+     `[${kind}] a sentence is a proseline, not an input${
+       P.err ? ` (${P.err})` : P.bad.length ? ` — ${P.bad.join(', ')}` : ''}`);
+  ok(!P.err && P.grew.length === 0,
+     `[${kind}] every proseline shows all of itself rather than scrolling inside${
+       P.grew.length ? ` — ${P.grew.join(', ')}` : ''}`);
 }
 // The Tests view needs rows to be measured on, and one of them a continuation
 // — a "..." name whose "follows:" line is drawn under it — because that line

@@ -19,7 +19,7 @@
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
 - A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
-- The About popup's changelog now shows what is unreleased and the current minor version's releases, saying how many earlier ones are in the full file, instead of the whole project history (7fb7d0d)
+- The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
 
 ### Fixed
 
@@ -35,6 +35,7 @@
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
 - Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
+- Editing a changelog entry, a roadmap item, a bug's title or any other sentence on a phone now shows the whole line in a box that grows to fit it, instead of thirty characters of it in a one-line field (e9595bf)
 
 ## 0.5.0 — 2026-09-10
 

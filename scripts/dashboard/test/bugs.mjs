@@ -247,15 +247,15 @@ await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').leng
 // that should never have been filed, and it says so in the log.
 await openFold(page, '#bugList .bug[data-id="3"]');
 await page.click('#bugList .bug[data-id="3"] .bRm');
-await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
+await page.waitForSelector('.bug .dropbox textarea', { timeout: 10000 });
 ok(read().some(b => b.id === 3),
    'the bin asks in place, and nothing has gone while it is asking');
 // Bug #42: the box is imperative DOM appended after the render, so a repaint
 // used to take it and whatever was typed into it. Type something, force the
 // redraw the poll would have done, and both must survive.
-await page.fill('.bug .dropbox input', 'half a reason, still being written');
+await page.fill('.bug .dropbox textarea', 'half a reason, still being written');
 await page.evaluate(p => notebooks.get(p).reloadBugs(), 'alpha');
-const kept = await page.$eval('.bug .dropbox input', e => e.value).catch(() => null);
+const kept = await page.$eval('.bug .dropbox textarea', e => e.value).catch(() => null);
 ok(kept === 'half a reason, still being written',
    `a repaint under an open delete box leaves it, and what was typed (${JSON.stringify(kept)})`);
 await page.click('.bug .dropbox .stop');
@@ -268,8 +268,8 @@ await page.waitForFunction(() => !document.querySelector('.bug .dropbox'),
                            null, { timeout: 10000 });
 ok(read().some(b => b.id === 3), 'Cancel closes it and deletes nothing');
 await page.click('#bugList .bug[data-id="3"] .bRm');
-await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
-await page.fill('.bug .dropbox input', 'filed against the wrong project');
+await page.waitForSelector('.bug .dropbox textarea', { timeout: 10000 });
+await page.fill('.bug .dropbox textarea', 'filed against the wrong project');
 await page.click('.bug .dropbox .danger');
 await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 2,
                            { timeout: 10000 });

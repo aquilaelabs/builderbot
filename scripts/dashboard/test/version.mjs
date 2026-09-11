@@ -1260,6 +1260,54 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
        (refused.error || '').slice(0, 64)})`);
   ok(readFileSync(CL, 'utf8') === written,
      '...with the file it was refused unchanged');
+  // On a phone this was a wall: every entry a one-line box showing thirty of
+  // its three hundred characters, and a category band drawn the same size and
+  // shape as an entry, so the arrangement could not be read at all. The words
+  // are a proseline now — wrapping, as tall as they need — and the band is a
+  // heading. Measured, because the rule that broke it is one stylesheet line
+  // away: `.modal textarea` is white-space:pre at the same specificity, and
+  // this editor opens inside a sheet, which is a modal.
+  //
+  // Last in this block, and nothing is saved after it: it types into a box to
+  // have something long enough to wrap.
+  {
+    await page.setViewportSize({ width: 393, height: 851 });
+    await page.evaluate(() => setView('terminal'));
+    await sleep(600);
+    const long = 'A minor version moves the compatibility window, so every '
+      + "project's CLAUDE.md block needs its one-line update and a project on "
+      + "a node needs that node's agent updated too, before sessions start";
+    await page.$eval(`${NB} .clog .clrow textarea.cltext`, (ta, v) => {
+      ta.value = v; ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }, long);
+    await sleep(300);
+    const shape = await page.$eval(`${NB} .clog`, el => {
+      const ta = el.querySelector('.clrow textarea.cltext');
+      const head = el.querySelector('.clhead input.clname');
+      const cs = getComputedStyle(ta), hs = head && getComputedStyle(head);
+      return { wraps: cs.whiteSpace === 'pre-wrap',
+               scrolls: ta.scrollHeight > ta.clientHeight + 2,
+               lines: Math.round(ta.getBoundingClientRect().height
+                                 / (parseFloat(cs.lineHeight) || 16)),
+               inside: ta.getBoundingClientRect().width <= el.getBoundingClientRect().width,
+               headBold: hs ? Number(hs.fontWeight) >= 600 : null,
+               // Not the border WIDTH: it keeps one, transparent, so the
+               // box does not jump when you put a cursor in it. What makes
+               // it read as a heading is that neither the border nor the
+               // fill is painted until then.
+               headPlain: hs ? /,\s*0\)$|transparent/.test(hs.borderTopColor)
+                               && /,\s*0\)$|transparent/.test(hs.backgroundColor) : null };
+    });
+    ok(shape.wraps && !shape.scrolls && shape.lines > 3 && shape.inside,
+       `on a phone an entry shows all of itself rather than thirty characters of it (${
+         shape.lines} lines, scrolling inside: ${shape.scrolls})`);
+    ok(shape.headBold === true && shape.headPlain === true,
+       `a category reads as a heading, not as another field the size of an entry (${
+         JSON.stringify({bold: shape.headBold, unpainted: shape.headPlain})})`);
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.evaluate(() => setView('terminal'));
+    await sleep(400);
+  }
   await page.click(`${NB} #sheetClose`);
 }
 

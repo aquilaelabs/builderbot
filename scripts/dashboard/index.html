@@ -986,6 +986,19 @@ textarea,select{
   .side .card select{font-size:16px;min-height:var(--tap)}
 }
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
+/* A value that is ONE LINE of prose, in a box that can show all of it. An
+   <input> shows about thirty characters at phone width, which is not enough
+   to read a sentence with, let alone edit one — and a roadmap item, a bug's
+   title or a changelog entry runs to three hundred. So: a textarea that
+   wraps and grows to its content, never scrolling inside itself, with Enter
+   still not making a newline because the value is still one line.
+   proseline() does the growing; see docs/design-language.md (Controls).
+
+   BELOW `.modal textarea` and not above it: that rule is `white-space:pre`
+   at the same specificity, so a proseline in a sheet stopped wrapping and
+   went back to being the one-line box this exists to replace. */
+textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
+  overflow-wrap:anywhere;min-height:var(--tap)}
 /* The env editor wraps where the command editor does not. The rule above is
    pre because a wrapped shell line lies about what runs — but this is an env
    file whose own lines are short KEY=value pairs, and what overflows is the
@@ -1227,16 +1240,38 @@ textarea,select{
    arrangement reads as a list rather than as a form. The commits are on the
    row and not editable: they are what the entry IS, and the words are what
    somebody is here to change. */
-.clog{padding:11px 14px;display:flex;flex-direction:column;gap:10px}
-.clog .clgroup{display:flex;flex-direction:column;gap:6px}
-.clog .clhead{display:flex;align-items:center;gap:6px}
-.clog .clhead input{flex:1 1 auto;min-width:0;font:600 12px/1.4 system-ui,sans-serif}
-.clog .clrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.clog .clrow input.cltext{flex:1 1 16rem;min-width:0}
-.clog .clrow select{flex:0 0 auto;width:auto}
-.clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 0 auto}
+/* white-space, because .clog is drawn INSIDE the .verlogpane and inherited
+   its pre-wrap: every line of every hint and label here kept the indentation
+   of the template literal it was written in. */
+.clog{padding:11px 14px;display:flex;flex-direction:column;gap:16px;
+  white-space:normal}
+.clog .clgroup{display:flex;flex-direction:column;gap:10px}
+/* A category is a HEADING with its two controls, not another field. It was a
+   bordered box the size of an entry's box, so on a phone — where every row is
+   full width anyway — a band and a line were indistinguishable and the
+   arrangement could not be read at all. It reads as the name of what is under
+   it until you put a cursor in it, and then it is a field again. */
+.clog .clhead{display:flex;align-items:center;gap:6px;
+  border-bottom:1px solid var(--line);padding-bottom:5px}
+.clog .clhead input.clname{flex:1 1 auto;min-width:0;width:auto;
+  background:none;border:1px solid transparent;padding:3px 5px;
+  font:600 14px/1.3 system-ui,sans-serif;color:var(--ink)}
+.clog .clhead input.clname:focus{background:var(--sunk);border-color:var(--line)}
+/* An entry is its words, wrapping, with everything ABOUT it on one quiet line
+   underneath. The words were a one-line input: a 200-character entry showed
+   thirty characters of itself on a phone, which is not something anybody can
+   read, let alone edit. Prose in the notebook is a page and takes the sans
+   face, the way a drop box and a send box do. */
+.clog .clrow{display:flex;flex-direction:column;gap:5px}
+.clog .clrow textarea.cltext{width:100%;box-sizing:border-box;
+  padding:7px 8px;font:12.5px/1.5 system-ui,sans-serif}
+.clog .clmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.clog .clmeta select{flex:0 0 auto;width:auto;min-width:0}
+.clog .clmeta .sp{flex:1 1 auto}
+.clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
+  overflow-wrap:anywhere}
 .clog .none{color:var(--dim);font:var(--f-note)}
-@media(max-width:900px){ .clog .clrow input.cltext{flex:1 1 100%} }
+@media(max-width:900px){ .clog .clrow textarea.cltext{font-size:16px} }
 /* A card body that is prose-and-controls rather than rows: the same inner
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
@@ -1627,10 +1662,10 @@ pre.diff .d-ctx{color:var(--dim)}
 .addstep .link{background:none;border:0;color:var(--dim);padding:2px 0;
   font:12px/1.4 system-ui,sans-serif;min-height:24px}
 @media(hover:hover){ .addstep .link:hover{color:var(--accent)} }
-.addstep input{flex:1;min-width:0;padding:5px 8px;
+.addstep textarea{flex:1;min-width:0;padding:5px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ .addstep input{font-size:16px} }
+@media(max-width:900px){ .addstep textarea{font-size:16px} }
 /* Moving things about: dim until it can, like every other row control. */
 .todo .mv{color:var(--dim)}
 .todo .mv[disabled]{opacity:.3}
@@ -2818,8 +2853,8 @@ body.booting .pane>.loading{margin:auto}
            are the three things you do TO the list, as against the History
            above, which only reads it. -->
       <div class="todoadd" data-add="roadmap">
-        <input id="todoText" maxlength="500" autocomplete="off"
-               placeholder="something for the roadmap">
+        <textarea id="todoText" class="proseline" rows="1" maxlength="500"
+               placeholder="something for the roadmap"></textarea>
         <button id="todoAdd" class="primary" type="button">Add</button>
         <button id="todoOrder" type="button" hidden
           title="move things up and down — the send controls come back when you are done"
@@ -3743,6 +3778,46 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tabOf = id => tabs.find(t => t.id === id) || null;
 const isSplit = () => panes[1] !== null;
+
+// ---- proselines: one line of prose, in a box that can show all of it ------
+// An <input> shows about thirty characters at phone width. A roadmap item, a
+// bug's title, a changelog entry or a test's reason runs to three hundred, so
+// on a phone every one of those was a field you could not read what you were
+// editing in. A `textarea.proseline` wraps and grows to its content instead.
+//
+// It is still ONE LINE of prose: Enter never inserts a newline here, and a
+// site's own Enter handler (add it, save it) still runs, because this only
+// prevents the default.
+function proseline(el){
+  if (!el || el.dataset.prose) return;
+  el.dataset.prose = "1";
+  const fit = () => { el.style.height = "auto";
+                      el.style.height = (el.scrollHeight + 2) + "px"; };
+  el.addEventListener("input", fit);
+  el.addEventListener("keydown", e => { if (e.key === "Enter") e.preventDefault(); });
+  // Twice: once now, and once after layout, because a box that is drawn into
+  // a hidden or just-inserted parent measures zero and would stay one line.
+  fit();
+  requestAnimationFrame(fit);
+}
+// Every proseline in `root`, and `root` itself if it is one.
+function proselines(root){
+  if (!root) return;
+  if (root.matches && root.matches("textarea.proseline")) proseline(root);
+  if (root.querySelectorAll)
+    root.querySelectorAll("textarea.proseline").forEach(proseline);
+}
+// Wired when one APPEARS, rather than by a call at the end of each draw, for
+// the same reason the field skin above styles elements instead of keeping an
+// allowlist of containers: a surface that forgets to opt in is the failure
+// mode, and this way there is nothing to opt into. Idempotent — proseline()
+// marks what it has wired. The one place that still calls it by hand is
+// arriveBox, which measures a box's height synchronously and so cannot wait
+// for the observer's microtask.
+new MutationObserver(ms => {
+  for (const m of ms)
+    for (const n of m.addedNodes) if (n.nodeType === 1) proselines(n);
+}).observe(document.documentElement, {childList: true, subtree: true});
 
 // Mirrors bb-tty. The key bar, the kill button and the macro sender all address
 // tmux by name, and the terminal is an iframe we cannot reach into, so they
@@ -6100,6 +6175,7 @@ function paginate(host, rowSel, opts = {}){
 // jumping out of the way. Height rather than opacity, because those lines
 // have to move either way and moving them smoothly is the whole point.
 function arriveBox(el){
+  proselines(el);
   if (noMotion() || !el) return;
   foldHeight(el, 0, el.offsetHeight, () => {});
 }
@@ -9992,8 +10068,8 @@ function openDrop(row, id, step){
   const box = document.createElement("div");
   box.className = "dropbox";
   box.innerHTML = `<div class="q">Drop this?${also ? ` <span>— ${esc(also)}</span>` : ""}</div>
-    <input maxlength="500" autocomplete="off"
-      placeholder="why it is going (optional, kept in the history)">
+    <textarea class="proseline" rows="1" maxlength="500"
+      placeholder="why it is going (optional, kept in the history)"></textarea>
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="danger">Drop it</button></div>`;
@@ -10002,11 +10078,11 @@ function openDrop(row, id, step){
   const shut = () => box.remove();
   box.querySelector(".stop").onclick = shut;
   box.querySelector(".danger").onclick = () => {
-    const why = box.querySelector("input").value;
+    const why = box.querySelector("textarea").value;
     shut();
     stageRemove(id, step, why);
   };
-  box.querySelector("input").onkeydown = e => {
+  box.querySelector("textarea").onkeydown = e => {
     if (e.key === "Enter"){ e.preventDefault(); box.querySelector(".danger").click(); }
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
   };
@@ -10066,10 +10142,10 @@ function openReword(row, id, step){
 // rather than assembled a dialog at a time.
 function openStepInput(box){
   const id = box.dataset.id;
-  box.innerHTML = `<input maxlength="500" autocomplete="off"
-      placeholder="then…"><button type="button" class="primary">Add</button>
+  box.innerHTML = `<textarea class="proseline" rows="1" maxlength="500"
+      placeholder="then…"></textarea><button type="button" class="primary">Add</button>
       <button type="button" class="stop">Cancel</button>`;
-  const inp = box.querySelector("input"), btn = box.querySelector(".primary");
+  const inp = box.querySelector("textarea"), btn = box.querySelector(".primary");
   // Escape closes it too, but a phone keyboard has no Escape — and a field
   // that only closes by being emptied first is a field you are stuck in.
   box.querySelector(".stop").onclick = () => closeStepInput(box);
@@ -10263,8 +10339,8 @@ function drawMemory(j){
           <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
             value="${esc(m.title)}">
           ${lbl("", "Hook", "one line, what it says. Recall matches on it")}
-          <input class="ixh" maxlength="240" autocomplete="off"
-            value="${esc(m.hook)}">
+          <textarea class="ixh proseline" rows="1" maxlength="240"
+            >${esc(m.hook)}</textarea>
         </div>
         <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
           ? "Its line in the index — the one part loaded into every session started here."
@@ -10495,8 +10571,8 @@ function paintMemAdd(box){
     </div>
     <div class="hint" id="naWhat"></div>
     <label for="naHook">Hook<span class="help" data-tip="its one line in the index, and what recall matches on" tabindex="0">?</span></label>
-    <input id="naHook" maxlength="240" autocomplete="off"
-      placeholder="a word and an animated ellipsis, never a bar or a percentage">
+    <textarea id="naHook" class="proseline" rows="1" maxlength="240"
+      placeholder="a word and an animated ellipsis, never a bar or a percentage"></textarea>
     <label for="naBody">The memory itself</label>
     <textarea id="naBody" spellcheck="false"
       placeholder="The fact, in a line or two. For a kind that is guidance, follow it with why it is the rule and how to apply it."></textarea>
@@ -11295,8 +11371,8 @@ $("todoRevert").onclick = revertNotebook;
     // Adding goes at the top: the commit's form is the section's first
     // band, above the files it will take.
     const commitBar = files.length && !locked ? `<div class="addbar gcommitbar" data-add="commit">
-        <input id="gitMsg" maxlength="200" autocomplete="off" placeholder="what changed, for the log"
-          aria-label="commit message" value="${esc(gitMsgDraft)}">
+        <textarea id="gitMsg" class="proseline" rows="1" maxlength="200" placeholder="what changed, for the log"
+          aria-label="commit message">${esc(gitMsgDraft)}</textarea>
         <button type="button" class="primary" id="gitCommit"
           title="commit every changed file under your author">Commit all</button>
       </div>` : "";
@@ -11904,8 +11980,8 @@ project can have several"
           + `<option value="\u0000new">new category…</option>`;
         pane.innerHTML =
           `<div class="clog">
-             <div class="hint">Sessions add the lines; the order, the categories and
-               the words are yours. Saved to CHANGELOG.md when you press Save.</div>
+             <div class="hint">Sessions add the lines; the order, the categories
+               and the words are yours, saved to CHANGELOG.md when you press Save.</div>
              ${gs.length ? gs.map((g, gi) => `
                <div class="clgroup" data-g="${gi}">
                  ${g.name ? `<div class="clhead">
@@ -11918,14 +11994,17 @@ project can have several"
                  </div>` : ""}
                  ${g.entries.map((e, ei) => `
                    <div class="clrow" data-g="${gi}" data-e="${ei}">
-                     <input class="cltext" value="${esc(e.text)}" maxlength="300"
-                            aria-label="what changed">
-                     <select class="clcat" aria-label="category">${opts(g.name)}</select>
-                     <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
-                     <button type="button" data-emv="up" title="move up">↑</button>
-                     <button type="button" data-emv="down" title="move down">↓</button>
-                     <button type="button" class="danger" data-erm
-                       title="drop this line — the commit is untouched">✕</button>
+                     <textarea class="cltext proseline" rows="1" maxlength="300"
+                       aria-label="what changed">${esc(e.text)}</textarea>
+                     <div class="clmeta">
+                       <select class="clcat" aria-label="category">${opts(g.name)}</select>
+                       <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
+                       <span class="sp"></span>
+                       <button type="button" data-emv="up" title="move up">↑</button>
+                       <button type="button" data-emv="down" title="move down">↓</button>
+                       <button type="button" class="danger" data-erm
+                         title="drop this line — the commit is untouched">✕</button>
+                     </div>
                    </div>`).join("")}
                </div>`).join("")
              : `<div class="none">Nothing unreleased here yet.</div>`}
@@ -11949,6 +12028,8 @@ project can have several"
         });
         q(".clrow", row => {
           const g = gs[Number(row.dataset.g)], e = g.entries[Number(row.dataset.e)];
+          // The growing is proseline()'s, wired by the observer when the row
+          // appears; this only has to hear the words change.
           row.querySelector(".cltext").onchange = ev => { e.text = ev.target.value; };
           row.querySelector("[data-erm]").onclick = () => {
             g.entries.splice(g.entries.indexOf(e), 1);
@@ -12946,8 +13027,9 @@ become that version's section when it is created">Changelog${
         ${t.sits_on ? `
         <label class="ndcap"><input type="checkbox" class="tstAccept"${(draft ? draft.accept : t.accepted) ? " checked" : ""}>
           the wait is the work — it has to sit on ${t.sits_on}s, so stop flagging it</label>
-        <input class="tstWhy" maxlength="300" autocomplete="off" placeholder="why — a real boot, a timeout being proved"
-          value="${esc(draft ? draft.why : t.accepted)}"${(draft ? draft.accept : t.accepted) ? "" : " hidden"}>` : ""}
+        <textarea class="tstWhy proseline" rows="1" maxlength="300" placeholder="why — a real boot, a timeout being proved"
+          ${(draft ? draft.accept : t.accepted) ? "" : "hidden"
+            }>${esc(draft ? draft.why : t.accepted)}</textarea>` : ""}
         <div class="actbar"><span class="sp"></span>
           <button type="button" class="stop tstCancel"
             title="put the fields away — what was typed here is dropped">Cancel</button>
@@ -13096,24 +13178,26 @@ become that version's section when it is created">Changelog${
     const v = k => esc(b?.[k] || "");
     return `<div class="memadd bugform">
       <label>Title</label>
-      <input class="bfTitle" maxlength="200" autocomplete="off" value="${v("title")}"
-        placeholder="the picker loses its selection on rotate">
+      <textarea class="bfTitle proseline" rows="1" maxlength="200"
+        placeholder="the picker loses its selection on rotate">${v("title")}</textarea>
       <div class="two">
         <div><label>Severity</label>
           <select class="bfSev">${SEVS.map(x =>
             `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
         <div><label>Where<span class="help" data-tip="files, component, screen" tabindex="0">?</span></label>
-          <input class="bfArea" maxlength="200" autocomplete="off" value="${v("area")}"
-            placeholder="scripts/dashboard/index.html, the picker"></div>
+          <textarea class="bfArea proseline" rows="1" maxlength="200"
+            placeholder="scripts/dashboard/index.html, the picker">${v("area")}</textarea></div>
       </div>
       <label>How to reproduce</label>
       <textarea class="bfRepro" spellcheck="false"
         placeholder="1. open the picker on a phone&#10;2. rotate">${v("repro")}</textarea>
       <div class="two">
         <div><label>Expected</label>
-          <input class="bfExpected" maxlength="300" autocomplete="off" value="${v("expected")}"></div>
+          <textarea class="bfExpected proseline" rows="1" maxlength="300"
+            >${v("expected")}</textarea></div>
         <div><label>Actual</label>
-          <input class="bfActual" maxlength="300" autocomplete="off" value="${v("actual")}"></div>
+          <textarea class="bfActual proseline" rows="1" maxlength="300"
+            >${v("actual")}</textarea></div>
       </div>
       <label>Notes<span class="help" data-tip="cause, analysis, fix plan" tabindex="0">?</span></label>
       <textarea class="bfNotes" spellcheck="false"
@@ -13299,8 +13383,8 @@ become that version's section when it is created">Changelog${
         box.className = "dropbox";
         box.innerHTML = `<div class="q">Delete this report?<span> — closing keeps
             a bug and its answer; this takes the row</span></div>
-          <input maxlength="300" autocomplete="off"
-            placeholder="why it should not have been filed (optional, kept in the log)">
+          <textarea class="proseline" rows="1" maxlength="300"
+            placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
           <div class="actbar">
             <button type="button" class="stop">Cancel</button>
             <button type="button" class="danger">Delete it</button></div>`;
@@ -13310,7 +13394,7 @@ become that version's section when it is created">Changelog${
         // so anything that arrived while it was open lands now.
         box.querySelector(".stop").onclick = () => { box.remove(); drawBugs(true); };
         box.querySelector(".danger").onclick = () => {
-          const why = box.querySelector("input").value;
+          const why = box.querySelector("textarea").value;
           box.remove();
           postBug({action: "remove", id, why});
         };

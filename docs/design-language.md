@@ -105,6 +105,20 @@ select as one line high at phone width.
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
+**A value that is one line of PROSE is a `textarea.proseline`, never an
+`<input>`.** An input shows about thirty characters at phone width, and a
+roadmap item, a bug's title, a changelog entry or the reason something was
+dropped runs to three hundred: on a phone every one of those was a field you
+could not read what you were editing in. A proseline wraps, grows to its
+content and never scrolls inside itself. It is still one line — Enter does
+not make a newline in one, and the surface's own Enter handler still runs.
+`proseline()` does the growing and a MutationObserver wires every one that
+appears, so there is nothing for a new surface to remember; `arriveBox` is
+the one caller that asks by hand, because it measures a box's height in the
+same tick. The rule the suite enforces: no `<input>` on a document tab
+carries a `maxlength` over 120, because that is a sentence and a sentence is
+a proseline.
+
 **What the width test measures:** on every document tab, at desktop and at
 phone width, the union of each control row's controls and each lone control
 against the smaller of `--ctl-w` and nine tenths of the tab's box. A prose
