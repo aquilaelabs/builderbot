@@ -18,6 +18,7 @@
 - A project can be set to run bb without asking, so a session stops putting a permission dialog on the screen for every bb rules and bb roadmap; the verbs that reach past this box, like a push, the phone, root and an install, still ask (55bbc5b)
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
 - A session whose project could not be marked as trusted now says so in its terminal, instead of quietly asking permission for every command and forgetting every answer you give it (594f766)
+- The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
 
 ## 0.5.0 — 2026-09-10
 
