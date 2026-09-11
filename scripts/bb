@@ -627,8 +627,9 @@ cmd_emu() {
             # the default stays software and says why rather than pretending.
             # What to render with. An explicit ANDROID_EMULATOR_GPU is obeyed
             # as given; otherwise the hardware path is *tested* rather than
-            # assumed — 48-gpu-display starts an X server for the card at boot,
-            # and if EGL answers on it with a vendor driver the emulator can
+            # assumed — the node's own boot starts an X server for the card
+            # (nodes/provision-linux.sh), and if EGL answers on it with a
+            # vendor driver the emulator can
             # use the GPU. Anything else falls back to software, which is the
             # behaviour this box has always had.
             local gpu vendor
@@ -724,7 +725,7 @@ cmd_emu() {
                 note="$(gpu_display_note)"
                 [ -n "${note:-}" ] && printf '  the startup hook says: %s\n' "$note"
                 command -v Xorg >/dev/null 2>&1 \
-                    || printf '  this image has no X server — the GPU path needs one (see 48-gpu-display)\n'
+                    || printf '  this machine has no X server — the GPU path needs one\n'
                 command -v nvidia-smi >/dev/null 2>&1 \
                     && printf '  the card is here: %s\n' \
                        "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"

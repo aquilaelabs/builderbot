@@ -8,11 +8,9 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 # Boot's finish line, as a file rather than a log line.
 #
 # The dashboard is started BY a hook (15-dashboard.sh) and the hooks after it
-# keep running — 48-gpu-display.root.sh does not start Xorg for another few
-# seconds. So anything the dashboard measures in that window is measuring a
-# half-built container, and `bb doctor`'s answer there is not just early, it is
-# wrong: a healthy GPU read as "nvidia EGL is installed but has no display to
-# render on" and the dashboard cached it for half an hour.
+# keep running. So anything the dashboard measures in that window is measuring
+# a half-built container, and `bb doctor`'s answer there is not just early, it
+# is wrong — and it is cached for half an hour, so it stays wrong.
 #
 # In /run rather than /run/builderbot, which is 0700 root because it holds the
 # redaction table — the marker is meant to be read by the builder user. Cleared
@@ -29,10 +27,11 @@ BOOT_READY_FILE="${BOOT_READY_FILE:-/run/builderbot-ready}"
 # starts Claude there, on the projects share the node mounts, with this
 # library answering for a machine that keeps no /config and has no owner.
 #
-# One image, two roles, so the same template makes both; on a VM node the
-# agent sets BUILDERBOT_ROLE=node in the environment every session inherits.
-# Read here rather than only in the entrypoint because bb, bb-tty and the
-# account helpers below all have a node answer that differs.
+# BUILDERBOT_ROLE is not a setting on this image: the AGENT sets it, in the
+# environment every session it starts on a node inherits. This container is
+# always a controller. Read here rather than only in the entrypoint because
+# bb, bb-tty and the account helpers below all have a node answer that
+# differs, and all three run on a node out of the bundle.
 bb_role() {
     case "$(printf '%s' "${BUILDERBOT_ROLE:-controller}" | tr '[:upper:]' '[:lower:]')" in
         node|worker|agent) printf 'node' ;;

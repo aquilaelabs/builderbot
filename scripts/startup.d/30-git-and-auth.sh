@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Git identity, credential helper and SSH known_hosts.
 #
 set -euo pipefail

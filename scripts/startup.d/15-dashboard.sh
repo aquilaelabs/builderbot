@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Web dashboard: the page, its API and the browser terminals, all on
 # DASHBOARD_PORT. ttyd binds the loopback and is reached through the
 # dashboard's own /term proxy, so there is one port and one sign-in.
@@ -42,9 +40,7 @@ set -euo pipefail
 # It is also what starts a session with its guardrails: bb-tty writes the
 # settings file that walls a session into its project and injects the roadmap
 # and the bug tracker, so `docker exec claude` without this is a session with
-# no scope and no context. The one arrangement that legitimately has no
-# dashboard is a NODE, and that is BUILDERBOT_ROLE=node — whose hook filter
-# does not run this file at all.
+# no scope and no context.
 
 PORT="${DASHBOARD_PORT:-7680}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"

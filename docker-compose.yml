@@ -60,39 +60,6 @@ services:
       # with the /sdk volume below.
       SDK_ROOT: ${SDK_ROOT:-/sdk}
 
-      # --- role -------------------------------------------------------------
-      # `controller` (default) is the management instance; `node` makes this
-      # container a worker that enrolls with a controller and runs its jobs.
-      # Same image, same template, two instances.
-      BUILDERBOT_ROLE: ${BUILDERBOT_ROLE:-controller}
-      # Node only, and only until it has enrolled.
-      CONTROLLER_URL: ${CONTROLLER_URL:-}
-      NODE_TOKEN: ${NODE_TOKEN:-}
-      # --- Android emulator: node role only ---------------------------------
-      # No SDK in the image (roadmap #24, 10c): the emulator, its images and
-      # the platforms are a node's, from its packages store. These two apply
-      # to a container running as a node that boots one; also uncomment the
-      # devices: block below there for KVM acceleration.
-      # swiftshader_indirect (default) is software rendering and always works.
-      # swangle_indirect is usually faster, still software. host needs a GPU
-      # and the nvidia block below.
-      ANDROID_EMULATOR_GPU: ${ANDROID_EMULATOR_GPU:-}
-      ENABLE_GPU_DISPLAY: ${ENABLE_GPU_DISPLAY:-true}
-
-      # --- nvidia gpu -------------------------------------------------------
-      # Only meaningful with the deploy: block below. The default capabilities
-      # are compute,utility — which inject CUDA but NOT the GL/EGL/Vulkan
-      # drivers, so anything graphical fails with a GPU that nvidia-smi happily
-      # reports as present. "all" is what makes -gpu host and hardware ffmpeg
-      # reachable. On Unraid, "all" is also fine for NVIDIA_VISIBLE_DEVICES
-      # with a single card; with several, use the UUID from the Nvidia-Driver
-      # plugin.
-      # Empty by default: a controller renders nothing, so claiming the
-      # card here takes it from whatever else wants it. Set both on a
-      # node container that runs the emulator.
-      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-}
-      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-}
-
       # --- web dashboard ----------------------------------------------------
       # Status page plus a browser terminal. There is no password here: the
       # first page it serves asks you to make the owner account, and it serves
@@ -177,31 +144,10 @@ services:
       # share itself and makes the per-instance directory over there.
       # - ${DEVDATA_PATH:-/mnt/user/builderbot/devdata}:/devdata
 
-    # Hardware acceleration for the Android emulator. Uncomment if your CPU
-    # has virtualization enabled (it does if Unraid can run VMs).
-    # devices:
-    #   - /dev/kvm:/dev/kvm
-
-    # NVIDIA GPU. Needs the NVIDIA Container Toolkit on the host; pair it with
-    # NVIDIA_DRIVER_CAPABILITIES above or you get compute only. Verify from
-    # inside with: bb doctor
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
     # Web dashboard + browser terminals, one port: terminals are proxied
     # through it under /term, behind the same sign-in.
     # ports:
     #   - "7680:7680"
-
-    # Uncomment to reach the emulator's adb from other machines on your LAN
-    # (e.g. Android Studio on your desktop: adb connect tower:5555).
-    # ports:
-    #   - "5555:5555"
 
     # Tells the Unraid Compose Manager plugin to adopt this container.
     labels:

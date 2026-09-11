@@ -5,6 +5,7 @@
 ### Upgrading
 
 - A minor version moves the compatibility window: every project's CLAUDE.md block needs its one-line update, and a project on a node needs that node's agent updated too, before sessions will start there again (dbf8170)
+- This image is the controller and nothing else: it cannot be turned into a node by a setting, carries no emulator runtime, no X server and no GPU flags, and its Unraid template no longer ships a device or a runtime that fails the container outright on hardware that lacks them (652f8e4)
 
 ### Added
 

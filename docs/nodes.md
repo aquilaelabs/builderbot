@@ -1782,11 +1782,12 @@ them into the pane as the dashboard types into its own; the paging
 decision (copy mode at a prompt, the program's key in a full-screen one)
 is made on the node, where the pane is. What the controller still cannot
 do for a node's session is keep the one-Anthropic-account rule, which is
-the node's own. 10c landed 6 September: the image carries no JDK and no
-Android SDK; a container in the node role keeps the emulator's runtime
-libraries and the X server for the GPU path, and the startup hook that
-builds AVDs from `ANDROID_SYSTEM_IMAGES` is gone — an API level is what a
-store holds an image for, and `bb emu create` fetches one. `bb emu` on a
+the node's own. 10c landed 6 September: the image carries no JDK, no
+Android SDK, no emulator runtime and no X server, and the startup hook that
+built AVDs from `ANDROID_SYSTEM_IMAGES` is gone — an API level is what a
+store holds an image for, and `bb emu create` fetches one. A node is a
+MACHINE: the toolchains, the card and `/dev/kvm` are its own, from
+`nodes/provision-linux.sh` and the packages store. `bb emu` on a
 controller with no node for the project refuses and says where it runs.
 A node's sessions outlive a controller restart on purpose (the tmux is the
 node's); what must not is the idle rule — the Settings tab's "end a Claude
@@ -1807,12 +1808,10 @@ another node held a retired grant until somebody opened a terminal tab there
 — hours, and what it looks like is "Login expired" at random (B100). The controller stays the one place that
 holds the account's current grant, and a machine that has been away cannot
 undo a sign-in that happened while it was gone.
-A CONTAINER node — this image in the node role — is a guest in §20's terms
-before the class exists on the record: no systemd, so its runner is run.sh
-in the foreground under the agent (supervised, taken down with it, reported
-by the same pgrep as a service); no bb-sandbox, so no system jobs; no root,
-so a recipe's system packages are the image's to carry. The doctor's GPU
-check runs only in that role, since a controller renders nothing.
+A machine with no systemd runs its runner as run.sh in the foreground under
+the agent — supervised, taken down with it, reported by the same pgrep as a
+service — which is what makes §20's GUEST class implementable on something
+that is not a sandbox VM.
 
 ## 20. Three rules from 6 September
 

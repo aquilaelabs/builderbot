@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Mark the container's own directories inside the projects share so the
 # dashboard stops calling them projects.
 #

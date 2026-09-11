@@ -201,30 +201,6 @@ RUN set -eux; \
     playwright --version
 
 # ---------------------------------------------------------------------------
-# No JDK and no Android SDK in the image (roadmap #24, phase 10c). Builds,
-# tests, CI and the emulator run on a node; what a node needs comes from its
-# packages store through the catalog's recipes (jdk, android-tools,
-# android:*), installed from the Tools tab. A nodeless project's session
-# here reads, edits, commits and pushes, and cannot compile — that is the
-# design, not a gap (docs/nodes.md §18, §20).
-#
-# What stays is the small runtime half a CONTAINER in the node role needs
-# and cannot install for itself, since its agent is not root: the libraries
-# the emulator loads (audio, GL), and the X server the GPU path needs —
-# NVIDIA's EGL will not hand out a display without one carrying its own GLX
-# module, which the container runtime injects when NVIDIA_DRIVER_CAPABILITIES
-# includes `display`; scripts/startup.d/48-gpu-display starts it, node role
-# only. A VM node gets the same from the recipe (android:emulator's
-# system.apt) and nodes/provision-linux.sh.
-# ---------------------------------------------------------------------------
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        libpulse0 libgl1 libglu1-mesa libasound2t64 libegl1 libvulkan1 \
-        xserver-xorg-core xkb-data; \
-    rm -rf /var/lib/apt/lists/*
-
-# ---------------------------------------------------------------------------
 # Unprivileged user. UID/GID are remapped at startup from PUID/PGID, so the
 # build-time numbers here are only a placeholder. Ubuntu 24.04 ships a stock
 # "ubuntu" user on 1000 — drop it so 1000 is free.
