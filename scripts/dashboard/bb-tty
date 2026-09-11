@@ -850,52 +850,39 @@ case "$target" in
             fi
             cmd+=(--resume "$resume")
         fi
-        # The project's shared to-do list, in front of the session that is
-        # about to start. This is the whole reason the list is worth keeping:
-        # a note left in a conversation dies with it, and one left here is
-        # read by the next session without anybody remembering to mention it.
-        # Only the open items, and nothing at all when there are none.
-        # Named rather than inferred: `bb roadmap` takes the project from the
-        # working directory, and this is not run from one. A controller that
-        # is not answering makes this fail, which is caught here and simply
-        # means no block rather than no session.
-        todo_block="$(BB_ROADMAP_PROJECT="$proj" bb roadmap --prompt 2>/dev/null || true)"
-        # The bug tracker rides in the same block: open bugs by number and
-        # severity, with the fields on disk behind `bb bug show`. Caught the
-        # same way, and for the same reason.
-        bug_block="$(BB_BUG_PROJECT="$proj" bb bug --prompt 2>/dev/null || true)"
-        [ -z "$bug_block" ] || todo_block="${todo_block:+$todo_block
-
-}$bug_block"
-        # The operator's house rules go FIRST, ahead of the list: how they want
-        # this worked on comes before what there is to work on. They are the
-        # one block a session cannot write back — claude_scope() denies the
-        # file tools on the file — and a conditional rule contributes only its
-        # name here, its text arriving on the turn it fires. Roadmap #7.
-        rules_block="$(BB_PROJECT="$proj" bb rules --prompt 2>/dev/null || true)"
-        [ -z "$rules_block" ] || todo_block="$rules_block${todo_block:+
-
-$todo_block}"
+        # What this session is handed, in front of it: the house rules first,
+        # then the open roadmap, then the open bugs. This is the whole reason
+        # the list is worth keeping — a note left in a conversation dies with
+        # it, and one left here is read by the next session without anybody
+        # remembering to mention it.
+        #
+        # Assembled by preamble.py rather than here. It was three calls and
+        # two shell joins in this file, which was fine while the launcher was
+        # the only reader and stopped being fine when the Briefing tab wanted
+        # to SHOW a person what their sessions are sent: two assemblies of one
+        # string drift, and the one that drifts is the one nobody runs. The
+        # order, the joins and the cap are all one decision now, over there.
+        #
+        # Named rather than inferred: bb takes the project from the working
+        # directory, and this is not run from one. A controller that is not
+        # answering makes this fail, which is caught here and simply means no
+        # block rather than no session.
+        pre="$(BB_PROJECT="$proj" bb preamble --json 2>/dev/null || true)"
+        todo_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
         # One ceiling up from tmux's there is the kernel's: a single argument
-        # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured here — and past
-        # it exec answers "Argument list too long" and the pane dies without
-        # saying why, which is the same silent death the launcher exists to
-        # end. So the block is cut to fit and says that it was cut, rather than
-        # taking the session down with it. Bytes, not characters: prose in the
-        # roadmap is UTF-8, and the kernel counts bytes.
-        PROMPT_MAX=100000
-        if [ "$(printf '%s' "$todo_block" | wc -c)" -gt "$PROMPT_MAX" ]; then
+        # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured — and past it
+        # exec answers "Argument list too long" and the pane dies without
+        # saying why. preamble.py cuts it at a line boundary and says so in
+        # the text; this says so to whoever opened the terminal, because a
+        # list nobody can afford is worth hearing about once rather than
+        # meeting as a session that has read half of it.
+        if [ "$(printf '%s' "$pre" | jq -r '.capped // false' 2>/dev/null)" = true ]; then
             echo "WARNING: this project's rules, roadmap and bugs are" >&2
             echo "too long to fit in a session's prompt; only the first" >&2
-            echo "${PROMPT_MAX} bytes are in this one." >&2
+            echo "$(printf '%s' "$pre" | jq -r '.max // 0' 2>/dev/null)" >&2
+            echo "bytes are in this one." >&2
             echo "Trim the list with \`bb roadmap\`, or the rest of it is invisible" >&2
             echo "to every session started here." >&2
-            # Back to a line boundary, so the cut cannot land inside a word —
-            # or inside a UTF-8 character, which head -c is happy to do.
-            todo_block="$(printf '%s' "$todo_block" | head -c "$PROMPT_MAX" || true)"
-            todo_block="${todo_block%$'\n'*}"$'\n'
-            todo_block+="[the rest of this list did not fit in the prompt — \`bb roadmap\`"
-            todo_block+=" and \`bb bug\` show all of it]"
         fi
         # Kept beside the command rather than in it: the fallback below starts
         # the session without this block, and cannot if the two are one array.

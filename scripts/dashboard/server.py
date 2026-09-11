@@ -258,7 +258,7 @@ LOGIN_HTML = """<!doctype html>
 # BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
 # is either refused on arrival or never sent.
 RELAY_VERBS = frozenset((
-    "roadmap", "bug", "bugs", "tests", "rules", "history", "version",
+    "roadmap", "bug", "bugs", "tests", "rules", "preamble", "history", "version",
     "changelog", "work",
     "findings", "findings-history", "catchup", "claude-md", "claudemd",
     "settings", "nodes", "jobs", "ci-labels",
@@ -2713,6 +2713,13 @@ import todo                                                      # noqa: E402
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name, settle=notify.settle, actor=writer_name)
 
+# ---- what a session is handed ----------------------------------------------
+# The three above, assembled in the order a session reads them. bb-tty used to
+# join them itself in shell; it asks for this now, and the Briefing tab draws
+# the same string rather than its own idea of it.
+import preamble                                                  # noqa: E402
+preamble.configure(rules_mod=rules, todo_mod=todo, bugs_mod=bugs)
+
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring
 # for why it stopped being a question inside each send box.
@@ -4344,6 +4351,17 @@ class Handler(BaseHTTPRequestHandler):
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             return self._json(rules.payload(name))
+        if self.path.startswith("/api/preamble"):
+            # What a session started here is handed, exactly: the Briefing tab
+            # shows it so the block is a thing a person can read rather than
+            # something that only exists inside a launcher. Readable by anyone
+            # who can see the project — it is their own rules, roadmap and
+            # bugs, already on the three tabs beside it.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json(preamble.payload(name))
         if self.path.startswith("/api/codebase"):
             # What git tracks in the project, by language: the Briefing
             # tab's first section. Tracked files only, cached by commit.

@@ -10871,7 +10871,12 @@ $("todoRevert").onclick = revertNotebook;
     if (v === "tests" && !tests) loadTests();
     // The rules once; the code base every time the view is shown, since a
     // commit moves it and the server answers from its cache when not.
-    if (v === "briefing"){ if (!ruleData) loadRules(); else loadCodebase().then(() => drawRules()); }
+    if (v === "briefing"){
+      if (!ruleData) loadRules(); else loadCodebase().then(() => drawRules());
+      // Once, on the first show. It is re-read when one of the three stores
+      // behind it moves, and only while this view is the one on screen.
+      if (!preData) loadPreamble();
+    }
   }
   // Unsaved work does not follow you to another tab.
   //
@@ -11078,6 +11083,14 @@ $("todoRevert").onclick = revertNotebook;
   ];
   for (const [key, news, read] of HALVES)
     watch(key, k => { if (!nbWriting && news(k)) read(); });
+  // The block a session is handed is the first, third and fifth of those
+  // joined, so it is stale the moment any of them moves. Only re-read while
+  // somebody is looking at it: it is a fold that is shut by default, and
+  // fetching a few kilobytes for a closed fold on every roadmap edit is the
+  // kind of cost nobody chooses.
+  for (const half of ["rules", "todo", "bug"])
+    watch(() => `${half}:${project}`,
+          () => { if (showing("briefing")) loadPreamble(); });
 
   logPane({btnId: "anaLog", barId: "anaHistBar", paneId: "anaHist",
            title: "Analysis — what the scanner started and stopped saying",
@@ -12198,6 +12211,54 @@ become that version's section when it is created">Changelog${
     // look for one, and the rules under it are the fold that closes.
     return docSection("briefing", "codebase", "Code base", status, body, {open: true});
   }
+  // ---- what a session is handed --------------------------------------------
+  // The three stores this notebook already shows, joined into the one string
+  // bb-tty puts in front of a session. Fetched rather than built here: the
+  // order, the joins and the cap are preamble.py's, and a second assembly on
+  // this side would be a tab that quietly stops describing what sessions get.
+  let preData = null;
+  async function loadPreamble(){
+    try{
+      const r = await fetch(`/api/preamble?project=${encodeURIComponent(project)}`);
+      const j = await r.json();
+      preData = j.error ? {error: j.error} : j;
+    }catch(e){ preData = {error: String(e)}; }
+    drawRules();
+  }
+  const preSize = n => n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} bytes`;
+  function preambleSection(){
+    const d = preData;
+    let body, status = "", cls = "";
+    if (!d){
+      body = `<div class="field"><div class="sub dim">reading…</div></div>`;
+    } else if (d.error){
+      body = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`;
+      status = "unavailable"; cls = "bad";
+    } else if (!d.text){
+      status = "none";
+      body = `<div class="field"><div class="sub dim">No rules, no open roadmap `
+           + `items and no open bugs, so a session here starts on CLAUDE.md alone.`
+           + `</div></div>`;
+    } else {
+      status = preSize(d.bytes); cls = d.capped ? "warn" : "";
+      // Read-only, and a textarea rather than a <pre> because the thing
+      // somebody wants to do with this is select all of it and take it
+      // somewhere. uniform.mjs exempts a read-only textarea from the control
+      // width: this is a page of text, not a field.
+      body = `<div class="field">
+        <div class="hint">Every session started here is handed this, on top of `
+        + `the project's CLAUDE.md.</div>
+        <textarea id="preText" readonly rows="16" spellcheck="false"
+          aria-label="what a session started here is sent">${esc(d.text)}</textarea>
+        <div class="sub dim">${
+          (d.parts || []).map(x => `${esc(x.name)} ${preSize(x.bytes)}`).join(" · ")
+        }${d.capped ? ` · cut at ${preSize(d.max)}, the rest is not sent` : ""}</div>
+      </div>`;
+    }
+    return docSection("briefing", "preamble", "What a session is sent",
+                      status, body, {open: false, cls});
+  }
+
   async function loadRules(){
     loadCodebase().then(() => drawRules());
     try{
@@ -12314,12 +12375,17 @@ become that version's section when it is created">Changelog${
                  d.loud ? " — that is a lot to pay on every conversation" : ""}`)
           : "Nothing set. A session can leave rules of its own with bb rules "
             + "add, marked as its; the ones you write here it cannot touch."}</div>`;
-    box.innerHTML = codebaseSection() + docSection("briefing", "rules", "Your rules",
+    box.innerHTML = codebaseSection()
+      + docSection("briefing", "rules", "Your rules",
       rows.length ? `${rows.length}` : "none", body,
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the
       // heading says there is something behind it.
-      {open: false, cls: d.loud && !ruleDirty() ? "warn" : ""});
+      {open: false, cls: d.loud && !ruleDirty() ? "warn" : ""})
+      // Last, because it CONTAINS the two above: the rules in full, then the
+      // open roadmap and bugs. Reading it before them is reading the summary
+      // before the thing.
+      + preambleSection();
     wireSections(box);
     ruleStagedCount = () => (ruleDirty() ? 1 : 0);
     ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); ruleOpen.clear(); ruleWas.clear(); drawRules(); };

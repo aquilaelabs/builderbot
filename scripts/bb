@@ -90,6 +90,7 @@ bb — BuilderBot helper
   bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
   bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
   bb rules history       what has changed them, by either of you
+  bb preamble            what a session started here is handed: rules, roadmap, bugs
   bb tests               the test registry: where the suite's time goes, slowest first
   bb tests show KEY      one test — what it protects, what it exercises, its history
   bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -2057,6 +2058,53 @@ for tag, e in rows:
 PY
 }
 
+cmd_preamble() {
+    # What a session started on this project is handed: the house rules, the
+    # open roadmap and the open bugs, in the order it reads them. bb-tty asks
+    # for this rather than joining the three itself, and the Briefing tab
+    # draws the same string — one assembly, so the tab cannot drift from what
+    # a session actually gets.
+    local dir py
+    dir="$(dirname "$(readlink -f "$0")")/dashboard"
+    py="$dir/preamble.py"
+    [ -f "$py" ] || die "preamble.py is missing from this image"
+    local proj="${BB_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
+    fi
+    python3 - "$dir" "$proj" "${1:-}" <<'PREPY'
+import importlib.util, json, os, sys
+d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, d)
+import statefile, rules, todo, bugs, preamble
+state = os.environ.get("DASHBOARD_STATE", "/config")
+# Reading only: none of the callbacks a write would need are passed, and the
+# three stores take them as optional for exactly this case.
+rules.configure(write_json=statefile.write_json, state=state)
+todo.configure(write_json=statefile.write_json, state=state)
+bugs.configure(write_json=statefile.write_json, state=state)
+preamble.configure(rules_mod=rules, todo_mod=todo, bugs_mod=bugs)
+p = preamble.payload(proj)
+if op == "--json":
+    print(json.dumps(p))
+else:
+    # No trailing newline added: this is handed to `claude` as one argument,
+    # and the caller tests it with [ -z ].
+    sys.stdout.write(p["text"])
+    # Said on stderr so it cannot join the block itself. The launcher shows
+    # this to whoever opened the terminal; a list nobody can afford is a
+    # thing to hear about once rather than to discover as a session that has
+    # not read half of it.
+    if p["capped"]:
+        print(f"WARNING: this project's rules, roadmap and bugs are "
+              f"{p['bytes']} bytes and only the first {p['max']} are in a "
+              f"session's prompt.", file=sys.stderr)
+        print("Trim the list with `bb roadmap`, or the rest of it is invisible "
+              "to every session started here.", file=sys.stderr)
+PREPY
+}
+
 cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
@@ -3377,7 +3425,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb packages` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+BB_RELAY_VERBS=" roadmap bug bugs tests rules preamble history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
 # revalidate_tree — open the files a relayed verb may have written, so this
 # machine sees them.
@@ -5368,6 +5416,7 @@ case "${1:-help}" in
     roadmap)  shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
+    preamble) shift; cmd_preamble "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
