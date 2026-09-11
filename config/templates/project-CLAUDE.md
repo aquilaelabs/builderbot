@@ -103,13 +103,6 @@ A sibling directory holding a `.bbignore` file is not a project at all — it is
 the container's own storage (the package store) or something the operator chose to
 hide. Leave those alone too.
 
-**So do not prefix a command with `cd`.** You are already here, and
-`cd /workspace/thing; bb rules` is one opaque string to the permission
-matcher where `bb rules` is a verb it can recognise. The operator may have
-set this project to run `bb` without stopping to ask; a `cd` in front of it
-throws that away and puts a dialog on the screen for every command. Run
-`bb rules`, not `cd …; bb rules`.
-
 If this session was started from the dashboard, that is also enforced: the file
 tools — `Read`, `Edit`, `Write` and `NotebookEdit` — are denied every sibling
 path, via a settings file passed on the command line. One of them coming back

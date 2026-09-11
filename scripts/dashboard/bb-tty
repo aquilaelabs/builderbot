@@ -251,71 +251,23 @@ claude_scope() {
     # while one fails (roadmap R31). All three swallow every failure of their
     # own: a note is never worth an edit and a line is never worth a turn.
     # Their headers have the arguments.
-    # How much this project's sessions may do without asking, from the
-    # settings dialog (prefs.edits). Three rungs, each including the last.
-    #
-    # `default` is Claude Code's own: every edit is confirmed. `acceptEdits`
-    # lets the file tools write inside the tree AND NOTHING ELSE — a shell
-    # command, a push, anything outside the project still asks, which is the
-    # thing people set it expecting to stop and then meet on every command.
-    # The third rung is the allow list below.
-    mode=default want=""
+    # How much this project's sessions may change without asking, from the
+    # settings dialog (prefs.edits). `default` is Claude Code's own — every
+    # edit is confirmed — and `acceptEdits` lets the file tools write inside
+    # the tree while everything else still asks: a shell command, a push,
+    # anything outside the project. The deny list below is unaffected either
+    # way, so a sibling project, VERSION and the rules file stay refused
+    # whichever it is.
+    mode=default
     if [ -r "$PREFS_FILE" ]; then
-        want="$(jq -r --arg n "$proj" '.projects[$n].edits // empty' "$PREFS_FILE" 2>/dev/null)"
+        [ "$(jq -r --arg n "$proj" '.projects[$n].edits // empty' "$PREFS_FILE" 2>/dev/null)" \
+          = accept ] && mode=acceptEdits
     else
-        want="$(BB_PROJECT="$proj" bb settings --json 2>/dev/null \
-                | jq -r '.edits // empty' 2>/dev/null)"
-    fi
-    case "$want" in accept|bb) mode=acceptEdits ;; esac
-
-    # The bb rung. What is on this list is every verb that cannot run
-    # something THE SESSION chose: the notebook (logged, and reversible from
-    # its own history), the read-only reports, and `bb build` / `bb test`,
-    # which run the command the OPERATOR put in the project's settings.
-    #
-    # What is deliberately off it, and why each one:
-    #
-    #   bb run, bb shell     an arbitrary command on the node. This is the
-    #                        one that makes `Bash(bb:*)` worthless as a rule:
-    #                        it would allow everything, through bb.
-    #   bb git push          outward-facing, with a credential the session
-    #                        cannot read. The policy check is not a reason to
-    #                        stop asking, it is a different question.
-    #   bb phone run         a command on hardware somebody is holding.
-    #   bb root run          root on a shared machine.
-    #   bb packages install  gigabytes on somebody else's disk.
-    #   bb emu create        the same, in system images.
-    #   bb dashboard dev     restarts the LIVE dashboard from this checkout.
-    #   bb shot URL          fetches a URL the session chose. Harmless in
-    #                        intent and egress in fact; left asking until
-    #                        somebody wants it badly enough to argue for it.
-    #   bb login             the Claude login itself.
-    #
-    # Families with a dangerous member are listed verb by verb rather than
-    # with a prefix, which is why emu and git are spelled out.
-    #
-    # `bash scripts/bb ...` is NOT allowed and must not be: that runs the
-    # checkout's copy, which the session can edit. Only the bb on PATH, which
-    # comes from the image.
-    allow='[]'
-    if [ "$want" = bb ]; then
-        allow='["Bash(bb)",
-                "Bash(bb roadmap:*)", "Bash(bb bug:*)", "Bash(bb rules:*)",
-                "Bash(bb tests:*)", "Bash(bb changelog:*)", "Bash(bb history:*)",
-                "Bash(bb findings:*)", "Bash(bb version:*)", "Bash(bb claude-md:*)",
-                "Bash(bb logs:*)", "Bash(bb ci-log:*)", "Bash(bb jobs:*)",
-                "Bash(bb nodes:*)", "Bash(bb status)", "Bash(bb doctor)",
-                "Bash(bb projects)", "Bash(bb drift)", "Bash(bb catchup)",
-                "Bash(bb lint)", "Bash(bb ci-labels)", "Bash(bb settings:*)",
-                "Bash(bb packages)", "Bash(bb packages --local)",
-                "Bash(bb build:*)", "Bash(bb test:*)",
-                "Bash(bb git policy)", "Bash(bb phone)", "Bash(bb root)",
-                "Bash(bb emu list)", "Bash(bb emu status)", "Bash(bb emu gpu)",
-                "Bash(bb emu log:*)"]'
+        [ "$(BB_PROJECT="$proj" bb settings --json 2>/dev/null \
+             | jq -r '.edits // empty' 2>/dev/null)" = accept ] && mode=acceptEdits
     fi
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --arg mode "$mode" \
-               --argjson allow "$allow" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --arg gate "$(dirname "$(readlink -f "$0")")/bb-gate" \
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
@@ -326,7 +278,6 @@ claude_scope() {
            {permissions: {
               defaultMode: $mode,
               additionalDirectories: [],
-              allow: $allow,
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
                         "Edit(\($here)/VERSION)",
