@@ -275,11 +275,45 @@ ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
   ok(s1.permissions.deny.some(d => /Edit\(.*VERSION\)/.test(d))
      && s1.permissions.deny.some(d => /_work/.test(d)),
      '...and the deny list is untouched by it — VERSION and the other trees stay refused');
+  ok((s1.permissions.allow || []).length === 0,
+     '...and it allows no command: acceptEdits is the FILE tools and nothing else');
+
+  // The third rung. What it is for is the operator who set the rung above
+  // expecting the prompts to stop, and met a permission dialog for every
+  // shell command — because that mode was never about commands.
+  writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+    { projects: { alpha: { edits: 'bb' } } }));
+  connect(0);
+  await sleep(400);
+  const s2 = JSON.parse(readFileSync(scopeFile, 'utf8'));
+  const allow = s2.permissions.allow || [];
+  ok(s2.permissions.defaultMode === 'acceptEdits' && allow.length > 0,
+     `edits: bb keeps the file rung and adds an allow list (${allow.length} rules)`);
+  ok(['Bash(bb roadmap:*)', 'Bash(bb rules:*)', 'Bash(bb status)',
+      'Bash(bb build:*)', 'Bash(bb test:*)'].every(r => allow.includes(r)),
+     '...carrying the notebook, the reports and the commands the operator configured');
+  // The whole reason this is a list rather than Bash(bb:*): `bb run -- CMD`
+  // is an arbitrary command on the node, so allowing bb wholesale allows
+  // everything through it. If one of these ever appears here, that is the
+  // mistake, and it is silent — the session simply stops asking.
+  const NEVER = [/^Bash\(bb\)$/, /bb run/, /bb shell/, /bb git push/, /bb phone run/,
+                 /bb root run/, /bb packages install/, /bb emu create/,
+                 /bb dashboard/, /bb shot/, /bb login/, /^Bash\(bb:\*\)$/];
+  const leaked = allow.filter(r => NEVER.slice(1).some(re => re.test(r))
+                                   || /^Bash\(bb:\*\)$/.test(r));
+  ok(leaked.length === 0,
+     `...and nothing that runs what a session chose${
+       leaked.length ? ` — leaked: ${leaked.join(', ')}` : ''}`);
+  ok(!allow.some(r => /scripts\/bb/.test(r)),
+     '...nor the checkout\'s own bb, which a session can edit');
+
   writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
     { projects: { alpha: { edits: 'nonsense' } } }));
   connect(0);
   await sleep(400);
-  ok(JSON.parse(readFileSync(scopeFile, 'utf8')).permissions.defaultMode === 'default',
+  const s3 = JSON.parse(readFileSync(scopeFile, 'utf8'));
+  ok(s3.permissions.defaultMode === 'default'
+     && (s3.permissions.allow || []).length === 0,
      '...and a value the launcher does not know reads as asking, not as anything wider');
 }
 
