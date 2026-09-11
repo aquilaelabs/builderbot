@@ -444,6 +444,7 @@ bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
+bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test — what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -2736,6 +2737,14 @@ reconnected into it. Past 100KB the block is cut at an item boundary and says
 so, in the prompt and in the pane: one argument cannot exceed the kernel's
 131072 bytes, and a list that big has outgrown being read at the start of every
 conversation anyway.
+
+**And you can read the whole of it.** The Briefing tab's last fold, *What a
+session is sent*, holds the exact string a session started here is handed: the
+house rules, then the open roadmap, then the open bugs, with its size on the
+heading and each part's size under it. It is the same string, not a rendering
+of the same idea — the tab and `bb-tty` both ask `bb preamble` for it, so the
+fold cannot quietly stop describing what sessions get. Shut by default, since
+it is a thing to check rather than to read every time.
 
 The list lives in `/config/todos.json`, beside the tab strip and the locked
 projects — deliberately **not** in the repository. A list like this churns far

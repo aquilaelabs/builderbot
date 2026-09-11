@@ -45,6 +45,26 @@ case "\${1:-}" in
            fi ;;
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
   rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
+  # What bb-tty actually asks for now: the three blocks already assembled, in
+  # the order a session reads them, with the cap applied. The real assembly is
+  # preamble.py and is tested against the real stores in preamble.mjs; this
+  # stands in for it so the SIZE stays the thing these cases control.
+  preamble) [ "\${2:-}" = --json ] && FAKE_PROMPT="\${FAKE_PROMPT:-0}" python3 -c '
+import json, os
+n = int(os.environ.get("FAKE_PROMPT", "0")) // 50
+parts = ["THE HOUSE RULES"]
+if n:
+    parts.append("\\n".join(
+        "- #%d  an item with enough words in it to be about fifty" % i for i in range(n)))
+parts.append("the bugs block")
+t = "\\n\\n".join(parts)
+MAX = 100000
+b = t.encode()
+capped = len(b) > MAX
+if capped:
+    c = b[:MAX].decode("utf-8", "ignore")
+    t = c[:c.rfind("\\n") + 1] + "[the rest of this list did not fit in the prompt]"
+print(json.dumps({"text": t, "bytes": len(b), "max": MAX, "capped": capped, "parts": []}))' ;;
   settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
   # The gate bb-tty asks before starting a session: exit 0 means the
   # environment block is from another compatibility window and no session
