@@ -54,6 +54,14 @@
   --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
   --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
   --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
+  /* ...and capped below, in the block under this one. Every filled accent
+     surface on the page draws --ink on --accent-deep — the active tab, a
+     primary button, a view bar's current tab, an open select's chosen row,
+     the text selection — and forty percent of black is not enough darkening
+     when the scheme's accent is a bright one. MEASURED across the twelve:
+     nostromo's label sat at 3.56:1, moss at 4.17, sepia 4.23, ice 4.25, ash
+     4.43, all of them under AA, and the tab's icons at --dim were 2.5 to 3.1
+     against the same fill. */
   /* The sunk surface: a field, a memory row, a send box — anything that reads
      as set INTO the panel rather than sitting on it. Hardcoded as #161b22 in
      eight places, which is why every text field, the memory folds and the
@@ -96,6 +104,24 @@
   --blue2:#77b7e8;  --blue2-edge:#1e3a4a;
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
   --red2:#e0796f;   --red2-edge:#94423d;
+}
+/* The cap. A lightness ceiling rather than more black, because "more black"
+   is the wrong knob: it darkens the schemes that were already fine into mud
+   while still not being enough for the brightest. min() leaves an accent that
+   is already deep alone — carbon, nocturne, plum, rust and the default are
+   untouched — and only pulls down the five that were failing. 0.48 is where
+   the worst scheme clears 4.96:1; 0.50 leaves nostromo at 4.54, which is AA
+   by four hundredths and not worth standing on.
+
+   In @supports, and that is not decoration: a custom property holds whatever
+   tokens it is given, so an unsupported function here would not fall back to
+   the declaration above it — it would resolve to nothing at use time and take
+   every accent surface on the page with it. */
+@supports (color: oklch(from red calc(min(l, 0.5)) c h)){
+  :root{
+    --accent-deep:oklch(from color-mix(in srgb, var(--accent), #000000 40%)
+                        calc(min(l, 0.48)) c h);
+  }
 }
 /* ---- colour schemes ----------------------------------------------------
    Twelve, all dark: this page is looked at in a dim room beside a terminal,
@@ -2400,6 +2426,19 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 body.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
 body.dragging .tab .lbl{cursor:grabbing}
 .tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
+/* The active tab's own words and controls, which sit on the accent fill
+   rather than on --btn.
+   
+   The label was the worse half and the reason is a class collision: a tab's
+   name is a `.lbl`, which is ALSO the field-label helper (see `.lbl` in the
+   base sheet), so the tab wore the quiet colour meant for "Your email" above
+   a text box. On nostromo that measured 2.51:1 against the fill. The icons
+   are --dim by their own rule and measured 2.5 to 3.1 — under the floor for
+   a control, let alone for text.
+   
+   Only on the ACTIVE one. An inactive tab is quieter on purpose and its dim
+   sits on --btn, where it reads. */
+.tab.on .lbl,.tab.on .ic{color:var(--ink)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
 .tabbar .sep{flex:1}
 .tabstrip{display:flex;align-items:stretch}
