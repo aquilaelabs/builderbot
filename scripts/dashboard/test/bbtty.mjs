@@ -760,7 +760,7 @@ tmuxKill('claude-alpha');
   grant(8 * 3600 * 1000);
   ok(fire('controller') === 0 && ran().length === 0,
      'the login hook does nothing on the controller, which is where the grant already lives');
-  ok(fire('node') === 0 && ran().length === 1 && /login --sync/.test(ran()[0]),
+  ok(fire('node') === 0 && ran().length === 1 && /login --check/.test(ran()[0]),
      `...and on a node it runs the sync (${ran()[0] || 'nothing'})`);
   ok(fire('node') === 0 && ran().length === 1,
      '...once, not on every prompt: an access token lasts hours and this is not free');

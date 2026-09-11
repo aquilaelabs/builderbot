@@ -26,8 +26,8 @@
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
 - Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
 - The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
-- A node holds no Claude login until you send it one from its row and type your password: enrolling a machine no longer hands it an OAuth grant with your refresh token in it, and taking it back is the same gesture (afef9cd)
 - Signing out of Claude signs out every node holding that login, and one that is offline signs itself out when it reconnects. One Anthropic account per BuilderBot account: a second signed in on a node is refused rather than propagated (815d40e)
+- Each node signs in to Claude for itself and keeps its own login: nothing copies an OAuth grant between machines now, which is what made a login expire at random. Signing out reaches every node, and one that is offline signs itself out when it reconnects (32c2998)
 
 ### Fixed
 

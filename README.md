@@ -377,15 +377,18 @@ bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow. On a node it first syncs
                    this account's login with the controller's, newer wins
-bb login --sync    that half alone, quietly — what every connection already does,
-                   for a node that has been GIVEN this account's Claude login.
-                   A node holds none until somebody presses **Send my Claude
-                   login** on its row and types their own BuilderBot password:
-                   the grant is an OAuth pair with a refresh token in it, so
-                   handing it to a machine is handing that machine the
-                   account, and enrolling one should not widen that by itself.
-                   Keeping an already-granted node in step stays automatic —
-                   that is what stops a session there meeting "Login expired"
+bb login --check   what THIS machine is signed in as, told to the controller,
+                   and a sign-out taken here. The grant never travels: every
+                   failure this had came from one OAuth pair living on several
+                   machines — a refresh rotates the refresh token, so two
+                   copies sign each other out, and a machine that was away
+                   holds one the server has retired. Each machine signs in for
+                   itself and keeps the grant it alone refreshes. What crosses
+                   the wire is "I am signed in as X" going up and a generation
+                   coming back; behind means the account was signed out while
+                   this machine was not listening, and the answer is
+                   `claude auth logout` here. Run on every connection and
+                   every prompt
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here — its branch, main — from the
                    project's Git view; the controller enforces it on the relay

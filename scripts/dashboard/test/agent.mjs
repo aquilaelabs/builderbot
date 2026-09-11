@@ -505,142 +505,71 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
     ok(nobody.status === 401, 'a token that does not verify gets nothing');
 
-    // ---- the login follows the account to the node (roadmap #24) ----------
-    // A node-bound terminal's token is minted for the ACCOUNT as well as the
-    // project, and with it `bb login` on the node fetches that account's
-    // Claude credentials from the controller into the node's copy of its
-    // home — so signing in once, on the Doctor card, signs every node in.
-    // Only such a token can, and only for its own account.
-    {
-      const creds = `${DIR}/home/.claude/.credentials.json`;
-      const had = existsSync(creds) ? readFileSync(creds, 'utf8') : null;
-      mkdirSync(`${DIR}/home/.claude`, { recursive: true });
-      // With an expiresAt, because that is what the two sides compare: a
-      // refresh moves it, and the later grant is the one that wins (bug #64).
-      writeFileSync(creds, '{"claudeAiOauth": {"accessToken": "fake-for-the-suite", "expiresAt": 2000}}\n', { mode: 0o600 });
-      const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
-        { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
-      const login = async (t) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-        { headers: { Authorization: 'Bearer ' + t } }); return { status: r.status, ...(await r.json()) }; };
-      const mine = await login(forMe);
-      ok(mine.status === 200 && /fake-for-the-suite/.test(mine.credentials || ''),
-         'a token minted for an account fetches that account\'s Claude login from its home here');
-      const anon = await login(tok);
-      ok(anon.status === 403 && /minted for an account/.test(anon.error || ''),
-         '...and a token for the project alone — a relayed verb\'s — cannot');
-      // bb login on the node: the same fetch, into the node's home, 0600.
-      const nodeHome = `${DIR}/nodehome`;
-      mkdirSync(`${DIR}/bin2`, { recursive: true });
-      writeFileSync(`${DIR}/bin2/claude`, '#!/bin/sh\n[ "$1" = auth ] && [ "$2" = status ] && printf \'{"loggedIn":false}\\n\'\nexit 0\n', { mode: 0o755 });
-      const out = execFileSync('bash', [`${REPO}/scripts/bb`, 'login'], { encoding: 'utf8',
-        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
-               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
-      ok(/signed in on agentbox/.test(out) && /came from the controller/.test(out)
-         && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('fake-for-the-suite')
-         && (statSync(`${nodeHome}/.claude/.credentials.json`).mode & 0o777) === 0o600,
-         `bb login on a node takes the controller's login into that home, 0600 (${out.trim().split('\n').pop().slice(0, 60)})`);
-      // ...and back the other way, which is the half that was missing. The
-      // grant is an OAuth pair whose refresh ROTATES the refresh token, so a
-      // node that refreshes leaves the controller holding one the server has
-      // retired — the operator came back to a controller that said it was
-      // signed out (bug #64). The newer grant goes home.
-      writeFileSync(`${nodeHome}/.claude/.credentials.json`,
-        '{"claudeAiOauth": {"accessToken": "refreshed-on-the-node", "expiresAt": 3000}}\n', { mode: 0o600 });
-      const back = execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--sync'], { encoding: 'utf8',
-        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
-               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
-      ok(readFileSync(creds, 'utf8').includes('refreshed-on-the-node')
-         && existsSync(`${DIR}/home/.claude/.credentials.json.prev`),
-         `a grant the node refreshed is handed back to the controller, the one it replaced kept beside it (${
-           back.trim() || 'quiet'})`);
-      // ...and an older one cannot undo a sign-in that happened while the
-      // node was away: newer wins, not last-writer.
-      writeFileSync(`${nodeHome}/.claude/.credentials.json`,
-        '{"claudeAiOauth": {"accessToken": "stale-node-copy", "expiresAt": 1000}}\n', { mode: 0o600 });
-      execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--sync'], { encoding: 'utf8',
-        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
-               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
-      ok(readFileSync(creds, 'utf8').includes('refreshed-on-the-node')
-         && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('refreshed-on-the-node'),
-         '...while an older copy is refused, and the node takes the newer one instead');
-      // ---- one Anthropic account, and a sign-out that reaches the nodes --
-      // The refresh race above is settled by expiresAt, and it cannot express
-      // a SIGN-OUT: the absence of a credential has no date, so a node coming
-      // back from a week offline would look like the newest thing anybody had
-      // and put the account straight back. Every deliberate act moves a
-      // generation instead, and a node compares generations first.
-      const nodeCreds = `${nodeHome}/.claude/.credentials.json`;
-      const asNode = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, 'login', ...a],
-        { encoding: 'utf8', env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`,
-          HOME: nodeHome, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
-          BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
-      const put = async (body) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-        { method: 'POST', headers: { 'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + forMe }, body: JSON.stringify(body) });
-        return { status: r.status, ...(await r.json()) }; };
+    // ---- the login belongs to the MACHINE, and the identity to the account --
+  // The grant never travels now (R47). Every failure this had came from one
+  // OAuth pair living on several machines: a refresh rotates the refresh
+  // token, so two copies sign each other out (bug #64), and a machine that
+  // was away holds one the server has retired (B100). Each machine signs in
+  // for itself and keeps the grant it alone refreshes.
+  //
+  // So what crosses the wire is two sentences and no secret: "I am signed in
+  // as X" going up, and a generation coming back.
+  {
+    const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+    const api = async (body) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
+      { method: body ? 'POST' : 'GET',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + forMe },
+        ...(body ? { body: JSON.stringify(body) } : {}) });
+      return { status: r.status, ...(await r.json()) }; };
 
-      // A grant is stored WITH the Anthropic account it belongs to — the node
-      // reports it, because Claude is the only thing that can be asked.
-      let w = await put({ credentials: '{"claudeAiOauth":{"accessToken":"a","expiresAt":9000}}',
-                          email: 'one@example.invalid' });
-      ok(w.ok && w.stored && w.gen > 0,
-         `a grant lands with the Anthropic account it is for (generation ${w.gen})`);
-      const second = await put({ credentials: '{"claudeAiOauth":{"accessToken":"b","expiresAt":9999}}',
-                                 email: 'two@example.invalid' });
-      ok(second.status === 400 && /One Anthropic account per BuilderBot account/.test(second.error || ''),
-         `...and a second Anthropic account is refused, however much newer it is (${
-           (second.error || '').slice(0, 60)})`);
-      asNode('--sync');
-      ok(readFileSync(nodeCreds, 'utf8').includes('"accessToken":"a"'),
-         '...while the node takes the one that was accepted');
+    // Which node is REPORTING is not taken from the request: it is the node
+    // of the session's own project, which the token proves. A machine that
+    // could name itself could bind the account to whatever it liked.
+    await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+                 Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+      body: JSON.stringify({ project: 'alpha', node: minted.id }) });
+    ok(!('credentials' in (await api())),
+       'the controller hands out no credential at all — there is none here to hand');
+    let w = await api({ email: 'one@example.invalid', plan: 'max', signed_in: true });
+    ok(w.ok && w.gen >= 0, 'a node reports which Anthropic account it signed in as');
+    ok((await api()).email === 'one@example.invalid',
+       '...and that is what the account is bound to, for the card to name');
+    const two = await api({ email: 'two@example.invalid', signed_in: true });
+    ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
+       `...so a second Anthropic account is refused rather than recorded (${
+         (two.error || '').slice(0, 56)})`);
 
-      // The sign-out. Not while a conversation of this account's is running:
-      // it pulls the ground from under the sessions it started, and now it
-      // pulls it from under every node's too.
-      const signout = () => page.evaluate(async () => {
-        const r = await fetch('/api/signout', { method: 'POST',
-          headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        return { status: r.status, ...(await r.json()) };
-      });
-      const held = await signout();
-      ok(held.status === 409 && /end these first/.test(held.error || ''),
-         `signing out is refused while a conversation is running, naming it (${
-           (held.error || '').slice(0, 48)})`);
-      tmuxKill('claude-alpha');
-      // The credential goes and the generation moves; the node learns it by
-      // asking, which is what makes an offline node work.
-      page.errors = [];
-      const so = await signout();
-      ok(so.ok && so.gen > w.gen, `signing out moves the generation past the sign-in (${so.gen})`);
-      ok(existsSync(nodeCreds),
-         '...and the node still holds its copy until it next asks — nothing is pushed at it');
-      const bye = asNode('--sync');
-      ok(!existsSync(nodeCreds) && /signed out on agentbox/.test(bye),
-         `...which it does on its next sync, whenever that is (${bye.trim().slice(0, 60)})`);
+    // A token for the project alone — a relayed verb's — is nobody's account,
+    // and cannot bind one.
+    const anon = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
+      { headers: { Authorization: 'Bearer ' + tok } });
+    ok(anon.status === 403, 'a token for the project alone cannot speak for an account');
 
-      // The generation is what separates a STALE copy from a NEW sign-in, and
-      // both cases look identical to a date. A node still behind the sign-out
-      // holds the only grant in existence and is still refused it:
-      writeFileSync(nodeCreds, '{"claudeAiOauth": {"accessToken": "from-a-node-that-was-away", "expiresAt": 99999}}\n', { mode: 0o600 });
-      writeFileSync(`${nodeHome}/.claude/.bb-gen`, String(w.gen));   // as if it had been away
-      asNode('--sync');
-      ok(!existsSync(creds) && !existsSync(nodeCreds),
-         'a node still behind the sign-out cannot put the account back, however new its copy');
-
-      // ...while a node that has CAUGHT UP and then signs in is the way an
-      // account comes back at all — which is what makes signing in on a node
-      // reach the controller.
-      writeFileSync(nodeCreds, '{"claudeAiOauth": {"accessToken": "signed-in-on-the-node", "expiresAt": 12345}}\n', { mode: 0o600 });
-      asNode('--sync');
-      ok(existsSync(creds) && readFileSync(creds, 'utf8').includes('signed-in-on-the-node'),
-         '...and one that has caught up puts a fresh sign-in up, which is how signing in on a node works');
-
-      // Put the fixture's session back: the rest of this file expects it.
-      tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
-      if (had === null) rmSync(creds, { force: true }); else writeFileSync(creds, had);
-      rmSync(`${DIR}/home/.claude/.credentials.json.prev`, { force: true });
-      rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
-    }
+    // The sign-out: the generation moves, and a machine compares its own
+    // against it. That is the only thing that can carry "you were signed out"
+    // to a node that was not listening — being signed out has no date.
+    tmuxKill('claude-alpha');
+    const so = await page.evaluate(async () => {
+      const r = await fetch('/api/signout', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      return { status: r.status, ...(await r.json()) };
+    });
+    ok(so.ok && so.gen > (w.gen || 0),
+       `signing out moves the generation, which is what reaches a node (${so.gen})`);
+    ok((await api()).email === '',
+       '...and releases the binding, so the next sign-in may be a different account');
+    tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
+    // The mark goes with it. A signed-out record left behind makes every
+    // suite after this one read the controller as signed out — which is what
+    // it means now, and is exactly the cascade that reddened four files.
+    rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
+    await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+                 Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+      body: JSON.stringify({ project: 'alpha', node: '' }) });
+  }
 
     // ---- the hooks post from a node (roadmap #24) ---------------------------
     // Inside a session on a node the two hooks bb-tty writes into its

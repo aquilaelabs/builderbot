@@ -56,7 +56,8 @@ bb — BuilderBot helper
   bb login               run the Claude Code auth flow. On a node it first
                          keeps this account's login in step with the
                          controller's, in whichever direction is newer
-  bb login --sync        that half alone, quietly — what every connection does
+  bb login --check       the quiet half: what this machine is signed in as,
+                         told to the controller, and a sign-out taken here
   bb git push|fetch|pull|ls-remote [ARGS]
   bb git policy      what a session may push here — its branch, main — from the
                      project's Git view; the controller enforces it on the relay
@@ -267,64 +268,75 @@ cmd_update() {
     claude --version
 }
 
-# The account's Claude grant, kept in step between this node and the
-# controller (roadmap #24, bug #64).
+# What this machine is signed in as, told to the controller (R47).
 #
-# The grant is an OAuth pair and a refresh ROTATES the refresh token, so two
-# machines each keeping a copy sign each other out: the operator ran sessions
-# on a node for a day and came back to a controller that had to be signed in
-# again, because the node had refreshed and the controller still held a
-# refresh token the server had retired. The copies are the design — Claude
-# Code reads a file in the home it runs in — so they are kept in step
-# instead: whichever machine refreshed has the later `expiresAt`, and that
-# one wins. Newer here goes up, newer there comes down, equal does nothing.
+# The grant itself never moves. Every failure this had came from copying one
+# OAuth pair to several machines — a refresh ROTATES the refresh token, so two
+# copies sign each other out (bug #64), and a machine that was away holds one
+# the server has retired (B100). Each machine signs in for itself now and
+# keeps the grant it alone refreshes.
 #
-# Never fatal, and quiet when nothing moved: this runs on every connection
-# (bb-tty), where a controller that is down or a token that has expired must
-# cost a session nothing.
-claude_login_sync() {
+# So this is two sentences in opposite directions and no secret in either:
+# "I am signed in as X" going up, and a GENERATION coming back. Behind means
+# the account was signed out while this machine was not listening, and the
+# answer to that is `claude auth logout` here.
+#
+# Never fatal, and quiet unless something will not fix itself: this runs on
+# every connection and every prompt, where a controller that is restarting
+# must cost a session nothing.
+claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
     BB_LOGIN_AUTH="$(bb_auth_header)" python3 - "${1:-}" <<'PY' || true
-import json, os, sys
+import json, os, subprocess, sys
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
 
 loud = sys.argv[1] == "--loud"
-# `--why` is the per-prompt hook asking to be told about a refusal it should
-# repeat. Not the same as --loud, which narrates everything: this is only the
-# answers that will still be true on the next prompt and the one after.
 why = sys.argv[1] == "--why"
-
-
-def refused(msg):
-    if why:
-        print(f"SYNC-REFUSED {msg}", file=sys.stderr)
 auth = os.environ["BB_LOGIN_AUTH"]
-path = os.path.join(os.environ["HOME"], ".claude", ".credentials.json")
-
-
-def at(text):
-    """When a grant stops being good — the number a refresh moves."""
-    try:
-        return int((json.loads(text).get("claudeAiOauth") or {}).get("expiresAt") or 0)
-    except (ValueError, AttributeError, TypeError):
-        return 0
+GEN = os.path.join(os.environ["HOME"], ".claude", ".bb-gen")
+NODE = os.environ.get("BB_NODE", "this node")
 
 
 def say(msg):
-    print(f"[builderbot] {msg}")          # bb's own convention: log on stdout
+    print(f"[builderbot] {msg}")
 
 
 def warn(msg):
     print(f"[builderbot] WARN: {msg}", file=sys.stderr)
 
 
-GEN = os.path.join(os.environ["HOME"], ".claude", ".bb-gen")
+def refused(msg):
+    """A refusal the next prompt should hear about again, for bb-keep-login.
+    Only what will still be true then: not a restart, not a blip."""
+    if why or loud:
+        print(f"SYNC-REFUSED {msg}", file=sys.stderr)
+
+
+def claude(*args, timeout=30):
+    try:
+        return subprocess.run(["claude", *args], capture_output=True, text=True,
+                              timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def whoami():
+    """Signed in here, and as whom. Claude is on this machine, so this is the
+    one place that can be asked."""
+    r = claude("auth", "status", "--json", timeout=20)
+    if not r or r.returncode != 0:
+        return False, "", ""
+    try:
+        d = json.loads(r.stdout)
+    except (ValueError, TypeError):
+        return False, "", ""
+    return (bool(d.get("loggedIn")), str(d.get("email") or ""),
+            str(d.get("subscriptionType") or ""))
 
 
 def my_gen():
-    """The controller generation this machine last adopted."""
     try:
         with open(GEN) as f:
             return int(f.read().strip() or 0)
@@ -341,130 +353,70 @@ def keep_gen(n):
     os.replace(GEN + ".new", GEN)
 
 
-def drop():
-    """Sign this machine out: the copy goes, nothing else does."""
-    try:
-        os.unlink(path)
-    except OSError:
-        pass
-
-
-def take(text):
-    d = os.path.dirname(path)
-    os.makedirs(d, mode=0o700, exist_ok=True)
-    fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
-    os.replace(path + ".new", path)
-
-
-def whoami():
-    """Which Anthropic account this machine's grant is for, and on what plan.
-    Claude is here, so this is the one place that can be asked; the
-    controller records what it is told, and after step 3 it has no binary of
-    its own to ask."""
-    try:
-        import subprocess
-        r = subprocess.run(["claude", "auth", "status", "--json"],
-                           capture_output=True, text=True, timeout=20, check=False)
-        d = json.loads(r.stdout) if r.returncode == 0 else {}
-        return str(d.get("email") or ""), str(d.get("subscriptionType") or "")
-    except (OSError, ValueError, AttributeError, TypeError,
-            subprocess.SubprocessError):
-        return "", ""
-
-
-mine = ""
-try:
-    with open(path) as f:
-        mine = f.read()
-except OSError:
-    pass
+here, mine, plan = whoami()
 r = bbapi.call("/api/v1/claude-login", auth=auth)
 if r.get("error"):
     e = str(r["error"])
     if loud:
         warn(f"could not ask the controller about this account's login: {e}")
-    # A grant this node was never given, or a controller that broke answering
-    # — neither fixes itself, and both end as "Login expired" with no reason
-    # anywhere. Everything else (a restart, a blip) is left quiet.
-    if "has not been given" in e:
-        refused(f"This node has not been given your Claude login, so it cannot "
-                f"keep it fresh: {e}")
-    elif "Error" in e or "500" in e:
+    if "Error" in e or "500" in e:
         refused(f"The controller could not answer about your Claude login "
-                f"({e[:120]}) — it will expire here until that is fixed.")
-    sys.exit(1 if not mine else 0)
-theirs = r.get("credentials") or ""
-gen, here = int(r.get("gen") or 0), my_gen()
+                f"({e[:120]}) — this machine cannot be told about a sign-out.")
+    sys.exit(1 if not here else 0)
 
-# The controller acted while this machine was not looking — a sign-in
-# somewhere else, or a sign-out. Adopt what it has, INCLUDING nothing: the
-# absence of a credential has no date to compare, so a generation is the only
-# thing that can carry "this account was signed out" to a node that was away.
-if gen > here:
+gen = int(r.get("gen") or 0)
+# Signed out while this machine was not listening. The generation is the only
+# thing that can carry that: being signed out has no date to compare.
+if gen > my_gen():
     keep_gen(gen)
-    if theirs and at(theirs) != at(mine):
-        take(theirs)
-        who = r.get("email") or "the account signed in on the controller"
-        say(f"signed in on {os.environ.get('BB_NODE', 'this node')} as {who} — "
-            f"the login came from the controller")
-    elif not theirs and mine:
-        drop()
-        say(f"signed out on {os.environ.get('BB_NODE', 'this node')} — "
-            f"this account was signed out of Claude")
-    sys.exit(0)
+    if here and not r.get("email"):
+        claude("auth", "logout", timeout=60)
+        say(f"signed out on {NODE} — this account was signed out of Claude")
+        sys.exit(0)
 
-# Same generation, so this is the refresh race and nothing else: a refresh
-# rotates the refresh token, and whichever machine did it holds the only
-# grant that still works (bug #64). Later expiresAt wins, either direction.
-if at(mine) > at(theirs):
-    who, plan = whoami()
-    w = bbapi.call("/api/v1/claude-login",
-                   {"credentials": mine, "email": who, "plan": plan}, auth=auth)
-    if w.get("error"):
-        warn(f"could not hand the refreshed login back to the controller: {w['error']}")
-    else:
-        if w.get("gen"):
-            keep_gen(w["gen"])
-        if w.get("stored") and loud:
-            say("the login here was newer — the controller has it now")
-    sys.exit(0)
-
-if at(theirs) > at(mine):
-    take(theirs)
-    keep_gen(gen)
-    who = r.get("email") or "the account signed in on the controller"
-    say(f"signed in on {os.environ.get('BB_NODE', 'this node')} as {who} — "
-        f"the login came from the controller")
-    sys.exit(0)
-
-if loud and not mine:
-    warn("the controller has no login for this account either")
+if not here:
+    if loud:
+        say(f"not signed in on {NODE} — the Doctor card's sign-in runs the flow here")
+    # Tell the controller this machine is not one of the signed-in ones, so
+    # the card stops naming it.
+    bbapi.call("/api/v1/claude-login", {"signed_in": False}, auth=auth)
     sys.exit(1)
+
+w = bbapi.call("/api/v1/claude-login",
+               {"email": mine, "plan": plan, "signed_in": True}, auth=auth)
+if w.get("error"):
+    # The one-account rule, and it is the whole reason this call exists.
+    refused(w["error"])
+    if loud:
+        warn(w["error"])
+    sys.exit(1)
+if w.get("gen"):
+    keep_gen(w["gen"])
+if loud:
+    say(f"signed in on {NODE} as {mine}" + (f" · {plan}" if plan else ""))
 sys.exit(0)
 PY
 }
 
 cmd_login() {
-    # `--sync` is the quiet half on its own: bb-tty runs it on every
-    # connection, where an interactive flow would be wrong and a message
-    # about nothing having moved would be noise.
-    if [ "${1:-}" = --sync ]; then
+    # `--check` is the quiet half on its own: bb-tty runs it on every
+    # connection and bb-keep-login on every prompt, where an interactive flow
+    # would be wrong and a message about nothing having changed would be
+    # noise. `--why` past it asks for the refusals worth repeating.
+    if [ "${1:-}" = --check ]; then
         on_node || return 0
-        # `--why` past it asks for the refusals worth repeating (bb-keep-login).
-        claude_login_sync "${2:-}"
+        claude_login_check "${2:-}"
         return 0
     fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
-    # this job's pty as its terminal (roadmap R47). The account is the one
-    # the dashboard asked for and the home is resolved here, by the same
-    # user_home a session on this machine gets — one implementation of
-    # "where does this account live", rather than a second copy in the agent.
+    # that job's pty as its terminal (roadmap R47). The account is the one the
+    # dashboard asked for and the home is resolved here, by the same user_home
+    # a session on this machine gets — one implementation of "where does this
+    # account live", rather than a second copy in the agent.
     #
-    # The grant goes straight up afterwards rather than waiting for a session
-    # to sync it: the operator is standing at the card watching, and "signed
-    # in" should mean the controller has it.
+    # The grant STAYS HERE. What goes up is which Anthropic account this
+    # machine is now signed in as, so the card can name it and a second
+    # account on another node is refused.
     if [ "${1:-}" = --flow ]; then
         local uid="${BB_ACCOUNT_UID:-}"
         [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
@@ -472,22 +424,19 @@ cmd_login() {
         command -v claude >/dev/null 2>&1 \
             || die "Claude Code is not installed for this account on this machine"
         claude auth login || die "the sign-in did not complete"
-        claude_login_sync --loud || true
+        claude_login_check --loud || true
         return 0
     fi
-    # ON A NODE, the login is kept in step with the controller first
-    # (roadmap #24): this account signed in there — the Doctor card's flow —
-    # and the token a node-bound terminal carries is minted for that account,
-    # so the controller hands over that account's grant and no other. Both
-    # directions, because a refresh rotates the token and the newer copy has
-    # to win whichever machine made it (bug #64). Still signed out after
-    # that falls through to the interactive flow below, which works on a node
-    # exactly as it does here.
+    # ON A NODE the check runs first, because it is what carries a SIGN-OUT
+    # here: signed out elsewhere while this machine was away means logging out
+    # locally, not signing in again. Anything else falls through to the flow
+    # below, which runs in this terminal — this machine signs itself in and
+    # keeps the grant it alone refreshes (R47).
     if on_node; then
-        claude_login_sync --loud || true
+        claude_login_check --loud || true
         [ "$(claude auth status --json 2>/dev/null \
              | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
-        log "sign in here instead — the flow runs in this terminal"
+        log "sign in here — this machine keeps its own login"
     fi
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path — start a session and use its

@@ -738,7 +738,7 @@ case "$target" in
         }
         # On a node the account's login is KEPT IN STEP WITH THE CONTROLLER
         # on every connection (roadmap #24, bug #64): the token this terminal
-        # carries is minted for the account, and `bb login --sync` moves the
+        # carries is minted for the account, and `bb login --check` moves the
         # newer grant whichever way it is going. So signing in once, on the
         # Doctor card, signs every node in — and a grant this node refreshed
         # goes back before the controller's copy is the stale one, which is
@@ -749,7 +749,7 @@ case "$target" in
         # the moment the two can be compared. Never fatal and silent when
         # nothing moved — a controller that is down costs a session nothing.
         if on_node; then
-            bb login --sync >/dev/null 2>&1 || true
+            bb login --check >/dev/null 2>&1 || true
             ! logged_in && { bb login || true; }
         fi
         if ! logged_in; then
