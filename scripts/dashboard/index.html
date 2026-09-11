@@ -544,6 +544,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .ablog h4{display:flex;gap:8px;align-items:baseline}
 .ablog h4 .dim{font:var(--f-note)}
 .ablog li{margin:2px 0}
+/* A release's own categories, under its heading. Quieter than the release
+   title and louder than a line, because it groups lines rather than naming
+   the thing they are in. */
+.ablog .abcat{margin:8px 0 2px;font:var(--f-note);font-weight:600;color:var(--dim)}
 .ablog .abnew{margin:8px 0;padding:4px 8px;border-left:3px solid var(--accent);
   color:var(--accent);font:var(--f-note)}
 .ablog li.old{color:var(--dim)}
@@ -5431,14 +5435,27 @@ function abDrawLog(j){
   for (const s of j.sections){
     if (!s.entries.length) continue;
     rows.push(`<h4>${esc(s.title)}${s.title === "Unreleased"
-      ? ` <span class="dim">— in this image, not yet a numbered release</span>` : ""}</h4><ul>`);
+      ? ` <span class="dim">— in this image, not yet a numbered release</span>` : ""}</h4>`);
+    // The categories the section was arranged into, drawn by watching the
+    // name change down a flat list: the entries arrive in the file's order
+    // and the boundary below is a count through that order, so grouping here
+    // costs nothing and nesting would have cost both.
+    let cat = null, open = false;
+    const shut = () => { if (open){ rows.push(`</ul>`); open = false; } };
     for (const e of s.entries){
+      const mine = e.cat || "";
+      if (mine !== cat){
+        shut();
+        if (mine) rows.push(`<div class="abcat">${esc(mine)}</div>`);
+        cat = mine;
+      }
+      if (!open){ rows.push(`<ul>`); open = true; }
       if (boundary >= 0 && i === boundary)
         rows.push(`</ul><div class="abnew">everything above is new since you last looked</div><ul>`);
       rows.push(`<li${boundary >= 0 && i >= boundary ? ' class="old"' : ""}>${esc(e.text)}</li>`);
       i++;
     }
-    rows.push(`</ul>`);
+    shut();
   }
   if (j.held)
     rows.push(`<p class="dim" id="abHeld">${j.held} earlier release${j.held === 1 ? "" : "s"}`

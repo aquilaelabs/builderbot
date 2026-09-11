@@ -1038,7 +1038,14 @@ administrator's with the machinery added) and BuilderBot's **changelog**. The
 panel opens itself twice in an account's life: on the guide the first time
 the account signs in, and on the changelog once after every image update,
 with a line under what is new since that account last looked. Closing it is
-the acknowledgement. Every sidebar card collapses to its header with a click
+the acknowledgement.
+
+The changelog there is **what is unreleased plus the current minor's own
+releases**, each release under the categories it was filed into, and a line
+saying how many earlier releases it is not showing. The question it answers is
+"what changed in the build in front of me"; the file it reads keeps every
+release forever and is where the rest of them are. Cutting a new minor takes
+the previous one off that page in the same gesture, with nothing pruned. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in

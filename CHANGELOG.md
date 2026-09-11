@@ -18,19 +18,19 @@
 - A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
-- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words, and bb status says whether it is running on the controller or on a node (016a5d3)
+- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
 - The About popup's changelog now shows what is unreleased and the current minor version's releases, saying how many earlier ones are in the full file, instead of the whole project history (7fb7d0d)
 
 ### Fixed
 
 - Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
-- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it, the deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
+- The Settings, Nodes and Profile tabs are laid out down the page again instead of the right third of it, the deleted-projects and approval dialogs line up with every other dialog, and the settings tab is called Controller settings everywhere (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
 - Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
 - A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
-- A project that had not been trusted yet is now marked trusted and says so in the terminal, naming the restart the session running there needs before it stops asking permission for every command (594f766)
+- The terminal now says when a project had not been trusted yet and which session to restart, instead of leaving it silently asking permission for every command (594f766)
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
