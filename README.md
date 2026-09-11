@@ -361,10 +361,18 @@ bb version policy  what a session may move here, and who decides. The
                    after), patch, patch and minor, or anything
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
-                   next version bump dates the accumulated lines
-bb changelog unreleased  the entries waiting for a bump, numbered
+                   next version bump dates the accumulated lines. --cat NAME
+                   files it under a `### Name` category, made at the end of
+                   the section if it is new — which categories exist and what
+                   order they and their lines sit in is the operator's, on the
+                   Changelog editor beside the version
+bb changelog unreleased  the entries waiting for a bump, numbered straight
+                   through the section by category, in the arranged order
 bb changelog edit N "..."  reword one of them — a change that tweaks something
                    already logged this cycle corrects its line rather than adding one
+bb changelog merge N M "..."   one line for several, carrying all their commits
+bb changelog split N     back into one line per commit it carries
+bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
@@ -2196,31 +2204,15 @@ exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
-**What a session may do without asking** is a per-project pick in the same
-dialog, *Without asking*, and it is a ladder of three: **nothing, confirm
-everything** (what Claude Code does out of the box), **this project's files**,
-or **this project's files, and bb**.
-
-The middle rung is the session's own permission mode and it covers the file
-tools and nothing else, so a project set to it still asks about every shell
-command. That is worth saying plainly, because it is the rung people set
-expecting the prompts to stop and then meet a permission dialog for `bb
-rules`.
-
-The third adds an allow list of `bb` verbs: the notebook, the read-only
-reports, and `bb build` / `bb test`, which run the command *you* configured in
-this dialog. What is not on it is every verb that runs something the session
-chose or reaches past this box — `bb run`, `bb shell`, `bb git push`, `bb
-phone run`, `bb root run`, `bb packages install`, `bb emu create`, `bb
-dashboard dev`, `bb shot` — and those still ask. It is a list rather than
-"allow bb", because `bb run -- CMD` is an arbitrary command on the node and
-allowing bb wholesale would allow everything through it. `bash scripts/bb` is
-not on it either: that runs the checkout's copy, which a session can edit.
-
-The deny list is untouched by all three, so a sibling project, `VERSION` and
-the house rules stay refused whichever rung is set. It is read when a session
-starts, so changing it restarts the session the way changing the model does.
-The case the ladder exists for at one end: a codebase somebody has just
+**How much a session may change without asking** is a per-project pick in
+the same dialog, *Without asking*: **nothing, confirm everything**, which is
+what Claude Code does out of the box, or **this project's files**. It becomes
+the session's own permission mode, so it covers the file tools inside this
+project and nothing else — a shell command, a push and anything outside the
+tree still ask, and the deny list is untouched either way, so a sibling
+project, `VERSION` and the house rules stay refused under both. It is read
+when a session starts, so changing it restarts the session the way changing
+the model does. The case it exists for: a codebase somebody has just
 uploaded, where confirming every file is all the first session gets done.
 
 **How much of what a session adds lands on its own** is the last row of the

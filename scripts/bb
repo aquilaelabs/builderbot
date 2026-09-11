@@ -38,10 +38,16 @@ bb — BuilderBot helper
   bb version policy      what a session may move here, and who decides
   bb changelog           this project's user-facing changelog (--for DIR)
   bb changelog add "..." log what a change means for the person using it;
-                         the next version bump dates the accumulated lines
-  bb changelog unreleased  the entries waiting for a bump, numbered
+                         the next version bump dates the accumulated lines.
+                         --cat NAME files it under a category, made at the
+                         end if it is new — the arrangement is the operator's
+  bb changelog unreleased  the entries waiting for a bump, numbered by
+                         category, in the order somebody arranged them
   bb changelog edit N "..."  reword one of them — a change that tweaks something
                          already logged this cycle corrects its line, not adds one
+  bb changelog merge N M "..."   one line for several, carrying all their commits
+  bb changelog split N   back into one line per commit it carries
+  bb changelog rm N      drop one that stopped being true
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
@@ -5403,15 +5409,28 @@ if d is None:
     print(f"no such component here: {comp}", file=sys.stderr)
     raise SystemExit(1)
 
+# --cat NAME files the entry under a category, the `### Name` subsections a
+# reader knows from Keep a Changelog. A new one lands at the END: where a
+# category sits in what a reader meets is an arrangement, and arrangements
+# are the operator's, on the Changelog editor.
+cat = ""
+if "--cat" in argv:
+    i = argv.index("--cat")
+    if i + 1 >= len(argv):
+        print("--cat needs a category name", file=sys.stderr)
+        raise SystemExit(1)
+    cat = argv[i + 1]
+    argv = argv[:i] + argv[i + 2:]
+
 if argv and argv[0] == "add":
     if len(argv) < 2 or not argv[1].strip():
         print('bb changelog add "what changed, for the person using it" '
-              '[--for DIR]', file=sys.stderr)
+              '[--cat NAME] [--for DIR]', file=sys.stderr)
         raise SystemExit(1)
     # Stamped with HEAD: the instruction in the template is to log after
     # committing, so the sha names the commit the entry describes.
     sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
-    r = changelog.add(d, argv[1], sha=sha)
+    r = changelog.add(d, argv[1], sha=sha, cat=cat)
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
@@ -5424,7 +5443,11 @@ if argv and argv[0] == "unreleased":
     rows = changelog.numbered(d)
     if not rows:
         print("nothing unreleased here")
-    for n, text, shas in rows:
+    seen = None
+    for n, text, shas, group in rows:
+        if group != seen:
+            seen = group
+            print(f"  {group or '(no category)'}")
         print(f"{n:3d}  {text}" + (f"  ({', '.join(shas)})" if shas else ""))
     raise SystemExit(0)
 
@@ -5434,18 +5457,60 @@ if argv and argv[0] == "edit":
               file=sys.stderr)
         raise SystemExit(1)
     sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
-    r = changelog.edit(d, argv[1], argv[2], sha=sha)
+    r = changelog.edit(d, argv[1], argv[2], sha=sha,
+                       cat=cat or None)
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
     print(f"reworded unreleased entry {r['n']}")
     raise SystemExit(0)
 
+if argv and argv[0] == "merge":
+    if len(argv) < 4 or not argv[-1].strip():
+        print('bb changelog merge N M [...] "the one line for all of them" '
+              '[--for DIR]', file=sys.stderr)
+        raise SystemExit(1)
+    r = changelog.merge(d, argv[1:-1], argv[-1], cat=cat or None)
+    if r.get("error"):
+        print(r["error"], file=sys.stderr)
+        raise SystemExit(1)
+    print(f"merged into one entry — {r['entries']} unreleased now")
+    raise SystemExit(0)
+
+if argv and argv[0] == "split":
+    if len(argv) < 2:
+        print("bb changelog split N [--for DIR]", file=sys.stderr)
+        raise SystemExit(1)
+    r = changelog.split(d, argv[1])
+    if r.get("error"):
+        print(r["error"], file=sys.stderr)
+        raise SystemExit(1)
+    print(f"split into one entry per commit — {r['entries']} unreleased now. "
+          f"Reword them, or drop the one that stopped being true.")
+    raise SystemExit(0)
+
+if argv and argv[0] == "rm":
+    if len(argv) < 2:
+        print("bb changelog rm N [--for DIR]", file=sys.stderr)
+        raise SystemExit(1)
+    r = changelog.remove(d, argv[1])
+    if r.get("error"):
+        print(r["error"], file=sys.stderr)
+        raise SystemExit(1)
+    print(f"dropped it — {r['entries']} unreleased now")
+    raise SystemExit(0)
+
 if argv:
     print("bb changelog [--for DIR]         read it\n"
-          'bb changelog add "..." [--for DIR]   log a user-facing change\n'
+          'bb changelog add "..." [--cat NAME]  log a user-facing change\n'
           "bb changelog unreleased          the entries waiting for a bump, numbered\n"
-          'bb changelog edit N "..."        reword one of them',
+          'bb changelog edit N "..."        reword one of them; --cat moves it\n'
+          'bb changelog merge N M "..."     one line for several, carrying their commits\n'
+          "bb changelog split N             back into one line per commit\n"
+          "bb changelog rm N                drop one that stopped being true\n"
+          "\nA category is a `### Name` subsection. Which ones exist and what\n"
+          "order they and their lines sit in is the operator's, on the\n"
+          "Changelog editor beside the version.",
           file=sys.stderr)
     raise SystemExit(1)
 

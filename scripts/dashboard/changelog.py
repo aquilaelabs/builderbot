@@ -72,128 +72,331 @@ def unreleased_text(text):
     return out
 
 
-def add(d, text, sha=""):
+CATEGORY = "### "
+MAX_TEXT = 300
+
+
+def groups(d):
+    """The Unreleased section as [{name, entries: [{text, shas}]}].
+
+    A category is a `### Name` subsection, which is the shape Keep a Changelog
+    uses and the one this file was already close to — so a reader who has seen
+    one is not learning a private format, and a diff of a recategorised entry
+    is a moved line rather than a rewritten file.
+
+    Entries logged before any category sit in a group whose name is "", first,
+    because that is where they are in the file. It only exists when something
+    is in it.
+
+    ORDER IS THE FILE'S, and deliberately. Categories and the entries in them
+    are arranged by hand, so what a reader meets first is what somebody
+    decided should come first — not what happened to be committed earliest.
+    The commits are still on every line and still answer "when did that
+    change"; they just no longer decide the running order.
+    """
+    out, cur = [], {"name": "", "entries": []}
+    inside = False
+    for line in (read(d) or "").splitlines():
+        if line.strip() == UNRELEASED:
+            inside = True
+            continue
+        if inside and line.startswith("## "):
+            break
+        if not inside:
+            continue
+        if line.startswith(CATEGORY):
+            if cur["entries"] or cur["name"]:
+                out.append(cur)
+            cur = {"name": line[len(CATEGORY):].strip(), "entries": []}
+            continue
+        if line.strip().startswith("- "):
+            body = line.strip()[2:].strip()
+            m = _STAMP.search(body)
+            cur["entries"].append({"text": body[:m.start()] if m else body,
+                                   "shas": m.group(1).split(", ") if m else []})
+    if cur["entries"] or cur["name"]:
+        out.append(cur)
+    return out
+
+
+def _clean_text(t):
+    t = " ".join(str(t or "").split())
+    if not t:
+        raise _Refused("an empty changelog entry says nothing to anybody")
+    if len(t) > MAX_TEXT:
+        raise _Refused(f"keep an entry under {MAX_TEXT} characters — it is one "
+                       "line of a list a person reads, not the whole story")
+    return t
+
+
+def _clean_name(n):
+    n = " ".join(str(n or "").split())
+    if len(n) > 40:
+        raise _Refused("a category is a word or two, not a sentence")
+    if "\n" in n or n.startswith("#"):
+        raise _Refused("a category name cannot carry markdown of its own")
+    return n
+
+
+def put(d, gs):
+    """Write the Unreleased section from the structure `groups` returns.
+
+    The whole section at once, because that is what an editor sends: a person
+    rearranging a list is not making one edit, and applying their result as a
+    sequence of moves would let a failure halfway leave a shape nobody asked
+    for.
+
+    An empty group is dropped rather than written as a heading with nothing
+    under it — a category with no entries is a category somebody emptied.
+    """
+    try:
+        rows = []
+        for g in (gs or []):
+            name = _clean_name((g or {}).get("name"))
+            ents = []
+            for e in ((g or {}).get("entries") or []):
+                shas = [str(x) for x in (e or {}).get("shas") or []
+                        if re.fullmatch(r"[0-9a-f]{7,40}", str(x))]
+                ents.append((_clean_text((e or {}).get("text")), shas))
+            if ents:
+                rows.append((name, ents))
+    except _Refused as e:
+        return {"error": str(e)}
+    # The uncategorised group carries no heading, so the file can only put it
+    # first: written after a category its entries read as that category's,
+    # which is what a reversed arrangement did. Hoisted rather than refused —
+    # somebody rearranging categories is not asking about this one.
+    rows.sort(key=lambda r: 0 if not r[0] else 1)
+    lines = []
+    for name, ents in rows:
+        if name:
+            if lines:
+                lines.append("")
+            lines.append(CATEGORY + name)
+            lines.append("")
+        lines.extend(f"- {t}" + (f" ({', '.join(sh)})" if sh else "") for t, sh in ents)
+    cur = read(d) or ""
+    out, inside, put_it = [], False, False
+    for ln in cur.splitlines():
+        if ln.strip() == UNRELEASED:
+            inside = True
+            out.append(ln)
+            out.append("")
+            out.extend(lines)
+            put_it = True
+            continue
+        if inside and ln.startswith("## "):
+            inside = False
+            out.append("")
+            out.append(ln)
+            continue
+        if inside:
+            continue
+        out.append(ln)
+    if not put_it:
+        # No Unreleased section: the last bump dated it away. It reopens ABOVE
+        # the dated releases, because the file is newest first and what is
+        # accruing is newer than anything that shipped. Appending it to the
+        # end put the new cycle under the history.
+        at = next((i for i, ln in enumerate(out) if ln.startswith("## ")), len(out))
+        out = out[:at] + ["", UNRELEASED, ""] + lines + [""] + out[at:]
+    try:
+        path(d).write_text("\n".join(_tidy(out)) + "\n", encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {FILE}: {e}"}
+    return {"ok": True, "entries": sum(len(e) for _, e in rows),
+            "categories": len([n for n, _ in rows if n])}
+
+
+def add(d, text, sha="", cat=""):
     """Log one user-facing change under Unreleased, creating what is missing.
 
     The sha is the commit the entry describes — passed in rather than looked
     up, keeping this module free of git. It goes at the end of the line in
-    parentheses: quiet enough to skim past, present enough that "when did
-    that change" has a one-step answer.
+    parentheses: quiet enough to skim past, present enough that "when did that
+    change" has a one-step answer.
+
+    `cat` puts it in a category, making one at the END of the section if it is
+    new. The end, because a session logging a change does not get to decide
+    where a category sits in what a reader meets — that is an arrangement, and
+    arrangements are the operator's.
     """
-    text = " ".join(str(text or "").split())
-    if not text:
-        return {"error": "an empty changelog entry says nothing to anybody"}
-    if len(text) > 300:
-        return {"error": "keep an entry under 300 characters — it is one line "
-                         "of a list a person reads, not the whole story"}
-    entry = f"- {text}" + (f" ({sha})" if sha else "")
-    cur = read(d)
     try:
-        if cur is None:
-            path(d).write_text(f"{HEADER}\n{UNRELEASED}\n\n{entry}\n",
-                               encoding="utf-8")
-            return {"ok": True, "created": True}
-        lines = cur.splitlines()
-        if UNRELEASED in (ln.strip() for ln in lines):
-            # Append at the end of the Unreleased section, keeping arrival
-            # order: the section reads as a story of the cycle, oldest first.
-            out, inside, done = [], False, False
-            for ln in lines:
-                if ln.strip() == UNRELEASED:
-                    inside = True
-                elif inside and not done and ln.startswith("## "):
-                    while out and not out[-1].strip():
-                        out.pop()
-                    out.extend([entry, ""])
-                    done = True
-                    inside = False
-                out.append(ln)
-            if not done:
-                while out and not out[-1].strip():
-                    out.pop()
-                out.append(entry)
-            path(d).write_text("\n".join(out) + "\n", encoding="utf-8")
-        else:
-            # No Unreleased section: the last bump rolled it away, or the
-            # file was written by hand. Reopen one above the dated history.
-            out, placed = [], False
-            for ln in lines:
-                if not placed and ln.startswith("## "):
-                    out.extend([UNRELEASED, "", entry, ""])
-                    placed = True
-                out.append(ln)
-            if not placed:
-                out.extend(["", UNRELEASED, "", entry])
-            path(d).write_text("\n".join(out) + "\n", encoding="utf-8")
-        return {"ok": True}
-    except OSError as e:
-        return {"error": f"could not write {FILE}: {e}"}
+        text, cat = _clean_text(text), _clean_name(cat)
+    except _Refused as e:
+        return {"error": str(e)}
+    if read(d) is None:
+        entry = f"- {text}" + (f" ({sha})" if sha else "")
+        body = f"{CATEGORY}{cat}\n\n{entry}" if cat else entry
+        try:
+            path(d).write_text(f"{HEADER}\n{UNRELEASED}\n\n{body}\n", encoding="utf-8")
+        except OSError as e:
+            return {"error": f"could not write {FILE}: {e}"}
+        return {"ok": True, "created": True}
+    gs = groups(d)
+    hit = next((g for g in gs if g["name"] == cat), None)
+    if hit is None:
+        hit = {"name": cat, "entries": []}
+        # An uncategorised entry belongs above the categories, where the file
+        # already puts them; a new category goes on the end.
+        gs.insert(0, hit) if not cat else gs.append(hit)
+    hit["entries"].append({"text": text, "shas": [sha] if sha else []})
+    return put(d, gs)
 
 
 _STAMP = re.compile(r"\s*\(([0-9a-f]{7,40}(?:, [0-9a-f]{7,40})*)\)$")   # --short=7 grows on ambiguity
 
 
 def numbered(d):
-    """The Unreleased entries as [(n, text, [shas])], n counting from 1 in
-    the section's order — the handle `edit` takes. Numbers are positional
-    and not stored: the section is short-lived by design, and an id scheme
-    on a list a bump erases would outlive its usefulness by one release."""
+    """The Unreleased entries as [(n, text, [shas], category)], n counting
+    from 1 in the section's order — the handle every verb below takes.
+
+    Numbers are positional and not stored: the section is short-lived by
+    design, and an id scheme on a list a bump erases would outlive its
+    usefulness by one release. They move when the section is rearranged,
+    which is why anything naming one reads the list first.
+    """
     out = []
-    for i, line in enumerate(unreleased(d), 1):
-        body = line[2:].strip()
-        m = _STAMP.search(body)
-        shas = m.group(1).split(", ") if m else []
-        out.append((i, body[:m.start()] if m else body, shas))
+    for g in groups(d):
+        for e in g["entries"]:
+            out.append((len(out) + 1, e["text"], list(e["shas"]), g["name"]))
     return out
 
 
-def edit(d, n, text, sha=""):
+class _Refused(Exception):
+    """An operation saying no from inside one of the functions below."""
+
+
+def _flat(d):
+    """[(category, text, shas)] in the section's order."""
+    return [(c, t, sh) for _, t, sh, c in numbered(d)]
+
+
+def _regroup(rows):
+    """Back to the group shape, keeping each category's first appearance as
+    its place — the file's order, which is the arrangement somebody chose."""
+    out, at = [], {}
+    for cat, text, shas in rows:
+        if cat not in at:
+            at[cat] = {"name": cat, "entries": []}
+            out.append(at[cat])
+        at[cat]["entries"].append({"text": text, "shas": shas})
+    return out
+
+
+def _apply(d, change):
+    """Run `change` over the flat rows and write the result."""
+    try:
+        return put(d, _regroup(change(_flat(d))))
+    except _Refused as e:
+        return {"error": str(e)}
+
+
+def _pick(rows, ns):
+    """The 1-based numbers `ns` as indexes into rows, or a refusal.
+
+    Refused for a number nobody has rather than silently doing less than
+    asked: these verbs rewrite a list somebody is looking at.
+    """
+    want = []
+    for n in ns:
+        try:
+            i = int(n)
+        except (TypeError, ValueError):
+            raise _Refused("which entry? `bb changelog unreleased` numbers them")
+        if not 1 <= i <= len(rows):
+            raise _Refused(f"no unreleased entry {i} — `bb changelog unreleased` "
+                           f"lists {len(rows)}; a dated section is history, and "
+                           f"`bb version unroll` is how one is reopened")
+        if i - 1 in want:
+            raise _Refused(f"entry {i} named twice")
+        want.append(i - 1)
+    return want
+
+
+def edit(d, n, text, sha="", cat=None):
     """Reword Unreleased entry n, for a change that tweaks something already
     logged this cycle: a second line about the same thing tells the reader
     about one change twice, and the honest record is one line that is right.
 
     The stamp the entry had stays and this commit's joins it, so "when did
-    that change" still answers for both. Only Unreleased is editable — a
-    dated section is a release somebody may have read, and history is not
-    corrected in place.
+    that change" still answers for both. `cat` moves it as well, or leaves it
+    where it is when None. Only Unreleased is editable — a dated section is a
+    release somebody may have read.
     """
-    text = " ".join(str(text or "").split())
-    if not text:
-        return {"error": "an empty changelog entry says nothing to anybody"}
-    if len(text) > 300:
-        return {"error": "keep an entry under 300 characters — it is one line "
-                         "of a list a person reads, not the whole story"}
-    rows = numbered(d)
-    try:
-        n = int(n)
-    except (TypeError, ValueError):
-        return {"error": "which entry? `bb changelog unreleased` numbers them"}
-    if not 1 <= n <= len(rows):
-        return {"error": f"no unreleased entry {n} — `bb changelog unreleased` "
-                         f"lists {len(rows)}; a dated section is history and stays as it is"}
-    _, _, shas = rows[n - 1]
-    if sha and sha not in shas:
-        shas = shas + [sha]
-    entry = f"- {text}" + (f" ({', '.join(shas)})" if shas else "")
-    cur = read(d) or ""
-    out, inside, seen, done = [], False, 0, False
-    for ln in cur.splitlines():
-        if ln.strip() == UNRELEASED:
-            inside = True
-        elif inside and ln.startswith("## "):
-            inside = False
-        elif inside and ln.strip().startswith("- ") and not done:
-            seen += 1
-            if seen == n:
-                out.append(entry)
-                done = True
-                continue
-        out.append(ln)
-    try:
-        path(d).write_text("\n".join(out) + "\n", encoding="utf-8")
-    except OSError as e:
-        return {"error": f"could not write {FILE}: {e}"}
-    return {"ok": True, "n": n}
+    def go(rows):
+        [i] = _pick(rows, [n])
+        was_cat, _, shas = rows[i]
+        if sha and sha not in shas:
+            shas = shas + [sha]
+        to = was_cat if cat is None else _clean_name(cat)
+        return rows[:i] + [(to, _clean_text(text), shas)] + rows[i + 1:]
+    r = _apply(d, go)
+    if not r.get("error"):
+        r["n"] = int(n)
+    return r
+
+
+def remove(d, n):
+    """Drop one Unreleased entry.
+
+    For a line that stopped being true — the change it described was undone,
+    or a later one replaced it — where rewording would leave the reader with a
+    note about something that never shipped. The commit is untouched; this is
+    the record of what a person sees, not of what happened to the code.
+    """
+    def go(rows):
+        [i] = _pick(rows, [n])
+        return rows[:i] + rows[i + 1:]
+    return _apply(d, go)
+
+
+def merge(d, ns, text, cat=None):
+    """Fold several Unreleased entries into one line carrying all their
+    commits.
+
+    Two lines about one change tell the reader about it twice, and that
+    happens whenever a thing is built across commits that each looked like
+    their own story at the time. The new line lands where the EARLIEST of them
+    was and in that one's category unless told otherwise, and it carries every
+    commit in the order they were already in.
+    """
+    def go(rows):
+        want = _pick(rows, ns)
+        if len(want) < 2:
+            raise _Refused("merge takes two entries or more")
+        shas, seen = [], set()
+        for i in want:
+            for sh in rows[i][2]:
+                if sh not in seen:
+                    seen.add(sh)
+                    shas.append(sh)
+        at = min(want)
+        line = (rows[at][0] if cat is None else _clean_name(cat),
+                _clean_text(text), shas)
+        return [line if j == at else r
+                for j, r in enumerate(rows) if j == at or j not in want]
+    return _apply(d, go)
+
+
+def split(d, n):
+    """Break one Unreleased entry into one line per commit it carries.
+
+    The way back out of a merge, and the way to drop a single commit from a
+    line: split, then remove the one that stopped being true. Each line keeps
+    the text and the category, because there is no way to know which words
+    belonged to which commit — they are there to be reworded, which is the
+    next thing you do.
+    """
+    def go(rows):
+        [i] = _pick(rows, [n])
+        cat, text, shas = rows[i]
+        if len(shas) < 2:
+            raise _Refused(f"entry {int(n)} carries "
+                           f"{'one commit' if shas else 'no commit'}, so there "
+                           f"is nothing to split it along")
+        return rows[:i] + [(cat, text, [sh]) for sh in shas] + rows[i + 1:]
+    return _apply(d, go)
 
 
 def unroll(d, version):
@@ -278,6 +481,46 @@ def roll(d, version, date):
     except OSError:
         return False
     return True
+
+
+_SERIES = re.compile(r"^(\d+)\.(\d+)(?:\.|\b)")
+
+
+def series_of(title):
+    """The MAJOR.MINOR a dated section belongs to, or "" for a title that is
+    not a version — `Unreleased`, and anything hand-written."""
+    m = _SERIES.match((title or "").strip())
+    return f"{m.group(1)}.{m.group(2)}" if m else ""
+
+
+def since_minor(secs):
+    """`sections` trimmed to what is unreleased plus the newest minor series.
+
+    The About panel is read by somebody asking what changed in the build in
+    front of them, and the whole file is the wrong answer there: it grows for
+    the life of the project. So the panel shows everything unreleased and the
+    dated releases of the newest minor — 0.6.2, 0.6.1, 0.6.0 — and nothing
+    older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
+    without anybody pruning a file.
+
+    Nothing is deleted and nothing is lost: CHANGELOG.md keeps every release
+    forever and stays the place to read them, which is why the panel says how
+    many it is not showing rather than quietly ending.
+
+    Returns (kept, held, series).
+    """
+    at = next((i for i, s in enumerate(secs) if series_of(s.get("title"))), None)
+    if at is None:
+        return list(secs), 0, ""
+    series = series_of(secs[at]["title"])
+    keep = list(secs[:at])
+    # The file is newest first, so the series' own releases are contiguous
+    # from here; the first section that is not one of them ends the list.
+    for s in secs[at:]:
+        if series_of(s.get("title")) != series:
+            break
+        keep.append(s)
+    return keep, len(secs) - len(keep), series
 
 
 def sections(text):

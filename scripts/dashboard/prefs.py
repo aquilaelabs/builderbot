@@ -45,26 +45,14 @@ GITPOL_KEYS = ("push", "main")
 GITPOL_MODES = ("allow", "deny")
 GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
 GATE_MODES = ("auto", "ask", "deny")
-# What a session may do in this project without stopping to ask. A ladder,
-# each rung including the one before it, because that is how the question is
-# actually asked: how much do I trust this project's sessions.
-#
-#   ask     Claude Code's own default. Every edit is confirmed, and so is
-#           every command.
-#   accept  its `acceptEdits`: the file tools write inside the tree, and
-#           EVERYTHING ELSE STILL ASKS. That is the rung people set expecting
-#           the prompts to stop and then meet a permission dialog for every
-#           shell command, because the mode was never about commands.
-#   bb      ...and the bb verbs that cannot run something a session chose:
-#           the notebook, the read-only reports, and `bb build` / `bb test`,
-#           which run the command the OPERATOR configured. `bb run`, `bb
-#           shell`, `bb git push`, `bb phone run`, `bb root run`, `bb dashboard
-#           dev`, `bb packages install` and `bb emu create` are not on it and
-#           still ask. The launcher holds the list (bb-tty, claude_scope).
-#
-# The deny list is untouched by all three: a sibling project, VERSION and the
-# rules file stay refused whatever this says.
-EDIT_MODES = ("ask", "accept", "bb")
+# How much a session may change in this project without asking first. The
+# names are Claude Code's own permission modes, which is what the launcher
+# puts in the settings file: `default` asks before every edit, `accept`
+# lets the file tools write inside the project and still asks for
+# everything else — a shell command, a push, anything outside the tree.
+# The deny list is not affected either way: a sibling project, VERSION and
+# the rules file stay refused whatever this says.
+EDIT_MODES = ("ask", "accept")
 
 _lock = threading.Lock()
 
