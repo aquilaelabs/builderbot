@@ -6333,11 +6333,14 @@ $("bOut").onclick = () => { location.href = "/logout"; };
 // dozen branches: the label is the only thing JS knows about a scheme — the
 // colours live entirely in the stylesheet, keyed by the same id, which is what
 // keeps a swatch and the page it previews from ever disagreeing.
+// Alphabetical, with Default first because it is the one that is not a
+// choice among the others — it is what you get having made none.
 const THEMES = [
-  ["default",  "Default"],  ["nostromo", "Nostromo"], ["slate", "Slate"],
-  ["carbon",   "Carbon"],   ["nocturne",  "Nocturne"], ["moss",  "Moss"],
-  ["ember",    "Ember"],    ["abyss",     "Abyss"],    ["plum",  "Plum"],
-  ["rust",     "Rust"],     ["ice",       "Ice"],      ["sepia", "Sepia"],
+  ["default",  "Default"],
+  ["abyss",    "Abyss"],    ["carbon",   "Carbon"],   ["ember", "Ember"],
+  ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
+  ["nostromo", "Nostromo"], ["plum",     "Plum"],     ["rust",  "Rust"],
+  ["sepia",    "Sepia"],    ["slate",    "Slate"],
 ];
 const THEME_IDS = new Set(THEMES.map(t => t[0]));
 
@@ -8605,7 +8608,20 @@ function renderPackagesInto(i){
       : "The package store root could not be determined; this image may predate <code>bb packages</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
+    <div class="pkgs">${(d.items || []).filter(i => !i.wrong_platform)
+      .map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
+    ${(() => {
+      // Behind a fold rather than in the list. A recipe this node's platform
+      // cannot have is a row that can never be pressed, and on a Mac that is
+      // eleven of the sixteen — a tab of dead controls. Not hidden either:
+      // somebody looking for xcodes should find out that it exists and what
+      // it needs, which is a click rather than a search.
+      const no = (d.items || []).filter(i => i.wrong_platform);
+      if (!no.length) return "";
+      return `<details class="sect pkgno"><summary><span class="t">Not for this node</span>
+          <span class="sst">${no.length}</span></summary>
+        <div class="pkgs">${no.map(i => pkgRow(i, true, job)).join("")}</div></details>`;
+    })()}
     <div class="pkghead imghead">Android system images. Not packages: one exists at
       every API level at once, so the question is which level and which flavor
       rather than whether. ${onNode

@@ -21,6 +21,8 @@
 - A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
 - The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
+- Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
+- The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
 
 ### Fixed
 

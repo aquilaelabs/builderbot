@@ -700,6 +700,48 @@ for (const kind of kinds){
      `[${kind}] every proseline shows all of itself rather than scrolling inside${
        P.grew.length ? ` — ${P.grew.join(', ')}` : ''}`);
 }
+// ---- a list of choices is alphabetical -----------------------------------
+// Each of these was in the order somebody wrote it in. The exceptions are
+// named rather than discovered: Default leads the schemes, and the catch-all
+// trails the git hosts.
+{
+  const lists = await page.evaluate(async () => {
+    const out = {};
+    out.themes = THEMES.map(t => t[1]);
+    out.tools = [...document.querySelectorAll('.card[data-card="tools"] .macros button')]
+      .map(b => b.textContent.trim());
+    out.admin = [...document.querySelectorAll('.card[data-card="admin"] .macros button')]
+      .map(b => b.textContent.trim());
+    // Both catalogs ride along with something else rather than costing a
+    // fetch of their own: the forge list with the deploy keys the same dialog
+    // wants, the hypervisors with the template the VM dialog renders.
+    const f = await (await fetch('/api/pubkeys')).json().catch(() => null);
+    out.forges = (f?.forges || []).map(x => x.name);
+    const v = await (await fetch('/api/v1/nodes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'vm-xml' }) })).json().catch(() => null);
+    out.hypervisors = (v?.catalog || []).map(x => x.label);
+    return out;
+  });
+  const sorted = (xs, { head = 0, tail = 0 } = {}) => {
+    const mid = xs.slice(head, xs.length - tail);
+    return mid.join('|') === [...mid].sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())).join('|');
+  };
+  ok(lists.themes.length > 3 && lists.themes[0] === 'Default'
+     && sorted(lists.themes, { head: 1 }),
+     `the colour schemes are alphabetical after Default (${lists.themes.join(', ')})`);
+  ok(sorted(lists.tools) && sorted(lists.admin),
+     `the Tools and Administration cards are alphabetical (${lists.tools.join(', ')})`);
+  if (lists.forges.length)
+    ok(sorted(lists.forges, { tail: 1 })
+       && lists.forges[lists.forges.length - 1] === 'Another git host',
+       `the git hosts are alphabetical, with the catch-all last (${lists.forges.join(', ')})`);
+  if (lists.hypervisors.length)
+    ok(sorted(lists.hypervisors),
+       `the hypervisors are alphabetical (${lists.hypervisors.join(', ')})`);
+}
+
 // The Tests view needs rows to be measured on, and one of them a continuation
 // — a "..." name whose "follows:" line is drawn under it — because that line
 // is exactly what scrolled the tab sideways once (a 100% flex basis plus a

@@ -105,6 +105,18 @@ select as one line high at phone width.
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
+**A list of choices is in ALPHABETICAL order unless something says
+otherwise, and what says otherwise says why in place.** The colour schemes,
+the git hosts, the hypervisors and the package catalog were each in the order
+somebody happened to write them in — this box's own hypervisor first, then
+whatever was added next — which is an order only that person can predict, and
+a reader ends up scanning the whole list twice. Alphabetical is the default
+because it needs no explanation and a new entry has one place to go. Three
+exceptions exist and each is a sentence in the code: `Default` leads the
+schemes because it is what you get having made no choice, *Another git host*
+trails the hosts because it is not a host, and the package list puts what is
+installed first because that is the half you came to act on.
+
 **A value that is one line of PROSE is a `textarea.proseline`, never an
 `<input>`.** An input shows about thirty characters at phone width, and a
 roadmap item, a bug's title, a changelog entry or the reason something was
