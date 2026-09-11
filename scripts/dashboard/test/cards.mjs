@@ -728,18 +728,30 @@ ok(await page.$('#bSignOut') === null
 ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
    '...and every project\'s Claude button goes with it');
 
-// And back: the stub's logout rewrites its own fixture, so this proves the
-// button reaches the command without going near anybody's credentials.
+// And back. Signing out is the CREDENTIAL going and a generation moving, not
+// `claude auth logout`: the controller carries no Claude to run, and asking a
+// binary whether it is signed in would answer from a file that is no longer
+// there. So the proof is the file and the mark beside it, and the dialog says
+// what it really reaches — every node holding this login, not this box.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
+mkdirSync(`${DIR}/home/.claude`, { recursive: true });
+writeFileSync(`${DIR}/home/.claude/.credentials.json`,
+  '{"claudeAiOauth": {"accessToken": "for-the-signout", "expiresAt": 4000}}\n', { mode: 0o600 });
+writeFileSync(`${DIR}/home/.claude/.bb-grant.json`,
+  JSON.stringify({ gen: 4, email: 'you@example.com', plan: 'max', at: 1 }));
 await refreshUntil(page, () => document.getElementById('bSignOut') !== null);
 page.dialogs = [];
 await page.click('#bSignOut');
 await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
                            { timeout: 25000 });
-ok(page.dialogs.some(d => /Sign this container out/.test(d)),
-   'signing out asks first — every session here stops working');
-ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === false,
-   '...and really runs it');
+ok(page.dialogs.some(d => /signs out every node that holds/.test(d)),
+   'signing out says it reaches every node holding the login, not just this box');
+ok(!existsSync(`${DIR}/home/.claude/.credentials.json`),
+   '...and really takes the grant away');
+ok(JSON.parse(readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8')).gen === 5,
+   '...moving the generation, which is what carries it to a node that was offline');
+rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
+rmSync(`${DIR}/home/.claude/.credentials.json.prev`, { force: true });
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 
 // ---- the sign-in, all of it -------------------------------------------

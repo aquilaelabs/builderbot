@@ -563,8 +563,83 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(readFileSync(creds, 'utf8').includes('refreshed-on-the-node')
          && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('refreshed-on-the-node'),
          '...while an older copy is refused, and the node takes the newer one instead');
-      if (had === null) rmSync(creds); else writeFileSync(creds, had);
+      // ---- one Anthropic account, and a sign-out that reaches the nodes --
+      // The refresh race above is settled by expiresAt, and it cannot express
+      // a SIGN-OUT: the absence of a credential has no date, so a node coming
+      // back from a week offline would look like the newest thing anybody had
+      // and put the account straight back. Every deliberate act moves a
+      // generation instead, and a node compares generations first.
+      const nodeCreds = `${nodeHome}/.claude/.credentials.json`;
+      const asNode = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, 'login', ...a],
+        { encoding: 'utf8', env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`,
+          HOME: nodeHome, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+          BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
+      const put = async (body) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
+        { method: 'POST', headers: { 'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + forMe }, body: JSON.stringify(body) });
+        return { status: r.status, ...(await r.json()) }; };
+
+      // A grant is stored WITH the Anthropic account it belongs to — the node
+      // reports it, because Claude is the only thing that can be asked.
+      let w = await put({ credentials: '{"claudeAiOauth":{"accessToken":"a","expiresAt":9000}}',
+                          email: 'one@example.invalid' });
+      ok(w.ok && w.stored && w.gen > 0,
+         `a grant lands with the Anthropic account it is for (generation ${w.gen})`);
+      const second = await put({ credentials: '{"claudeAiOauth":{"accessToken":"b","expiresAt":9999}}',
+                                 email: 'two@example.invalid' });
+      ok(second.status === 400 && /One Anthropic account per BuilderBot account/.test(second.error || ''),
+         `...and a second Anthropic account is refused, however much newer it is (${
+           (second.error || '').slice(0, 60)})`);
+      asNode('--sync');
+      ok(readFileSync(nodeCreds, 'utf8').includes('"accessToken":"a"'),
+         '...while the node takes the one that was accepted');
+
+      // The sign-out. Not while a conversation of this account's is running:
+      // it pulls the ground from under the sessions it started, and now it
+      // pulls it from under every node's too.
+      const signout = () => page.evaluate(async () => {
+        const r = await fetch('/api/signout', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        return { status: r.status, ...(await r.json()) };
+      });
+      const held = await signout();
+      ok(held.status === 409 && /end these first/.test(held.error || ''),
+         `signing out is refused while a conversation is running, naming it (${
+           (held.error || '').slice(0, 48)})`);
+      tmuxKill('claude-alpha');
+      // The credential goes and the generation moves; the node learns it by
+      // asking, which is what makes an offline node work.
+      page.errors = [];
+      const so = await signout();
+      ok(so.ok && so.gen > w.gen, `signing out moves the generation past the sign-in (${so.gen})`);
+      ok(existsSync(nodeCreds),
+         '...and the node still holds its copy until it next asks — nothing is pushed at it');
+      const bye = asNode('--sync');
+      ok(!existsSync(nodeCreds) && /signed out on agentbox/.test(bye),
+         `...which it does on its next sync, whenever that is (${bye.trim().slice(0, 60)})`);
+
+      // The generation is what separates a STALE copy from a NEW sign-in, and
+      // both cases look identical to a date. A node still behind the sign-out
+      // holds the only grant in existence and is still refused it:
+      writeFileSync(nodeCreds, '{"claudeAiOauth": {"accessToken": "from-a-node-that-was-away", "expiresAt": 99999}}\n', { mode: 0o600 });
+      writeFileSync(`${nodeHome}/.claude/.bb-gen`, String(w.gen));   // as if it had been away
+      asNode('--sync');
+      ok(!existsSync(creds) && !existsSync(nodeCreds),
+         'a node still behind the sign-out cannot put the account back, however new its copy');
+
+      // ...while a node that has CAUGHT UP and then signs in is the way an
+      // account comes back at all — which is what makes signing in on a node
+      // reach the controller.
+      writeFileSync(nodeCreds, '{"claudeAiOauth": {"accessToken": "signed-in-on-the-node", "expiresAt": 12345}}\n', { mode: 0o600 });
+      asNode('--sync');
+      ok(existsSync(creds) && readFileSync(creds, 'utf8').includes('signed-in-on-the-node'),
+         '...and one that has caught up puts a fresh sign-in up, which is how signing in on a node works');
+
+      // Put the fixture's session back: the rest of this file expects it.
+      tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
+      if (had === null) rmSync(creds, { force: true }); else writeFileSync(creds, had);
       rmSync(`${DIR}/home/.claude/.credentials.json.prev`, { force: true });
+      rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
     }
 
     // ---- the hooks post from a node (roadmap #24) ---------------------------

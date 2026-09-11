@@ -7001,7 +7001,7 @@ function drawAuth(){
        <button id="bSignOut"${busy.length ? " disabled" : ""} title="${busy.length
          ? `end ${busy.length === 1 ? "this session" : "these sessions"} first: ${
              esc(busy.join(", "))}`
-         : "sign this container out of Claude"}">Sign out</button>`
+         : "sign out of Claude — here and on every node holding this login"}">Sign out</button>`
     : `<span class="sub grow bad">not signed in to Claude — sessions will not start</span>
        <button id="bSignIn" class="primary"
          title="opens a terminal and runs the sign-in flow">Sign in</button>`)){
@@ -7054,15 +7054,24 @@ async function sendCode(){
 }
 
 async function signOut(){
-  if (!confirm("Sign this container out of Claude?\n\nEvery session here "
-               + "stops working until it is signed in again.")) return;
+  // Every node, not this container: one Anthropic account per BuilderBot
+  // account, so signing out is signing out everywhere. A node that is not
+  // dialing in right now does it when it comes back — the sentence says so
+  // rather than implying they all go at once.
+  if (!confirm("Sign out of Claude?\n\nThis signs out every node that holds "
+               + "your login, not just this container — one that is offline "
+               + "does it when it reconnects. Sessions stop working until you "
+               + "sign in again.")) return;
   const b = $("bSignOut");
   b.disabled = true; b.textContent = "Signing out…";
   try{
     const r = await fetch("/api/signout", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: "{}"});
     const j = await r.json();
-    if (j.error) notify(j.error, true); else notify("signed out");
+    if (j.error) notify(j.error, true);
+    else notify(j.nodes?.length
+      ? `signed out — ${j.nodes.join(", ")} ${j.nodes.length === 1 ? "follows" : "follow"} on their next sync`
+      : "signed out");
   }catch(e){ notify("could not reach the server: " + e, true); }
   refresh();
 }
