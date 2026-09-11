@@ -14,7 +14,7 @@ straight in.
   │  nodes ──► builds, tests, CI and the emulator run there:  │
   │            jdk · android sdk · flutter · … from a store   │
   │                                                           │
-  │  /workspace  ◄─────────  /mnt/user/development/projects   │
+  │  /workspace  ◄─────────  /mnt/user/projects   │
   │    every folder in there is a project                     │
   └───────────────────────────────────────────────────────────┘
 ```
@@ -171,7 +171,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Projects folder | One mapping for all of them: `/mnt/user/development/projects` → `/workspace`. Every folder inside it is a project |
+| Projects folder | One mapping for all of them: `/mnt/user/projects` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
@@ -271,9 +271,9 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | Variable | Default | Purpose |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
-| `TZ` | `America/New_York` | Container timezone |
+| `TZ` | `Etc/UTC` | Container timezone — set yours, or timestamps read as somebody else's day |
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing; empty = subscription login via `bb login` |
-| `GITHUB_URL` | — | Repo or org URL node runners register with |
+| `GITHUB_URL` | *(empty)* | **Your** repo or org URL, the one node runners register with — `https://github.com/<you>/<repo>`, or an org URL to serve every repo in it. Empty until you want CI on a node |
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept — see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
@@ -582,7 +582,7 @@ module. Everything a build needs — the JDK, the Android SDK, the emulator,
 Flutter, .NET — is a recipe installed into a **node's packages store**, from
 the Tools tab with that node picked; the tab lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store — the SDK
-share, mapped at `/sdk` (Unraid default `/mnt/user/development/SDK`) — holds
+share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`) — holds
 only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.

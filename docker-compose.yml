@@ -27,7 +27,7 @@ services:
       # --- Unraid file ownership -------------------------------------------
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
-      TZ: ${TZ:-America/New_York}
+      TZ: ${TZ:-Etc/UTC}
       # The sandbox VM the Docker manager builds on is a node now, enrolled
       # with a token from the dashboard's Nodes tab — no key here, nothing
       # named here — with its path mapping on its row. DOCKER_HOST and
@@ -130,14 +130,14 @@ services:
       # Anything wrong with a directory (no git repository, no CLAUDE.md, an
       # ownership the container user cannot work with) is reported on the
       # dashboard rather than silently not showing up.
-      - ${WORKSPACE_PATH:-/mnt/user/development/projects}:/workspace
+      - ${WORKSPACE_PATH:-/mnt/user/projects}:/workspace
 
       # --- the package store ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
       # system images, plus any toolchain `bb packages install` adds. Outside the
       # image on purpose: the container is rebuilt on every update, this is
       # not, so nothing here is ever downloaded twice.
-      - ${SDK_PATH:-/mnt/user/development/SDK}:/sdk
+      - ${SDK_PATH:-/mnt/user/sdk}:/sdk
 
       # --- persistent container state --------------------------------------
       # Claude Code login, shell history, npm globals, runner registration.
@@ -175,7 +175,7 @@ services:
       # shares and not folders — see the template's note on this setting.
       # Only needed where the daemon is this box's: a sandbox VM mounts the
       # share itself and makes the per-instance directory over there.
-      # - ${DEVDATA_PATH:-/mnt/user/bb-sandbox/devdata}:/devdata
+      # - ${DEVDATA_PATH:-/mnt/user/builderbot/devdata}:/devdata
 
     # Hardware acceleration for the Android emulator. Uncomment if your CPU
     # has virtualization enabled (it does if Unraid can run VMs).

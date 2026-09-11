@@ -108,8 +108,8 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 # The package store: Android platforms/emulator/system images and any toolchain
 # you install later. On a normal share rather than appdata — it is bulk data,
 # it is not written constantly, and keeping it out of the image is the point.
-mkdir -p /mnt/user/development/SDK
-chown 99:100 /mnt/user/development/SDK
+mkdir -p /mnt/user/sdk
+chown 99:100 /mnt/user/sdk
 ```
 
 ---
@@ -146,7 +146,7 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* the projects folder (`/mnt/user/development/projects`) mapped to `/workspace` — one
+* the projects folder (`/mnt/user/projects`) mapped to `/workspace` — one
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / work
@@ -754,7 +754,7 @@ the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
-(`chown -R 99:100 /mnt/user/development/projects/FreshBoot`) or set
+(`chown -R 99:100 /mnt/user/projects/FreshBoot`) or set
 `CHOWN_PROJECTS=true` to do it for all of them at every start. The container
 never chowns the projects share itself — that folder is yours, and a container
 quietly changing the ownership of a share because it started is a surprise, not
