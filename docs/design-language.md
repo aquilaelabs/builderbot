@@ -13,6 +13,19 @@ and `--dim`, status `--accent` / `--warn` / `--bad` / `--note`, buttons
 `--btn` / `--btn-hi`. Twelve schemes repaint the page by swapping nine of
 them, so a hardcoded hex is a spot the schemes cannot reach.
 
+**A filled accent surface is `--accent-deep`, and what sits on it is `--ink`
+— never `--dim`.** The active tab, a primary button, a button that is on, a
+view bar's current tab, an open select's chosen row, the text selection: all
+one token, so all one answer. `--accent-deep` carries a lightness cap for
+exactly this reason — the accents range from `#2fb8c6` to `#ffb000`, and
+forty percent of black is not enough darkening under the bright ones. Five
+schemes had text on that fill under AA before the cap, nostromo worst at
+3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
+
+Watch the class the words wear. A tab's name is a `.lbl`, which is also the
+field-label helper, so it arrived wearing the quiet colour meant for "Your
+email" above a text box — on an accent fill, at 2.51:1.
+
 ## Shape
 
 8px radius for boxes (cards, panes, modals), 6px for controls (buttons,

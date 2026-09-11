@@ -602,6 +602,55 @@ for (const kind of kinds){
     skewed.length ? ` — ${skewed.join('; ')}` : ''}`);
 }
 
+// ---- what reads on a filled accent surface, on every scheme -----------------
+// Seven places put --ink on --accent-deep: the active tab, a primary button,
+// a button that is on, a view bar's current tab, the mobile bar's, an open
+// select's chosen row, and the text selection. Twelve schemes swap the accent
+// under all of them, and five of those accents were bright enough that the
+// text on the fill came out under AA — nostromo worst at 3.56:1, which is the
+// one somebody noticed. The active tab is measured because it had BOTH
+// failures: the fill was too light, and its name is a `.lbl`, the same class
+// as the quiet field-label helper, so it wore that colour on top.
+//
+// Read off the rendered pixels through a canvas rather than computed from the
+// tokens: --accent-deep is a relative colour now, and the point is what the
+// engine actually paints.
+{
+  const SCHEMES = ['default', 'nostromo', 'slate', 'carbon', 'nocturne', 'moss',
+                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash'];
+  const AA = 4.5;
+  const bad = [];
+  for (const t of SCHEMES) {
+    await page.evaluate(th => { document.documentElement.dataset.theme = th; }, t);
+    await sleep(120);
+    const r = await page.evaluate(() => {
+      const el = document.querySelector('.tab.on');
+      if (!el) return { err: 'no active tab' };
+      const c = document.createElement('canvas'); c.width = c.height = 1;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      const px = v => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 1, 1);
+                        ctx.fillStyle = v; ctx.fillRect(0, 0, 1, 1);
+                        const d = ctx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; };
+      const lin = x => { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+      const lum = a => 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2]);
+      const R = (a, b) => { const x = lum(px(a)), y = lum(px(b));
+                            const h = Math.max(x, y), l = Math.min(x, y); return (h + 0.05) / (l + 0.05); };
+      const bg = getComputedStyle(el).backgroundColor;
+      const at = sel => { const k = el.querySelector(sel);
+                          return k ? +R(getComputedStyle(k).color, bg).toFixed(2) : null; };
+      return { label: at('.lbl'), icon: at('.ic') };
+    });
+    if (r.err) { bad.push(`${t}: ${r.err}`); continue; }
+    if (!(r.label >= AA)) bad.push(`${t} label ${r.label}`);
+    if (r.icon !== null && !(r.icon >= AA)) bad.push(`${t} icons ${r.icon}`);
+  }
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await sleep(120);
+  ok(bad.length === 0,
+     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes${
+       bad.length ? ` — under ${AA}:1: ${bad.join(', ')}` : ''}`);
+}
+
 // The same page, held to the same rules at phone width: nothing may scroll
 // the page sideways, and every text control is 16px so iOS does not zoom a
 // layout that cannot zoom back.
