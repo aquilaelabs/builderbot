@@ -154,6 +154,72 @@ print(json.dumps(m.release('relproj', **json.loads(${
   rmSync(R, { recursive: true, force: true });
 }
 
+// ---- the commit that ships is not always the one you are standing on -------
+// Work lands through a pull request, so what CI builds and the box runs is
+// the MERGE commit on the default branch, while the checkout stays on the
+// branch that was merged. Releasing there tags a commit no image was ever
+// built from, and leaves the build that did ship reading -dev forever — which
+// is what would have happened to 0.5.0, measured (B94).
+//
+// A real bare remote rather than a stub: the whole question is what
+// origin/HEAD points at and whether HEAD is behind it, and a fake answer to
+// that would be testing the mock.
+{
+  const P = `${WS}/shipproj`;
+  const REMOTE = `${DIR}/shipproj.git`;
+  rmSync(P, { recursive: true, force: true });
+  rmSync(REMOTE, { recursive: true, force: true });
+  execFileSync('git', ['init', '-q', '--bare', REMOTE], { env });
+  mkdirSync(P, { recursive: true });
+  execFileSync('git', ['-C', P, 'init', '-q', '-b', 'main', '.'], { env });
+  writeFileSync(`${P}/VERSION`, '2.0.0\n');
+  writeFileSync(`${P}/f`, 'one');
+  execFileSync('git', ['-C', P, 'add', '-A'], { env });
+  execFileSync('git', ['-C', P, 'commit', '-qm', 'one'], { env });
+  execFileSync('git', ['-C', P, 'remote', 'add', 'origin', REMOTE], { env });
+  execFileSync('git', ['-C', P, 'push', '-q', '-u', 'origin', 'main'], { env });
+  const head = () => execFileSync('git', ['-C', P, 'rev-parse', '--short=7', 'HEAD'],
+                                  { encoding: 'utf8', env }).trim();
+  const behindAt = head();
+  // main moves on, the way a merged pull request moves it, and this checkout
+  // is left standing on the commit before it.
+  writeFileSync(`${P}/f`, 'two');
+  execFileSync('git', ['-C', P, 'add', '-A'], { env });
+  execFileSync('git', ['-C', P, 'commit', '-qm', 'two'], { env });
+  execFileSync('git', ['-C', P, 'push', '-q', 'origin', 'main'], { env });
+  const tipAt = head();
+  execFileSync('git', ['-C', P, 'reset', '--hard', '-q', behindAt], { env });
+
+  const py2 = fileURLToPath(new URL('../version.py', import.meta.url));
+  const shipRel = () => JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('v', ${JSON.stringify(py2)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace=${JSON.stringify(WS)}, state=${JSON.stringify(`${DIR}/state`)},
+            write_json=lambda p, o: open(str(p), 'w').write(json.dumps(o)))
+print(json.dumps(m.release('shipproj', push=False)))`], { env })
+    .toString().trim().split('\n').pop());
+
+  let r = shipRel();
+  ok(!r.ok && new RegExp(behindAt).test(r.error || '') && new RegExp(tipAt).test(r.error || ''),
+     `a release on a commit the default branch has moved past is refused, naming both (${
+       (r.error || 'no error').slice(0, 76)})`);
+  ok(/check out main and pull/i.test(r.error || ''),
+     '...and says what to do about it rather than only that it will not');
+  ok(execFileSync('git', ['-C', P, 'tag'], { encoding: 'utf8', env }).trim() === '',
+     '...having made no tag at all: the refusal is the whole of what happened');
+
+  // On the commit that actually ships, it goes through. The guard is about
+  // being BEHIND, not about being on a branch with a name somebody likes.
+  execFileSync('git', ['-C', P, 'reset', '--hard', '-q', tipAt], { env });
+  r = shipRel();
+  ok(r.ok && r.tag === 'v2.0.0',
+     `...and on the commit the branch is actually at, the release goes through (${
+       r.tag || r.error})`);
+  rmSync(P, { recursive: true, force: true });
+  rmSync(REMOTE, { recursive: true, force: true });
+}
+
 // ---- start: the first version, and nothing after ---------------------------
 // Creating a version and moving one are different decisions — the first has
 // no claim to overwrite — and until this policy existed the only way to let a

@@ -440,6 +440,26 @@ def may(project, part, by="claude"):
             f"{' or '.join(_ALLOWS[pol]) or 'nothing'} but not {part}.")
 
 
+def _ships_from(project):
+    """The remote branch a build of this project actually comes from, or "".
+
+    `origin/HEAD` when the remote published one, else origin/main, else
+    origin/master. REMOTE rather than local, and that is the whole point: the
+    question is which commit an image is built from, and the answer is
+    whatever the remote's default branch points at — not whatever this
+    checkout happens to be standing on.
+    """
+    ref = _git(project, "symbolic-ref", "--short", "-q",
+               "refs/remotes/origin/HEAD")
+    if ref:
+        return ref
+    for cand in ("origin/main", "origin/master"):
+        if _git(project, "rev-parse", "--verify", "--quiet",
+                f"refs/remotes/{cand}") is not None:
+            return cand
+    return ""
+
+
 def release(project, comp="", env=None, may_push=True, push=True):
     """Cut the release: an annotated tag on this commit, pushed.
 
@@ -488,6 +508,37 @@ def release(project, comp="", env=None, may_push=True, push=True):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes — commit or discard them "
                          "first, so the tag marks what is actually in the commit"}
+    # The commit that SHIPS is not always the commit you are standing on.
+    #
+    # Work lands through a pull request, so what CI builds and the box runs is
+    # the merge commit on the default branch, while this checkout stays on the
+    # branch that was merged. Tagging here names a commit no image was ever
+    # built from, and leaves the build that did ship reading `-dev` forever.
+    # Measured on 0.5.0 (B94): HEAD was the branch tip, origin/main was the
+    # merge of it, and the running image was built from the merge.
+    #
+    # Refused only when HEAD is strictly BEHIND that branch, which is exactly
+    # that case. Ahead of it, or off it entirely, is a deliberate situation
+    # and not this function's to second-guess. A project with no remote, or no
+    # default branch on it, is not checked at all.
+    ships = _ships_from(project)
+    if ships:
+        # Fetched first, or the tracking ref is whatever this checkout last
+        # heard and the guard quietly fails to fire — which is the bug again.
+        # A release is the moment to be current about it; a fetch that cannot
+        # run leaves the old answer rather than stopping the release. Short,
+        # because a remote that is slow or gone must cost a moment and not a
+        # hang: this is a guard, and the release is still the point.
+        _git(project, "fetch", "--quiet", "origin", timeout=20, env=env)
+        tip = _git(project, "rev-parse", "--short=7", ships)
+        if (tip and tip != sha
+                and _git(project, "merge-base", "--is-ancestor",
+                         "HEAD", ships) is not None):
+            branch = ships.split("/", 1)[-1]
+            return {"error": f"this tree is on {sha}, and {ships} has moved past "
+                             f"it to {tip}. A build comes from {branch}, so a tag "
+                             f"here would name a commit nothing was ever built "
+                             f"from. Check out {branch} and pull, then release."}
     msg = f"{comp} {tgt}" if comp else f"{project} {tgt}"
     if _git(project, "tag", "-a", name, "-m", msg, env=env) is None:
         return {"error": f"could not create the tag {name}"}
