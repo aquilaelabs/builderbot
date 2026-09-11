@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Report on the mounted projects, and put each one's commit identity into its
 # repo config — the project's own setting (prefs.py), so a session commits as
 # the person that project belongs to and a repo without one says so at the

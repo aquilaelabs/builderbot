@@ -2881,13 +2881,13 @@ def wait_for_boot():
     """Hold until the container has finished starting, or give up.
 
     This dashboard is started BY hook 15 and the hooks after it are still
-    running: 48-gpu-display.root.sh does not start Xorg for another few
-    seconds. A `bb doctor` run inside that window does not report an early
+    running. A `bb doctor` run inside that window does not report an early
     truth, it reports a falsehood — and DOCTOR_EVERY is half an hour, so it
-    stuck. Measured on the 27 Aug 23:31 boot: doctor cached at +46s, Xorg up at
-    +48s, and the card said the GPU had no display to render on until somebody
-    pressed refresh. The operator's remedy for that message is to restart the
-    container, which runs the same race again, so it read as the fault
+    stuck. Measured when a GPU still booted here: doctor cached at +46s and
+    the thing it was asking about came up at +48s, so the card was wrong
+    until somebody pressed refresh. The operator's remedy for that message is
+    to restart the container, which runs the same race again, so it read as
+    the fault
     recurring rather than as a stale answer.
 
     It does not care whether the wait succeeded: a dashboard started outside the

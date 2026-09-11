@@ -480,35 +480,8 @@ persist_android_downloads() {
 #
 # SECONDS is bash's own counter, reset at the top of the boot, so both numbers
 # come free.
-# Which half of BuilderBot this container is: bb_role in lib/common.sh
-# (roadmap #21). `controller` is the management instance; `node` is a worker
-# that enrolls with a controller and runs its jobs and, since roadmap #24,
-# its sessions. One image, two roles, so the same Unraid template makes both.
-#
-# A container node is deliberately NOT a Docker host: dockerd inside a
-# container wants --privileged, which is root on the server, and a VM already
-# does that job properly. Enroll it without the docker-host capability and
-# placement sends dev instances to the VM on its own.
-
-# Does this hook run in this role?
-#
-# The hook says so itself, in a `# roles:` line, rather than the entrypoint
-# holding a list of names — the same reasoning as the shellcheck file list
-# being derived from shebangs: a hook added tomorrow declares where it belongs
-# and nothing here has to be edited to match. Silence means controller only,
-# which is the safe default: a new hook does not start running on every node
-# in the fleet because nobody thought about it.
-hook_wants_role() {
-    local script="$1" role="$2" line
-    line="$(sed -n 's/^#[[:space:]]*roles:[[:space:]]*//p' "$script" 2>/dev/null | head -1)"
-    [ -n "$line" ] || line="controller"
-    case " $line " in *" $role "*) return 0 ;; esac
-    return 1
-}
-
 run_hooks() {
-    local dir script started took name role
-    role="$(bb_role)"
+    local dir script started took name
     for dir in /opt/builderbot/scripts/startup.d /config/startup.d; do
         [ -d "$dir" ] || continue
         for script in "$dir"/*.sh; do
@@ -520,13 +493,6 @@ run_hooks() {
                     continue
                     ;;
             esac
-            # A hook from /config/startup.d is the operator's own and runs in
-            # whatever role they put it in front of; only the shipped ones
-            # declare. So the filter applies to ours, and theirs is theirs.
-            if [ "$dir" = /opt/builderbot/scripts/startup.d ] \
-               && ! hook_wants_role "$script" "$role"; then
-                continue
-            fi
             chmod +x "$script" 2>/dev/null || true
             started=$SECONDS
             if [ "$(id -u)" -ne 0 ]; then
@@ -552,16 +518,7 @@ run_hooks() {
 # Build the command that main() will exec, honoring the container CMD.
 resolve_command() {
     case "${1:-supervise}" in
-        # The default command is the role's own: the supervisor for a
-        # controller, the node agent for a node. Naming either explicitly as
-        # the container CMD still works and still wins.
-        supervise)
-            if [ "$(bb_role)" = node ]; then
-                printf '%s\0' /opt/builderbot/scripts/node-agent.sh
-            else
-                printf '%s\0' /opt/builderbot/scripts/supervisor.sh
-            fi
-            ;;
+        supervise) printf '%s\0' /opt/builderbot/scripts/supervisor.sh ;;
         shell|bash)
             # Bare `bash`/`shell` means "give me a login shell"; anything with
             # arguments (e.g. `bash -c '...'`) must run verbatim.

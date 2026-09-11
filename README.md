@@ -178,25 +178,17 @@ Required / usually touched:
 | `GITHUB_URL` | Repo (`https://github.com/OWNER/REPO`) or org (`https://github.com/ORG`) that node runners register with |
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 
-**The template's Extra Params default to `--hostname=builderbot --device=/dev/kvm
---runtime=nvidia`**, matching the server it was written for. Both device flags
-make Docker refuse to start the container on hardware that lacks them, with an
-error that does not obviously point back here — so drop whichever does not apply
-before your first Apply.
-
 Everything else has sane defaults — full reference below.
 
 ### 6. Optional features
 
 | Want | Do |
 |---|---|
-| Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
+| Android emulator, builds, CI | Enroll a node from the dashboard's Nodes tab. This container compiles nothing and renders nothing — the toolchains, the card and `/dev/kvm` are that machine's |
 | Web dashboard | Always on — it is the controller. Map port 7680 and open it: the first page asks you to make the owner account — see [Web dashboard](#web-dashboard) |
-| NVIDIA GPU | Only if this container renders — a controller does not. On a node container, add the Nvidia-Driver plugin and set both NVIDIA variables to `all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
-| Emulator adb from your desktop | Map port 5555 |
 | Extra tools | the package manager on the Tools tab, per node; the controller carries what it needs in the image |
 
 ### 7. First boot
@@ -277,13 +269,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept — see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
-| `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
-| `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
-| `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
-| `ENABLE_GPU_DISPLAY` | `true` | Start a headless X server for a passed-through NVIDIA GPU at boot, so the emulator can render on it. Does nothing without one |
-| `ANDROID_EMULATOR_GPU` | *(empty — auto)* | Emulator renderer. Empty tests the GPU and falls back to software; `swiftshader_indirect`/`swangle_indirect` force software, `host` insists on the GPU |
-| `NVIDIA_VISIBLE_DEVICES` | *(empty)* | Empty means this container claims no GPU, which is right for a controller — emulation runs on a node. On a node container that renders, `all`, or a GPU UUID with more than one card |
-| `NVIDIA_DRIVER_CAPABILITIES` | *(empty)* | Set to `all` beside the above on a node container that renders: it is what gets you GL/EGL/Vulkan rather than CUDA alone |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
@@ -564,37 +549,6 @@ The dashboard's own tab icon is this command's output, from
 as root, which would break your saved login and file ownership. A bare
 `docker exec -it BuilderBot bash` is still root; use `bb shell` for the
 normal user.
-
-## NVIDIA GPU
-
-Pass the card through with `--runtime=nvidia` (Extra Params) or the `deploy:`
-block in the compose file. It needs the NVIDIA Container Toolkit on the host —
-on Unraid that's the **Nvidia-Driver** plugin, which also lists your GPU UUIDs
-for `NVIDIA_VISIBLE_DEVICES`. Step-by-step:
-[docs/unraid.md](docs/unraid.md#nvidia-gpu-optional).
-
-**Keep `NVIDIA_DRIVER_CAPABILITIES=all`.** The runtime defaults to
-`compute,utility`, which injects CUDA but none of the GL/EGL/Vulkan drivers.
-That failure mode is nasty because `nvidia-smi` reports a perfectly healthy GPU
-while every attempt at hardware rendering falls back or fails outright.
-`bb doctor` distinguishes the two: it checks for the EGL vendor ICD, not just
-the device.
-
-What actually gets faster, in rough order of payoff:
-
-| Workload | Notes |
-|---|---|
-| `ffmpeg` transcodes | The big one. Check `ffmpeg -encoders \| grep nvenc`, then use `h264_nvenc`/`hevc_nvenc` |
-| CUDA / ML | Works with capabilities left at the default |
-| Android emulator | Set `ANDROID_EMULATOR_GPU=host`. Least reliable of the three — the emulator is picky about host rendering with no display attached, so verify rather than assume |
-| Playwright | Headless runs are rarely GPU-bound; usually not worth it |
-
-For the emulator specifically, `swangle_indirect` is worth trying before
-`host` — it's still software, needs no GPU, and is usually faster than the
-`swiftshader_indirect` default. And if the goal is verifying animation timing
-rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
-per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
-in software and will mislead you.
 
 ## The package store lives outside the image
 
@@ -969,9 +923,9 @@ NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
 card and lands on llvmpipe — software by a slower road than the emulator's own
 SwiftShader.
 
-So a container in the node role starts a real `Xorg` on the injected
-`nvidia_drv.so` at boot (`ENABLE_GPU_DISPLAY`, on by default, silent without a
-GPU; a controller starts none). It has to happen
+So a node starts a real `Xorg` on the injected `nvidia_drv.so` at boot
+(`nodes/provision-linux.sh` sets that up; this container starts none and
+claims no card). It has to happen
 at boot because a session runs unprivileged with no capabilities and cannot
 become DRM master. `bb emu start` then **tests** the result rather than
 trusting it — EGL has to answer with a vendor driver, and Mesa answering counts
@@ -982,8 +936,8 @@ not. `bb emu gpu` says which you have and why, in one line.
 with nothing in its log — no error, no signal, a clean startup and then
 silence — and what made that expensive was the silence rather than the death:
 the emulator went on working, on software, and every timing conclusion drawn
-afterwards was wrong. So the hook restarts it up to three times with a backoff
-and then **stops and says so**. An unbounded respawn against a card the host
+afterwards was wrong. So it is restarted up to three times with a backoff
+and then **stopped, and said**. An unbounded respawn against a card the host
 has taken back would be worse than the silence it replaces, so the card is
 checked before each attempt: if `nvidia-smi` stops answering, the watch ends
 there and records that instead. Either way `bb emu gpu` and `bb doctor` print

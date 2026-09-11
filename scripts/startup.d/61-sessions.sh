@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Put back the terminal sessions the last shutdown saved.
 #
 # A terminal in the dashboard is a tmux session, and tmux dies with the

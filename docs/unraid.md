@@ -267,64 +267,19 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 
 ### Android emulator (on a node)
 
-The controller runs no emulator and carries no SDK: `bb emu` on a project
-runs on that project's node, whose packages store holds the emulator and its
-images (Tools tab, node picked). For a *container* node, give it
-` --device=/dev/kvm` in Extra Params and the GPU settings below.
-
-### A second container as a build node (optional)
-
-A node is a machine that runs the work — builds, tests, Android emulation —
-while the management container keeps the dashboard and the record. It can be a
-[VM](nodes.md), and it can just as well be another copy of this container.
-
-The container version has one property the VM does not: it shares the server's
-GPU the ordinary Docker way, so the Android emulator renders on the card
-without passing it through to a VM and taking it away from everything else.
-
-1. Dashboard → **Nodes** → **Enroll node**. Name it, tick **package-build**
-   and leave **docker-host** off — a container cannot be a Docker host without
-   `--privileged`, which is root on the server. Copy the `bbe_…` token; it is
-   shown once and lasts 24 hours.
-2. Add this template a second time, with a different container name, and set:
-   - **BUILDERBOT_ROLE** → `node`
-   - **CONTROLLER_URL** → the dashboard's address, e.g. `http://192.168.1.10:7680`
-   - **NODE_TOKEN** → the token you just copied
-3. Give it its own **/config** path — that is where it keeps its identity, so
-   it must not share the management container's. Its data, cache and artifacts
-   stores live under `/config/node`; map a volume onto any of them — an NFS
-   one, made with `docker volume create -o type=nfs …` — if you want it
-   elsewhere. Nothing about the dashboard needs turning off: in the node
-   role it does not start.
-4. Point its **package store** at the same share the management container uses.
-   One store under two names is recognized, and installs are arbitrated across
-   it rather than colliding.
-5. Map the projects share at **/workspace** too, if sessions should run on
-   it — a project bound to this node runs its Claude session here, in that
-   tree. Without it the node builds from snapshots and runs no sessions.
-6. For the emulator, map `/dev/kvm` and the GPU (`NVIDIA_VISIBLE_DEVICES`,
-   `NVIDIA_DRIVER_CAPABILITIES=all`, `ENABLE_GPU_DISPLAY`) — the node role is
-   where those settings apply; a controller renders nothing.
-
-A container has no systemd, and needs none: the Actions runner installed
-from the Nodes tab runs in the foreground under the agent, which supervises
-it and takes it down with the container, and the census reports it exactly
-as it reports a VM's service. What a container node cannot do is administer
-itself — there is no `bb-sandbox`, so the Storage and Network sections stay
-off — and a recipe's system packages are the image's to carry, since its
-agent is not root; the image carries Chromium's and the emulator's.
-
-It appears on the Nodes tab within a few seconds of starting. Point a project
-at it in the project's settings dialog and `bb build`, `bb test` and `bb emu`
-run there.
+The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
+on a project runs on that project's node, whose packages store holds the
+emulator and its images (Tools tab, node picked) and whose own `/dev/kvm` and
+card do the work. A node is a machine you enroll from the Nodes tab —
+`nodes/provision-linux.sh` on a VM or a spare box, `provision-macos.sh` on a
+Mac. Nothing here needs a device or a runtime flag for it.
 
 ### Web dashboard
 
 Not optional, and there is no switch for it: the dashboard is the controller.
 Nodes dial into its API, so builds, tests, CI and Android emulation all go
 through it, and it is what starts a session with its guardrails and its
-notebook context. The container that should run none of it is a *node* —
-`BUILDERBOT_ROLE=node`, which does not start one.
+notebook context.
 
 1. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
@@ -426,79 +381,6 @@ to the tool that produced it.
 `bb findings` reduces SARIF to grouped markdown with repo-relative paths.
 Handing a session the raw file instead would spend most of a context window on
 metadata before it reached any code.
-
-### NVIDIA GPU (optional)
-
-1. **Apps** tab → install the **Nvidia-Driver** plugin. This is what puts the
-   driver and the `nvidia` container runtime on the host; without it none of
-   the rest applies. It needs Unraid 6.9 or newer.
-   ([unraid/unraid-nvidia-driver](https://github.com/unraid/unraid-nvidia-driver)
-   — originally *ich777*'s, since adopted by Unraid, so you may see either name
-   attached to it.)
-2. Container settings → **Extra Params**: append ` --runtime=nvidia`
-3. Set `NVIDIA_VISIBLE_DEVICES` — it is empty by default, because a
-   controller renders nothing and claiming the card would take it from
-   whatever else on the server wants it. Do this on the container that
-   actually boots the emulator, which is a node.
-   `all` is fine for a single card. With more
-   than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
-   form `GPU-7f326d12-d4c8-4011-9db1-36c47710daf6`.
-4. Leave `NVIDIA_DRIVER_CAPABILITIES` at `all` (see below).
-5. Apply, then: `docker exec -it BuilderBot bb doctor`
-
-`--gpus all` works too and is equivalent for a single-GPU host, but
-`--runtime=nvidia` plus the variable is the form the Unraid template and the
-plugin are built around, so prefer it here.
-
-**Why capabilities matter.** The NVIDIA runtime defaults to
-`compute,utility`, which injects CUDA but no GL/EGL/Vulkan drivers. `nvidia-smi`
-then reports a completely healthy GPU while anything that tries to *render*
-fails or silently falls back — which is a genuinely annoying thing to chase.
-`bb doctor` separates the questions:
-
-```
-  [ok]   nvidia gpu: NVIDIA GeForce RTX 3070 Ti
-  [ok]   nvidia graphics stack usable (EGL vendor: NVIDIA)
-```
-
-If the second line is `[FAIL]`, capabilities are the cause. If it is `[warn]`,
-the drivers are injected but nothing can render on them yet — see below.
-
-**Rendering needs a display, not just a driver.** This is the part that looks
-like it should already work and does not. NVIDIA's EGL refuses to hand out a
-display unless an X server carrying its own GLX module is running; with none,
-the Android emulator finds the card for Vulkan, fails at `Failed to get EGL
-display`, and quietly renders in software. The container starts a headless
-`Xorg` for the card at boot to close that gap (`ENABLE_GPU_DISPLAY`, on by
-default, silent on a box with no GPU). Two things have to be true for it:
-
-- **`NVIDIA_DRIVER_CAPABILITIES` must include `display`** — `all` does. It is
-  what makes the runtime inject `libglxserver_nvidia.so`, the module the X
-  server loads. `graphics` alone is not enough.
-- **The card must not be in use by a VM**, for the same VFIO reason below.
-
-`bb emu gpu` answers "hardware or software, and why" in one line, and
-`/var/log/xorg-builderbot.log` has the detail when the answer is software.
-After a driver update this is the first thing to check: NVIDIA's X module is
-built against a specific X server ABI, and if the two disagree the server will
-not start — the log says so, and the emulator carries on in software rather
-than failing.
-
-Xvfb is the obvious thing to reach for here and it does not work: it has no
-NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
-card and lands on llvmpipe. That is software rendering by a slower road, and
-it looks like success from the outside.
-
-**Two gotchas worth knowing:**
-
-- A GPU bound to **VFIO** for VM passthrough is not available to Docker. It is
-  one or the other; check *Settings → VFIO-PCI Config* if the card does not
-  appear.
-- The plugin fetches a driver build matched to your Unraid kernel, so a
-  **version upgrade needs the plugin to update too**. If the GPU vanishes after
-  an Unraid update, that is the first thing to check.
-
----
 
 ## Option B: Compose Manager
 

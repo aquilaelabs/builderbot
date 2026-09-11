@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller node
-#
 # Put whatever `bb packages install` has put on the package store onto every shell's
 # PATH.
 #

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 #
-# roles: controller
-#
 # Install Claude Code, and keep it current. The image does not carry it —
 # it is Anthropic's proprietary binary and the image is published — so the
 # first boot on a fresh home volume installs it into ~/.npm-global (persisted,
