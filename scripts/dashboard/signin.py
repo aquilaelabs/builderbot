@@ -18,6 +18,7 @@ a link and a text field, which is what a phone is good at.
 
 The server imports this and hands it `run`; nothing here reaches back.
 """
+import contextlib
 import os
 import pty
 import re
@@ -162,6 +163,87 @@ class Flow:
 # saying "starting the sign-in…" until the next poll — which is how a link
 # that is ready in a second took fifteen to appear.
 URL_WAIT = 6
+
+
+class NodeFlow:
+    """The same flow, run on a NODE (roadmap R47).
+
+    Claude Code is installed where sessions run, and after R47 this container
+    carries none — so the flow has to happen over there. It is a job of its
+    own on the node, under a pty, as that machine's session account; what it
+    prints comes back as the job's log and the code goes down on the reply to
+    a log post, the channel `cancel` has always used.
+
+    The same three questions the local Flow answers — what is the URL, is it
+    asking, did it work — read off the job's log and state instead of a pty
+    this process holds. Everything above this line is what the page sees, so
+    the card does not know or care which of the two it is talking to.
+    """
+
+    def __init__(self, nodes, node_id, job_id, name=""):
+        self._nodes, self.node, self.job = nodes, node_id, job_id
+        self.node_name = name
+        self.sent = False
+
+    def _log(self):
+        j = self._nodes.job(self.job) or {}
+        return j, (j.get("log") or "")
+
+    def submit(self, code):
+        j, _ = self._log()
+        if not j or j.get("state") in ("succeeded", "failed", "canceled"):
+            return {"error": "that sign-in is over — start another"}
+        r = self._nodes.job_input(self.job, code)
+        if r.get("error"):
+            return r
+        self.sent = True
+        return {"ok": True}
+
+    def cancel(self):
+        with contextlib.suppress(Exception):
+            self._nodes.job_cancel("user:signin", self.job)
+        return {"ok": True}
+
+    def state(self):
+        j, out = self._log()
+        done = (j.get("state") or "") in ("succeeded", "failed", "canceled")
+        m = AUTH_URL.search(out)
+        why = ""
+        if done and j.get("state") != "succeeded":
+            for line in reversed(out.splitlines()):
+                line = line.strip()
+                if line and not line.startswith("http") and PROMPT not in line:
+                    why = line[-300:]
+                    break
+            why = why or "the sign-in did not finish"
+        return {"running": not done, "url": m.group(0) if m else "",
+                "waiting": bool(PROMPT in out) and not self.sent and not done,
+                "sent": self.sent and not done,
+                "done": done, "ok": j.get("state") == "succeeded",
+                "on": self.node_name, "job": self.job, "error": why}
+
+
+def start_on_node(nodes, node_id, uid, name=""):
+    """Begin a flow on a node. Same contract as start(): it replaces whatever
+    was running and waits a moment for the URL, so the button that is already
+    waiting gets the link in its own answer."""
+    global _flow
+    with _lock:
+        old = _flow
+    if old:
+        old.cancel()
+    r = nodes.job_add("user:signin", {"node": node_id}, "claude-login",
+                      {"uid": str(uid), "timeout": 900})
+    if r.get("error"):
+        return r
+    f = NodeFlow(nodes, node_id, r["job"], name)
+    with _lock:
+        _flow = f
+    t0 = time.time()
+    while time.time() - t0 < URL_WAIT and not f.state()["url"] \
+            and f.state()["running"]:
+        time.sleep(0.1)
+    return {"ok": True, "job": r["job"], "on": name}
 
 
 def start(home=""):

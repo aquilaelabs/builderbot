@@ -64,7 +64,9 @@ import ipaddress
 import json
 import os
 import platform
+import pty
 import re
+import select
 import shutil
 import signal
 import socket
@@ -92,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.44"
+AGENT_VERSION = "0.5.45"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1869,6 +1871,11 @@ class Job(threading.Thread):
         self.proc = None
         self.outputs = []        # what the job left behind, for the result
         self.pending_step = ""   # the word for the row, sent with the next log
+        # The write end of this job's pty, for a job that needs one. Only a
+        # conversation does: `claude auth login` prints a URL and waits for a
+        # code, and a pipe would leave the prompt sitting in a buffer nobody
+        # ever sees. None for every other job, and the log loop checks.
+        self.tty = None
 
     def cancel(self):
         self.canceled = True
@@ -1922,6 +1929,14 @@ class Job(threading.Thread):
                 return False
             if r.get("cancel") and not self.canceled:
                 self.cancel()
+            # ...and anything the controller wants typed INTO this job. The
+            # only downward channel a running job has is this reply, which is
+            # why `cancel` has always ridden it; a sign-in's code rides it the
+            # same way. One line, and only a job that opened a pty has
+            # anywhere to put it.
+            if r.get("input") and self.tty is not None:
+                with contextlib.suppress(OSError):
+                    os.write(self.tty, (str(r["input"]) + "\n").encode())
 
     def run(self):
         spec = self.job.get("spec") or {}
@@ -1949,6 +1964,8 @@ class Job(threading.Thread):
                 self.agent.session_renew()
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
+            elif self.job.get("type") == "claude-login":
+                state, code = self.claude_login(spec)
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
@@ -1977,6 +1994,85 @@ class Job(threading.Thread):
         self.agent.finished(self)
         if state == "succeeded" and self.job.get("type") == "self-update":
             self.agent.reexec()
+
+    def claude_login(self, spec):
+        """`claude auth login` on this machine, under a pty, as the SESSION
+        account (roadmap R47).
+
+        A job of its own and not an exec, for two reasons that both matter.
+        It drops to the session account rather than the enrolled job one —
+        those are different accounts on purpose, and the credential has to
+        land in the home a Claude session will read it from, owned by the
+        account that will read it. And it wants a PTY: the flow prints a URL
+        and then a prompt with no newline after it, which down a pipe sits in
+        a buffer nobody ever sees.
+
+        The conversation is the job's own log going up and `input` on the
+        reply to a log post coming down — the same channel `cancel` has used
+        since the start. Nothing new is opened toward this machine.
+        """
+        who_name = self.agent.session_account()
+        env = dict(sdk_env(self.agent.state))
+        env.update({"BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
+                    "BUILDERBOT_JOB": self.job["id"]})
+        try:
+            who = self.agent.as_user(env, who_name)
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        if not who_name:
+            self.say("refused: this node reports no session account, so there is "
+                     "no home for a Claude login to land in\n")
+            return "failed", 78
+        into = self.agent.bundle(self, who)
+        if not into:
+            return "failed", 69
+        # The BuilderBot account, so the bundle's own user_home resolves the
+        # same per-account home bb-tty gives a session here. Resolved there
+        # rather than here: one implementation of "where does this account
+        # live on this machine", and it is that one.
+        env["BUILDER_HOME"] = env.get("HOME", "")
+        env["BB_ACCOUNT_UID"] = str(spec.get("uid") or "")
+        argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"]
+        master, slave = pty.openpty()
+        self.say("signing in to Claude on this machine — the URL follows\n")
+        try:
+            self.proc = subprocess.Popen(
+                argv, stdin=slave, stdout=slave, stderr=slave,
+                cwd="/tmp", env=env, start_new_session=True, close_fds=True, **who)
+        except (OSError, ValueError) as e:
+            os.close(master), os.close(slave)
+            self.say(f"could not start the sign-in: {e}\n")
+            return "failed", 70
+        os.close(slave)
+        self.tty = master
+        deadline = time.time() + int(spec.get("timeout") or 900)
+        try:
+            while True:
+                if time.time() > deadline:
+                    self.say("the sign-in was not finished in time\n")
+                    self.cancel()
+                    return "failed", 75
+                try:
+                    r, _, _ = select.select([master], [], [], 0.5)
+                except (OSError, ValueError):
+                    break
+                if r:
+                    try:
+                        chunk = os.read(master, 65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    self.say(chunk.decode("utf-8", "replace"))
+                if self.proc.poll() is not None:
+                    break
+        finally:
+            self.tty = None
+            with contextlib.suppress(OSError):
+                os.close(master)
+        code = self.proc.wait()
+        return ("succeeded" if code == 0 else "failed"), code
 
     def exec(self, spec):
         need = spec.get("requires") or []
@@ -2157,8 +2253,8 @@ class Agent:
         self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
         self.session_mount = None         # (mounted, writable) as the last census said, to notice it moving
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
-        # The runner as a child of this process where there is no systemd
-        # (a container node): run.sh in the foreground, supervised here.
+        # The runner as a child of this process where there is no systemd:
+        # run.sh in the foreground, supervised here.
         self.runner_proc = None
         self.runner_tried = 0
 

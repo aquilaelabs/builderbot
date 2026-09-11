@@ -5436,10 +5436,36 @@ class Handler(BaseHTTPRequestHandler):
         _auth.clear()               # every home: the flow may have changed any
         if field(req, "action") == "cancel":
             return self._json(signin.cancel() | {"signin": signin.state()})
+        # WHERE it runs. Claude Code is installed where sessions are, which
+        # is a node — so the flow goes there, on the node the operator picked
+        # or the one node there is. Falling back to this container while it
+        # still carries Claude; R47's last step takes that away, and then the
+        # refusal below is the only answer.
+        uid = users.uid_of(self._who())
+        want = field(req, "node")
+        # A node that runs SESSIONS, which is the same test session_target
+        # makes: Claude Code is installed for the session account, the
+        # credential lands in that account's home, and a node with no session
+        # half has neither. Not merely "online" — a build node that runs no
+        # sessions has nowhere for a login to live.
+        live = [] if NODES_OK else [
+            n for n in nodes.node_list()
+            if n["kind"] == "agent" and n["state"] == "online"
+            and n.get("live") is not False
+            and ((n.get("reported") or {}).get("session") or {}).get("up")]
+        pick = next((n for n in live if want in (n["id"], n["name"])), None) \
+            if want else (live[0] if len(live) == 1 else None)
+        if pick:
+            return self._json(signin.start_on_node(nodes, pick["id"], uid, pick["name"])
+                              | {"signin": signin.state()})
+        if want or (live and len(live) > 1):
+            return self._json({"error": "which node should the sign-in run on? "
+                                        + ", ".join(n["name"] for n in live),
+                               "nodes": [n["name"] for n in live]}, 400)
         # In the asking account's home: `claude auth login` writes to
         # $HOME/.claude, and this card is how a new account signs in to their
         # OWN Claude (roadmap #26).
-        return self._json(signin.start(home_for(users.uid_of(self._who())))
+        return self._json(signin.start(home_for(uid))
                           | {"signin": signin.state()})
 
     def _login_code(self, req):

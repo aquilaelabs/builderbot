@@ -1213,9 +1213,15 @@ def node_log_grant(principal, node_id, from_ids):
 
 
 def claude_granted(node_id, uid):
-    """Whether this account's Claude grant may reach that node."""
+    """Whether this account's Claude grant may reach that node.
+
+    The parentheses are the whole of this function: `x in y or []` is
+    `(x in y) or []`, so a node whose config has no grant list at all asked
+    `x in None` and raised — which made the endpoint 500 rather than refuse,
+    and a 500 is not a refusal a node's sync knows how to report.
+    """
     n = node(node_id)
-    return str(uid) in ((n or {}).get("config") or {}).get("claude_for") or []
+    return str(uid) in (((n or {}).get("config") or {}).get("claude_for") or [])
 
 
 def claude_grant_set(principal, node_id, uid, on):
@@ -2246,7 +2252,31 @@ def job_log(node_id, job_id, chunks, step=None):
             _exec("UPDATE jobs SET step = ? WHERE id = ?", (str(step)[:60], job_id))
     if n or step is not None:
         _jbump()
-    return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"])}
+    # ...and anything waiting to go DOWN to the job. The agent posts output
+    # every half second, so this reply is the only channel the controller has
+    # toward a running job — `cancel` has ridden it since the start, and a
+    # sign-in's code rides it the same way. Popped, not left: a code is
+    # delivered once, and a retried post must not type it twice.
+    return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"]),
+            **({"input": _job_input.pop(job_id)} if job_id in _job_input else {})}
+
+
+# {job id: text waiting to be typed into that job}. In memory, like the
+# presence register: a code is good for a minute and a controller restart is
+# a sign-in the operator starts again, so there is nothing here worth a row.
+_job_input = {}
+
+
+def job_input(job_id, text):
+    """Queue one line for a running job's pty. It leaves on the job's next
+    log post, which is at most half a second away."""
+    j = job(job_id)
+    if not j:
+        return {"error": "no such job"}
+    if j["state"] in JOB_END:
+        return {"error": f"that job is {j['state']}"}
+    _job_input[job_id] = str(text)[:4096]
+    return {"ok": True}
 
 
 def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
