@@ -1097,6 +1097,54 @@ def md_block(path):
     return None                          # no begin marker, or no end after it
 
 
+_MD_IF = re.compile(r"<!-- BUILDERBOT:IF ([^>]*?) *-->")
+_MD_END = "<!-- BUILDERBOT:END -->"
+
+
+def md_for(tree):
+    """The template's block as THIS project should have it.
+
+    Parts of the file only apply to some projects — Android, the dev instance
+    — and every project used to carry both on every session. The template
+    marks them with the evidence that decides each one:
+
+        <!-- BUILDERBOT:IF android *.gradle android AndroidManifest.xml -->
+
+    The patterns live there and not here on purpose. `bb claude-md` renders
+    the same block when it writes the file, and two lists of evidence would
+    have each side reporting the other's answer as drift forever — which is
+    exactly what happened the first time this was written with the conditions
+    in the code. The template is the one copy; both readers are a glob.
+
+    Evidence in the TREE rather than on the machine, for the same reason: the
+    projects share is mounted by the controller and every node, so they all
+    read the same answer.
+    """
+    want = md_block(TEMPLATE_MD)
+    if want is None:
+        return None
+    out, skip = [], False
+    for line in want.split("\n"):
+        m = _MD_IF.search(line)
+        if m:
+            bits = m.group(1).split()
+            skip = not (bits and any(_has(tree, p) for p in bits[1:]))
+            continue
+        if _MD_END in line:
+            skip = False
+            continue
+        if not skip:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _has(tree, pattern):
+    try:
+        return any(True for _ in Path(tree).glob(pattern))
+    except (OSError, ValueError):
+        return False
+
+
 def md_state(path):
     """"current" | "stale" | "unmarked" | "unknown" for a project's CLAUDE.md.
 
@@ -1104,7 +1152,7 @@ def md_state(path):
     on every fifteen-second poll: the comparison is two file reads, and a
     subprocess per project per poll is not.
     """
-    want = md_block(TEMPLATE_MD)
+    want = md_for(Path(path).parent)
     if want is None:
         return "unknown"                 # no template to compare against
     have = md_block(path)
@@ -1267,25 +1315,33 @@ def _compat_loop():
 # never reach — `ext::` runs commands) applied to more than one host.
 PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # a repo name, near enough
 
-def build_claude_md(about):
-    """A new project's CLAUDE.md: the shipped template, with the section below
-    the end marker replaced by the operator's own notes when they gave any.
+def build_claude_md(about, tree=None):
+    """A new project's CLAUDE.md: the block this project should have, with the
+    section below the end marker replaced by the operator's own notes when they
+    gave any.
 
-    The same file `bb claude-md --init` copies; building it here as well means
+    The same file `bb claude-md --init` writes; building it here as well means
     the notes land in one write instead of a copy the operator then has to
-    edit. No notes → the template verbatim, placeholder section and all.
+    edit. No notes → the template's own placeholder section.
+
+    `tree` is where it is about to land, and it is rendered for that tree, or
+    the first poll after creating the project reports drift against the file
+    this just wrote. A cloned repository with a compose file in it gets that
+    section from the start; an empty one gets neither and gains one when the
+    evidence arrives.
     """
     try:
         text = TEMPLATE_MD.read_text()
     except OSError:
         return None                      # no template: older image, say so
-    if not about:
-        return text
+    block = md_for(tree) if tree is not None else md_block(TEMPLATE_MD)
+    if block is None:
+        return None
     i = text.find(ENV_END)
-    if i < 0:
-        return text                      # unmarked template: nothing to split on
-    head = text[:i + len(ENV_END)]
-    return head + "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
+    tail = text[i + len(ENV_END):] if i >= 0 else ""
+    if about:
+        tail = "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
+    return block + tail
 
 
 # The builder user's ssh directory. Overridable through BUILDER_HOME for the

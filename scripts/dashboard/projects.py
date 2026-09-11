@@ -1589,7 +1589,7 @@ def _write_md(dest, about, cloned):
         return "kept the repository's own CLAUDE.md"
     if cloned:
         about = describe_repo(dest) or ""
-    body = build_claude_md(about)
+    body = build_claude_md(about, dest)
     if body is None:
         return "no CLAUDE.md template in this image; none written"
     try:

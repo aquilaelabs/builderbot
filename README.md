@@ -1123,7 +1123,13 @@ lives in its body. The cards:
   list**, in amber, because it is asking for something: a repo with no
   `CLAUDE.md` yet, or one whose environment block has drifted from the image's.
   Both are underlined links that fix themselves — `bb claude-md --init` and
-  `bb claude-md --update` on that project. This is what
+  `bb claude-md --update` on that project. What they write is the block for
+  *that* project: the Android section only where the tree carries a gradle
+  file, an `android/` directory or a manifest, and the dev-instance section
+  only where it carries a compose file. Both are read from the projects share,
+  so the controller and every node render the same answer; a project that
+  gains a compose file gains that section as ordinary drift, with the same
+  update link beside it. This is what
   makes one mapping for the whole folder workable: a directory that is not a
   project says so instead of quietly not appearing. Hidden directories and the
   runner's `_work` are skipped outright, and empty

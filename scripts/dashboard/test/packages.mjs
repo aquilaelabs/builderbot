@@ -178,7 +178,7 @@ const held = await page.evaluate(() => {
   const box = document.querySelector('.doc .pkg:not(.img) input[value="swift"]');
   const out = { checked: box.checked, ghosted: box.disabled };
   pkgTicked.delete('swift');
-  packages.job = saved; pkgRev++; drawPanes();
+  packages.job = saved; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
   return out;
 });
 ok(held.checked && held.ghosted,
@@ -204,6 +204,7 @@ const during = (job) => page.evaluate(j => {
                 bin: !!row.querySelector('[data-rm]'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
+  clearTimeout(pkgPoll);   // the fake state must not outlive this check
   return out;
 }, job);
 
@@ -239,7 +240,7 @@ const dots = await page.evaluate(async () => {
   pkgRev++; drawPanes();                      // a redraw, mid-animation
   const after = read();
   packages.job = saved; pkgRev++; drawPanes();
-  clearInterval(pkgDotsTimer); pkgDotsTimer = null;
+  clearTimeout(pkgPoll); clearInterval(pkgDotsTimer); pkgDotsTimer = null;
   return { first, later, after };
 });
 ok(dots.later !== dots.first && dots.after === dots.later,
@@ -405,21 +406,43 @@ ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
 // One operation at a time — the server answers a second with a 409 — so the
 // controls go dead while one runs rather than letting a click earn an error.
 // The bin icons were the gap: only the two big buttons were being disabled.
-await page.evaluate(() => { packages.job.running = true; pkgRev++; drawPanes(); });
-ok(await page.$$eval('.doc [data-rm]', bs => bs.length > 0 && bs.every(b => b.disabled))
-   // Abort excluded: it is the one control that has to work while a job runs.
-   && await page.$$eval('.doc [data-pkg]:not([data-pkg="abort"])', bs => bs.every(b => b.disabled))
-   && await page.$$eval('.doc [data-pkg="abort"]', bs => bs.length === 1 && !bs[0].disabled)
-   && await page.$$eval('.doc .pkg:not(.img) input', is => is.length > 0 && is.every(i => i.disabled)),
-   'while a job runs, every button and every checkbox is ghosted');
+// Set, read and put back in ONE evaluate. The tab re-reads itself whenever
+// the packages token moves, and the uninstall just above moves it — so a
+// fake planted in one round trip and read in the next four is a fake a real
+// load can land on top of, which is what it started doing.
+const ghosted = await page.evaluate(() => {
+  const was = packages.job.running;
+  packages.job.running = true; pkgRev++; drawPanes();
+  const all = sel => [...document.querySelectorAll(sel)];
+  const r = {
+    bins: all('.doc [data-rm]').length > 0
+          && all('.doc [data-rm]').every(b => b.disabled),
+    // Abort excluded: it is the one control that has to work while a job runs.
+    buttons: all('.doc [data-pkg]:not([data-pkg="abort"])').every(b => b.disabled),
+    abort: all('.doc [data-pkg="abort"]').length === 1
+           && !all('.doc [data-pkg="abort"]')[0].disabled,
+    boxes: all('.doc .pkg:not(.img) input').length > 0
+           && all('.doc .pkg:not(.img) input').every(i => i.disabled),
+  };
+  packages.job.running = was; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
+  return r;
+});
+ok(ghosted.bins && ghosted.buttons && ghosted.abort && ghosted.boxes,
+   `while a job runs, every button and every checkbox is ghosted (${
+     Object.entries(ghosted).filter(([, v]) => !v).map(([k]) => k).join(', ') || 'all'})`);
 // A check the operator did not start still has to reach the page, or the
 // buttons stay live and a click earns "a version check is running" for an
 // operation nobody could see. The button says which job is in the way.
 const checking = await page.evaluate(() => {
-  const was = packages.job.action;
-  packages.job.action = 'check'; pkgRev++; drawPanes();
+  // Both halves planted here rather than relying on the block above leaving
+  // one behind: each of these is its own scenario, and a state carried
+  // between them is a state the next real load quietly takes away.
+  const was = [packages.job.action, packages.job.running];
+  packages.job.action = 'check'; packages.job.running = true;
+  pkgRev++; drawPanes();
   const t = document.querySelector('.doc [data-pkg="check"]').textContent;
-  packages.job.action = was; pkgRev++; drawPanes();
+  [packages.job.action, packages.job.running] = was;
+  pkgRev++; drawPanes(); clearTimeout(pkgPoll);
   return t;
 });
 ok(/^Checking for updates/.test(checking),

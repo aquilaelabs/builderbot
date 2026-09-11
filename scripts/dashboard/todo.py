@@ -522,7 +522,13 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
     different reasons: the words are *what* is being asked, the details are
     *where and how* — and the history should say which of the two moved.
     """
-    text = _clean(text, max_lines=MAX_INFO_LINES)[:MAX_INFO]
+    text = _clean(text, max_lines=MAX_INFO_LINES + 1)
+    if len(text) > MAX_INFO or text.count("\n") >= MAX_INFO_LINES:
+        return {"error": f"details are {MAX_INFO} characters over at most "
+                         f"{MAX_INFO_LINES} lines. Write the half a session would "
+                         f"otherwise grep for — which files, which functions, what "
+                         f"was decided — and not the thinking that got there; the "
+                         f"whole list is read into every session's prompt."}
     if step is not None and _int(step) is None:
         return {"error": "not a step"}
 
@@ -561,13 +567,16 @@ def add(project, text, by="you", steps=(), who="", number=None):
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit"}
+        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
     steps = [_clean(str(x)) for x in (steps or [])]
     steps = [x for x in steps if x]
     if len(steps) > MAX_STEPS:
-        return {"error": f"{MAX_STEPS} steps is the limit for one item"}
+        return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order — which is the whole reason both shapes exist."}
     if any(len(x) > MAX_TEXT for x in steps):
-        return {"error": f"a step is longer than {MAX_TEXT} characters"}
+        return {"error": f"a step is longer than {MAX_TEXT} characters. A step "
+                         f"is a point at which the last work must have finished, "
+                         f"not a task — put everything that can be done in one go "
+                         f"into one, and the detail in `bb roadmap info`."}
     # The gate (roadmap #27): what a SESSION adds may be held for the operator
     # or refused, per project. After the checks above, so a held record is
     # one that would have landed — and the number it is told is reserved
@@ -761,7 +770,7 @@ def edit(project, item_id, text, step=None, by="you", was=None, who=""):
     if not text:
         return {"error": "nothing to say"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit"}
+        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
     if step is not None and _int(step) is None:
         return {"error": "not a step"}
 
@@ -900,12 +909,12 @@ def add_step(project, item_id, text, by="you", who=""):
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit"}
+        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
 
     def change(row, rows):
         steps = row.setdefault("steps", [])
         if len(steps) >= MAX_STEPS:
-            return {"error": f"{MAX_STEPS} steps is the limit for one item"}
+            return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order — which is the whole reason both shapes exist."}
         steps.append({"text": text, "sent": 0})
         return {"ok": True,
                 "log": {"act": "add-step", "id": row["id"],
