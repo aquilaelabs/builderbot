@@ -490,10 +490,18 @@ PY
 
 # claude_first_run DIR — answer Claude Code's first-run questions for this home
 # and this directory, where they are not answered already. See the call site.
+# Sets CLAUDE_TRUST_ADDED=1 when this tree was NOT trusted before this call
+# and is now, so the caller can say so where it knows whether a session is
+# already running on the old answer.
+CLAUDE_TRUST_ADDED=0
 claude_first_run() {
-    local f="$HOME/.claude.json" tmp
+    local f="$HOME/.claude.json" tmp was now
+    CLAUDE_TRUST_ADDED=0
     [ -d "$HOME" ] || return 0
     tmp="$f.new"
+    # What the file said before anything is written to it.
+    was="$(jq -r --arg d "$1" '.projects[$d].hasTrustDialogAccepted // false' \
+               "$f" 2>/dev/null)"
     if jq --arg d "$1" '
           (if type == "object" then . else {} end)
           | .hasCompletedOnboarding = (.hasCompletedOnboarding // true)
@@ -509,6 +517,24 @@ claude_first_run() {
         mv -f "$tmp" "$f"
     fi
     rm -f "$tmp"
+    # Read it back rather than trusting the write, because THIS flag is the
+    # one that matters and it has gone missing in the wild.
+    #
+    # hasTrustDialogAccepted is what makes Claude Code apply a workspace's own
+    # permission rules at all. Without it every allowance a person grants is
+    # thrown away — it says so out loud: "Ignoring N permissions.allow entry
+    # from .claude/settings.json: this workspace has not been trusted" — so
+    # the session asks about every command and remembers none of the answers.
+    # From the outside that reads as the permission setting being ignored,
+    # which is where a morning went.
+    #
+    # `/login` rewrites this same file, which is one way the flag leaves after
+    # having been set. Until this, every failure here was swallowed.
+    now="$(jq -r --arg d "$1" '.projects[$d].hasTrustDialogAccepted // false' \
+               "$f" 2>/dev/null)"
+    [ "$now" = true ] || return 1
+    [ "$was" = true ] || CLAUDE_TRUST_ADDED=1
+    return 0
 }
 
 # bad MESSAGE... — fail visibly. ttyd closes the connection the moment this
@@ -894,7 +920,12 @@ $todo_block}"
         # onboarding done. Merged into whatever is there, never replacing a
         # file a person has already shaped, and only when the answer is
         # missing — a theme somebody set with /theme stays theirs.
-        claude_first_run "$dir"
+        if ! claude_first_run "$dir"; then
+            echo "WARNING: could not record ${dir} as trusted in ${HOME}/.claude.json." >&2
+            echo "Claude Code ignores a workspace's own permission rules until it is," >&2
+            echo "so this session will ask about every command and keep none of the" >&2
+            echo "answers. Check that file exists and is writable." >&2
+        fi
         # Every bb verb resolves the project as BB_PROJECT first and falls back
         # to the directory's name — which in a worktree is an account id. One
         # export rather than a special case in each of them.
@@ -931,6 +962,16 @@ $todo_block}"
                 | grep -qi claude; then
             log "${mysess}: session is not running claude — replacing it"
             tmux kill-session -t "=$mysess" 2>/dev/null || true
+        fi
+        # The flag was missing and has just been put back. A session already
+        # running here read the old answer when it started and cannot be told
+        # otherwise, so it will go on asking about every command until it is
+        # restarted — which is the whole of what somebody sees, and is worth a
+        # line rather than a mystery.
+        if [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ] && tmux has-session -t "=$mysess" 2>/dev/null; then
+            echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
+            echo "The session already running here started on the old answer, so it" >&2
+            echo "will keep asking about every command until it is restarted." >&2
         fi
         # On a node, a session that is about to be MADE is announced to the
         # project's channel through the controller — its proxy announces a

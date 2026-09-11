@@ -10,7 +10,7 @@
 // project became unstartable, ttyd reconnecting into the same error every five
 // seconds. The command goes through a launcher file now, and this is the test
 // that says so.
-import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
+import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
@@ -657,6 +657,73 @@ tmuxKill('claude-alpha');
     ok(cj2.theme === 'light' && cj2.projects?.[wt]?.hasTrustDialogAccepted === true,
        '...the theme a person set stays theirs, and the trust is put back for the tree');
     tmuxKill(`${ownerUid}~claude-${proj}`);
+
+    // ---- and it says so when that flag does not land ----------------------
+    // hasTrustDialogAccepted is the one answer here that is not cosmetic:
+    // Claude Code ignores a workspace's own permission rules until it is set
+    // ("Ignoring N permissions.allow entry ... this workspace has not been
+    // trusted"), so a session without it asks about every command and keeps
+    // none of the answers. From the outside that reads as the project's
+    // permission setting being ignored, which is exactly how it was reported.
+    // Every failure here used to be swallowed.
+    {
+      const cjf = join(HOMEDIR, 'users', ownerUid, '.claude.json');
+      const saved = readFileSync(cjf, 'utf8');
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+                    WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR, BUILDER_HOME: HOMEDIR,
+                    DASHBOARD_STATE: join(DIR, 'state'), ...node };
+      const runTty = () => {
+        try {
+          return String(execFileSync('bash',
+            [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`, 'name:the.owner'],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env }) || '');
+        } catch (e) { return String(e.stderr || '') + String(e.stdout || ''); }
+      };
+
+      // The file cannot be written: a directory where the file goes, so the
+      // read fails, the fallback writes its temp file and the move over it
+      // cannot land. Nothing else in the home is disturbed.
+      tmuxKill(`${ownerUid}~claude-${proj}`);
+      rmSync(cjf, { force: true });
+      mkdirSync(cjf, { recursive: true });
+      const cried = runTty();
+      rmSync(cjf, { recursive: true, force: true });
+      ok(/could not record .* as trusted/.test(cried)
+         && /ask about every command/.test(cried),
+         `the launcher says so when it cannot record the tree as trusted (${
+           (cried.split('\n').find(l => /trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
+
+      // ...and when the flag was missing, was put back, and a session is
+      // ALREADY running on the old answer — which cannot be told otherwise
+      // and will go on asking until it restarts. That is the case somebody
+      // actually meets, because /login rewrites this same file.
+      writeFileSync(cjf, JSON.stringify({ hasCompletedOnboarding: true, projects: {} }));
+      tmuxKill(`${ownerUid}~claude-${proj}`);
+      // Started on a stand-in launcher, not a bare shell: a session under a
+      // claude name whose pane is not running claude is replaced by the
+      // launcher a few lines earlier, and there would be nothing left to
+      // warn about.
+      const stand = join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
+                         `claude-run-${proj}.sh`);
+      mkdirSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot'), { recursive: true });
+      writeFileSync(stand, '#!/usr/bin/env bash\nexec sleep 600\n', { mode: 0o755 });
+      tmuxNew(`${ownerUid}~claude-${proj}`, join(DIR, 'ws', proj), [stand]);
+      const noted = runTty();
+      ok(/was not trusted/.test(noted) && /until it is restarted/.test(noted),
+         `...and when it puts the flag back under a session already running, it says that session must restart (${
+           (noted.split('\n').find(l => /not trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
+      ok(JSON.parse(readFileSync(cjf, 'utf8')).projects?.[wt]?.hasTrustDialogAccepted === true,
+         '...having put it back');
+
+      // ...and says neither of those things on an ordinary start, where the
+      // flag was already there: a line printed every time is a line nobody
+      // reads when it matters.
+      const quiet = runTty();
+      ok(!/was not trusted/.test(quiet) && !/could not record/.test(quiet),
+         '...and says nothing at all when the tree was trusted already');
+      tmuxKill(`${ownerUid}~claude-${proj}`);
+      writeFileSync(cjf, saved);
+    }
 
     // A token or a name in the wrong shape is dropped, not trusted: the
     // session made by this connection carries neither.
