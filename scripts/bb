@@ -2472,9 +2472,13 @@ cmd_tests() {
     # Same shape as cmd_bug: the project from the working directory (or
     # BB_TESTS_PROJECT), the module loaded from the file beside this script so
     # the checkout's copy is the one under test.
+    # Checked below rather than here: `run` does not touch this module. It
+    # runs the suite and relays the ingest, and the node bundle carries bb
+    # without the dashboard's python — so the guard up here made `bb tests
+    # run` the one verb that cannot work on a node, which is the one machine
+    # a suite actually runs on.
     local py
     py="$(dirname "$(readlink -f "$0")")/dashboard/testreg.py"
-    [ -f "$py" ] || die "testreg.py is missing from this image"
     local proj="${BB_TESTS_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -2543,6 +2547,7 @@ cmd_tests() {
         fi
         return "$rc"
     fi
+    [ -f "$py" ] || die "testreg.py is missing from this image"
     local src="" tmp=""
     # From a node this verb is relayed, so the path is opened on the
     # CONTROLLER — which shares /workspace with the node and nothing else. A

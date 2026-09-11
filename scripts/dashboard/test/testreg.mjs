@@ -7,7 +7,8 @@
 // a suite — a test that ran the suite to test the thing that reads the suite
 // would be the slowest test in the suite.
 import { launch, newPage, ok, done, ready, nbShown, nbTab, URL, DIR } from './lib.mjs';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync,
+         cpSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -399,6 +400,35 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
      'a run that could not start records nothing, and says so');
   ok(!/looks like a test run/.test(out),
      '...once — the ingest is not asked to explain a log that was never written');
+}
+
+// The bundle a node gets carries bb and its library and none of the
+// dashboard's python, because every tests verb but one is relayed to the
+// controller. The exception is `run`: it RUNS the suite, which belongs where
+// the toolchain and the tree are, and relays only the ingest afterwards. The
+// module check sat above that branch, so the one verb that has to work on a
+// node was the one verb that could not.
+{
+  const B = `${DIR}/bundleish`;
+  rmSync(B, { recursive: true, force: true });
+  mkdirSync(`${B}/scripts`, { recursive: true });
+  cpSync(BB, `${B}/scripts/bb`);
+  cpSync(join(dirname(BB), 'lib'), `${B}/scripts/lib`, { recursive: true });
+  ok(!existsSync(`${B}/scripts/dashboard/testreg.py`),
+     'the bundle shape: bb and its library, no dashboard python beside it');
+  let out = '';
+  try {
+    out = execFileSync(`${B}/scripts/bb`, ['tests', 'run'], { env: { ...process.env,
+      BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
+      WORKSPACE: `${DIR}/ws`, BB_TESTS_PROJECT: 'alpha',
+      DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_AUTH: 'test:test' },
+      stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  ok(!/testreg\.py is missing/.test(out),
+     `bb tests run works with no testreg.py beside it, which is every node (${
+       out.trim().split('\n')[0] || 'no output'})`);
+  ok(/nothing timed, so nothing recorded/.test(out),
+     '...reaching the same place a controller run reaches');
 }
 
 // Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
