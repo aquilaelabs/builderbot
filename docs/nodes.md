@@ -1795,10 +1795,16 @@ agent enforces it on its own tmux, controller up or down (idle.py).
 The account's CLAUDE LOGIN is kept in step rather than copied once: the
 grant is an OAuth pair and a refresh rotates the refresh token, so two
 machines each holding a copy sign each other out — which is exactly what
-happened after a day of node sessions (bug #64). `bb login --sync` runs on
-every connection and moves whichever grant has the later `expiresAt`, up or
-down; an older one is refused rather than stored, and the copy it replaces
-is kept beside it for one round. The controller stays the one place that
+happened after a day of node sessions (bug #64). `bb login --sync` moves
+whichever grant has the later `expiresAt`, up or down; an older one is
+refused rather than stored, and the copy it replaces is kept beside it for
+one round. It runs on every connection AND on every prompt of a running
+session (`bb-keep-login`, a UserPromptSubmit hook, throttled to ten minutes
+and not throttled at all inside the grant's last half hour). The second of
+those is what makes it work: a refresh happens inside a running session, and
+while a connection was the only moment the copies were compared, a session on
+another node held a retired grant until somebody opened a terminal tab there
+— hours, and what it looks like is "Login expired" at random (B100). The controller stays the one place that
 holds the account's current grant, and a machine that has been away cannot
 undo a sign-in that happened while it was gone.
 A CONTAINER node — this image in the node role — is a guest in §20's terms

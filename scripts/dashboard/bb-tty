@@ -243,7 +243,10 @@ claude_scope() {
     # editing one function are making two commits, not corrupting one tree.
     # bb-prompt-relay puts what was asked into the project's chat feed, so the
     # others sharing it know what is being worked on before they start the
-    # same thing. bb-check-relay runs, when the session is about to stop, the
+    # same thing. bb-keep-login keeps THIS node's copy of the account's Claude
+    # grant in step with the controller's while the session runs: a refresh
+    # rotates the token and retires every other copy, and until that hook the
+    # only thing that ever synced was this script, on a connection (B100). bb-check-relay runs, when the session is about to stop, the
     # checks of the house rules whose files it changed, and refuses the stop
     # while one fails (roadmap R31). All three swallow every failure of their
     # own: a note is never worth an edit and a line is never worth a turn.
@@ -318,6 +321,7 @@ claude_scope() {
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
                --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
                --arg check "$(dirname "$(readlink -f "$0")")/bb-check-relay" \
+               --arg keep "$(dirname "$(readlink -f "$0")")/bb-keep-login" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               defaultMode: $mode,
@@ -341,7 +345,9 @@ claude_scope() {
               {hooks: [{type: "command",
                         command: "\($relay) \($proj) \($who)"},
                        {type: "command",
-                        command: "\($gate) --prompt \($proj) \($who)"}]}],
+                        command: "\($gate) --prompt \($proj) \($who)"},
+                       {type: "command",
+                        command: "\($keep) \($proj) \($who)"}]}],
               Stop: [
               {hooks: [{type: "command",
                         command: "\($check) \($proj) \($who)", timeout: 3600}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
