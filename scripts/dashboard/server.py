@@ -1499,22 +1499,16 @@ def project_list(who):
             todo_batches[name]["at"] = min(todo_batches[name]["at"], b["at"])
         else:
             todo_batches[name] = b
-    bug_revs = bugs.revisions()
+    # Counts only. The notebook's six revisions used to ride here, which put
+    # half of one tab on this fifteen-second poll while the other half rode
+    # /api/revs at a second and a half; they are all on /api/revs now (see
+    # revisions()), and this poll stopped paying to compute them.
     bug_counts = bugs.counts()          # open bugs per project, for the row and the app
-    # ...and the roadmap's, so an open notebook stops being the one surface
-    # here that never notices somebody else writing (roadmap #26). The Bugs
-    # tab has polled bug_rev since it was built; the Roadmap and Memory views
-    # loaded once when the tab opened and then held that drawing forever.
-    nb_revs = todo.revisions()
-    test_revs = testreg.revisions()
     test_counts = testreg.counts()
-    rule_revs = rules.revisions()
     rule_counts = rules.counts()
     # What a session has waiting for the operator (roadmap #27): the count
-    # lights the bell and the notebook band; the revision tells an open
-    # notebook to re-read the queue.
+    # lights the bell and the notebook band.
     pend_counts = pending.counts()
-    pend_revs = pending.revisions()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1685,21 +1679,8 @@ def project_list(who):
                     # So the open notebook learns a session has started one
                     # without waiting for the operator to touch something.
                     "todo_batch": todo_batches.get(d.name),
-                    # So an open Bugs tab notices a session filing or closing
-                    # one without polling the tracker itself.
-                    "bug_rev": bug_revs.get(d.name, 0),
                     "bugs": bug_counts.get(d.name, 0),
-                    # Two, because the two halves are re-read separately and
-                    # a memory edit must not throw away a half-typed roadmap
-                    # item beside it.
-                    "todo_rev": (nb_revs.get(d.name) or {}).get("todo", 0),
-                    # ...and the registry's, which moves only when a run is
-                    # ingested: describing one test redraws its own row.
-                    "tests_rev": test_revs.get(d.name, 0),
                     "tests": test_counts.get(d.name, 0),
-                    # ...and the rules', which move only when the operator
-                    # writes one: nothing else can.
-                    "rules_rev": rule_revs.get(d.name, 0),
                     "rules": rule_counts.get(d.name, 0),
                     "pending": pend_counts.get(d.name, 0),
                     # Why nothing routed to this project's node runs right
@@ -1716,12 +1697,6 @@ def project_list(who):
                     "held": md_hold or held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", ""),
                     "md_window": md_window(d / "CLAUDE.md") if has_md else "",
-                    "pending_rev": pend_revs.get(d.name, 0),
-                    # The memories are files, and the writer that moves one
-                    # most often is a session's own Write tool, which passes
-                    # through nothing that could count. So this one is the
-                    # directory itself — how many and how lately touched.
-                    "mem_rev": mem_census["rev"],
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -3061,17 +3036,59 @@ def _mtime(path):
         return 0
 
 
-def revisions():
+# A store's revisions(), recomputed only when its file moves.
+#
+# Those five functions each read and parse a whole state file, which was
+# affordable on the fifteen-second poll they were written for and is not on
+# the one-and-a-half-second one they moved to. The key is the file's mtime in
+# nanoseconds, so a second write in the same second is still a miss — and a
+# write from `bb`, in another process entirely, invalidates this the same way
+# the dashboard's own does, because it is the file that is being watched and
+# not a counter in here.
+_rev_cache = {}
+
+
+def _cached(path, fn):
+    key = str(path)
+    m = _mtime(path)
+    hit = _rev_cache.get(key)
+    if hit is not None and hit[0] == m:
+        return hit[1]
+    v = fn()
+    _rev_cache[key] = (m, v)
+    return v
+
+
+def revisions(who=None, projects=None):
+    """Every token a view watches, cheap enough to ask for every second or two.
+
+    `projects` is what the page actually has open — the notebooks, which are
+    the only things that watch a per-project key. Without it every project
+    pays for every poll, which was affordable while the per-project half was
+    three stats and stopped being when the memory stamp joined them. A client
+    that sends nothing still gets all of them: `bb` and the tests do.
+    """
     names = [d.name for d in WORKSPACE.iterdir()
              if d.is_dir() and not d.name.startswith(".")] \
         if WORKSPACE.is_dir() else []
+    if projects is not None:
+        want = set(projects)
+        names = [n for n in names if n in want]
+    # Read once for the whole request, and only when a notebook is open on
+    # something: with no per-project work to do these are five files nobody
+    # asked about.
+    nb_revs = bug_revs = test_revs = rule_revs = pend_revs = {}
+    if names:
+        nb_revs = _cached(STATE / "todos.json", todo.revisions)
+        bug_revs = _cached(STATE / "bugs.json", bugs.revisions)
+        test_revs = _cached(STATE / "tests.json", testreg.revisions)
+        rule_revs = _cached(STATE / "rules.json", rules.revisions)
+        pend_revs = _cached(STATE / "pending.json", pending.revisions)
     revs = {
         # The container itself. A restart invalidates everything a page holds.
         "boot": boot_id(),
         # One file each, so any write through any path moves the token — the
         # CLI's included, which no in-process counter would catch.
-        "todo": _mtime(STATE / "todos.json"),
-        "bugs": _mtime(STATE / "bugs.json"),
         "findings": _mtime(STATE / "findings-log.json"),
         "reports": reports_mtime(),
         # In memory, free to read.
@@ -3097,6 +3114,28 @@ def revisions():
         # rather than the next time you happen to touch the tab. A stat, not
         # a git call.
         revs[f"git:{n}"] = _mtime(WORKSPACE / n / ".git" / "logs" / "HEAD")
+        # The notebook's six halves. COUNTERS, not mtimes, and that is the
+        # whole of why this is not three more stats: each of these panels
+        # holds the number it last read, so it can tell somebody else's write
+        # from the echo of its own — an mtime cannot, and a redraw a panel did
+        # not need detaches the send box or the half-typed row under the
+        # finger that opened it. testreg is the sharpest case: describing ONE
+        # test deliberately does not move its counter, where writing the file
+        # obviously moves its mtime.
+        #
+        # The memories are the one thing here that is not a file in the state
+        # directory: they are files in an ACCOUNT's home, so that stamp is a
+        # glob of one directory. Which is what `projects` is for — one open
+        # notebook's worth rather than the whole share's, every second and a
+        # half. home_for is memoised, so none of this shells out.
+        revs[f"todo:{n}"] = (nb_revs.get(n) or {}).get("todo", 0)
+        revs[f"bug:{n}"] = bug_revs.get(n, 0)
+        revs[f"tests:{n}"] = test_revs.get(n, 0)
+        revs[f"rules:{n}"] = rule_revs.get(n, 0)
+        revs[f"pending:{n}"] = pend_revs.get(n, 0)
+        if who is not None:
+            revs[f"mem:{n}"] = memory.census(
+                n, home=home_for(users.uid_of(who)))["rev"]
     revs["vpolicy"] = _mtime(STATE / "versions.json")
     revs["prefs"] = _mtime(STATE / "claude-prefs.json")
     # The Settings tab's store (R29): a save has to reach the next poll, and
@@ -3958,8 +3997,19 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/revs"):
             # Deliberately tiny and deliberately cheap: this is polled every
             # second or two, where /api/status is polled every fifteen because
-            # it runs git for every project.
-            return self._json(revisions())
+            # it runs git for every project. `p` is the projects the page has
+            # notebooks open on, so the per-project half is one project's work
+            # rather than the whole share's.
+            # Absent and empty are different answers: a page with no notebook
+            # open sends `p=` and wants none of the per-project tokens, where
+            # `bb` and the tests send no `p` at all and want them all.
+            # keep_blank_values, or `p=` parses to nothing at all and reads
+            # as the absent case — which is the opposite answer.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2],
+                                      keep_blank_values=True)
+            raw = q.get("p")
+            ps = None if raw is None else [x for x in (raw[0] or "").split(",") if x]
+            return self._json(revisions(self._who(), ps))
         if self.path.startswith("/api/status"):
             return self._json(snapshot(self._who()))
         if self.path.startswith("/api/findings"):

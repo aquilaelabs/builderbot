@@ -178,7 +178,7 @@ const held = await page.evaluate(() => {
   const box = document.querySelector('.doc .pkg:not(.img) input[value="swift"]');
   const out = { checked: box.checked, ghosted: box.disabled };
   pkgTicked.delete('swift');
-  packages.job = saved; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
+  packages.job = saved; pkgRev++; drawPanes();
   return out;
 });
 ok(held.checked && held.ghosted,
@@ -204,7 +204,6 @@ const during = (job) => page.evaluate(j => {
                 bin: !!row.querySelector('[data-rm]'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
-  clearTimeout(pkgPoll);      // the fake state must not outlive this check
   return out;
 }, job);
 
@@ -240,7 +239,7 @@ const dots = await page.evaluate(async () => {
   pkgRev++; drawPanes();                      // a redraw, mid-animation
   const after = read();
   packages.job = saved; pkgRev++; drawPanes();
-  clearTimeout(pkgPoll); clearInterval(pkgDotsTimer); pkgDotsTimer = null;
+  clearInterval(pkgDotsTimer); pkgDotsTimer = null;
   return { first, later, after };
 });
 ok(dots.later !== dots.first && dots.after === dots.later,
@@ -420,7 +419,7 @@ const checking = await page.evaluate(() => {
   const was = packages.job.action;
   packages.job.action = 'check'; pkgRev++; drawPanes();
   const t = document.querySelector('.doc [data-pkg="check"]').textContent;
-  packages.job.action = was; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
+  packages.job.action = was; pkgRev++; drawPanes();
   return t;
 });
 ok(/^Checking for updates/.test(checking),

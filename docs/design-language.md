@@ -263,6 +263,49 @@ each row sizes its bar to whatever its own number leaves it, the long
 values shorten their bars, and the stack reads as a ragged edge instead of
 a comparison. `uniform.mjs` measures every stack on every tab for this.
 
+## When a view re-reads
+
+Three ways a view changes, and each has one answer.
+
+**Something the person just pressed** is redrawn by the handler that sent it,
+from the answer it got back. Nobody waits on a clock for a button they are
+looking at.
+
+**Something that arrived from elsewhere** is the revisions poll:
+`/api/revs` every second and a half, which is stats and in-memory counters
+and nothing that shells out. A view says what it depends on with
+`onRev(key, fn)` and never decides when to re-read; the server publishes a
+token for everything a view watches, and every token it publishes is
+watched. `test/revs.mjs` holds those two sets equal, in both directions,
+because the failure is silent: a page that waits is not wrong, only late,
+so nothing else goes red. The keys a notebook watches are per project and
+the page asks for its open ones by name, so a project nobody has open costs
+nothing.
+
+**A token is a counter where a panel can lose work, and an mtime otherwise.**
+A panel that stages (the roadmap, the memory editor, a test's description)
+holds the number it last read and compares, so it can tell somebody else's
+write from the echo of its own; an mtime cannot make that distinction, and a
+redraw a panel did not need detaches the send box or the half-typed row under
+the finger that opened it. The same panel ignores the poll while a write of
+its own is out, and asks again when it lands: the token moves when the server
+takes the write and the panel's number moves when the answer gets back, so a
+poll arriving in between would read the panel's own words as somebody
+else's.
+
+**Everything else is `/api/status`, every fifteen seconds**, and it carries
+only what nothing cheaper can answer: the branch, the sessions, the image,
+the doctor. A revision does not belong on it.
+
+**A timer of a view's own is for watching something in flight, never for
+noticing a change.** Noticing is the revisions poll's job, always. The
+Packages tab is the one that keeps a timer, and only while a job is running:
+an install of a small package starts and finishes inside one revision poll,
+so the tab would go from idle to done having never said "installing". It
+stops when the job does. Anything else with a clock of its own is a tab that
+notices things sooner than the tab beside it for no reason anybody chose,
+which is what this whole section is against.
+
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their

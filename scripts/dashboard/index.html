@@ -8520,20 +8520,23 @@ function renderPackagesInto(i){
       pkgAct("remove", [name]);
   });
 
-  // Poll only while something is running: this list is a filesystem walk, not
-  // something to ask for every two seconds forever.
+  // No idle clock. Everything this tab draws that can move while nothing is
+  // happening — the daily version check, a package installed from a
+  // terminal, the image index landing — is in the `packages` token now, and
+  // the revisions poll asks for that every second and a half along with the
+  // rest of the page. The eight-second timer that used to cover it was one
+  // tab noticing things sooner than the tab beside it for no reason anybody
+  // chose.
+  //
+  // What survives is the SAMPLE, and it is a different thing from noticing a
+  // change: while a job is actually running this tab is watching an operation
+  // in flight, and a job on a small package starts and finishes inside one
+  // revision poll — the tab would go from idle to done having never said
+  // "installing". Half a second is how often that is worth looking at, and it
+  // stops the moment the job does.
   clearTimeout(pkgPoll);
-  // Kept looking at, even when nothing is happening: the version check runs
-  // by itself once a day, and a tab that only polled during a job it started
-  // never learned about one it did not — so the buttons stayed live and a
-  // click earned "a version check is running" instead of being ghosted out of
-  // the way. The idle rate is slow because the answer rarely changes; the busy
-  // one is quick because the job's own state is what it is showing. Either way
-  // the request is a cached dict, and it stops when the tab is not on screen:
-  // nothing reschedules it but a draw.
-  // ...and faster than usual while the image index is still being read, so
-  // the picker appears when it lands rather than up to eight seconds later.
-  pkgPoll = setTimeout(loadPackages, busy ? 500 : d.images_loading ? 1000 : 8000);
+  if (busy || d.images_loading)
+    pkgPoll = setTimeout(loadPackages, busy ? 500 : 1000);
   // The ellipsis animates for the index read too, not only for a job.
   const ticking = busy || d.images_loading;
   if (ticking && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
@@ -9752,7 +9755,10 @@ async function reallySend(){
   startClaude(proj, null);      // opens the tab, or goes to the one that is there
 }
 
-async function postTodo(body, quiet){
+// Wrapped so the poll can tell this panel's own write from somebody
+// else's while it is still out. See nbWriting.
+async function postTodo(body, quiet){ return writing(() => postTodoDo(body, quiet)); }
+async function postTodoDo(body, quiet){
   try{
     const r = await fetch("/api/todo", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -10281,7 +10287,10 @@ function drawMemClash(){
   };
 }
 
-async function postMemory(body){
+// Wrapped so the poll can tell this panel's own write from somebody
+// else's while it is still out. See nbWriting.
+async function postMemory(body){ return writing(() => postMemoryDo(body)); }
+async function postMemoryDo(body){
   if (nbHeld() && body.action !== "history"){
     notify("a session is part-way through changing this notebook — "
            + "check the banner at the top", true);
@@ -10968,25 +10977,98 @@ $("todoRevert").onclick = revertNotebook;
   // acted on while the view in question is actually on screen — a token
   // moving for a tab nobody is looking at is not worth a fetch.
   const showing = v => !root.querySelector(`[data-view="${v}"]`).hidden;
-  onRev(() => `dist:${project}`, () => {
+  // A write of this panel's own, still out on the wire.
+  //
+  // The token moves when the SERVER takes the write; the number this panel
+  // compares against moves when the ANSWER gets back. A poll landing between
+  // the two reads this panel's own write as somebody else's and re-reads the
+  // list — which detaches whatever inline box is open under the finger that
+  // opened it. The window is a few tens of milliseconds against a poll every
+  // second and a half, so it is about one edit in thirty: rare enough to look
+  // like a glitch and common enough to meet.
+  //
+  // Counted, because several can be out at once, and answered rather than
+  // dropped: when the last one lands the same questions are asked again, so
+  // a change somebody else made during the write is late by a moment instead
+  // of lost until the next one.
+  let nbWriting = 0;
+  const writing = async fn => {
+    nbWriting++;
+    try { return await fn(); }
+    finally { if (!--nbWriting) for (const [key, news, read] of HALVES){
+                const k = key(); if (news(k)) read(); } }
+  };
+  // Every watch this notebook takes, so destroy() can put them all down
+  // again. A closed notebook that goes on watching goes on fetching: its
+  // root is detached, not gone, and `showing` reads .hidden off it happily.
+  const unwatch = [];
+  const watch = (k, fn) => unwatch.push(onRev(k, fn));
+  watch(() => `dist:${project}`, () => {
     if (showing("artifacts")){ loadArtifacts(); loadVersion(); }
   });
   // A session bumping while this tab is open, and the policy changing from
   // anywhere else. Both are file mtimes on the server — neither costs a git
   // call to notice.
-  onRev(() => `ver:${project}`, () => { if (showing("artifacts")) loadVersion(); });
-  onRev("vpolicy", () => { if (showing("artifacts")) loadVersion(); });
-  onRev("devapp", () => { if (showing("artifacts")) loadArtifacts(); });
+  watch(() => `ver:${project}`, () => { if (showing("artifacts")) loadVersion(); });
+  watch("vpolicy", () => { if (showing("artifacts")) loadVersion(); });
+  watch("devapp", () => { if (showing("artifacts")) loadArtifacts(); });
   // A commit changes what the dev row says about the build being current,
   // and what the version block computes since the target last moved.
-  onRev(() => `git:${project}`, () => {
+  watch(() => `git:${project}`, () => {
     if (showing("artifacts")){ loadArtifacts(); loadVersion(); }
     if (showing("git")) loadGit();
   });
-  onRev("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
-  onRev("reports", () => { if (showing("analysis")) loadAnalysis(); });
-  onRev("bugs", () => { if (bugs && showing("bugs")) loadBugs(); });
-  onRev("findings", () => { if (showing("analysis")) loadAnalysis(); });
+  watch("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
+  watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
+  watch("findings", () => { if (showing("analysis")) loadAnalysis(); });
+
+  // ---- the notebook's own six halves ---------------------------------------
+  // All six on this poll, which is the whole of what a view is allowed to
+  // wait on. Five of them used to ride a per-project counter on /api/status
+  // instead, so the Bugs tab noticed a session's write in a second and a half
+  // and the Roadmap beside it took fifteen — one tab, two clocks, and nothing
+  // choosing between them.
+  //
+  // Each compares against the number the PANEL last read rather than
+  // reloading on any move, because the token moves for this panel's own write
+  // too, and a redraw it did not need detaches whatever inline box is open —
+  // a send box, a drop confirmation, a half-typed description — under the
+  // finger that opened it. That is also why these are counters on the server
+  // and not file mtimes: an mtime cannot tell the echo from the news.
+  //
+  // The guards are each half's own, and they are not decoration: the roadmap
+  // and the memory editor may be holding work the server has never seen, so
+  // they re-read only with nothing to lose. Bugs, tests and the queue write
+  // through and have nothing to lose by definition.
+  //
+  // Written once as a list — the token, whether a move of it is news for this
+  // panel, and what to re-read — because two things ask these questions: the
+  // poll, and the moment a write of this panel's own settles. They have to
+  // ask the same ones.
+  const HALVES = [
+    [() => `todo:${project}`,
+     k => todoRev !== null && revs[k] > todoRev
+          && !todoPending.length && !clash && !nbHeld(),
+     () => loadTodo(memGen)],
+    [() => `mem:${project}`,
+     k => memRev !== null && revs[k] && revs[k] !== memRev
+          && !memDirty() && !memClash && !nbHeld(),
+     () => loadMemory(memGen)],
+    [() => `bug:${project}`,
+     k => bugs && bugRev !== null && revs[k] !== bugRev,
+     () => loadBugs()],
+    [() => `tests:${project}`,
+     k => tests && testsRev !== null && revs[k] !== testsRev,
+     () => loadTests()],
+    [() => `rules:${project}`,
+     k => ruleData && rulesRev !== null && revs[k] !== rulesRev && !ruleDirty(),
+     () => loadRules()],
+    [() => `pending:${project}`,
+     k => pendRev !== null && revs[k] !== pendRev,
+     () => loadPending()],
+  ];
+  for (const [key, news, read] of HALVES)
+    watch(key, k => { if (!nbWriting && news(k)) read(); });
 
   logPane({btnId: "anaLog", barId: "anaHistBar", paneId: "anaHist",
            title: "Analysis — what the scanner started and stopped saying",
@@ -12113,7 +12195,7 @@ become that version's section when it is created">Changelog${
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
       ruleData = await r.json();
     }catch(e){ ruleData = {error: String(e), rules: []}; }
-    rulesRev = (state?.projects || []).find(x => x.name === project)?.rules_rev ?? rulesRev;
+    rulesRev = revs[`rules:${project}`] ?? rulesRev;
     rulePending = null;
     drawRules();
   }
@@ -12350,11 +12432,14 @@ become that version's section when it is created">Changelog${
       const j = await r.json();
       tests = j.error ? {tests: [], suites: [], error: j.error} : j;
     }catch(e){ tests = {tests: [], suites: [], error: String(e)}; }
-    testsRev = (state?.projects || []).find(x => x.name === project)?.tests_rev ?? testsRev;
+    testsRev = revs[`tests:${project}`] ?? testsRev;
     drawTests();
   }
 
-  async function postTests(body){
+  // Wrapped so the poll can tell this panel's own write from somebody
+  // else's while it is still out. See nbWriting.
+  async function postTests(body){ return writing(() => postTestsDo(body)); }
+  async function postTestsDo(body){
     if (nbHeld()){
       notify("a session is part-way through changing this notebook — "
              + "check the banner at the top", true);
@@ -12624,11 +12709,14 @@ become that version's section when it is created">Changelog${
       bugs = j.error ? {bugs: [], error: j.error} : j;
     }catch(e){ bugs = {bugs: [], error: String(e)}; }
     // Whatever the poll last said is now what this copy reflects.
-    bugRev = (state?.projects || []).find(x => x.name === project)?.bug_rev ?? bugRev;
+    bugRev = revs[`bug:${project}`] ?? bugRev;
     drawBugs();
   }
 
-  async function postBug(body){
+  // Wrapped so the poll can tell this panel's own write from somebody
+  // else's while it is still out. See nbWriting.
+  async function postBug(body){ return writing(() => postBugDo(body)); }
+  async function postBugDo(body){
     // The batch guard reaches here too: a report would survive a session's
     // commit untouched (different file), but "held" has to mean the notebook,
     // or the banner is a lie about its other tabs. Reading is never held.
@@ -12961,6 +13049,9 @@ become that version's section when it is created">Changelog${
       if (j.error) return;
       pendData = j;
     }catch(e){ return; }
+    // ...and the same for the queue: what the poll last said is what this
+    // copy now reflects, so the watch above can tell a later move from it.
+    pendRev = revs[`pending:${project}`] ?? pendRev ?? 0;
     drawPending();
   }
   function drawPending(){
@@ -13043,48 +13134,10 @@ become that version's section when it is created">Changelog${
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== todoSession){ todoSession = now; redrawTodo(); }
-      // A session filed, closed or deleted a bug. The tracker is
-      // write-through on both sides, so there is nothing local to lose and
-      // nothing to ask about — the view simply catches up. Keyed on a
-      // revision from the poll rather than re-fetching the tracker every
-      // fifteen seconds to find out whether it moved.
-      if (bugs && bugRev !== null && p.bug_rev !== bugRev) loadBugs();
-      if (p.bug_rev !== undefined) bugRev = p.bug_rev;
-      // A run ingested from somewhere else — a session's `bb tests ingest`,
-      // or another window. Write-through like the tracker, so there is
-      // nothing staged here to lose by re-reading (roadmap #26).
-      if (tests && testsRev !== null && p.tests_rev !== testsRev) loadTests();
-      // ...and the rules, which only the operator can move — so a change here
-      // is another window of theirs, or `bb rules` reading a file somebody
-      // edited on the box. Never while something is staged: a reload would
-      // take the typing with it.
-      if (ruleData && rulesRev !== null && p.rules_rev !== rulesRev
-          && !ruleDirty()) loadRules();
-      // ...and the approval queue: a session held something, or another
-      // window answered it. Nothing staged here to lose, so unconditional.
-      if (pendRev !== null && p.pending_rev !== pendRev) loadPending();
-      if (p.pending_rev !== undefined) pendRev = p.pending_rev;
-      if (p.tests_rev !== undefined) testsRev = p.tests_rev;
-      // The other two halves, which had no such thing until roadmap #26.
-      // Guarded rather than unconditional, and that guard is the whole
-      // reason they did not have one: the roadmap on screen may be carrying
-      // staged changes the server has never seen, and the memory editor may
-      // be holding an hour of typing. So a re-read happens only with nothing
-      // to lose — and a conflict already on screen is something to lose, it
-      // is a question waiting for an answer.
-      // Greater, not different: a poll whose payload was built before this
-      // panel's own write carries the older number, and reading that as news
-      // would redraw the list on top of the answer just received.
-      if (todoRev !== null && p.todo_rev > todoRev
-          && !todoPending.length && !clash && !nbHeld()) loadTodo(memGen);
-      // The memories' stamp is a count and a newest mtime rather than a
-      // counter — the writer that moves one most often is a session's own
-      // file tools, which increment nothing — so this one can only be
-      // compared for difference. A poll that crosses this panel's own save
-      // therefore costs one extra redraw of a list with nothing typed in it,
-      // which is invisible; the guard that matters is memDirty.
-      if (memRev !== null && p.mem_rev && p.mem_rev !== memRev
-          && !memDirty() && !memClash && !nbHeld()) loadMemory(memGen);
+      // What this notebook re-reads and when is declared once, up where the
+      // watches are taken — nothing here decides it. All six halves are on
+      // the revisions poll; this poll carries only what /api/status alone
+      // knows, which for a notebook is the batch note and who else is in here.
       // A scan re-ran while the Analysis view is up: re-read. The cache was
       // dropped by refresh() when the mtime moved, so this is one fetch.
       if (!root.querySelector('[data-view="analysis"]').hidden
@@ -13095,6 +13148,7 @@ become that version's section when it is created">Changelog${
     escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
     destroy(){
       beat(true);
+      unwatch.forEach(off => off());
       nbViewMemo.keep(project, null);
       notebooks.delete(project);
       root.remove();
@@ -14852,7 +14906,17 @@ let revs = {};
 
 // `key` may be a name or a function returning one, because half of these are
 // per project and the project is not known when the watch is registered.
-function onRev(key, fn){ revWatch.push({key, fn}); }
+//
+// Returns the way to stop watching, and a per-project view MUST use it: a
+// notebook's thirteen watches closed over a root that had been removed from
+// the document, and kept firing — `showing()` reads .hidden off a detached
+// element, which is still false — so every closed notebook went on fetching
+// its artifacts and its version forever, once per token that moved.
+function onRev(key, fn){
+  const w = {key, fn};
+  revWatch.push(w);
+  return () => { const i = revWatch.indexOf(w); if (i >= 0) revWatch.splice(i, 1); };
+}
 
 // The Docker manager follows the same revision every dev-instance control
 // already moved on. Without this it is a snapshot: correct when it loaded and
@@ -14865,7 +14929,13 @@ onRev("devapp", () => {
 async function pollRevs(){
   let now;
   try{
-    const r = await fetch("/api/revs");
+    // Which projects this page has a notebook open on. The per-project
+    // tokens are watched by notebooks and by nothing else, so asking for the
+    // whole share's would be a directory walk per project per second and a
+    // half for panes nobody has open. Always sent, empty included: an absent
+    // `p` means "all of them", which is what `bb` and the tests want.
+    const ps = [...new Set(tabs.filter(t => t.kind === "todo").map(t => t.arg))];
+    const r = await fetch("/api/revs?p=" + encodeURIComponent(ps.join(",")));
     if (!r.ok) return;
     now = await r.json();
   }catch(e){ return; }
@@ -14875,10 +14945,23 @@ async function pollRevs(){
   if (revs.boot && now.boot && revs.boot !== now.boot){ location.reload(); return; }
   const was = revs;
   revs = now;
+  // The first poll of a page has nothing to compare against, so nothing is
+  // news; after that a token APPEARING is, and a token going away is not.
+  //
+  // Both halves of that are cases, not theory. A per-project token appears
+  // when its notebook opens and stops being asked for when it closes, so
+  // treating a disappearance as a change fires a dead notebook's watches,
+  // and treating an appearance as no change loses anything that happened
+  // between the notebook opening and the first poll that named it. Each
+  // watch compares against the number its own panel last read, so a fire it
+  // did not need costs nothing.
+  const first = !Object.keys(was).length;
   for (const w of revWatch){
     const k = typeof w.key === "function" ? w.key() : w.key;
     if (!k) continue;
-    if (was[k] !== undefined && was[k] !== now[k]) { try { w.fn(k); } catch(e){} }
+    if (!first && now[k] !== undefined && was[k] !== now[k]){
+      try { w.fn(k); } catch(e){}
+    }
   }
 }
 
@@ -14937,6 +15020,18 @@ function setBadge(n){
 // Both are facts this card displays and neither is a fact it owns — which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// The controller's own settings, which the tab draws out of `state`: another
+// window saved, or `bb` wrote the file. The server has published this token
+// since the store was built and nothing watched it, so the tab that owns the
+// setting was the one place a change took fifteen seconds to show.
+onRev("settings", () => refresh());
+// The package store: an install or an uninstall finishing, the daily version
+// check, or the image index landing. The tab used to keep a timer of its own
+// for this — half a second while a job ran, eight seconds otherwise — which
+// is a third clock for a fact the poll already carries.
+onRev("packages", () => {
+  if (tabs.some(t => t.kind === "packages")) loadPackages();
+});
 // The node registry moved — a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
 // (docs/nodes.md §13).
