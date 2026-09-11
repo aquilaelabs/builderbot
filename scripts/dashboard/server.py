@@ -2213,6 +2213,20 @@ def claude_launcher_path(project):
     return Path(d) / "builderbot" / f"claude-run-{project}.sh"
 
 
+# The agent build that learned the respawn op. Below it the node drops the op
+# and says nothing, so the controller has to know rather than guess.
+RESPAWN_AGENT = "0.5.44"
+
+
+def _ver(v):
+    """A version as a tuple of ints, for comparing one agent against another.
+    Anything unparseable sorts first, which reads as "too old"."""
+    try:
+        return tuple(int(x) for x in str(v or "").split("."))
+    except ValueError:
+        return ()
+
+
 def respawn_claude(project):
     """Restart a project's Claude session onto the setting just saved.
 
@@ -2224,10 +2238,38 @@ def respawn_claude(project):
     model rather than being replaced by a fresh one.
 
     What is lost is a turn in flight, which is why the dialog asks first.
+
+    A session on a NODE is the same gesture through its agent, and it used to
+    be missed entirely: this looked only at the container's own tmux, so a
+    project whose sessions run on a node was always told "no session is
+    running here" while its row said there was one. The page reads
+    tmux_sessions() + node_tmux_sessions() and this read half of that.
+
+    The node half is asked for rather than done — the op is queued for the
+    agent's held poll — so what comes back says the restart was sent, which
+    is the most that is true from here.
     """
     session = tmux_name("claude-" + project)
     if session not in {s["name"] for s in tmux_sessions()}:
-        return {"restarted": False, "why": "no session is running here"}
+        on_node = next((x for x in node_tmux_sessions()
+                        if x["name"] == session), None)
+        if not on_node:
+            return {"restarted": False, "why": "no session is running here"}
+        # An agent that predates the op would drop it silently and this
+        # would report a restart that never happened, which is the one
+        # outcome worse than not restarting (agent-compat: add a verb, keep
+        # a fallback, and say so when the fallback is what you got).
+        av = (nodes.node(on_node["node_id"]) or {}).get("agent") or {}
+        if _ver(av.get("version")) < _ver(RESPAWN_AGENT):
+            return {"restarted": False,
+                    "why": f"{on_node['node']}'s agent is behind "
+                           f"({av.get('version') or 'unknown'}), so it cannot "
+                           f"restart a session yet. Update it on the Nodes tab."}
+        r = nodes.session_tmux(on_node["node_id"],
+                               [{"session": on_node["node_name"], "respawn": True}])
+        if r.get("error"):
+            return {"restarted": False, "why": r["error"]}
+        return {"restarted": True, "on_node": on_node["node"]}
     launcher = claude_launcher_path(project)
     if not launcher.is_file():
         # Started by an image that predates the self-resolving launcher, or the
