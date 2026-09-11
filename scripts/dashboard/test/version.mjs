@@ -587,6 +587,33 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
   cl('rm', numOf('CATME a later fix'));
   cl('edit', numOf('CATME a fix, moved again'), 'CATME a fix, moved', '--cat', 'Added');
 
+  // A move is not a change, and a pass over the wording is not one either.
+  // An edit normally names the commit that made the change, which is the
+  // whole point of the stamp — so a categorisation pass over a cycle's
+  // entries would otherwise leave every line naming the commit that filed it,
+  // which is a record of nothing.
+  {
+    const shasOf2 = word => ((rows().find(l => l.includes(word)) || '')
+      .match(/[0-9a-f]{7}/g) || []);
+    execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q',
+                         '-m', 'unrelated to any entry'], { env });
+    const had = shasOf2('CATME an addition');
+    ok(cl('edit', numOf('CATME an addition'), '--cat', 'Added').code === 0
+       && /CATME an addition/.test(file()),
+       'an entry moves between categories without the words being retyped');
+    ok(shasOf2('CATME an addition').join() === had.join(),
+       `...and a move on its own claims no commit (${shasOf2('CATME an addition').join(', ')})`);
+    ok(cl('edit', numOf('CATME an addition'), 'CATME an addition, said better',
+          '--no-stamp').code === 0
+       && shasOf2('CATME an addition, said better').join() === had.join(),
+       '...and --no-stamp rewords a line without claiming a commit made it');
+    ok(cl('edit', numOf('CATME an addition, said better'), 'CATME an addition').code === 0
+       && shasOf2('CATME an addition').length === had.length + 1,
+       '...while an ordinary reword still names the commit it was made with');
+    ok(cl('edit', numOf('CATME an addition')).code !== 0,
+       'an edit that neither rewords nor moves is refused, not treated as a blank line');
+  }
+
   ok(cl('add', 'far too specific', '--cat', 'A'.repeat(41)).code !== 0
      && !/far too specific/.test(file()),
      'a category is a word or two: a longer one is refused and nothing is written');

@@ -433,6 +433,7 @@ bb changelog add "…" --cat Fixed   # file it under a category
 bb changelog            # read it; --for DIR for a component's own
 bb changelog unreleased # what is waiting for a bump, numbered, by category
 bb changelog edit 3 "…" # reword entry 3 rather than logging it twice
+bb changelog edit 3 --cat Fixed    # move it, leaving the words alone
 bb changelog merge 2 5 "…"   # one line for several, carrying their commits
 bb changelog split 2    # back into one line per commit it carries
 bb changelog rm 2       # drop one that stopped being true
@@ -462,7 +463,9 @@ line instead of adding one.** Read `bb changelog unreleased` before you log:
 if an entry there already describes the thing you just changed — a fix on a
 fix, a second pass over one feature — `bb changelog edit N "…"` rewords it.
 The line keeps every commit it already carried and gains yours, oldest
-first, so the entry names all the commits that made it. Use your judgment: two lines about
+first, so the entry names all the commits that made it. A correction with no
+commit behind it — a pass over the wording, a move between categories — takes
+`--no-stamp`, or names no new words at all, and then claims nothing. Use your judgment: two lines about
 one change tell the reader about it twice, but a genuinely separate change
 is a new line. Only Unreleased is editable; a dated section is a release
 somebody may have read.

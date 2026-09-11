@@ -369,7 +369,11 @@ bb changelog add "..."   log what a change means for the person using it; the
 bb changelog unreleased  the entries waiting for a bump, numbered straight
                    through the section by category, in the arranged order
 bb changelog edit N "..."  reword one of them — a change that tweaks something
-                   already logged this cycle corrects its line rather than adding one
+                   already logged this cycle corrects its line rather than adding one,
+                   and the line gains that commit. --cat NAME on its own moves it
+                   between categories and leaves the words; --no-stamp corrects a
+                   line without claiming a commit made it, which is what a pass over
+                   the wording is
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true

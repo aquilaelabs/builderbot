@@ -44,7 +44,9 @@ bb — BuilderBot helper
   bb changelog unreleased  the entries waiting for a bump, numbered by
                          category, in the order somebody arranged them
   bb changelog edit N "..."  reword one of them — a change that tweaks something
-                         already logged this cycle corrects its line, not adds one
+                         already logged this cycle corrects its line, not adds one.
+                         --cat NAME on its own moves it and leaves the words;
+                         --no-stamp corrects a line without claiming a commit
   bb changelog merge N M "..."   one line for several, carrying all their commits
   bb changelog split N   back into one line per commit it carries
   bb changelog rm N      drop one that stopped being true
@@ -5413,14 +5415,24 @@ if d is None:
 # reader knows from Keep a Changelog. A new one lands at the END: where a
 # category sits in what a reader meets is an arrangement, and arrangements
 # are the operator's, on the Changelog editor.
-cat = ""
+cat, moving = "", False
 if "--cat" in argv:
     i = argv.index("--cat")
     if i + 1 >= len(argv):
         print("--cat needs a category name", file=sys.stderr)
         raise SystemExit(1)
-    cat = argv[i + 1]
+    cat, moving = argv[i + 1], True
     argv = argv[:i] + argv[i + 2:]
+
+# A line corrected rather than changed. An edit normally names the commit
+# that made the change, which is the point of the stamp; a pass over the
+# wording, or a move between categories, is not a change and must not claim
+# one. 22 entries all naming the commit that reworded them is a record of
+# nothing.
+stamp = True
+if "--no-stamp" in argv:
+    stamp = False
+    argv = [a for a in argv if a != "--no-stamp"]
 
 if argv and argv[0] == "add":
     if len(argv) < 2 or not argv[1].strip():
@@ -5452,17 +5464,21 @@ if argv and argv[0] == "unreleased":
     raise SystemExit(0)
 
 if argv and argv[0] == "edit":
-    if len(argv) < 3 or not argv[2].strip():
-        print('bb changelog edit N "the line as it should read now" [--for DIR]',
+    words = argv[2] if len(argv) > 2 else None
+    if len(argv) < 2 or (words is None and not moving) or (words is not None and not words.strip()):
+        print('bb changelog edit N "the line as it should read now" [--cat NAME]\n'
+              "bb changelog edit N --cat NAME        move it, leaving the words alone",
               file=sys.stderr)
         raise SystemExit(1)
-    sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
-    r = changelog.edit(d, argv[1], argv[2], sha=sha,
-                       cat=cat or None)
+    # Nothing is claimed for a move on its own: the entry says what it said.
+    sha = ""
+    if stamp and words is not None:
+        sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
+    r = changelog.edit(d, argv[1], words, sha=sha, cat=cat if moving else None)
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
-    print(f"reworded unreleased entry {r['n']}")
+    print(("reworded" if words is not None else "moved") + f" unreleased entry {r['n']}")
     raise SystemExit(0)
 
 if argv and argv[0] == "merge":
@@ -5504,7 +5520,9 @@ if argv:
     print("bb changelog [--for DIR]         read it\n"
           'bb changelog add "..." [--cat NAME]  log a user-facing change\n'
           "bb changelog unreleased          the entries waiting for a bump, numbered\n"
-          'bb changelog edit N "..."        reword one of them; --cat moves it\n'
+          'bb changelog edit N "..."        reword one of them; --cat NAME moves it,\n'
+          "                                 and on its own moves it without rewording\n"
+          "                                 (--no-stamp: a correction, not a change)\n"
           'bb changelog merge N M "..."     one line for several, carrying their commits\n'
           "bb changelog split N             back into one line per commit\n"
           "bb changelog rm N                drop one that stopped being true\n"

@@ -327,23 +327,32 @@ def _pick(rows, ns):
     return want
 
 
-def edit(d, n, text, sha="", cat=None):
-    """Reword Unreleased entry n, for a change that tweaks something already
-    logged this cycle: a second line about the same thing tells the reader
-    about one change twice, and the honest record is one line that is right.
+def edit(d, n, text=None, sha="", cat=None):
+    """Reword Unreleased entry n, move it between categories, or both.
 
-    The stamp the entry had stays and this commit's joins it, so "when did
-    that change" still answers for both. `cat` moves it as well, or leaves it
-    where it is when None. Only Unreleased is editable — a dated section is a
-    release somebody may have read.
+    The reword is for a change that tweaks something already logged this
+    cycle: a second line about the same thing tells the reader about one
+    change twice, and the honest record is one line that is right. The stamp
+    the entry had stays and this commit's joins it, so "when did that change"
+    still answers for both.
+
+    `text` of None keeps the words — for a move, where retyping the whole
+    line to change where it sits is a typo waiting to silently rewrite it.
+    `cat` of None keeps the category. A caller that passes neither a sha nor
+    new words changes nothing about what the entry says, and nothing should
+    then be claiming to have caused it.
+
+    Only Unreleased is editable: a dated section is a release somebody may
+    have read.
     """
     def go(rows):
         [i] = _pick(rows, [n])
-        was_cat, _, shas = rows[i]
+        was_cat, was_text, shas = rows[i]
         if sha and sha not in shas:
             shas = shas + [sha]
         to = was_cat if cat is None else _clean_name(cat)
-        return rows[:i] + [(to, _clean_text(text), shas)] + rows[i + 1:]
+        words = was_text if text is None else _clean_text(text)
+        return rows[:i] + [(to, words, shas)] + rows[i + 1:]
     r = _apply(d, go)
     if not r.get("error"):
         r["n"] = int(n)
