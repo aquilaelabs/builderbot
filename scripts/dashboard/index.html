@@ -11693,6 +11693,8 @@ project can have several"
                 : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")} — a push is web-ext beside the phone's adb, so install it there`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
+            ${a.view ? `<button type="button" data-artview="${i}"
+                title="read it here, without downloading it">View</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
           </span>
@@ -11725,6 +11727,21 @@ project can have several"
       const a = rows[Number(b.dataset.artinstall)];
       b.disabled = true;
       await postArtifacts({action: "install", path: a.path});
+    });
+    // A shipped script is a thing people read before they run it, and on a
+    // phone a download is the end of that. Over the panel like a History, the
+    // text as it is — nothing here runs it, and the tab has no way to.
+    list.querySelectorAll("[data-artview]").forEach(b => b.onclick = async () => {
+      const a = rows[Number(b.dataset.artview)];
+      const pane = document.createElement("div");
+      pane.className = "verlogpane";
+      openSheet(a.name, [pane]);
+      pane.textContent = "loading…";
+      try{
+        const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
+                              }&path=${encodeURIComponent(a.path)}`);
+        pane.textContent = r.ok ? await r.text() : `could not read ${a.name}`;
+      }catch(e){ pane.textContent = String(e); }
     });
     const stop = $("artStop");
     if (stop) stop.onclick = () => postArtifacts({action: "stop"});

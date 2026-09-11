@@ -2,28 +2,39 @@
 
 ## Unreleased
 
-- BuilderBot is 0.5.0: the compatibility window moves, so a node's agent and every project's CLAUDE.md block need updating once, and everything kept for the old window is gone (dbf8170)
+### Upgrading
+
+- A minor version moves the compatibility window: every project's CLAUDE.md block needs its one-line update, and a project on a node needs that node's agent updated too, before sessions will start there again (dbf8170)
+
+### Added
+
+- The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
+- Changelog on the Artifacts tab is now an editor: group the unreleased lines into categories, reorder them, reword, merge, split or drop them. A release's dated section is left as the record it is (e37b5e0)
+- A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
+
+### Changed
+
+- The Jobs tab shows a page at a time like every other long list, instead of every job ever run (c4352fc)
+- A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
+- Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
+- Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
+- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words, and bb status says whether it is running on the controller or on a node (016a5d3)
+- The About popup's changelog now shows what is unreleased and the current minor version's releases, saying how many earlier ones are in the full file, instead of the whole project history (7fb7d0d)
+
+### Fixed
+
 - Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
-- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it (de06bb3)
-- The deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
+- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it, the deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
 - Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
-- The Jobs tab shows a page at a time like every other long list, instead of every job ever run (c4352fc)
-- A version bump now moves everything the version is stamped in, in one commit, or refuses (c4352fc)
 - A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
-- Taking a version bump back now returns everything the bump moved, not just the number (9fa9428)
-- Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
-- Changes made elsewhere show up on the tab you are looking at within a second or two, wherever they came from: the roadmap, memories, rules, the approval queue and the test registry used to take up to fifteen, and controller settings changed in another window took the same (fd9fe96)
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
-- A session whose project could not be marked as trusted now says so in its terminal, instead of quietly asking permission for every command and forgetting every answer you give it (594f766)
-- The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
+- A project that had not been trusted yet is now marked trusted and says so in the terminal, naming the restart the session running there needs before it stops asking permission for every command (594f766)
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
-- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words, and bb status says whether it is running on the controller or on a node (016a5d3)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
-- The changelog is now something you can shape: Changelog on the Artifacts tab opens an editor where the unreleased lines can be grouped into categories, reordered, reworded, merged, split or dropped, and a release's dated section is left as the record it is (e37b5e0)
-- The About popup's changelog now shows what is unreleased and the current minor version's releases, saying how many earlier ones are in the full file, instead of the whole project history (7fb7d0d)
+- Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
 
 ## 0.5.0 — 2026-09-10
 

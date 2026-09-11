@@ -11,9 +11,16 @@ tells it so. An empty tab on a project that builds things means the copy
 step is missing, and the tab says exactly that rather than guessing.
 
 Kinds are by extension, and the kind is what decides the actions offered:
-everything can be downloaded, and an .xpi can additionally be pushed to the
+everything can be downloaded, an .xpi can additionally be pushed to the
 paired phone — unpacked into a scratch directory and handed to web-ext, since
-an XPI is a zip of exactly the source layout web-ext runs.
+an XPI is a zip of exactly the source layout web-ext runs — and a script can
+be read without leaving the tab.
+
+A script is the one kind that cannot be settled by extension alone: a shipped
+shell installer is as often `dist/install` as `dist/install.sh`, and the thing
+that actually says so is the shebang on its first line. So a file whose
+extension this module does not know is opened and its first two bytes read.
+Nothing is executed from here, ever: the tab downloads and it reads.
 """
 import io
 import os
@@ -34,7 +41,13 @@ KINDS = {
     ".apk": "apk", ".aab": "aab", ".xpi": "xpi",
     ".ipa": "ipa", ".deb": "deb", ".rpm": "rpm",
     ".exe": "exe", ".msi": "msi", ".dmg": "dmg", ".appimage": "appimage",
+    ".sh": "script", ".bash": "script", ".zsh": "script", ".ps1": "script",
 }
+
+# How much of a script the View control will show. A shipped installer is a
+# few tens of kilobytes; past this it is a build output somebody should
+# download, and holding a megabyte of text in a sheet helps nobody.
+MAX_VIEW = 256 * 1024
 
 # How deep inside dist/ to look. Two levels allows dist/android/app.apk
 # without inviting a build tree to be symlinked in whole.
@@ -69,14 +82,34 @@ def listing(project):
                 st = p.stat()
             except OSError:
                 continue
+            kind = KINDS.get(p.suffix.lower()) or _sniff(p)
             out.append({
                 "path": str(p.relative_to(WORKSPACE / project)),
                 "name": p.name,
-                "kind": KINDS.get(p.suffix.lower(), "file"),
+                "kind": kind,
+                # What the row may offer beyond Download. Sent rather than
+                # derived in the page, so the one place that decides what a
+                # file IS is also the place that decides what can be done
+                # with it.
+                "view": kind == "script" and st.st_size <= MAX_VIEW,
                 "size": st.st_size,
                 "at": int(st.st_mtime),
             })
     return sorted(out, key=lambda a: -a["at"])
+
+
+def _sniff(p):
+    """"script" for a file that starts with a shebang, else "file".
+
+    Only reached for an extension KINDS does not know, so an .apk is never
+    opened to be asked what it is. Two bytes: this runs once per file in
+    dist/ on every listing, and a listing is on a poll.
+    """
+    try:
+        with open(p, "rb") as fh:
+            return "script" if fh.read(2) == b"#!" else "file"
+    except OSError:
+        return "file"
 
 
 def resolve(project, rel):

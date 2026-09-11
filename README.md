@@ -369,7 +369,13 @@ bb changelog add "..."   log what a change means for the person using it; the
 bb changelog unreleased  the entries waiting for a bump, numbered straight
                    through the section by category, in the arranged order
 bb changelog edit N "..."  reword one of them — a change that tweaks something
-                   already logged this cycle corrects its line rather than adding one
+                   already logged this cycle corrects its line rather than adding one,
+                   and the line gains that commit. --cat NAME on its own moves it
+                   and leaves the words, filing it at the end of that category the
+                   way add --cat does — so re-filing a line into its own category
+                   sends it to the bottom, which is the ordering a session has.
+                   --no-stamp corrects a line without claiming a commit made it,
+                   which is what a pass over the wording is
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true
@@ -2344,6 +2350,14 @@ things means the copy step is missing, and it says so.
 
 Each row is labeled by kind — apk, xpi, whatever the extension says — with
 its size and age, newest first. Everything can be **downloaded**.
+
+A **script** is the one kind the extension cannot settle on its own: a shipped
+shell installer is as often `dist/install` as `dist/install.sh`, so a file
+whose extension the list does not know is asked for its first two bytes and a
+shebang makes it a script. Those rows also offer **View**, which reads the
+file over the panel the way a History opens, because a script is a thing
+people read before they run it and a download is the end of that on a phone.
+Nothing runs from the tab, and there is no control that would.
 
 **The dev instance** heads the list, shaped like every other row in it — the
 kind on a pill (`docker`, where a file says `apk` or `xpi`), the compose

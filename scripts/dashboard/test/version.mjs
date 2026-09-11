@@ -567,10 +567,58 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 
   ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
      'an entry moves between categories with --cat');
-  ok(/### Added\n\n- CATME a fix, moved [^\n]*\n- CATME an addition/.test(file()),
-     '...landing where it already was in the running order, not at the end');
+  ok(/### Added\n\n- CATME an addition[^\n]*\n- CATME a fix, moved/.test(file()),
+     '...filed at the end of it, which is where `add --cat` puts one');
   ok(!/### Fixed/.test(file()),
      '...and the category it emptied is gone, not left as a heading with nothing under it');
+
+  // A session filing one entry must not drag a category to the front of
+  // somebody's arrangement. The order used to come off the entries' running
+  // order, so moving a category's FIRST line into a later category pulled
+  // that category up above it.
+  cl('add', 'CATME a later fix', '--cat', 'Fixed');
+  ok(file().indexOf('### Added') < file().indexOf('### Fixed'),
+     'a second category lands after the first, which is the arrangement to protect');
+  cl('edit', numOf('CATME a fix, moved'), 'CATME a fix, moved again', '--cat', 'Fixed');
+  ok(file().indexOf('### Added') < file().indexOf('### Fixed')
+     && /### Fixed\n\n- CATME a later fix[^\n]*\n- CATME a fix, moved again/.test(file()),
+     `...and moving its first line into the second leaves both categories where they were (${
+       (file().match(/^### .*$/gm) || []).join(', ')})`);
+  cl('rm', numOf('CATME a later fix'));
+  cl('edit', numOf('CATME a fix, moved again'), 'CATME a fix, moved', '--cat', 'Added');
+
+  // A move is not a change, and a pass over the wording is not one either.
+  // An edit normally names the commit that made the change, which is the
+  // whole point of the stamp — so a categorisation pass over a cycle's
+  // entries would otherwise leave every line naming the commit that filed it,
+  // which is a record of nothing.
+  {
+    const shasOf2 = word => ((rows().find(l => l.includes(word)) || '')
+      .match(/[0-9a-f]{7}/g) || []);
+    execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q',
+                         '-m', 'unrelated to any entry'], { env });
+    const had = shasOf2('CATME an addition');
+    ok(cl('edit', numOf('CATME an addition'), '--cat', 'Added').code === 0
+       && /CATME an addition/.test(file()),
+       'an entry moves between categories without the words being retyped');
+    ok(shasOf2('CATME an addition').join() === had.join(),
+       `...and a move on its own claims no commit (${shasOf2('CATME an addition').join(', ')})`);
+    ok(cl('edit', numOf('CATME an addition'), 'CATME an addition, said better',
+          '--no-stamp').code === 0
+       && shasOf2('CATME an addition, said better').join() === had.join(),
+       '...and --no-stamp rewords a line without claiming a commit made it');
+    ok(cl('edit', numOf('CATME an addition, said better'), 'CATME an addition').code === 0
+       && shasOf2('CATME an addition').length === had.length + 1,
+       '...while an ordinary reword still names the commit it was made with');
+    ok(cl('edit', numOf('CATME an addition')).code !== 0,
+       'an edit that neither rewords nor moves is refused, not treated as a blank line');
+    // Which gives a session the one ordering gesture it has: re-filing a line
+    // into the category it is already in sends it to the bottom of that
+    // category, so a pass can put a cycle's entries in a deliberate order.
+    ok(cl('edit', numOf('CATME a fix, moved'), '--cat', 'Added').code === 0
+       && /- CATME an addition[^\n]*\n- CATME a fix, moved/.test(file()),
+       're-filing a line into its own category sends it to the bottom of that category');
+  }
 
   ok(cl('add', 'far too specific', '--cat', 'A'.repeat(41)).code !== 0
      && !/far too specific/.test(file()),

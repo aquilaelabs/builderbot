@@ -15,6 +15,16 @@ mkdirSync(`${DIR}/ws/alpha/dist/.provenance/android`, { recursive: true });
 writeFileSync(`${DIR}/ws/alpha/dist/.provenance/android/streamlift-1.2.apk.json`, JSON.stringify({
   job: 'j_fixture1', node: 'n_fixture', source: { digest: 'sha256:' + 'ab'.repeat(32) },
   sha256: 'cd'.repeat(32), size: 17 }));
+// ...and two shell scripts, which is a product like any other: one named
+// .sh, one named the way a shipped installer usually is — no extension, a
+// shebang on the first line, which is the only thing that says what it is.
+writeFileSync(`${DIR}/ws/alpha/dist/setup-1.2.sh`,
+  '#!/usr/bin/env bash\nset -euo pipefail\necho "setting up"\n');
+writeFileSync(`${DIR}/ws/alpha/dist/install`,
+  '#!/bin/sh\necho "no extension, still a script"\n');
+// A binary with an extension this list does not know must NOT be sniffed
+// into a script, and must not offer to be read as text.
+writeFileSync(`${DIR}/ws/alpha/dist/firmware.bin`, Buffer.from([0, 1, 2, 3, 4]));
 const stage = `${DIR}/xpi-stage`;
 mkdirSync(stage, { recursive: true });
 writeFileSync(`${stage}/manifest.json`,
@@ -66,6 +76,44 @@ ok(acts.find(a => a.name === 'streamlift-1.2.apk').install
    && !acts.find(a => a.name === 'companion-0.2.0.xpi').install,
    'Install is offered for the APK and not for the extension');
 ok(acts.every(a => a.dl), '...and everything can be downloaded');
+
+// ---- a script is a product, and one people read before they run it ---------
+{
+  const arts = await page.evaluate(async () =>
+    (await (await fetch('/api/artifacts?project=alpha')).json()).artifacts);
+  const kind = n => arts.find(a => a.name === n)?.kind;
+  ok(kind('setup-1.2.sh') === 'script',
+     `a .sh in dist/ is a script, not an unlabelled file (${kind('setup-1.2.sh')})`);
+  ok(kind('install') === 'script',
+     `...and so is a shipped installer with no extension, by its shebang (${kind('install')})`);
+  ok(kind('firmware.bin') === 'file',
+     `...while a binary is left alone (${kind('firmware.bin')})`);
+  const viewable = await page.$$eval('.artrow:not(.job)', rs => rs.map(r => ({
+    name: r.querySelector('b')?.textContent,
+    view: !!r.querySelector('[data-artview]') })));
+  ok(viewable.find(a => a.name === 'setup-1.2.sh').view
+     && viewable.find(a => a.name === 'install').view
+     && !viewable.find(a => a.name === 'streamlift-1.2.apk').view
+     && !viewable.find(a => a.name === 'firmware.bin').view,
+     `View is offered on the scripts and on nothing else (${
+       viewable.filter(a => a.view).map(a => a.name).join(', ')})`);
+  // Read over the panel, the way a History is, with the file's own line
+  // breaks. Nothing here runs it and the tab has no way to.
+  await page.click('.artrow:has(b:text-is("setup-1.2.sh")) [data-artview]');
+  await page.waitForFunction(
+    () => /setting up/.test(document.querySelector('.nb #sheetSlot')?.textContent || ''),
+    null, { timeout: 15000 });
+  const sheet = await page.$eval('.nb .nbsheet', e => ({
+    title: e.querySelector('#sheetTitle').textContent,
+    text: e.querySelector('#sheetSlot').textContent,
+    run: !!e.querySelector('button[data-artrun], button[data-run]') }));
+  ok(sheet.title === 'setup-1.2.sh' && /#!\/usr\/bin\/env bash/.test(sheet.text)
+     && /set -euo pipefail/.test(sheet.text) && !sheet.run,
+     `...and View reads it over the panel, shebang and all, with nothing offering to run it (${
+       JSON.stringify(sheet.text.slice(0, 40))})`);
+  await page.click('.nb #sheetClose');
+  await page.waitForSelector('.nb .nbsheet', { state: 'hidden' });
+}
 
 // ---- the download, and what it refuses -------------------------------------
 const get = p => page.evaluate(async u => {

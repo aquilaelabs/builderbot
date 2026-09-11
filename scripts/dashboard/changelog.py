@@ -272,10 +272,21 @@ def _flat(d):
     return [(c, t, sh) for _, t, sh, c in numbered(d)]
 
 
-def _regroup(rows):
-    """Back to the group shape, keeping each category's first appearance as
-    its place — the file's order, which is the arrangement somebody chose."""
+def _regroup(rows, order=()):
+    """Back to the group shape, with the categories in `order` — the
+    arrangement already in the file — and any category new to it appended.
+
+    Taking the order from the rows instead put a category wherever its
+    earliest entry happened to sit, so a session moving one line into an
+    existing category dragged that whole category to the front of somebody
+    else's arrangement. A new category still lands at the end, which is what
+    `add --cat` does and for the same reason: where a category sits is not a
+    session's call.
+    """
     out, at = [], {}
+    for name in order:
+        at[name] = {"name": name, "entries": []}
+        out.append(at[name])
     for cat, text, shas in rows:
         if cat not in at:
             at[cat] = {"name": cat, "entries": []}
@@ -285,9 +296,11 @@ def _regroup(rows):
 
 
 def _apply(d, change):
-    """Run `change` over the flat rows and write the result."""
+    """Run `change` over the flat rows and write the result, keeping the
+    categories where the file already had them."""
+    order = [g["name"] for g in groups(d)]
     try:
-        return put(d, _regroup(change(_flat(d))))
+        return put(d, _regroup(change(_flat(d)), order))
     except _Refused as e:
         return {"error": str(e)}
 
@@ -314,23 +327,43 @@ def _pick(rows, ns):
     return want
 
 
-def edit(d, n, text, sha="", cat=None):
-    """Reword Unreleased entry n, for a change that tweaks something already
-    logged this cycle: a second line about the same thing tells the reader
-    about one change twice, and the honest record is one line that is right.
+def edit(d, n, text=None, sha="", cat=None):
+    """Reword Unreleased entry n, move it between categories, or both.
 
-    The stamp the entry had stays and this commit's joins it, so "when did
-    that change" still answers for both. `cat` moves it as well, or leaves it
-    where it is when None. Only Unreleased is editable — a dated section is a
-    release somebody may have read.
+    The reword is for a change that tweaks something already logged this
+    cycle: a second line about the same thing tells the reader about one
+    change twice, and the honest record is one line that is right. The stamp
+    the entry had stays and this commit's joins it, so "when did that change"
+    still answers for both.
+
+    `text` of None keeps the words — for a move, where retyping the whole
+    line to change where it sits is a typo waiting to silently rewrite it.
+    `cat` of None keeps the category. A caller that passes neither a sha nor
+    new words changes nothing about what the entry says, and nothing should
+    then be claiming to have caused it.
+
+    A move files the entry at the END of the named category, which is where
+    `add --cat` puts one. The two used to disagree: a move kept the line's
+    running position, and an uncategorised line's position is the top of the
+    section, so filing a cycle's entries one at a time stacked each category
+    up backwards. Same gesture, same place, either way.
+
+    Only Unreleased is editable: a dated section is a release somebody may
+    have read.
     """
     def go(rows):
         [i] = _pick(rows, [n])
-        was_cat, _, shas = rows[i]
+        was_cat, was_text, shas = rows[i]
         if sha and sha not in shas:
             shas = shas + [sha]
-        to = was_cat if cat is None else _clean_name(cat)
-        return rows[:i] + [(to, _clean_text(text), shas)] + rows[i + 1:]
+        words = was_text if text is None else _clean_text(text)
+        if cat is None:
+            return rows[:i] + [(was_cat, words, shas)] + rows[i + 1:]
+        to = _clean_name(cat)
+        rest = rows[:i] + rows[i + 1:]
+        last = max((j for j, r in enumerate(rest) if r[0] == to), default=None)
+        at = len(rest) if last is None else last + 1
+        return rest[:at] + [(to, words, shas)] + rest[at:]
     r = _apply(d, go)
     if not r.get("error"):
         r["n"] = int(n)
