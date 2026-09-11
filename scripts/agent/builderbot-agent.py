@@ -92,7 +92,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.43"
+AGENT_VERSION = "0.5.44"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2908,10 +2908,11 @@ class Agent:
         """Keys into a session here, as the dashboard sends them into its
         own tmux (server._keys, _say, _send). Only send-keys and copy-mode,
         only at a session by exact name: the controller composed the
-        argv, and this node still decides what it will run. `page` is the
-        one decision made here — PgUp at a prompt enters copy mode, inside
-        a full-screen program it is the program's key — because the pane's
-        state is only visible on this side."""
+        argv, and this node still decides what it will run. `page` and
+        `respawn` are the two decisions made here — PgUp at a prompt enters
+        copy mode where inside a full-screen program it is the program's key,
+        and a respawn has to find the launcher — because both depend on
+        something only this side can see."""
         for op in ops[:16]:
             if not isinstance(op, dict):
                 continue
@@ -2933,6 +2934,26 @@ class Agent:
                     argv = ["send-keys", "-t", sess, "-X", "page-down"] if mode == "1" \
                         else ["send-keys", "-t", sess, "NPage"]
                 self._tmux(argv)
+                continue
+            # Restart this session's own process onto its launcher, which is
+            # what the dashboard asks for when a project's model, effort or
+            # permission rung changes. `-k` replaces the pane's process and
+            # keeps the tmux session, so every browser attached to it stays
+            # where it is; `--respawn` tells the launcher to resume the newest
+            # transcript, so the conversation continues rather than restarting.
+            #
+            # The launcher's PATH is read off the pane rather than composed
+            # here. On a node the session belongs to one of several accounts
+            # and the file is in that account's home, which this side would
+            # have to reconstruct — while tmux already knows, because bb-tty
+            # starts the pane on that script and nothing else. Hence the
+            # claude-run- name, and hence checking it before running it: the
+            # controller asked for a respawn, it did not say what to execute.
+            if op.get("respawn"):
+                cmd = (self._tmux(["display-message", "-p", "-t", sess,
+                                   "#{pane_start_command}"]) or "").strip()
+                if re.fullmatch(r"\S*/builderbot/claude-run-[^/\s]+\.sh", cmd):
+                    self._tmux(["respawn-pane", "-k", "-t", sess, cmd, "--respawn"])
                 continue
             argv = [str(a) for a in (op.get("argv") or [])][:12]
             if argv[:1] not in (["send-keys"], ["copy-mode"]) or "-t" not in argv:
