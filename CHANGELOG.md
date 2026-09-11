@@ -13,6 +13,7 @@
 - Changelog on the Artifacts tab is now an editor: group the unreleased lines into categories, reorder them, reword, merge, split or drop them. A release's dated section is left as the record it is (e37b5e0)
 - A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
+- bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 
 ### Changed
 
@@ -26,6 +27,7 @@
 - Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
 - The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
 - A node holds no Claude login until you send it one from its row and type your password: enrolling a machine no longer hands it an OAuth grant with your refresh token in it, and taking it back is the same gesture (afef9cd)
+- Signing out of Claude signs out every node holding that login, and one that is offline signs itself out when it reconnects. One Anthropic account per BuilderBot account: a second signed in on a node is refused rather than propagated (815d40e)
 
 ### Fixed
 

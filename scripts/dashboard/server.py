@@ -2537,6 +2537,18 @@ def claude_auth(fresh=False, home=""):
 
 
 def _read_auth(home=""):
+    # The GRANT is the answer, not `claude auth status`. Signing out deletes
+    # the credential and moves the generation; asking the binary would still
+    # say signed in, because the binary reads a file that is no longer there
+    # only once it is next run — and on a controller that carries no Claude
+    # there is no binary to ask at all. What the account is signed in AS is
+    # what the node that signed in reported, stored beside the grant.
+    st = claudegrant.state(home)
+    if st["gen"]:
+        state = {"signed_in": st["signed_in"], "email": st["email"],
+                 "plan": st.get("plan") or ""}
+        _auth[home] = {"at": time.monotonic(), "state": state}
+        return state
     env = dict(os.environ) | ({"HOME": home} if home else {})
     r = run(["claude", "auth", "status", "--json"], timeout=20, env=env)
     try:
@@ -2849,6 +2861,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # the case for a bump is "what has happened since the target last moved", and
 # only the roadmap's and the tracker's dated logs know that.
 import changelog                                                 # noqa: E402
+import claudegrant                                              # noqa: E402
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 
@@ -4934,63 +4947,29 @@ class Handler(BaseHTTPRequestHandler):
                                         "account's Claude login. Send it from that node's "
                                         "row on the Nodes tab — it asks for your password, "
                                         "because it hands the machine an OAuth grant"}, 403)
-        path = Path(home) / ".claude" / ".credentials.json" if home else None
-        if not path or not path.is_file():
-            return self._json({"error": "this account is not signed in to Claude on the "
-                                        "controller — the Doctor card's sign-in does that"}, 404)
-        try:
-            text = path.read_text()
-            json.loads(text)
-        except (OSError, ValueError):
-            return self._json({"error": "the credentials file here could not be read"}, 500)
-        return self._json({"credentials": text,
-                           "email": claude_auth(home=home).get("email") or ""})
-
-    @staticmethod
-    def _grant_at(text):
-        """When a grant stops being good, as the number a refresh moves.
-        0 for anything that is not one, so a real grant always wins."""
-        try:
-            return int((json.loads(text).get("claudeAiOauth") or {}).get("expiresAt") or 0)
-        except (ValueError, AttributeError, TypeError):
-            return 0
+        st = claudegrant.state(home)
+        # A signed-out account answers 200 with no credential and the
+        # generation that says so. It is not a 404: "there is nothing here"
+        # and "there is nothing here AND that is a decision somebody made" are
+        # different answers, and only the second one tells a node to delete
+        # the copy it is holding.
+        return self._json({"credentials": claudegrant.read(home),
+                           "email": st["email"], "gen": st["gen"],
+                           "signed_in": st["signed_in"]})
 
     def _claude_login_put(self, req, home):
-        """A node handing back the grant it refreshed."""
-        if not home:
-            return self._json({"error": "this account has no home here"}, 500)
-        text = req.get("credentials")
-        if not isinstance(text, str) or len(text) > 65536:
-            return self._json({"error": "a credentials file is a JSON string"}, 400)
-        mine = self._grant_at(text)
-        if not mine:
-            return self._json({"error": "that is not a Claude grant — no claudeAiOauth.expiresAt"}, 400)
-        path = Path(home) / ".claude" / ".credentials.json"
-        have = ""
-        with contextlib.suppress(OSError):
-            have = path.read_text()
-        theirs = self._grant_at(have)
-        if theirs and theirs >= mine:
-            return self._json({"ok": True, "stored": False,
-                               "why": "the grant here is the same or newer"})
-        try:
-            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            if have:
-                # One round of history, because a bad write signs the
-                # operator out and this is the way back.
-                with contextlib.suppress(OSError):
-                    (path.parent / ".credentials.json.prev").write_text(have)
-                    os.chmod(path.parent / ".credentials.json.prev", 0o600)
-            tmp = path.with_suffix(".json.new")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                f.write(text)
-            os.replace(tmp, path)
-        except OSError as e:
-            return self._json({"error": f"could not store it: {e}"}, 500)
-        print(f"[dashboard] claude login: a node handed back a newer grant for {home}",
-              file=sys.stderr, flush=True)
-        return self._json({"ok": True, "stored": True})
+        """A node handing back the grant it refreshed, or one it just made.
+
+        Ungated on purpose: what a node returns is what it already holds, and
+        refusing it is how the controller ends up with a refresh token the
+        server has retired (bug #64). What IS checked is which Anthropic
+        account it belongs to — one per BuilderBot account, so a second
+        signed in on one node cannot propagate to the rest on the next sync.
+        """
+        r = claudegrant.store(home, req.get("credentials"),
+                              req.get("email") or "", req.get("plan") or "")
+        _auth.clear()
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24).
@@ -5523,14 +5502,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
         # In the asking account's home, like the sign-in: signing out is
         # signing THIS account out, and the credential is in their ~/.claude.
+        #
+        # The credential goes and the generation moves. That second half is
+        # what makes this reach the NODES: each compares generations on its
+        # next sync — every connection, every prompt — and adopts what the
+        # controller has, which is now nothing. A node that is offline does it
+        # when it comes back, because the node is the one that asks; there is
+        # no queue to drain and nothing to deliver.
         home = home_for(users.uid_of(self._who()))
-        r = run(["claude", "auth", "logout"], timeout=60,
-                env=dict(os.environ) | ({"HOME": home} if home else {}))
+        r = claudegrant.sign_out(home)
         _auth.clear()
-        if r["code"] != 0:
-            return self._json({"error": r["out"].strip()[-500:] or "logout failed"}, 500)
-        return self._json({"ok": True,
-                           "auth": claude_auth(home=home_for(users.uid_of(self._who())))})
+        if r.get("error"):
+            return self._json(r, 500)
+        where = nodes.claude_nodes(users.uid_of(self._who())) if not NODES_OK else []
+        return self._json({"ok": True, "gen": r["gen"],
+                           # What it reaches, said rather than assumed: a node
+                           # that is not dialing in is signed out late, and
+                           # the sentence should not pretend otherwise.
+                           "nodes": [(nodes.node(i) or {}).get("name") or i for i in where],
+                           "auth": claude_auth(home=home)})
 
     def _todo(self, req):
         """Add, send, edit or drop one item on a project's list.

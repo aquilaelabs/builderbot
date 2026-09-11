@@ -454,7 +454,12 @@ bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
-bb tests run       run the project's test command, time it, and record the run — says first when it should finish
+bb tests run       run the project's test command, time it, and record the run — says first when it should finish,
+                   and ends by NAMING what went wrong: the failed assertions per file, and for a file that
+                   CRASHED the line it died on plus the fact that nothing after it ran. A crash prints no
+                   `FAIL` line and no totals, so a run that only said "failures above" cost four whole runs
+                   to read once
+bb tests last      that verdict again off the last run's log, running nothing
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project — the operator's and yours
