@@ -582,6 +582,50 @@ await page.waitForSelector('#aboutModal', { state: 'hidden' });
   ok(!logShown.hidden && logShown.h4 && logShown.li,
      `...and the switch shows the changelog, from the file beside the server (${
        JSON.stringify(logShown)})`);
+  // What the panel is FOR is "what changed in the build in front of me", and
+  // the file behind it grows for the life of the project — the first bump
+  // here put a year of work into one section nobody could read. So it shows
+  // what is unreleased plus the newest minor's own releases, and counts what
+  // it left out rather than quietly ending. Checked against the real file,
+  // which is the one this panel serves.
+  const wl = await page.evaluate(async () => await (await fetch('/api/welcome')).json());
+  const titles = wl.sections.map(s => s.title);
+  ok(wl.series
+       ? titles.every(x => x === 'Unreleased' || x.startsWith(wl.series + '.'))
+       : (wl.held === 0 && titles.every(x => x === 'Unreleased')),
+     `...trimmed to what is unreleased and the ${wl.series || 'no'} releases (${titles.join(', ')})`);
+  // The trim itself, on a ladder this repo does not have yet: the newest
+  // minor's patches stay, everything under it goes, and Unreleased is never
+  // a release to count.
+  const trim = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("changelog", ${
+  JSON.stringify(new globalThis.URL('../changelog.py', import.meta.url).pathname)})
+cl = importlib.util.module_from_spec(spec); spec.loader.exec_module(cl)
+secs = [{"title": t, "entries": [{"text": t, "shas": []}]} for t in
+        ["Unreleased", "0.7.1 \u2014 2026-10-02", "0.7.0 \u2014 2026-10-01",
+         "0.6.3 \u2014 2026-09-20", "0.6.0 \u2014 2026-09-01", "0.5.0 \u2014 2026-08-01"]]
+kept, held, series = cl.since_minor(secs)
+print(json.dumps({"kept": [s["title"] for s in kept], "held": held, "series": series}))
+`], { encoding: 'utf8' }).trim().split('\n').pop());
+  ok(trim.series === '0.7' && trim.held === 3
+     && trim.kept.join('|') === 'Unreleased|0.7.1 \u2014 2026-10-02|0.7.0 \u2014 2026-10-01',
+     `a newer minor takes the older ones off the panel, and they are counted (${
+       JSON.stringify(trim)})`);
+  // ...and the panel says where they went, in a line rather than by stopping.
+  await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 4, series: '0.7',
+    sections: [{ title: '0.7.0 \u2014 2026-10-01', entries: [{ text: 'a thing', shas: [] }] }] }));
+  const held = await page.$eval('#abLog', e => ({
+    line: e.querySelector('#abHeld')?.textContent || '',
+    words: (e.querySelector('#abHeld')?.textContent || '').trim().split(/\s+/).length }));
+  ok(/4 earlier releases are in CHANGELOG\.md\./.test(held.line) && held.words <= 25,
+     `...and the panel says so in one line, naming where the rest is (${held.line})`);
+  // Put the real answer back under it: the panel opens again below.
+  await page.evaluate(() => abLoadLog());
+  await page.waitForFunction(
+    () => !/a thing/.test(document.querySelector('#abLog')?.textContent || ''),
+    null, { timeout: 15000 });
+
   await page.click('#aboutClose');
   await page.waitForSelector('#aboutModal', { state: 'hidden' });
   await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).welcome.seen === true, null, { timeout: 10000 });

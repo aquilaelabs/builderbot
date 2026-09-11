@@ -4218,7 +4218,13 @@ class Handler(BaseHTTPRequestHandler):
             # line under what is new since.
             text = changelog.read(Path(__file__).resolve().parents[2])
             seen = str(users.prefs(self._who()).get("image_seen") or "")
-            return self._json({"sections": changelog.sections(text) if text else [],
+            # Trimmed to what is unreleased plus the newest minor's releases:
+            # this panel answers "what changed in the build in front of me",
+            # and the file behind it grows for the life of the project. What
+            # it left out is counted, not hidden.
+            kept, held, series = changelog.since_minor(
+                changelog.sections(text) if text else [])
+            return self._json({"sections": kept, "held": held, "series": series,
                                "present": text is not None, "seen": seen})
         if self.path.startswith("/api/source?"):
             # The code base as a zip, from the Artifacts tab: what git

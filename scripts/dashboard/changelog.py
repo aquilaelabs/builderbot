@@ -483,6 +483,46 @@ def roll(d, version, date):
     return True
 
 
+_SERIES = re.compile(r"^(\d+)\.(\d+)(?:\.|\b)")
+
+
+def series_of(title):
+    """The MAJOR.MINOR a dated section belongs to, or "" for a title that is
+    not a version — `Unreleased`, and anything hand-written."""
+    m = _SERIES.match((title or "").strip())
+    return f"{m.group(1)}.{m.group(2)}" if m else ""
+
+
+def since_minor(secs):
+    """`sections` trimmed to what is unreleased plus the newest minor series.
+
+    The About panel is read by somebody asking what changed in the build in
+    front of them, and the whole file is the wrong answer there: it grows for
+    the life of the project. So the panel shows everything unreleased and the
+    dated releases of the newest minor — 0.6.2, 0.6.1, 0.6.0 — and nothing
+    older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
+    without anybody pruning a file.
+
+    Nothing is deleted and nothing is lost: CHANGELOG.md keeps every release
+    forever and stays the place to read them, which is why the panel says how
+    many it is not showing rather than quietly ending.
+
+    Returns (kept, held, series).
+    """
+    at = next((i for i, s in enumerate(secs) if series_of(s.get("title"))), None)
+    if at is None:
+        return list(secs), 0, ""
+    series = series_of(secs[at]["title"])
+    keep = list(secs[:at])
+    # The file is newest first, so the series' own releases are contiguous
+    # from here; the first section that is not one of them ends the list.
+    for s in secs[at:]:
+        if series_of(s.get("title")) != series:
+            break
+        keep.append(s)
+    return keep, len(secs) - len(keep), series
+
+
 def sections(text):
     """The whole file as [{"title", "entries": [{"text", "shas"}]}], newest
     first as the file is written: Unreleased, then each dated release. For

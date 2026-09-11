@@ -5405,6 +5405,18 @@ async function abLoadLog(){
   try{ j = await (await fetch("/api/welcome")).json(); }
   catch(e){ el.innerHTML = `<p class="dim">changelog: ${esc(String(e))}</p>`; return; }
   abLogLoaded = true;
+  abDrawLog(j);
+}
+// The draw, apart from the fetch: what this panel shows is the server's
+// answer, and the arrangement of it is worth being able to render from a
+// payload rather than only from whatever the image happens to carry.
+//
+// The server sends what is unreleased plus the newest minor's releases, and
+// says how many older ones it held back — this panel is read by somebody
+// asking what changed in the build in front of them, and the file behind it
+// grows for the life of the project.
+function abDrawLog(j){
+  const el = $("abLog");
   if (!j.present){ el.innerHTML = `<p class="dim">This image carries no changelog.</p>`; return; }
   // Everything above the entry that carries the commit this account last
   // acknowledged is new to it; the line is drawn there. An image whose
@@ -5428,6 +5440,9 @@ async function abLoadLog(){
     }
     rows.push(`</ul>`);
   }
+  if (j.held)
+    rows.push(`<p class="dim" id="abHeld">${j.held} earlier release${j.held === 1 ? "" : "s"}`
+      + ` ${j.held === 1 ? "is" : "are"} in CHANGELOG.md.</p>`);
   el.innerHTML = rows.join("") || `<p class="dim">Nothing logged yet.</p>`;
 }
 function openAbout(which){

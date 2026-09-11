@@ -22,6 +22,7 @@
 - A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words, and bb status says whether it is running on the controller or on a node (016a5d3)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
+- The changelog is now something you can shape: Changelog on the Artifacts tab opens an editor where the unreleased lines can be grouped into categories, reordered, reworded, merged, split or dropped, and a release's dated section is left as the record it is (e37b5e0)
 
 ## 0.5.0 — 2026-09-10
 
