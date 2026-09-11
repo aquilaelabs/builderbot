@@ -371,9 +371,11 @@ bb changelog unreleased  the entries waiting for a bump, numbered straight
 bb changelog edit N "..."  reword one of them — a change that tweaks something
                    already logged this cycle corrects its line rather than adding one,
                    and the line gains that commit. --cat NAME on its own moves it
-                   between categories and leaves the words; --no-stamp corrects a
-                   line without claiming a commit made it, which is what a pass over
-                   the wording is
+                   and leaves the words, filing it at the end of that category the
+                   way add --cat does — so re-filing a line into its own category
+                   sends it to the bottom, which is the ordering a session has.
+                   --no-stamp corrects a line without claiming a commit made it,
+                   which is what a pass over the wording is
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true

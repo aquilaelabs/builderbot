@@ -567,8 +567,8 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 
   ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
      'an entry moves between categories with --cat');
-  ok(/### Added\n\n- CATME a fix, moved [^\n]*\n- CATME an addition/.test(file()),
-     '...landing where it already was in the running order, not at the end');
+  ok(/### Added\n\n- CATME an addition[^\n]*\n- CATME a fix, moved/.test(file()),
+     '...filed at the end of it, which is where `add --cat` puts one');
   ok(!/### Fixed/.test(file()),
      '...and the category it emptied is gone, not left as a heading with nothing under it');
 
@@ -581,7 +581,7 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
      'a second category lands after the first, which is the arrangement to protect');
   cl('edit', numOf('CATME a fix, moved'), 'CATME a fix, moved again', '--cat', 'Fixed');
   ok(file().indexOf('### Added') < file().indexOf('### Fixed')
-     && /### Fixed\n\n- CATME a fix, moved again[^\n]*\n- CATME a later fix/.test(file()),
+     && /### Fixed\n\n- CATME a later fix[^\n]*\n- CATME a fix, moved again/.test(file()),
      `...and moving its first line into the second leaves both categories where they were (${
        (file().match(/^### .*$/gm) || []).join(', ')})`);
   cl('rm', numOf('CATME a later fix'));
@@ -612,6 +612,12 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
        '...while an ordinary reword still names the commit it was made with');
     ok(cl('edit', numOf('CATME an addition')).code !== 0,
        'an edit that neither rewords nor moves is refused, not treated as a blank line');
+    // Which gives a session the one ordering gesture it has: re-filing a line
+    // into the category it is already in sends it to the bottom of that
+    // category, so a pass can put a cycle's entries in a deliberate order.
+    ok(cl('edit', numOf('CATME a fix, moved'), '--cat', 'Added').code === 0
+       && /- CATME an addition[^\n]*\n- CATME a fix, moved/.test(file()),
+       're-filing a line into its own category sends it to the bottom of that category');
   }
 
   ok(cl('add', 'far too specific', '--cat', 'A'.repeat(41)).code !== 0

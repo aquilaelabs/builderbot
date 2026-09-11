@@ -443,8 +443,10 @@ bb changelog rm 2       # drop one that stopped being true
 category is a `### Name` subsection — the Keep a Changelog shape — and which
 categories exist, what order they sit in and what order the lines run inside
 them are all decided by hand, on the Changelog editor beside the version.
-`--cat` files an entry under one, making it at the end of the section if it
-is new; where it belongs in what a reader meets is not a session's call.
+`--cat` files an entry at the end of a category, making the category at the
+end of the section if it is new — on `add` and on `edit` alike, so re-filing
+a line into its own category sends it to the bottom of that category. That is
+the only ordering you have; where a CATEGORY sits is not a session's call.
 Entry numbers count straight through the whole section, categories and all,
 and they move whenever it is rearranged, so read `bb changelog unreleased`
 before naming one.

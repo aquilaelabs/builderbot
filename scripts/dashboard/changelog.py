@@ -342,6 +342,12 @@ def edit(d, n, text=None, sha="", cat=None):
     new words changes nothing about what the entry says, and nothing should
     then be claiming to have caused it.
 
+    A move files the entry at the END of the named category, which is where
+    `add --cat` puts one. The two used to disagree: a move kept the line's
+    running position, and an uncategorised line's position is the top of the
+    section, so filing a cycle's entries one at a time stacked each category
+    up backwards. Same gesture, same place, either way.
+
     Only Unreleased is editable: a dated section is a release somebody may
     have read.
     """
@@ -350,9 +356,14 @@ def edit(d, n, text=None, sha="", cat=None):
         was_cat, was_text, shas = rows[i]
         if sha and sha not in shas:
             shas = shas + [sha]
-        to = was_cat if cat is None else _clean_name(cat)
         words = was_text if text is None else _clean_text(text)
-        return rows[:i] + [(to, words, shas)] + rows[i + 1:]
+        if cat is None:
+            return rows[:i] + [(was_cat, words, shas)] + rows[i + 1:]
+        to = _clean_name(cat)
+        rest = rows[:i] + rows[i + 1:]
+        last = max((j for j, r in enumerate(rest) if r[0] == to), default=None)
+        at = len(rest) if last is None else last + 1
+        return rest[:at] + [(to, words, shas)] + rest[at:]
     r = _apply(d, go)
     if not r.get("error"):
         r["n"] = int(n)
