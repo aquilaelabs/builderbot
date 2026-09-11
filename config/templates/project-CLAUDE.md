@@ -432,7 +432,14 @@ bb changelog add "Pairing no longer fails when you switch screens"
 bb changelog            # read it; --for DIR for a component's own
 bb changelog unreleased # what is waiting for a bump, numbered
 bb changelog edit 3 "…" # reword entry 3 rather than logging it twice
+bb changelog merge 2 5 "…"   # one line for several, carrying their commits
+bb changelog split 2    # back into one line per commit it carries
+bb changelog rm 2       # drop one that stopped being true
 ```
+
+The section stays in the order its commits were made, oldest first, whatever
+order things were logged in — so the numbers move under you and
+`bb changelog unreleased` is what to read before naming one.
 
 A changelog line is not a commit message. The commit says what happened to
 the code; this line says what changed for the person holding the app, in

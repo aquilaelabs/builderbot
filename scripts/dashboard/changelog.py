@@ -196,6 +196,172 @@ def edit(d, n, text, sha=""):
     return {"ok": True, "n": n}
 
 
+def _rewrite(d, replace):
+    """Put the Unreleased section back as `replace` returns it.
+
+    `replace` is handed the section's entry lines, bodyless of their bullet,
+    as [(text, [shas])], and returns the same shape. Every operation below is
+    one of those functions, which is what keeps the file surgery in one place
+    rather than four subtly different loops — the first two of those already
+    disagreed about trailing blanks.
+    """
+    rows = numbered(d)
+    try:
+        out_rows = replace([(t, list(sh)) for _, t, sh in rows])
+    except _Refused as e:
+        return {"error": str(e)}
+    lines = [f"- {t}" + (f" ({', '.join(sh)})" if sh else "") for t, sh in out_rows]
+    cur = read(d) or ""
+    out, inside, put = [], False, False
+    for ln in cur.splitlines():
+        if ln.strip() == UNRELEASED:
+            inside = True
+            out.append(ln)
+            continue
+        if inside and ln.startswith("## "):
+            if not put:
+                out.extend(lines)
+                put = True
+            inside = False
+            out.append(ln)
+            continue
+        if inside and ln.strip().startswith("- "):
+            if not put:
+                out.extend(lines)
+                put = True
+            continue
+        out.append(ln)
+    if not put:
+        out.extend(lines)
+    try:
+        path(d).write_text("\n".join(_tidy(out)) + "\n", encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {FILE}: {e}"}
+    return {"ok": True, "entries": len(out_rows)}
+
+
+class _Refused(Exception):
+    """An operation saying no from inside a `replace` function."""
+
+
+def _pick(rows, ns):
+    """The 1-based numbers `ns` as indexes into rows, or a refusal.
+
+    Refused for a number nobody has rather than silently doing less than
+    asked: these verbs rewrite a list somebody is looking at.
+    """
+    want = []
+    for n in ns:
+        try:
+            i = int(n)
+        except (TypeError, ValueError):
+            raise _Refused("which entry? `bb changelog unreleased` numbers them")
+        if not 1 <= i <= len(rows):
+            raise _Refused(f"no unreleased entry {i} — `bb changelog unreleased` "
+                           f"lists {len(rows)}; a dated section is history, and "
+                           f"`bb version unroll` is how one is reopened")
+        if i - 1 in want:
+            raise _Refused(f"entry {i} named twice")
+        want.append(i - 1)
+    return want
+
+
+def remove(d, n):
+    """Drop one Unreleased entry.
+
+    For a line that stopped being true — the change it described was undone,
+    or a later one replaced it — where rewording would leave the reader with
+    a note about something that never shipped. The commit is untouched; this
+    is the record of what a person sees, not of what happened to the code.
+    """
+    def go(rows):
+        [i] = _pick(rows, [n])
+        return rows[:i] + rows[i + 1:]
+    return _rewrite(d, go)
+
+
+def merge(d, ns, text):
+    """Fold several Unreleased entries into one line carrying all their
+    commits.
+
+    Two lines about one change tell the reader about it twice, and that
+    happens whenever a thing is built across commits that each looked like
+    their own story at the time. The new line lands where the EARLIEST of
+    them was, because that is where the change began in the section's order,
+    and it carries every commit in the order they were already in.
+    """
+    text = " ".join(str(text or "").split())
+    if not text:
+        return {"error": "a merged entry needs its own line — the two it "
+                         "replaces each described half of it"}
+    if len(text) > 300:
+        return {"error": "keep an entry under 300 characters — it is one line "
+                         "of a list a person reads, not the whole story"}
+
+    def go(rows):
+        want = _pick(rows, ns)
+        if len(want) < 2:
+            raise _Refused("merge takes two entries or more")
+        shas, seen = [], set()
+        for i in want:
+            for sh in rows[i][1]:
+                if sh not in seen:
+                    seen.add(sh)
+                    shas.append(sh)
+        at = min(want)
+        return [(text, shas) if j == at else r
+                for j, r in enumerate(rows) if j == at or j not in want]
+    return _rewrite(d, go)
+
+
+def split(d, n):
+    """Break one Unreleased entry into one line per commit it carries.
+
+    The way back out of a merge, and the way to drop a single commit from a
+    line: split, then remove the one that stopped being true. Each line keeps
+    the text, because there is no way to know which words belonged to which
+    commit — they are there to be reworded, which is the next thing you do.
+    """
+    def go(rows):
+        [i] = _pick(rows, [n])
+        text, shas = rows[i]
+        if len(shas) < 2:
+            raise _Refused(f"entry {int(n)} carries "
+                           f"{'one commit' if shas else 'no commit'}, so there "
+                           f"is nothing to split it along")
+        return rows[:i] + [(text, [sh]) for sh in shas] + rows[i + 1:]
+    return _rewrite(d, go)
+
+
+def resort(d, when):
+    """Order the Unreleased section by when its commits were made.
+
+    `when` is a callable sha -> a sortable number, or None for a commit this
+    repository does not have. Passed in for the reason the sha is: this
+    module stays free of git, and the caller already has the directory.
+
+    An entry sorts by its EARLIEST commit, not its latest. A line gains
+    commits as the thing it describes is worked on, and sorting by the newest
+    would make a list rearrange itself under the reader every time an old
+    entry was touched. The earliest is where the change began and does not
+    move.
+
+    An entry with no commit anybody can date keeps its place relative to the
+    others like it and goes last: it was written by hand or names a commit
+    that has since been rebased away, and guessing a position for it would be
+    inventing history rather than reading it.
+    """
+    def go(rows):
+        keyed = []
+        for pos, (text, shas) in enumerate(rows):
+            stamps = [w for w in (when(sh) for sh in shas) if w is not None]
+            keyed.append(((0, min(stamps), pos) if stamps else (1, 0, pos),
+                          (text, shas)))
+        keyed.sort(key=lambda kv: kv[0])
+        return [r for _, r in keyed]
+    return _rewrite(d, go)
+
+
 def unroll(d, version):
     """Dissolve a version's dated section back into Unreleased.
 

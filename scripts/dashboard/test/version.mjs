@@ -462,6 +462,76 @@ const missing = cl('edit', '9', 'Nothing here');
 ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
    'an entry that is not there is refused, naming how many there are');
 
+// ---- the section is the operator's to shape ------------------------------
+// A cycle's worth of entries is never right the first time: a thing gets
+// built across commits that each looked like their own story, and a change
+// gets undone by a later one. Merge, split and drop, with the commits
+// following the words rather than the other way round.
+//
+// On entries of its own, added and taken away again, so the lines the bump
+// below is about are the ones the cases above left.
+{
+  const rows = () => (cl('unreleased').out.match(/^\s*\d+\s+.*$/gm) || []);
+  const shasOf = line => (line.match(/[0-9a-f]{7}/g) || []);
+  const find = (list, word) => list.find(l => l.includes(word)) || '';
+  const before = rows().length;
+
+  execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'half one'], { env });
+  cl('add', 'MERGEME the first half');
+  execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'half two'], { env });
+  cl('add', 'MERGEME the second half');
+  let list = rows();
+  const halves = list.filter(l => /MERGEME/.test(l));
+  const want = new Set(halves.flatMap(shasOf));
+  ok(halves.length === 2 && want.size === 2,
+     `two entries, each naming its own commit (${want.size} between them)`);
+
+  const ns = halves.map(l => l.trim().split(/\s/)[0]);
+  ok(cl('merge', ...ns, 'MERGEONE both halves, said once').code === 0,
+     'two entries fold into one line');
+  list = rows();
+  const one = find(list, 'MERGEONE');
+  ok(list.filter(l => /MERGEME/.test(l)).length === 0
+     && new Set(shasOf(one)).size === want.size
+     && shasOf(one).every(sh => want.has(sh)),
+     `...carrying every commit the two of them named, and no more (${shasOf(one).join(', ')})`);
+  ok(cl('merge', '1', 'Only one').code !== 0 && cl('merge', '1', '2').code !== 0,
+     '...and refuses one entry, or a merge with no line of its own to replace them');
+
+  const at = find(rows(), 'MERGEONE').trim().split(/\s/)[0];
+  ok(cl('split', at).code === 0, 'and one splits back into a line per commit');
+  list = rows();
+  const parts = list.filter(l => /MERGEONE/.test(l));
+  ok(parts.length === want.size && parts.every(l => shasOf(l).length === 1),
+     `...one for each, all carrying the text, ready to be reworded (${parts.length})`);
+  ok(cl('split', parts[0].trim().split(/\s/)[0]).code !== 0,
+     '...and a line with a single commit refuses: there is nothing to split it along');
+
+  ok(cl('rm', parts[0].trim().split(/\s/)[0]).code === 0,
+     'and one that stopped being true is dropped');
+  ok(rows().filter(l => /MERGEONE/.test(l)).length === parts.length - 1,
+     '...leaving the others where they were');
+  ok(cl('rm', '99').code !== 0, '...while a number nobody has is refused');
+
+  // ...and the order is the commits', not the order somebody happened to log
+  // them in. Oldest first, which is where a change began: an entry gains
+  // commits as the work goes on, and sorting by the newest would rearrange
+  // the list under the reader every time an old line was touched.
+  const when = rows().map(l => shasOf(l)[0]).filter(Boolean).map(sh => {
+    try {
+      return Number(execFileSync('git', ['-C', M, 'show', '-s', '--format=%ct', sh],
+                                 { env }).toString().trim());
+    } catch { return null; }
+  }).filter(x => x !== null);
+  ok(when.length > 1 && when.every((v, i) => i === 0 || when[i - 1] <= v),
+     `the section is stored in commit order, oldest first (${when.length} stamped)`);
+
+  for (const l of rows().filter(x => /MERGEONE/.test(x)))
+    cl('rm', l.trim().split(/\s/)[0]);
+  ok(rows().length === before,
+     `...and the section is back to what the cases above left (${before})`);
+}
+
 // The bump dates the section, in the same commit that moves VERSION.
 mb('bump', 'patch');
 const rolled = cl().out;
