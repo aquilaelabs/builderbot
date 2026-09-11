@@ -19,6 +19,7 @@
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
 - A session whose project could not be marked as trusted now says so in its terminal, instead of quietly asking permission for every command and forgetting every answer you give it (594f766)
 - The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
+- Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 
 ## 0.5.0 — 2026-09-10
 
