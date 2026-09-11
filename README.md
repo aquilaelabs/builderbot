@@ -349,6 +349,14 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    of that commit is the bare number. Releasing is the
                    operator's whatever the policy says, and a pushed tag is
                    never moved or deleted from the dashboard.
+                   A repo that carries its number somewhere else as well —
+                   an agent's protocol number, a template's stamp — declares
+                   that by carrying an executable `tools/version-stamp`, run
+                   from the repo root with the new version and the part that
+                   moved. Whatever it changes is committed with VERSION, so
+                   the bump is one commit or none: a hook that fails refuses
+                   the bump rather than leaving the number moved and its twin
+                   behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
@@ -392,6 +400,11 @@ bb git policy      what a session may push here — its branch, main — from th
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
+                   The block is rendered per project, not copied: the shipped
+                   template marks its Android and compose sections with the
+                   evidence that makes them apply, so a plain project's
+                   sessions start on about a thousand fewer words and a
+                   session is not told how to drive an emulator it has none of
 bb claude-md --update   refresh that block only
 bb claude-md --is-stale exit 0 when the block exists and has drifted
 bb claude-md --out-of-window  exit 0 when the block is from another compatibility
@@ -3071,6 +3084,15 @@ onRev("phone.asks", () => phFetch());
 onRev(() => `dist:${project}`, () => loadArtifacts());
 ```
 
+**The notebook is on the same clock.** Its halves — the roadmap, the memories,
+the rules, the approval queue, the test registry, and the controller's own
+settings — each carry a revision here too, so a change made in another window
+or by a session shows up on the tab you are looking at within a second or two
+rather than at the fifteen-second status poll. A view re-reads only when it is
+not in the middle of something: a half with an unsaved edit, a staged change
+or a write in flight is left alone until it settles, because a poll that
+overwrites what somebody is typing is worse than a stale line.
+
 The endpoint is **deliberately tiny** — file mtimes and in-memory counters, no
 git, no tmux, no adb — which is what makes it affordable at a second and a
 half, where `/api/status` runs git for every project and is affordable at
@@ -3769,19 +3791,45 @@ scripts/
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py, index.html, bb-tty
+  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab
+    bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-gate                      the hook every tool call asks before it runs, on a node
+    bb-keep-login                keeps a node session's Claude login in step, once per prompt
+    bb-prompt-relay              a node session's prompts and answers, back to the controller
+    bb-work-note                 what a session is changing, for the overlap warning
+    users.py                     who may sign in, and what they are allowed to see (docs/users.md)
+    prefs.py                     which model and effort a project's Claude session runs on
+    settings.py                  controller settings, the things that used to be environment variables
+    statefile.py                 writing a state file, and holding it while you read-modify-write one
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
+    rules.py                     house rules: what has been decided about working on a project
+    preamble.py                  what every session on a project starts with, assembled once
     projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    git.py                       the notebook's Git view: the repository read out, and its writes
+    codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
-    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
-    jobs.py                      the controller's own job runner — exec here or over ssh — plus /healthz and /metrics
-    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
+    pending.py                   what a session wants to add to the notebook, held for the operator
+    ids.py                       one letter per notebook tab, so a number says which list it came from
     presence.py                  who else has a notebook open, in memory only
+    overlap.py                   what each session is changing, and where two of them collide
+    chat.py                      messages between accounts, and what each project's people are doing
+    version.py                   one version identity per project, rendered for whatever is asking
+    changelog.py                 the user-facing record beside it: categories, and the editor's writes
+    artifacts.py                 what a project built: dist/, and what a row may offer
+    devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
+    phone.py                     a paired handset on a node: install, push, and the asking
+    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
+    workspace.py                 snapshots, the node bundle, and the artifact store
+    jobs.py                      the controller's own job runner — exec here or over ssh — plus /healthz and /metrics
+    vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
+    idle.py                      ending Claude sessions nobody has used for a while
+    findings.py                  what the scanner used to say, so a finding that goes away leaves a trace
+    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
@@ -3796,9 +3844,15 @@ nodes/vm/                        the same machine for the other six hypervisors:
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
+tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
+tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
+                                 window in the agent and the template with it, or refuses
 docs/unraid.md                   step-by-step Unraid walkthrough
 docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
 docs/nodes.md                    design: controller + nodes, homelab-default and enterprise-scalable
+docs/users.md                    accounts, roles, and what each one may reach
+docs/design-language.md          what the dashboard's surfaces owe each other — held by the
+                                 house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard

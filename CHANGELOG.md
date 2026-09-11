@@ -20,6 +20,7 @@
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
 - A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
 - The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
+- The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
 
 ### Fixed
 
