@@ -144,6 +144,13 @@ bb — BuilderBot helper
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
+  bb logs --node NAME [--agent|--runner|--terminal] [N]
+                         a MACHINE's own log, which is root's on that box:
+                         the agent's journal, the runner's, the terminal
+                         server's. Offered only while the controller's debug
+                         mode is on and only to a node granted that node on
+                         its Debug settings — its own included. Without it a
+                         session reads its project's CI and test logs alone
   bb doctor              check the things that usually go wrong
 
   Developing BuilderBot itself (this repo is the container's source):
@@ -1152,10 +1159,12 @@ logs_are_the_controllers() {
 }
 
 cmd_logs() {
-    local base logfile follow=0 lines=100 gen=""
+    local base logfile follow=0 lines=100 gen="" want_node="" stream=""
     base="$(bb_log_dir)/builderbot.log"
     while [ $# -gt 0 ]; do
         case "$1" in
+            --node) want_node="${2:-}"; shift ;;
+            --agent|--runner|--terminal) stream="${1#--}" ;;
             -f) follow=1 ;;
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
@@ -1181,6 +1190,34 @@ cmd_logs() {
         esac
         shift
     done
+    # A MACHINE's own log — the agent's journal, the runner's, the terminal
+    # server's — which is root's on that box and is not offered to a session
+    # by default. The controller decides: its debug switch, then the grant on
+    # the asking node's row. Both refusals say what would change them.
+    if [ -n "$want_node" ] || [ -n "$stream" ]; then
+        [ -n "$want_node" ] || want_node="${BB_NODE:-}"
+        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal]"
+        local auth
+        auth="$(bb_auth_or_die)"
+        BB_LOG_AUTH="$auth" BB_LOG_NODE="$want_node" \
+        BB_LOG_STREAM="${stream:-agent}" BB_LOG_LINES="$lines" python3 - <<'NODELOG'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+d = bbapi.call("/api/nodelog",
+               {"node": os.environ["BB_LOG_NODE"],
+                "stream": os.environ["BB_LOG_STREAM"],
+                "lines": int(os.environ["BB_LOG_LINES"])},
+               auth=os.environ["BB_LOG_AUTH"], timeout=180)
+if d.get("error"):
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+sys.stdout.write(d.get("out") or "")
+if d.get("state") and d["state"] != "succeeded":
+    sys.exit(f"[builderbot] ERROR: the read {d['state']} on the node")
+NODELOG
+        return
+    fi
     if [ -n "$gen" ]; then
         logfile="${base}.${gen}"
     else
@@ -4821,18 +4858,31 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, ...urls] = process.
   // to every URL in the run, so `bb shot <dashboard> https://example.com`
   // handed the credential to example.com as well (bug #49). Per-route, matched
   // on origin, so shooting somebody else's page cannot carry it there.
-  if (header) {
-    const mine = new Set(urls.filter(u => {
-      try { return new URL(u).port === String(port); } catch { return false; }
-    }).map(u => new URL(u).origin));
-    if (mine.size) {
-      await ctx.route("**/*", async (route) => {
-        let same = false;
-        try { same = mine.has(new URL(route.request().url()).origin); } catch {}
-        await route.continue(same
-          ? { headers: { ...route.request().headers(), authorization: header } }
-          : {});
-      });
+  const mine = new Set(urls.filter(u => {
+    try { return new URL(u).port === String(port); } catch { return false; }
+  }).map(u => new URL(u).origin));
+  if (header && mine.size) {
+    await ctx.route("**/*", async (route) => {
+      let same = false;
+      try { same = mine.has(new URL(route.request().url()).origin); } catch {}
+      await route.continue(same
+        ? { headers: { ...route.request().headers(), authorization: header } }
+        : {});
+    });
+  }
+  // ...and a real sign-in, for the cookie. A header added by routing does not
+  // reach a WEBSOCKET handshake — Playwright does not intercept those — and
+  // the terminal is a websocket on the dashboard's own origin now, so a
+  // shot of a page with a terminal in it came out holding ttyd's reconnect
+  // prompt. A cookie goes on the handshake like any other request.
+  // Best-effort: a page that is not a BuilderBot dashboard has no /login,
+  // and the header above is still what answers for it.
+  if (username) {
+    for (const origin of mine) {
+      try {
+        await ctx.request.post(origin + "/login", {
+          form: { username, password }, maxRedirects: 0, timeout: 10000 });
+      } catch {}
     }
   }
   const p = await ctx.newPage();

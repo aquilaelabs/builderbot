@@ -76,6 +76,12 @@ const SETTING_GROUPS = [
      hint: "stable is the tested release, latest the newest, next the preview."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
      hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
+  {title: "Debugging", fields: [
+    {key: "debug_mode", label: "Let nodes be granted each other's machine logs", type: "bool",
+     hint: "Adds Debug settings to a node's row, where you grant it the nodes whose "
+         + "agent, runner and terminal logs its sessions may read. It grants nothing "
+         + "by itself, and a node is not granted its own — a journal is root's on any "
+         + "machine. Off, a session reads only its project's own CI and test logs."}]},
 ];
 
 function settingsSections(){

@@ -557,19 +557,31 @@ def since_minor(secs):
 
 
 def sections(text):
-    """The whole file as [{"title", "entries": [{"text", "shas"}]}], newest
-    first as the file is written: Unreleased, then each dated release. For
-    the welcome panel, which shows BuilderBot's own changelog and marks
-    where the reader last looked."""
-    out, cur = [], None
+    """The whole file as [{"title", "entries": [{"text", "shas", "cat"}]}],
+    newest first as the file is written: Unreleased, then each dated release.
+    For the welcome panel, which shows BuilderBot's own changelog and marks
+    where the reader last looked.
+
+    The entries stay FLAT, each carrying the category it sits under, rather
+    than nesting. The panel draws a line under what is new since the reader
+    last looked, and finding that line means counting entries in the order
+    they are written; nesting would make every consumer walk two levels to do
+    it, for a grouping the renderer can do by watching the name change.
+    """
+    out, cur, cat = [], None, ""
     for line in (text or "").splitlines():
         if line.startswith("## "):
             cur = {"title": line[3:].strip(), "entries": []}
+            cat = ""
             out.append(cur)
+            continue
+        if cur is not None and line.startswith(CATEGORY):
+            cat = line[len(CATEGORY):].strip()
             continue
         if cur is not None and line.strip().startswith("- "):
             body = line.strip()[2:].strip()
             m = _STAMP.search(body)
             cur["entries"].append({"text": body[:m.start()].rstrip() if m else body,
-                                   "shas": m.group(1).split(", ") if m else []})
+                                   "shas": m.group(1).split(", ") if m else [],
+                                   "cat": cat})
     return out

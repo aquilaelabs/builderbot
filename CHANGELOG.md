@@ -11,6 +11,7 @@
 - The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
 - Changelog on the Artifacts tab is now an editor: group the unreleased lines into categories, reorder them, reword, merge, split or drop them. A release's dated section is left as the record it is (e37b5e0)
 - A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
+- A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 
 ### Changed
 
@@ -18,23 +19,29 @@
 - A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
-- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words, and bb status says whether it is running on the controller or on a node (016a5d3)
-- The About popup's changelog now shows what is unreleased and the current minor version's releases, saying how many earlier ones are in the full file, instead of the whole project history (7fb7d0d)
+- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
+- The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
+- The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
+- Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
+- The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
+- A node holds no Claude login until you send it one from its row and type your password: enrolling a machine no longer hands it an OAuth grant with your refresh token in it, and taking it back is the same gesture (afef9cd)
 
 ### Fixed
 
 - Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container — only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
-- The Settings, Nodes and Profile tabs are laid out down the page again instead of squeezed into the right third of it, the deleted-projects and waiting-for-approval dialogs line up with every other dialog, and the settings tab is called Controller settings wherever it is named (de06bb3)
+- The Settings, Nodes and Profile tabs are laid out down the page again instead of the right third of it, the deleted-projects and approval dialogs line up with every other dialog, and the settings tab is called Controller settings everywhere (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
 - Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
 - A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
-- A project that had not been trusted yet is now marked trusted and says so in the terminal, naming the restart the session running there needs before it stops asking permission for every command (594f766)
+- The terminal now says when a project had not been trusted yet and which session to restart, instead of leaving it silently asking permission for every command (594f766)
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
 - Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
+- Editing a changelog entry, a roadmap item, a bug's title or any other sentence on a phone now shows the whole line in a box that grows to fit it, instead of thirty characters of it in a one-line field (e9595bf)
+- bb shot signs in to the dashboard rather than only sending a header, so a screenshot of a page with a terminal in it shows the terminal instead of a reconnect prompt (0662979)
 
 ## 0.5.0 — 2026-09-10
 

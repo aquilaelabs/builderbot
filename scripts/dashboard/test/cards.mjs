@@ -612,6 +612,29 @@ print(json.dumps({"kept": [s["title"] for s in kept], "held": held, "series": se
      && trim.kept.join('|') === 'Unreleased|0.7.1 \u2014 2026-10-02|0.7.0 \u2014 2026-10-01',
      `a newer minor takes the older ones off the panel, and they are counted (${
        JSON.stringify(trim)})`);
+  // The categories a release was arranged into are shown here too: the panel
+  // used to flatten them into one list, which is the arrangement thrown away
+  // at the one place most people read it.
+  await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 0, series: '0.7',
+    sections: [{ title: '0.7.0 \u2014 2026-10-01', entries: [
+      { text: 'a loose note', shas: [], cat: '' },
+      { text: 'a new tab', shas: [], cat: 'Added' },
+      { text: 'a second new tab', shas: [], cat: 'Added' },
+      { text: 'pairing works again', shas: [], cat: 'Fixed' }]}]}));
+  const grouped = await page.$eval('#abLog', e => ({
+    cats: [...e.querySelectorAll('.abcat')].map(c => c.textContent),
+    lists: [...e.querySelectorAll('ul')].map(u =>
+      [...u.children].map(li => li.textContent)),
+    stray: [...e.querySelectorAll('ul > :not(li)')].length }));
+  ok(grouped.cats.join('|') === 'Added|Fixed'
+     && grouped.lists.length === 3
+     && grouped.lists[0].join() === 'a loose note'
+     && grouped.lists[1].join() === 'a new tab,a second new tab'
+     && grouped.lists[2].join() === 'pairing works again'
+     && grouped.stray === 0,
+     `a release's categories are shown, each over its own lines (${
+       JSON.stringify(grouped.cats)}, ${grouped.lists.length} lists)`);
+
   // ...and the panel says where they went, in a line rather than by stopping.
   await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 4, series: '0.7',
     sections: [{ title: '0.7.0 \u2014 2026-10-01', entries: [{ text: 'a thing', shas: [] }] }] }));

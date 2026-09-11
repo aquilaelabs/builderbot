@@ -14,7 +14,7 @@ straight in.
   │  nodes ──► builds, tests, CI and the emulator run there:  │
   │            jdk · android sdk · flutter · … from a store   │
   │                                                           │
-  │  /workspace  ◄─────────  /mnt/user/development/projects   │
+  │  /workspace  ◄─────────  /mnt/user/projects   │
   │    every folder in there is a project                     │
   └───────────────────────────────────────────────────────────┘
 ```
@@ -171,7 +171,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Projects folder | One mapping for all of them: `/mnt/user/development/projects` → `/workspace`. Every folder inside it is a project |
+| Projects folder | One mapping for all of them: `/mnt/user/projects` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
@@ -271,9 +271,9 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | Variable | Default | Purpose |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
-| `TZ` | `America/New_York` | Container timezone |
+| `TZ` | `Etc/UTC` | Container timezone — set yours, or timestamps read as somebody else's day |
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing; empty = subscription login via `bb login` |
-| `GITHUB_URL` | — | Repo or org URL node runners register with |
+| `GITHUB_URL` | *(empty)* | **Your** repo or org URL, the one node runners register with — `https://github.com/<you>/<repo>`, or an org URL to serve every repo in it. Empty until you want CI on a node |
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept — see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
@@ -349,6 +349,14 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    of that commit is the bare number. Releasing is the
                    operator's whatever the policy says, and a pushed tag is
                    never moved or deleted from the dashboard.
+                   A repo that carries its number somewhere else as well —
+                   an agent's protocol number, a template's stamp — declares
+                   that by carrying an executable `tools/version-stamp`, run
+                   from the repo root with the new version and the part that
+                   moved. Whatever it changes is committed with VERSION, so
+                   the bump is one commit or none: a hook that fails refuses
+                   the bump rather than leaving the number moved and its twin
+                   behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
@@ -384,7 +392,15 @@ bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow. On a node it first syncs
                    this account's login with the controller's, newer wins
-bb login --sync    that half alone, quietly — what every connection already does
+bb login --sync    that half alone, quietly — what every connection already does,
+                   for a node that has been GIVEN this account's Claude login.
+                   A node holds none until somebody presses **Send my Claude
+                   login** on its row and types their own BuilderBot password:
+                   the grant is an OAuth pair with a refresh token in it, so
+                   handing it to a machine is handing that machine the
+                   account, and enrolling one should not widen that by itself.
+                   Keeping an already-granted node in step stays automatic —
+                   that is what stops a session there meeting "Login expired"
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here — its branch, main — from the
                    project's Git view; the controller enforces it on the relay
@@ -392,6 +408,11 @@ bb git policy      what a session may push here — its branch, main — from th
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
+                   The block is rendered per project, not copied: the shipped
+                   template marks its Android and compose sections with the
+                   evidence that makes them apply, so a plain project's
+                   sessions start on about a thousand fewer words and a
+                   session is not told how to drive an emulator it has none of
 bb claude-md --update   refresh that block only
 bb claude-md --is-stale exit 0 when the block exists and has drifted
 bb claude-md --out-of-window  exit 0 when the block is from another compatibility
@@ -489,6 +510,19 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
+bb logs --node NAME [--agent|--runner|--terminal] [N]
+                   a machine's own log — the agent's journal, the CI runner's,
+                   the terminal server's. Root's on that box: the enrolled
+                   account is in neither `adm` nor `systemd-journal`, so a
+                   session cannot read them at all. Offered only while **debug
+                   mode** is on in Controller settings AND the asking node has
+                   been granted that node on its **Debug settings**, its own
+                   journal included — "it is only looking at itself" is the
+                   reasoning that makes a boundary stop meaning anything.
+                   Which node is asking is the node of the session's own
+                   project, proved by its token, never the `BB_NODE` in its
+                   environment. What can be read is a table of three streams;
+                   anything else is refused, not run
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -569,7 +603,7 @@ module. Everything a build needs — the JDK, the Android SDK, the emulator,
 Flutter, .NET — is a recipe installed into a **node's packages store**, from
 the Tools tab with that node picked; the tab lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store — the SDK
-share, mapped at `/sdk` (Unraid default `/mnt/user/development/SDK`) — holds
+share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`) — holds
 only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
@@ -1038,7 +1072,14 @@ administrator's with the machinery added) and BuilderBot's **changelog**. The
 panel opens itself twice in an account's life: on the guide the first time
 the account signs in, and on the changelog once after every image update,
 with a line under what is new since that account last looked. Closing it is
-the acknowledgement. Every sidebar card collapses to its header with a click
+the acknowledgement.
+
+The changelog there is **what is unreleased plus the current minor's own
+releases**, each release under the categories it was filed into, and a line
+saying how many earlier releases it is not showing. The question it answers is
+"what changed in the build in front of me"; the file it reads keeps every
+release forever and is where the rest of them are. Cutting a new minor takes
+the previous one off that page in the same gesture, with nothing pruned. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
@@ -3064,6 +3105,15 @@ onRev("phone.asks", () => phFetch());
 onRev(() => `dist:${project}`, () => loadArtifacts());
 ```
 
+**The notebook is on the same clock.** Its halves — the roadmap, the memories,
+the rules, the approval queue, the test registry, and the controller's own
+settings — each carry a revision here too, so a change made in another window
+or by a session shows up on the tab you are looking at within a second or two
+rather than at the fifteen-second status poll. A view re-reads only when it is
+not in the middle of something: a half with an unsaved edit, a staged change
+or a write in flight is left alone until it settles, because a poll that
+overwrites what somebody is typing is worse than a stale line.
+
 The endpoint is **deliberately tiny** — file mtimes and in-memory counters, no
 git, no tmux, no adb — which is what makes it affordable at a second and a
 half, where `/api/status` runs git for every project and is affordable at
@@ -3762,19 +3812,45 @@ scripts/
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py, index.html, bb-tty
+  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab
+    bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-gate                      the hook every tool call asks before it runs, on a node
+    bb-keep-login                keeps a node session's Claude login in step, once per prompt
+    bb-prompt-relay              a node session's prompts and answers, back to the controller
+    bb-work-note                 what a session is changing, for the overlap warning
+    users.py                     who may sign in, and what they are allowed to see (docs/users.md)
+    prefs.py                     which model and effort a project's Claude session runs on
+    settings.py                  controller settings, the things that used to be environment variables
+    statefile.py                 writing a state file, and holding it while you read-modify-write one
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
+    rules.py                     house rules: what has been decided about working on a project
+    preamble.py                  what every session on a project starts with, assembled once
     projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    git.py                       the notebook's Git view: the repository read out, and its writes
+    codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
-    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
-    jobs.py                      the controller's own job runner — exec here or over ssh — plus /healthz and /metrics
-    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
+    pending.py                   what a session wants to add to the notebook, held for the operator
+    ids.py                       one letter per notebook tab, so a number says which list it came from
     presence.py                  who else has a notebook open, in memory only
+    overlap.py                   what each session is changing, and where two of them collide
+    chat.py                      messages between accounts, and what each project's people are doing
+    version.py                   one version identity per project, rendered for whatever is asking
+    changelog.py                 the user-facing record beside it: categories, and the editor's writes
+    artifacts.py                 what a project built: dist/, and what a row may offer
+    devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
+    phone.py                     a paired handset on a node: install, push, and the asking
+    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
+    workspace.py                 snapshots, the node bundle, and the artifact store
+    jobs.py                      the controller's own job runner — exec here or over ssh — plus /healthz and /metrics
+    vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
+    idle.py                      ending Claude sessions nobody has used for a while
+    findings.py                  what the scanner used to say, so a finding that goes away leaves a trace
+    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
@@ -3789,9 +3865,15 @@ nodes/vm/                        the same machine for the other six hypervisors:
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
+tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
+tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
+                                 window in the agent and the template with it, or refuses
 docs/unraid.md                   step-by-step Unraid walkthrough
 docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
 docs/nodes.md                    design: controller + nodes, homelab-default and enterprise-scalable
+docs/users.md                    accounts, roles, and what each one may reach
+docs/design-language.md          what the dashboard's surfaces owe each other — held by the
+                                 house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard

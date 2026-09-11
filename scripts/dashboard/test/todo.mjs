@@ -442,8 +442,8 @@ ok(await page.$('.dropbox') === null
    'Cancel closes it and drops nothing');
 
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .rm`);
-await page.waitForSelector('.dropbox input', { timeout: 10000 });
-await page.fill('.dropbox input', 'the select is gone, nothing to widen');
+await page.waitForSelector('.dropbox textarea', { timeout: 10000 });
+await page.fill('.dropbox textarea', 'the select is gone, nothing to widen');
 await page.click('.dropbox .danger');
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="0"]').length === 1
   && document.querySelectorAll('#todoList .todo[data-step="1"]').length === 0,
@@ -900,14 +900,14 @@ page.errors = [];
 const plainId = (await open()).find(i => i.step === '-1'
   && i.text.startsWith('make the picker')).id;
 await page.click(`#todoList .addstep[data-id="${plainId}"] button`);
-await page.fill(`#todoList .addstep[data-id="${plainId}"] input`, 'first, widen it');
+await page.fill(`#todoList .addstep[data-id="${plainId}"] textarea`, 'first, widen it');
 await page.keyboard.press('Enter');
 await page.waitForFunction(id => document.querySelectorAll(
   `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 1, plainId,
   { timeout: 10000 });
-ok(await page.$eval(`#todoList .addstep[data-id="${plainId}"] input`, e => !!e),
+ok(await page.$eval(`#todoList .addstep[data-id="${plainId}"] textarea`, e => !!e),
    'the step field stays open, so a plan is typed rather than assembled');
-await page.fill(`#todoList .addstep[data-id="${plainId}"] input`, 'then re-measure');
+await page.fill(`#todoList .addstep[data-id="${plainId}"] textarea`, 'then re-measure');
 await page.keyboard.press('Enter');
 await page.waitForFunction(id => document.querySelectorAll(
   `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 2, plainId,
@@ -969,10 +969,10 @@ await page.waitForFunction(id => document.querySelector(
 // ...and the step field has a way out that is not the Escape key a phone
 // keyboard does not have.
 await page.click(`#todoList .addstep[data-id="${plainId}"] button`);
-await page.waitForSelector(`#todoList .addstep[data-id="${plainId}"] input`);
+await page.waitForSelector(`#todoList .addstep[data-id="${plainId}"] textarea`);
 await page.click(`#todoList .addstep[data-id="${plainId}"] .stop`);
 await page.waitForFunction(id => !document.querySelector(
-  `#todoList .addstep[data-id="${id}"] input`), plainId, { timeout: 10000 });
+  `#todoList .addstep[data-id="${id}"] textarea`), plainId, { timeout: 10000 });
 ok(true, 'Cancel closes the step field without adding anything');
 
 // ---- the details under a line --------------------------------------------

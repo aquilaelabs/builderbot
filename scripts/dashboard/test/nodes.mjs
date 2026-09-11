@@ -1256,6 +1256,117 @@ ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).err
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 
+// ---- the Claude login is GIVEN to a node, never taken by one ---------------
+// It used to follow the account: a session started on a node and that node
+// fetched the account's grant. The grant is an OAuth pair with a refresh
+// token in it, so every enrollment silently widened what holds the account —
+// and taking it back meant un-enrolling the machine. Now the node a sign-in
+// happened on is granted by that act, and every node after it is a press
+// behind the operator's own password.
+{
+  const n = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.kind === 'agent');
+  const row = async () => (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.id === n.id);
+  ok((await row()).claude_mine === false,
+     'a node holds no Claude login until it is given one');
+  const grant = (on, password) => page.evaluate(async ([id, o, pw]) =>
+    await nodeAct({action: 'claude-grant', id, on: o, password: pw}), [n.id, on, password]);
+
+  ok(/not your password/.test((await grant(true, 'wrong')).error || ''),
+     'the wrong password gives it away to nobody');
+  ok((await grant(true, 'test')).ok === true && (await row()).claude_mine === true,
+     'the right one hands the node this account\'s login');
+  // The row answers for the ACCOUNT asking, not with the list of accounts
+  // that hold one: who else has signed in where is nobody's to read off a row.
+  const shown = await row();
+  ok(!('claude_for' in shown) && !('claude_for' in (shown.config || {})),
+     '...and neither the row nor its config names the accounts that hold one');
+  ok((await grant(false, 'test')).ok === true && (await row()).claude_mine === false,
+     'and taking it back is the same gesture, which is what makes it reversible');
+  page.errors = [];
+}
+
+// ---- debug: whose machine logs a node's sessions may read -------------------
+// A session on a node reads the logs of its own WORK — its project's CI runs,
+// what its test runs left — and nothing of the machine. The agent's journal
+// is root's there: the enrolled account is in neither adm nor
+// systemd-journal, so journalctl from a session answers "insufficient
+// permissions". This opens that deliberately, per node, and only while the
+// controller's debug switch is on.
+{
+  const n = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes))
+    .find(x => x.kind === 'agent');
+  // The asking node is derived from the session's PROJECT, never from the
+  // request and never from a node session's BB_NODE, which is a variable a
+  // session can set. So alpha has to be on this node for the question to
+  // have an asker at all.
+  await page.evaluate(async id => {
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', node: id }) });
+  }, n.id);
+  const read = (node, extra = {}) => page.evaluate(async ([nd, ex]) => {
+    const r = await fetch('/api/nodelog', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: nd, ...ex }) });
+    return { status: r.status, ...(await r.json()) };
+  }, [node, extra]);
+
+  // The switch first. Off — the default — nothing is offered to anybody,
+  // whatever any node has been granted.
+  let r = await read(n.name);
+  ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
+     `with debug mode off a machine's logs are refused, saying what turns it on (${
+       (r.error || '').slice(0, 48)})`);
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: { debug_mode: true } }) });
+  });
+
+  // On, and still refused: the switch grants nothing. A node is not granted
+  // its own journal either — that is the tick this exists to make somebody
+  // press.
+  r = await read(n.name, { project: 'alpha' });
+  ok(r.status === 403 && /has not been granted/.test(r.error || ''),
+     `...and on, a node still reads nothing until it is granted it (${
+       (r.error || '').slice(0, 56)})`);
+
+  const grant = from => page.evaluate(async ([id, f]) =>
+    await nodeAct({ action: 'log-grant', id, from: f }), [n.id, from]);
+  ok((await grant([n.id])).ok === true, 'a node can be granted its own machine logs');
+  const back = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.id === n.id);
+  ok((back.config?.log_from || []).join() === n.id,
+     '...and the grant is on its record, where the row reads it');
+  ok(!!(await grant(['n_nothing'])).error,
+     '...while a node id nobody has is refused rather than stored');
+  ok((await grant([])).ok === true
+     && !((await page.evaluate(async () =>
+          (await (await fetch('/api/v1/nodes')).json()).nodes))
+          .find(x => x.id === n.id).config?.log_from || []).length,
+     'and the grant comes back off, which is the way out');
+
+  // A stream this table does not have is not reachable however it is asked
+  // for: what can be read is a lookup, like everything else the web can run.
+  await grant([n.id]);
+  r = await read(n.name, { project: 'alpha', stream: 'passwd' });
+  ok(!!r.error && /no such log/.test(r.error),
+     `a log this table does not name is refused, not run (${(r.error || '').slice(0, 40)})`);
+  await grant([]);
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: { debug_mode: false } }) });
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', node: '' }) });
+  });
+  page.errors = [];
+}
+
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');

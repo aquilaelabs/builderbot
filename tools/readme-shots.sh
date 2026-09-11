@@ -39,6 +39,11 @@ S="$(mktemp -d "${TMPDIR:-/tmp}/readme-shots.XXXXXX")"
 # every prompt reads as noise. Namespaced and recreated from scratch, so the
 # rm below only ever eats this script's own leavings.
 W=/tmp/workspace
+# The invented image this staged instance claims to be. One variable, because
+# the owner's `image_seen` has to match it exactly or the welcome panel opens
+# itself over every picture — which is what it did.
+REV="abc1234def5678901234567890abcdef12345678"
+BUILT="2026-09-11T09:14Z"
 rm -rf "$W"
 mkdir -p "$W"
 # ---- private tmux server (see the header; verified, not assumed) -----------
@@ -54,12 +59,18 @@ case "$sock" in
 esac
 server_pid=""
 ttyd_pid=""
+ttyd_ro_pid=""
 cleanup() {
     [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null || true
     [ -n "$ttyd_pid" ]   && kill "$ttyd_pid"   2>/dev/null || true
+    [ -n "$ttyd_ro_pid" ] && kill "$ttyd_ro_pid" 2>/dev/null || true
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
     esac
+    # BB_SHOTS_KEEP leaves the staged instance's logs behind: when a picture
+    # comes out wrong the answer is in $S/server.log or $S/ttyd.log, and this
+    # script's whole point is that nobody runs it often enough to remember.
+    [ -n "${BB_SHOTS_KEEP:-}" ] && { log "kept $S"; return; }
     rm -rf "$S" "$W"
 }
 trap 'cleanup' EXIT
@@ -91,6 +102,44 @@ seed orbit                       # no remote: wears the link-to-GitHub chain
 seed blog-engine                 # findings, and no CLAUDE.md yet
 ( cd "$W/blog-engine"
   git remote add origin git@github.com:acme/blog-engine.git )
+
+# The block, RENDERED. A raw copy of the template is not what a project's
+# block looks like any more — it carries conditional sections resolved per
+# project — so every seeded project wore "CLAUDE.md environment block is out
+# of date" in the picture that is supposed to show a healthy dashboard.
+# BB_RELAYED because this may be run from a session on a node, where the verb
+# would otherwise be answered by the real controller about the real projects.
+for proj in meal-planner orbit; do
+    ( cd "$W/$proj" && BB_RELAYED=1 WORKSPACE="$W" DASHBOARD_STATE="$S/state" \
+        TEMPLATE_MD="$REPO/config/templates/project-CLAUDE.md" \
+        bash "$REPO/scripts/bb" claude-md --update >/dev/null 2>&1 \
+      && git add -A && git commit -qm "Bring the environment block up to date" ) || true
+done
+
+# ---- the owner -------------------------------------------------------------
+# A fresh state directory serves the first-run screen, and without this every
+# picture in the README is that form. DASHBOARD_AUTH is the legacy fallback
+# and no longer gets past it. Claimed directly rather than through the form,
+# the way test/run.sh does it and for the same reason: the form enforces an
+# eight-character password and this credential is `shots:shots`.
+#
+# The account is invented on purpose. These pictures go into a public
+# repository, so nothing here may photograph a real name or address.
+python3 - "$REPO/scripts/dashboard/users.py" "$S/state" "$REV" <<'EOF'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("users", sys.argv[1])
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+d = u.load()
+d["users"]["shots"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
+                       "prefs": {"full_name": "Sam Example", "email": "you@example.com",
+                                 # Read, or the welcome panel opens over every
+                                 # picture the script takes.
+                                 "welcome_seen": True,
+                                 "image_seen": sys.argv[3]},
+                       "password": u.hash_password("shots"), "created": 0, "seen": 0}
+u._save(d)
+EOF
 
 python3 - "$S/reports/scan.sarif" <<'EOF'
 import json, sys
@@ -136,8 +185,12 @@ cat > "$S/state/tabs.json" <<EOF
 EOF
 
 # ---- the app: real ttyd, the checkout's server -----------------------------
+# No --credential, and the same shape the container's own hook uses: the
+# browser reaches a terminal through the dashboard's /term proxy, which does
+# not carry one, so ttyd asking for Basic meant a 401 and a blank pane in
+# every picture. Loopback only, which is what makes that safe.
 env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_STATE="$S/state" \
-    ttyd --port "$TTYD_PORT" --interface 127.0.0.1 --credential "$AUTH" \
+    ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
          --url-arg --writable -t reconnect=5 "$REPO/scripts/dashboard/bb-tty" \
     > "$S/ttyd.log" 2>&1 &
 ttyd_pid=$!
@@ -156,7 +209,12 @@ fi
 exit 0
 STUB
 chmod +x "$S/bin/claude"
+# A stamp, so the header carries a version rather than `unstamped`: the
+# README spends a paragraph on that line being the answer to "which build is
+# this", and a picture of it saying nothing teaches the opposite. Invented,
+# and obviously so.
 env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_PORT="$PORT" \
+    BB_IMAGE_REV="$REV" BB_IMAGE_BUILT="$BUILT" \
     DASHBOARD_TTYD_PORT="$TTYD_PORT" BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$REPO/config/templates/project-CLAUDE.md" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH="$AUTH" \
@@ -173,7 +231,13 @@ sleep 5      # the first doctor run and status poll, so no card says loading
 # ---- the photographs -------------------------------------------------------
 mkdir -p "$OUT"
 BASE="http://127.0.0.1:$PORT"
-shot() { bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait 4000; }
+# DASHBOARD_PORT, because that is how `bb shot` knows which origin the
+# credential belongs to: it sends the Authorization header to that port and
+# nowhere else, so that shooting somebody else's page in the same run cannot
+# carry it there (bug #49). Without it the staged instance on $PORT is not
+# the dashboard as far as the flag is concerned, and every picture is the
+# sign-in page.
+shot() { DASHBOARD_PORT="$PORT" bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait "${SHOT_WAIT:-9000}"; }
 # Scale 1 wherever a terminal is in frame: ttyd's xterm canvas renders
 # blank, at doubled font metrics, under deviceScaleFactor 2 in headless
 # Chromium — found by taking these very screenshots. The phone dashboard
@@ -181,6 +245,10 @@ shot() { bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait 4000; }
 # Tall enough to reach the toolchain cards: the sidebar has nine of them now,
 # and a 900px frame cut off the ones this README spends paragraphs on.
 shot "$BASE/"               "$OUT/dashboard.png"       --size 1440x1180 --scale 1
-shot "$BASE/?view=dash"     "$OUT/phone-dashboard.png" --size 390x844 --scale 2 --resize 780
+# No --resize: 390 at scale 2 is already 780 wide, so the flag only ever ran
+# imagemagick to produce the same pixels — and imagemagick is in the
+# controller's image and not on a node, which is where sessions are. The flag
+# stays on bb shot for a shot that really does downscale.
+shot "$BASE/?view=dash"     "$OUT/phone-dashboard.png" --size 390x844 --scale 2
 shot "$BASE/?view=terminal" "$OUT/phone-terminal.png"  --size 390x844 --scale 1
 log "wrote $OUT/{dashboard,phone-dashboard,phone-terminal}.png"

@@ -431,6 +431,7 @@ bb changelog add "…" --cat Fixed   # file it under a category
 bb changelog            # read it; --for DIR for a component's own
 bb changelog unreleased # what is waiting for a bump, numbered, by category
 bb changelog edit 3 "…" # reword entry 3 rather than logging it twice
+bb changelog edit 3 --cat Fixed    # move it, leaving the words alone
 bb changelog merge 2 5 "…"   # one line for several, carrying their commits
 bb changelog split 2    # back into one line per commit it carries
 bb changelog rm 2       # drop one that stopped being true
@@ -440,8 +441,10 @@ bb changelog rm 2       # drop one that stopped being true
 category is a `### Name` subsection — the Keep a Changelog shape — and which
 categories exist, what order they sit in and what order the lines run inside
 them are all decided by hand, on the Changelog editor beside the version.
-`--cat` files an entry under one, making it at the end of the section if it
-is new; where it belongs in what a reader meets is not a session's call.
+`--cat` files an entry at the end of a category, making the category at the
+end of the section if it is new — on `add` and on `edit` alike, so re-filing
+a line into its own category sends it to the bottom of that category. That is
+the only ordering you have; where a CATEGORY sits is not a session's call.
 Entry numbers count straight through the whole section, categories and all,
 and they move whenever it is rearranged, so read `bb changelog unreleased`
 before naming one.
@@ -460,7 +463,9 @@ line instead of adding one.** Read `bb changelog unreleased` before you log:
 if an entry there already describes the thing you just changed — a fix on a
 fix, a second pass over one feature — `bb changelog edit N "…"` rewords it.
 The line keeps every commit it already carried and gains yours, oldest
-first, so the entry names all the commits that made it. Use your judgment: two lines about
+first, so the entry names all the commits that made it. A correction with no
+commit behind it — a pass over the wording, a move between categories — takes
+`--no-stamp`, or names no new words at all, and then claims nothing. Use your judgment: two lines about
 one change tell the reader about it twice, but a genuinely separate change
 is a new line. Only Unreleased is editable; a dated section is a release
 somebody may have read.
@@ -496,8 +501,10 @@ every build is named identically and the tab cannot tell this one from the
 last.
 
 From that tab the operator downloads any of them, installs an `.apk` on their
-paired phone (which replaces an existing copy in place, keeping its data), and
-pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
+paired phone (which replaces an existing copy in place, keeping its data),
+pushes an `.xpi` to it, and reads a shell script without downloading it — a
+file is a script by its extension or by its shebang, so a shipped installer
+does not have to be called `.sh` to be treated as one. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 

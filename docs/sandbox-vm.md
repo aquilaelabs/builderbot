@@ -348,7 +348,7 @@ over. **From the Unraid terminal**, where that path is the host's own; inside
 BuilderBot the same file is `/workspace/BuilderBot/nodes/provision-linux.sh`.
 
 ```bash
-scp /mnt/user/development/projects/BuilderBot/nodes/provision-linux.sh bb@<vm-ip>:
+scp /mnt/user/projects/BuilderBot/nodes/provision-linux.sh bb@<vm-ip>:
 ssh bb@<vm-ip>
 ```
 
@@ -357,8 +357,8 @@ then, in that session:
 ```bash
 sudo bash provision-linux.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
-    --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
-    --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
+    --nfs 192.168.1.10:/mnt/user/projects:/workspace \
+    --nfs 192.168.1.10:/mnt/user/builderbot/devdata:/devdata
 ```
 
 **It checks the machine before it touches it.** The first thing a run prints
@@ -503,7 +503,7 @@ Then what differs from Unraid's placeholder, each for a reason:
 
   ```
   Starting external device: virtiofsd
-  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/development/projects
+  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/projects
   ...
   libvirt:  error : libvirtd quit during handshake: Input/output error
   ```
@@ -528,8 +528,8 @@ Then what differs from Unraid's placeholder, each for a reason:
 
   ```bash
   sudo bash provision-linux.sh --user bb --key "ssh-ed25519 …" \
-      --nfs 192.168.1.10:/mnt/user/development/projects:/workspace \
-      --nfs 192.168.1.10:/mnt/user/bb-sandbox/devdata:/devdata
+      --nfs 192.168.1.10:/mnt/user/projects:/workspace \
+      --nfs 192.168.1.10:/mnt/user/builderbot/devdata:/devdata
   ```
 
   Export them from Unraid first: *Shares → share → NFS Security Settings*,
@@ -566,7 +566,7 @@ Then what differs from Unraid's placeholder, each for a reason:
   exporting all of it — every other container's configuration, handed to the
   machine the VM exists to keep away from them. Give the dev data a share of
   its own, which is what the template now defaults to
-  (`/mnt/user/bb-sandbox/devdata`), or skip `/devdata` entirely until
+  (`/mnt/user/builderbot/devdata`), or skip `/devdata` entirely until
   something needs it: a compose that never mentions `${BB_DEV_DATA}` does not
   care.
 
@@ -585,7 +585,7 @@ Then what differs from Unraid's placeholder, each for a reason:
     <binary path="/usr/libexec/virtiofsd">
       <sandbox mode="chroot"/>
     </binary>
-    <source dir="/mnt/user/development/projects"/>
+    <source dir="/mnt/user/projects"/>
     <target dir="workspace"/>
   </filesystem>
   ```

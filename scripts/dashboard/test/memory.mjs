@@ -109,26 +109,26 @@ await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
 // Read first, like a bug report: the text under its label, and Edit for the
 // fields. Cancel puts them away and drops what was typed.
 await page.waitForSelector('#memList .mem[open] .mEdit');
-ok(!await page.$('#memList .mem[open] textarea')
+ok(!await page.$('#memList .mem[open] textarea[data-file]')
    && (await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice'),
    'opening one shows the whole file to read, frontmatter and all, and no fields');
 await page.click('#memList .mem[open] .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea');
-ok((await page.$eval('#memList .mem[open] textarea', t => t.value)).includes('asked for it twice'),
+await page.waitForSelector('#memList .mem[open] textarea[data-file]');
+ok((await page.$eval('#memList .mem[open] textarea[data-file]', t => t.value)).includes('asked for it twice'),
    'Edit puts the file in a field');
-await page.$eval('#memList .mem[open] textarea', t => {
+await page.$eval('#memList .mem[open] textarea[data-file]', t => {
   t.value = t.value.replace('asked for it twice', 'a change nobody wanted');
   t.dispatchEvent(new Event('input'));
 });
 await page.click('#memList .mem[open] .mCancel');
-await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea'), null, { timeout: 10000 });
+await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
 ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice')
    && await page.$eval('#todoSaveQuiet', b => b.disabled),
    '...and Cancel puts it away, reading what is on disk, with nothing left to save');
 await page.click('#memList .mem[open] .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea');
+await page.waitForSelector('#memList .mem[open] textarea[data-file]');
 
-await page.$eval('#memList .mem[open] textarea', t => {
+await page.$eval('#memList .mem[open] textarea[data-file]', t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
   t.dispatchEvent(new Event('input'));
 });
@@ -146,7 +146,7 @@ ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
 ok(read('tabs.md').startsWith('---\n') && read('tabs.md').endsWith('\n'),
    '...intact, and newline-terminated');
-await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea'), null, { timeout: 10000 });
+await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
 ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it three times'),
    '...and written, the memory reads again, saying what was saved');
 
@@ -363,8 +363,8 @@ writeFileSync(`${MEM}/clash.md`,
 await page.evaluate(() => notebooks.get('alpha').reloadMemory());
 await openFold(page, '#memList .mem:has(.mname:text-is("clash"))');
 await page.click('#memList .mem:has(.mname:text-is("clash")) .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea');
-await page.$eval('#memList .mem[open] textarea', t => {
+await page.waitForSelector('#memList .mem[open] textarea[data-file]');
+await page.$eval('#memList .mem[open] textarea[data-file]', t => {
   t.value = t.value.replace('as loaded', 'what the operator typed');
   t.dispatchEvent(new Event('input')); });
 // A session writing the same file with its own tools, which is the writer
@@ -380,7 +380,7 @@ ok(/changed on disk while you had it open/.test(await memBand()),
 ok(/what the session wrote/.test(await memBand()),
    '...showing what is there now, to read and copy from');
 ok(read('clash.md').includes('what the session wrote'), '...with nothing written');
-ok((await page.$eval('#memList .mem[open] textarea', t => t.value))
+ok((await page.$eval('#memList .mem[open] textarea[data-file]', t => t.value))
      .includes('what the operator typed'),
    '...and the typing still in the editor, which is why there is no Keep theirs');
 await page.click('#memClashMine');

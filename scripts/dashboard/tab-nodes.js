@@ -281,6 +281,26 @@ function nodeAdvancedSection(n, stale, inflight){
           : "refuse system changes from here — the machine's fstab, address and root stay its administrator's at the console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
+    ${n.kind === "agent" ? `
+    <div class="actbar ndclaude">
+      <span class="state">${n.claude_mine
+        ? "This node holds your Claude login. Take it back and its sessions cannot sign in as you."
+        : "Sessions here cannot sign in as you until this node is given your Claude login — an OAuth grant, so it asks for your password."}</span>
+      <button type="button" data-nd="claude-grant"
+        title="${n.claude_mine
+          ? "take this account's Claude login back off this machine"
+          : "hand this machine this account's Claude login, which is an OAuth grant with a refresh token in it"}">${
+        n.claude_mine
+          ? "Take my Claude login back" : "Send my Claude login"}</button>
+    </div>` : ""}
+    ${state?.settings?.settings?.debug_mode?.value ? `
+    <div class="actbar nddebug">
+      <span class="state">A session here reads its own project's CI and test logs. Machine logs are
+        a grant, this node's alone, and its own counts.</span>
+      <button type="button" data-nd="debug"
+        title="which nodes' agent, runner and terminal logs a session on this node may read">Debug settings${
+        (n.config?.log_from || []).length ? ` (${(n.config.log_from || []).length})` : ""}</button>
+    </div>` : ""}
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
         to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
@@ -797,6 +817,45 @@ function wireNodesTab(root){
   // The box narrows for the question and widens for the answer: one field
   // does not want 760px, and a shell line that wraps lies about what runs.
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
+  // Which nodes' MACHINE logs a session on this one may read. A tick per
+  // node, this one first and named as itself, because its own journal is as
+  // much root's as anybody else's — "it is only looking at itself" is the
+  // reasoning that makes a boundary stop meaning anything. Only reachable
+  // while the controller's debug switch is on; the switch grants nothing.
+  const debugForm = (n) => {
+    document.getElementById("ndTitle").textContent = `Debug settings — ${n.name}`;
+    boxWidth(false);
+    const rows = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired");
+    const have = new Set(n.config?.log_from || []);
+    body.innerHTML = `<div class="field">
+        <div class="hint">A session on ${esc(n.name)} always reads its own project's CI and
+          test logs. These are the machines whose agent, runner and terminal logs it may
+          read as well, each of which is root's on that box.</div>
+        <div class="logset">${rows.map(x => `
+          <div class="logdays setrow"><label class="ndcap">
+            <input type="checkbox" data-grant="${esc(x.id)}"${have.has(x.id) ? " checked" : ""}>
+            <span>${esc(x.name)}${x.id === n.id ? " — itself" : ""}</span></label></div>`).join("")}
+        </div>
+        ${rows.length ? "" : `<div class="hint">No other node is enrolled.</div>`}
+      </div>
+      <div class="foot">
+        <button type="button" class="primary" id="ndDbgSave">Save</button>
+        <button type="button" id="ndDbgCancel">Cancel</button>
+      </div>`;
+    body.querySelector("#ndDbgCancel").onclick = shut;
+    const go = body.querySelector("#ndDbgSave");
+    go.onclick = () => pressing(go, async () => {
+      const from = [...body.querySelectorAll("[data-grant]")]
+        .filter(c => c.checked).map(c => c.dataset.grant);
+      const j = await nodeAct({action: "log-grant", id: n.id, from});
+      if (j.error){ notify(j.error, true); return; }
+      shut();
+      notify(from.length ? `${n.name} may read ${from.length} node's logs`
+                         : `${n.name} reads no machine logs`);
+      loadNodes();
+    });
+  };
+
   const mintForm = () => {
     document.getElementById("ndTitle").textContent = "Enroll a node";
     boxWidth(false);
@@ -997,6 +1056,28 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const id = box.dataset.node;
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
+      if (act === "claude-grant"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (!n) return;
+        const on = !n.claude_mine;
+        const pw = prompt(on
+          ? `Send your Claude login to ${n.name}? It is an OAuth grant with a `
+            + `refresh token in it, and that machine will hold a copy.\n\n`
+            + `Type your BuilderBot password to confirm.`
+          : `Take your Claude login back off ${n.name}?\n\n`
+            + `Type your BuilderBot password to confirm.`);
+        if (!pw) return;
+        const j = await nodeAct({action: "claude-grant", id, on, password: pw});
+        if (j.error){ notify(j.error, true); return; }
+        notify(on ? `${n.name} has your Claude login` : `${n.name} no longer holds it`);
+        loadNodes();
+        return;
+      }
+      if (act === "debug"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (n){ modal.hidden = false; debugForm(n); }
+        return;
+      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "

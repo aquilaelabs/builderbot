@@ -215,12 +215,19 @@ def defaults(hv=DEFAULT_HV):
 
 
 def catalog():
-    """What the dialog's picker offers: every hypervisor, in the order they
-    are written, with what each one hands back and which fields it takes."""
-    return [{"id": k, "label": v["label"], "artifact": v["artifact"],
-             "lang": v["lang"], "wants": list(v["wants"]),
-             "mac_prefix": v["mac_prefix"]}
-            for k, v in HYPERVISORS.items()]
+    """What the dialog's picker offers: every hypervisor, with what each one
+    hands back and which fields it takes.
+
+    ALPHABETICAL by label. It used to be the order they were written in, which
+    was this box's own hypervisor first and then whatever was added next —
+    an order only the person who wrote it could predict.
+    """
+    return sorted(
+        [{"id": k, "label": v["label"], "artifact": v["artifact"],
+          "lang": v["lang"], "wants": list(v["wants"]),
+          "mac_prefix": v["mac_prefix"]}
+         for k, v in HYPERVISORS.items()],
+        key=lambda h: h["label"].lower())
 
 
 def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",

@@ -114,11 +114,18 @@ def get(fid):
 
 
 def catalog():
-    """What the link dialog draws: everything but the compiled regex."""
-    return [{"id": f["id"], "name": f["name"], "host": f["host"],
+    """What the link dialog draws: everything but the compiled regex.
+
+    ALPHABETICAL, because a list of choices with no order anybody can name is
+    a list you read twice. `git` is the one exception and is last: it is not a
+    host, it is "none of the above", and a catch-all sorted under A would be
+    read as a product called Another.
+    """
+    rows = [{"id": f["id"], "name": f["name"], "host": f["host"],
              "fixed": f["fixed"], "hint": f["hint"], "about": f["about"],
              "nested": f["nested"], "creates": bool(f["kind"])}
             for f in FORGES]
+    return sorted(rows, key=lambda f: (f["id"] == "git", f["name"].lower()))
 
 
 def slug(host):

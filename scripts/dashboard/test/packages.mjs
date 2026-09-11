@@ -690,6 +690,52 @@ await page.waitForFunction(() => pkgNode === 'local' && packages && !packages.na
                                  && document.querySelectorAll('.doc .pkg:not(.img)').length > 0,
                            { timeout: 30000 });
 
+// ---- a recipe this node's platform cannot have ---------------------------
+// The catalog says which platforms each recipe serves and the server marks
+// the rest, but the tab drew them all: on a Linux node that is one dead row
+// (xcodes), and on a Mac it is eleven of sixteen — a tab of controls that can
+// never be pressed. They go behind a fold, which is not the same as hidden:
+// somebody looking for xcodes should be able to find out that it exists and
+// what it wants.
+//
+// Rendered from a payload rather than against a real Mac, because the thing
+// under test is which side of the fold a row lands on.
+{
+  const shape = await page.evaluate(() => {
+    packages = { name: 'a-mac', root: '/Volumes/SDK/darwin-arm64', free_mb: 90000,
+      items: [
+        { name: 'jdk', label: 'JDK', about: 'a', installed: false, wrong_platform: '' },
+        { name: 'xcodes', label: 'xcodes (Xcode installer)', about: 'b',
+          installed: false, wrong_platform: '' },
+        { name: 'swift', label: 'Swift', about: 'c', installed: false,
+          wrong_platform: 'linux/amd64' },
+        { name: 'rust', label: 'Rust', about: 'd', installed: false,
+          wrong_platform: 'linux/amd64' }] };
+    pkgRev++; drawPanes();
+    const doc = document.querySelector('.doc.on');
+    const inList = [...doc.querySelectorAll('.pkgs:not(.pkgno .pkgs) .pkg .nm')]
+      .map(e => e.textContent.replace(/\s+/g, ' ').trim());
+    const fold = doc.querySelector('details.pkgno');
+    return { inList,
+             folded: [...(fold?.querySelectorAll('.pkg .nm') || [])]
+               .map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+             shut: fold ? !fold.open : null,
+             count: fold?.querySelector('.sst')?.textContent || '',
+             says: [...(fold?.querySelectorAll('.pkg .where') || [])]
+               .map(e => e.textContent.trim())[0] || '' };
+  });
+  ok(shape.inList.join('|') === 'JDK|xcodes (Xcode installer)',
+     `the list is what this node can have (${shape.inList.join(', ')})`);
+  ok(shape.folded.join('|') === 'Swift|Rust' && shape.shut === true
+     && shape.count === '2',
+     `...and what it cannot is behind a shut fold that counts them (${
+       shape.folded.join(', ')}, ${shape.count})`);
+  ok(/packaged for linux\/amd64, and this node is not/.test(shape.says),
+     `...each still saying what it wants, so the fold is not a hiding place (${shape.says})`);
+  await page.evaluate(() => { packages = null; loadPackages(); });
+  await page.waitForFunction(() => packages && !packages.error, { timeout: 20000 });
+}
+
 // 400s and 409s are asked for on purpose above; the browser logs a failed
 // fetch either way.
 const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
