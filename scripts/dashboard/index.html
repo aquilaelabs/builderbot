@@ -1218,6 +1218,21 @@ textarea,select{
    same window they are and a box inside that window is a box too many. */
 .verlogpane{font:12px/1.6 var(--mono);color:var(--ink);white-space:pre-wrap;
   overflow-wrap:anywhere;padding:11px 14px}
+/* The editor above it. A category is a band with its name in it; an entry is
+   a row of the same shape as every other row on a document surface, so the
+   arrangement reads as a list rather than as a form. The commits are on the
+   row and not editable: they are what the entry IS, and the words are what
+   somebody is here to change. */
+.clog{padding:11px 14px;display:flex;flex-direction:column;gap:10px}
+.clog .clgroup{display:flex;flex-direction:column;gap:6px}
+.clog .clhead{display:flex;align-items:center;gap:6px}
+.clog .clhead input{flex:1 1 auto;min-width:0;font:600 12px/1.4 system-ui,sans-serif}
+.clog .clrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.clog .clrow input.cltext{flex:1 1 16rem;min-width:0}
+.clog .clrow select{flex:0 0 auto;width:auto}
+.clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 0 auto}
+.clog .none{color:var(--dim);font:var(--f-note)}
+@media(max-width:900px){ .clog .clrow input.cltext{flex:1 1 100%} }
 /* A card body that is prose-and-controls rather than rows: the same inner
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
@@ -11816,6 +11831,131 @@ project can have several"
       }
       return done.join(" · ");
     };
+    // ---- the changelog, as something you can shape ------------------------
+    // It used to be the file as text, which is right for reading and useless
+    // for the thing it is actually for: a cycle's entries are written by
+    // sessions, one at a time, in the order the work happened — and what a
+    // person reads at a release wants an arrangement. Categories, their
+    // order, the order inside them, the words: all of it here.
+    //
+    // Unreleased only. Everything below it is a release somebody may have
+    // read, shown as the text it is; `bb version unroll` is how one is
+    // reopened, which is a gesture that says what it is.
+    function drawChangelog(pane, comp, j){
+      let gs = JSON.parse(JSON.stringify(j.groups || []));
+      const dated = (j.text || "").split(/\n(?=## (?!Unreleased))/s).slice(1).join("\n");
+      const names = () => [...new Set(gs.map(g => g.name))];
+      const flat = () => gs.flatMap(g => g.entries.map(e => [g, e]));
+      const swap = (a, i, k) => { const t = a[i]; a[i] = a[i + k]; a[i + k] = t; };
+
+      const draw = () => {
+        const opts = (cur) => ["", ...names().filter(Boolean)]
+          .map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${
+            esc(n || "no category")}</option>`).join("")
+          + `<option value="\u0000new">new category…</option>`;
+        pane.innerHTML =
+          `<div class="clog">
+             <div class="hint">Sessions add the lines; the order, the categories and
+               the words are yours. Saved to CHANGELOG.md when you press Save.</div>
+             ${gs.length ? gs.map((g, gi) => `
+               <div class="clgroup" data-g="${gi}">
+                 ${g.name ? `<div class="clhead">
+                   <input class="clname" value="${esc(g.name)}" maxlength="40"
+                          aria-label="category name">
+                   <button type="button" data-cmv="up" data-g="${gi}"
+                     ${gi === 0 ? "disabled" : ""} title="move this category up">↑</button>
+                   <button type="button" data-cmv="down" data-g="${gi}"
+                     ${gi === gs.length - 1 ? "disabled" : ""} title="move this category down">↓</button>
+                 </div>` : ""}
+                 ${g.entries.map((e, ei) => `
+                   <div class="clrow" data-g="${gi}" data-e="${ei}">
+                     <input class="cltext" value="${esc(e.text)}" maxlength="300"
+                            aria-label="what changed">
+                     <select class="clcat" aria-label="category">${opts(g.name)}</select>
+                     <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
+                     <button type="button" data-emv="up" title="move up">↑</button>
+                     <button type="button" data-emv="down" title="move down">↓</button>
+                     <button type="button" class="danger" data-erm
+                       title="drop this line — the commit is untouched">✕</button>
+                   </div>`).join("")}
+               </div>`).join("")
+             : `<div class="none">Nothing unreleased here yet.</div>`}
+             <div class="actbar"><span class="state" id="clState"></span>
+               <button type="button" class="primary" id="clSave">Save</button></div>
+           </div>
+           ${dated ? `<div class="verlogpane">${esc(dated)}</div>` : ""}`;
+        wire();
+      };
+
+      const wire = () => {
+        const q = (sel, fn) => pane.querySelectorAll(sel).forEach(fn);
+        q("[data-cmv]", b => b.onclick = () => {
+          const gi = Number(b.dataset.g);
+          swap(gs, gi, b.dataset.cmv === "up" ? -1 : 1);
+          draw();
+        });
+        q(".clname", i => i.onchange = () => {
+          gs[Number(i.closest(".clgroup").dataset.g)].name = i.value.trim();
+          draw();
+        });
+        q(".clrow", row => {
+          const g = gs[Number(row.dataset.g)], e = g.entries[Number(row.dataset.e)];
+          row.querySelector(".cltext").onchange = ev => { e.text = ev.target.value; };
+          row.querySelector("[data-erm]").onclick = () => {
+            g.entries.splice(g.entries.indexOf(e), 1);
+            gs = gs.filter(x => x.entries.length);
+            draw();
+          };
+          row.querySelectorAll("[data-emv]").forEach(b => b.onclick = () => {
+            // Across the whole section, not within the group: a line moved
+            // off the end of one category lands in the next, which is what
+            // "move it down" looks like to somebody dragging a list.
+            const all = flat();
+            const at = all.findIndex(([, x]) => x === e);
+            const to = at + (b.dataset.emv === "up" ? -1 : 1);
+            if (to < 0 || to >= all.length) return;
+            const [tg] = all[to];
+            g.entries.splice(g.entries.indexOf(e), 1);
+            if (tg === g) g.entries.splice(g.entries.indexOf(all[to][1])
+                                           + (b.dataset.emv === "up" ? 0 : 1), 0, e);
+            else tg.entries.splice(b.dataset.emv === "up" ? tg.entries.length : 0, 0, e);
+            gs = gs.filter(x => x.entries.length);
+            draw();
+          });
+          row.querySelector(".clcat").onchange = ev => {
+            let to = ev.target.value;
+            if (to === "\u0000new"){
+              to = (prompt("Name the new category") || "").trim();
+              if (!to){ draw(); return; }
+            }
+            g.entries.splice(g.entries.indexOf(e), 1);
+            let hit = gs.find(x => x.name === to);
+            if (!hit){ hit = {name: to, entries: []}; gs.push(hit); }
+            hit.entries.push(e);
+            gs = gs.filter(x => x.entries.length);
+            draw();
+          };
+        });
+        const save = pane.querySelector("#clSave");
+        if (save) save.onclick = async () => {
+          busy(save, "Saving");
+          try{
+            const r = await fetch("/api/changelog", {method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({project, component: comp, groups: gs})});
+            const a = await r.json();
+            if (a.error){ notify(a.error, true); return; }
+            gs = a.groups || [];
+            pane.querySelector("#clState").textContent =
+              `saved — ${a.entries} line${a.entries === 1 ? "" : "s"}`;
+            loadVersion();
+          }catch(e){ notify("changelog: " + e, true); }
+          finally{ if (save.isConnected) unbusy(save, "Save"); }
+        };
+      };
+      draw();
+    }
+
     box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verlog || "";
       if (b.classList.contains("on")){ closeSheet(); return; }
@@ -11840,10 +11980,14 @@ project can have several"
         const r = await fetch(`/api/changelog?project=${encodeURIComponent(project)}`
                               + `&component=${encodeURIComponent(comp)}`);
         const j = await r.json();
-        pane.textContent = j.error ? `changelog: ${j.error}`
-          : (j.text ?? `no CHANGELOG.md here yet — a session's first\n`
-              + `\`bb changelog add "..."\` creates it, and the next bump\n`
-              + `dates whatever has accumulated`);
+        if (j.error){ pane.textContent = `changelog: ${j.error}`; return; }
+        if (j.text == null){
+          pane.textContent = `no CHANGELOG.md here yet — a session's first\n`
+            + `\`bb changelog add "..."\` creates it, and the next bump\n`
+            + `dates whatever has accumulated`;
+          return;
+        }
+        drawChangelog(pane, comp, j);
       }catch(e){ pane.textContent = "changelog: " + e; }
     });
     box.querySelectorAll("[data-verbump]").forEach(b => b.onclick = async () => {

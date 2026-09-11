@@ -361,8 +361,13 @@ bb version policy  what a session may move here, and who decides. The
                    after), patch, patch and minor, or anything
 bb changelog       this project's user-facing changelog (--for DIR for a component)
 bb changelog add "..."   log what a change means for the person using it; the
-                   next version bump dates the accumulated lines
-bb changelog unreleased  the entries waiting for a bump, numbered
+                   next version bump dates the accumulated lines. --cat NAME
+                   files it under a `### Name` category, made at the end of
+                   the section if it is new — which categories exist and what
+                   order they and their lines sit in is the operator's, on the
+                   Changelog editor beside the version
+bb changelog unreleased  the entries waiting for a bump, numbered straight
+                   through the section by category, in the arranged order
 bb changelog edit N "..."  reword one of them — a change that tweaks something
                    already logged this cycle corrects its line rather than adding one
 bb changelog merge N M "..."   one line for several, carrying all their commits

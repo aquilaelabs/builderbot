@@ -4152,7 +4152,11 @@ class Handler(BaseHTTPRequestHandler):
             d = version._sub(name, q.get("component", [""])[0])
             if d is None:
                 return self._json({"error": "no such component"}, 400)
-            return self._json({"text": changelog.read(d)})
+            # The text for reading and the same section as structure for
+            # editing: one fetch, because the editor shows both and a second
+            # round trip would let them disagree about what is in the file.
+            return self._json({"text": changelog.read(d),
+                               "groups": changelog.groups(d)})
         if self.path.startswith("/api/version"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -4656,6 +4660,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(r, 400 if r.get("error") else 200)
         if path.startswith("/api/devapp"):
             return self._devapp(req)
+        if path.startswith("/api/changelog"):
+            return self._changelog(req)
         if path.startswith("/api/version"):
             return self._version(req)
         if path.startswith("/api/artifacts"):
@@ -6633,6 +6639,41 @@ class Handler(BaseHTTPRequestHandler):
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
+
+    def _changelog(self, req):
+        """Write back the Unreleased section a person rearranged.
+
+        The WHOLE section at once, which is what the editor holds: somebody
+        moving three lines and renaming a category is not making five edits,
+        and applying it as a sequence would let a refusal halfway leave a
+        shape nobody asked for.
+
+        A session does not get this. The CLI verbs it has — add, edit, merge,
+        split, rm — each say what they are doing to one entry; handing it the
+        whole section would make "the changelog is the operator's arrangement"
+        a convention rather than a rule. The refusal names the verbs.
+        """
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "the changelog's arrangement is the "
+                                        "operator's — a session writes entries with "
+                                        "`bb changelog add`, and corrects one with "
+                                        "`edit`, `merge`, `split` or `rm`"}, 403)
+        name = req.get("project", "")
+        if name not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": "not a project"}, 400)
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
+        d = version._sub(name, str(req.get("component") or ""))
+        if d is None:
+            return self._json({"error": "no such component"}, 400)
+        gs = req.get("groups")
+        if not isinstance(gs, list):
+            return self._json({"error": "groups is a list of {name, entries}"}, 400)
+        r = changelog.put(d, gs)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | {"text": changelog.read(d),
+                               "groups": changelog.groups(d)})
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.

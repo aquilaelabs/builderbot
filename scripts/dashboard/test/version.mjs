@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 // The checkout's bb, not the image's: the running image predates this
 // subcommand, which is exactly the case this repo's own CLAUDE.md warns about.
 const BB = fileURLToPath(new URL('../../bb', import.meta.url));
+const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const WS = `${DIR}/ws`;
 const PROJ = 'versioned';
 const ROOT = `${WS}/${PROJ}`;
@@ -513,23 +514,72 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
      '...leaving the others where they were');
   ok(cl('rm', '99').code !== 0, '...while a number nobody has is refused');
 
-  // ...and the order is the commits', not the order somebody happened to log
-  // them in. Oldest first, which is where a change began: an entry gains
-  // commits as the work goes on, and sorting by the newest would rearrange
-  // the list under the reader every time an old line was touched.
-  const when = rows().map(l => shasOf(l)[0]).filter(Boolean).map(sh => {
-    try {
-      return Number(execFileSync('git', ['-C', M, 'show', '-s', '--format=%ct', sh],
-                                 { env }).toString().trim());
-    } catch { return null; }
-  }).filter(x => x !== null);
-  ok(when.length > 1 && when.every((v, i) => i === 0 || when[i - 1] <= v),
-     `the section is stored in commit order, oldest first (${when.length} stamped)`);
+  // ...and the order is nobody's to derive. It used to be sorted by commit
+  // date on every write, which quietly moved a line under the reader every
+  // time an old entry was reworded — an edit stamps it with a newer commit.
+  // Now the file's order IS the order, and a reword leaves the line where
+  // somebody put it.
+  {
+    const first = rows()[0].replace(/^\s*\d+\s+/, '').replace(/\s*\([0-9a-f, ]+\)$/, '');
+    execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q',
+                         '-m', 'a much later commit'], { env });
+    cl('edit', '1', first + ', reworded much later');
+    ok(rows()[0].includes('reworded much later')
+       && shasOf(rows()[0]).length > 1,
+       'rewording the first entry with a newer commit leaves it first');
+  }
 
   for (const l of rows().filter(x => /MERGEONE/.test(x)))
     cl('rm', l.trim().split(/\s/)[0]);
   ok(rows().length === before,
      `...and the section is back to what the cases above left (${before})`);
+}
+
+// ---- categories: the shape a changelog reader already knows ---------------
+// A cycle's lines are written one at a time by whoever did the work; what a
+// reader meets at a release wants grouping. `### Name` subsections, because
+// that is the Keep a Changelog convention anybody who has read one knows —
+// and it makes a recategorised entry a moved line in the diff rather than a
+// rewritten file.
+//
+// A session files an entry under a category. It does not get to decide where
+// the category SITS: a new one lands at the end, and the arrangement is the
+// operator's, on the editor the browser cases below drive.
+{
+  const rows = () => (cl('unreleased').out.match(/^\s*\d+\s+.*$/gm) || []);
+  const numOf = word => (rows().find(l => l.includes(word)) || '').trim().split(/\s/)[0];
+  const file = () => readFileSync(`${M}/CHANGELOG.md`, 'utf8');
+  const before = rows().length;
+
+  ok(cl('add', 'CATME a fix', '--cat', 'Fixed').code === 0
+     && cl('add', 'CATME an addition', '--cat', 'Added').code === 0,
+     'a session files an entry under a category');
+  ok(/### Fixed\n\n- CATME a fix \([0-9a-f]{7}\)/.test(file())
+     && /### Added\n\n- CATME an addition \([0-9a-f]{7}\)/.test(file()),
+     '...written as `### Name` subsections, the entry still stamped with its commit');
+  ok(file().indexOf('- Pairing works') < file().indexOf('### Fixed')
+     && file().indexOf('### Fixed') < file().indexOf('### Added'),
+     '...a new category on the end, and the uncategorised lines above every heading');
+  const listed = cl('unreleased').out;
+  ok(/^\s+\(no category\)$/m.test(listed) && /^\s+Fixed$/m.test(listed)
+     && Number(numOf('CATME an addition')) === rows().length,
+     'the numbered list names each category and counts straight through them');
+
+  ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
+     'an entry moves between categories with --cat');
+  ok(/### Added\n\n- CATME a fix, moved [^\n]*\n- CATME an addition/.test(file()),
+     '...landing where it already was in the running order, not at the end');
+  ok(!/### Fixed/.test(file()),
+     '...and the category it emptied is gone, not left as a heading with nothing under it');
+
+  ok(cl('add', 'far too specific', '--cat', 'A'.repeat(41)).code !== 0
+     && !/far too specific/.test(file()),
+     'a category is a word or two: a longer one is refused and nothing is written');
+
+  cl('rm', numOf('CATME an addition'));
+  cl('rm', numOf('CATME a fix, moved'));
+  ok(rows().length === before && !/^### /m.test(file()),
+     `...and emptying the last category takes the heading with it (${before} left)`);
 }
 
 // The bump dates the section, in the same commit that moves VERSION.
@@ -1004,6 +1054,166 @@ const clog = await page.$eval(`${NB} .verlogpane`, (pane) => {
 });
 ok(clog.inSheet && clog.tall && !clog.boxed,
    '...filling the window it opens in, with no second box drawn inside it');
+
+// ---- the editor: the arrangement is a gesture, not a file to hand-edit ----
+// The pane used to be the file as text, which is right for reading and
+// useless for what the section is actually for. A cycle's entries arrive one
+// at a time from sessions, in the order the work happened; what a reader
+// meets at a release wants categories, an order inside them, and words
+// somebody chose. All of it here, over one Save.
+//
+// Unreleased only: everything below it is a release somebody may have read,
+// and it renders as the text it is.
+{
+  const seed = ['# Changelog', '', '## Unreleased', '',
+                '- a loose note (aaaaaaa)', '',
+                '### Fixed', '',
+                '- pairing works again (bbbbbbb)', '- another fix (ccccccc)', '',
+                '### Added', '', '- a new tab (ddddddd)', '',
+                '## 0.1.0 \u2014 2026-08-01', '', '- something older (eeeeeee)', ''];
+  const CL = `${B}/CHANGELOG.md`;
+  writeFileSync(CL, seed.join('\n'));
+  await page.click(`${NB} #sheetClose`);
+  await page.click(`${NB} #verBox [data-verlog]`);
+  await page.waitForSelector(`${NB} .clog .clrow`, { timeout: 20000 * SLOW });
+
+  // Read back as text/category/commit per row, which is the whole model: the
+  // select carries where a line sits, the sha span carries what it names.
+  // Every gesture redraws, so nothing here holds an element between calls.
+  const shown = () => page.$$eval(`${NB} .clog .clrow`, rs => rs.map(r => ({
+    text: r.querySelector('.cltext').value,
+    cat: r.querySelector('.clcat').value,
+    sha: r.querySelector('.clsha').textContent.trim() })));
+  const cats = () => page.$$eval(`${NB} .clog .clname`, is => is.map(i => i.value));
+  const shape = async () => (await shown()).map(r => `${r.text}:${r.cat}`).join('|');
+  const at = async word =>
+    (await shown()).findIndex(r => r.text.includes(word));
+  // .clrow sits inside its category's .clgroup, so an nth-of-type over the
+  // section would count per band. Index the handles instead.
+  const press = async (i, sel) => (await page.$$(`${NB} .clog .clrow`))[i].$eval(
+    sel, el => el.click());
+  const settled = async want => {
+    for (let n = 0; n < 50 * SLOW; n++){
+      if (await shape() === want) return true;
+      await sleep(100);
+    }
+    return false;
+  };
+
+  let rs = await shown();
+  ok(rs.length === 4
+     && rs.map(r => r.text).join('|') === 'a loose note|pairing works again|another fix|a new tab'
+     && rs.map(r => r.cat).join('|') === '|Fixed|Fixed|Added'
+     && rs[0].sha === 'aaaaaaa',
+     `every unreleased line is a row, in the file's order, with its category and its commit (${
+       JSON.stringify(rs)})`);
+  ok((await cats()).join('|') === 'Fixed|Added',
+     '...and each category is a band of its own, to rename and to move');
+  const datedText = await page.$eval(`${NB} .clog`,
+    e => (e.parentElement.querySelector('.verlogpane') || {}).textContent || '');
+  ok(/0\.1\.0/.test(datedText) && /something older/.test(datedText),
+     'the dated releases below it are the text they are: a release is not editable');
+
+  // Down off the end of a category lands in the next one. Kept within the
+  // group it would be a move that does nothing on the last row, which is not
+  // what dragging a list looks like.
+  await press(2, '[data-emv="down"]');
+  ok(await settled('a loose note:|pairing works again:Fixed|another fix:Added|a new tab:Added'),
+     `a line moved off the end of its category lands in the next one (${await shape()})`);
+
+  // The other half of the arrangement: the band itself moves.
+  await page.$$eval(`${NB} .clog .clgroup [data-cmv="up"]`, bs => bs[bs.length - 1].click());
+  for (let n = 0; n < 50 * SLOW && (await cats()).join('|') !== 'Added|Fixed'; n++)
+    await sleep(100);
+  ok((await cats()).join('|') === 'Added|Fixed',
+     `a category moves up and down the section on its own row (${(await cats()).join(', ')})`);
+
+  // Rename: the entries under it follow, because the name IS where they sit.
+  await page.$eval(`${NB} .clog .clname`, i => {
+    i.value = 'Shipped'; i.dispatchEvent(new Event('change', { bubbles: true })); });
+  for (let n = 0; n < 50 * SLOW && !(await cats()).includes('Shipped'); n++)
+    await sleep(100);
+  ok((await shown()).filter(r => r.cat === 'Shipped').length === 2,
+     `renaming a category carries its entries with it (${(await cats()).join(', ')})`);
+
+  // ...and a line moves between them from its own row, without dragging.
+  const loose = await at('loose');
+  await (await page.$$(`${NB} .clog .clrow`))[loose].$eval('.clcat', el => {
+    el.value = 'Shipped'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+  for (let n = 0; n < 50 * SLOW; n++){
+    if ((await shown()).every(r => r.cat)) break;
+    await sleep(100);
+  }
+  ok((await shown()).find(r => r.text === 'a loose note')?.cat === 'Shipped',
+     `an uncategorised line is filed from its own row (${await shape()})`);
+
+  await press(await at('another fix'), '[data-erm]');
+  for (let n = 0; n < 50 * SLOW && (await shown()).length !== 3; n++) await sleep(100);
+  ok(!(await shown()).some(r => r.text === 'another fix'),
+     `a line that stopped being true is dropped from the section (${await shape()})`);
+
+  // Nothing has touched the file yet. The whole section goes at once, because
+  // somebody moving three lines and renaming a category is not making five
+  // edits, and half of that applied is a shape nobody asked for.
+  ok(readFileSync(CL, 'utf8').includes('- another fix (ccccccc)'),
+     '...with the file untouched until Save: the section is applied whole, or not at all');
+
+  const arranged = await shape();
+  await page.click(`${NB} .clog #clSave`);
+  for (let n = 0; n < 100 * SLOW; n++){
+    const s = await page.$eval(`${NB} #clState`, e => e.textContent).catch(() => '');
+    if (/saved/.test(s)) break;
+    await sleep(100);
+  }
+  const written = readFileSync(CL, 'utf8');
+  ok(/## Unreleased\n\n### Shipped\n\n- a new tab \(ddddddd\)\n- a loose note \(aaaaaaa\)\n\n### Fixed\n\n- pairing works again \(bbbbbbb\)\n/
+       .test(written),
+     `Save writes the arrangement as \`### Name\` subsections (${
+       JSON.stringify(written.split('## 0.1.0')[0].slice(0, 200))})`);
+  ok(!/another fix/.test(written) && /aaaaaaa/.test(written) && /bbbbbbb/.test(written),
+     '...dropping the line, and never the commits of the lines that stayed');
+  ok(/## 0\.1\.0 \u2014 2026-08-01\n\n- something older \(eeeeeee\)/.test(written),
+     '...leaving the dated history below it exactly as it was');
+  // And the editor is still showing what the file now holds: it redraws from
+  // the section the server answers with, not from the one it sent, so a
+  // refusal or a tidy-up on the way in cannot leave the two disagreeing.
+  ok(await shape() === arranged,
+     `the editor redraws from what came back (${await shape()})`);
+  const back = written.slice(0, written.indexOf('## 0.1.0'));
+  const fromFile = back.split('\n').filter(l => l.startsWith('### ') || l.startsWith('- '))
+    .reduce((acc, l) => l.startsWith('### ')
+      ? (acc.cat = l.slice(4).trim(), acc)
+      : (acc.out.push(l.slice(2).replace(/\s*\([0-9a-f, ]+\)$/, '') + ':' + acc.cat), acc),
+      { cat: '', out: [] }).out.join('|');
+  ok(fromFile === arranged,
+     `...and the file holds that same arrangement (${fromFile} vs ${arranged})`);
+
+  // Whose gesture this is. A session has add, edit, merge, split and rm, each
+  // of which says what it is doing to one entry; handing it the whole section
+  // would make "the arrangement is the operator's" a convention rather than a
+  // rule. Asked from node rather than from the page: a deliberate 403 is a
+  // failed resource in the console, and the clean-console assertion below is
+  // worth more than the convenience.
+  const stok = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+def wj(p, d):
+    tmp = str(p) + ".tmp"; open(tmp, "w").write(json.dumps(d, indent=2)); os.replace(tmp, p)
+u.configure(state="${DIR}/state", write_json=wj)
+print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
+  const res = await fetch(`${DURL}/api/changelog`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${stok}` },
+    body: JSON.stringify({ project: 'beta', groups: [] }) });
+  const refused = await res.json();
+  ok(res.status === 403 && /bb changelog add/.test(refused.error || '')
+     && /merge/.test(refused.error || ''),
+     `a session is refused the whole section, and told the verbs it does have (${
+       (refused.error || '').slice(0, 64)})`);
+  ok(readFileSync(CL, 'utf8') === written,
+     '...with the file it was refused unchanged');
+  await page.click(`${NB} #sheetClose`);
+}
 
 // The real delivery path, against the harness's own tmux server: alpha has a
 // claude-alpha session, so this exercises notify.tell rather than a stub.
