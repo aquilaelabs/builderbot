@@ -1152,6 +1152,114 @@ def node_config_set(principal, node_id, cfg):
     return {"ok": True, "desired": clean}
 
 
+# ---- debug: which machine's logs a node's sessions may read ---------------
+# A session on a node reads the logs of its own WORK by default — the CI runs
+# for its project, what its test runs left — and nothing of the machine. The
+# machine's own logs are root's there: the enrolled account is in neither
+# `adm` nor `systemd-journal`, so `journalctl -u builderbot-agent` from a
+# session answers "No journal files were opened due to insufficient
+# permissions". That is a real boundary and not a convention.
+#
+# This opens it deliberately, per node, and only while the controller's
+# `debug_mode` setting is on. The grant is stored beside `desired` rather
+# than in it: nothing applies it to the machine, it is read at the moment a
+# log is asked for.
+#
+# A node is NOT implicitly granted ITSELF. Its own journal is as much system
+# level as any other machine's, and "it is only looking at itself" is the
+# reasoning that makes a boundary stop meaning anything.
+#
+# What can be read is a TABLE, the way everything the web UI can execute is:
+# a stream name resolves to an argv here, and nothing else is reachable
+# through this door however it is asked for.
+LOG_STREAMS = {
+    "agent": {"what": "the agent's own journal — what it did, and why a job failed",
+              "argv": ["journalctl", "-u", "builderbot-agent", "--no-pager",
+                       "-n", "{lines}"]},
+    "runner": {"what": "the CI runner's service log", "store": "data",
+               "argv": ["tail", "-n", "{lines}", "{data}/runner.log"]},
+    "terminal": {"what": "the terminal server's log", "store": "data",
+                 "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
+}
+LOG_LINES_MAX = 2000
+
+
+def log_grants(node_id):
+    """The node ids whose machine logs a session on `node_id` may read."""
+    n = node(node_id)
+    return list(((n or {}).get("config") or {}).get("log_from") or [])
+
+
+def node_log_grant(principal, node_id, from_ids):
+    """Set that list. The operator's, and an administrator's: a session token
+    is refused this endpoint the way it is refused the rest of the config
+    plane, or the boundary would be one a session could open for itself."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node has sessions to grant anything to"}
+    have = {x["id"] for x in node_list()}
+    want = [str(x) for x in (from_ids or [])][:32]
+    bad = [x for x in want if x not in have]
+    if bad:
+        return {"error": f"no such node: {bad[0]}"}
+    conf = dict(n.get("config") or {})
+    conf["log_from"] = want
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-log-grant",
+           {"from": want, "self": node_id in want})
+    return {"ok": True, "log_from": want}
+
+
+def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
+                  debug_on=False):
+    """A machine log off `target_id`, for a session running on `asking_id`.
+
+    The gate, in order, each refusal saying what would change it: the
+    controller's debug switch, then this node's grant for that node. Past
+    both it is root_wait — the same job, the same log in the Jobs tab, the
+    same refusal on a machine that did not enroll as a sandbox. What stands
+    in for the approval is the grant, and the job's log says so.
+    """
+    if not debug_on:
+        return {"error": "debug mode is off, so a machine's logs are not offered "
+                         "to any session. Controller settings turns it on, and "
+                         "each node is then granted the nodes it may read"}
+    if not asking_id:
+        return {"error": "this session is not on a node, and the grant is a "
+                         "node's — a controller session reads its own log with "
+                         "`bb logs`"}
+    a, tgt = node(asking_id), node(target_id)
+    if not tgt:
+        return {"error": "no such node"}
+    if target_id not in log_grants(asking_id):
+        me = (a or {}).get("name") or asking_id
+        return {"error": f"{me} has not been granted {tgt['name']}'s machine logs"
+                         + (" — not even its own, which is a tick of its own on "
+                            "Debug settings" if asking_id == target_id else
+                            " — Debug settings on its row grants it")}
+    spec = LOG_STREAMS.get(stream)
+    if not spec:
+        return {"error": "no such log: " + ", ".join(sorted(LOG_STREAMS))}
+    try:
+        n_lines = max(1, min(LOG_LINES_MAX, int(lines)))
+    except (TypeError, ValueError):
+        n_lines = 200
+    fills = {"lines": str(n_lines)}
+    if spec.get("store"):
+        path = ((tgt.get("reported") or {}).get("stores") or {}).get(
+            spec["store"], {}).get("path")
+        if not path:
+            return {"error": f"{tgt['name']} reports no {spec['store']} store, "
+                             f"which is where that log is kept"}
+        fills["data"] = str(path).rstrip("/")
+    argv = [x.format(**fills) for x in spec["argv"]]
+    why = (f"{(a or {}).get('name') or asking_id} reads {tgt['name']}'s "
+           f"{stream} log — granted on Debug settings, not asked for here")
+    return root_wait(principal, target_id, argv, why=why, timeout=120)
+
+
 DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
 
 

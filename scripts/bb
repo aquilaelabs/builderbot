@@ -144,6 +144,13 @@ bb — BuilderBot helper
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
+  bb logs --node NAME [--agent|--runner|--terminal] [N]
+                         a MACHINE's own log, which is root's on that box:
+                         the agent's journal, the runner's, the terminal
+                         server's. Offered only while the controller's debug
+                         mode is on and only to a node granted that node on
+                         its Debug settings — its own included. Without it a
+                         session reads its project's CI and test logs alone
   bb doctor              check the things that usually go wrong
 
   Developing BuilderBot itself (this repo is the container's source):
@@ -1152,10 +1159,12 @@ logs_are_the_controllers() {
 }
 
 cmd_logs() {
-    local base logfile follow=0 lines=100 gen=""
+    local base logfile follow=0 lines=100 gen="" want_node="" stream=""
     base="$(bb_log_dir)/builderbot.log"
     while [ $# -gt 0 ]; do
         case "$1" in
+            --node) want_node="${2:-}"; shift ;;
+            --agent|--runner|--terminal) stream="${1#--}" ;;
             -f) follow=1 ;;
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
@@ -1181,6 +1190,34 @@ cmd_logs() {
         esac
         shift
     done
+    # A MACHINE's own log — the agent's journal, the runner's, the terminal
+    # server's — which is root's on that box and is not offered to a session
+    # by default. The controller decides: its debug switch, then the grant on
+    # the asking node's row. Both refusals say what would change them.
+    if [ -n "$want_node" ] || [ -n "$stream" ]; then
+        [ -n "$want_node" ] || want_node="${BB_NODE:-}"
+        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal]"
+        local auth
+        auth="$(bb_auth_or_die)"
+        BB_LOG_AUTH="$auth" BB_LOG_NODE="$want_node" \
+        BB_LOG_STREAM="${stream:-agent}" BB_LOG_LINES="$lines" python3 - <<'NODELOG'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+d = bbapi.call("/api/nodelog",
+               {"node": os.environ["BB_LOG_NODE"],
+                "stream": os.environ["BB_LOG_STREAM"],
+                "lines": int(os.environ["BB_LOG_LINES"])},
+               auth=os.environ["BB_LOG_AUTH"], timeout=180)
+if d.get("error"):
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+sys.stdout.write(d.get("out") or "")
+if d.get("state") and d["state"] != "succeeded":
+    sys.exit(f"[builderbot] ERROR: the read {d['state']} on the node")
+NODELOG
+        return
+    fi
     if [ -n "$gen" ]; then
         logfile="${base}.${gen}"
     else

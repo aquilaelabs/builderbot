@@ -4672,6 +4672,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._version(req)
         if path.startswith("/api/artifacts"):
             return self._artifacts(req)
+        if path.startswith("/api/nodelog"):
+            return self._nodelog(req)
         if path.startswith("/api/phone"):
             return self._phone(req)
         if path.startswith("/api/findings"):
@@ -4742,6 +4744,12 @@ class Handler(BaseHTTPRequestHandler):
             # wants the node to mount and be addressed as. Stored here,
             # applied by the next action as a system job the agent runs.
             r = nodes.node_config_set(self._principal(), nid, req.get("config"))
+        elif act == "log-grant":
+            # Which nodes' machine logs a session on this node may read. An
+            # administrator's, like the rest of this handler — a session that
+            # could grant itself the journal is not a boundary.
+            r = nodes.node_log_grant(self._principal(), nid,
+                                     req.get("from") if isinstance(req.get("from"), list) else [])
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -6680,6 +6688,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(r, 400)
         return self._json(r | {"text": changelog.read(d),
                                "groups": changelog.groups(d)})
+
+    def _nodelog(self, req):
+        """A machine's own log, for a session that has been granted it.
+
+        Which node is ASKING is not taken from the request and never from the
+        session's environment: a node session's BB_NODE is a variable it can
+        set. It is the node of the session's own project, which the token
+        proves — the same derivation the phone's ask uses, for the same
+        reason.
+        """
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: " + NODES_OK}, 500)
+        who = self._who() or {}
+        proj = who.get("session") or field(req, "project")
+        if proj and not who.get("session") and not users.may_see(who, proj):
+            return self._json({"error": "not a project"}, 400)
+        asking = prefs.get(proj)["node"] if proj else ""
+        want = field(req, "node")
+        tgt = nodes.node(want) or next(
+            (n for n in nodes.node_list() if n["name"] == want), None)
+        r = nodes.node_log_read(self._principal(), asking,
+                                (tgt or {}).get("id") or want,
+                                field(req, "stream") or "agent",
+                                req.get("lines") or 200,
+                                debug_on=bool(settings.get("debug_mode")))
+        return self._json(r, 403 if r.get("error") else 200)
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.

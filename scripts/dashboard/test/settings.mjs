@@ -28,8 +28,12 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab [data-set="claude_channel"]', { timeout: 15000 });
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Claude Code',
-   `the tab's stored settings are one group — Claude Code — and nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Claude Code|Debugging',
+   `the tab's stored settings are the two groups that survived the question "does this need to exist" — and nothing that should be a constant or a project's (${groups.join(', ')})`);
+// Debug mode grants nothing by itself: it puts the grant on a node's row.
+// Off by default, because what it opens is root's on the machine.
+ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
+   'debug mode is off until somebody turns it on');
 ok(await page.$eval('.settingstab [data-set="claude_auto_update"]', e => e.checked && e.closest('label') !== null)
    && await page.$eval('.settingstab [data-set="claude_channel"]', e => e.tagName === 'SELECT' && e.value === 'latest'),
    'the update switch sits in its label and the channel is a select, on latest by default');

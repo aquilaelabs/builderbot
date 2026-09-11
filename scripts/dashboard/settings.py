@@ -46,6 +46,17 @@ KEYS = {
     # accounts with the one Claude login they have. The refusal is kept,
     # not removed, because the setting is for that test and nothing else.
     "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
+    # Off, a session on a node reads only logs belonging to the work it is
+    # doing: the CI runs for its project, and what its own test runs left.
+    # The machine's own logs — the agent's journal, the runner's, the
+    # terminal server's — are root's on that box and are not offered at all.
+    #
+    # On, a node's row gains Debug settings, where each node is granted the
+    # nodes whose machine logs its sessions may read. Nothing is granted by
+    # this switch: it only puts the question on the screen. A node is not
+    # implicitly granted ITSELF, because its own journal is as much system
+    # level as any other machine's.
+    "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
 }
 MAX_TEXT = 200
 

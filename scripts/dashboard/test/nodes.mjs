@@ -1256,6 +1256,86 @@ ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).err
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 
+// ---- debug: whose machine logs a node's sessions may read -------------------
+// A session on a node reads the logs of its own WORK — its project's CI runs,
+// what its test runs left — and nothing of the machine. The agent's journal
+// is root's there: the enrolled account is in neither adm nor
+// systemd-journal, so journalctl from a session answers "insufficient
+// permissions". This opens that deliberately, per node, and only while the
+// controller's debug switch is on.
+{
+  const n = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes))
+    .find(x => x.kind === 'agent');
+  // The asking node is derived from the session's PROJECT, never from the
+  // request and never from a node session's BB_NODE, which is a variable a
+  // session can set. So alpha has to be on this node for the question to
+  // have an asker at all.
+  await page.evaluate(async id => {
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', node: id }) });
+  }, n.id);
+  const read = (node, extra = {}) => page.evaluate(async ([nd, ex]) => {
+    const r = await fetch('/api/nodelog', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: nd, ...ex }) });
+    return { status: r.status, ...(await r.json()) };
+  }, [node, extra]);
+
+  // The switch first. Off — the default — nothing is offered to anybody,
+  // whatever any node has been granted.
+  let r = await read(n.name);
+  ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
+     `with debug mode off a machine's logs are refused, saying what turns it on (${
+       (r.error || '').slice(0, 48)})`);
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: { debug_mode: true } }) });
+  });
+
+  // On, and still refused: the switch grants nothing. A node is not granted
+  // its own journal either — that is the tick this exists to make somebody
+  // press.
+  r = await read(n.name, { project: 'alpha' });
+  ok(r.status === 403 && /has not been granted/.test(r.error || ''),
+     `...and on, a node still reads nothing until it is granted it (${
+       (r.error || '').slice(0, 56)})`);
+
+  const grant = from => page.evaluate(async ([id, f]) =>
+    await nodeAct({ action: 'log-grant', id, from: f }), [n.id, from]);
+  ok((await grant([n.id])).ok === true, 'a node can be granted its own machine logs');
+  const back = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.id === n.id);
+  ok((back.config?.log_from || []).join() === n.id,
+     '...and the grant is on its record, where the row reads it');
+  ok(!!(await grant(['n_nothing'])).error,
+     '...while a node id nobody has is refused rather than stored');
+  ok((await grant([])).ok === true
+     && !((await page.evaluate(async () =>
+          (await (await fetch('/api/v1/nodes')).json()).nodes))
+          .find(x => x.id === n.id).config?.log_from || []).length,
+     'and the grant comes back off, which is the way out');
+
+  // A stream this table does not have is not reachable however it is asked
+  // for: what can be read is a lookup, like everything else the web can run.
+  await grant([n.id]);
+  r = await read(n.name, { project: 'alpha', stream: 'passwd' });
+  ok(!!r.error && /no such log/.test(r.error),
+     `a log this table does not name is refused, not run (${(r.error || '').slice(0, 40)})`);
+  await grant([]);
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: { debug_mode: false } }) });
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', node: '' }) });
+  });
+  page.errors = [];
+}
+
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');

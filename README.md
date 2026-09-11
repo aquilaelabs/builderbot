@@ -502,6 +502,19 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
+bb logs --node NAME [--agent|--runner|--terminal] [N]
+                   a machine's own log — the agent's journal, the CI runner's,
+                   the terminal server's. Root's on that box: the enrolled
+                   account is in neither `adm` nor `systemd-journal`, so a
+                   session cannot read them at all. Offered only while **debug
+                   mode** is on in Controller settings AND the asking node has
+                   been granted that node on its **Debug settings**, its own
+                   journal included — "it is only looking at itself" is the
+                   reasoning that makes a boundary stop meaning anything.
+                   Which node is asking is the node of the session's own
+                   project, proved by its token, never the `BB_NODE` in its
+                   environment. What can be read is a table of three streams;
+                   anything else is refused, not run
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
