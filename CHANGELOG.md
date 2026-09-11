@@ -15,7 +15,6 @@
 - Taking a version bump back now returns everything the bump moved, not just the number (9fa9428)
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made elsewhere show up on the tab you are looking at within a second or two, wherever they came from: the roadmap, memories, rules, the approval queue and the test registry used to take up to fifteen, and controller settings changed in another window took the same (fd9fe96)
-- A project can be set to run bb without asking, so a session stops putting a permission dialog on the screen for every bb rules and bb roadmap; the verbs that reach past this box, like a push, the phone, root and an install, still ask (55bbc5b)
 - Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
 - A session whose project could not be marked as trusted now says so in its terminal, instead of quietly asking permission for every command and forgetting every answer you give it (594f766)
 - The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
