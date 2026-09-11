@@ -2189,17 +2189,32 @@ exactly what "the pane has stopped changing" looks like — and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
-**How much a session may change without asking** is a per-project pick in
-the same dialog: *File changes* is **ask before each change**, which is what
-Claude Code does out of the box, or **edit this project's files without
-asking**. It becomes the session's own permission mode, so it covers the file
-tools inside this project and nothing else — a shell command, a push and
-anything outside the tree still ask, and the deny list is untouched either
-way, so a sibling project, `VERSION` and the house rules stay refused under
-both. It is read when a session starts, so changing it restarts the session
-the way changing the model does. The case it exists for: a codebase somebody
-has just uploaded, where confirming every file is all the first session gets
-done.
+**What a session may do without asking** is a per-project pick in the same
+dialog, *Without asking*, and it is a ladder of three: **nothing, confirm
+everything** (what Claude Code does out of the box), **this project's files**,
+or **this project's files, and bb**.
+
+The middle rung is the session's own permission mode and it covers the file
+tools and nothing else, so a project set to it still asks about every shell
+command. That is worth saying plainly, because it is the rung people set
+expecting the prompts to stop and then meet a permission dialog for `bb
+rules`.
+
+The third adds an allow list of `bb` verbs: the notebook, the read-only
+reports, and `bb build` / `bb test`, which run the command *you* configured in
+this dialog. What is not on it is every verb that runs something the session
+chose or reaches past this box — `bb run`, `bb shell`, `bb git push`, `bb
+phone run`, `bb root run`, `bb packages install`, `bb emu create`, `bb
+dashboard dev`, `bb shot` — and those still ask. It is a list rather than
+"allow bb", because `bb run -- CMD` is an arbitrary command on the node and
+allowing bb wholesale would allow everything through it. `bash scripts/bb` is
+not on it either: that runs the checkout's copy, which a session can edit.
+
+The deny list is untouched by all three, so a sibling project, `VERSION` and
+the house rules stay refused whichever rung is set. It is read when a session
+starts, so changing it restarts the session the way changing the model does.
+The case the ladder exists for at one end: a codebase somebody has just
+uploaded, where confirming every file is all the first session gets done.
 
 **How much of what a session adds lands on its own** is the last row of the
 same dialog — *Claude may* add to the roadmap, file bugs and add rules, each

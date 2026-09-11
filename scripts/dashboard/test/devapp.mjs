@@ -21,8 +21,25 @@ const env = {
   GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x.invalid',
   GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x.invalid',
 };
-execFileSync('git', ['-C', D, 'add', '-A'], { env });
-execFileSync('git', ['-C', D, 'commit', '-qm', 'compose'], { env });
+// The server under test polls git on every project every fifteen seconds,
+// and `git status` takes index.lock when it refreshes the index — so a
+// commit here can land exactly on one and die with "Unable to create
+// index.lock". It is the fixture racing the thing it is testing, not a
+// finding about either, so it is waited out rather than reported. Anything
+// that is not the lock is thrown at once.
+function git(...args){
+  const until = Date.now() + 10000;
+  for (;;){
+    try { return execFileSync('git', ['-C', D, ...args], { env }); }
+    catch (e){
+      const said = String(e.stderr || '') + String(e.message || '');
+      if (!/index\.lock/.test(said) || Date.now() > until) throw e;
+      execFileSync('sleep', ['0.2']);
+    }
+  }
+}
+git('add', '-A');
+git('commit', '-qm', 'compose');
 
 // Every compose action is a job now, and a job goes on writing — its final
 // log flush, its result row — for a moment after the row already shows the
@@ -273,8 +290,8 @@ await page.waitForFunction(
 
 // The code moves — Rebuild wakes.
 writeFileSync(`${D}/newfile.txt`, 'x');
-execFileSync('git', ['-C', D, 'add', '-A'], { env });
-execFileSync('git', ['-C', D, 'commit', '-qm', 'more'], { env });
+git('add', '-A');
+git('commit', '-qm', 'more');
 await page.evaluate(() => refresh());
 await dmRefresh();
 await page.waitForFunction((SEL) => {
@@ -314,8 +331,8 @@ rmSync(`${DIR}/dockerstate/build.slow`, { force: true });
 // The env gate: the example gains a key, and the rebuild stops after down
 // with the old env preserved in comments.
 writeFileSync(`${D}/.env.example`, 'PORT=8080\nAPI_KEY=\n');
-execFileSync('git', ['-C', D, 'add', '-A'], { env });
-execFileSync('git', ['-C', D, 'commit', '-qm', 'needs a key'], { env });
+git('add', '-A');
+git('commit', '-qm', 'needs a key');
 await dmClick('rebuild');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
@@ -417,8 +434,8 @@ ok(/still on [0-9a-f]{7}/.test(await page.$eval('#devRow', e => e.textContent)),
 // build matches HEAD, interrupted marker or not — the marker says what
 // happened, it does not invent work to do.
 writeFileSync(`${D}/after-interrupt.txt`, 'x');
-execFileSync('git', ['-C', D, 'add', '-A'], { env });
-execFileSync('git', ['-C', D, 'commit', '-qm', 'moves on'], { env });
+git('add', '-A');
+git('commit', '-qm', 'moves on');
 // No nudge: the commit moves the project's reflog, and the poll watches it.
 // Before that key existed this verdict only refreshed when something else
 // happened to move, so Rebuild slept through the commit that should wake it.
@@ -439,8 +456,8 @@ ok(!JSON.parse(readFileSync(devFile, 'utf8'))['ep.silon'].building_since,
 mkdirSync(`${DIR}/dockerstate`, { recursive: true });
 writeFileSync(`${DIR}/dockerstate/build.fail`, '1');
 writeFileSync(`${D}/again.txt`, 'x');
-execFileSync('git', ['-C', D, 'add', '-A'], { env });
-execFileSync('git', ['-C', D, 'commit', '-qm', 'again'], { env });
+git('add', '-A');
+git('commit', '-qm', 'again');
 await page.evaluate(() => refresh());
 await dmRefresh();
 await page.waitForFunction((SEL) => {
@@ -1903,7 +1920,7 @@ rmSync(`${D}/newfile.txt`, { force: true });
 rmSync(`${D}/again.txt`, { force: true });
 rmSync(`${D}/after-interrupt.txt`, { force: true });
 rmSync(`${D}/.git`, { recursive: true, force: true });
-execFileSync('git', ['-C', D, 'init', '-q', '.'], { env });
+git('init', '-q', '.');
 // ---- removing a written container takes its env (bug #41) -----------------
 // A project's instance keeps its env on Remove, deliberately: the promise is
 // that sending it again finds it. A written container has nowhere to come

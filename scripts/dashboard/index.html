@@ -3159,16 +3159,15 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
-    <!-- How much a session may change in the tree without stopping to ask.
-         Claude Code's own permission mode, per project: a codebase somebody
-         has just uploaded is a project where confirming every file is all
-         the first session does. -->
+    <!-- What a session may do here without stopping to ask. Per project,
+         because trust is: a codebase somebody has just uploaded is a project
+         where confirming every file is all the first session does. -->
     <div class="field" id="rnEditsField">
       <div class="setrow col">
-        <label class="lbl" for="rnEdits">File changes<span class="help"
-          data-tip="Only the file tools, and only inside this project. A shell command, a push, and anything outside the tree still ask — and a sibling project, VERSION and the house rules stay refused either way."
+        <label class="lbl" for="rnEdits">Without asking<span class="help"
+          data-tip="Files means the file tools, inside this project only. And bb adds the verbs that cannot run something a session chose: the notebook, the reports, and build and test, which run the command you configured. bb run, bb shell, a push, the phone, root, an install and the emulator still ask, and a sibling project, VERSION and the house rules stay refused whatever this says."
           tabindex="0">?</span></label>
-        <select id="rnEdits" aria-label="how much a session may change without asking"></select>
+        <select id="rnEdits" aria-label="what a session may do without asking"></select>
       </div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
@@ -5162,11 +5161,21 @@ let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: 
                  gate: "", edits: "ask"};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-// What a session may change without asking (prefs.edits), which the launcher
-// turns into Claude Code's own permission mode in the session's settings
-// file. The deny list is untouched by it.
-const EDIT_MODES = [["ask", "ask before each change"],
-                    ["accept", "edit this project's files without asking"]];
+// What a session may do without stopping to ask (prefs.edits), which the
+// launcher turns into Claude Code's permission mode and allow list in the
+// session's settings file. A ladder: each rung includes the one before it.
+// The deny list is untouched by all of them.
+//
+// The middle rung is the one that surprises people. It is Claude Code's
+// `acceptEdits`, which covers the FILE TOOLS and nothing else, so a project
+// set to it still asks about every shell command — which reads as the
+// setting not working. The third rung is what answers that, and it is a list
+// of bb verbs rather than "commands", because `bb run` is an arbitrary
+// command and allowing bb wholesale would allow everything through it
+// (bb-tty, claude_scope, has the list and the reasoning).
+const EDIT_MODES = [["ask", "nothing, confirm everything"],
+                    ["accept", "this project's files"],
+                    ["bb", "this project's files, and bb"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
