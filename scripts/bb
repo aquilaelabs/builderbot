@@ -291,6 +291,15 @@ sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
 
 loud = sys.argv[1] == "--loud"
+# `--why` is the per-prompt hook asking to be told about a refusal it should
+# repeat. Not the same as --loud, which narrates everything: this is only the
+# answers that will still be true on the next prompt and the one after.
+why = sys.argv[1] == "--why"
+
+
+def refused(msg):
+    if why:
+        print(f"SYNC-REFUSED {msg}", file=sys.stderr)
 auth = os.environ["BB_LOGIN_AUTH"]
 path = os.path.join(os.environ["HOME"], ".claude", ".credentials.json")
 
@@ -373,8 +382,18 @@ except OSError:
     pass
 r = bbapi.call("/api/v1/claude-login", auth=auth)
 if r.get("error"):
+    e = str(r["error"])
     if loud:
-        warn(f"could not ask the controller about this account's login: {r['error']}")
+        warn(f"could not ask the controller about this account's login: {e}")
+    # A grant this node was never given, or a controller that broke answering
+    # — neither fixes itself, and both end as "Login expired" with no reason
+    # anywhere. Everything else (a restart, a blip) is left quiet.
+    if "has not been given" in e:
+        refused(f"This node has not been given your Claude login, so it cannot "
+                f"keep it fresh: {e}")
+    elif "Error" in e or "500" in e:
+        refused(f"The controller could not answer about your Claude login "
+                f"({e[:120]}) — it will expire here until that is fixed.")
     sys.exit(1 if not mine else 0)
 theirs = r.get("credentials") or ""
 gen, here = int(r.get("gen") or 0), my_gen()
@@ -433,7 +452,27 @@ cmd_login() {
     # about nothing having moved would be noise.
     if [ "${1:-}" = --sync ]; then
         on_node || return 0
-        claude_login_sync
+        # `--why` past it asks for the refusals worth repeating (bb-keep-login).
+        claude_login_sync "${2:-}"
+        return 0
+    fi
+    # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
+    # this job's pty as its terminal (roadmap R47). The account is the one
+    # the dashboard asked for and the home is resolved here, by the same
+    # user_home a session on this machine gets — one implementation of
+    # "where does this account live", rather than a second copy in the agent.
+    #
+    # The grant goes straight up afterwards rather than waiting for a session
+    # to sync it: the operator is standing at the card watching, and "signed
+    # in" should mean the controller has it.
+    if [ "${1:-}" = --flow ]; then
+        local uid="${BB_ACCOUNT_UID:-}"
+        [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
+        mkdir -p "$HOME/.claude" 2>/dev/null || true
+        command -v claude >/dev/null 2>&1 \
+            || die "Claude Code is not installed for this account on this machine"
+        claude auth login || die "the sign-in did not complete"
+        claude_login_sync --loud || true
         return 0
     fi
     # ON A NODE, the login is kept in step with the controller first
@@ -2602,7 +2641,10 @@ except OSError as e:
     sys.exit(f"[builderbot] ERROR: no run log to read: {e}")
 
 BANNER = re.compile(r"^\[dashboard-test\] == (\S+) ==")
-TOTALS = re.compile(r"^(\d+) passed, (\d+) failed in ([\d.]+)s")
+# ` in Xs` only when the run was timed: `bb dashboard test FILE` prints the
+# bare form, and a verdict that required the seconds read a passing file as a
+# crash — which is the one thing this tool must never do.
+TOTALS = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([\d.]+)s)?")
 FAIL = re.compile(r"^FAIL\s+(?:\[\+[\d.]+s\]\s+)?(.*)")
 # What a crashed file's death looks like. Node puts the message on its own
 # line after the banner it prints, so the first of these AFTER the last PASS
@@ -2623,7 +2665,8 @@ for ln in lines:
         cur["fails"].append(f.group(1).strip())
     m = TOTALS.match(ln)
     if m:
-        cur["totals"] = (int(m.group(1)), int(m.group(2)), float(m.group(3)))
+        cur["totals"] = (int(m.group(1)), int(m.group(2)),
+                         float(m.group(3) or 0))
     if not ln.startswith("PASS"):
         cur["tail"].append(ln)
         del cur["tail"][:-40]

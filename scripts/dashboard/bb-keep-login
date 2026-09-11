@@ -82,9 +82,22 @@ def main():
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
     bb = here if os.path.isfile(here) else "bb"
     try:
-        subprocess.run(["bash", bb, "login", "--sync"],
-                       capture_output=True, timeout=30,
-                       env=dict(os.environ, BB_PROJECT=sys.argv[1] if len(sys.argv) > 1 else ""))
+        r = subprocess.run(["bash", bb, "login", "--sync", "--why"],
+                           capture_output=True, text=True, timeout=30,
+                           env=dict(os.environ,
+                                    BB_PROJECT=sys.argv[1] if len(sys.argv) > 1 else ""))
+        # A refusal that will not fix itself is SAID. The rest stays silent:
+        # a controller that is restarting, a network blip, a grant that was
+        # already current — none of those are worth a line on every prompt.
+        #
+        # This is the half that was missing, and what it cost: the endpoint
+        # 500'd for every node for a day, the sync swallowed it, and what the
+        # operator saw was "Login expired · Please run /login" with nothing
+        # anywhere saying why. A silent sync is fine; a silent REFUSAL is how
+        # a session ends up telling somebody to do a thing that will not work.
+        for line in (r.stderr or "").splitlines():
+            if line.startswith("SYNC-REFUSED "):
+                print(line[len("SYNC-REFUSED "):], file=sys.stderr)
     except (OSError, subprocess.SubprocessError):
         pass                         # the controller is away; the next prompt tries again
     # Stamped whether it worked or not: a controller that is down must not
