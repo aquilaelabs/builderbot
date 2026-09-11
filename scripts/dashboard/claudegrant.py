@@ -1,179 +1,148 @@
 #!/usr/bin/env python3
-"""One Anthropic account per BuilderBot account, across every node.
+"""One Anthropic account per BuilderBot account — without copying a grant.
 
-The credential is an OAuth pair in `$HOME/.claude/.credentials.json`, and
-Claude Code reads it out of the home it runs in — so a node that runs an
-account's sessions holds a COPY. That is the design and cannot be otherwise;
-what this file decides is which copy is the truth and when the others have to
-catch up.
+**The credential does not travel, and this file is why.** Every failure this
+has had came from one OAuth grant living on several machines: a refresh
+ROTATES the refresh token, so two copies sign each other out (bug #64); a node
+that was away holds one the server has retired (B100); and the machinery built
+to make copying safe is itself something that can break, which it did. Claude
+issues a grant per login. Two machines sharing one is the unsupported shape,
+and the rotation is what punishes it.
 
-**Why a generation, and not just a date.** A refresh rotates the refresh
-token, so two machines each keeping a copy sign each other out (bug #64). The
-fix was "whichever refreshed has the later expiresAt wins", and inside one
-sign-in that is still right. It cannot express a SIGN-OUT: the absence of a
-credential has no date, so a node coming back from a week offline would look
-like the newest thing anybody had and put the account back. So every
-deliberate act — a sign-in landing, a sign-out — moves a counter, and a node
-compares counters first and dates second:
+So each machine signs in for itself and keeps its own grant, which it alone
+refreshes. Nothing is pushed anywhere and the controller holds no credential
+at all — which is also what lets this container carry no Claude.
 
-    controller's gen > mine   the controller acted while I was away.
-                              Adopt what it has, INCLUDING nothing.
-    equal                     same sign-in, so the refresh race applies:
-                              later expiresAt wins, either direction.
+**What the controller keeps instead is the IDENTITY**, per BuilderBot account:
 
-A node that was offline signs itself out on the next sync, which is on every
-connection and every prompt. Nothing is queued for it and nothing has to
-reach it — it asks, and the answer is already true.
+    email, plan   the Anthropic account this BuilderBot account is bound to,
+                  as the first node to sign in reported it
+    gen           a counter, moved by a sign-out
+    nodes         {node id: {email, at}} — who reports being signed in, and
+                  as whom, which is what the card reads and what makes a
+                  second Anthropic account visible the moment it appears
 
-**One Anthropic account.** The email the grant belongs to is recorded beside
-it, as the node reported it (`claude auth status --json` runs where Claude
-is). A grant for a different one is refused rather than stored: signing a
-second Anthropic account in on one node would otherwise propagate to every
-other node on the next sync and quietly move the whole BuilderBot account to
-it. Signing out releases the email, so the next sign-in may be anybody.
+**The one-account rule is enforced by observation, and that is honest.** A
+node reporting a different Anthropic account is refused and told to sign out
+first; its sessions do not get to run as somebody else's login. It is not
+enforcement by construction — nothing can stop a person typing another
+account into `claude auth login` on a machine they have a shell on. What it
+replaces is worse: before, that second account was silently copied to every
+other node.
 
-Deliberately path-pure, like changelog.py: it is handed the account's home
-and never resolves one. Who an account is, and where their home is, is
-users.py's and server.py's question and answering it twice would be a second
-copy that drifts.
+**Signing out reaches a machine that is not listening.** The generation moves
+and the record is cleared; every node compares generations on its next check —
+every connection, every prompt — and runs `claude auth logout` when its own is
+behind. A node that is offline does it when it comes back. There is no queue,
+because the node is the one that asks.
+
+Path-pure, like changelog.py: handed the account's home, never resolving one.
 """
-import contextlib
 import json
 import os
 import time
 from pathlib import Path
 
-FILE = ".credentials.json"
-MARK = ".bb-grant.json"          # the generation and the email, beside it
-PREV = ".credentials.json.prev"  # one round of history: a bad write signs you out
+MARK = ".bb-grant.json"
+MAX_NODES = 64
 
 
 def _dir(home):
     return Path(home) / ".claude"
 
 
-def read(home):
-    """The credential as text, or "" — including after a sign-out."""
-    if not home:
-        return ""
-    try:
-        return (_dir(home) / FILE).read_text()
-    except OSError:
-        return ""
-
-
-def expires_at(text):
-    """When a grant stops being good, as the number a refresh moves. 0 for
-    anything that is not one, so a real grant always wins a comparison."""
-    try:
-        return int((json.loads(text).get("claudeAiOauth") or {}).get("expiresAt") or 0)
-    except (ValueError, AttributeError, TypeError):
-        return 0
-
-
-def mark(home):
-    """{gen, email, at} — the generation this account is on and the Anthropic
-    account its grant belongs to. Generation 0 means nothing has happened
-    here yet, which is a different fact from a sign-out at generation 3."""
+def _read(home):
     try:
         d = json.loads((_dir(home) / MARK).read_text())
-        return {"gen": int(d.get("gen") or 0), "email": str(d.get("email") or ""),
-                "plan": str(d.get("plan") or ""), "at": int(d.get("at") or 0)}
-    except (OSError, ValueError, TypeError, AttributeError):
-        return {"gen": 0, "email": "", "plan": "", "at": 0}
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
 
 
-def _write_mark(home, gen, email, plan=""):
-    d = _dir(home)
-    d.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp = d / (MARK + ".new")
-    tmp.write_text(json.dumps({"gen": int(gen), "email": email, "plan": plan,
-                               "at": int(time.time())}))
+def _write(home, d):
+    p = _dir(home)
+    p.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tmp = p / (MARK + ".new")
+    tmp.write_text(json.dumps(d))
     os.chmod(tmp, 0o600)
-    os.replace(tmp, d / MARK)
+    os.replace(tmp, p / MARK)
 
 
 def state(home):
-    """What the page and a node both ask: whether this account is signed in,
-    to what, and on which generation."""
-    m = mark(home)
-    text = read(home)
-    return {"signed_in": bool(expires_at(text)), "email": m["email"],
-            "plan": m["plan"], "gen": m["gen"]}
+    """{signed_in, email, plan, gen, nodes} — what the card draws and what a
+    node compares itself against.
+
+    `signed_in` is "some node reports being signed in", because that is the
+    only place a credential exists now. An account bound to an Anthropic
+    account with no node signed in is a real state: everything was signed out,
+    or the nodes are all away.
+    """
+    if not home:
+        return {"signed_in": False, "email": "", "plan": "", "gen": 0, "nodes": {}}
+    d = _read(home)
+    on = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
+    return {"signed_in": bool(on), "email": str(d.get("email") or ""),
+            "plan": str(d.get("plan") or ""), "gen": int(d.get("gen") or 0),
+            "nodes": on}
 
 
-def store(home, text, email="", plan=""):
-    """A grant arriving from a node. Returns {ok, stored, why, gen}.
+def report(home, node_id, email, plan="", signed_in=True):
+    """A node saying what it is signed in as. Returns {ok, gen} or {error}.
 
-    Refused rather than stored for a different Anthropic account, and for a
-    grant no newer than the one here — a machine that has been away cannot
-    undo a sign-in that happened while it was gone.
+    This is the whole of the one-account rule: the first report binds the
+    BuilderBot account to an Anthropic one, and a later report of a different
+    one is refused rather than recorded. Refused, not merely flagged — a node
+    whose sessions would run as somebody else's login is not a warning.
     """
     if not home:
         return {"error": "this account has no home here"}
-    if not isinstance(text, str) or len(text) > 65536:
-        return {"error": "a credentials file is a JSON string"}
-    mine = expires_at(text)
-    if not mine:
-        return {"error": "that is not a Claude grant — no claudeAiOauth.expiresAt"}
-    m = mark(home)
+    if not node_id:
+        return {"error": "a report says which node it is from"}
+    d = _read(home)
     email = " ".join(str(email or "").split())[:120]
-    if m["email"] and email and email.lower() != m["email"].lower():
-        return {"error": f"this BuilderBot account is signed in to {m['email']}, "
-                         f"and that grant is {email}'s. One Anthropic account per "
-                         "BuilderBot account: sign out first, which signs out "
-                         "every node."}
-    have = read(home)
-    if have and expires_at(have) >= mine:
-        return {"ok": True, "stored": False, "gen": m["gen"],
-                "why": "the grant here is the same or newer"}
-    d = _dir(home)
-    try:
-        d.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if have:
-            with contextlib.suppress(OSError):
-                (d / PREV).write_text(have)
-                os.chmod(d / PREV, 0o600)
-        tmp = d / (FILE + ".new")
-        tmp.write_text(text)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, d / FILE)
-    except OSError as e:
-        return {"error": f"could not store the grant: {e}"}
-    # The generation moves on a sign-in LANDING, not on one starting: until
-    # the credential is here there is nothing for another node to adopt, and
-    # a node that adopted an empty controller would delete its own copy.
-    gen = m["gen"] + 1
-    _write_mark(home, gen, email or m["email"], plan or m["plan"])
-    return {"ok": True, "stored": True, "gen": gen}
+    on = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
+    if not signed_in:
+        on.pop(str(node_id), None)
+        d["nodes"] = on
+        # The binding survives a node signing out on its own: what releases it
+        # is a SIGN-OUT, which is a decision, not a machine going quiet.
+        _write(home, d)
+        return {"ok": True, "gen": int(d.get("gen") or 0)}
+    if not email:
+        return {"error": "a node reporting a sign-in says which Anthropic account"}
+    bound = str(d.get("email") or "")
+    if bound and email.lower() != bound.lower():
+        return {"error": f"this BuilderBot account is signed in to {bound}, and "
+                         f"that machine is signed in as {email}. One Anthropic "
+                         "account per BuilderBot account — sign out first, which "
+                         "signs out every node, or sign that machine in to "
+                         f"{bound}."}
+    d["email"] = bound or email
+    if plan:
+        d["plan"] = " ".join(str(plan).split())[:40]
+    on[str(node_id)] = {"email": email, "at": int(time.time())}
+    d["nodes"] = dict(list(on.items())[:MAX_NODES])
+    d.setdefault("gen", 0)
+    _write(home, d)
+    return {"ok": True, "gen": int(d["gen"])}
 
 
 def sign_out(home):
-    """Take the account's grant away, everywhere.
+    """Sign the account out, everywhere.
 
-    The credential goes here and the generation moves, which is the whole of
-    it: every node compares generations on its next sync and adopts what the
-    controller has, and what it has is nothing. A node that is offline does
-    that when it comes back — there is no queue, because the node asks.
+    The generation moves and the record is cleared. Every node compares
+    generations on its next check and runs `claude auth logout` when its own
+    is behind, so a node that is offline signs itself out when it comes back.
+    Nothing is delivered and nothing is queued.
 
-    The email is released too: signing out is what makes the next sign-in
+    The binding is released too: signing out is what makes the next sign-in
     free to be a different Anthropic account.
     """
     if not home:
         return {"error": "this account has no home here"}
-    m = mark(home)
-    d = _dir(home)
-    have = read(home)
-    try:
-        if have:
-            d.mkdir(mode=0o700, parents=True, exist_ok=True)
-            with contextlib.suppress(OSError):
-                (d / PREV).write_text(have)
-                os.chmod(d / PREV, 0o600)
-        with contextlib.suppress(OSError):
-            (d / FILE).unlink()
-    except OSError as e:
-        return {"error": f"could not sign out: {e}"}
-    gen = m["gen"] + 1
-    _write_mark(home, gen, "", "")
-    return {"ok": True, "gen": gen, "was": m["email"]}
+    d = _read(home)
+    was = str(d.get("email") or "")
+    where = list((d.get("nodes") or {}).keys())
+    gen = int(d.get("gen") or 0) + 1
+    _write(home, {"gen": gen, "email": "", "plan": "", "nodes": {}})
+    return {"ok": True, "gen": gen, "was": was, "nodes": where}

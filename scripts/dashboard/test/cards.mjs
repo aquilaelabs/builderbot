@@ -728,37 +728,72 @@ ok(await page.$('#bSignOut') === null
 ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
    '...and every project\'s Claude button goes with it');
 
-// And back. Signing out is the CREDENTIAL going and a generation moving, not
-// `claude auth logout`: the controller carries no Claude to run, and asking a
-// binary whether it is signed in would answer from a file that is no longer
-// there. So the proof is the file and the mark beside it, and the dialog says
-// what it really reaches — every node holding this login, not this box.
+// And back. There is no credential here to take away: a machine signs in for
+// itself and keeps the grant it alone refreshes (R47). Signed in, to this
+// card, means SOME NODE reports being signed in — and signing out moves a
+// generation, which is the only thing that can reach a node that is not
+// listening, because being signed out has no date to compare.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 mkdirSync(`${DIR}/home/.claude`, { recursive: true });
-writeFileSync(`${DIR}/home/.claude/.credentials.json`,
-  '{"claudeAiOauth": {"accessToken": "for-the-signout", "expiresAt": 4000}}\n', { mode: 0o600 });
-writeFileSync(`${DIR}/home/.claude/.bb-grant.json`,
-  JSON.stringify({ gen: 4, email: 'you@example.com', plan: 'max', at: 1 }));
+writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, JSON.stringify({
+  gen: 4, email: 'you@example.com', plan: 'max',
+  nodes: { n_fixture: { email: 'you@example.com', at: 1 } } }));
 await refreshUntil(page, () => document.getElementById('bSignOut') !== null);
+ok((await page.$eval('#docAuth', e => e.textContent)).includes('you@example.com'),
+   'the card names the Anthropic account a node reports being signed in as');
 page.dialogs = [];
 await page.click('#bSignOut');
 await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
                            { timeout: 25000 });
 ok(page.dialogs.some(d => /signs out every node that holds/.test(d)),
    'signing out says it reaches every node holding the login, not just this box');
+const mark = JSON.parse(readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8'));
+ok(mark.gen === 5 && !Object.keys(mark.nodes || {}).length && !mark.email,
+   '...moving the generation, clearing the nodes, and releasing the Anthropic account');
 ok(!existsSync(`${DIR}/home/.claude/.credentials.json`),
-   '...and really takes the grant away');
-ok(JSON.parse(readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8')).gen === 5,
-   '...moving the generation, which is what carries it to a node that was offline');
+   '...with no credential on the controller at any point, because none is kept here');
 rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
-rmSync(`${DIR}/home/.claude/.credentials.json.prev`, { force: true });
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 
-// ---- the sign-in, all of it -------------------------------------------
-// No terminal anywhere in this: the flow runs under a pty the server holds,
-// so the whole thing is drivable — which it never was while it lived in a
-// tmux session behind ttyd. The stub claude is shaped like the real one: a
-// URL, a prompt with no newline after it, and a line read back.
+// ---- the sign-in runs where Claude IS, which is a node ------------------
+// Claude Code is installed for the account that runs sessions, and that is a
+// node — so the flow goes there as a job of its own, under a pty on that
+// machine, and the grant it makes stays there (R47). The card does not know
+// which of the two it is driving: same link, same code field.
+{
+  const nodeSignin = await page.evaluate(async () => {
+    const r = await fetch('/api/signin', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    return { status: r.status, ...(await r.json()) };
+  });
+  ok(nodeSignin.ok && nodeSignin.job && nodeSignin.on,
+     `with a node running sessions, the sign-in is queued there and says which (${
+       nodeSignin.on || nodeSignin.error || '?'})`);
+  const queued = await page.evaluate(async (id) =>
+    (await (await fetch('/api/v1/jobs?id=' + id)).json()), nodeSignin.job);
+  ok((queued.job || queued).type === 'claude-login',
+     '...as a claude-login job, which is the one job that opens a pty');
+  await page.evaluate(async () => { await fetch('/api/signin', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'cancel' }) }); });
+}
+
+// ---- ...and here, when no node is running sessions ----------------------
+// The fallback while this container still carries Claude. No terminal
+// anywhere in it: the flow runs under a pty the server holds, so the whole
+// thing is drivable — which it never was while it lived in a tmux session
+// behind ttyd. The stub claude is shaped like the real one: a URL, a prompt
+// with no newline after it, and a line read back.
+//
+// Drained, because a drained node takes no work: that is the state this
+// container is the only place left to sign in from.
+await page.evaluate(async () => {
+  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
+  for (const n of ns.filter(x => x.kind === 'agent'))
+    await fetch('/api/v1/nodes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'drain', id: n.id }) });
+});
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
 await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
 await page.click('#bSignIn');
@@ -1046,6 +1081,15 @@ ok(true, 'pinning it puts it back on the sidebar');
   await refreshUntil(page, () => !(state.projects || []).find(p => p.name === 'beta')?.held);
 }
 
+// The nodes come back: a drained node is this file's doing, not the
+// fixture's, and the suites after it expect one that takes work.
+await page.evaluate(async () => {
+  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
+  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
+    await fetch('/api/v1/nodes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'online', id: n.id }) });
+});
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render

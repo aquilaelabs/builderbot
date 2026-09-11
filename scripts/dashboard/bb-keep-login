@@ -6,7 +6,7 @@ step with the controller while the session is running.
 
 WHY THIS EXISTS (B100). The grant is an OAuth pair and a refresh ROTATES the
 refresh token: the moment any machine refreshes, the server retires the token
-every other copy is holding. `bb login --sync` settles that correctly in both
+every other copy is holding. `bb login --check` settles that correctly in both
 directions — newest `expiresAt` wins — but the only thing that ever ran it was
 bb-tty, on a browser CONNECTION. So a session on one node refreshed, the
 controller's copy went stale, and a session on ANOTHER node sat holding a
@@ -82,7 +82,7 @@ def main():
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
     bb = here if os.path.isfile(here) else "bb"
     try:
-        r = subprocess.run(["bash", bb, "login", "--sync", "--why"],
+        r = subprocess.run(["bash", bb, "login", "--check", "--why"],
                            capture_output=True, text=True, timeout=30,
                            env=dict(os.environ,
                                     BB_PROJECT=sys.argv[1] if len(sys.argv) > 1 else ""))

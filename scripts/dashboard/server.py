@@ -2544,9 +2544,9 @@ def _read_auth(home=""):
     # there is no binary to ask at all. What the account is signed in AS is
     # what the node that signed in reported, stored beside the grant.
     st = claudegrant.state(home)
-    if st["gen"]:
+    if st["gen"] or st["email"] or st["nodes"]:
         state = {"signed_in": st["signed_in"], "email": st["email"],
-                 "plan": st.get("plan") or ""}
+                 "plan": st["plan"], "nodes": len(st["nodes"])}
         _auth[home] = {"at": time.monotonic(), "state": state}
         return state
     env = dict(os.environ) | ({"HOME": home} if home else {})
@@ -3708,15 +3708,6 @@ class Handler(BaseHTTPRequestHandler):
         # answered here rather than by handing the page a uid to compare
         # against: the grant list is every account that has one, which is
         # nobody else's business to read off a row.
-        uid = str(users.uid_of(self._who()) or "")
-        for n in rows:
-            conf = n.get("config") or {}
-            n["claude_mine"] = bool(uid and uid in (conf.get("claude_for") or []))
-            # ...and the list itself does not travel. Which other accounts
-            # have signed a machine in is not a fact a row owes anybody, and
-            # `config` is handed to the page whole.
-            if "claude_for" in conf:
-                n["config"] = {k: v for k, v in conf.items() if k != "claude_for"}
         return rows
 
     def _term_refused(self, rest):
@@ -4771,21 +4762,6 @@ class Handler(BaseHTTPRequestHandler):
             # wants the node to mount and be addressed as. Stored here,
             # applied by the next action as a system job the agent runs.
             r = nodes.node_config_set(self._principal(), nid, req.get("config"))
-        elif act == "claude-grant":
-            # Hand this node the asking account's Claude login, or take it
-            # back. Behind the operator's OWN password, re-typed here: what
-            # is being handed over is an OAuth grant with a refresh token in
-            # it, and a button that does that on one click is a button that
-            # gets pressed by accident. The password is checked against the
-            # account pressing it, so an administrator cannot give away
-            # somebody else's login by knowing their own.
-            acct = users.account_of(self._who()) or {}
-            if not users.authenticate(acct.get("name") or "", field(req, "password")):
-                r = {"error": "that is not your password"}
-            else:
-                r = nodes.claude_grant_set(self._principal(), nid,
-                                           acct.get("uid") or "",
-                                           bool(req.get("on", True)))
         elif act == "log-grant":
             # Which nodes' machine logs a session on this node may read. An
             # administrator's, like the rest of this handler — a session that
@@ -4927,47 +4903,30 @@ class Handler(BaseHTTPRequestHandler):
         home = home_for(uid)
         if req is not None:
             return self._claude_login_put(req, home)
-        # ...and the node asking has to have been GIVEN it. A session token
-        # proves which account is asking; it does not say that the machine
-        # the session is on was ever meant to hold that account's grant.
-        # Handing the credential to whichever node a session happened to
-        # start on made every enrollment a silent widening of what holds the
-        # refresh token — so the node a sign-in was done on is granted by
-        # that act, and every node after it is a deliberate press behind the
-        # operator's own password.
-        #
-        # PUT is not gated: a node handing back a grant it refreshed is
-        # returning what it already has, and refusing that is how the
-        # controller ends up holding a retired refresh token (bug #64).
-        proj = me.get("session") or ""
-        nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
-        if nid and not NODES_OK and not nodes.claude_granted(nid, uid):
-            n = nodes.node(nid) or {}
-            return self._json({"error": f"{n.get('name') or nid} has not been given this "
-                                        "account's Claude login. Send it from that node's "
-                                        "row on the Nodes tab — it asks for your password, "
-                                        "because it hands the machine an OAuth grant"}, 403)
+        # No credential leaves here, because none is kept here: a machine
+        # signs in for itself and keeps the grant it alone refreshes. What a
+        # node gets is the account's IDENTITY and the generation to compare
+        # its own against — behind means sign yourself out.
         st = claudegrant.state(home)
-        # A signed-out account answers 200 with no credential and the
-        # generation that says so. It is not a 404: "there is nothing here"
-        # and "there is nothing here AND that is a decision somebody made" are
-        # different answers, and only the second one tells a node to delete
-        # the copy it is holding.
-        return self._json({"credentials": claudegrant.read(home),
-                           "email": st["email"], "gen": st["gen"],
-                           "signed_in": st["signed_in"]})
+        return self._json({"email": st["email"], "plan": st["plan"],
+                           "gen": st["gen"], "signed_in": st["signed_in"],
+                           "nodes": len(st["nodes"])})
 
     def _claude_login_put(self, req, home):
-        """A node handing back the grant it refreshed, or one it just made.
+        """A node reporting what it is signed in AS — never the grant itself.
 
-        Ungated on purpose: what a node returns is what it already holds, and
-        refusing it is how the controller ends up with a refresh token the
-        server has retired (bug #64). What IS checked is which Anthropic
-        account it belongs to — one per BuilderBot account, so a second
-        signed in on one node cannot propagate to the rest on the next sync.
+        Which node is reporting is not taken from the request: it is the node
+        of the session's own project, which the token proves. A machine that
+        could name itself could bind the account to whatever it liked.
         """
-        r = claudegrant.store(home, req.get("credentials"),
-                              req.get("email") or "", req.get("plan") or "")
+        proj = (self._who() or {}).get("session") or ""
+        nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
+        if not nid:
+            return self._json({"error": "a sign-in is reported by a session on the "
+                                        "node it happened on"}, 400)
+        r = claudegrant.report(home, nid, req.get("email") or "",
+                               req.get("plan") or "",
+                               signed_in=bool(req.get("signed_in", True)))
         _auth.clear()
         return self._json(r, 400 if r.get("error") else 200)
 
@@ -5540,12 +5499,13 @@ class Handler(BaseHTTPRequestHandler):
         _auth.clear()
         if r.get("error"):
             return self._json(r, 500)
-        where = nodes.claude_nodes(users.uid_of(self._who())) if not NODES_OK else []
         return self._json({"ok": True, "gen": r["gen"],
                            # What it reaches, said rather than assumed: a node
-                           # that is not dialing in is signed out late, and
-                           # the sentence should not pretend otherwise.
-                           "nodes": [(nodes.node(i) or {}).get("name") or i for i in where],
+                           # that is not dialing in signs itself out when it
+                           # comes back, and the sentence should not pretend
+                           # they all go at once.
+                           "nodes": [(nodes.node(i) or {}).get("name") or i
+                                     for i in r["nodes"]] if not NODES_OK else [],
                            "auth": claude_auth(home=home)})
 
     def _todo(self, req):

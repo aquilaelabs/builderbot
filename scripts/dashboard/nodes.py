@@ -1212,48 +1212,6 @@ def node_log_grant(principal, node_id, from_ids):
     return {"ok": True, "log_from": want}
 
 
-def claude_granted(node_id, uid):
-    """Whether this account's Claude grant may reach that node.
-
-    The parentheses are the whole of this function: `x in y or []` is
-    `(x in y) or []`, so a node whose config has no grant list at all asked
-    `x in None` and raised — which made the endpoint 500 rather than refuse,
-    and a 500 is not a refusal a node's sync knows how to report.
-    """
-    n = node(node_id)
-    return str(uid) in (((n or {}).get("config") or {}).get("claude_for") or [])
-
-
-def claude_grant_set(principal, node_id, uid, on):
-    """Give this node the account's Claude login, or take it back.
-
-    Deliberate, one node at a time, and never a consequence of a session
-    starting there: the grant is an OAuth pair with a refresh token in it,
-    and handing it to a machine is handing that machine the account. The
-    node a sign-in HAPPENED on is granted by that act — the credential was
-    made in its home — and every node after it is this.
-    """
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    conf = dict(n.get("config") or {})
-    have = [str(x) for x in (conf.get("claude_for") or [])]
-    uid = str(uid)
-    conf["claude_for"] = ([x for x in have if x != uid] + [uid])[:64] if on \
-        else [x for x in have if x != uid]
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "claude-grant", {"uid": uid, "on": bool(on)})
-    return {"ok": True, "granted": bool(on)}
-
-
-def claude_nodes(uid):
-    """The node ids this account's login has been given to."""
-    return [n["id"] for n in node_list()
-            if str(uid) in ((n.get("config") or {}).get("claude_for") or [])]
-
-
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
                   debug_on=False):
     """A machine log off `target_id`, for a session running on `asking_id`.
@@ -1781,7 +1739,13 @@ def samples(nid):
 # exec runs argv; compose is the controller's docker; self-update, system
 # (phase 5), package (a toolchain install against the node's packages store)
 # and cache-clear (drop the node's build caches) are the agent's own.
-JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear")
+JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear",
+             # The sign-in flow, on the machine Claude is installed on: a job
+             # of its own because it opens a PTY and drops to the SESSION
+             # account, not the job one (R47). Both matter — the flow prints a
+             # prompt with no newline after it, and the grant has to land in
+             # the home a session will read it from.
+             "claude-login")
 JOB_END = ("succeeded", "failed", "canceled")
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
