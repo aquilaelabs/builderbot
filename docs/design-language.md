@@ -74,6 +74,20 @@ browser's own chooser stays hidden: its button wears the browser's skin,
 not the page's, and there is no styling it. A `.filepick` — a button that
 opens the chooser, and the picked name beside it — is the shape.
 
+**An open `<select>` is the page's own menu, not the platform's.** The list
+a select opens is drawn by the browser, so page CSS cannot reach it: on
+Android it comes back as a system dialog with the OS accent on its radio
+buttons, on iOS as a wheel, on each desktop as that platform's menu. Twelve
+schemes and none of them apply. `appearance: base-select` moves the list into
+the page, where the tokens do: the picker is `.pinmenu`'s box and `menuIn`,
+its rows are `--tap` high and take `--accent-deep` when chosen, and the
+element stays a `<select>` so its keyboard handling, its typeahead and its
+screen-reader semantics are still the browser's. It is all inside `@supports`,
+so a browser without it renders the native picker rather than nothing. The one
+thing to know when placing one: a base select wraps a label that will not fit
+where a native select truncated it, and `test/uniform.mjs` measures every
+select as one line high at phone width.
+
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…" — whether a dialog follows is not the reader's
 problem, and the dots are not a word.
@@ -248,6 +262,49 @@ to the widest value the stack can show; it is never `auto`, because then
 each row sizes its bar to whatever its own number leaves it, the long
 values shorten their bars, and the stack reads as a ragged edge instead of
 a comparison. `uniform.mjs` measures every stack on every tab for this.
+
+## When a view re-reads
+
+Three ways a view changes, and each has one answer.
+
+**Something the person just pressed** is redrawn by the handler that sent it,
+from the answer it got back. Nobody waits on a clock for a button they are
+looking at.
+
+**Something that arrived from elsewhere** is the revisions poll:
+`/api/revs` every second and a half, which is stats and in-memory counters
+and nothing that shells out. A view says what it depends on with
+`onRev(key, fn)` and never decides when to re-read; the server publishes a
+token for everything a view watches, and every token it publishes is
+watched. `test/revs.mjs` holds those two sets equal, in both directions,
+because the failure is silent: a page that waits is not wrong, only late,
+so nothing else goes red. The keys a notebook watches are per project and
+the page asks for its open ones by name, so a project nobody has open costs
+nothing.
+
+**A token is a counter where a panel can lose work, and an mtime otherwise.**
+A panel that stages (the roadmap, the memory editor, a test's description)
+holds the number it last read and compares, so it can tell somebody else's
+write from the echo of its own; an mtime cannot make that distinction, and a
+redraw a panel did not need detaches the send box or the half-typed row under
+the finger that opened it. The same panel ignores the poll while a write of
+its own is out, and asks again when it lands: the token moves when the server
+takes the write and the panel's number moves when the answer gets back, so a
+poll arriving in between would read the panel's own words as somebody
+else's.
+
+**Everything else is `/api/status`, every fifteen seconds**, and it carries
+only what nothing cheaper can answer: the branch, the sessions, the image,
+the doctor. A revision does not belong on it.
+
+**A timer of a view's own is for watching something in flight, never for
+noticing a change.** Noticing is the revisions poll's job, always. The
+Packages tab is the one that keeps a timer, and only while a job is running:
+an install of a small package starts and finishes inside one revision poll,
+so the tab would go from idle to done having never said "installing". It
+stops when the job does. Anything else with a clock of its own is a tab that
+notices things sooner than the tab beside it for no reason anybody chose,
+which is what this whole section is against.
 
 ## Words on the screen
 

@@ -13,6 +13,8 @@
 - A version bump now moves everything the version is stamped in, in one commit, or refuses (c4352fc)
 - A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
 - Taking a version bump back now returns everything the bump moved, not just the number (9fa9428)
+- Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
+- Changes made elsewhere show up on the tab you are looking at within a second or two, wherever they came from: the roadmap, memories, rules, the approval queue and the test registry used to take up to fifteen, and controller settings changed in another window took the same (fd9fe96)
 
 ## 0.5.0 — 2026-09-10
 

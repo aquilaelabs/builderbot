@@ -978,7 +978,15 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.evaluate(() => setView('terminal'));     // a phone shows one column at a time
   await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
-  await page.waitForTimeout(100);
+  // Wait for the box to have a width, not for a hundred milliseconds: the
+  // ::after is laid out a frame or two after the class lands, and on a busy
+  // box it is later than that — which read back as `auto`, came out of
+  // parseFloat as NaN, and failed a rule about placement with a number
+  // nobody could place.
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.profiletab .help.on');
+    return el && parseFloat(getComputedStyle(el, '::after').width) > 0;
+  }, null, { timeout: 10000 });
   const fit = await page.$eval('.profiletab .help.on', el => {
     const cs = getComputedStyle(el, '::after');
     const x = parseFloat(el.style.getPropertyValue('--tipx'));

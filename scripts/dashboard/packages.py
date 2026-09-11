@@ -635,10 +635,28 @@ def _job_tail(out, keep=16):
 
 
 def job_rev():
-    """A token for "the install job moved", for the revisions poll. All in
-    memory: the job's state, what it is on, and how far through it is."""
+    """A token for "anything this tab draws has moved", for the revisions poll.
+
+    Everything the Packages tab used to keep its own timer for. It polled at
+    half a second while a job ran and at eight seconds otherwise, and the
+    eight-second half was there for the two facts this used to leave out: the
+    daily version check, and the image index still being read. They are in
+    memory here and cost nothing to report, so the tab watches this instead of
+    holding a third clock.
+
+    The store root's mtime is the one stat, and it is the case none of the
+    in-memory state can see: `bb packages install` run in a terminal is
+    another process entirely, and what it changes is a directory under the
+    root. Nothing else here would notice it at all.
+    """
     j = _pkg_job
-    return f"{j['running']}:{j['action']}:{j['current']}:{len(j['done'])}:{len(j['failed'])}"
+    try:
+        store = int(Path(sdk_root_path()).stat().st_mtime_ns)
+    except (OSError, TypeError, ValueError):
+        store = 0
+    return (f"{j['running']}:{j['action']}:{j['current']}:{len(j['done'])}"
+            f":{len(j['failed'])}:{_choices['at']}:{_choices['loading']}"
+            f":{_pkg_checked}:{_pkg_sizing[0]}:{store}")
 
 
 def job_is_automatic():
