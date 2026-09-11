@@ -10,6 +10,7 @@
 
 - The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
 - Changelog on the Artifacts tab is now an editor: group the unreleased lines into categories, reorder them, reword, merge, split or drop them. A release's dated section is left as the record it is (e37b5e0)
+- A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (09496ee)
 
 ### Changed
 
@@ -33,6 +34,7 @@
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
 - The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
+- Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
 
 ## 0.5.0 — 2026-09-10
 

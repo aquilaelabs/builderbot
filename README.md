@@ -2351,6 +2351,14 @@ things means the copy step is missing, and it says so.
 Each row is labeled by kind — apk, xpi, whatever the extension says — with
 its size and age, newest first. Everything can be **downloaded**.
 
+A **script** is the one kind the extension cannot settle on its own: a shipped
+shell installer is as often `dist/install` as `dist/install.sh`, so a file
+whose extension the list does not know is asked for its first two bytes and a
+shebang makes it a script. Those rows also offer **View**, which reads the
+file over the panel the way a History opens, because a script is a thing
+people read before they run it and a download is the end of that on a phone.
+Nothing runs from the tab, and there is no control that would.
+
 **The dev instance** heads the list, shaped like every other row in it — the
 kind on a pill (`docker`, where a file says `apk` or `xpi`), the compose
 project's own name in bold, and whether it is `(running)`, `(stopped)` or

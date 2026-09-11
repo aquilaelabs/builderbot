@@ -503,8 +503,10 @@ every build is named identically and the tab cannot tell this one from the
 last.
 
 From that tab the operator downloads any of them, installs an `.apk` on their
-paired phone (which replaces an existing copy in place, keeping its data), and
-pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
+paired phone (which replaces an existing copy in place, keeping its data),
+pushes an `.xpi` to it, and reads a shell script without downloading it — a
+file is a script by its extension or by its shebang, so a shipped installer
+does not have to be called `.sh` to be treated as one. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 
