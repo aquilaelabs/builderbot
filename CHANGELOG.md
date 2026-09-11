@@ -16,6 +16,7 @@
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made elsewhere show up on the tab you are looking at within a second or two, wherever they came from: the roadmap, memories, rules, the approval queue and the test registry used to take up to fifteen, and controller settings changed in another window took the same (fd9fe96)
 - A project can be set to run bb without asking, so a session stops putting a permission dialog on the screen for every bb rules and bb roadmap; the verbs that reach past this box, like a push, the phone, root and an install, still ask (55bbc5b)
+- Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
 
 ## 0.5.0 — 2026-09-10
 
