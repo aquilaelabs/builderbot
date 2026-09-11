@@ -392,7 +392,15 @@ bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow. On a node it first syncs
                    this account's login with the controller's, newer wins
-bb login --sync    that half alone, quietly — what every connection already does
+bb login --sync    that half alone, quietly — what every connection already does,
+                   for a node that has been GIVEN this account's Claude login.
+                   A node holds none until somebody presses **Send my Claude
+                   login** on its row and types their own BuilderBot password:
+                   the grant is an OAuth pair with a refresh token in it, so
+                   handing it to a machine is handing that machine the
+                   account, and enrolling one should not widen that by itself.
+                   Keeping an already-granted node in step stays automatic —
+                   that is what stops a session there meeting "Login expired"
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here — its branch, main — from the
                    project's Git view; the controller enforces it on the relay

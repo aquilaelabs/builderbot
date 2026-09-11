@@ -1256,6 +1256,37 @@ ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).err
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 
+// ---- the Claude login is GIVEN to a node, never taken by one ---------------
+// It used to follow the account: a session started on a node and that node
+// fetched the account's grant. The grant is an OAuth pair with a refresh
+// token in it, so every enrollment silently widened what holds the account —
+// and taking it back meant un-enrolling the machine. Now the node a sign-in
+// happened on is granted by that act, and every node after it is a press
+// behind the operator's own password.
+{
+  const n = (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.kind === 'agent');
+  const row = async () => (await page.evaluate(async () =>
+    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.id === n.id);
+  ok((await row()).claude_mine === false,
+     'a node holds no Claude login until it is given one');
+  const grant = (on, password) => page.evaluate(async ([id, o, pw]) =>
+    await nodeAct({action: 'claude-grant', id, on: o, password: pw}), [n.id, on, password]);
+
+  ok(/not your password/.test((await grant(true, 'wrong')).error || ''),
+     'the wrong password gives it away to nobody');
+  ok((await grant(true, 'test')).ok === true && (await row()).claude_mine === true,
+     'the right one hands the node this account\'s login');
+  // The row answers for the ACCOUNT asking, not with the list of accounts
+  // that hold one: who else has signed in where is nobody's to read off a row.
+  const shown = await row();
+  ok(!('claude_for' in shown) && !('claude_for' in (shown.config || {})),
+     '...and neither the row nor its config names the accounts that hold one');
+  ok((await grant(false, 'test')).ok === true && (await row()).claude_mine === false,
+     'and taking it back is the same gesture, which is what makes it reversible');
+  page.errors = [];
+}
+
 // ---- debug: whose machine logs a node's sessions may read -------------------
 // A session on a node reads the logs of its own WORK — its project's CI runs,
 // what its test runs left — and nothing of the machine. The agent's journal

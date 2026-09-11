@@ -281,6 +281,18 @@ function nodeAdvancedSection(n, stale, inflight){
           : "refuse system changes from here — the machine's fstab, address and root stay its administrator's at the console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
+    ${n.kind === "agent" ? `
+    <div class="actbar ndclaude">
+      <span class="state">${n.claude_mine
+        ? "This node holds your Claude login. Take it back and its sessions cannot sign in as you."
+        : "Sessions here cannot sign in as you until this node is given your Claude login — an OAuth grant, so it asks for your password."}</span>
+      <button type="button" data-nd="claude-grant"
+        title="${n.claude_mine
+          ? "take this account's Claude login back off this machine"
+          : "hand this machine this account's Claude login, which is an OAuth grant with a refresh token in it"}">${
+        n.claude_mine
+          ? "Take my Claude login back" : "Send my Claude login"}</button>
+    </div>` : ""}
     ${state?.settings?.settings?.debug_mode?.value ? `
     <div class="actbar nddebug">
       <span class="state">A session here reads its own project's CI and test logs. Machine logs are
@@ -1044,6 +1056,23 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const id = box.dataset.node;
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
+      if (act === "claude-grant"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (!n) return;
+        const on = !n.claude_mine;
+        const pw = prompt(on
+          ? `Send your Claude login to ${n.name}? It is an OAuth grant with a `
+            + `refresh token in it, and that machine will hold a copy.\n\n`
+            + `Type your BuilderBot password to confirm.`
+          : `Take your Claude login back off ${n.name}?\n\n`
+            + `Type your BuilderBot password to confirm.`);
+        if (!pw) return;
+        const j = await nodeAct({action: "claude-grant", id, on, password: pw});
+        if (j.error){ notify(j.error, true); return; }
+        notify(on ? `${n.name} has your Claude login` : `${n.name} no longer holds it`);
+        loadNodes();
+        return;
+      }
       if (act === "debug"){
         const n = (nodesList || []).find(x => x.id === id);
         if (n){ modal.hidden = false; debugForm(n); }

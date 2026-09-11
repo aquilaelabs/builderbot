@@ -1212,6 +1212,42 @@ def node_log_grant(principal, node_id, from_ids):
     return {"ok": True, "log_from": want}
 
 
+def claude_granted(node_id, uid):
+    """Whether this account's Claude grant may reach that node."""
+    n = node(node_id)
+    return str(uid) in ((n or {}).get("config") or {}).get("claude_for") or []
+
+
+def claude_grant_set(principal, node_id, uid, on):
+    """Give this node the account's Claude login, or take it back.
+
+    Deliberate, one node at a time, and never a consequence of a session
+    starting there: the grant is an OAuth pair with a refresh token in it,
+    and handing it to a machine is handing that machine the account. The
+    node a sign-in HAPPENED on is granted by that act — the credential was
+    made in its home — and every node after it is this.
+    """
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    have = [str(x) for x in (conf.get("claude_for") or [])]
+    uid = str(uid)
+    conf["claude_for"] = ([x for x in have if x != uid] + [uid])[:64] if on \
+        else [x for x in have if x != uid]
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "claude-grant", {"uid": uid, "on": bool(on)})
+    return {"ok": True, "granted": bool(on)}
+
+
+def claude_nodes(uid):
+    """The node ids this account's login has been given to."""
+    return [n["id"] for n in node_list()
+            if str(uid) in ((n.get("config") or {}).get("claude_for") or [])]
+
+
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
                   debug_on=False):
     """A machine log off `target_id`, for a session running on `asking_id`.

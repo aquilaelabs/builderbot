@@ -24,6 +24,7 @@
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
 - Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
 - The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
+- A node holds no Claude login until you send it one from its row and type your password: enrolling a machine no longer hands it an OAuth grant with your refresh token in it, and taking it back is the same gesture (afef9cd)
 
 ### Fixed
 

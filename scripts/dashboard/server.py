@@ -3690,7 +3690,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def _nodes_for(self, rows):
         scope = self._node_scope()
-        return rows if scope is None else [n for n in rows if n["id"] in scope]
+        rows = rows if scope is None else [n for n in rows if n["id"] in scope]
+        # Whether THIS account's Claude login has been given to each node,
+        # answered here rather than by handing the page a uid to compare
+        # against: the grant list is every account that has one, which is
+        # nobody else's business to read off a row.
+        uid = str(users.uid_of(self._who()) or "")
+        for n in rows:
+            conf = n.get("config") or {}
+            n["claude_mine"] = bool(uid and uid in (conf.get("claude_for") or []))
+            # ...and the list itself does not travel. Which other accounts
+            # have signed a machine in is not a fact a row owes anybody, and
+            # `config` is handed to the page whole.
+            if "claude_for" in conf:
+                n["config"] = {k: v for k, v in conf.items() if k != "claude_for"}
+        return rows
 
     def _term_refused(self, rest):
         """A sentence when this account may not have the terminal it is asking
@@ -4744,6 +4758,21 @@ class Handler(BaseHTTPRequestHandler):
             # wants the node to mount and be addressed as. Stored here,
             # applied by the next action as a system job the agent runs.
             r = nodes.node_config_set(self._principal(), nid, req.get("config"))
+        elif act == "claude-grant":
+            # Hand this node the asking account's Claude login, or take it
+            # back. Behind the operator's OWN password, re-typed here: what
+            # is being handed over is an OAuth grant with a refresh token in
+            # it, and a button that does that on one click is a button that
+            # gets pressed by accident. The password is checked against the
+            # account pressing it, so an administrator cannot give away
+            # somebody else's login by knowing their own.
+            acct = users.account_of(self._who()) or {}
+            if not users.authenticate(acct.get("name") or "", field(req, "password")):
+                r = {"error": "that is not your password"}
+            else:
+                r = nodes.claude_grant_set(self._principal(), nid,
+                                           acct.get("uid") or "",
+                                           bool(req.get("on", True)))
         elif act == "log-grant":
             # Which nodes' machine logs a session on this node may read. An
             # administrator's, like the rest of this handler — a session that
@@ -4885,6 +4914,26 @@ class Handler(BaseHTTPRequestHandler):
         home = home_for(uid)
         if req is not None:
             return self._claude_login_put(req, home)
+        # ...and the node asking has to have been GIVEN it. A session token
+        # proves which account is asking; it does not say that the machine
+        # the session is on was ever meant to hold that account's grant.
+        # Handing the credential to whichever node a session happened to
+        # start on made every enrollment a silent widening of what holds the
+        # refresh token — so the node a sign-in was done on is granted by
+        # that act, and every node after it is a deliberate press behind the
+        # operator's own password.
+        #
+        # PUT is not gated: a node handing back a grant it refreshed is
+        # returning what it already has, and refusing that is how the
+        # controller ends up holding a retired refresh token (bug #64).
+        proj = me.get("session") or ""
+        nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
+        if nid and not NODES_OK and not nodes.claude_granted(nid, uid):
+            n = nodes.node(nid) or {}
+            return self._json({"error": f"{n.get('name') or nid} has not been given this "
+                                        "account's Claude login. Send it from that node's "
+                                        "row on the Nodes tab — it asks for your password, "
+                                        "because it hands the machine an OAuth grant"}, 403)
         path = Path(home) / ".claude" / ".credentials.json" if home else None
         if not path or not path.is_file():
             return self._json({"error": "this account is not signed in to Claude on the "
