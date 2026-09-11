@@ -68,7 +68,7 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
-| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store at `/sdk`, symlinked into place. `bb packages` lists and installs them |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store, symlinked into place. `bb packages` lists them and says where it is |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
@@ -135,17 +135,15 @@ without EGL the Android emulator cannot use the card. It has no window
 manager, no monitor and one intended client. Do not read `$DISPLAY` being
 set as permission to open a window on it.
 
-- **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
-  onto the package store (they are 1.3GB of download, so the image does not carry
-  them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
-  not need `playwright install` — the container installs them on the first
-  boot of a fresh share, and `bb packages install playwright` repairs them (if the
-  operator removed them deliberately, boot leaves them out and says so) — and
-  if a project pins a different version, launch with
-  `executablePath: '/opt/pw-browsers/chromium'`
-  (a stable symlink to the current Chromium). The image's Playwright is a global module: `require()`
-  finds it from any directory via `NODE_PATH`; ESM `import` does not honor
-  that, so use `createRequire(import.meta.url)('playwright')`.
+- **Playwright** — the browsers live on the package store, which is a
+  different path on the controller and on a node: `$PLAYWRIGHT_BROWSERS_PATH`
+  is the one that is right wherever you are, and `bb packages` prints it. Run
+  headless. You do not need `playwright install` — they arrive with the store,
+  and `bb packages install playwright` repairs them. If a project pins its own
+  version, point `executablePath` at `$PLAYWRIGHT_BROWSERS_PATH/chromium`. The
+  module is global: `require()` finds it from any directory via `NODE_PATH`,
+  ESM `import` does not honor that, so use
+  `createRequire(import.meta.url)('playwright')`.
 - **`bb shot URL... [FILE|DIR]`** — headless screenshot(s) of any pages, for
   showing the user visual state. Takes `--full`, `--scale N`, `--wait MS`,
   `--resize W` for README-quality captures — a docs-screenshot script should
@@ -188,6 +186,7 @@ command you offer them.
 Installing one is not a reason to edit this file: `bb packages` is the source of
 truth, and it is accurate the moment something lands.
 
+<!-- BUILDERBOT:IF android *.gradle *.gradle.kts settings.gradle settings.gradle.kts android AndroidManifest.xml app/src/main/AndroidManifest.xml -->
 ## Android
 
 Only relevant if this is an Android project.
@@ -276,6 +275,7 @@ Under software rendering there is one more consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
+<!-- BUILDERBOT:END -->
 ## What you can build, and where
 
 Compiling happens on the project's **node** — a machine the operator
@@ -496,6 +496,7 @@ pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 
+<!-- BUILDERBOT:IF compose docker-compose.yml docker-compose.yaml compose.yml compose.yaml -->
 ## The dev instance, if this project has a compose file
 
 The Artifacts tab may carry a **dev instance** row: the operator builds this
@@ -520,6 +521,7 @@ true. The rebuild flow reads `.env.example` to know when new settings need
 filling in, so a new variable your code reads belongs there in the same
 commit.
 
+<!-- BUILDERBOT:END -->
 ## House rules
 
 How the operator wants this project worked on, and what a session has learned
@@ -569,283 +571,115 @@ the same way as roadmap items; `bb rules pending` lists what is waiting.
 
 Every project has a notebook in the dashboard — the briefing, the roadmap,
 bugs, and the repository's own history, branches and diffs on its Git view,
-one tab each. The roadmap is the shared list of design work, and both
-you and the operator write it.
+one tab each. The roadmap is the shared list of design work, and both you and
+the operator write it.
 
 ```bash
 bb roadmap                      # what is on it
 bb roadmap add "..."            # put something on it
 bb roadmap done N               # finished it — off the list, into the log
 bb roadmap rm N ["why"]         # not doing it — same, and say why it went
-bb roadmap shelve N             # parked: keep it, not now — the operator unshelves
+bb roadmap shelve N             # parked: keep it, not now
 bb roadmap mv N up|down         # move one up or down the list
 bb roadmap edit N "..."         # reword one
-bb roadmap info N [M] "..."     # attach the technical details to one, or step M
+bb roadmap info N [M] "..."     # the technical details, on an item or step M
 bb roadmap step add N "..."     # give one a step; step edit N M "...", step rm N M
-bb roadmap step done N M        # you finished step M of N — ticked, and no longer offered
-bb roadmap begin                # working one out: commit writes one record of it
-bb roadmap commit               # ...or revert, which puts the notebook back
+bb roadmap step done N M        # you finished step M — ticked, and no longer offered
+bb roadmap begin | commit | revert    # work a plan out, recorded once
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
-**The open items are already in your context.** They were appended to this
-session's prompt when it started, so there is nothing to go and read at the
-top of a conversation, and nothing to recite back — the operator can see the
-list; they are looking at the same one.
+**The open items are already in your context**, appended when this session
+started. There is nothing to go and read at the top of a conversation and
+nothing to recite back: the operator is looking at the same list.
 
-Each carries a number — `R4` — and that number is the item's own, not its
-position: it is what the operator sees on the row in the dashboard and what
-`bb roadmap done R4` takes, and it survives the list being rearranged. Refer to
-one by it rather than by counting down the list. New items go on the end, so
-the numbers normally run down the page; a gap means something was removed and
-an item out of sequence was moved by hand.
-
-**The letter says which list.** A roadmap item is `R4`; a bug is `B4`; a
-rule is named, not numbered. Write the letter whenever you name one — in a
-reply, a commit message, a note — because `#4` on its own could be either
-tab, or a pull request. Every verb takes the bare number too, so `bb roadmap
-done 4` still works; `bb bug fix R4` is refused, and the refusal says which
-tab R4 belongs to.
-
-The half that needs saying is the writing.
+**The letter says which list.** A roadmap item is `R4`, a bug is `B4`, a rule
+is named. Write the letter whenever you name one, because `#4` alone could be
+either tab, or a pull request. The number is the item's own and survives the
+list being rearranged.
 
 **When you notice something worth doing and it is out of scope for what you
-are on, put it on the list.** Not only in your reply. A reply is read once,
-in a scroll of other text, at the end of a task the operator is already
-finished thinking about; the list is read at the start of every conversation
-after it. "I flagged that last week" is worth nothing if it went past in a
-paragraph. This is the operator's own reason for the list existing:
+are on, put it on the list — not only in your reply.** A reply is read once,
+at the end of a task the operator has already finished thinking about; the
+list is read at the start of every conversation after it. This is their own
+reason for it existing:
 
 > sometimes you mention things and I forget that you did
 
-So: say it in the reply *and* add it. Items you add are marked as yours, so
-the operator can see what you raised and sweep it if they disagree.
+So say it in the reply *and* add it. What you add is marked as yours, so they
+can see what you raised and sweep it if they disagree.
 
-**The operator decides how much of what you add lands on its own.** Per
-project and per tab — roadmap, bugs, rules — the setting is auto, ask or
-deny, and it covers *creating* an entry only: what is already on a list you
-may still tick, note and reword under any of them. Under **auto** an add
-lands as it always has. Under **ask** it is held: `bb roadmap add` answers
-"held for approval as R12", the item is not on the list yet, and the
-operator approves or denies it on the notebook. Details or steps you add to
-R12 meanwhile ride behind it and land after it; anything else on a held
-item is refused, and `bb roadmap pending` lists what is waiting. You are
-told on a later turn what they decided. Under **deny** the add is refused
-with a sentence you can quote — put the item in your reply instead, and the
-operator adds it if they agree. The same three words apply to `bb bug add`
-and `bb rules add`.
+**Tick things off as you finish them**, including items you did not add: a
+list that only grows is one that stops being read. Done takes it off the list
+and has no undo — if it turns out not to have been finished, add it again and
+say so. Dropping is for work that is abandoned, and a dropped item can be put
+back from the history; done is not how a finished plan leaves. Only you tick
+things off, because only the session that did the work knows whether it is
+done.
 
-**Tick things off as you finish them**, including items you did not add.
-A list that only grows is one that stops being read.
+**A group is one goal with an order to it, and its title is that goal.** Group
+steps only when every one of them serves a single outcome — "the picker works
+on a phone", not "four things I noticed". Somebody reading only the title
+should know what finishing it would look like. If you cannot write the title
+without listing the steps, it is not one goal and should not be one group.
 
-Ticking one off **takes it off the list** — this list is read to find out what
-is left, and something finished is not left. It goes into the history under
-"done", where dropping it would have gone under "dropped", and done has no
-undo: if it turns out not to have been finished, add it again and say so.
-Dropping is for work that is abandoned, and a dropped item can be put back
-from the history as it was — the operator's Put back on the Roadmap's
-history, or `bb roadmap restore R4` — so drop is not how a finished plan
-leaves. Only you tick things off. Nothing in the dashboard does it, because
-only the session that did the work knows whether it is done.
+**Steps are expensive.** Each is a message the operator sends by hand, one at
+a time, waiting on each. A step is not a task, it is *a point at which the
+previous work must have finished before the next can start*. Put everything
+that can be done in one go into one step, and only start a new one when you
+genuinely need the last prompt to have run. Mark one done when you finish it,
+whether or not it was sent to you; marking the last one finishes the plan. A
+step that was **sent** is struck through rather than ticked, and sent is not
+done — if you could not finish one, say so plainly.
 
-**A group is one goal with an order to it, and its title is that goal.**
-Group steps only when every one of them serves a single outcome — "the picker
-works on a phone", not "four things I noticed". If the steps do not share a
-goal they are separate items, and separate items can be sent in any order,
-which is the whole reason to have both shapes.
+A step arriving as a message *is* a request: the operator sent it
+deliberately and is in this tab to read the answer.
 
-Write the title as the goal in plain words, not as a summary of the work:
-somebody reading only that line should know what is being aimed at and what
-finishing it would look like. `bb roadmap add "make the picker usable on a
-phone" --step "..." --step "..."`, not `bb roadmap add "picker: select width +
-re-measure + regression pass"`. The steps carry the technical detail; the
-title is the reason they exist. If you cannot write the title without listing
-the steps, it is not one goal and should not be one group.
+**Write the details when you write the plan.** `bb roadmap info N "..."`:
+which files, which functions, the approach. They travel with a step when it is
+sent and appear in this block for the next session, which is the whole point —
+that session should not start from a cold grep. When the work lands, trim the
+item back to what is left: reasoning that is now a comment in the code or a
+line in the README is stored twice, and this copy is the one nobody maintains.
 
-**Write the details when you write the plan.** `bb roadmap info N "..."` on an
-item, `bb roadmap info N M "..."` on step M: which files, which functions, the
-approach — the technical half the title should not carry. They show under a
-fold on the row, travel with a step when the operator sends it, and appear in
-this block for the next session, which is the point: the session that works
-the step should not start from a cold grep because you already knew where the
-work was.
+The limits — a title, a step, how many steps, how many open items, how long
+the details run — are enforced, and each refusal says what to do instead of
+compressing the wording. You do not need them memorised.
 
-**Steps are expensive — use as few as you can.** Each one is a message the
-operator sends by hand from the dashboard, one at a time, waiting on each. So
-a step is not a task, it is *a point at which the previous work must have
-finished before the next can start*. Put everything that can be done in one
-go into one step, using line breaks inside it to keep it readable, and only
-start a new step when you genuinely need the last prompt to have run first —
-a file that has to exist, a build that has to be green, an answer you need
-before you can write the next instruction. Two steps that could have been one
-cost somebody a round trip for nothing.
+**A plan can be corrected as well as followed.** If a step describes a file
+that no longer exists or an approach that was abandoned, reword or drop it
+rather than working around it, and say in your reply that you did. Say why in
+the command when you drop something: nothing here can be undone, and that note
+is all that survives it.
 
-There are limits, and they are the design rather than an obstacle: a title or
-a step is 500 characters over at most 12 lines, an item takes 12 steps, the
-list holds 30 open items, and `info` takes 2000 characters over 40 lines. So
-when a step will not fit, the answer is almost never to compress the wording —
-it is that the technical half belongs in `bb roadmap info` and the step should
-say what has to be true before the next one can start.
+**When you are working a plan out, open a batch.** `bb roadmap begin`, edit as
+much as you like, then `bb roadmap commit`. The changes land as you make them,
+so the operator can watch, but the record is written once. It covers the whole
+notebook, so bugs you file or close meanwhile are staged the same way. Read
+the logs before you open one — your own changes are not in the history until
+you commit. And do not leave one open: the panel holds its own Save while it
+is, so commit or revert before you finish the reply, and if you are not about
+to make several related changes, do not open one at all.
 
-**Those are per-item caps, and the total is what actually costs.** The whole
-list — every open item, its details, every step and every step's details — is
-read into the prompt of every session that starts on this project, so a
-paragraph written once is paid for again on every conversation afterwards. It
-is easy to stay inside all of the limits above and still write a list nobody
-can afford: one project's notebook reached 16KB and made its sessions
-unstartable, because that is all `tmux new-session` accepts, and every session
-before that had simply been paying for it quietly. The launcher no longer has
-that ceiling, so the cost is the reason to be brief now, not the crash.
+**A shelved item is parked, not yours to pick up.** It stays in your context so
+you know it exists. Do not work on one unless they ask, and do not tidy it
+away either.
 
-So write `info` as the technical half a session would otherwise have to grep
-for — which files, which functions, what was decided and why — and not as a
-record of the thinking that got there. **When the work lands, trim the item
-back to what is left**: reasoning that is now a comment in the code, a section
-in this file or a line in the README is being stored twice, and the copy in
-the roadmap is the one nobody maintains.
+**The operator decides how much of what you add lands on its own** — auto, ask
+or deny, per tab. Under ask, `bb roadmap add` answers "held for approval as
+R12" and the item is not on the list yet; you are told on a later turn what
+they decided. Under deny it is refused with a sentence you can quote, so put
+the item in your reply instead. The same three words apply to `bb bug add` and
+`bb rules add`.
 
-A step may be several lines, and blank lines between them are kept. The
-operator can build and rearrange a group from the dashboard too, so write the
-steps in the order they have to happen and leave the arranging to them. The
-order is enforced on sending: the first has to go before the second becomes
-sendable, which is what separate items cannot promise — hand three of those
-over backwards and the second lands on a tree the first was supposed to have
-made.
+**If the list changes while you are working, you are told** — one line, with
+your next prompt. It is not a request to drop what you are doing. If you are
+about to act on the list, run `bb roadmap` first rather than trusting the copy
+in your context, which was true when the conversation started; the same
+command clears the refusal you get for editing an item you have not re-read.
 
-A step that has been sent is struck through rather than removed, and can be
-sent again — sent is not the same as done, and the difference is exactly the
-case worth being able to see. So do not treat "you sent me this" as proof it
-worked; if you cannot finish a step, say so plainly rather than quietly
-leaving it struck through.
+Read the log narrowed, never whole: reach for `--find TEXT` before `--all`.
 
-**When you finish a step, mark it.** `bb roadmap step done R4 2` is your mark
-on step 2 of R4, distinct from sent: the panel draws it with a tick instead
-of a number and stops offering it as the next thing to send, and the log says
-a session finished it. Do this whether or not the step was sent to you — a
-phase you were told to start in chat is the case it exists for — and do it
-for the step you were sent as well, or the operator has only your reply to
-go on. There is no undo: if it turns out not to have been finished, the
-operator sends it again, which clears the mark and says so in the log. Marking
-the last step done finishes the plan: the item goes off the list and into the
-history as done, with no second command.
-A line the operator dealt with themselves is dropped rather than marked,
-because there is still no way to cross one off by hand.
-
-**A plan can be corrected as well as followed.** If the design moves under
-one — a step describes a file that no longer exists, or an approach that was
-abandoned — reword or drop that step rather than working around it:
-
-```bash
-bb roadmap edit 4 "the new wording"
-bb roadmap step edit 4 2 "...what step 2 should say now"
-bb roadmap step rm 4 2          # and step add 4 "..." to put one on the end
-```
-
-Reordering too, when two steps turn out to be the wrong way round:
-`bb roadmap step mv 4 3 up`, and `bb roadmap mv 4 up` for the item's own place in
-the list. Both are covered by a batch, so `revert` puts them back.
-
-Say in your reply that you did it, and why. Every change either of you makes
-is written to a log with its time and the name of who made it — so a step you
-dropped is recoverable from its own words, and there is no version of this
-where quietly rewriting somebody's plan goes unnoticed. That is the point:
-correct the list openly rather than leaving it describing work nobody is
-going to do.
-
-**You can be refused for writing over words you have not read.** `bb roadmap
-edit`, `info`, `rm`, `done` and the step verbs check whether the list has
-moved since you last read it, and stop rather than rewriting an item from the
-copy in your context — which may be hours old, because it arrived when this
-conversation started. There is no `--force`: run `bb roadmap`, which clears
-it, and make the change against what it says now. Your own writes never count
-against you, so a run of edits is not interrupted by itself.
-
-**When you drop something, say why in the command**: `bb roadmap rm R4 "the
-picker this described no longer exists"`. Nothing here can be undone, so that
-note is the only thing between a dropped line and somebody adding it straight
-back. It is kept with the entry and is searchable.
-
-**When you are working a plan out, open a batch first.** `bb roadmap begin`,
-then edit as much as you like, then `bb roadmap commit`. The changes land on the
-list as you make them — the operator can watch, which is better than hiding
-your work until you are happy — but the *record* is written once, at commit,
-saying what changed rather than every step of getting there. Rewording the
-same step four times before you are satisfied is one entry, not four, and a
-log nobody can skim is a log nobody reads. `bb roadmap revert` puts the list back
-as it was and writes nothing; it refuses if the operator has changed the list
-since you opened the batch, because putting your copy back would undo their
-work too.
-
-**A batch covers the whole notebook, not just the roadmap.** Bugs you file,
-note or close while one is open are staged the same way, and `bb bug begin`,
-`commit` and `revert` are the same three commands reached from the other tab's
-name. That is deliberate: a plan usually moves because of what the tracker now
-says, and committing one while reverting the other would leave a roadmap
-describing work against a tracker that never recorded why. Your memories are
-not in it — those are files you write directly, so there is no write to
-intercept and `revert` will not put one back.
-
-**Read the logs before you open one.** While a batch is open your own changes
-are not in `bb roadmap history` or `bb bug history` yet — that is the whole
-point of it — so a session that opens a batch and then asks the log what it
-just did gets a confusing answer. Do the reading first, then start editing.
-
-**Do not leave one open.** While a batch is open the panel holds its own
-Save — what is on the operator's screen was read before you started, and
-replaying it over a list that has moved is how two writers lose each other's
-work. Their typing is not blocked and yours is not either; only the
-writing-back waits. That hold is the panel's own courtesy and not a lock:
-nothing here serializes writers, and `bb` and a second session write straight
-through it. So commit or revert before you finish the reply, and if
-you are not about to make several related changes, do not open one at all.
-
-**Read the log narrowed, never whole.** `bb roadmap history` gives the last 20;
-`-n N` for more, `--all` for everything, `--since 7d` or `--since 2026-08-01`
-for a window, `--find TEXT` to search the lines, their previous wordings and
-the reasons things went. Reach for `--find` before `--all` — the whole log
-costs more context than the one line you wanted from it.
-
-**A shelved item is parked, not yours to pick up.** The operator shelves
-something they mean to keep and do not want done now; it goes dark at the
-bottom of the list and its steps go with it. It stays in your context so you
-know it exists — do not work on one unless they ask, and do not tidy it away
-either.
-
-`bb roadmap shelve N` is there when something turns out to be blocked or waiting
-on somebody: park it and say why in your reply. There is no unshelve for you.
-Taking one off the shelf reverses a decision made for reasons you were not
-told, so it is the operator's, and it is one tap in the panel.
-
-If the list or these notes change while you are working, **you are told** —
-one line, naming which of the two moved, arriving with the next prompt you
-are given. It costs the operator nothing and interrupts nothing, so it is not
-something they have to remember to do. Read it when it is relevant and carry
-on: a change to the list is not a request to drop what you are doing.
-
-Two things follow from *when* it arrives. It rides on your next turn, so a
-change made while you are mid-task reaches you at the end of it rather than
-during — and if you are about to act on the list, re-read it with `bb roadmap`
-rather than trusting the copy in your context, which was true when the
-conversation started. And a change you make yourself is never announced back
-to you.
-
-There is one Save in the panel and it says nothing to you directly — the line
-above is the whole of how a change reaches you. The other way anything lands
-is a step being **sent**, which is a message the operator wrote deliberately;
-what moved in the notebook rides along on that rather than costing a second
-one.
-
-A step arriving as a message *is* a request: the operator sent it deliberately,
-and the panel closed and put them in this tab to read the answer. Sometimes it
-carries a note that the list changed as well — that half is context, the step
-is the ask.
-
-Keep it short and keep it real. Thirty open items is the hard ceiling, and it
-is a working list rather than an issue tracker: one line, plainly worded, no
-duplicates of something already there. Anything that turns out to be a durable
-rule rather than a task belongs somewhere stronger — a note in this file, a
-comment where the code is, or a test that fails when it regresses — and should
-come off the list once it lands there.
 
 ## The bug tracker
 

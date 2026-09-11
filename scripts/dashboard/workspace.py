@@ -264,7 +264,12 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json",
                 # The gate, and the template it compares a project's
                 # CLAUDE.md block against — so `bb claude-md` and the gate
                 # answer on a node the same as here.
-                "scripts/dashboard/bb-gate", "config/templates/project-CLAUDE.md")
+                "scripts/dashboard/bb-gate",
+                # ...and the hook that keeps the account's Claude grant in
+                # step while a session runs, which only matters ON a node and
+                # so only ever runs from here (B100).
+                "scripts/dashboard/bb-keep-login",
+                "config/templates/project-CLAUDE.md")
 
 
 def bundle():

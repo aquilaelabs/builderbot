@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Claude Code hook: keep this node's copy of the account's Claude grant in
+step with the controller while the session is running.
+
+    bb-keep-login PROJECT SESSION      # UserPromptSubmit
+
+WHY THIS EXISTS (B100). The grant is an OAuth pair and a refresh ROTATES the
+refresh token: the moment any machine refreshes, the server retires the token
+every other copy is holding. `bb login --sync` settles that correctly in both
+directions — newest `expiresAt` wins — but the only thing that ever ran it was
+bb-tty, on a browser CONNECTION. So a session on one node refreshed, the
+controller's copy went stale, and a session on ANOTHER node sat holding a
+retired grant until somebody opened a terminal tab there. With sessions that
+stay open for hours, that is hours, and what it looks like from the outside is
+"Login expired · Please run /login", occasionally, for no reason.
+
+A prompt is the right moment to do it: the session is about to work, it holds
+a token minted for its own account, and the file is in its own home. Nothing
+else on a node has all three — the agent runs continuously but has the node's
+credentials rather than an account's.
+
+An access token lasts hours, so the sync does not have to be quick to be in
+time; it has to HAPPEN. Ten minutes between tries while things are fine, and
+no throttle at all once the local grant is inside its last half hour, which is
+when being one rotation behind is about to matter.
+
+Silent always, and exit 0 always: a login that could not be synced is not
+worth refusing a turn over, and this hook has no opinion about anything else.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+SYNC_EVERY = 600                 # while the grant has plenty of life left
+NEAR_END = 1800                  # ...and no waiting at all inside this
+
+
+def cache_dir():
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    return os.path.join(d, "builderbot")
+
+
+def expires_in():
+    """Seconds until this machine's grant stops being good, or None.
+
+    Only the number. The file is an OAuth pair and nothing here reads, logs or
+    passes on any other part of it.
+    """
+    try:
+        with open(os.path.join(os.environ.get("HOME", ""),
+                               ".claude", ".credentials.json")) as f:
+            at = (json.load(f).get("claudeAiOauth") or {}).get("expiresAt")
+        return int(at) / 1000.0 - time.time() if at else None
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def due(stamp):
+    left = expires_in()
+    if left is not None and left < NEAR_END:
+        return True                  # about to matter: ask every time
+    try:
+        with open(stamp) as f:
+            last = float(json.load(f).get("at") or 0)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return True
+    return time.time() - last >= SYNC_EVERY
+
+
+def main():
+    # A node only. On the controller the grant IS the one the controller
+    # holds, so there is nothing to keep in step with.
+    if os.environ.get("BUILDERBOT_ROLE", "").lower() not in ("node", "worker", "agent"):
+        return 0
+    stamp = os.path.join(cache_dir(), "login-sync")
+    if not due(stamp):
+        return 0
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
+    bb = here if os.path.isfile(here) else "bb"
+    try:
+        subprocess.run(["bash", bb, "login", "--sync"],
+                       capture_output=True, timeout=30,
+                       env=dict(os.environ, BB_PROJECT=sys.argv[1] if len(sys.argv) > 1 else ""))
+    except (OSError, subprocess.SubprocessError):
+        pass                         # the controller is away; the next prompt tries again
+    # Stamped whether it worked or not: a controller that is down must not
+    # turn every prompt into a thirty-second wait.
+    try:
+        os.makedirs(os.path.dirname(stamp), mode=0o700, exist_ok=True)
+        with open(stamp, "w") as f:
+            json.dump({"at": time.time()}, f)
+    except OSError:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:                                               # noqa: BLE001
+        sys.exit(0)                  # a hook that cannot run is never worth a turn

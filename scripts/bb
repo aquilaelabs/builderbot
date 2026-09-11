@@ -161,6 +161,24 @@ version() {
 }
 
 cmd_status() {
+    # FIRST, because it is the question everything below is an answer to, and
+    # because four places in the CLAUDE.md template told a session to ask this
+    # command for it while it said nothing at all (B98). Whether a session is
+    # on the controller or on a node decides whether adb reaches the emulator,
+    # whether a plain `git push` works, and whether CI is this machine. The
+    # nearest thing in the old output was `node v24.20.0`, which is Node.js
+    # and reads exactly like an answer.
+    echo "== where =="
+    if on_node; then
+        printf '  %-8s %s\n' machine "a node${BB_NODE:+, $BB_NODE}"
+        printf '  %-8s %s\n' means \
+            "builds, tests, CI and the emulator run here; pushing is bb git push"
+    else
+        printf '  %-8s %s\n' machine "the controller"
+        printf '  %-8s %s\n' means \
+            "builds go to this project's node; bb nodes says which"
+    fi
+    echo
     echo "== versions =="
     # First, because it is the identity of everything under it: every version
     # below came out of this image, and which image that is was otherwise
@@ -1185,6 +1203,70 @@ ENV_END='<!-- BUILDERBOT:ENV:END -->'
 # Print the marked environment block of a file, markers included.
 md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
     'index($0,b){f=1} f{print} index($0,e){exit}' "$1"; }
+
+# md_render TEMPLATE TARGET — the block this project should have.
+#
+# Parts of the file only matter to some projects: Android, the dev instance,
+# the findings report. Every project used to carry all of them on every
+# session, which was about a sixth of the block paid for by projects it could
+# not apply to. The environment already knows which apply, so the template
+# marks them and this drops the ones it cannot see evidence for:
+#
+#   <!-- BUILDERBOT:IF android -->  ...  <!-- BUILDERBOT:END -->
+#
+# Evidence IN THE TREE, never a guess and never the machine: a gradle file or
+# an AndroidManifest for android, a compose file for compose. The tree is the
+# shared projects share, so the controller and every node read the same
+# answer — a condition on something only one machine can see (the /reports
+# mount was the tempting one) renders a project differently depending on where
+# the update ran, and then each machine reports the other's answer as drift.
+# A project that gains a compose file gains that section as ordinary drift and
+# the row offers the update, which is why the check comes through here too and
+# not only the update.
+#
+# The phone is deliberately NOT conditional. The evidence for it is on a node
+# rather than in the tree, and a section left out on a guess is a capability a
+# session does not know exists, which costs more than the words do.
+# Any of these paths exists. Not `ls a b c`, which exits non-zero when ANY of
+# them is missing however many matched — measured, and it is why a project
+# with one gradle file at its root read as not-Android.
+_any_of() {
+    local p
+    for p in "$@"; do [ -e "$p" ] && return 0; done
+    return 1
+}
+
+md_render() {
+    local tpl="$1" dir have name pats p
+    dir="$(dirname "$(readlink -f "$2" 2>/dev/null || printf '%s' "$2")")"
+    # The patterns come off the marker, not out of this function: server.py
+    # renders the same block on every poll to decide whether a project has
+    # drifted, and two lists of evidence would make each one report the
+    # other's answer as drift forever. The template is the one copy; both
+    # readers are three lines of glob.
+    have=" "
+    while read -r name pats; do
+        [ -n "$name" ] || continue
+        for p in $pats; do
+            # Unquoted on purpose: these are globs, and the point is expansion.
+            # shellcheck disable=SC2086
+            if _any_of "$dir"/$p; then have="${have}${name} "; break; fi
+        done
+    done <<EOF
+$(grep -o '<!-- BUILDERBOT:IF [^>]*-->' "$tpl" \
+    | sed 's|<!-- BUILDERBOT:IF ||; s| *-->$||')
+EOF
+    md_block "$tpl" | awk -v have="$have" '
+        /<!-- BUILDERBOT:IF /{
+            # The first word only: the rest of the marker is the evidence
+            # that decided it, which was read above and is not the name.
+            name = $0; sub(/.*BUILDERBOT:IF /, "", name); sub(/[ \t].*/, "", name)
+            sub(/-->.*/, "", name)
+            skip = (index(have, " " name " ") == 0); next
+        }
+        /<!-- BUILDERBOT:END -->/{ skip = 0; next }
+        !skip { print }'
+}
 # The window stamped in a block, or nothing: only the line inside the markers
 # counts, so a project's own notes cannot claim one.
 md_window() { md_block "$1" | sed -n 's/.*BUILDERBOT:ENV:WINDOW \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1; }
@@ -1226,7 +1308,7 @@ cmd_claude_md() {
     if [ "$mode" = is-stale ]; then
         [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
         grep -qF "$ENV_BEGIN" "$target" && grep -qF "$ENV_END" "$target" || return 1
-        ! cmp -s <(md_block "$TEMPLATE_MD") <(md_block "$target")
+        ! cmp -s <(md_render "$TEMPLATE_MD" "$target") <(md_block "$target")
         return
     fi
 
@@ -1264,7 +1346,12 @@ cmd_claude_md() {
 
     if [ ! -f "$target" ]; then
         if [ "$mode" = init ]; then
-            cp "$TEMPLATE_MD" "$target"
+            # Rendered, not copied: a new file must come out the same as an
+            # --update would leave it, or the first check after --init reports
+            # drift against the file it just wrote.
+            { md_render "$TEMPLATE_MD" "$target"
+              awk -v e="$ENV_END" 'p{print} index($0,e){p=1}' "$TEMPLATE_MD"
+            } > "$target"
             log "created ${target} — fill in the project section below the end marker"
             return 0
         fi
@@ -1283,7 +1370,7 @@ cmd_claude_md() {
     tmp_new="$(mktemp)"; tmp_cur="$(mktemp)"
     # shellcheck disable=SC2064 # expand the paths now, not at trap time
     trap "rm -f '$tmp_new' '$tmp_cur'" RETURN
-    md_block "$TEMPLATE_MD" > "$tmp_new"
+    md_render "$TEMPLATE_MD" "$target" > "$tmp_new"
     md_block "$target"      > "$tmp_cur"
 
     if cmp -s "$tmp_new" "$tmp_cur"; then
