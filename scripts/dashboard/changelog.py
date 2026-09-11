@@ -272,10 +272,21 @@ def _flat(d):
     return [(c, t, sh) for _, t, sh, c in numbered(d)]
 
 
-def _regroup(rows):
-    """Back to the group shape, keeping each category's first appearance as
-    its place — the file's order, which is the arrangement somebody chose."""
+def _regroup(rows, order=()):
+    """Back to the group shape, with the categories in `order` — the
+    arrangement already in the file — and any category new to it appended.
+
+    Taking the order from the rows instead put a category wherever its
+    earliest entry happened to sit, so a session moving one line into an
+    existing category dragged that whole category to the front of somebody
+    else's arrangement. A new category still lands at the end, which is what
+    `add --cat` does and for the same reason: where a category sits is not a
+    session's call.
+    """
     out, at = [], {}
+    for name in order:
+        at[name] = {"name": name, "entries": []}
+        out.append(at[name])
     for cat, text, shas in rows:
         if cat not in at:
             at[cat] = {"name": cat, "entries": []}
@@ -285,9 +296,11 @@ def _regroup(rows):
 
 
 def _apply(d, change):
-    """Run `change` over the flat rows and write the result."""
+    """Run `change` over the flat rows and write the result, keeping the
+    categories where the file already had them."""
+    order = [g["name"] for g in groups(d)]
     try:
-        return put(d, _regroup(change(_flat(d))))
+        return put(d, _regroup(change(_flat(d)), order))
     except _Refused as e:
         return {"error": str(e)}
 

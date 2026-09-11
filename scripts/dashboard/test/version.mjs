@@ -572,6 +572,21 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
   ok(!/### Fixed/.test(file()),
      '...and the category it emptied is gone, not left as a heading with nothing under it');
 
+  // A session filing one entry must not drag a category to the front of
+  // somebody's arrangement. The order used to come off the entries' running
+  // order, so moving a category's FIRST line into a later category pulled
+  // that category up above it.
+  cl('add', 'CATME a later fix', '--cat', 'Fixed');
+  ok(file().indexOf('### Added') < file().indexOf('### Fixed'),
+     'a second category lands after the first, which is the arrangement to protect');
+  cl('edit', numOf('CATME a fix, moved'), 'CATME a fix, moved again', '--cat', 'Fixed');
+  ok(file().indexOf('### Added') < file().indexOf('### Fixed')
+     && /### Fixed\n\n- CATME a fix, moved again[^\n]*\n- CATME a later fix/.test(file()),
+     `...and moving its first line into the second leaves both categories where they were (${
+       (file().match(/^### .*$/gm) || []).join(', ')})`);
+  cl('rm', numOf('CATME a later fix'));
+  cl('edit', numOf('CATME a fix, moved again'), 'CATME a fix, moved', '--cat', 'Added');
+
   ok(cl('add', 'far too specific', '--cat', 'A'.repeat(41)).code !== 0
      && !/far too specific/.test(file()),
      'a category is a word or two: a longer one is refused and nothing is written');

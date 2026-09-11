@@ -103,13 +103,6 @@ A sibling directory holding a `.bbignore` file is not a project at all — it is
 the container's own storage (the package store) or something the operator chose to
 hide. Leave those alone too.
 
-**So do not prefix a command with `cd`.** You are already here, and
-`cd /workspace/thing; bb rules` is one opaque string to the permission
-matcher where `bb rules` is a verb it can recognise. The operator may have
-set this project to run `bb` without stopping to ask; a `cd` in front of it
-throws that away and puts a dialog on the screen for every command. Run
-`bb rules`, not `cd …; bb rules`.
-
 If this session was started from the dashboard, that is also enforced: the file
 tools — `Read`, `Edit`, `Write` and `NotebookEdit` — are denied every sibling
 path, via a settings file passed on the command line. One of them coming back
@@ -434,10 +427,24 @@ version sits its changelog, and you write it:
 
 ```bash
 bb changelog add "Pairing no longer fails when you switch screens"
+bb changelog add "…" --cat Fixed   # file it under a category
 bb changelog            # read it; --for DIR for a component's own
-bb changelog unreleased # what is waiting for a bump, numbered
+bb changelog unreleased # what is waiting for a bump, numbered, by category
 bb changelog edit 3 "…" # reword entry 3 rather than logging it twice
+bb changelog merge 2 5 "…"   # one line for several, carrying their commits
+bb changelog split 2    # back into one line per commit it carries
+bb changelog rm 2       # drop one that stopped being true
 ```
+
+**The arrangement is the operator's, and the numbers are positional.** A
+category is a `### Name` subsection — the Keep a Changelog shape — and which
+categories exist, what order they sit in and what order the lines run inside
+them are all decided by hand, on the Changelog editor beside the version.
+`--cat` files an entry under one, making it at the end of the section if it
+is new; where it belongs in what a reader meets is not a session's call.
+Entry numbers count straight through the whole section, categories and all,
+and they move whenever it is rearranged, so read `bb changelog unreleased`
+before naming one.
 
 A changelog line is not a commit message. The commit says what happened to
 the code; this line says what changed for the person holding the app, in
