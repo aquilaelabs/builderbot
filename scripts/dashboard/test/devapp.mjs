@@ -1967,18 +1967,24 @@ ok(await page.$('#devSend'),
   const on = await asSession({ project: 'ep.silon', action: 'rebuild' });
   ok(on.status === 200 && !on.error,
      `...and with the switch on the same call is taken (${JSON.stringify(on).slice(0, 60)})`);
-  // The row's own control, drawn from the same setting rather than from a
-  // second copy of it, and it is NOT gated with the daemon buttons: whose
-  // decision this is does not depend on a machine answering.
-  await refreshUntil(page, () => !!document.querySelector('#devClaude')?.checked);
-  ok(await page.$eval('#devClaude', e => e.checked && !e.disabled),
-     'the docker row carries the switch, ticked, and live whatever the daemon says');
-  await page.evaluate(async () => {
-    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ project: 'ep.silon', devbuild: false }) });
-  });
-  await refreshUntil(page, () => document.querySelector('#devClaude')?.checked === false);
-  ok(true, '...and turning it off takes the grant back');
+  // The control lives on the DOCKER tab, beside the Rebuild it hands over,
+  // and it is NOT gated with the daemon buttons: whose decision this is does
+  // not depend on a machine answering. Drawn from the same setting rather
+  // than a second copy of it.
+  const SW = '.dmtab [data-dmclaude="ep.silon"]';
+  await page.evaluate(() => openDocker());
+  await page.waitForFunction(s2 => document.querySelector(s2)?.checked === true,
+                             SW, { timeout: 20000 });
+  ok(await page.$eval(SW, e => e.checked && !e.disabled),
+     'the docker tab carries the switch, ticked, and live whatever the daemon says');
+  ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
+     '...and not on the artifact row, which is where it was asked not to be');
+  // Turned off from the row itself, which is the gesture this is for.
+  await page.click(SW);
+  await page.waitForFunction(() => document.querySelector('.dmtab [data-dmclaude="ep.silon"]')
+                                      ?.checked === false, null, { timeout: 20000 });
+  ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
+     '...and unticking it there takes the grant back');
 }
 
 

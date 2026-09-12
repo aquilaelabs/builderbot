@@ -433,10 +433,10 @@ bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
 bb devapp rebuild  build it and bring it up. Only where the project has handed that
-                   over — the switch is on the docker row of its Artifacts tab, off by
-                   default, and a session that tries without it is refused with the
-                   sentence that names the switch. Up, Down and Env stay the
-                   operator's whatever it says
+                   over — the switch is on its row in the Docker tab, beside the
+                   Rebuild it hands over, off by default, and a session that tries
+                   without it is refused with the sentence that names the switch. Up,
+                   Down, Env and Remove stay the operator's whatever it says
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

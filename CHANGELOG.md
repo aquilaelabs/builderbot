@@ -15,7 +15,7 @@
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
-- The docker row carries a switch that lets a project's Claude session rebuild its dev instance, off by default: bb devapp rebuild then builds it and brings it up, while Up, Down and Env stay yours (8075b95)
+- The Docker tab carries a switch beside each project's Rebuild that hands that one button to its Claude session, off by default: bb devapp rebuild then builds the container and brings it up, while Up, Down, Env and Remove stay yours (8075b95, a479cf2)
 
 ### Changed
 
@@ -63,6 +63,7 @@
 - A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
 - Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
+- The Docker tab's node picker appears on a fresh page instead of only after something else redrew the tab, so a box with two nodes can choose between them (a479cf2)
 
 ## 0.5.0 — 2026-09-10
 

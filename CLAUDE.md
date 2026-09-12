@@ -510,21 +510,35 @@ current — say when a rebuild is worth pushing instead.
 ## The dev instance, if this project has a compose file
 
 The Artifacts tab may carry a **dev instance** row: the operator builds this
-project's compose app and brings it up and down from there. **Those controls
-are the operator's.** If a build or the instance's env needs changing, say so
-and let them press the buttons; the env file lives outside the repo on
-purpose.
+project's compose app and brings it up and down from there. **Up, Down and
+Env are the operator's.** If the instance's env needs filling in, say so and
+let them press the buttons; the env file lives outside the repo on purpose.
 
-The daemon those buttons drive is a **sandbox VM** — `DOCKER_HOST` names a
-machine whose only job is running Docker, with no real containers on it and no
-route to the server's. That daemon **is yours**: build, run and destroy
-containers there as freely as you like. Being wrecked and reset is what it is
-for. The one courtesy is to leave alone the compose projects the dashboard has
-up, which are somebody else's instance while they are running.
+**Rebuild can be handed to you, per project**, with the switch on that
+project's row in the **Docker** tab, beside the Rebuild it hands over. It is
+off unless somebody turned it on:
 
-It is a sandbox VM or it is nothing: `DOCKER_HOST` unset, or naming any other
-kind of daemon, turns every dev-instance control off. Say so rather than
-driving `docker` at whatever answers.
+```bash
+bb devapp              what it was built from, whether it is running, and
+                       whether its daemon answers
+bb devapp rebuild      build it and bring it up
+```
+
+That is the loop for a project whose work IS the container: change it,
+rebuild it, look at what it did. Without the switch the verb is refused with
+a sentence naming the switch, and that sentence is the thing to quote rather
+than a thing to route around.
+
+**You have no Docker socket of your own, and that is deliberate.** The daemon
+belongs to the node, and membership of its docker group is root on that
+machine, so the account your session runs as is not in it: a bare `docker
+build` here fails with a permission error. The rebuild above works because it
+goes through the controller, which holds the connection. Anything else that
+genuinely needs docker is one command asked for the way root is asked for:
+
+```bash
+bb root run --why "..." -- docker build -t thing:latest /workspace/thing
+```
 
 What is yours either way: keeping `docker-compose.yml` and `.env.example`
 true. The rebuild flow reads `.env.example` to know when new settings need

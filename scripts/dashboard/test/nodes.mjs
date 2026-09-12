@@ -246,6 +246,13 @@ ok(list[0].id === 'local',
 
 // ---- phase 2: the docker manager's picker ----------------------------------
 {
+  // Opened with the node list DELIBERATELY not loaded, because that is the
+  // state a fresh page is in: the picker is drawn from that list, and the
+  // tab used to watch only its own revision — so the list landed, nothing
+  // redrew, and a box with two nodes showed no picker until something else
+  // happened to repaint the tab. The tab asks for the list on open now and
+  // watches its revision, and this is the case that proves it.
+  await page.evaluate(() => { nodesList = null; hideTab((tabs.find(t => t.kind === 'docker') || {}).id); });
   await page.evaluate(() => openDocker());
   await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
   // Waited for AND read in one go: the tab redraws from the poll, so a list
