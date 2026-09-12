@@ -54,7 +54,17 @@ import dev.builderbot.app.str
 import dev.builderbot.app.strs
 import kotlinx.coroutines.launch
 
-private val VIEWS = listOf("Roadmap", "Bugs", "Briefing", "Artifacts", "Git")
+private val VIEWS = listOf("Roadmap", "Bugs", "Briefing", "Artifacts", "Git", "Settings")
+
+// What the settings view offers, in the dashboard's own order and words. The
+// lists are the server's (prefs.MODELS, prefs.EFFORTS, prefs.EDIT_MODES) and
+// it validates them, so a copy here is a menu rather than a rule: a value it
+// does not know is refused with a sentence, not stored.
+private val MODELS = listOf("" to "leave as is", "opus" to "Opus", "sonnet" to "Sonnet",
+                            "haiku" to "Haiku", "fable" to "Fable")
+private val EFFORTS = listOf("" to "leave as is", "low" to "low", "medium" to "medium",
+                             "high" to "high", "xhigh" to "xhigh", "max" to "max")
+private val EDITS = listOf("ask" to "ask first", "accept" to "accept edits")
 
 @Composable
 fun ProjectScreen(store: Store, name: String) {
@@ -71,6 +81,7 @@ fun ProjectScreen(store: Store, name: String) {
             "Briefing" -> Briefing(api, name)
             "Artifacts" -> Artifacts(api, name)
             "Git" -> Git(api, name)
+            "Settings" -> Settings(api, name)
         }
     }
 }
@@ -252,6 +263,95 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
                 Dim(listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "").filter { it.isNotBlank() }.joinToString(" · "))
             }
             HorizontalDivider()
+        }
+    }
+}
+
+// ---- what this project's sessions run as -----------------------------------
+// The three the dashboard's settings dialog carries and a phone can usefully
+// set: the model, the effort, and how much a session may change without
+// asking. All three are read WHEN A SESSION STARTS — bb-tty writes them into
+// the settings file it launches Claude Code with — so changing one while a
+// session is open does nothing to that session until it restarts. That is
+// what the restart chip is: the same gesture the dialog offers, said in place
+// rather than in a dialog nobody can read on a phone.
+//
+// Chips rather than dropdowns: every one of these lists is short, a chip row
+// shows the current value without a tap, and it is the idiom already on this
+// screen. The node, the build and test commands and the notebook gates stay
+// the browser's — they are not decisions anybody makes from a phone.
+@Composable
+private fun Settings(api: dev.builderbot.app.Api, project: String) {
+    val scope = rememberCoroutineScope()
+    val (st, reload) = load("status-settings-$project") { api.status() }
+    val me = st.value?.arr("projects")?.firstOrNull { it.str("name") == project }
+    val prefs = me?.obj("prefs")
+    val live = me?.str("session_at")?.isNotBlank() == true
+    var model by remember(prefs) { mutableStateOf(prefs?.str("model") ?: "") }
+    var effort by remember(prefs) { mutableStateOf(prefs?.str("effort") ?: "") }
+    var edits by remember(prefs) { mutableStateOf(prefs?.str("edits")?.ifBlank { "ask" } ?: "ask") }
+    var restart by remember(prefs) { mutableStateOf(true) }
+    var said by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    val changed = prefs != null && (model != prefs.str("model") || effort != prefs.str("effort")
+                                    || edits != prefs.str("edits").ifBlank { "ask" })
+    Column(Modifier.fillMaxSize().padding(16.dp, 8.dp)) {
+        if (st.error != null) Problem(st.error)
+        if (st.value == null && st.error == null) Loading()
+        if (prefs == null && st.value != null) Dim("this project has no settings here")
+        if (prefs != null) {
+            Text("Model", fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((v, l) in MODELS)
+                    FilterChip(selected = model == v, onClick = { model = v }, label = { Text(l) })
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Effort", fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((v, l) in EFFORTS)
+                    FilterChip(selected = effort == v, onClick = { effort = v }, label = { Text(l) })
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Permissions", fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((v, l) in EDITS)
+                    FilterChip(selected = edits == v, onClick = { edits = v }, label = { Text(l) })
+            }
+            Dim("accept edits lets the file tools write inside this project without asking. "
+                + "Shell commands, pushes and anything outside the tree still ask, and the "
+                + "denied paths stay denied.")
+            Spacer(Modifier.height(8.dp))
+            if (live) {
+                FilterChip(selected = restart, onClick = { restart = !restart },
+                           label = { Text("restart the session now") })
+                Dim(if (restart)
+                        "the conversation is resumed; anything it is in the middle of is lost"
+                    else "saved for the next session — the one running keeps what it started with")
+            } else {
+                Dim("no session is open, so this takes effect when one starts")
+            }
+            Row {
+                Spacer(Modifier.weight(1f))
+                Button(enabled = changed && !saving, onClick = {
+                    scope.launch {
+                        saving = true
+                        said = try {
+                            val r = api.prefs(project, mapOf(
+                                "model" to model, "effort" to effort, "edits" to edits,
+                                "restart" to (live && restart)))
+                            val why = r.str("error")
+                            if (why.isNotBlank()) why
+                            else if (!live || !restart) "saved"
+                            else if (r.bool("restarted")) "saved, and the session restarted on it"
+                            else ("saved, but the session was not restarted — " +
+                                  r.str("why").ifBlank { "it is still on what it started with" })
+                        } catch (e: Exception) { e.message ?: "it did not save" }
+                        saving = false
+                        reload()
+                    }
+                }) { Text(if (live && restart) "Save and restart" else "Save") }
+            }
+            if (said.isNotBlank()) Text(said, color = Accent)
         }
     }
 }
