@@ -16,7 +16,7 @@
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
 - The Docker tab carries a dial beside each project's Rebuild that hands that one button to its Claude session: deny (the default), ask me, or auto. On ask the session says what it is for and your Allow starts the build. Making a container, removing one, Up, Down and Env stay yours (8075b95, a479cf2, 5505971)
-- The companion app can change a project's model, effort and permissions, with the option to restart the open session onto them, instead of that being a desk-only setting (49db1e4)
+- The companion app can change a project's model and effort, and end the open session so the next one starts on them, instead of that being a desk-only setting (49db1e4, c84b1ca)
 
 ### Changed
 
@@ -44,7 +44,7 @@
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
 - Show more works again on a long list when a second notebook is open — it used to expand and then collapse itself a second later (c4352fc)
 - A file written by bb from a session on a node is visible to git straight away, instead of sometimes committing at its previous content (c4352fc)
-- Changing a project's model, effort or permissions and choosing Restart now restarts its session when that session is running on a node, instead of saying there was none to restart (fb72c0c)
+- Changing a project's model, effort or permissions and choosing to end its session now ends it wherever it runs, including on a node, instead of saying there was none — press Claude to start one on the new setting, resuming the conversation (fb72c0c, c84b1ca)
 - The terminal now says when a project had not been trusted yet and which session to restart, instead of leaving it silently asking permission for every command (594f766)
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
@@ -70,6 +70,7 @@
 - A container on a node whose docker is not answering can be removed from the Docker tab again: the row goes and it says nothing was taken down, instead of a row no button can act on (c4f0596)
 - The Claude may rebuild switch sits on its own line of the Docker row, instead of its label wrapping into three words inside the buttons (c4f0596)
 - A session told it may not rebuild a dev instance is pointed at the Docker tab, where the switch actually is, instead of the Artifacts tab (f57d018)
+- The Docker tab's rebuild dial is saved with Apply beside it rather than the moment it is picked, like every other setting on the page (c84b1ca)
 
 ## 0.5.0 — 2026-09-10
 
