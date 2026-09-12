@@ -6735,11 +6735,14 @@ function projectRow(p, live, cls, inTab){
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
          (p.locked || notMine(p)
-          // Not signed in, wherever the session would run: the controller
-          // keeps the account's Claude identity now (R47) — which node holds
-          // the credential is the node's business, but whether there is one
-          // at all is answerable here, and a session cannot start without it.
-          || (!signedIn() && !live.has(myClaude(p.name)))
+          // Not signed in is a REPORT, not a fact: the credential is on the
+          // node, and the controller knows only what a session there last
+          // told it (claudegrant.py). So it ghosts nothing on a project that
+          // HAS a node — the session would start and say so itself — and a
+          // project without one has no button anyway. Ghosting on the report
+          // would be a deadlock: no button, so no session, so nothing ever
+          // reports.
+          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
           || heldWhy(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
@@ -6750,10 +6753,10 @@ function projectRow(p, live, cls, inTab){
                  // opens the reason under the row, since there is nowhere
                  // else a Claude session could go.
                  : p.session_why ? p.session_why
-                 : !signedIn() && !live.has(myClaude(p.name))
-                   ? "you are not signed in to Claude — the Doctor card has the way in"
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
+                 : !signedIn() && !live.has(myClaude(p.name))
+                   ? "no node reports a Claude login for you — it may still start, and the Doctor card has the way in"
                  : p.session_at
                    ? `Claude — a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
                  : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"
@@ -6994,6 +6997,21 @@ function drawAuth(){
     }
     return;
   }
+  // More than one node runs sessions, so the server asked which — signing in
+  // on the wrong machine is a real mistake, and it will not pick for you. The
+  // names come back with the refusal, so the choice is drawn from what it
+  // said rather than from a second request.
+  if (signinPick){
+    if (paint(el, `<span class="sub grow">which node should the sign-in run on?</span>`
+        + signinPick.map(n => `<button data-sn="${esc(n)}">${esc(n)}</button>`).join("")
+        + `<button data-sn="" class="bare">Cancel</button>`))
+      el.querySelectorAll("[data-sn]").forEach(b => b.onclick = () => {
+        const n = b.dataset.sn;
+        signinPick = null;
+        if (n) signIn(n); else drawAuth();
+      });
+    return;
+  }
   // A sign-in that ended without signing anybody in. Said here, where it was
   // asked for, rather than in a terminal nobody can read on a phone.
   if (lg?.done && !lg.ok && !a.signed_in){
@@ -7020,14 +7038,36 @@ function drawAuth(){
   }
 }
 
+// Which node a sign-in was asked about, when there was more than one to
+// choose from. Drawn by drawAuth, cleared by choosing or cancelling.
+let signinPick = null;
+
 // Sign in, however many times it takes. No terminal: the flow runs under a
 // pty on the NODE — which is where Claude Code is installed — and the card
 // does the rest, so this is one request from here.
-async function signIn(){
+//
+// The ANSWER is read, and that is not a detail: this used to fire and forget,
+// so a refusal — no node running sessions, or several and it will not pick —
+// left the button reading "Starting…" for ever with nothing said anywhere.
+// The card repaints only when its html changes, and a refusal changes
+// nothing, so the button has to be put back here too.
+async function signIn(node){
   const b = $("bSignIn");
   if (b){ b.disabled = true; b.textContent = "Starting…"; }
-  await fetch("/api/signin", {method:"POST",
-    headers:{"Content-Type":"application/json"}, body: "{}"}).catch(() => {});
+  let j = {};
+  try{
+    const r = await fetch("/api/signin", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(node ? {node} : {})});
+    j = await r.json();
+  }catch(e){ j = {error: "could not reach the server: " + e}; }
+  if (j.nodes?.length > 1){
+    signinPick = j.nodes;               // it asked which; the card asks you
+    drawAuth();
+    return;
+  }
+  if (j.error) notify(j.error, true);
+  if (b && document.body.contains(b)){ b.disabled = false; b.textContent = "Sign in"; }
   refresh();
 }
 

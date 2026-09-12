@@ -801,6 +801,18 @@ await page.evaluate(async () => {
   ok(nowhere.status === 400 && /no node is running sessions/.test(nowhere.error || ''),
      `with no node running sessions there is nowhere to sign in, and it says so (${
        (nowhere.error || '').slice(0, 56)})`);
+  // ...and the BUTTON says it, which is the half that was missing: the press
+  // used to fire and forget, so a refusal left it reading "Starting…" for
+  // ever with nothing on screen. The card repaints only when its html
+  // changes and a refusal changes none of it, so the button is put back by
+  // the press itself.
+  await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
+  await page.click('#bSignIn');
+  await page.waitForFunction(() => /no node is running sessions/.test(
+    document.getElementById('toast')?.textContent || ''), null, { timeout: 15000 });
+  ok(true, '...and pressing Sign in says the refusal rather than swallowing it');
+  ok(await page.$eval('#bSignIn', b => !b.disabled && b.textContent === 'Sign in'),
+     '...with the button live again, not left saying Starting…');
   // That refusal is a 400 by design and the browser logs every one as a
   // failed resource. Cleared, so the check below is about the page.
   page.errors = [];
