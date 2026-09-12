@@ -6764,13 +6764,16 @@ function projectRow(p, live, cls, inTab){
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
          (p.locked || notMine(p)
+          // No node, no session, and the button says so by being dead: a
+          // Claude session runs on a node and this container carries no
+          // Claude Code, so there is nothing for a press to do.
+          || (!p.session_at && !!p.session_why && !live.has(myClaude(p.name)))
           // Not signed in is a REPORT, not a fact: the credential is on the
           // node, and the controller knows only what a session there last
           // told it (claudegrant.py). So it ghosts nothing on a project that
-          // HAS a node — the session would start and say so itself — and a
-          // project without one has no button anyway. Ghosting on the report
-          // would be a deadlock: no button, so no session, so nothing ever
-          // reports.
+          // HAS a node — the session would start and say so itself.
+          // Ghosting on the report would be a deadlock: no button, so no
+          // session, so nothing ever reports.
           || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
           || heldWhy(p))
            ? " disabled" : ""}
@@ -6778,9 +6781,13 @@ function projectRow(p, live, cls, inTab){
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : heldWhy(p) ? heldWhy(p)
-                 // No node, or one that cannot take a session: the press
-                 // opens the reason under the row, since there is nowhere
-                 // else a Claude session could go.
+                 // No node: a label, not the paragraph. The row says
+                 // nothing about this and the button is dead, so all this
+                 // has to do is name the gesture that fixes it.
+                 : p.session_why && !p.session_at
+                   ? "no node — pick one in this project's settings"
+                 // A node that cannot take a session: the machine's own
+                 // reason, which is a diagnosis and earns its length.
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
@@ -6847,12 +6854,14 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // implying nobody is there (roadmap #24).
         : p.session_at && !p.session_why
           ? `<div class="sub sessline">sessions run on ${esc(p.session_at)}</div>`
-        // `session_at` is the node's name, so a reason WITH one is a machine
-        // that is broken — red — and a reason without one is a project that
-        // simply has no node yet, which is a normal state and not a fault.
-        : p.session_why
-          ? `<div class="sub sessline${p.session_at ? " bad" : ""}">${
-               esc(p.session_why)}</div>` : ""}
+        // A reason WITH a node's name is a machine that is broken, and that
+        // is news: it is red and it says what to do about it. A reason
+        // WITHOUT one is only "this project has no node", which is a normal
+        // state — and a paragraph of it on every such row was the loudest
+        // thing on the card for the least. The ghosted Claude button is the
+        // whole of what needs saying, and its title says the rest.
+        : p.session_why && p.session_at
+          ? `<div class="sub sessline bad">${esc(p.session_why)}</div>` : ""}
     </div>
 `;
 }
@@ -7784,6 +7793,12 @@ function renderProjectsInto(i){
     el.querySelector("#bNewProjTab").onclick = openNewProject;
   }
 }
+
+// Whether a session in this project may rebuild its dev instance — the
+// project's own setting, off unless somebody turned it on, read from the
+// poll rather than fetched so the checkbox is right on the first draw.
+const devClaudeOn = name =>
+  !!(state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
 
 // ---- no daemon, no Docker buttons ---------------------------------------
 // The controls that act on the daemon, in one list. Not the ones that only
@@ -11878,6 +11893,13 @@ $("todoRevert").onclick = revertNotebook;
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports — pick one">Open</button>` : ""}
+          <label class="ndcap" id="devClaudeWrap"
+            title="a session in this project may rebuild this container and bring it
+up — the loop for a project whose work is the container itself. Off, the
+buttons here stay yours and a session is told to ask. It runs this project's
+own Dockerfile on the node's daemon, which is the same trust as its build.">
+            <input type="checkbox" id="devClaude"${
+              devClaudeOn(project) ? " checked" : ""}> Claude may rebuild</label>
           <button type="button" id="devSend" class="primary"
             title="name a container built from this project and manage it there — a
 project can have several"
@@ -11959,6 +11981,24 @@ project can have several"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
+    // Written at once, like every other control on this row: the staged
+    // half of this tab is the version, because a bump is a commit. A switch
+    // over who may press Rebuild is not, and a switch that needed Save
+    // would be a switch people leave half-set.
+    const devCl = list.querySelector("#devClaude");
+    if (devCl) devCl.onchange = async () => {
+      const on = devCl.checked;
+      devCl.disabled = true;
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devbuild: on})}).catch(() => null);
+      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
+      devCl.disabled = false;
+      if (j.error){ devCl.checked = !on; notify(j.error, true); return; }
+      notify(on ? `a session in ${project} may rebuild its dev instance`
+                : `rebuilding ${project}'s dev instance is yours again`);
+      refresh();
+    };
     // THIS project's daemon, which is its node's and need not be the default
     // one the poll asked about. The row above already draws the reason when
     // there is one, so what is passed here is the same answer the row is

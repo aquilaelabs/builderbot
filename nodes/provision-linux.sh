@@ -325,8 +325,11 @@ svc_active() {
 # netmount): the agent's first census says whether /workspace is mounted,
 # and one taken before the share landed ghosted every Claude button bound
 # to the node for the ten minutes until the next.
+# svc_install NAME DESC CMD [EXTRA] — the service, whichever init this is.
+# EXTRA is extra [Service] lines for systemd, where a unit's settings decide
+# what a stop reaches; the other inits take the command and nothing else.
 svc_install() {
-    local name="$1" desc="$2" cmd="$3"
+    local name="$1" desc="$2" cmd="$3" extra="${4:-}"
     case "$INIT" in
         systemd)
             cat > "/etc/systemd/system/${name}.service" <<EOF
@@ -339,6 +342,7 @@ Wants=network-online.target
 ExecStart=${cmd}
 Restart=always
 RestartSec=5
+${extra}
 
 [Install]
 WantedBy=multi-user.target
@@ -1552,6 +1556,15 @@ fi
 # run. The credential it ends up holding (/etc/builderbot/node.json, 0600)
 # opens that node's own row and nothing else.
 AGENT=/usr/local/sbin/builderbot-agent
+# THE SESSIONS ARE NOT THIS UNIT'S TO KILL. systemd's default KillMode is
+# control-group: a stop takes every process in the cgroup with it, and the
+# agent's cgroup holds the ttyds it starts, the tmux servers under them and
+# the Claude sessions inside those. So pressing Update agent ended every
+# conversation on the machine, mid-work, with nothing said (B107) — and the
+# agent's own shutdown already stops what is its to stop: its ttyds, and now
+# its jobs. KillMode=process makes systemd's half match that.
+AGENT_KILLMODE='KillMode=process'
+
 AGENT_DESC="BuilderBot node agent - dials in to the controller and runs its jobs"
 if [ -n "$CONTROLLER" ]; then
     say "agent: enrolling with ${CONTROLLER}"
@@ -1576,7 +1589,7 @@ if [ -n "$CONTROLLER" ]; then
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
         --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}"
-    svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run"
+    svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current —
     # the dashboard's Update button queues that as a job, and nothing runs
@@ -1634,7 +1647,7 @@ PY
         say "agent: sessions now run as ${SESSION_NAME:-nobody} — restarting the agent"
         svc_restart builderbot-agent 2>/dev/null || true
     fi
-    svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run"
+    svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 fi
 
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----

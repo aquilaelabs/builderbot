@@ -15,6 +15,7 @@
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
+- The docker row carries a switch that lets a project's Claude session rebuild its dev instance, off by default: bb devapp rebuild then builds it and brings it up, while Up, Down and Env stay yours (8075b95)
 
 ### Changed
 
@@ -31,6 +32,7 @@
 - Each node signs in to Claude for itself and keeps its own login: nothing copies an OAuth grant between machines now, which is what made a login expire at random. Signing out reaches every node, and one that is offline signs itself out when it reconnects (32c2998)
 - Claude sessions run on a node, not on the BuilderBot container: nothing installs Claude Code here any more, and a project with no node says so on its button instead of opening a conversation that cannot build anything (7b34c58)
 - The Users tab names which Anthropic account each BuilderBot account is signed in to, and still warns when two of them share one (7b34c58)
+- A project with no node no longer explains itself in a paragraph on every row: the Claude button is ghosted and says why on hover (4807a91)
 
 ### Fixed
 
@@ -59,6 +61,8 @@
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
 - A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
 - A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
+- Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
+- Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
 
 ## 0.5.0 — 2026-09-10
 

@@ -248,9 +248,13 @@ ok(list[0].id === 'local',
 {
   await page.evaluate(() => openDocker());
   await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
-  await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
-  const opts = await page.$$eval('.dmtab .dmpick option',
-    os => os.map(o => o.textContent.trim()));
+  // Waited for AND read in one go: the tab redraws from the poll, so a list
+  // read in a second round trip can land on the moment between two draws and
+  // come back empty (B99's family — this file has had three).
+  const opts = await page.waitForFunction(() => {
+    const os = [...document.querySelectorAll('.dmtab .dmpick option')];
+    return os.length ? os.map(o => o.textContent.trim()) : false;
+  }, null, { timeout: 15000 }).then(h => h.jsonValue());
   ok(opts.length === 2 && opts.some(o => /sandbox/.test(o))
      && opts.some(o => /buildbox/.test(o)),
      `the manager offers every docker-host node (${opts.join(' | ')})`);
@@ -264,9 +268,14 @@ ok(list[0].id === 'local',
     return `ssh://bb@${n.agent.addr}`;
   });
   writeFileSync(`${DIR}/dockerstate/deadhosts`, bbAddr + '\n');
-  await page.evaluate(() => { const s = document.querySelector('#dmNode');
-    s.value = nodesList.find(n => n.name === 'buildbox').id;
-    s.dispatchEvent(new Event('change')); });
+  await page.waitForFunction(() => {
+    const s = document.querySelector('#dmNode');
+    const n = (nodesList || []).find(x => x.name === 'buildbox');
+    if (!s || !n) return false;
+    s.value = n.id;
+    s.dispatchEvent(new Event('change'));
+    return true;
+  }, null, { timeout: 15000 });
   await page.waitForFunction(() => dockerList && dockerList.blind === true,
                              null, { timeout: 30000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
@@ -280,11 +289,21 @@ ok(list[0].id === 'local',
   // Waited for at the point of USE, not at the assertion above: the picker
   // is drawn only while nodesList holds more than one node, and a reload of
   // that list between the two takes the element with it (B69's sibling).
-  await page.waitForFunction(() => !!document.querySelector('#dmNode'),
-                             null, { timeout: 15000 });
-  await page.evaluate(() => { const s = document.querySelector('#dmNode');
-    s.value = nodesList.find(n => n.name === 'sandbox').id;
-    s.dispatchEvent(new Event('change')); });
+  // Found and used in ONE evaluate, because the gap between two is the bug
+  // this comment is about: the wait said the picker was there and the list
+  // reloaded before the next round trip could touch it, so the set threw on
+  // null about one run in several (B99's family, a site the report did not
+  // name). A predicate with a side effect, deliberately.
+  await page.waitForFunction(() => {
+    const s = document.querySelector('#dmNode');
+    // The bare name, not window's: a top-level `let` in a classic script
+    // goes into the global LEXICAL scope and is not a property of window.
+    const n = (nodesList || []).find(x => x.name === 'sandbox');
+    if (!s || !n) return false;
+    s.value = n.id;
+    s.dispatchEvent(new Event('change'));
+    return true;
+  }, null, { timeout: 15000 });
   await page.waitForFunction(() => dockerList && !dockerList.blind,
                              null, { timeout: 30000 });
   ok(true, 'switching back to the live node recovers without a reload');

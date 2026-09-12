@@ -4669,6 +4669,7 @@ class Handler(BaseHTTPRequestHandler):
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
                                 edits=field(req, "edits") or None,
+                                devbuild=req.get("devbuild"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -5734,6 +5735,17 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state", "rebuild", "abort") \
                 and self._refused("docker-write"):
             return None
+        # A SESSION is a further question, and the answer is a per-project
+        # setting that is off by default. Rebuild runs the project's own
+        # Dockerfile and brings the container up on the node's daemon: for a
+        # project whose loop is "change it, rebuild it, look at it" that is
+        # exactly what you want a session doing, and for everything else the
+        # buttons stay the operator's. The read verbs are nobody's secret.
+        if act not in ("starter", "state") and (self._who() or {}).get("session") \
+                and not prefs.get(name)["devbuild"]:
+            return self._json({"error": "rebuilding this project's dev instance is the "
+                                        "operator's — the docker row on the Artifacts "
+                                        "tab has the switch that hands it over"}, 403)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(self._who())} \
                 and self._readonly(name):

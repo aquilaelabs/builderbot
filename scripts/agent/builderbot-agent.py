@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.46"
+AGENT_VERSION = "0.5.48"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -588,6 +588,51 @@ def share_images(store, say=None):
     if os.path.isdir(shared) and os.path.isdir(os.path.join(scoped, "android")) and not os.path.lexists(mine):
         with contextlib.suppress(OSError):
             os.symlink(os.path.relpath(shared, os.path.dirname(mine)), mine)
+
+
+def fix_flat_links(store, say=None):
+    """The other standing rule, and it is a repair: a symlink inside this
+    scope that still points at the FLAT store it was made in.
+
+    Before R19 a store was one directory; now everything lives under
+    <store>/<os>-<arch>. The move brought the trees across, and the links
+    inside them kept naming where they used to be — so this scope's
+    android/cmdline-tools/latest still pointed at <store>/android-tools,
+    which no longer exists. Nothing said so: the PATH entry for it was
+    silently dropped for being a directory that is not there, `bb packages`
+    reported "no cmdline-tools" beside a store that has them, and every
+    sdkmanager call on the node failed to be found (B105).
+
+    Narrow on purpose: only a link that is broken AND whose target is the
+    same path one level up from the scope, which is the one thing the move
+    could have produced. Anything else is somebody's own arrangement.
+    """
+    say = say or (lambda t: log(t))
+    scoped = os.path.join(store or "", pkg_scope())
+    if not store or not os.path.isdir(scoped):
+        return
+    for root, dirs, names in os.walk(scoped):
+        # The link may be a directory entry, so both lists are walked; three
+        # levels is as deep as any of these go, and a store holds gigabytes
+        # of SDK below that nothing here should be reading.
+        if root[len(scoped):].count(os.sep) >= 3:
+            dirs[:] = []
+        for name in list(dirs) + names:
+            path = os.path.join(root, name)
+            if not os.path.islink(path) or os.path.exists(path):
+                continue
+            target = os.readlink(path)
+            if not target.startswith(store + os.sep):
+                continue
+            rest = target[len(store) + 1:]
+            fixed = os.path.join(scoped, rest)
+            if not os.path.exists(fixed):
+                continue
+            with contextlib.suppress(OSError):
+                os.remove(path)
+                os.symlink(fixed, path)
+                say(f"packages store: {path} pointed at the flat store; "
+                    f"repointed at {fixed}")
 
 
 def store_id(path):
@@ -2293,6 +2338,7 @@ class Agent:
         # by `enroll`, which may run with a store it cannot write yet).
         try:
             share_images((self.state.get("stores") or {}).get("packages") or "")
+            fix_flat_links((self.state.get("stores") or {}).get("packages") or "")
         except OSError as e:
             log(f"packages store: could not share the images ({e})")
         c = census(self.state)
@@ -2412,10 +2458,25 @@ class Agent:
 
     def loop(self):
         delay = 1
-        # The ttyds go with this process: a stop of the unit (an update, a
-        # reboot) ends them, and the tmux server they attached — the
-        # sessions themselves — is its own daemon and outlives both.
+        # What is THIS process's to end, ended by it. The ttyds go: a stop of
+        # the unit is an update or a reboot, and the new agent starts its own.
+        # The tmux servers they attached do not — they are their own daemons,
+        # the sessions are inside them, and a conversation should survive an
+        # agent update the way it survives a ttyd restart.
+        #
+        # That was already the intent and systemd was undoing it: the default
+        # KillMode=control-group takes every process in the cgroup after this
+        # handler returns, tmux included, so Update agent ended every session
+        # on the machine (B107). The unit says KillMode=process now, which
+        # means the jobs are this handler's to end too — with control-group
+        # systemd was killing those, and leaving a build running while the
+        # controller re-queues it is the one thing that change could have
+        # cost.
         def bye(*_):
+            with self.lock:
+                running = list(self.jobs.values())
+            for j in running:
+                j.cancel()
             self.session_stop()
             self.runner_stop()
             raise SystemExit(0)
