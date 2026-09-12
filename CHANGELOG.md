@@ -64,6 +64,7 @@
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
 - Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
 - The Docker tab's node picker appears on a fresh page instead of only after something else redrew the tab, so a box with two nodes can choose between them (a479cf2)
+- The Docker tab lists a container under the node its buttons act on: an instance with no node of its own follows its project's, instead of appearing under whichever node was newest (58c4dae)
 
 ## 0.5.0 — 2026-09-10
 

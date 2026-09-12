@@ -259,6 +259,40 @@ ok(r.rebuild && /the code has moved since/.test(r.text) === false,
      'lan on a published port is a record with the URL that follows from the node');
 }
 
+// ---- a row is listed under the node its buttons act on --------------------
+// An instance with no node of its own belongs to its PROJECT's node — that
+// is what every action on the row resolves — and the LISTING resolved it one
+// step short, straight to the default node. So an unbound instance of a
+// project bound to one machine was listed under another, offering buttons
+// that would act somewhere other than where the row said, and a node nobody
+// had sent anything to showed two other projects' containers.
+{
+  const list = (node) => page.evaluate(async (n) => {
+    const r = await fetch('/api/docker' + (n ? '?node=' + encodeURIComponent(n) : ''));
+    const j = await r.json();
+    return (j.instances || []).map(i => `${i.project}|${i.instance}`);
+  }, node);
+  const sandboxId = await page.evaluate(
+    () => (nodesList || []).find(n => n.name === 'sandbox')?.id || '');
+  ok(!!sandboxId, `the harness's node is enrolled (${sandboxId})`);
+  await page.evaluate(async (n) => {
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', node: n }) });
+  }, sandboxId);
+  const onIts = await list(sandboxId);
+  ok(onIts.some(x => x === 'ep.silon|main'),
+     `an unbound instance is listed under its project's node (${onIts.join(', ')})`);
+  const elsewhere = await list('n_notanodehere');
+  ok(!elsewhere.some(x => x === 'ep.silon|main'),
+     `...and nowhere else (${elsewhere.join(', ') || 'no rows'})`);
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', node: '' }) });
+  });
+}
+
 // A build belongs to the daemon it ran on. Repointing the node at another
 // VM leaves the image and the containers behind on a machine the dashboard can
 // no longer reach, and the row went on saying "built from
@@ -1979,10 +2013,17 @@ ok(await page.$('#devSend'),
      'the docker tab carries the switch, ticked, and live whatever the daemon says');
   ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
      '...and not on the artifact row, which is where it was asked not to be');
-  // Turned off from the row itself, which is the gesture this is for.
+  // Turned off from the row itself, which is the gesture this is for —
+  // and waited on the SERVER's own copy of the setting rather than on the
+  // checkbox, because the checkbox is redrawn from the poll and its state
+  // between the click and the next payload is nobody's answer.
   await page.click(SW);
-  await page.waitForFunction(() => document.querySelector('.dmtab [data-dmclaude="ep.silon"]')
-                                      ?.checked === false, null, { timeout: 20000 });
+  // Falsy, not `false`: a record with nothing left in it is removed rather
+  // than stored, so the row's prefs go back to the thin default and the
+  // field is simply absent. Absent and off are the same answer here.
+  await refreshUntil(page, () => !((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devbuild,
+    { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and unticking it there takes the grant back');
 }

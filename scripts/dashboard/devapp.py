@@ -1980,11 +1980,15 @@ def _overview_here(picked):
         filed = is_file_source(project)
         head, dirty = ("", False) if filed else (_head(project), _dirty(project))
         for inst in sorted(store[project]):
-            # The picker's node only. A record with no binding predates nodes
-            # and belongs to the default, which is what its daemon address
-            # has always meant.
-            bound = _read_rec(project, inst).get("node") or ""
-            if picked and (bound or _default_node()) != picked:
+            # The picker's node only, resolved exactly as the ACTIONS on
+            # the row resolve it (_instance_node): the record's node, else
+            # the PROJECT's, else the default. Those two chains used to
+            # differ by the middle step, so an unbound instance of a project
+            # bound to one node was listed under a different one — every
+            # button on the row acting somewhere other than where the row
+            # said, and two projects' containers appearing under a machine
+            # nobody had ever sent them to.
+            if picked and _instance_node(project, inst) != picked:
                 continue
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
