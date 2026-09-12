@@ -67,6 +67,7 @@
 - The Docker tab lists a container under the node its buttons act on: an instance with no node of its own follows its project's, instead of appearing under whichever node was newest (58c4dae)
 - A container on a node whose docker is not answering can be removed from the Docker tab again: the row goes and it says nothing was taken down, instead of a row no button can act on (c4f0596)
 - The Claude may rebuild switch sits on its own line of the Docker row, instead of its label wrapping into three words inside the buttons (c4f0596)
+- A session told it may not rebuild a dev instance is pointed at the Docker tab, where the switch actually is, instead of the Artifacts tab (f57d018)
 
 ## 0.5.0 — 2026-09-10
 

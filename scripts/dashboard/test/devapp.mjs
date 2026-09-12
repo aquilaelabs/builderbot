@@ -1572,8 +1572,12 @@ ok(await page.$eval('.dmtab', e => !e.classList.contains('card'))
 // of them fails. That is B99's family, and it is why this file went red one
 // run in three with nothing changed.
 await holdPoll(page);
+// Planted the way the server sends it, `node` included: the poll says which
+// daemon it is about and the page gates only that one. A stub without the id
+// would be testing a payload the server does not send.
 await page.evaluate(() => {
-  state.docker = { on: false, why: 'no node with a daemon — nothing to talk to' };
+  state.docker = { on: false, node: dockerNode,
+                   why: 'no node with a daemon — nothing to talk to' };
   dockerRev++; drawPanes();
 });
 await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === true,
@@ -1616,6 +1620,46 @@ ok(await page.$$eval('.dmtab .row[data-inst] .dmpill',
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');
+// ...and ANOTHER node's silence is not this node's business. This is B109's
+// own shape and it came back after the fix: the guard compared the poll's node
+// id against the picked one, nothing on the server set that id, and the
+// comparison fell back to matching itself. Two nodes and one of them down is
+// the ordinary case on a box with a sandbox and a second machine, and it made
+// every row on the healthy one say "state unknown" with its buttons off.
+await page.evaluate(() => {
+  state.docker = { on: false, node: 'n_somebodyelse',
+                   why: 'docker does not answer: Connection closed by 10.9.9.9 port 22' };
+  dockerRev++; drawPanes();
+});
+await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,
+                           null, { timeout: 8000 });
+ok(await page.$$eval('.dmtab .row[data-inst]',
+                     rs => rs.length > 0 && rs.every(r => !r.classList.contains('off'))),
+   'a different node being down leaves this node\'s rows alone');
+ok(!/state unknown/.test(await page.$eval('.dmtab', e => e.textContent)),
+   '...and they still say what is running, rather than state unknown');
+// ...and a verdict that names no node gates nothing. This is the shape that
+// actually shipped: the field was absent, so `node || dockerNode` matched
+// itself and one node's silence greyed them all. Failing open here is safe —
+// a row whose own daemon is down is greyed by the tab's own overview.
+await page.evaluate(() => {
+  state.docker = { on: false, why: 'docker does not answer: no route to host' };
+  dockerRev++; drawPanes();
+});
+await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,
+                           null, { timeout: 8000 });
+ok(await page.$$eval('.dmtab .row[data-inst]',
+                     rs => rs.length > 0 && rs.every(r => !r.classList.contains('off'))),
+   '...and a verdict naming no daemon at all gates nothing either');
+// The id the page compares against is one the server actually sends. Without
+// this the guard above is a comparison with undefined, which is how it got
+// shipped looking correct.
+{
+  const st = await page.evaluate(async () =>
+    (await (await fetch('/api/status')).json()).docker || {});
+  ok(typeof st.node === 'string' && st.node.length > 0,
+     `...and the poll says which daemon its verdict is about (node ${st.node || '(none)'})`);
+}
 await freePoll(page);
 await page.evaluate(() => { state.docker = { on: true, why: '' };
                             dockerRev++; drawPanes(); });

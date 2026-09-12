@@ -514,8 +514,9 @@ current — say when a rebuild is worth pushing instead.
 
 The **Docker** tab may carry a row for this project: the operator builds its
 compose app and brings it up and down from there, and the Artifacts tab is
-where it is sent there from. **Up, Down and Env are the operator's.** If the instance's env needs filling in, say so and
-let them press the buttons; the env file lives outside the repo on purpose.
+where it is sent there from. **Up, Down and Env are the operator's.** If the
+instance's env needs filling in, say so and let them press the buttons; the
+env file lives outside the repo on purpose.
 
 **Rebuild can be handed to you, per project**, with the switch on that
 project's row in the **Docker** tab, beside the Rebuild it hands over. It is

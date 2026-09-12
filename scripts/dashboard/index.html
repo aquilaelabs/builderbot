@@ -7838,9 +7838,20 @@ const dockerWhy = () =>
 // The poll's verdict, but only where it is about the node being looked at:
 // state.docker is the DEFAULT node's answer, and a picked node answers for
 // itself through its own overview (B109).
-const dmPollSays = () =>
-  (!dockerNode || dockerNode === (state?.docker?.node || dockerNode))
-    ? dockerWhy() : "";
+//
+// An answer that does not say which daemon it is about is applied to NONE of
+// them. The first cut of this read `state.docker.node || dockerNode`, which
+// reads as caution and is the opposite: with the field absent — which it was,
+// because nothing set it — the comparison became "this node equals itself"
+// and every node's rows were greyed by the default node's silence again, with
+// the guard sitting right there looking like it worked. Failing open costs
+// nothing: the tab's own overview reports its node's daemon, and that is what
+// greys a row whose daemon is genuinely down.
+const dmPollSays = () => {
+  const about = state?.docker?.node;
+  if (dockerNode && about !== dockerNode) return "";
+  return dockerWhy();
+};
 
 // Whether this list knows what is actually running. One function because the
 // rows' ghosting and Remove's confirmation are the same question asked twice,
