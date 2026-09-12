@@ -57,6 +57,7 @@
 - The doctor card stops claiming a Claude login on the controller, which has none, and says instead whether any node can run a session (8b60d92)
 - The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
+- A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
 
 ## 0.5.0 — 2026-09-10
 

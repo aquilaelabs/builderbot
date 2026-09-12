@@ -751,6 +751,51 @@ def _bump():
     _rev += 1
 
 
+def _learn_host_key(addr):
+    """Meet a node's ssh host key once, when that is the only thing in the way.
+
+    `docker -H ssh://…` shells out to ssh, and ssh run non-interactively
+    REFUSES an unknown host rather than asking — so a node the controller has
+    never ssh'd to fails with "Host key verification failed" and every Docker
+    control on the tab greys out. The documented cure was a person running
+    ssh-keyscan on the controller, which R47 took away with sessions: there
+    is no session here to run it in any more.
+
+    So it is done here, on the failure, and only on the first meeting. The
+    address came from the node's own authenticated dial-in, and a scan trusts
+    whatever answers at it — which is exactly the exposure the manual step
+    always had, no more. What is NOT done is replacing a key that CHANGED:
+    that is a rebuilt VM or something worth looking at, and quietly accepting
+    it would throw away the one thing host keys are for. Returns "learned",
+    "changed" or "".
+    """
+    host = addr.split("://", 1)[-1].split("@")[-1].strip()
+    port = "22"
+    if host.count(":") == 1:
+        host, port = host.rsplit(":", 1)
+    if not host:
+        return ""
+    kh = Path(os.path.expanduser("~/.ssh/known_hosts"))
+    try:
+        seen = subprocess.run(["ssh-keygen", "-F", host, "-f", str(kh)],
+                              capture_output=True, text=True, timeout=10, check=False)
+        if seen.returncode == 0 and seen.stdout.strip():
+            return "changed"
+        scan = subprocess.run(["ssh-keyscan", "-T", "5", "-p", port, host],
+                              capture_output=True, text=True, timeout=20, check=False)
+        lines = [ln for ln in (scan.stdout or "").splitlines() if ln and not ln.startswith("#")]
+        if not lines:
+            return ""
+        kh.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with open(kh, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(kh, 0o600)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    _docker_log(f"learned the host key for {host}")
+    return "learned"
+
+
 def _why_not(out):
     """The REASON out of a failed docker call, which docker buries.
 
@@ -815,6 +860,19 @@ def available():
                 "why": f"the node answers at {addr} — dev instances need a "
                        "sandbox VM; see docs/sandbox-vm.md"} | source()
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
+    if r["code"] != 0 and "host key verification failed" in (r["out"] or "").lower():
+        # Never met this machine. Meet it, once, and ask again — the answer
+        # to that is the real one either way.
+        met = _learn_host_key(addr)
+        if met == "learned":
+            r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
+        elif met == "changed":
+            return {"on": False,
+                    "why": f"this machine's ssh host key is not the one already "
+                           f"recorded for {addr.split('@')[-1]}. A rebuilt VM does "
+                           "that, and so does something worth looking at — clear "
+                           "the old line from the controller's known_hosts if the "
+                           "machine really was rebuilt"} | source()
     if r["code"] != 0:
         return {"on": False,
                 "why": "docker does not answer: " + _why_not(r["out"])} | source()

@@ -599,16 +599,21 @@ Then what differs from Unraid's placeholder, each for a reason:
 
 Three settings on the container's template, then the proxy comes off.
 
-**1. Teach BuilderBot the VM's host key first.** This is the step that will
-otherwise stop you with nothing useful in the log: `docker -H ssh://…` shells
-out to `ssh`, the dashboard runs it non-interactively, and an unknown host key
-makes ssh refuse rather than ask. From a session:
+**1. The VM's host key is met on first use, and there is nothing to do.**
+`docker -H ssh://…` shells out to `ssh`, and ssh run non-interactively
+REFUSES an unknown host rather than asking, so this used to stop everything
+with "Host key verification failed" and a greyed-out tab. The controller now
+scans the key itself the first time a daemon refuses for that reason, using
+the address the node reported on its own authenticated dial-in, and asks
+again. It is written into the home volume, so it survives a restart.
+
+What it will not do is replace a key that CHANGED: the tab says so and
+leaves it, because a rebuilt VM and something worth looking at produce the
+same message. If the machine really was rebuilt, clear its line:
 
 ```bash
-ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
+docker exec -u builder BuilderBot ssh-keygen -R <vm-ip>
 ```
-
-`~` is the home volume, so this survives a container restart.
 
 `bb-sandbox sdk` is the one verb that reads rather than configures, and the
 one that needs no root: it hands you the controller's own `bb` — the copy
