@@ -327,8 +327,22 @@ sdk_status_local() {
         if [ "$t" = android ]; then
             # Android is the one that also lives in the image: the bootstrap
             # tools ship there, the packages are what moved out.
-            printf '  %-11s %s\n' android \
-                "$(command -v sdkmanager >/dev/null && printf 'sdkmanager ready — packages in %s' "$d" || echo 'no cmdline-tools')"
+            # Asked of the STORE and not only of PATH: the tools can be
+            # installed and unreachable — a link left pointing at the flat
+            # store the scope was moved out of takes the PATH entry with it
+            # (B105) — and "no cmdline-tools" beside a store that has them
+            # sends somebody to install what is already there.
+            printf '  %-11s %s\n' android "$(
+                if command -v sdkmanager >/dev/null 2>&1; then
+                    printf 'sdkmanager ready — packages in %s' "$d"
+                elif [ -x "$d/cmdline-tools/latest/bin/sdkmanager" ]; then
+                    printf 'cmdline-tools are in the store but not on PATH — packages in %s' "$d"
+                elif [ -L "$d/cmdline-tools/latest" ]; then
+                    printf 'cmdline-tools are installed and their link is broken (%s) — a node repairs it on its next start' \
+                        "$(readlink "$d/cmdline-tools/latest")"
+                else
+                    echo 'no cmdline-tools'
+                fi)"
             continue
         fi
         if d="$(sdk_find "$t")"; then
