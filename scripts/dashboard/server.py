@@ -6411,12 +6411,17 @@ class Handler(BaseHTTPRequestHandler):
         if name in set(load_locks()):
             return self._json({"error": "locked — the padlock on its row unlocks it"}, 403)
         action = field(req, "action")
-        if action == "switch":
+        # Both of these rewrite the working tree. A merge is not a switch, but
+        # it lands other people's files in a directory a session is reading
+        # and editing right now, which is the same surprise for the same
+        # reason, so it waits for the same moment.
+        if action in ("switch", "merge"):
             mine = tmux_name(f"claude-{name}")
             if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
                    for s in tmux_sessions() + node_tmux_sessions()):
                 return self._json({"error": "the owner's Claude session is running in this "
-                                            "directory — end it before switching the branch "
+                                            f"directory — end it before "
+                                            f"{'switching the branch' if action == 'switch' else 'merging'} "
                                             "under it"}, 409)
         if action == "ask":
             live = [x["name"] for x in tmux_sessions()]

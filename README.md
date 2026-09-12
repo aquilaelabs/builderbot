@@ -1705,10 +1705,13 @@ run under your author and the project's own credentials: **Fetch**, **Pull**
 the same path `bb git push` takes, offered only to a project with push
 rights) on the bar under the head row; **Commit all** with a message at the
 top of Changes and **Discard** on each file; **New branch** at the top of
-Branches, **Switch** on a branch (refused while the owner's Claude session
-stands in the directory, or with uncommitted changes) and **Delete**, which
-refuses a branch holding commits no other branch has until you say so
-twice; **Revert** and **Branch here** on a picked commit. A session's token
+Branches, **Merge** on a branch (into the branch the tree is on, so switch
+first to go the other way; it does not touch the remote, and a conflict is
+left standing for the Changes section to hand to Claude), **Switch**
+(refused while the owner's Claude session stands in the directory, or with
+uncommitted changes) and **Delete**, which refuses a branch holding commits
+no other branch has until you say so twice; **Revert** and **Branch here**
+on a picked commit. A session's token
 has none of these — it has `bb git` — and a locked project takes no action.
 Send to Claude and the per-project git policy are roadmap R36's last step.
 On a phone the notebook's strip wraps into rows so all seven views stay on
