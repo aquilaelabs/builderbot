@@ -17,6 +17,7 @@
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
 - The Docker tab carries a dial beside each project's Rebuild that hands that one button to its Claude session: deny (the default), ask me, or auto. On ask the session says what it is for and your Allow starts the build. Making a container, removing one, Up, Down and Env stay yours (8075b95, a479cf2, 5505971)
 - The companion app can change a project's model and effort, and end the open session so the next one starts on them, instead of that being a desk-only setting (49db1e4, c84b1ca)
+- The Git view merges a branch itself: Merge on a branch row brings it into the one the tree is on, instead of handing the job to Claude (7210eff)
 
 ### Changed
 
