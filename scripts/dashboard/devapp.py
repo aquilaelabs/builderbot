@@ -1326,6 +1326,13 @@ def compose_file(project, instance=MAIN):
     return None
 
 
+def pname(project, instance=MAIN):
+    """What the container is called, for anybody outside this module who has
+    to name one in a sentence — the rebuild request the operator reads, for
+    instance. The underscore one stays the module's own."""
+    return _pname(project, instance)
+
+
 def _pname(project, instance=MAIN):
     """The compose project name: the prefix, then what the thing is called.
 

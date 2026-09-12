@@ -132,9 +132,10 @@ bb — BuilderBot helper
                          appended to it, to narrow a run to some of it
   bb devapp              this project's dev instance: built from what, running,
                          and whether its daemon answers
-  bb devapp rebuild      build it and bring it up — only where the project's
-                         docker row has handed that over; refused with the
-                         sentence that names the switch otherwise
+  bb devapp rebuild [--why "..."]
+                         build it and bring it up — only where the project's
+                         docker row has handed that over. On `ask` the reason
+                         goes to a person and this waits for their answer
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -3640,13 +3641,15 @@ PY
 # bb devapp — this project's dev instance, and the one action a session may
 # be given over it.
 #
-# The dashboard's docker row is the operator's: Up, Down, Env and the manager
-# are theirs, and a session is told to ask. REBUILD is the exception a
-# project can hand over, with the switch on that row, because a project whose
-# work IS the container has a loop that a session cannot close otherwise —
-# change it, rebuild it, look at what it did. Off by default and refused with
-# the sentence that names the switch, so a session that tries learns where
-# the decision lives rather than guessing.
+# The dashboard's docker row is the operator's: Up, Down, Env, making one and
+# removing one are theirs, and a session is told to ask. REBUILD is the
+# exception a project can hand over, with the dial on that row, because a
+# project whose work IS the container has a loop that a session cannot close
+# otherwise — change it, rebuild it, look at what it did. Three settings and
+# `deny` is the default: `auto` is the loop, `ask` puts the reason in front
+# of a person and starts the build when they allow it, `deny` refuses with
+# the sentence that names the dial, so a session that tries learns where the
+# decision lives rather than guessing.
 #
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
@@ -3694,7 +3697,16 @@ elif job.get("error"):
 PY
             ;;
         rebuild)
-            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
+            shift || true
+            local why=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"
+                           why="$2"; shift 2 ;;
+                    *) die "usage: bb devapp rebuild [--why \"what it is for\"]" ;;
+                esac
+            done
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" python3 - <<'PY'
 import os, sys, time
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
@@ -3716,10 +3728,30 @@ def look():
 # before it starts and the moment after it finishes, and taking either for
 # success is how this said "rebuilt" over a build that had not begun.
 was = (look().get("built_rev") or "")
-r = post({"action": "rebuild"})
+r = post({"action": "rebuild", "why": os.environ.get("BB_DEV_WHY", "")})
 if r.get("error"):
-    # The refusal names the switch, so it is printed as it came.
+    # The refusal names the dial, so it is printed as it came.
     sys.exit(f"[builderbot] ERROR: {r['error']}")
+if r.get("id") and not r.get("started"):
+    # This project is on `ask`: nothing is building yet, a person has the
+    # reason in front of them, and the wait is theirs. Allowing starts the
+    # build, and from there this is the same poll as any other rebuild.
+    rid = r["id"]
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) — waiting up "
+          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+    for _ in range(900):
+        time.sleep(1)
+        o = bbapi.call("/api/phone", {"action": "outcome", "id": rid}, auth=auth)
+        if o.get("error"):
+            sys.exit(f"[builderbot] ERROR: {o['error']}")
+        if o["state"] == "denied":
+            sys.exit("[builderbot] the rebuild was not allowed")
+        if o["state"] == "done":
+            if o.get("code"):
+                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
+            break
+    else:
+        sys.exit("[builderbot] nobody answered within fifteen minutes")
 print("[builderbot] rebuilding — it runs on the node's daemon and takes minutes",
       file=sys.stderr)
 # Polled rather than streamed: the job's log belongs to the row, and what a
@@ -3759,7 +3791,7 @@ while waited < 3600:
 sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — its row on the Docker tab has it")
 PY
             ;;
-        *) die "usage: bb devapp [status|rebuild]" ;;
+        *) die "usage: bb devapp [status|rebuild [--why \"what it is for\"]]" ;;
     esac
 }
 

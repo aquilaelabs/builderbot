@@ -1425,6 +1425,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .cbfoot{margin-top:8px}
 .row.ndask{border-left:2px solid var(--bad)}
 .row.ndask .name{color:var(--bad)}
+/* A rebuild waiting on an answer. The same row as a root ask, in the accent
+   rather than in red: it is somebody waiting on you, not root on a shared
+   machine. */
+.row.dmask{border-left:2px solid var(--accent)}
+.row.dmask .name{color:var(--accent)}
 /* Adding goes at the top: the control that adds to a view is the first band
    under its head row, one shape on every view, and its form unrolls in its
    place — never at the foot, where a phone scrolls past the list to find it. */
@@ -2184,7 +2189,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook — a memory's body, a rule, a bug's repro —
    is a page, not a control: it keeps the reading width. */
@@ -2204,7 +2209,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2217,7 +2222,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
+  .dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line — the Phone tab's Connect and
@@ -2273,6 +2278,7 @@ button[aria-busy="true"]{opacity:.75}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
 .dmgrant{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dmgrant select{width:auto;max-width:100%}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
@@ -4146,7 +4152,9 @@ const TABKINDS = {
   // tab happening to have been visited.
   docker:   { multi: false, label: () => "Docker",
               render: (i) => renderDockerInto(i),
-              live: () => `${dockerRev}/${nodesRev}`,
+              // ...and phRev, because a session's rebuild request is answered
+              // on this tab and arrives on the phone payload's ask list.
+              live: () => `${dockerRev}/${nodesRev}/${phRev}`,
               open: () => { if (!dockerList) loadDocker();
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
@@ -7807,8 +7815,18 @@ function renderProjectsInto(i){
 // Whether a session in this project may rebuild its dev instance — the
 // project's own setting, off unless somebody turned it on, read from the
 // poll rather than fetched so the checkbox is right on the first draw.
-const devClaudeOn = name =>
-  !!(state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
+// The same three words the notebook's gates use (GATE_MODES), because it is
+// the same question: how much of what a session wants to do happens without
+// you. `deny` leads, as the default and as the safe end of the dial.
+const DEVBUILD_MODES = [["deny", "deny"], ["ask", "ask me"], ["auto", "auto"]];
+
+// What a project's dial says. An older record holds the boolean this replaced
+// and the server migrates it on read, so `true` never reaches here; a project
+// with no record at all has no prefs to read and is `deny`.
+const devClaudeMode = name => {
+  const v = (state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
+  return DEVBUILD_MODES.some(([m]) => m === v) ? v : "deny";
+};
 
 // ---- no daemon, no Docker buttons ---------------------------------------
 // The controls that act on the daemon, in one list. Not the ones that only
@@ -8128,12 +8146,17 @@ function dmGrantLine(d){
   // Not for a container written here: its compose file IS the thing, so there
   // is no project codebase for a session to rebuild it from.
   if (d.source === "file" || !mayDocker()) return "";
-  return `<div class="sub dmgrant"><label class="ndcap">
-    <input type="checkbox" data-dmclaude="${esc(d.project)}"${
-      devClaudeOn(d.project) ? " checked" : ""}> Claude may rebuild</label>${
-    helpIcon(`A session in ${d.project} may build this from the project's `
-      + `codebase and bring it up. Up, Down, Env and Remove stay yours, and `
-      + `this covers every instance of ${d.project}.`)}</div>`;
+  return `<div class="sub dmgrant"><label for="${
+      esc(`dmg-${d.project}`)}">Claude may rebuild</label>
+    <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
+            aria-label="whether a session may rebuild ${esc(d.project)}">${
+      DEVBUILD_MODES.map(([v, l]) => `<option value="${v}"${
+        v === devClaudeMode(d.project) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>${
+    helpIcon(`A session in ${d.project} builds this from the project's codebase `
+      + `and brings it up: on ask it says what the rebuild is for and waits for `
+      + `you, on auto it just runs. Making a container, removing one, Up, Down `
+      + `and Env are yours whatever this says, and it covers every instance of `
+      + `${d.project}.`)}</div>`;
 }
 
 function dockerJob(){
@@ -8647,7 +8670,23 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
           `<option value="${esc(n.id)}"${n.id === dockerNode ? " selected" : ""}>${
             esc(n.name)} — ${esc(n.state)}</option>`).join("")}</select></div>`
     : "";
-  el.innerHTML = `<div class="dmtab">${picker}${off
+  // What a session is waiting on, above everything else: somebody is blocked
+  // on these, and this is the tab whose dial sent them here. The bell carries
+  // them too, the way root asks sit on the Nodes tab and in the bell.
+  const asks = (typeof ph !== "undefined" && ph?.asks || [])
+    .filter(a => a.kind === "rebuild");
+  const askRows = asks.map(a => `<div class="row dmask">
+      <div class="grow"><div class="name">rebuild: ${esc(a.why)}</div>
+        <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
+                                       : a.project || "a session")} asks to rebuild it · ${
+          a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
+                      : `${a.left}s left to answer`}</div></div>
+      <span class="acts">
+        <button type="button" data-rdeny="${a.id}">Deny</button>
+        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
+      </span></div>`).join("");
+  el.innerHTML = `<div class="dmtab">${picker}${askRows}${off
       ? `<div class="empty">${esc(off)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -8666,6 +8705,14 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
     t.scrollTop = t.scrollHeight;
   });
+  // The asks answer through the phone's endpoint, which holds the one list of
+  // them; phFetch redraws this tab when the answer comes back.
+  el.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "starting";
+    phFetch({action: "allow", id: Number(b.dataset.rallow)});
+  });
+  el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
   const pk = el.querySelector("#dmNode");
@@ -8708,18 +8755,22 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // Whose Rebuild it is. Written at once, like the row's other controls, and
   // the answer redraws every row of that project — it is the project's
   // setting, not the instance's.
-  el.querySelectorAll("[data-dmclaude]").forEach(box => box.onchange = async () => {
-    const project = box.dataset.dmclaude, on = box.checked;
-    box.disabled = true;
-    const r = await fetch("/api/prefs", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({project, devbuild: on})}).catch(() => null);
-    const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
-    box.disabled = false;
-    if (j.error){ box.checked = !on; notify(j.error, true); return; }
-    notify(on ? `a session in ${project} may rebuild its containers`
-              : `rebuilding ${project}'s containers is yours again`);
-    refresh();
+  el.querySelectorAll("[data-dmclaude]").forEach(sel => {
+    const was = sel.value;
+    sel.onchange = async () => {
+      const project = sel.dataset.dmclaude, mode = sel.value;
+      sel.disabled = true;
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devbuild: mode})}).catch(() => null);
+      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
+      sel.disabled = false;
+      if (j.error){ sel.value = was; notify(j.error, true); return; }
+      notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
+             : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
+             : `rebuilding ${project}'s containers is yours again`);
+      refresh();
+    };
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
@@ -14966,9 +15017,12 @@ function drawBell(){
     // A root ask (roadmap R38) is the same row with the stakes said: which
     // machine, and that it is root there. `#` is the prompt root gets.
     ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
-        <div class="btag">${a.kind === "root" ? `root on ${esc(a.node_name)} — needs your answer` : "needs your answer"}</div>
+        <div class="btag">${
+          a.kind === "root" ? `root on ${esc(a.node_name)} — needs your answer`
+          : a.kind === "rebuild" ? `rebuild in ${esc(a.project || "a project")} — needs your answer`
+          : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "#" : "adb"} ${esc(a.cmd.join(" "))}</div>
+        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>

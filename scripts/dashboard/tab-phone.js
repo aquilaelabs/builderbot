@@ -53,8 +53,9 @@ async function phFetch(body, probe){
   // ask it once.
   if (probe && !body && !knew && phNode) return phFetch(null, true);
   phRev++;
-  // The Nodes tab draws the root asks from the same answer.
-  if (tabs.some(t => t.kind === "phone" || t.kind === "nodes")) drawPanes();
+  // The Nodes tab draws the root asks from the same answer, and the Docker
+  // tab the rebuild ones.
+  if (tabs.some(t => ["phone", "nodes", "docker"].includes(t.kind))) drawPanes();
   drawBell();          // the same asks, in the header
 }
 

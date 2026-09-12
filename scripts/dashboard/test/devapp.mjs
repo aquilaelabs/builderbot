@@ -2042,12 +2042,14 @@ ok(await page.$('#devSend'),
 
 
 
-// ---- who may rebuild it: the switch on the docker row ---------------------
-// Up, Down and Env are the operator's. REBUILD is the one a project can hand
-// to its session, because a project whose work IS the container has a loop
-// that cannot close without it — change it, rebuild it, look at what it did.
-// Off by default, and a session that tries is refused with the sentence that
-// names the switch rather than a bare 403.
+// ---- who may rebuild it: the dial on the docker row -----------------------
+// Making a container, removing one, Up, Down and Env are the operator's.
+// REBUILD is the one a project can hand to its session, because a project
+// whose work IS the container has a loop that cannot close without it —
+// change it, rebuild it, look at what it did. Three settings, the notebook's
+// own words: deny (the default, refused with the sentence that names the
+// dial rather than a bare 403), ask (a person reads the reason and allows
+// one), auto.
 {
   const { fileURLToPath } = await import('node:url');
   const REPO = fileURLToPath(new globalThis.URL('../../../', import.meta.url));
@@ -2069,46 +2071,93 @@ ok(await page.$('#devSend'),
   // The tab is named as well as the switch: the controls moved from the
   // artifact row to the Docker tab and this sentence stayed behind, pointing
   // a session at a tab that no longer has it.
-  ok(off.status === 403 && /Docker tab has the switch that hands it over/.test(off.error || ''),
-     `a session cannot rebuild until the project says so, and is told where the switch is (${
+  ok(off.status === 403 && /Docker tab has the dial that hands it over/.test(off.error || ''),
+     `a session cannot rebuild until the project says so, and is told where the dial is (${
         JSON.stringify(off).slice(0, 90)})`);
+  // The two verbs that make and unmake a container are not on the dial at
+  // all: they are docker-write, which a session's principal never has, so
+  // the grant cannot reach them however it is set. This is the operator's
+  // own line — the user makes them, Claude rebuilds them — and it is checked
+  // here rather than trusted to the ordering of two ifs.
+  for (const act of ['new', 'remove', 'env-set', 'route']){
+    const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
+    ok(r.status === 403 && /administrator/.test(r.error || ''),
+       `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
+  }
   // Reading is nobody's secret: the state is how a session knows what it is
   // looking at before it asks for anything.
   const read = await asSession({ project: 'ep.silon', action: 'state' });
   ok(read.status === 200 && (read.state || {}).compose === true,
      '...while reading the row is allowed, switch or no switch');
-  await page.evaluate(async () => {
+  const dial = (mode) => page.evaluate(async (m) => {
     await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ project: 'ep.silon', devbuild: true }) });
-  });
+                                body: JSON.stringify({ project: 'ep.silon', devbuild: m }) });
+  }, mode);
+  // ---- ask: nobody builds until a person says so --------------------------
+  await dial('ask');
+  const nowhy = await asSession({ project: 'ep.silon', action: 'rebuild' });
+  ok(nowhy.status === 400 && /what the rebuild is for/.test(nowhy.error || ''),
+     `on ask a rebuild with no reason is refused, since the reason is the point (${
+        String(nowhy.error).slice(0, 50)})`);
+  const asked = await asSession({ project: 'ep.silon', action: 'rebuild',
+                                  why: 'the compose file changed and I want to see it run' });
+  ok(asked.status === 200 && asked.id && !asked.started,
+     `...and with one it is queued rather than built (${JSON.stringify(asked).slice(0, 70)})`);
+  ok(await page.evaluate(async (id) => {
+       const j = await (await fetch('/api/phone')).json();
+       return (j.asks || []).some(a => a.id === id && a.kind === 'rebuild');
+     }, asked.id),
+     '...and it is waiting on a person, in the one list of asks');
+  // The session sees its own request's outcome and nothing else — the same
+  // scoping the phone and root asks have.
+  const pend = await (await fetch(URL.replace(/\/$/, '') + '/api/phone',
+    { method: 'POST', headers: { 'Content-Type': 'application/json',
+                                 Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ action: 'outcome', id: asked.id }) })).json();
+  ok(pend.state === 'pending', `...which the session can watch (${pend.state})`);
+  await page.evaluate(async (id) => {
+    await fetch('/api/phone', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'allow', id }) });
+  }, asked.id);
+  const done = await (await fetch(URL.replace(/\/$/, '') + '/api/phone',
+    { method: 'POST', headers: { 'Content-Type': 'application/json',
+                                 Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ action: 'outcome', id: asked.id }) })).json();
+  ok(done.state === 'done' && !done.code,
+     `...and Allow starts the build the session asked for (${JSON.stringify(done).slice(0, 70)})`);
+  await idle();
+  // ---- auto: the loop, with nobody in it ----------------------------------
+  await dial('auto');
   const on = await asSession({ project: 'ep.silon', action: 'rebuild' });
-  ok(on.status === 200 && !on.error,
-     `...and with the switch on the same call is taken (${JSON.stringify(on).slice(0, 60)})`);
+  ok(on.status === 200 && !on.error && on.started,
+     `...and on auto the same call is taken without asking (${JSON.stringify(on).slice(0, 60)})`);
   // The control lives on the DOCKER tab, beside the Rebuild it hands over,
   // and it is NOT gated with the daemon buttons: whose decision this is does
   // not depend on a machine answering. Drawn from the same setting rather
   // than a second copy of it.
   const SW = '.dmtab [data-dmclaude="ep.silon"]';
   await page.evaluate(() => openDocker());
-  await page.waitForFunction(s2 => document.querySelector(s2)?.checked === true,
+  await page.waitForFunction(s2 => document.querySelector(s2)?.value === 'auto',
                              SW, { timeout: 20000 });
-  ok(await page.$eval(SW, e => e.checked && !e.disabled),
-     'the docker tab carries the switch, ticked, and live whatever the daemon says');
+  ok(await page.$eval(SW, e => e.value === 'auto' && !e.disabled
+                              && [...e.options].map(o => o.value).join() === 'deny,ask,auto'),
+     'the docker tab carries the dial, on auto, with all three settings and live whatever the daemon says');
   ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
      '...and not on the artifact row, which is where it was asked not to be');
   // Turned off from the row itself, which is the gesture this is for —
   // and waited on the SERVER's own copy of the setting rather than on the
   // checkbox, because the checkbox is redrawn from the poll and its state
   // between the click and the next payload is nobody's answer.
-  await page.click(SW);
-  // Falsy, not `false`: a record with nothing left in it is removed rather
+  await page.selectOption(SW, 'deny');
+  // Falsy, not `'deny'`: a record with nothing left in it is removed rather
   // than stored, so the row's prefs go back to the thin default and the
-  // field is simply absent. Absent and off are the same answer here.
+  // field is simply absent. Absent and deny are the same answer here.
   await refreshUntil(page, () => !((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.devbuild,
     { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
-     '...and unticking it there takes the grant back');
+     '...and turning it back to deny there takes the grant back');
 }
 
 

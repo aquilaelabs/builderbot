@@ -514,24 +514,29 @@ current — say when a rebuild is worth pushing instead.
 
 The **Docker** tab may carry a row for this project: the operator builds its
 compose app and brings it up and down from there, and the Artifacts tab is
-where it is sent there from. **Up, Down and Env are the operator's.** If the
+where it is sent there from. **Making a container, removing one, Up, Down and
+Env are the operator's** and no setting hands any of them over. If the
 instance's env needs filling in, say so and let them press the buttons; the
 env file lives outside the repo on purpose.
 
-**Rebuild can be handed to you, per project**, with the switch on that
-project's row in the **Docker** tab, beside the Rebuild it hands over. It is
-off unless somebody turned it on:
+**Rebuild is the one that can be handed to you**, per project, with the dial
+on that project's row in the **Docker** tab, beside the Rebuild it hands
+over. It reads `deny`, `ask` or `auto` and starts at deny:
 
 ```bash
 bb devapp              what it was built from, whether it is running, and
                        whether its daemon answers
 bb devapp rebuild      build it and bring it up
+bb devapp rebuild --why "..."     ...on `ask`: the sentence goes to a person
 ```
 
 That is the loop for a project whose work IS the container: change it,
-rebuild it, look at what it did. Without the switch the verb is refused with
-a sentence naming the switch, and that sentence is the thing to quote rather
-than a thing to route around.
+rebuild it, look at what it did. On **deny** the verb is refused with a
+sentence naming the dial, and that sentence is the thing to quote rather
+than a thing to route around. On **ask** the reason and what it would
+rebuild go in front of a person, the command waits up to fifteen minutes,
+and their Allow is what starts the build — so write the sentence you would
+want to read, the same as for the phone and for root.
 
 **You have no Docker socket of your own, and that is deliberate.** The daemon
 belongs to the node, and membership of its docker group is root on that
