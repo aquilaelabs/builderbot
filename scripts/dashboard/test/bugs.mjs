@@ -413,6 +413,11 @@ const post = body => page.evaluate(async b => {
   // measured through a view that is not on screen.
   await page.click(`${row('alpha')} [data-m]`);
   await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+  // Waited on the LOAD, not on a row appearing. The view is drawn before its
+  // fetch lands, so a wait on `.bug` was a wait on a round trip it could not
+  // see, and about one run in three it lost (B99). reloadBugs returns the
+  // fetch, so awaiting it is awaiting the data the rows are made of.
+  await page.evaluate(() => notebooks.get('alpha').reloadBugs());
   await page.waitForSelector('#bugList .bug', { timeout: 15000 });
   const one = await page.$eval('#bugList .bug', d => d.dataset.id);
   const sel = `#bugList .bug[data-id="${one}"]`;

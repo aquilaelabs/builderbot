@@ -5347,6 +5347,8 @@ class Handler(BaseHTTPRequestHandler):
             # first, so a node that is only ever waiting still reads as
             # alive and its numbers still move; then the request is held.
             nodes.heartbeat(nid, req.get("sample"), addr, req.get("running"))
+            self._node_logins(nid, (req.get("sample") or {}).get("logins")
+                              if isinstance(req.get("sample"), dict) else None)
             try:
                 wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
             except (TypeError, ValueError):
@@ -6665,6 +6667,48 @@ class Handler(BaseHTTPRequestHandler):
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
+
+    def _node_logins(self, nid, rows):
+        """What a node's agent says each account on it is signed in to Claude
+        as (B104). Absent from most heartbeats, and then nothing happens.
+
+        This is the ONLY report that does not come from a session's own token,
+        and it is worth being clear about what that means: a node could name
+        an account and an email that are not so. It could also read every
+        session's token and run as those accounts, because it runs them — so
+        the weakening is small, and what it buys is a card that is true when
+        nothing is running, and a way back from a sign-out that does not need
+        the session the sign-out just stopped.
+
+        Written only when it says something new, because a heartbeat must not
+        cost a write per node per poll, and _auth is cleared only then.
+        """
+        if not isinstance(rows, list):
+            return
+        moved = False
+        for r in rows[:64]:
+            if not isinstance(r, dict):
+                continue
+            uid = str(r.get("uid") or "")
+            if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
+                continue
+            home = home_for(uid)
+            if not home:
+                continue
+            email = " ".join(str(r.get("email") or "").split())[:120]
+            was = claudegrant.state(home)
+            on = (was["nodes"] or {}).get(nid) or {}
+            if email:
+                if on.get("email") == email:
+                    continue                       # already what we have
+                claudegrant.report(home, nid, email, str(r.get("plan") or ""))
+            else:
+                if not on:
+                    continue                       # never was on this node
+                claudegrant.report(home, nid, "", signed_in=False)
+            moved = True
+        if moved:
+            _auth.clear()
 
     def _claude_md_all(self, req=None):
         """Refresh every project's CLAUDE.md block that is behind, in one press.

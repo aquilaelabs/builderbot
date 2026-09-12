@@ -550,6 +550,33 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       { headers: { Authorization: 'Bearer ' + tok } });
     ok(anon.status === 403, 'a token for the project alone cannot speak for an account');
 
+    // ...and the AGENT can say it too, on its heartbeat, without a session
+    // having to run (B104). Before this the controller learned of a login
+    // from a session's hook and nothing else, so a node signed in with
+    // nothing running stayed "not signed in" on the card — and after a
+    // sign-out the way back needed the session the sign-out had stopped.
+    const owner = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    const nodeTok = JSON.parse(readFileSync(NODE_JSON, 'utf8')).token;
+    const beat = (logins) => fetch(URL.replace(/\/$/, '') + '/api/v1/agent/work',
+      { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok,
+                                   'Content-Type': 'application/json' },
+        body: JSON.stringify({ sample: { cpu_pct: 1, logins }, running: [], wait: 0 }) });
+    // Counted per node rather than as "signed in or not", because the
+    // harness seeds one node on this account already: what is under test is
+    // whether THIS node's heartbeat puts it on the record and takes it off.
+    const onNodes = async () => (await api()).nodes;
+    await api({ email: 'tester@example.com', plan: 'max', signed_in: false });
+    const before = await onNodes();
+    await beat([{ uid: owner, email: 'tester@example.com' }]);
+    ok(await onNodes() === before + 1 && (await api()).email === 'tester@example.com',
+       `the node's own heartbeat puts its login on the record, with no session in it (${
+          before} -> ${await onNodes()})`);
+    await beat([{ uid: owner, email: '' }]);
+    ok(await onNodes() === before,
+       '...and a heartbeat saying that home holds no credential takes it off again');
+    await beat([{ uid: owner, email: 'tester@example.com' }]);
+    ok((await api()).email === 'tester@example.com', '...both ways, as the machine changes');
+
     // The sign-out: the generation moves, and a machine compares its own
     // against it. That is the only thing that can carry "you were signed out"
     // to a node that was not listening — being signed out has no date.

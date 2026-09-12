@@ -909,6 +909,13 @@ ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
    '...and on a linked one it opens that project\'s GitHub settings, not the link form');
 await page.click('#rnCancel');
 await page.click('#projects [data-l="beta"]');
+// The dialog draws before its catalog lands — the keys and the git hosts are
+// one fetch per open — so every assertion below about the host picker is
+// reading a payload that may still be in flight. Waited on the list being in
+// hand rather than on a tick going by, which is what made this file red about
+// one run in three on a busy box (B99).
+await page.waitForFunction(() => !document.getElementById('pmodal').hidden
+  && document.getElementById('pForge')?.options.length > 1, null, { timeout: 20000 });
 ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to a git host'),
    'the dialog names the project it is linking');
 // Which host, because a hostname does not say what runs on it. GitHub is one

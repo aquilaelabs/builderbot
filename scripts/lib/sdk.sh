@@ -292,7 +292,10 @@ NODESTAT
 sdk_status_local() {
     local root; root="$(sdk_root)"
     printf '== package store root ==\n'
-    if is_mountpoint "$root"; then
+    # Asked about the STORE, not this machine's directory inside it: the
+    # mount is the share, and one scope down is never a mountpoint — so a
+    # perfectly good share reported itself as the home volume.
+    if is_mountpoint "$(sdk_store_root)"; then
         printf '  %s  (mapped share — outside the image, kept across updates)\n' "$root"
     else
         printf '  %s  (home volume; map a share to SDK_ROOT to keep SDKs off it)\n' "$root"

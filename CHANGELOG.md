@@ -52,6 +52,8 @@
 - A minor bump now says what it will cost before you press it, naming the projects whose Claude sessions it ends, and the bell offers to restamp every one of them in a single press afterwards (a5b4f7a)
 - bb shot --resize works on a node: the downscale is done by the browser that took the screenshot rather than by imagemagick, which is only on the controller (a5b4f7a)
 - A huge release section in the About panel shows its first 25 lines with a press for the rest, instead of a scroll nobody finishes (a5b4f7a)
+- A node's toolchains are found again: bb packages read one directory too deep on a node, so the JDK, Playwright, Flutter and the rest all read as not installed while they were sitting there (5743b4a)
+- The doctor card names your Claude login without waiting for a session to run: each node says what it is signed in as on its own heartbeat, so signing out and back in shows up on its own (5743b4a)
 
 ## 0.5.0 — 2026-09-10
 
