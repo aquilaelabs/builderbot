@@ -907,10 +907,24 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
   ok(!/read-only/.test(note) && !/no Claude session/.test(note),
      '...marked with the padlock alone, not a sentence under the name as well');
 await page.evaluate(() => setLocked('alpha', false));
+// Unlocking is what is under test, so it is the LOCK that has to stop being
+// the reason. The button stays dead here for a different one — alpha has no
+// node in this fixture and a Claude session runs on one — and that is the
+// row saying one thing at a time rather than two.
 await page.waitForFunction(
-  () => document.querySelector('#projects [data-c="alpha"]')?.disabled === false,
-  { timeout: 10000 });
-ok(true, 'unlocking gives it back');
+  () => !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
+        && !/locked/.test(document.querySelector('#projects [data-c="alpha"]')?.title || ''),
+  { timeout: 15000 });
+// Not the disabled state: this fixture has a live claude-alpha session, and
+// a button that would take you to a running conversation stays usable
+// whatever the node arrangement says.
+// title OR data-tip: tipify() moves the native one onto the element as a
+// data-tip on this surface, so reading only `title` reads nothing.
+const backTitle = await page.$eval('#projects [data-c="alpha"]',
+                                   b => b.title || b.dataset.tip || '');
+ok(!/locked/.test(backTitle) && /no node/.test(backTitle),
+   `unlocking gives the row back, and what is left to say is the node it has not got (${
+      backTitle.slice(0, 60)})`);
 
 // The Projects tab: every project, pinned or not, and the same controls on
 // each. The thumbtack decides only where a project is met, not what it can do.
