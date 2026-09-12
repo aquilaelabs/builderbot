@@ -110,6 +110,32 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun prefs(project: String, patch: Map<String, Any>) =
         post("/api/prefs", JSONObject(patch).put("project", project))
 
+    /** An artifact's BYTES, into a file. The only call here that is not JSON:
+     *  the newer APK is an artifact like any other, and installing it from the
+     *  phone is the difference between an app that can update itself and one
+     *  that needs a desktop to reach the same file. Streamed rather than read
+     *  into memory — this is twelve megabytes. */
+    suspend fun download(path: String, dest: java.io.File): java.io.File = withContext(Dispatchers.IO) {
+        val c = open(path, "GET")
+        c.setRequestProperty("Accept", "*/*")
+        try {
+            if (c.responseCode >= 400) {
+                val said = c.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                throw ApiError(c.responseCode,
+                    try { JSONObject(said).optString("error") } catch (e: Exception) { "" }
+                        .ifBlank { "HTTP ${c.responseCode}" })
+            }
+            dest.outputStream().use { out -> c.inputStream.use { it.copyTo(out) } }
+            dest
+        } finally { c.disconnect() }
+    }
+
+    /** Where the companion APK is served from, given the bare filename
+     *  /api/meta reports. BuilderBot's own dist/, which is the one project
+     *  that builds this app. */
+    fun apkPath(apk: String) =
+        "/api/artifact?project=BuilderBot&path=" + enc("dist/$apk")
+
     companion object {
         fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
         fun json(vararg pairs: Pair<String, Any?>): JSONObject {
