@@ -2279,24 +2279,6 @@ def last_claude(project_dir):
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
 
 
-def claude_launcher_path(project):
-    """The script bb-tty writes to start this project's session.
-
-    bb-tty owns the name and the directory; this mirrors them because the
-    restart below runs that same file. Mirrored rather than shared for the
-    reason tmux_name is mirrored in three places: one is bash, one is python,
-    and the rule is short enough to state twice and check with a test.
-    """
-    home = Path(os.environ.get("BUILDER_HOME", str(Path.home())))
-    d = os.environ.get("XDG_CACHE_HOME") or str(home / ".cache")
-    return Path(d) / "builderbot" / f"claude-run-{project}.sh"
-
-
-# The agent build that learned the respawn op. Below it the node drops the op
-# and says nothing, so the controller has to know rather than guess.
-RESPAWN_AGENT = "0.5.44"
-
-
 def _ver(v):
     """A version as a tuple of ints, for comparing one agent against another.
     Anything unparseable sorts first, which reads as "too old"."""
@@ -2306,62 +2288,39 @@ def _ver(v):
         return ()
 
 
-def respawn_claude(project):
-    """Restart a project's Claude session onto the setting just saved.
+def end_claude(project):
+    """End this project's Claude session, so the next press of Claude starts
+    one on the setting just saved.
 
-    `tmux respawn-pane -k` replaces the pane's process and keeps the session,
-    so the browser stays attached and nothing has to reload — where killing the
-    session would leave a dead terminal in an iframe and a tab to repair. The
-    launcher re-reads the preference when it runs, and `--respawn` tells it to
-    resume the newest transcript, so the conversation continues on the new
-    model rather than being replaced by a fresh one.
+    It used to RESPAWN the pane in place — `tmux respawn-pane -k` running the
+    launcher again with `--respawn` — which kept the session, and the browser
+    tab attached to it, and meant the change landed somewhere nobody was
+    looking. The operator's call (12 Sep): end it, and let the button start it
+    again. Simpler to say and simpler to trust, and it asks nothing of a
+    node's agent that killing a session from the Sessions card has not asked
+    for months — so the version gate that came with the respawn op is gone
+    with it.
 
-    What is lost is a turn in flight, which is why the dialog asks first.
-
-    A session on a NODE is the same gesture through its agent, and it used to
-    be missed entirely: this looked only at the container's own tmux, so a
-    project whose sessions run on a node was always told "no session is
-    running here" while its row said there was one. The page reads
-    tmux_sessions() + node_tmux_sessions() and this read half of that.
-
-    The node half is asked for rather than done — the op is queued for the
-    agent's held poll — so what comes back says the restart was sent, which
-    is the most that is true from here.
+    A session ended is not a conversation lost: the transcript is the
+    account's own and the Claude button resumes it. What it costs is the turn
+    in flight, which is what the dialog asking about it says.
     """
     session = tmux_name("claude-" + project)
     if session not in {s["name"] for s in tmux_sessions()}:
+        # On a node, through its agent, under the name that machine knows it
+        # by — the same path the Sessions card's kill takes.
         on_node = next((x for x in node_tmux_sessions()
                         if x["name"] == session), None)
         if not on_node:
-            return {"restarted": False, "why": "no session is running here"}
-        # An agent that predates the op would drop it silently and this
-        # would report a restart that never happened, which is the one
-        # outcome worse than not restarting (agent-compat: add a verb, keep
-        # a fallback, and say so when the fallback is what you got).
-        av = (nodes.node(on_node["node_id"]) or {}).get("agent") or {}
-        if _ver(av.get("version")) < _ver(RESPAWN_AGENT):
-            return {"restarted": False,
-                    "why": f"{on_node['node']}'s agent is behind "
-                           f"({av.get('version') or 'unknown'}), so it cannot "
-                           f"restart a session yet. Update it on the Nodes tab."}
-        r = nodes.session_tmux(on_node["node_id"],
-                               [{"session": on_node["node_name"], "respawn": True}])
+            return {"ended": False, "why": "no session is running here"}
+        r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
         if r.get("error"):
-            return {"restarted": False, "why": r["error"]}
-        return {"restarted": True, "on_node": on_node["node"]}
-    launcher = claude_launcher_path(project)
-    if not launcher.is_file():
-        # Started by an image that predates the self-resolving launcher, or the
-        # cache was cleared. Saying so beats killing the session to make a
-        # point: the setting is saved and the next start will use it.
-        return {"restarted": False,
-                "why": "this session predates the restartable launcher — "
-                       "it keeps its current model until you start a new one"}
-    r = run(["tmux", "respawn-pane", "-k", "-t", session,
-             str(launcher), "--respawn"], timeout=20)
+            return {"ended": False, "why": r["error"]}
+        return {"ended": True, "on_node": on_node["node"]}
+    r = run(["tmux", "kill-session", "-t", "=" + session], timeout=10)
     if r["code"] != 0:
-        return {"restarted": False, "why": (r["out"] or "tmux refused").strip()[:200]}
-    return {"restarted": True}
+        return {"ended": False, "why": (r["out"] or "tmux refused").strip()[:200]}
+    return {"ended": True}
 
 
 def github_url():
@@ -4680,7 +4639,7 @@ class Handler(BaseHTTPRequestHandler):
             # change alone, because the same write happens when nothing is
             # running and there is nothing to interrupt.
             if not r.get("error") and req.get("restart"):
-                r |= respawn_claude(name)
+                r |= end_claude(name)
             return self._json(r, 400 if r.get("error") else 200)
         if path.startswith("/api/devapp"):
             return self._devapp(req)

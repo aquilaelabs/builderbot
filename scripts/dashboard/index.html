@@ -8123,6 +8123,11 @@ async function openDevEnv(project, instance){
 // A route picked and not yet applied, per instance — the tab redraws when
 // the daemon answers, and a pick a redraw put back could never be applied.
 const dmRouteDraft = {};
+// ...and the same for the rebuild dial, per project. Nothing on a tab takes
+// effect until Apply (docs/design-language.md, Settings): this wrote on the
+// pick when it was a switch, which is a control that cannot be reconsidered
+// and reads differently from every other setting on the page.
+const dmGrantDraft = {};
 
 function dmRouteLine(d){
   const r = d.route;
@@ -8158,12 +8163,18 @@ function dmGrantLine(d){
   // Not for a container written here: its compose file IS the thing, so there
   // is no project codebase for a session to rebuild it from.
   if (d.source === "file" || !mayDocker()) return "";
+  const saved = devClaudeMode(d.project);
+  const pick = dmGrantDraft[d.project] ?? saved;
   return `<div class="sub dmgrant"><label for="${
       esc(`dmg-${d.project}`)}">Claude may rebuild</label>
     <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
+            data-was="${esc(saved)}"
             aria-label="whether a session may rebuild ${esc(d.project)}">${
       DEVBUILD_MODES.map(([v, l]) => `<option value="${v}"${
-        v === devClaudeMode(d.project) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>${
+        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+    <button type="button" data-dmclaudeapply="${esc(d.project)}"${
+      pick === saved ? " disabled" : ""} title="save who may rebuild ${
+      esc(d.project)}'s containers">Apply</button>${
     helpIcon(`A session in ${d.project} builds this from the project's codebase `
       + `and brings it up: on ask it says what the rebuild is for and waits for `
       + `you, on auto it just runs. Making a container, removing one, Up, Down `
@@ -8767,22 +8778,34 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // Whose Rebuild it is. Written at once, like the row's other controls, and
   // the answer redraws every row of that project — it is the project's
   // setting, not the instance's.
-  el.querySelectorAll("[data-dmclaude]").forEach(sel => {
-    const was = sel.value;
-    sel.onchange = async () => {
-      const project = sel.dataset.dmclaude, mode = sel.value;
-      sel.disabled = true;
+  // Staged on the pick, written by Apply — the same shape as the route line
+  // above it, and as every other setting on the page.
+  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
+    const project = sel.dataset.dmclaude;
+    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
+    else dmGrantDraft[project] = sel.value;
+    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
+    const project = btn.dataset.dmclaudeapply;
+    const mode = dmGrantDraft[project];
+    if (!mode) return;
+    busy(btn, "Applying");
+    try{
       const r = await fetch("/api/prefs", {method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devbuild: mode})}).catch(() => null);
-      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
-      sel.disabled = false;
-      if (j.error){ sel.value = was; notify(j.error, true); return; }
+        body: JSON.stringify({project, devbuild: mode})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmGrantDraft[project];
       notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
              : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
              : `rebuilding ${project}'s containers is yours again`);
       refresh();
-    };
+      dockerRev++; drawPanes();
+    }catch(e){ notify("the dial: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
@@ -14607,12 +14630,12 @@ async function rnSubmit(){
   // decisions and only one of them was being asked about.
   const restartNow = !(prefChanged && running)
     ? false
-    : confirm(`Restart the Claude session in ${name} now?\n\n`
+    : confirm(`End the Claude session in ${name} now?\n\n`
         + `What it runs on is read when a session starts, so this takes `
-        + `effect at the next one either way. OK restarts it now — the `
-        + `conversation is resumed, but anything it is in the middle of `
-        + `doing is lost. Cancel saves the setting and leaves the session `
-        + `alone.`);
+        + `effect at the next one either way. OK ends it — press Claude to `
+        + `start it again and the conversation is resumed, but anything it `
+        + `is in the middle of doing is lost. Cancel saves the setting and `
+        + `leaves the session alone.`);
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -14637,13 +14660,16 @@ async function rnSubmit(){
       // is: a session quietly left on the old model is exactly the confusion
       // this whole thing exists to remove, and a session deliberately left
       // running is not a fault to colour red.
-      if (running && prefChanged && !j.restarted)
+      if (running && prefChanged && !j.ended)
         notify(restartNow
-                 ? `${name}: saved, but the session was not restarted — `
+                 ? `${name}: saved, but the session was not ended — `
                    + (j.why || "it is still on what it started with")
                  : `${name}: saved. Its running session keeps what it started `
-                   + `with until you restart it.`,
+                   + `with until you end it and press Claude again.`,
                restartNow);
+      else if (restartNow && j.ended)
+        notify(`${name}: saved, and its session ended — press Claude to start `
+               + `one on it, resuming the conversation`);
     }
     if (!needRename){
       closeRename();

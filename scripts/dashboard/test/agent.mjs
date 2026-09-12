@@ -801,52 +801,44 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // session not being listed at all.
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const real = `${uid}~claude-beta`;
-      const seen = `${DIR}/respawn-argv.txt`;
       const launcher = `${DIR}/home/.cache/builderbot/claude-run-beta.sh`;
       mkdirSync(`${DIR}/home/.cache/builderbot`, { recursive: true });
-      writeFileSync(launcher,
-        `#!/usr/bin/env bash\nprintf '%s\\n' "\${1:-none}" >> ${seen}\nexec sleep 600\n`,
-        { mode: 0o755 });
-      rmSync(seen, { force: true });
+      writeFileSync(launcher, `#!/usr/bin/env bash\nexec sleep 600\n`, { mode: 0o755 });
       tmuxKill(real); tmuxKill('claude-beta');
       tmuxNew(real, `${DIR}/ws/beta`, [launcher]);
       const back = await until(async () =>
         ((await api('/api/status')).sessions || []).find(
           s => s.node === 'agentbox' && s.name === 'claude-beta'), 45000, 500);
       ok(!!back, 'a session started on its launcher is listed on the node');
+      // Saving a setting with the box ticked ENDS the session rather than
+      // respawning the pane under it (the operator's call, 12 Sep): the
+      // change lands when the Claude button starts one, which resumes the
+      // conversation, instead of arriving in a tab nobody is looking at.
       const r = await api('/api/prefs', { project: 'beta', restart: true });
-      ok(r.restarted === true && r.on_node === 'agentbox',
-         `saving with Restart finds the session on the node rather than reporting none (${
+      ok(r.ended === true && r.on_node === 'agentbox',
+         `saving with the box ticked finds the session on the node rather than reporting none (${
            JSON.stringify(r)})`);
-      // Twice: once when the session started, once for the respawn — and the
-      // second carries --respawn, which is what tells the launcher to resume
-      // the transcript instead of opening a new conversation.
-      const ran = await until(async () => {
-        const lines = existsSync(seen)
-          ? readFileSync(seen, 'utf8').trim().split('\n') : [];
-        return lines.length >= 2 ? lines : null;
-      }, 30000, 500);
-      ok(Array.isArray(ran) && ran[ran.length - 1] === '--respawn',
-         `...and the agent runs the launcher again, resuming rather than starting fresh (${
-           JSON.stringify(ran)})`);
+      const gone = await until(async () =>
+        ((await api('/api/status')).sessions || []).every(
+          s => !(s.node === 'agentbox' && s.name === 'claude-beta')) ? true : null,
+        30000, 500);
+      ok(gone === true, '...and the session on the node is gone, not restarted under itself');
       tmuxKill(real);
     }
-    // ...and only the launcher. The controller asks for a respawn; it does
-    // not say what to execute, so a pane running anything else is left alone
-    // rather than restarted into whatever happened to be there.
+    // Whatever the pane is running. The respawn this replaced would have put
+    // the LAUNCHER into a pane running something else, so it checked first;
+    // ending a session named for the project needs no such guard, and the
+    // path it takes is the Sessions card's kill, which never had one.
     {
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const real = `${uid}~claude-gamma`;
       tmuxKill(real);
       tmuxNew(real, `${DIR}/ws/gamma`, ['bash', '--norc', '--noprofile']);
-      const back = await until(async () =>
+      await until(async () =>
         ((await api('/api/status')).sessions || []).find(
           s => s.node === 'agentbox' && s.name === 'claude-gamma'), 45000, 500);
-      const was = back && tmuxFmt(real, '#{pane_pid}');
-      await api('/api/prefs', { project: 'gamma', restart: true });
-      await sleep(4000);
-      ok(was && tmuxFmt(real, '#{pane_pid}') === was,
-         'a pane that is not a launcher is left alone, whatever the controller asked for');
+      const r = await api('/api/prefs', { project: 'gamma', restart: true });
+      ok(r.ended === true, `...whatever the pane happens to be running (${JSON.stringify(r)})`);
       tmuxKill(real);
     }
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
