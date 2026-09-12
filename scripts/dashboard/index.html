@@ -2272,6 +2272,7 @@ button[aria-busy="true"]{opacity:.75}
 .ndpaths input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
+.dmgrant{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
@@ -7816,7 +7817,14 @@ const devClaudeOn = name =>
 // the manager tab itself is where the reason is written in words — disabling
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet
 // for no visible cause.
-const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
+//
+// REMOVE IS NOT ONE OF THEM, and that is the correction: removing is this
+// side's own record, with a `down` in front of it as a courtesy. Gating it on
+// the daemon left a row on a machine that had gone away removable by nobody —
+// the one state a list must not have, since the row is the only control over
+// the thing it names. It stays live, the server takes the record either way,
+// and the confirmation says which of the two halves will happen.
+const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
                   + '[data-dm="rebuild"],[data-dm="migrate-name"],'
                   + '#devSend,#bDockerNew';
 
@@ -7826,6 +7834,19 @@ const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
 const dockerWhy = () =>
   state?.docker && state.docker.on === false
     ? (state.docker.why || "no docker daemon is reachable from here") : "";
+
+// The poll's verdict, but only where it is about the node being looked at:
+// state.docker is the DEFAULT node's answer, and a picked node answers for
+// itself through its own overview (B109).
+const dmPollSays = () =>
+  (!dockerNode || dockerNode === (state?.docker?.node || dockerNode))
+    ? dockerWhy() : "";
+
+// Whether this list knows what is actually running. One function because the
+// rows' ghosting and Remove's confirmation are the same question asked twice,
+// and two copies of it would drift.
+const dmBlind = () =>
+  !!(dockerList?.blind || dockerList?.error || dmPollSays());
 
 // Applied to the DOM after a list draws rather than woven into each renderer —
 // four places render one of these controls, and one function that switches
@@ -8084,6 +8105,26 @@ function dmRouteLine(d){
     <button type="button" data-routeapply${dirty ? "" : " disabled"} title="save the route">Apply</button></div>`;
 }
 
+// Whose Rebuild it is — a line of the row's own text column, beside the route,
+// rather than a control in its action bar. The bar was wrong for it twice: its
+// sizing is written for buttons (`.actbar input` hands an input a 12em basis,
+// which a 15px checkbox spends on nothing), so the label wrapped to three
+// words on three lines; and a bar has nothing safe after `.danger`, which a
+// checkbox sitting under Remove broke. The long half of the explanation rides
+// the `?` rather than a native title, because a title cannot be tapped and
+// this tab is read on a phone.
+function dmGrantLine(d){
+  // Not for a container written here: its compose file IS the thing, so there
+  // is no project codebase for a session to rebuild it from.
+  if (d.source === "file" || !mayDocker()) return "";
+  return `<div class="sub dmgrant"><label class="ndcap">
+    <input type="checkbox" data-dmclaude="${esc(d.project)}"${
+      devClaudeOn(d.project) ? " checked" : ""}> Claude may rebuild</label>${
+    helpIcon(`A session in ${d.project} may build this from the project's `
+      + `codebase and bring it up. Up, Down, Env and Remove stay yours, and `
+      + `this covers every instance of ${d.project}.`)}</div>`;
+}
+
 function dockerJob(){
   const j = dockerList?.job;
   // While it runs, and while it has something to say about how it ended. The
@@ -8141,8 +8182,16 @@ async function dmAction(project, instance, act, btn){
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
       `Remove ${project}/${instance} from the manager?\n\n`
-      + `It is taken down first. Its env file and its data directory stay, so `
-      + `sending it again under the same name finds them.\n\n`
+      // Which of the two halves is actually going to happen. A row whose
+      // daemon is not answering loses the down, and somebody removing one
+      // should be told that before they press it rather than read it
+      // afterwards.
+      + (dmBlind()
+          ? `Its daemon does not answer, so nothing can be taken down: the row `
+            + `goes and anything running over there keeps running. `
+          : `It is taken down first. `)
+      + `Its env file and its data directory stay, so sending it again under `
+      + `the same name finds them.\n\n`
       + `The project keeps its Artifacts tab either way — that is where it `
       + `comes back from.`)) return;
   let ack = "";
@@ -8185,6 +8234,10 @@ async function dmAction(project, instance, act, btn){
       body: JSON.stringify({project, instance, action:act, ack})});
     const j = await r.json();
     if (j.error) notify(j.error, true);
+    // What was done instead of what was asked — a remove whose daemon could
+    // not be reached took the record and nothing else. Said, because the row
+    // vanishing looks identical either way.
+    else if (j.note) notify(j.note);
   }catch(e){ notify(`${act} failed: ` + e, true); }
   dockerList = null; dockerRev++; loadDocker();
 }
@@ -8427,9 +8480,8 @@ function renderDockerInto(i){
   // The poll's verdict is about the DEFAULT node, so it speaks for this view
   // only while this view IS the default one. Computed once, because `blind`
   // and the gate below both used to ask and only one of them narrowed it.
-  const pollSays = (!dockerNode || dockerNode === (state?.docker?.node || dockerNode))
-    ? dockerWhy() : "";
-  const blind = !!dockerList.blind || !!dockerList.error || !!pollSays;
+  const pollSays = dmPollSays();
+  const blind = dmBlind();
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
@@ -8460,6 +8512,7 @@ function renderDockerInto(i){
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${dmGrantLine(d)}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -8525,13 +8578,6 @@ for the rest of the work"
             busy ? "disabled" : ""}
             title="take it down and drop it from this list. Its env and its data
 directory stay, so remaking it under the same name finds them">Remove</button>`}
-        ${d.source === "file" || !mayDocker() ? "" : `<label class="ndcap dmclaude"
-          title="hand Rebuild to a Claude session in ${esc(d.project)}: it can
-build this from the project's codebase and bring it up, which is the loop for a
-project whose work IS the container. Up, Down, Env and Remove stay yours. It is
-the PROJECT's setting, so it covers every instance of ${esc(d.project)}.">
-          <input type="checkbox" data-dmclaude="${esc(d.project)}"${
-            devClaudeOn(d.project) ? " checked" : ""}> Claude may rebuild</label>`}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", "",

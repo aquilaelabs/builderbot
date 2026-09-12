@@ -3755,8 +3755,8 @@ while waited < 3600:
         raise SystemExit(0)
     if waited >= 21:
         sys.exit("[builderbot] ERROR: no build appeared within twenty seconds — "
-                 "the docker row on the Artifacts tab has what happened")
-sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — the row on the Artifacts tab has it")
+                 "this project's row on the Docker tab has what happened")
+sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — its row on the Docker tab has it")
 PY
             ;;
         *) die "usage: bb devapp [status|rebuild]" ;;
