@@ -286,9 +286,14 @@ ok(list[0].id === 'local',
   await page.waitForFunction(() => dockerList && dockerList.blind === true,
                              null, { timeout: 30000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(/not a BuilderBot sandbox|does not answer|docker does not answer/.test(
-       await page.$eval('.dmtab .empty', e => e.textContent).catch(() => '')),
-     'an unreachable node shows its reason, not a spinner');
+  // Waited for and read in one go: the tab repaints from the poll, and this
+  // read used to land between two draws about one run in several.
+  const emptyWhy = await page.waitForFunction(() => {
+    const e = document.querySelector('.dmtab .empty');
+    return e && e.textContent.trim() ? e.textContent : false;
+  }, null, { timeout: 15000 }).then(h => h.jsonValue());
+  ok(/not a BuilderBot sandbox|does not answer|docker does not answer/.test(emptyWhy),
+     `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
   await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
      '...with the picker still live — the way back is the way in');
