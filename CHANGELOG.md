@@ -54,6 +54,7 @@
 - A huge release section in the About panel shows its first 25 lines with a press for the rest, instead of a scroll nobody finishes (a5b4f7a)
 - A node's toolchains are found again: bb packages read one directory too deep on a node, so the JDK, Playwright, Flutter and the rest all read as not installed while they were sitting there (5743b4a)
 - The doctor card names your Claude login without waiting for a session to run: each node says what it is signed in as on its own heartbeat, so signing out and back in shows up on its own (5743b4a)
+- The doctor card stops claiming a Claude login on the controller, which has none, and says instead whether any node can run a session (8b60d92)
 
 ## 0.5.0 — 2026-09-10
 
