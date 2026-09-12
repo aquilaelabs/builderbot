@@ -1077,6 +1077,28 @@ ENV_BEGIN = "<!-- BUILDERBOT:ENV:BEGIN -->"
 ENV_END = "<!-- BUILDERBOT:ENV:END -->"
 
 
+def md_file(d):
+    """Where a project's environment block lives, for a project DIRECTORY.
+
+    `CLAUDE.local.md`, which is the render and is gitignored: the template in
+    this repo is the source, and a rendered block is an artifact, so git
+    carries the template and the project's own notes and never the output
+    (roadmap R50). Claude Code loads it beside CLAUDE.md — 2.1.270 names it
+    "the local file" among the instruction files it reads — so a session is
+    briefed by both without either importing the other.
+
+    Falls back to CLAUDE.md, which is where every block written before the
+    move still is. That fallback is the migration and nothing else: the first
+    `bb claude-md --update` moves the block out and leaves the notes, and from
+    then on the old place holds none. Without it every project would read as
+    having no block at all the moment this shipped, which is the state that
+    ghosts the Claude button.
+    """
+    d = Path(d)
+    local = d / "CLAUDE.local.md"
+    return local if local.is_file() else d / "CLAUDE.md"
+
+
 def md_block(path):
     """The environment block of a CLAUDE.md, markers included, or None.
 
@@ -1206,7 +1228,7 @@ def window_cost(name):
         for d in sorted(WORKSPACE.iterdir()):
             if not d.is_dir() or (d / IGNORE_MARKER).exists():
                 continue
-            if md_window(d / "CLAUDE.md"):
+            if md_window(md_file(d)):
                 held.append(d.name)
     except OSError:
         return {}
@@ -1284,7 +1306,7 @@ def compat_holds():
     except OSError:
         return out
     for d in dirs:
-        md = d / "CLAUDE.md"
+        md = md_file(d)
         why = md_gap(md) if md.is_file() else ""
         if not why:
             why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
@@ -1355,13 +1377,15 @@ def _compat_loop():
 PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # a repo name, near enough
 
 def build_claude_md(about, tree=None):
-    """A new project's CLAUDE.md: the block this project should have, with the
-    section below the end marker replaced by the operator's own notes when they
-    gave any.
+    """A new project's two files, as (block, notes).
 
-    The same file `bb claude-md --init` writes; building it here as well means
+    The block is what goes in CLAUDE.local.md and is not committed; the notes
+    are CLAUDE.md, the operator's own when they gave any and the template's
+    placeholder section otherwise.
+
+    The same pair `bb claude-md --init` writes; building it here as well means
     the notes land in one write instead of a copy the operator then has to
-    edit. No notes → the template's own placeholder section.
+    edit.
 
     `tree` is where it is about to land, and it is rendered for that tree, or
     the first poll after creating the project reports drift against the file
@@ -1379,8 +1403,15 @@ def build_claude_md(about, tree=None):
     i = text.find(ENV_END)
     tail = text[i + len(ENV_END):] if i >= 0 else ""
     if about:
-        tail = "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
-    return block + tail
+        tail = "## About this project\n\n" + about.rstrip() + "\n"
+    # Starting at its own first heading: the separator under the end marker
+    # divided two halves of one file, and there is nothing to divide in a
+    # file of its own. Line by line rather than lstrip of a character set,
+    # which would also eat the first dash of real content.
+    lines = tail.splitlines()
+    while lines and lines[0].strip() in ("", "---"):
+        lines.pop(0)
+    return block, "\n".join(lines) + ("\n" if lines else "")
 
 
 # The builder user's ssh directory. Overridable through BUILDER_HOME for the
@@ -1643,9 +1674,10 @@ def project_list(who):
         # status endpoint rather than being reported as the one thing wrong.
         md_hold = ""
         try:
-            has_md = (d / "CLAUDE.md").is_file()
+            mdf = md_file(d)
+            has_md = mdf.is_file()
         except OSError:
-            has_md = False
+            mdf, has_md = d / "CLAUDE.local.md", False
 
         # linked defaults to True and github to False: each gates an offered
         # action (the chain on the row; the GitHub command buttons), and a
@@ -1695,8 +1727,8 @@ def project_list(who):
                 branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
                 if not has_md:
                     issues.append({"level": "warning", "action": "claude-md-init",
-                                   "text": "no CLAUDE.md — create one"})
-                elif (md := md_state(d / "CLAUDE.md")) == "stale":
+                                   "text": "no environment block — create one"})
+                elif (md := md_state(mdf)) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
                     # every time the image gains a feature. From an OLDER
@@ -1705,10 +1737,10 @@ def project_list(who):
                     # block from a later window is drift like any other: the
                     # container has not been rebuilt yet, which md_gap says
                     # more about.
-                    md_hold = md_gap(d / "CLAUDE.md")
+                    md_hold = md_gap(mdf)
                     issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": ("CLAUDE.md environment block is from an older "
-                                            f"compatibility window ({md_window(d / 'CLAUDE.md')} "
+                                   "text": ("the environment block is from an older "
+                                            f"compatibility window ({md_window(mdf)} "
                                             f"against {md_window(TEMPLATE_MD)}) — update")
                                    if md_hold else
                                    "CLAUDE.md environment block is out of date — update"})
@@ -1790,7 +1822,7 @@ def project_list(who):
                     # node being out of window is not this row's hold.
                     "held": md_hold or held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", ""),
-                    "md_window": md_window(d / "CLAUDE.md") if has_md else "",
+                    "md_window": md_window(mdf) if has_md else "",
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -6657,12 +6689,15 @@ class Handler(BaseHTTPRequestHandler):
             here = set()
         if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
-        md = WORKSPACE / name / "CLAUDE.md"
+        # The DIRECTORY, not a file: bb resolves which of the two carries the
+        # block, and after an update that is CLAUDE.local.md rather than the
+        # name this used to hand it.
+        md = md_file(WORKSPACE / name)
         if action == "init" and md.is_file():
-            return self._json({"error": f"{name} already has a CLAUDE.md"}, 400)
+            return self._json({"error": f"{name} already has an environment block"}, 400)
         if action == "update" and not md.is_file():
-            return self._json({"error": f"{name} has no CLAUDE.md"}, 400)
-        r = run(["bb", "claude-md", f"--{action}", str(md)], timeout=60)
+            return self._json({"error": f"{name} has no environment block"}, 400)
+        r = run(["bb", "claude-md", f"--{action}", str(WORKSPACE / name)], timeout=60)
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
@@ -6731,8 +6766,7 @@ class Handler(BaseHTTPRequestHandler):
             if locked_out(p["name"]):
                 locked.append(p["name"])
                 continue
-            md = WORKSPACE / p["name"] / "CLAUDE.md"
-            r = run(["bb", "claude-md", "--update", str(md)], timeout=60)
+            r = run(["bb", "claude-md", "--update", str(WORKSPACE / p["name"])], timeout=60)
             if r["code"] == 0:
                 done.append(p["name"])
             else:

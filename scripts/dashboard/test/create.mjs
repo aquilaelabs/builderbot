@@ -110,11 +110,16 @@ await page.waitForFunction(() => [...document.querySelectorAll('#projects .name'
   .some(n => n.textContent === 'zeta'), { timeout: 15000 });
 ok(true, 'the new project appears in the card');
 ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
-const md = readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8');
-const marker = md.indexOf('BUILDERBOT:ENV:END');
-ok(marker > 0, 'its CLAUDE.md carries the environment block');
-ok(md.indexOf('A widget frobnicator') > marker,
-   '...with the given notes below the end marker');
+// Two files: the render, which git never sees, and the project's own notes,
+// which it does (roadmap R50).
+ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.local.md`, 'utf8').includes('BUILDERBOT:ENV:END'),
+   'it gets the environment block, in the file that is not committed');
+ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('A widget frobnicator'),
+   '...and CLAUDE.md is the notes that were typed, with no block in it');
+ok(!readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('BUILDERBOT:ENV:BEGIN'),
+   '...which is what makes it a file worth committing');
+ok(readFileSync(`${DIR}/ws/zeta/.git/info/exclude`, 'utf8').includes('/CLAUDE.local.md'),
+   '...and the render is excluded in this checkout, not in the project\'s own .gitignore');
 
 // ---- drift inside the window stops nothing ------------------------------
 // The block is what a session is briefed with, and it goes stale every time
@@ -123,7 +128,7 @@ ok(md.indexOf('A widget frobnicator') > marker,
 // the same promise the agent's window makes. Only a block from ANOTHER
 // window (below) holds the project.
 {
-  const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
+  const mdPath = `${DIR}/ws/zeta/CLAUDE.local.md`;
   const current = readFileSync(mdPath, 'utf8');
   writeFileSync(mdPath, current.replace('BUILDERBOT:ENV:BEGIN -->',
     'BUILDERBOT:ENV:BEGIN -->\nA line the image never wrote.'));
@@ -153,7 +158,7 @@ ok(md.indexOf('A widget frobnicator') > marker,
 // started under the old window is acting on a map that is now wrong. The
 // row's own link is the fix, and everything above leaves when it is pressed.
 {
-  const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
+  const mdPath = `${DIR}/ws/zeta/CLAUDE.local.md`;
   const current = readFileSync(mdPath, 'utf8');
   const win = /BUILDERBOT:ENV:WINDOW (\d+\.\d+)/.exec(current)?.[1] || '';
   ok(/^\d+\.\d+$/.test(win), `a project made from the template carries its window (${win || 'none'})`);
@@ -206,8 +211,8 @@ ok(md.indexOf('A widget frobnicator') > marker,
      '...and the update link on the row lifts the hold, so a session can start again');
   ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
      '...with the bell\'s row gone on its own');
-  ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
-     '...with the project\'s own notes below the marker untouched');
+  ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('A widget frobnicator'),
+     '...with the project\'s own notes, in their own file, untouched');
 
   // AHEAD is not the same state and must not be held. It is what this repo's
   // own checkout looks like between a minor bump and the image built from
@@ -282,9 +287,8 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
      '...without the wrapper folder or the desktop junk');
   ok((statSync(`${DIR}/ws/fromtar/build.sh`).mode & 0o111) !== 0,
      '...and a script keeps its executable bit');
-  const md = readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8');
-  ok(md.includes('BUILDERBOT:ENV:END')
-     && md.slice(md.indexOf('BUILDERBOT:ENV:END')).trim().split('\n').length > 3,
+  ok(readFileSync(`${DIR}/ws/fromtar/CLAUDE.local.md`, 'utf8').includes('BUILDERBOT:ENV:END')
+     && readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8').trim().split('\n').length > 3,
      'with no notes typed, a CLAUDE.md is drafted from the unpacked files');
 
   // A zip with no wrapper folder lands as it is.

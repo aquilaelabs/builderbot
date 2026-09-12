@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Claude Code hook: nothing runs while BuilderBot is away or this project's
-CLAUDE.md block is from another compatibility window; drift inside the
+environment block is from another compatibility window; drift inside the
 window is a warning, once.
 
     bb-gate PROJECT SESSION            # PreToolUse: JSON on stdin, refuses with exit 2
@@ -22,7 +22,7 @@ the same rule the dashboard keeps for the block (`bb claude-md`):
   updates it — the link on the project's row, or `bb claude-md --update`.
 - The block is behind INSIDE the window (`--is-stale`): the session works,
   and is told once, on its next prompt, that an update is waiting and that
-  reading CLAUDE.md again after it is worth doing. Drift inside a window is
+  reading CLAUDE.local.md again after it is worth doing. Drift inside a window is
   routine and stops nothing, which is the promise the window makes.
 
 Cheap on purpose: the controller is asked at most every twenty seconds
@@ -123,10 +123,10 @@ def prompt_warning(project):
             json.dump(last, f)
     except OSError:
         pass
-    return ("Note from BuilderBot: this project's CLAUDE.md environment block is behind the one "
+    return ("Note from BuilderBot: this project's environment block is behind the one "
             "the container now ships, inside the same compatibility window — you can keep "
             "working. Say so in your reply; the operator updates it from the project's row "
-            "(or with `bb claude-md --update`), and reading CLAUDE.md again after that is "
+            "(or with `bb claude-md --update`), and reading CLAUDE.local.md again after that is "
             "worth doing.")
 
 
@@ -159,11 +159,11 @@ def main():
                "Nothing runs until it is back: wait, then try again. If this keeps up, the "
                "operator checks the container.")
     elif md_check(project, "--out-of-window"):
-        why = ("This project's CLAUDE.md environment block is from another compatibility "
+        why = ("This project's environment block is from another compatibility "
                "window of BuilderBot, so what it told you about the environment was true of "
                "a different container. The operator updates it — the link on the project's "
                "row on the dashboard, or `bb claude-md --update` in a shell of their own — "
-               "and until then nothing runs here. Once it is updated, read CLAUDE.md again "
+               "and until then nothing runs here. Once it is updated, read CLAUDE.local.md again "
                "before carrying on.")
     try:
         os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)

@@ -77,8 +77,11 @@ for (const [name, files, wantAndroid, wantCompose] of shapes) {
     if (f.endsWith('/')) mkdirSync(join(d, f), { recursive: true });
     else writeFileSync(join(d, f), 'x');
   }
-  bb(['claude-md', '--init', join(d, 'CLAUDE.md')]);
-  const txt = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
+  // The DIRECTORY: bb resolves which of the two files carries the block, and
+  // the block is CLAUDE.local.md now — the render, which git never sees, while
+  // CLAUDE.md holds the project's own notes (roadmap R50).
+  bb(['claude-md', '--init', d]);
+  const txt = readFileSync(join(d, 'CLAUDE.local.md'), 'utf8');
   sizes[name] = txt.split(/\s+/).length;
   ok(/\n## Android\n/.test(txt) === wantAndroid
      && /\n## The dev instance/.test(txt) === wantCompose,
@@ -87,7 +90,7 @@ for (const [name, files, wantAndroid, wantCompose] of shapes) {
   // Whatever it got, the file it was just handed must read as current: an
   // --init that renders one thing and a check that expects another is a
   // project that opens every session with an update link it does not need.
-  const chk = bb(['claude-md', join(d, 'CLAUDE.md')]);
+  const chk = bb(['claude-md', d]);
   ok(/is current/.test(chk),
      `...and reads as current straight after --init (${chk.trim().slice(-40)})`);
   ok(!/BUILDERBOT:IF|BUILDERBOT:END/.test(txt),
@@ -103,15 +106,15 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
 // is the same one press as any other change to the block.
 {
   const d = mkdtempSync(join(tmpdir(), 'cmd-'));
-  bb(['claude-md', '--init', join(d, 'CLAUDE.md')]);
-  ok(!/\n## The dev instance/.test(readFileSync(join(d, 'CLAUDE.md'), 'utf8')),
+  bb(['claude-md', '--init', d]);
+  ok(!/\n## The dev instance/.test(readFileSync(join(d, 'CLAUDE.local.md'), 'utf8')),
      'a project with no compose file starts without that section');
   writeFileSync(join(d, 'docker-compose.yml'), 'services: {}\n');
-  const chk = bb(['claude-md', join(d, 'CLAUDE.md')]);
+  const chk = bb(['claude-md', d]);
   ok(/differs|update/i.test(chk),
      `...and adding one reads as drift, not as a file that is fine (${chk.trim().slice(0, 60)})`);
-  bb(['claude-md', '--update', join(d, 'CLAUDE.md')]);
-  ok(/\n## The dev instance/.test(readFileSync(join(d, 'CLAUDE.md'), 'utf8')),
+  bb(['claude-md', '--update', d]);
+  ok(/\n## The dev instance/.test(readFileSync(join(d, 'CLAUDE.local.md'), 'utf8')),
      '...which the update then gives it');
   rmSync(d, { recursive: true, force: true });
 }
@@ -119,14 +122,17 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
 // ---- the project's own notes are never the update's business ---------------
 {
   const d = mkdtempSync(join(tmpdir(), 'cmd-'));
-  bb(['claude-md', '--init', join(d, 'CLAUDE.md')]);
+  bb(['claude-md', '--init', d]);
   const mine = '\n## About this project\n\nMINE, and not the template\'s.\n';
   writeFileSync(join(d, 'CLAUDE.md'),
                 readFileSync(join(d, 'CLAUDE.md'), 'utf8') + mine);
   writeFileSync(join(d, 'build.gradle'), 'x');
-  bb(['claude-md', '--update', join(d, 'CLAUDE.md')]);
-  const after = readFileSync(join(d, 'CLAUDE.md'), 'utf8');
-  ok(/MINE, and not the template's\./.test(after) && /\n## Android\n/.test(after),
+  bb(['claude-md', '--update', d]);
+  // Two files now, and the update touches one of them: the notes are not the
+  // block's business and never were, which is easier to hold to when they are
+  // not in the same file.
+  ok(/MINE, and not the template's\./.test(readFileSync(join(d, 'CLAUDE.md'), 'utf8'))
+     && /\n## Android\n/.test(readFileSync(join(d, 'CLAUDE.local.md'), 'utf8')),
      'an update that adds a section leaves the project\'s own notes alone');
   rmSync(d, { recursive: true, force: true });
 }
@@ -156,7 +162,7 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
     return (p?.issues || []).some(i => i.action === 'claude-md-update');
   });
 
-  bb(['claude-md', '--init', `${P}/CLAUDE.md`]);
+  bb(['claude-md', '--init', P]);
   await refreshUntil(page, () => (state.projects || []).some(p => p.name === 'mdshape'),
                      { timeout: 30000 });
   await sleep(1200);
@@ -166,8 +172,8 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
   // ...and the same after the evidence arrives, which is the case that pins
   // the two renderings together rather than only the empty one.
   writeFileSync(`${P}/build.gradle`, 'x\n');
-  bb(['claude-md', '--update', `${P}/CLAUDE.md`]);
-  ok(/\n## Android\n/.test(readFileSync(`${P}/CLAUDE.md`, 'utf8')),
+  bb(['claude-md', '--update', P]);
+  ok(/\n## Android\n/.test(readFileSync(`${P}/CLAUDE.local.md`, 'utf8')),
      '...and bb gives it the Android section once there is a gradle file');
   await sleep(1200);
   ok((await stale()) === false,
@@ -189,9 +195,9 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
     execFileSync('git', ['-C', D, 'init', '-q', '.'],
                  { env: { ...base, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x.invalid',
                           GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x.invalid' } });
-    bb(['claude-md', '--init', `${D}/CLAUDE.md`]);
+    bb(['claude-md', '--init', D]);
     // ...from another window, which is exactly what a bump leaves behind.
-    writeFileSync(`${D}/CLAUDE.md`, readFileSync(`${D}/CLAUDE.md`, 'utf8')
+    writeFileSync(`${D}/CLAUDE.local.md`, readFileSync(`${D}/CLAUDE.local.md`, 'utf8')
       .replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+/, 'BUILDERBOT:ENV:WINDOW 0.1'));
   }
   await refreshUntil(page, () => (state.attention || [])
@@ -207,7 +213,7 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
   await page.waitForFunction(() => /CLAUDE\.md blocks? updated/.test(
     document.getElementById('toast')?.textContent || ''), null, { timeout: 30000 });
   ok(holds.every(n => /BUILDERBOT:ENV:WINDOW 0\.1/.test(
-       readFileSync(`${DIR}/ws/${n}/CLAUDE.md`, 'utf8')) === false),
+       readFileSync(`${DIR}/ws/${n}/CLAUDE.local.md`, 'utf8')) === false),
      '...and one press restamps every one of them');
   for (const n of holds) rmSync(`${DIR}/ws/${n}`, { recursive: true, force: true });
 

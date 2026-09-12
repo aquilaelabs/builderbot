@@ -25,12 +25,18 @@ Before anything else in a session:
 bb claude-md
 ```
 
-That compares the environment block above against the template the container
-ships, and changes nothing. If it reports the block differs, run
-`bb claude-md --update` and mention that you did — the update rewrites only the
-marked block and never touches the project notes below the end marker. (The
-dashboard notices the same drift on its own and offers the update as a link on
-the project's row, so it may already have been done for you.)
+That compares this block against the template the container ships, and
+changes nothing. If it reports the block differs, run `bb claude-md --update`
+and mention that you did — the update rewrites `CLAUDE.local.md` and nothing
+else. (The dashboard notices the same drift on its own and offers the update
+as a link on the project's row, so it may already have been done for you.)
+
+**You are reading two files.** This block is `CLAUDE.local.md`, which
+BuilderBot renders and keeps out of git — it describes the machine, not the
+project, and a clone on somebody's laptop would be reading a lie. The
+project's own notes are `CLAUDE.md`, which IS committed, and are nobody's to
+rewrite but the people working here. Both reach a session; only one of them
+is generated.
 
 **Two of the cases are enforced, not advised.** A session outlives a container
 update, so a hook on every tool call refuses to run anything while the
@@ -50,12 +56,12 @@ window too.
 Two things about doing it:
 
 - The refresh lands **for the next session**. Your context already holds the
-  old text, so re-read this file if you need the new content now.
+  old text, so re-read `CLAUDE.local.md` if you need the new content now.
 - If the environment turns out to disagree with what this file says, the
   machine is right and the file is stale. Trust `bb doctor` and `bb status`
   over anything written here.
 
-Do not create a `CLAUDE.md` anywhere one does not already exist — `--init` is
+Do not create either file anywhere they do not already exist — `--init` is
 the user's decision, not a session's.
 
 ## What persists and what does not

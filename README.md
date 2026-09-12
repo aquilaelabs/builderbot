@@ -395,7 +395,11 @@ bb git policy      what a session may push here — its branch, main — from th
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
-bb claude-md       is this project's CLAUDE.md environment block current?
+bb claude-md       is this project's environment block current? The block is
+                   `CLAUDE.local.md`, rendered by BuilderBot and kept out of
+                   git (`.git/info/exclude`); `CLAUDE.md` beside it is the
+                   project's own notes and is committed. `--update` rewrites
+                   the first and never touches the second.
                    The block is rendered per project, not copied: the shipped
                    template marks its Android and compose sections with the
                    evidence that makes them apply, so a plain project's
@@ -1148,7 +1152,7 @@ lives in its body. The cards:
   cannot read/write/enter (with the `chown` that fixes it) or one holding no
   valid git repository. Only errors are folded away — a **warning stays in the
   list**, in amber, because it is asking for something: a repo with no
-  `CLAUDE.md` yet, or one whose environment block has drifted from the image's.
+  environment block yet, or one whose block has drifted from the image's.
   Both are underlined links that fix themselves — `bb claude-md --init` and
   `bb claude-md --update` on that project. What they write is the block for
   *that* project: the Android section only where the tree carries a gradle
@@ -1170,8 +1174,8 @@ lives in its body. The cards:
   different promise.
   At the foot of the card, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
-  becomes the project section of a freshly built `CLAUDE.md` (environment
-  block from the image's template, your notes below the end marker). It can
+  becomes its `CLAUDE.md`, with the environment block rendered from the
+  image's template into `CLAUDE.local.md` beside it. It can
   also start from an archive you already have — zip, or tar with gzip, bzip2
   or xz — unpacked into the new directory before `git init`: a single
   top-level folder inside is dropped (the project directory *is* that
@@ -1185,7 +1189,8 @@ lives in its body. The cards:
   section is drafted from the repo itself (the README's opening paragraph,
   plus build/test commands read off marker files like `package.json`,
   `gradlew`, `Cargo.toml`), marked as a draft for a session to verify. A
-  repo that already carries a `CLAUDE.md` keeps its own.
+  repo that already carries a `CLAUDE.md` keeps its own, and gets the
+  environment block beside it either way.
   For a private repo with its own deploy key, a **Deploy key** picker lists
   what the shielded agent holds (public halves only, via `ssh-add -L`) and
   shows the selected key for copying into the repo's GitHub deploy-key page.

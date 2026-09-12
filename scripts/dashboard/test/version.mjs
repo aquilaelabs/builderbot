@@ -1431,7 +1431,7 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
   mkdirSync(held, { recursive: true });
   writeFileSync(`${held}/README.md`, 'x\n');
   execFileSync('git', ['-C', held, 'init', '-q', '.'], { env });
-  execFileSync('bash', [BB, 'claude-md', '--init', `${held}/CLAUDE.md`],
+  execFileSync('bash', [BB, 'claude-md', '--init', held],
                { env: { ...env, BB_RELAYED: '1' } });
   const cost = await page.evaluate(async () => {
     const one = await (await fetch('/api/version?project=stampproj')).json();
