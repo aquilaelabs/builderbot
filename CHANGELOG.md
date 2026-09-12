@@ -34,6 +34,7 @@
 - Claude sessions run on a node, not on the BuilderBot container: nothing installs Claude Code here any more, and a project with no node says so on its button instead of opening a conversation that cannot build anything (7b34c58)
 - The Users tab names which Anthropic account each BuilderBot account is signed in to, and still warns when two of them share one (7b34c58)
 - A project with no node no longer explains itself in a paragraph on every row: the Claude button is ghosted and says why on hover (4807a91)
+- A project's row says who has a Claude session open, and in red why nobody can, instead of naming the machine sessions run on (9651ee6)
 
 ### Fixed
 
