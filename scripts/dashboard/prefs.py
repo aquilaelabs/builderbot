@@ -45,6 +45,10 @@ GITPOL_KEYS = ("push", "main")
 GITPOL_MODES = ("allow", "deny")
 GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
 GATE_MODES = ("auto", "ask", "deny")
+# ...and the same three words for whether a SESSION may rebuild this
+# project's dev instance. One vocabulary: a person who has set a notebook
+# tab to "ask me" knows what this one does without being told twice.
+DEVBUILD_MODES = ("deny", "ask", "auto")
 # How much a session may change in this project without asking first. The
 # names are Claude Code's own permission modes, which is what the launcher
 # puts in the settings file: `default` asks before every edit, `accept`
@@ -126,14 +130,28 @@ def _clean(rec):
             # Ask by default: a project nobody has decided about behaves the
             # way Claude Code does out of the box.
             "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask"),
-            # Whether a SESSION may rebuild this project's dev instance.
-            # Off by default, and it is a real grant rather than a nicety: a
-            # rebuild runs the project's own Dockerfile and brings the
-            # container up, on the node's daemon. On for a project whose
-            # whole loop is "change it, rebuild it, look at it", which is
-            # what the operator asked for; off for everything else, where
-            # the buttons stay the operator's.
-            "devbuild": bool(rec.get("devbuild"))}
+            # Whether a SESSION may rebuild this project's dev instance,
+            # and it is a real grant rather than a nicety: a rebuild runs the
+            # project's own Dockerfile and brings the container up, on the
+            # node's daemon. `deny` by default; `auto` for a project whose
+            # whole loop is "change it, rebuild it, look at it"; `ask` puts
+            # the reason in front of a person, who allows one rebuild.
+            # Creating, removing and Up/Down are not on this dial at all —
+            # those are docker-write, which a session never has.
+            "devbuild": _devbuild(rec.get("devbuild"))}
+
+
+def _devbuild(v):
+    """One of DEVBUILD_MODES, and what the switch before it meant.
+
+    It was a boolean, so True is the grant and reads as `auto`; anything
+    else is `deny`. Migrated on READ rather than by rewriting the file: a
+    record written by an older BuilderBot has to keep working, and this is
+    then the only line that decides what the field means.
+    """
+    if v is True:
+        return "auto"
+    return v if v in DEVBUILD_MODES else "deny"
 
 
 def get(project):
@@ -270,14 +288,21 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 return {"error": f"edits is one of {', '.join(EDIT_MODES)}, not {edits}"}
             cur["edits"] = edits
         if devbuild is not None:
-            cur["devbuild"] = bool(devbuild)
+            # The bool is still accepted: it is what the page sent before
+            # this became three words, and refusing it would break a client
+            # that is merely older rather than wrong.
+            mode = _devbuild(devbuild) if isinstance(devbuild, bool) else devbuild
+            if mode not in DEVBUILD_MODES:
+                return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
+                                 f"not {devbuild}"}
+            cur["devbuild"] = mode
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["edits"] != "ask" or cur["devbuild"]
+                or cur["edits"] != "ask" or cur["devbuild"] != "deny"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose — _clean puts the defaults
@@ -289,7 +314,7 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 rec.pop("gitpol", None)
             if cur["edits"] == "ask":
                 rec.pop("edits", None)
-            if not cur["devbuild"]:
+            if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
             d["projects"][project] = rec
         else:

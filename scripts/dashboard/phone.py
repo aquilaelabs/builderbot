@@ -41,6 +41,11 @@ STATE = None
 FILE = None
 WORKSPACE = None
 nodes = None          # the node module, set by server.py once it is up: run_wait, phone_nodes, node
+# What an allowed rebuild request actually calls, set by server.py: devapp's
+# own rebuild(project, instance). Injected rather than imported so this module
+# keeps having one dependency — the node registry — and so the request queue
+# stays a queue rather than growing an opinion about compose.
+rebuilder = None
 
 # The phone's own adb server on the node, apart from the default one the
 # emulator and a session's plain adb use.
@@ -593,7 +598,10 @@ def _for(r, uid, admin):
     sandbox is a shared machine and root on it is not a user's to allow —
     their own phone is. (A per-user grant for root on a sandbox is a design
     of its own, not written yet.)"""
-    if r.get("kind") == "root" and not admin:
+    # Root and a rebuild are both an administrator's to allow: root because a
+    # sandbox is shared, a rebuild because starting and stopping containers is
+    # docker-write, which a user does not have on a project they otherwise own.
+    if r.get("kind") in ("root", "rebuild") and not admin:
         return False
     if r["to"] == "admins":
         return bool(admin)
@@ -643,7 +651,8 @@ def ask(why, argv, nid, node_name, project, by="claude", asker=""):
                   rec.get("owner_name") or "the owner", asker)
 
 
-def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker=""):
+def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
+           extra=None):
     global _req_seq
     with _lock:
         _req_seq += 1
@@ -651,6 +660,10 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker=""):
              "cmd": list(argv), "state": "pending", "by": by, "asker": asker,
              "node": nid, "node_name": node_name or nid, "project": project,
              "to": to, "out": "", "code": None}
+        # What a kind needs and the others do not — a rebuild's instance. Kept
+        # off _req_public: it decides a compose project and a data directory,
+        # and the row already names the container it would rebuild.
+        r.update(extra or {})
         _reqs.append(r)
         del _reqs[:-MAX_REQS]
     return {"ok": True, "id": r["id"], "to": to_name}
@@ -699,6 +712,29 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
                   "the administrators", asker_name)
 
 
+def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
+                asker_admin=False):
+    """A session asking to rebuild its project's dev instance, for a project
+    whose switch is on `ask` (the Docker row's dial).
+
+    The phone's shape applied to a build: the reason and what it would do go
+    to a person, they allow or deny, and allowing starts the build. Nothing
+    about the container is decided here — which compose file, which node, what
+    it mounts — because none of that is the session's to name: it asks about
+    the instance that already exists, which somebody else created.
+    """
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what the rebuild is for — the operator is "
+                         "answering a question about work they did not start"}
+    to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
+                   else (asker_uid, f"{asker_name or 'you'} (your own account — it is "
+                                    "on the Docker tab and your bell)"))
+    return _queue("rebuild", why, ["devapp", "rebuild", name], "", "", project,
+                  "claude", to, to_name, asker_name,
+                  extra={"instance": str(instance or "")})
+
+
 def _find(rid):
     for r in _reqs:
         if r["id"] == rid:
@@ -730,6 +766,30 @@ def decide(rid, allow, uid, name="", admin=False):
             return {"error": f"that one was already {r['state']}"}
         r["state"] = "running" if allow else "denied"
     if not allow:
+        return {"ok": True}
+    if r.get("kind") == "rebuild":
+        # Answered at once and not on a thread: the rebuild is a JOB, so
+        # starting it returns as soon as it is queued, and the session that
+        # asked follows the job the same way it would have without the
+        # question. The request's `out` is that job's id, which is all the
+        # session needs to stop waiting on the answer and start waiting on
+        # the build.
+        if rebuilder is None:
+            with _lock:
+                r.update(state="done", out="no rebuild is wired up here", code=1)
+            return {"ok": True}
+        res = rebuilder(r["project"], r.get("instance") or "") or {}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else 0,
+                     out=str(res.get("error") or res.get("job") or "started"))
+        # A refusal comes back to whoever pressed Allow, not only to the
+        # session: the risk gate is the one that fires here, and it is the
+        # operator's own acknowledgement that is missing — which they can
+        # only give by pressing Rebuild on the row, where the risks are
+        # actually listed. Silently ending the request would leave them
+        # believing they had started a build.
+        if res.get("error"):
+            return {"error": res["error"]}
         return {"ok": True}
     if r.get("kind") == "root":
         # Answered at once, run on a thread: a root command may take ten

@@ -2858,6 +2858,10 @@ if not NODES_OK:
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devapp.compose_done)
+# What Allow on a rebuild request actually starts (the Docker row's `ask`).
+# Outside the block above: the ask has nothing to do with the node registry,
+# and a controller without one still has projects whose containers run.
+phone.rebuilder = devapp.rebuild
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -5736,16 +5740,35 @@ class Handler(BaseHTTPRequestHandler):
                 and self._refused("docker-write"):
             return None
         # A SESSION is a further question, and the answer is a per-project
-        # setting that is off by default. Rebuild runs the project's own
-        # Dockerfile and brings the container up on the node's daemon: for a
-        # project whose loop is "change it, rebuild it, look at it" that is
-        # exactly what you want a session doing, and for everything else the
-        # buttons stay the operator's. The read verbs are nobody's secret.
-        if act not in ("starter", "state") and (self._who() or {}).get("session") \
-                and not prefs.get(name)["devbuild"]:
-            return self._json({"error": "rebuilding this project's dev instance is the "
-                                        "operator's — its row on the Docker tab has "
-                                        "the switch that hands it over"}, 403)
+        # dial with the notebook's own three words. Rebuild runs the project's
+        # own Dockerfile and brings the container up on the node's daemon: for
+        # a project whose loop is "change it, rebuild it, look at it" that is
+        # exactly what you want a session doing; `ask` puts the reason in
+        # front of a person first; `deny`, the default, keeps the button the
+        # operator's. The read verbs are nobody's secret.
+        #
+        # It governs rebuild and abort and NOTHING else, because nothing else
+        # ever reaches here from a session: new, remove, env and route are
+        # docker-write above, which a session's principal never has. So the
+        # dial is about running the code, never about creating a container.
+        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+            mode = prefs.get(name)["devbuild"]
+            if mode == "deny":
+                return self._json({"error": "rebuilding this project's dev instance is the "
+                                            "operator's — its row on the Docker tab has "
+                                            "the dial that hands it over"}, 403)
+            if mode == "ask" and act == "rebuild":
+                # Aborting is not asked about: it stops a build this session
+                # was already allowed to start, and a running build nobody
+                # can stop is worse than one nobody approved.
+                acct = users.account_of(self._who()) or {}
+                want = field(req, "instance") or devapp.MAIN
+                r = phone.ask_rebuild(
+                    field(req, "why"), name, want, devapp.pname(name, want),
+                    asker_uid=str(acct.get("uid") or ""),
+                    asker_name=str(acct.get("name") or ""),
+                    asker_admin=users.is_admin(acct))
+                return self._json(r, 400 if r.get("error") else 200)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(self._who())} \
                 and self._readonly(name):

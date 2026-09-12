@@ -836,6 +836,15 @@ def source():
     kind = ("the sandbox VM" if addr.startswith("ssh://")
             else "an unsupported daemon" if addr else "")
     return {"kind": kind, "where": addr,
+            # WHICH node this answer is about, because the page cannot tell.
+            # The status poll carries ONE daemon's verdict (the default
+            # node's) and the manager may be looking at another, so a page
+            # that cannot match the two applies the default node's absence to
+            # every node there is — B109, which was fixed on the client by
+            # comparing this id and then shipped with nothing setting it, so
+            # the comparison quietly fell back to "yes, that is us" and the
+            # bug came back whole.
+            "node": getattr(_node_ctx, "node", None) or _default_node(),
             "strays": stray_map_entries(host_map()[0])}
 
 
@@ -1315,6 +1324,13 @@ def compose_file(project, instance=MAIN):
         if p.is_file():
             return p
     return None
+
+
+def pname(project, instance=MAIN):
+    """What the container is called, for anybody outside this module who has
+    to name one in a sentence — the rebuild request the operator reads, for
+    instance. The underscore one stays the module's own."""
+    return _pname(project, instance)
 
 
 def _pname(project, instance=MAIN):

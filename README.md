@@ -432,11 +432,13 @@ bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
                    suite that takes file names runs only those
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
-bb devapp rebuild  build it and bring it up. Only where the project has handed that
-                   over — the switch is on its row in the Docker tab, beside the
-                   Rebuild it hands over, off by default, and a session that tries
-                   without it is refused with the sentence that names the switch. Up,
-                   Down, Env and Remove stay the operator's whatever it says
+bb devapp rebuild [--why "..."]
+                   build it and bring it up. Only where the project has handed that
+                   over — the dial is on its row in the Docker tab, beside the
+                   Rebuild it hands over, and reads deny (the default, refused with
+                   the sentence that names it), ask (the reason goes to a person and
+                   the command waits for Allow) or auto. Making a container, removing
+                   one, Up, Down and Env stay the operator's whatever it says
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

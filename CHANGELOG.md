@@ -15,7 +15,7 @@
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
-- The Docker tab carries a switch beside each project's Rebuild that hands that one button to its Claude session, off by default: bb devapp rebuild then builds the container and brings it up, while Up, Down, Env and Remove stay yours (8075b95, a479cf2)
+- The Docker tab carries a dial beside each project's Rebuild that hands that one button to its Claude session: deny (the default), ask me, or auto. On ask the session says what it is for and your Allow starts the build. Making a container, removing one, Up, Down and Env stay yours (8075b95, a479cf2, 5505971)
 
 ### Changed
 
@@ -60,13 +60,14 @@
 - The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
 - A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
-- A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
+- A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons, or hides what is running, for a project on a node that is answering (d877327, d264132)
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
 - Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
 - The Docker tab's node picker appears on a fresh page instead of only after something else redrew the tab, so a box with two nodes can choose between them (a479cf2)
 - The Docker tab lists a container under the node its buttons act on: an instance with no node of its own follows its project's, instead of appearing under whichever node was newest (58c4dae)
 - A container on a node whose docker is not answering can be removed from the Docker tab again: the row goes and it says nothing was taken down, instead of a row no button can act on (c4f0596)
 - The Claude may rebuild switch sits on its own line of the Docker row, instead of its label wrapping into three words inside the buttons (c4f0596)
+- A session told it may not rebuild a dev instance is pointed at the Docker tab, where the switch actually is, instead of the Artifacts tab (f57d018)
 
 ## 0.5.0 — 2026-09-10
 
