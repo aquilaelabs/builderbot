@@ -2261,9 +2261,26 @@ def remove_instance(project, instance):
     remade under the same name finding its old env there is the behaviour
     somebody who removed one by mistake would want. Deleting those is a shell
     away and is not something a button here should do quietly.
+
+    **A daemon that does not answer still gives up its row.** Down is the
+    first half of this and needs the daemon; forgetting the record is the
+    second and is this side's own file. Making the whole verb wait on the
+    daemon meant a row on a machine that had gone away could be removed by
+    nobody — the one state a list must not have, because the row is the only
+    control over the thing it names. So when the daemon is unreachable the
+    record goes and what could not be done is said: anything up over there is
+    left up, and the env and the data directory stay where they always do, so
+    the same name sent again adopts all three.
     """
     if instance not in (_load().get(project) or {}):
         return {"error": f"{project} has no instance called {instance}"}
+    got = available_cached()
+    if not got.get("on"):
+        _remove_records(project, instance)
+        return {"ok": True, "forgot": True,
+                "note": "its daemon does not answer, so nothing was taken "
+                        "down: the row is gone and whatever was running there "
+                        "is still running"}
     return _submit(project, instance, "remove")
 
 

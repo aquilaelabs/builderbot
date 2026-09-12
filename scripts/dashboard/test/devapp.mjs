@@ -1593,6 +1593,13 @@ ok(await page.$eval('#bDockerRe', b => !b.disabled),
 ok(await page.$$eval('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]',
                      bs => bs.every(b => !b.disabled)),
    '...as do Edit and Env: a compose file is a file whatever can run it');
+// ...and so does Remove, which is the correction: it is a record on this side
+// with a `down` in front of it as a courtesy. Gated with the daemon buttons,
+// a row on a machine that had gone away could be removed by nobody — and the
+// row is the only control over the thing it names.
+ok(await page.$$eval('.dmtab [data-dm="remove"]',
+                     bs => bs.length > 0 && bs.every(b => !b.disabled)),
+   '...and so does Remove: the record is this side\'s, and a stranded row must go');
 // The rows stay, and stop claiming anything. The tab used to render one error
 // line and no rows at all, throwing away everything it could still honestly
 // say — which is most of it: what an instance is, and what it was built from,
@@ -1647,6 +1654,35 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   // and nothing else — the half the operator already knew (B106).
   ok(/No route to host/.test(blindWhy) && !/ConnectTimeout/.test(blindWhy),
      `...which is the reason and not the command line (${blindWhy.slice(-60)})`);
+  // And a row on a daemon that is not answering can still be got rid of.
+  // Down is the first half of a remove and needs the daemon; forgetting the
+  // record is the second and is this side's own file, so the verb does the
+  // half it can and says which half that was. Asked through the API rather
+  // than the button because the button's confirm() is the browser's.
+  {
+    const mk = await page.evaluate(async () => {
+      const r = await fetch('/api/devapp', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'stranded' }) });
+      return r.json();
+    });
+    ok(!mk.error, `a second instance to strand (${JSON.stringify(mk).slice(0, 80)})`);
+    const rm = await page.evaluate(async () => {
+      const r = await fetch('/api/devapp', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', instance: 'stranded',
+                               action: 'remove' }) });
+      return r.json();
+    });
+    ok(rm.ok && rm.forgot && /does not answer/.test(rm.note || ''),
+       `...and removing it takes the record and says nothing was taken down (${
+         JSON.stringify(rm).slice(0, 90)})`);
+    await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+    await page.waitForFunction(() => dockerList
+      && !(dockerList.instances || []).some(i => i.instance === 'stranded'),
+      null, { timeout: 20000 });
+    ok(true, '...and the row is gone from the manager');
+  }
   rmSync(`${DIR}/dockerstate/version.fail`, { force: true });
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await page.waitForFunction(() => dockerList && !dockerList.blind,
