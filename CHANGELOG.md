@@ -15,7 +15,7 @@
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
-- The Docker tab carries a switch beside each project's Rebuild that hands that one button to its Claude session, off by default: bb devapp rebuild then builds the container and brings it up, while Up, Down, Env and Remove stay yours (8075b95, a479cf2)
+- The Docker tab carries a dial beside each project's Rebuild that hands that one button to its Claude session: deny (the default), ask me, or auto. On ask the session says what it is for and your Allow starts the build. Making a container, removing one, Up, Down and Env stay yours (8075b95, a479cf2, 5505971)
 
 ### Changed
 
