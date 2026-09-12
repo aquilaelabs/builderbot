@@ -1049,8 +1049,9 @@ ok(list[0].id === 'local',
      `a mount the server refused says what the server said and points at the export rule, boot or no boot (${why.slice(0, 60)})`);
   await sessionCensus({ ...SE, up_s: 5000 });
   why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/does not mount the projects share/.test(why) && /add the mount/.test(why) && /Unbind the node/.test(why),
-     `...the same census from a machine up for hours is a missing mount, with the fix and the way out (${why.slice(0, 60)})`);
+  ok(/does not mount the projects share/.test(why) && /add the mount/.test(why)
+     && /nowhere else/.test(why),
+     `...the same census from a machine up for hours is a missing mount, with the fix and the fact that there is nowhere else (${why.slice(0, 60)})`);
   await sessionCensus({ ...SE, up_s: 5000, workspace: true, writable: true });
   const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
   ok(row?.session_at === 'shed' && row?.session_why === '',

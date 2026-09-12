@@ -1686,7 +1686,10 @@ above, in order:
    hours. Path parity does the rest — `/workspace/<project>` means the same
    directory on both sides, which is what lets bb's relayed verbs run on the
    controller in the tree the session is in.
-2. **A project with no node keeps its session here.** Both paths exist, and
+2. **A project with no node has no Claude session (R47, 12 Sep).** The fork
+   below was settled the other way on 2 September and has been settled again:
+   this container carries no Claude Code at all, so there is nothing here for
+   a nodeless project to run. Its SHELL still opens here. Both paths exist, and
    the proxy decides per project: bound to a node whose census reports the
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.

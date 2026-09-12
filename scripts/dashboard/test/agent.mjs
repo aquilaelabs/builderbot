@@ -532,9 +532,12 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       body: JSON.stringify({ project: 'alpha', node: minted.id }) });
     ok(!('credentials' in (await api())),
        'the controller hands out no credential at all — there is none here to hand');
-    let w = await api({ email: 'one@example.invalid', plan: 'max', signed_in: true });
+    // The harness seeds this account as signed in to tester@example.com, the
+    // way a first sign-in would have bound it — so reporting that is a node
+    // agreeing, and reporting anything else is the rule biting.
+    let w = await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
     ok(w.ok && w.gen >= 0, 'a node reports which Anthropic account it signed in as');
-    ok((await api()).email === 'one@example.invalid',
+    ok((await api()).email === 'tester@example.com',
        '...and that is what the account is bound to, for the card to name');
     const two = await api({ email: 'two@example.invalid', signed_in: true });
     ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
@@ -561,10 +564,12 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     ok((await api()).email === '',
        '...and releases the binding, so the next sign-in may be a different account');
     tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
-    // The mark goes with it. A signed-out record left behind makes every
-    // suite after this one read the controller as signed out — which is what
-    // it means now, and is exactly the cascade that reddened four files.
-    rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
+    // The seed goes back. A signed-out record left behind makes every suite
+    // after this one read the box as signed out — which is what it now MEANS
+    // — and that is the cascade that reddened four files twice.
+    writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, JSON.stringify({
+      gen: 9, email: 'tester@example.com', plan: 'max',
+      nodes: { n_fixture: { email: 'tester@example.com', at: 1 } } }));
     await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
@@ -1183,9 +1188,15 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       const root = await term('shell');
       ok(root.status === 502 && /terminal server is not running/.test(root.body),
          'the workspace shell stays on this container (which the harness runs no ttyd for)');
+      // A Claude session runs on a node and nowhere else (R47): this
+      // container carries no Claude Code, so a project with no node is
+      // refused, with the sentence saying what to do rather than opening a
+      // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 502 && /terminal server is not running/.test(nonode.body),
-         'a project with no node keeps its session here');
+      ok(nonode.status === 503 && /has no node/.test(nonode.body)
+         && /enroll one on the Nodes tab/.test(nonode.body),
+         `a project with no node is refused a session, and told why (${
+           (nonode.body || '').slice(0, 60)})`);
       // Bound to a node that cannot take one: the sandbox row reports its
       // session half up on a READ-ONLY projects share, so the button is
       // dead with the reason and the proxy says the same rather than
@@ -1198,17 +1209,25 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
          `a project bound to a node that mounts the share read-only carries the reason and the fix on its row (${(beta?.session_why || '').slice(0, 60)})`);
       const refused = await term('claude:beta');
       ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
-         && /Unbind the node/.test(refused.body),
-         '...and the proxy refuses with the same sentence rather than starting it here');
-      // ...unless asked for here, explicitly: the dead button's menu sends
-      // here=1, and the session runs on this container — which the harness
-      // runs no ttyd for, so the answer is the local proxy's own 502, not
-      // the node's refusal.
+         && /nowhere else/.test(refused.body),
+         '...and one bound to a node that cannot take it is refused with that node\'s reason');
+      // ...and there is no way to ask for it here. `here=1` was the dead
+      // button's escape while this container could still run one; it cannot,
+      // so the flag is gone and the same refusal answers whatever is asked.
       const here = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
                                { headers: auth, redirect: 'manual' });
-      const hereBody = await here.text();
-      ok(here.status === 502 && /terminal server is not running/.test(hereBody),
-         'asked for explicitly, a session on a project whose node refuses opens on this container instead');
+      ok(here.status === 503 && /sessions run on sandbox/.test(await here.text()),
+         '...and asking for it on this container anyway changes nothing');
+      // A shell follows the node for the same reason a session does — the
+      // tree is that machine's mount — so a node that cannot take one takes
+      // neither. That is unchanged; what R47 changed is the NO-node case.
+      const shellRefused = await term('shell:beta');
+      ok(shellRefused.status === 503 && /sessions run on sandbox/.test(shellRefused.body),
+         '...and a shell on that project follows the node, so it is refused too');
+      await api('/api/prefs', { project: 'beta', node: '' });
+      const shellHere = await term('shell:beta');
+      ok(shellHere.status === 502 && /terminal server is not running/.test(shellHere.body),
+         'a shell on a project with NO node still opens here — only Claude moved');
       await api('/api/prefs', { project: 'beta', node: '' });
     }
     const run = await api('/api/v1/jobs', { action: 'run', project: 'alpha',

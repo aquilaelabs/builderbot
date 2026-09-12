@@ -2,9 +2,10 @@
 #
 # PID 1 payload (running as `builder`).
 #
-# Keeps the container alive as a long-lived Claude Code workstation, and owns
-# the graceful shutdown below. CI does not run here any more: every runner is
-# on a node (docs/nodes.md phase 7), so there is nothing here to drain.
+# Keeps the container alive and owns the graceful shutdown below. Neither CI
+# nor a Claude session runs here any more — every runner is on a node
+# (docs/nodes.md phase 7) and so is every session (R47) — so what a stop has
+# to be careful with is the terminals and the emulator.
 #
 set -euo pipefail
 
@@ -26,32 +27,6 @@ RUNNER_PID=""
 # because signaling is instant, and only then wait. Whatever we are killed
 # part-way through, the earlier steps already happened.
 # ---------------------------------------------------------------------------
-
-# Which Claude conversations were live, and which transcript each was writing.
-# The transcripts survive on their own; this records that they were *running*,
-# so the dashboard can offer to resume the one you were actually in rather than
-# merely the most recently touched.
-record_sessions() {
-    local out="${DASHBOARD_STATE:-/config}/last-sessions.json"
-    local sess proj dir latest first=1
-    mkdir -p "$(dirname "$out")" 2>/dev/null || return 0
-    {
-        printf '{\n  "stopped_at": %s,\n  "sessions": {' "$(date +%s)"
-        while read -r sess; do
-            [ -n "$sess" ] || continue
-            proj="${sess#claude-}"
-            dir="$WORKSPACE/$proj"
-            latest="$(ls -1t "$HOME/.claude/projects/${dir//\//-}"/*.jsonl 2>/dev/null | head -1 || true)"
-            [ -n "$latest" ] || continue
-            latest="$(basename "$latest" .jsonl)"
-            [ "$first" -eq 1 ] || printf ','
-            first=0
-            printf '\n    "%s": "%s"' "$proj" "$latest"
-        done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^claude-' || true)
-        [ "$first" -eq 1 ] || printf '\n  '
-        printf '}\n}\n'
-    } > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null || true
-}
 
 # Save the terminal sessions so the next boot can put them back.
 #
@@ -77,9 +52,9 @@ save_sessions() {
         printf '['
         while read -r name dir; do
             [ -n "$name" ] || continue
-            # Neither a Claude conversation nor the sign-in flow's terminal is
-            # a workspace to put back: one ended with the container, the other
-            # is a prompt whose code expired with it.
+            # Neither a Claude conversation nor a sign-in flow is a workspace
+            # to put back, and neither runs here any longer — the filter stays
+            # because a name from an older boot may still be in this tmux.
             case "$name" in claude-*|login) continue ;; esac
             # The names bb-tty makes are all of this shape; anything else is not
             # ours to write into a filename.
@@ -100,24 +75,6 @@ save_sessions() {
     log "shutdown: saved $(grep -c '"name"' "$out" 2>/dev/null || echo 0) terminal sessions"
 }
 
-# The pids each Claude pane is running. tmux reports the pane's pid, which for
-# these sessions is claude itself — it was the session's command.
-claude_pids() {
-    tmux list-panes -a -F '#{session_name} #{pane_pid}' 2>/dev/null \
-        | awk '/^claude-/ {print $2}' || true
-}
-
-# A SIGKILL'd claude still leaves its transcript, which is appended as it goes,
-# but a clean exit closes the turn instead of abandoning it mid-write.
-signal_claude() {
-    local pid
-    while read -r pid; do
-        [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null || true
-    done < <(claude_pids)
-}
-
-claude_running() { [ -n "$(claude_pids)" ]; }
-
 # The emulator launcher execs qemu; either form means an AVD is live and would
 # be left dirty by a hard kill. Deliberately not `adb devices`, which starts an
 # adb server of its own if none is running.
@@ -132,36 +89,25 @@ shutdown() {
     log "shutdown: stopping cleanly (up to ${grace}s; Unraid's DOCKER_TIMEOUT may cut this short)"
 
     # --- instant work, before anything can time us out ---------------------
-    record_sessions
     save_sessions
     pkill -TERM -x ttyd 2>/dev/null || true
     pkill -TERM -f 'dashboard/server\.py' 2>/dev/null || true
 
-    # --- signal every slow thing at once -----------------------------------
-    signal_claude
+    # --- signal the slow thing ---------------------------------------------
     # A killed emulator leaves the AVD dirty and costs a cold boot next time.
     if emulator_running; then
         log "shutdown: asking the emulator to power off"
         ( bb emu stop >/dev/null 2>&1 || true ) &
     fi
 
-    # --- now wait on them together, not one after another ------------------
-    local emu_up cl_up
+    # --- and wait for it ---------------------------------------------------
     while :; do
         waited=$(( $(date +%s) - t0 ))
         if [ "$waited" -ge "$grace" ]; then
             warn "shutdown: ${grace}s budget spent; forcing the rest"
             break
         fi
-        emulator_running && emu_up=1 || emu_up=0
-        # Claude gets a shorter leash than the rest: its work is already on
-        # disk, so waiting past this only delays the emulator.
-        if [ "$waited" -lt "${SHUTDOWN_CLAUDE_GRACE:-10}" ] && claude_running; then
-            cl_up=1
-        else
-            cl_up=0
-        fi
-        if [ "$emu_up" -eq 0 ] && [ "$cl_up" -eq 0 ]; then
+        if ! emulator_running; then
             log "shutdown: everything stopped cleanly after ${waited}s"
             break
         fi
@@ -185,9 +131,8 @@ CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME}}"
 cat <<EOF
 [builderbot] ready.
 
-  Open a Claude Code session:
-      docker exec -it ${CONTAINER_NAME} claude
-  Or a shell as the builder user:
+  A Claude session runs on its project's node, opened from the dashboard.
+  A shell as the builder user:
       docker exec -it ${CONTAINER_NAME} bb shell
 
   Projects are mounted under ${WORKSPACE}:

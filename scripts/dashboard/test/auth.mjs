@@ -322,26 +322,69 @@ ${code}`], { encoding: 'utf8' });
         body: JSON.stringify({ action: 'role', name: 'test', role: 'user' }) })).status === 403,
      '...and prefs being open to everyone did not open the rest of the tab');
 
-  // ---- one Claude session per project, and whose (roadmap #26) -------------
+  // ---- one Claude session per ANTHROPIC account, and whose (roadmap #26) ---
   // bb-tty has always named the session for the project, so there has only
   // ever been one. What accounts made necessary is knowing WHOSE: without it
   // a second person pressing Claude lands inside somebody else's conversation
   // and types into it. Enforced at the /term proxy rather than only in the
   // page, because the ttyd URL is reachable directly.
+  //
+  // The sessions are a NODE's now (R47) and this container has no tmux socket
+  // to ask, so what the rule is made from is the census: the node reports its
+  // session names on every heartbeat, and a name says whose it is. So this
+  // drives a node rather than tmux.
   {
-    const { execFileSync: run } = await import('node:child_process');
-    const tmux = a => run('tmux', a, { encoding: 'utf8',
-      env: { ...process.env, TMUX_TMPDIR: `${DIR}/tmux`, TMUX: '' } });
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+    const napi = async (path, body, hdrs) => (await bare(path, {
+      method: body ? 'POST' : 'GET', headers: { ...H, ...(hdrs || {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
+    const box = await napi('/api/v1/nodes', { action: 'enroll', name: 'talkbox' });
+    const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb',
+                 workspace: true, writable: true, boot: '3.3', up_s: 5000 };
+    // Enrolling with the one-time token mints the node's own, which is what
+    // every call after it carries.
+    const agent = await napi('/api/v1/agent/enroll',
+      { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096,
+        arch: 'x86_64', system: 'linux', session: SE } },
+      { Authorization: 'Bearer ' + box.token });
+    // The session list rides the HEARTBEAT, not the census — nodes.heartbeat
+    // is where it is whitelisted — so this is the shape the agent's poll
+    // sends, with no wait so nothing is held.
+    // ...and its answer is a 204 when there is no job for the node, so the
+    // body is not read.
+    const census = sessions => bare('/api/v1/agent/work', { method: 'POST',
+      headers: { ...H, Authorization: 'Bearer ' + agent.token },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096,
+        mem_used_mb: 512, sessions }, running: [], wait: 0 }) });
+    await census([]);
+    await napi('/api/prefs', { project: 'beta', node: box.id });
+    // Both accounts signed in to ONE Anthropic account, which is the state
+    // the rule is about. Reported the way a node reports it — with a session
+    // token minted for that account, on the node its project is bound to —
+    // rather than by writing the record, so what is under test is the path
+    // that makes one.
+    // WORKSPACE too: the verb checks the project is one, off the filesystem.
+    const token = who => execFileSync('bash',
+      [`${REPO}/scripts/bb`, 'users', 'token', 'beta', who],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`,
+                                 WORKSPACE: `${DIR}/ws` } }).trim();
+    const report = (who, email) => bare('/api/v1/claude-login', { method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+                 Authorization: 'Bearer ' + token(who) },
+      body: JSON.stringify({ email, plan: 'max', signed_in: true }) });
+    ok((await report('test', 'tester@example.com')).status === 200,
+       'a node reports the account it signed this one in as');
+    await report('sharer', 'tester@example.com');
     // No session yet: nobody holds it, and asking is allowed.
     ok((await term(other, 'claude:beta')).status !== 409,
        'with no session running, the project is nobody\'s');
-    // Named the way bb-tty would name it: a prefix is that account's, and the
-    // bare one is the owner's. The name is the only record of whose it is.
-    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
-    const theirSession = `${uidOf('sharer')}~claude-beta`;
-    try { tmux(['kill-session', '-t', theirSession]); } catch { /* none */ }
-    tmux(['new-session', '-d', '-s', theirSession, '-c', '/tmp']);
+    // Named the way bb-tty would name it on the node: every account is
+    // prefixed there. The name is the only record of whose it is.
+    await census([{ name: `${uidOf('sharer')}~claude-beta`, attached: false,
+                    cwd: '/workspace/beta', title: '' }]);
     // The account whose session it is may come back to it...
     ok((await term(other, 'claude:beta')).status !== 409,
        'the account that opened it can reattach');
@@ -349,8 +392,11 @@ ${code}`], { encoding: 'utf8' });
     // worktree of their own, so a second conversation cannot overwrite the
     // first. What IS refused is a second session on one ANTHROPIC account:
     // they would share its limits, and afterwards nothing could say which of
-    // them did what. The harness's claude stub answers with one email for
-    // every home, which is that case exactly.
+    // them did what.
+    const row = await napi('/api/v1/nodes');
+    const seen = (row.nodes || []).find(n => n.id === box.id);
+    console.log('PROBE', JSON.stringify({ tok: !!agent.token,
+      sessions: (seen?.reported || {}).sessions }));
     const refused = await term(owner, 'claude:beta');
     const why = refused.status === 409 ? (await refused.json()).error : '';
     ok(refused.status === 409 && /already has a Claude session on beta/.test(why),
@@ -361,12 +407,23 @@ ${code}`], { encoding: 'utf8' });
     ok((await term(owner, 'sh:1:beta')).status !== 409,
        'a shell on that project is unaffected — shells were never shared');
     // Ending it clears the way, with nothing to sweep: there is no record at
-    // all any more. A session's NAME says whose it is — a prefix is that
-    // account's, the bare one is the owner's — so tmux is the only truth and
-    // it cannot go stale, be orphaned by a deleted account, or disagree.
-    tmux(['kill-session', '-t', theirSession]);
+    // all any more. A session's NAME says whose it is, so the node's own list
+    // is the only truth and it cannot go stale, be orphaned by a deleted
+    // account, or disagree.
+    await census([]);
     ok((await term(owner, 'claude:beta')).status !== 409,
-       'ending the session clears the way, because tmux is the only record');
+       'ending the session clears the way, because the node\'s list is the only record');
+    // ...and beta goes back to having no node, and the second account to
+    // having no login at all, which is how the rest of this file and every
+    // file after it expects to find them. Signed out through the API rather
+    // than by deleting the record: it is cached for twenty seconds, and a
+    // file removed behind the server's back is a state nothing tells it
+    // about.
+    ok((await bare('/api/signout', { method: 'POST', headers: other,
+          body: JSON.stringify({}) })).status === 200,
+       'an account signs its own login out, which releases the binding');
+    await napi('/api/prefs', { project: 'beta', node: '' });
+    await napi('/api/v1/nodes', { action: 'retire', id: box.id });
   }
 
   // ---- a user role has no shell at all (roadmap #27) -----------------------
@@ -584,23 +641,6 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
        '...and reading a conversation is what marks it seen');
 
-    // A session start is announced ONCE. ttyd's client asks for /term/token
-    // and then /term/ws with the same argument, and both arrive before bb-tty
-    // has made the session — which put the same line in the channel twice on
-    // a real phone. Only the upgrade counts, and a window covers the race.
-    // gamma, which nothing else here opens: the suppression window is per
-    // (project, account), so a project another block has already touched
-    // would answer for that rather than for this.
-    const starts = async () => ((await (await chat(owner,
-      { action: 'read', project: 'gamma' })).json()).messages || [])
-      .filter(m => /started a Claude session/.test(m.text)).length;
-    const was = await starts();
-    for (const path of ['/term/token', '/term/ws', '/term/ws'])
-      await bare(path + '?arg=' + encodeURIComponent('claude:gamma'), { headers: owner });
-    const now = await starts();
-    ok(now === was + 1,
-       `starting a session is announced once, not once per request (${was} → ${now})`);
-
     // The prompt relay, driven the way Claude Code drives it.
     const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
     execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
@@ -766,26 +806,34 @@ ${code}`], { encoding: 'utf8' }).trim();
     '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
   ok(true, 'Add makes an account from the tab');
 
-  // Which Claude account each BuilderBot account is signed in as, read from
-  // the login Claude Code keeps in its home — and two on one login said out
-  // loud, since Anthropic's terms allow one person per Claude account.
+  // Which Anthropic account each BuilderBot account is signed in as — from
+  // the record a node reported, since no login lives here (R47) — and two on
+  // one login said out loud, since Anthropic's terms allow one person per
+  // Claude account.
   rs = await rows();
-  ok(rs.every(r => /no Claude login yet/.test(r.text)),
+  ok(rs.filter(r => r.name !== 'test').every(r => /no Claude login yet/.test(r.text)),
      'a row says when its account has no Claude login yet');
   const uidOf = (await (await bare('/api/users', { headers: {
       Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json())
     .users.find(u => u.name === 'tabmade').uid;
-  mkdirSync(`${DIR}/home/users/${uidOf}`, { recursive: true });
-  for (const h of [`${DIR}/home`, `${DIR}/home/users/${uidOf}`])
-    writeFileSync(`${h}/.claude.json`, JSON.stringify({ oauthAccount: { emailAddress: 'one@example.invalid' } }));
+  const grant = (home, email) => {
+    mkdirSync(`${home}/.claude`, { recursive: true });
+    writeFileSync(`${home}/.claude/.bb-grant.json`, JSON.stringify({
+      gen: 1, email, plan: 'max', nodes: { n_fixture: { email, at: 1 } } }));
+  };
+  grant(`${DIR}/home/users/${uidOf}`, 'one@example.invalid');
+  grant(`${DIR}/home`, 'one@example.invalid');
   await page.evaluate(() => loadUsers());
   await page.waitForFunction(() => /signed in to Claude as one@example.invalid/.test(
-    document.querySelector('.userstab .urow[data-user="tabmade"]')?.textContent || ''), null, { timeout: 15000 });
+    document.querySelector('.userstab .urow[data-user="tabmade"]')?.textContent || ''), null, { timeout: 25000 });
   rs = await rows();
   ok(/same Claude account as tabmade/.test(rs.find(r => r.name === 'test').text)
      && /same Claude account as test/.test(rs.find(r => r.name === 'tabmade').text),
      'two BuilderBot accounts on one Claude login are told so on both rows');
-  for (const h of [`${DIR}/home`, `${DIR}/home/users/${uidOf}`]) rmSync(`${h}/.claude.json`, { force: true });
+  rmSync(`${DIR}/home/users/${uidOf}/.claude/.bb-grant.json`, { force: true });
+  // The owner's seed goes back: every file after this one reads the box as
+  // signed in, and a blank record there ghosts every Claude button.
+  grant(`${DIR}/home`, 'tester@example.com');
 
   // ...and giving it a project, which is the whole point of the row.
   // Everything about an account is edited in one dialog and saved together:

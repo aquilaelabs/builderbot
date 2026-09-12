@@ -163,8 +163,8 @@ nothing to a running container until you edit that setting on it yourself.
 ### Give the container time to stop
 
 Stopping from the Docker page sends SIGTERM and then SIGKILL. BuilderBot uses
-that window to power the emulator down instead of yanking it, end Claude
-sessions cleanly and record which conversation each project was in.
+that window to power the emulator down instead of yanking it, and to save the
+terminals so the next boot can put them back.
 
 **Unraid gives it ten seconds by default, and that is often not enough.**
 Unraid always passes the timeout explicitly when it stops a container —
@@ -181,11 +181,14 @@ What the extra seconds buy, in the order the container spends them:
 | | why it wants the time |
 |---|---|
 | Emulator | `adb emu kill` powers the AVD down; a hard kill leaves it dirty and costs a cold boot next time |
-| Claude sessions | exit having closed the turn rather than being cut off mid-write |
 
-Recording which conversation was open costs milliseconds and happens first, so
-it survives even a ten-second stop. A stop tries for up to 90 seconds, which caps how long
-the container will wait in total, if you would rather it gave up sooner.
+Saving the terminals costs milliseconds and happens first, so it survives even
+a ten-second stop. A stop tries for up to 90 seconds, which caps how long the
+container will wait in total, if you would rather it gave up sooner.
+
+**Claude sessions are not affected by any of this.** They run on their
+projects' nodes, in tmux there, and a controller that stops does not touch
+them — the dashboard simply cannot reach them until it is back.
 
 ### Stopping cleanly before an update
 
@@ -194,10 +197,9 @@ array, and sessions, memory files, logins and AVDs are all on the home volume.
 Uncommitted work is not at risk from a restart.
 
 **The container handles the rest itself** — see *Give the container time to
-stop* above. Stopping it powers the emulator down, ends Claude sessions
-cleanly and records which conversation each project was in, all on SIGTERM.
-There is no checklist to run first. CI is unaffected: every runner is on a
-node, and a node does not stop with this container.
+stop* above. Stopping it powers the emulator down and saves the terminals, on
+SIGTERM. There is no checklist to run first. Sessions and CI are unaffected:
+both are on nodes, and a node does not stop with this container.
 
 From a terminal rather than the Unraid UI, pass a timeout — Docker's own
 default is 10 seconds:
@@ -350,9 +352,8 @@ shows what the desktop has open. **Terminals survive a restart of the container*
 — the shutdown saves each one's directory and the last screenful of its
 scrollback under the Config path in `sessions/`, and startup puts them back.
 What was *running* in them does not come back; that went down with the
-container. Claude sessions are not restored either, because the conversation
-ended with it — the transcript is kept, and the project's Claude button offers
-to resume it.
+container. A Claude session is not the container's to lose: it is in its
+node's tmux and is still there when the dashboard comes back.
 
 **Both ports have to be reachable from your browser.** The page is served by
 one and the terminal websocket by the other; the terminal is a separate service
@@ -407,8 +408,9 @@ the `image:`/`build:` lines in the compose file as commented.
 ## Shielding secrets (PAT + SSH keys) from Claude sessions
 
 Anything set as a container *variable* (template field / compose `environment:`)
-is visible to every process inside — including Claude, and so is anything in
-`/home/builder`. The shielded path for both kinds of credential is one
+is visible to every process inside — including every shell opened here and
+everything a session asks this container to run on its behalf — and so is
+anything in `/home/builder`. The shielded path for both kinds of credential is one
 root-only folder:
 
 1. Create it on the host and drop your secrets in:
