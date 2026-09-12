@@ -60,6 +60,7 @@
 - A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
 - A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
+- Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
 
 ## 0.5.0 — 2026-09-10
 
