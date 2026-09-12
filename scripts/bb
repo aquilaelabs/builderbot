@@ -5310,8 +5310,48 @@ cmd_doctor() {
     check "git identity configured"   git config --get user.email
     # No -f here: we only care that the connection and TLS handshake work.
     # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
-    check "anthropic api reachable"   curl -sS -m 10 -o /dev/null https://api.anthropic.com/
+    #
+    # Anthropic's is asked on a NODE and not here: this container carries no
+    # Claude Code and calls that API for nothing (R47), so on a controller it
+    # was a green tick about a thing that never happens — and the machine
+    # whose reachability actually decides whether a session works was not
+    # being asked at all. GitHub's stays on both: the controller pushes.
+    if on_node; then
+        check "anthropic api reachable" curl -sS -m 10 -o /dev/null https://api.anthropic.com/
+    fi
     check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
+    # ...and the question this box exists to answer: can a session run at all?
+    # A Claude session runs on a node and nowhere else now, so a controller
+    # with no node able to take one can start nothing — which is worth saying
+    # here rather than leaving somebody to find it when a button refuses.
+    if ! on_node; then
+        DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - \
+            "$(dirname "$(readlink -f "$0")")/dashboard/nodes.py" <<'NODEPY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
+nodes = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nodes)
+try:
+    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    rows = nodes.node_list()
+except Exception:                                                # noqa: BLE001
+    print("  [skip] no node store yet — the dashboard creates it on boot")
+    raise SystemExit(0)
+# The same test the sign-in and the terminal proxy make, in the same words:
+# an agent node, online, still dialing in, reporting a session half that is
+# up. Anything less cannot hold a session or a login.
+live = [n["name"] for n in rows
+        if n["kind"] == "agent" and n["state"] == "online" and n.get("live") is not False
+        and ((n.get("reported") or {}).get("session") or {}).get("up")]
+if live:
+    print(f"  [ok]   {len(live)} node{'' if len(live) == 1 else 's'} can run a session "
+          f"({', '.join(live[:4])})")
+else:
+    print("  [warn] no node can run a session — Claude runs on one and this")
+    print("         container carries none. Enroll one on the Nodes tab, or")
+    print("         wait for one to come back")
+NODEPY
+    fi
     # The daemon the dashboard's dev instances are built and run on: the
     # sandbox VM a node record names. This used to report only a mounted socket,
     # as "docker socket not mounted" — true, and misleading, because it reads
@@ -5455,15 +5495,36 @@ cmd_doctor() {
             printf '         diagnose with: ssh -vT git@github.com\n'
             ok=1
         fi
+    elif on_node; then
+        # By design, and said so rather than left reading as a gap: no
+        # credential of any kind lives on a node, which is why pushing there
+        # goes through the controller.
+        printf '  [skip] no ssh key here, which is the design — a node holds no credential\n'
     else
         printf '  [skip] no ssh key (agent empty, nothing in ~/.ssh)\n'
     fi
-    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    # The login, on the machine that holds one. This used to pass on the mere
+    # EXISTENCE of ~/.claude, which since R47 is where the controller keeps
+    # its record of which Anthropic account an account is bound to — so a
+    # container carrying no Claude Code at all reported "Claude Code
+    # credentials present in /home/builder", which was three kinds of wrong.
+    # The credential is one file, and it lives on a node.
+    if ! on_node; then
+        printf '  [skip] no Claude login here — a session runs on a node, which keeps\n'
+        printf '         its own. The card names the account they report being signed in as\n'
+    elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         printf '  [ok]   ANTHROPIC_API_KEY set\n'
-    elif [ -f "$HOME/.claude.json" ] || [ -d "$HOME/.claude" ]; then
-        printf '  [ok]   Claude Code credentials present in %s\n' "$HOME"
+    elif [ -f "$HOME/.claude/.credentials.json" ]; then
+        printf '  [ok]   signed in to Claude on this machine%s\n' \
+            "$(python3 -c 'import json,os,sys
+try:
+    e = (json.load(open(os.path.expanduser("~/.claude.json"))).get("oauthAccount") or {}).get("emailAddress")
+except Exception:
+    e = ""
+sys.stdout.write(f" ({e})" if e else "")' 2>/dev/null)"
     else
-        printf '  [warn] no ANTHROPIC_API_KEY and no saved login — run `bb login`\n'
+        printf '  [warn] not signed in to Claude on this machine — the dashboard\n'
+        printf '         Sign in runs the flow here, or `bb login` in this shell\n'
     fi
     return $ok
 }
