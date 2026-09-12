@@ -48,6 +48,7 @@
 - Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
 - Editing a changelog entry, a roadmap item, a bug's title or any other sentence on a phone now shows the whole line in a box that grows to fit it, instead of thirty characters of it in a one-line field (e9595bf)
 - bb shot signs in to the dashboard rather than only sending a header, so a screenshot of a page with a terminal in it shows the terminal instead of a reconnect prompt (0662979)
+- The Sign in button says why a sign-in was refused instead of sitting on Starting, and asks which node when there is more than one that could run it (a424adc)
 
 ## 0.5.0 — 2026-09-10
 
