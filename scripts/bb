@@ -473,10 +473,16 @@ LISTPY
     # below, which runs in this terminal — this machine signs itself in and
     # keeps the grant it alone refreshes (R47).
     if on_node; then
-        claude_login_check --loud || true
+        # --why, not --loud: the quiet check still obeys a sign-out and still
+        # says a refusal worth repeating, but its "not signed in — the Doctor
+        # card's sign-in runs the flow here" line is exactly the wrong advice
+        # to print one line before running that flow here. Somebody who typed
+        # this, or opened a session on a node that has no login, is already in
+        # the right place.
+        claude_login_check --why || true
         [ "$(claude auth status --json 2>/dev/null \
              | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
-        log "sign in here — this machine keeps its own login"
+        log "sign in here — this machine keeps its own login, and no other machine's travels"
     fi
     # And on the controller there is nothing to run: Claude Code is installed
     # where sessions are, which is a node (R47). The dashboard's Sign in
@@ -492,6 +498,12 @@ LISTPY
     else
         claude /login || claude
     fi
+    # ...and tell the controller who this machine is now signed in as, which
+    # is what makes the card name it. Only --flow did this, so signing in
+    # from a terminal left the card stale until a hook or the agent's own
+    # clock caught up — minutes of a dashboard saying the opposite of the
+    # machine. A no-op on a controller, where the check returns at once.
+    claude_login_check --loud || true
 }
 
 
