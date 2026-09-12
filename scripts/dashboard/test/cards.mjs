@@ -2,7 +2,7 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -352,6 +352,62 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'my-app'),
                      { timeout: 20000 });
 }
+// ---- the row's session line: who is here, or why nobody can be -------------
+// Never WHICH MACHINE. That is on the project's settings, it is the same for
+// every session on the project, and a row that said it spent a line on
+// something nobody was asking. What the row owes instead is a red line when
+// the Claude button is dead and the project is not locked, since a ghosted
+// button with no reason is the thing somebody stares at.
+//
+// Planted rather than arranged: the fixture has no node, and the four refusals
+// worth drawing (offline, no session half, no share, read-only share) are
+// nodes.mjs's to produce. This is about what the ROW does with one.
+{
+  await holdPoll(page);
+  const line = () => page.$eval('#projects .row:has(.name:text-is("alpha"))',
+    r => (r.querySelector('.sessline')?.textContent || '').trim());
+  // WHO is here wins the line, and the fixture has a session open on alpha —
+  // so the half being tested here only ever draws with nobody in it. Put back
+  // at the end rather than left cleared: the next block reads this fixture.
+  const were = await page.evaluate(() => {
+    const had = state.claude_with; state.claude_with = {}; return had; });
+  const plant = (patch) => page.evaluate(p2 => {
+    Object.assign(state.projects.find(x => x.name === 'alpha'), p2);
+    drawProjects(state.projects);
+  }, patch);
+  await plant({ session_at: 'shed', session_why: '', locked: false });
+  ok(await line() === '', 'a project whose node takes sessions says nothing about which machine');
+  await plant({ session_at: 'shed', locked: false,
+                session_why: "alpha's sessions run on shed, which is offline. Sessions run on a "
+                           + 'node and nowhere else — this container carries no Claude Code — so '
+                           + 'the way on is that machine coming back, or another node in the '
+                           + "project's settings." });
+  ok(/offline/.test(await line()),
+     `a node that cannot take one puts the reason on the row (${await line()})`);
+  ok((await line()).split(' ').length <= 14 && !/Sessions run on a node and nowhere else/.test(await line()),
+     '...the first clause of it, not the paragraph — the rest is on the button');
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline',
+                      e => e.classList.contains('bad')),
+     '...in red, because a dead button with no reason is what somebody stares at');
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
+       b => /nowhere else/.test(b.dataset.tip || b.title || '')),
+     '...and the whole of it, fix included, is on the ghosted button — a tap on a phone, since these rows are tipified');
+  // A no-node project is the same answer: it was silent before, which left
+  // the operator looking at a ghosted button with nothing anywhere saying why.
+  await plant({ session_at: '', locked: false,
+                session_why: 'alpha has no node, and a Claude session runs on one — pick one '
+                           + "in the project's settings, or enroll one on the Nodes tab" });
+  ok(/has no node/.test(await line()) && !/pick one/.test(await line()),
+     `a project with no node says so too, without the instruction (${await line()})`);
+  // ...and LOCKED is the one case where no session is the point rather than a
+  // fault, so it stays quiet.
+  await plant({ locked: true });
+  ok(await line() === '', 'a locked project says nothing: no session there is the decision, not a fault');
+  await plant({ locked: false, session_at: '', session_why: '' });
+  await page.evaluate(w => { state.claude_with = w; drawProjects(state.projects); }, were);
+  await freePoll(page);
+}
+
 await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                             if (t) hideTab(t.id); });
 
