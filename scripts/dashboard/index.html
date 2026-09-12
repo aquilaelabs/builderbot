@@ -4136,9 +4136,18 @@ const TABKINDS = {
               open: () => loadPackages() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
+  // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from
+  // the node list, and that list arrives on its own schedule. Watching only
+  // dockerRev meant a fresh page whose first tab was this one drew before
+  // the list landed and never drew again — so a box with two nodes showed no
+  // picker at all until something else happened to repaint it. And the list
+  // is asked for on open for the same reason, rather than only by the Nodes
+  // tab happening to have been visited.
   docker:   { multi: false, label: () => "Docker",
-              render: (i) => renderDockerInto(i), live: () => dockerRev,
-              open: () => { if (!dockerList) loadDocker(); } },
+              render: (i) => renderDockerInto(i),
+              live: () => `${dockerRev}/${nodesRev}`,
+              open: () => { if (!dockerList) loadDocker();
+                            if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
               render: (i) => renderNodesInto(i), live: () => nodesRev,
               open: () => loadNodes() },
@@ -8516,6 +8525,13 @@ for the rest of the work"
             busy ? "disabled" : ""}
             title="take it down and drop it from this list. Its env and its data
 directory stay, so remaking it under the same name finds them">Remove</button>`}
+        ${d.source === "file" || !mayDocker() ? "" : `<label class="ndcap dmclaude"
+          title="hand Rebuild to a Claude session in ${esc(d.project)}: it can
+build this from the project's codebase and bring it up, which is the loop for a
+project whose work IS the container. Up, Down, Env and Remove stay yours. It is
+the PROJECT's setting, so it covers every instance of ${esc(d.project)}.">
+          <input type="checkbox" data-dmclaude="${esc(d.project)}"${
+            devClaudeOn(d.project) ? " checked" : ""}> Claude may rebuild</label>`}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", "",
@@ -8631,6 +8647,22 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
+  });
+  // Whose Rebuild it is. Written at once, like the row's other controls, and
+  // the answer redraws every row of that project — it is the project's
+  // setting, not the instance's.
+  el.querySelectorAll("[data-dmclaude]").forEach(box => box.onchange = async () => {
+    const project = box.dataset.dmclaude, on = box.checked;
+    box.disabled = true;
+    const r = await fetch("/api/prefs", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project, devbuild: on})}).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
+    box.disabled = false;
+    if (j.error){ box.checked = !on; notify(j.error, true); return; }
+    notify(on ? `a session in ${project} may rebuild its containers`
+              : `rebuilding ${project}'s containers is yours again`);
+    refresh();
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
@@ -11893,13 +11925,6 @@ $("todoRevert").onclick = revertNotebook;
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports — pick one">Open</button>` : ""}
-          <label class="ndcap" id="devClaudeWrap"
-            title="a session in this project may rebuild this container and bring it
-up — the loop for a project whose work is the container itself. Off, the
-buttons here stay yours and a session is told to ask. It runs this project's
-own Dockerfile on the node's daemon, which is the same trust as its build.">
-            <input type="checkbox" id="devClaude"${
-              devClaudeOn(project) ? " checked" : ""}> Claude may rebuild</label>
           <button type="button" id="devSend" class="primary"
             title="name a container built from this project and manage it there — a
 project can have several"
@@ -11981,24 +12006,6 @@ project can have several"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
-    // Written at once, like every other control on this row: the staged
-    // half of this tab is the version, because a bump is a commit. A switch
-    // over who may press Rebuild is not, and a switch that needed Save
-    // would be a switch people leave half-set.
-    const devCl = list.querySelector("#devClaude");
-    if (devCl) devCl.onchange = async () => {
-      const on = devCl.checked;
-      devCl.disabled = true;
-      const r = await fetch("/api/prefs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devbuild: on})}).catch(() => null);
-      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
-      devCl.disabled = false;
-      if (j.error){ devCl.checked = !on; notify(j.error, true); return; }
-      notify(on ? `a session in ${project} may rebuild its dev instance`
-                : `rebuilding ${project}'s dev instance is yours again`);
-      refresh();
-    };
     // THIS project's daemon, which is its node's and need not be the default
     // one the poll asked about. The row above already draws the reason when
     // there is one, so what is passed here is the same answer the row is

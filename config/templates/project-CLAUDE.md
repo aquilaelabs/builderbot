@@ -517,8 +517,9 @@ project's compose app and brings it up and down from there. **Up, Down and
 Env are the operator's.** If the instance's env needs filling in, say so and
 let them press the buttons; the env file lives outside the repo on purpose.
 
-**Rebuild can be handed to you, per project**, with the switch on that row.
-It is off unless somebody turned it on:
+**Rebuild can be handed to you, per project**, with the switch on that
+project's row in the **Docker** tab, beside the Rebuild it hands over. It is
+off unless somebody turned it on:
 
 ```bash
 bb devapp              what it was built from, whether it is running, and
