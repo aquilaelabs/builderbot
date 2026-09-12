@@ -751,6 +751,31 @@ def _bump():
     _rev += 1
 
 
+def _why_not(out):
+    """The REASON out of a failed docker call, which docker buries.
+
+    Its connect error leads with the URL it tried and the whole ssh command
+    line, and puts what actually went wrong at the very end after `stderr=`:
+
+        error during connect: Get "http://docker.example.com/v1.56/version":
+        command [ssh -l bb …] has exited with exit status 255, make sure the
+        URL is valid … : stderr=ssh: connect to host 10.0.0.9 port 22: No
+        route to host
+
+    Cut to 120 characters from the FRONT, as this was, the row said "command
+    [ssh -l bb -o ConnectTimeout=30 -T -- 10.0.0" and stopped: the operator
+    was shown the part they already knew and none of the part that says what
+    to fix. So the tail is what survives, and ssh's own words win outright
+    when they are there.
+    """
+    s = " ".join((out or "").split())
+    if not s:
+        return "no daemon"
+    if "stderr=" in s:
+        s = s.split("stderr=")[-1].strip() or s
+    return s if len(s) <= 200 else "…" + s[-200:]
+
+
 def source():
     """The daemon being talked to, for the manager to name on the page.
 
@@ -792,8 +817,7 @@ def available():
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
-                "why": "docker does not answer: "
-                       + (r["out"] or "no daemon").strip()[:120]} | source()
+                "why": "docker does not answer: " + _why_not(r["out"])} | source()
     # It answers Docker. That is not the same as being the sandbox, and the
     # difference is the whole safety argument: a container run here is root on
     # the far side, which is fine on a box whose job is being wrecked and
@@ -2901,6 +2925,12 @@ def state(project, instance=MAIN):
         built = {k: v for k, v in built.items()
                  if k not in ("rev", "at", "await_env", "building_since")}
     out = {"compose": True, "available": a["on"], "why": a["why"],
+           # WHICH machine that was about, which the row could not say. An
+           # instance is pinned to the node it was made on and a project
+           # repointed since keeps it, so "the node I pointed it at" and the
+           # machine this actually asked are not always the same one — and
+           # when the answer is a refusal, that is the first thing to know.
+           "where": a.get("where", ""),
            # The compose project name, which is what actually groups the
            # containers, the network and the volumes. Not the container name:
            # a compose file may set container_name to anything it likes, and

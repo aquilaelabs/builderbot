@@ -498,7 +498,12 @@ case "$1" in
   # A daemon that is not there at all — the VM powered off, or an address that
   # is not a sandbox VM. availability is what the page gates every Docker
   # control on, so the suite has to be able to take it away.
-  version) [ -f "$ST/version.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
+  # Shaped like docker's real connect error, which leads with the command it
+  # ran and hides the reason at the end after `stderr=` — the shape the row
+  # used to cut the reason off (B106).
+  version) [ -f "$ST/version.fail" ] && {
+      echo 'error during connect: Get "http://docker.example.com/v1.56/version": command [ssh -l bb -o ConnectTimeout=30 -T -- 10.0.0.9 docker system dial-stdio] has exited with exit status 255, make sure the URL is valid, and Docker 18.09 or later is installed on the remote host: stderr=ssh: connect to host 10.0.0.9 port 22: No route to host'
+      exit 1; }
     echo "99.stub"; exit 0 ;;
   # What the daemon says it is. The provisioner's label lives here, and this is
   # how BuilderBot tells the sandbox from any other machine that answers

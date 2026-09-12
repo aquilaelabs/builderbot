@@ -55,6 +55,8 @@
 - A node's toolchains are found again: bb packages read one directory too deep on a node, so the JDK, Playwright, Flutter and the rest all read as not installed while they were sitting there (5743b4a)
 - The doctor card names your Claude login without waiting for a session to run: each node says what it is signed in as on its own heartbeat, so signing out and back in shows up on its own (5743b4a)
 - The doctor card stops claiming a Claude login on the controller, which has none, and says instead whether any node can run a session (8b60d92)
+- The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
+- Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
 
 ## 0.5.0 — 2026-09-10
 
