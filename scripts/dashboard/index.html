@@ -11827,7 +11827,12 @@ $("todoRevert").onclick = revertNotebook;
       + items.map(x => `<div class="dim ${cls} li">${esc(x)}</div>`).join("");
     const devHtml = !da.compose ? "" : !da.available ? `
       <div class="artrow job"><span class="pill">docker</span>
-        <span class="grow">${esc(da.why || "docker is not reachable")}</span>
+        <span class="grow">${esc(da.why || "docker is not reachable")}${
+          // The machine it asked, because an instance stays on the node it
+          // was made on: "it could not find the daemon on the node I pointed
+          // it at" is the same sentence whether it looked there or somewhere
+          // else, and only this tells the two apart.
+          da.where ? ` <span class="dim">(${esc(da.where)})</span>` : ""}</span>
       </div>` : `
       <div class="artrow" id="devRow">
         <div class="grow">

@@ -1057,6 +1057,24 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
                       + "again with a new token.")) return;
+      // An agent update RESTARTS the agent, and until B107 is fixed that
+      // takes every session on the node with it: the ttyds, their tmux
+      // servers and the Claude processes inside them are all in the agent's
+      // systemd cgroup, so systemd's default kill reaches the lot. Said
+      // before the press, naming what is open there, because the operator
+      // who pressed this lost two conversations mid-work with no warning.
+      if (act === "update-agent"){
+        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        if (here.length && !confirm(
+              `Update the agent on ${
+                (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
+              + `It restarts the agent, which ends the ${here.length} session`
+              + `${here.length === 1 ? "" : "s"} open there`
+              + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
+              + `. Their transcripts are kept and the tabs reopen, but whatever `
+              + `they were running stops.`)) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "

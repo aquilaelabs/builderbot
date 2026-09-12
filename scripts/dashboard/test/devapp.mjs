@@ -1604,9 +1604,15 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
     && document.querySelectorAll('.dmtab .row[data-inst]').length > 0,
     null, { timeout: 20000 });
   ok(true, '...and the manager still lists what is on record');
-  ok(/does not answer|not answering/.test(
-       await page.$eval('.dmtab .empty', e => e.textContent)),
+  const blindWhy = await page.$eval('.dmtab .empty', e => e.textContent);
+  ok(/does not answer|not answering/.test(blindWhy),
      '...with the daemon\'s own words for why it is all greyed');
+  // ...and the words that say what to DO. Docker's connect error leads with
+  // the ssh command it ran and hides the reason at the very end, so cutting
+  // it from the front left the row saying "command [ssh -l bb -o Connect…"
+  // and nothing else — the half the operator already knew (B106).
+  ok(/No route to host/.test(blindWhy) && !/ConnectTimeout/.test(blindWhy),
+     `...which is the reason and not the command line (${blindWhy.slice(-60)})`);
   rmSync(`${DIR}/dockerstate/version.fail`, { force: true });
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await page.waitForFunction(() => dockerList && !dockerList.blind,
