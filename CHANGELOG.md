@@ -18,6 +18,7 @@
 - The Docker tab carries a dial beside each project's Rebuild that hands that one button to its Claude session: deny (the default), ask me, or auto. On ask the session says what it is for and your Allow starts the build. Making a container, removing one, Up, Down and Env stay yours (8075b95, a479cf2, 5505971)
 - The companion app can change a project's model and effort, and end the open session so the next one starts on them, instead of that being a desk-only setting (49db1e4, c84b1ca)
 - The Git view merges a branch itself: Merge on a branch row brings it into the one the tree is on, instead of handing the job to Claude (7210eff)
+- The companion app installs its own newer build: when it is behind the dashboard, Install it downloads the APK and hands it to Android, instead of sending you to a desktop for the file (474f3e4)
 
 ### Changed
 
