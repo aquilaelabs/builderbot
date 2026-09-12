@@ -130,6 +130,11 @@ bb — BuilderBot helper
   bb build               the project's build command, on its node (settings dialog)
   bb test [ARGS]         the project's test command, on its node; ARGS are
                          appended to it, to narrow a run to some of it
+  bb devapp              this project's dev instance: built from what, running,
+                         and whether its daemon answers
+  bb devapp rebuild      build it and bring it up — only where the project's
+                         docker row has handed that over; refused with the
+                         sentence that names the switch otherwise
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -3632,6 +3637,132 @@ PY
     esac
 }
 
+# bb devapp — this project's dev instance, and the one action a session may
+# be given over it.
+#
+# The dashboard's docker row is the operator's: Up, Down, Env and the manager
+# are theirs, and a session is told to ask. REBUILD is the exception a
+# project can hand over, with the switch on that row, because a project whose
+# work IS the container has a loop that a session cannot close otherwise —
+# change it, rebuild it, look at what it did. Off by default and refused with
+# the sentence that names the switch, so a session that tries learns where
+# the decision lives rather than guessing.
+#
+# The daemon is the controller's connection to the node, so this goes through
+# the API like `bb root` and `bb phone` rather than running docker anywhere.
+cmd_devapp() {
+    local sub="${1:-status}" auth proj
+    auth="$(bb_auth_or_die)"
+    proj="${BB_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
+    fi
+    case "$sub" in
+        status|state)
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
+                               "action": "state"},
+               auth=os.environ["BB_DEV_AUTH"])
+if d.get("error"):
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+st = d.get("state") if isinstance(d.get("state"), dict) else d
+if not st.get("compose"):
+    print("no compose file here, so there is no dev instance")
+    raise SystemExit(0)
+print(f"  {'instance':<12} {st.get('name') or '-'}")
+print(f"  {'running':<12} {'yes' if st.get('running') else 'no'}")
+print(f"  {'daemon':<12} " + ("answering" if st.get("available")
+                              else (st.get("why") or "not reachable")))
+if st.get("built_rev"):
+    print(f"  {'built from':<12} {st['built_rev']}")
+elif st.get("needs_build"):
+    print(f"  {'built from':<12} nothing here yet")
+miss = st.get("missing_env") or []
+if miss:
+    print(f"  {'env':<12} missing " + ", ".join(miss[:6])
+          + (" …" if len(miss) > 6 else "") + " — the operator fills these in (Env)")
+job = st.get("job") or {}
+if job.get("running"):
+    print(f"  {'job':<12} {job.get('step') or 'working'}")
+elif job.get("error"):
+    print(f"  {'job':<12} last one failed: {str(job['error'])[:120]}")
+PY
+            ;;
+        rebuild)
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj = os.environ["BB_DEV_PROJECT"]
+auth = os.environ["BB_DEV_AUTH"]
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj}, auth=auth)  # noqa: E731
+
+def look():
+    d = post({"action": "state"})
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    return d.get("state") if isinstance(d.get("state"), dict) else d
+
+
+# What it was built from before, because that is the only signal that says a
+# build HAPPENED. A job that succeeded is not news to the row — job_view
+# returns nothing for one — so "no job running" reads the same three seconds
+# before it starts and the moment after it finishes, and taking either for
+# success is how this said "rebuilt" over a build that had not begun.
+was = (look().get("built_rev") or "")
+r = post({"action": "rebuild"})
+if r.get("error"):
+    # The refusal names the switch, so it is printed as it came.
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+print("[builderbot] rebuilding — it runs on the node's daemon and takes minutes",
+      file=sys.stderr)
+# Polled rather than streamed: the job's log belongs to the row, and what a
+# session needs is the step while it waits and the verdict at the end. A
+# build that pulls can take half an hour, which is the cap here.
+last, seen, waited = "", False, 0.0
+while waited < 3600:
+    time.sleep(3)
+    waited += 3
+    st = look()
+    job = st.get("job") or {}
+    step = str(job.get("step") or "")
+    if step and step != last:
+        print(f"  {step}", file=sys.stderr)
+        last = step
+    if job.get("running"):
+        seen = True
+        continue
+    if job.get("error"):
+        tail = str(job.get("log") or "")[-1200:]
+        if tail:
+            print(tail)
+        sys.exit(f"[builderbot] ERROR: the rebuild failed: {str(job['error'])[:200]}")
+    if seen or (st.get("built_rev") or "") != was:
+        print(f"[builderbot] rebuilt {st.get('built_rev') or ''}; "
+              f"{st.get('name') or 'the instance'} is "
+              + ("up" if st.get("running")
+                 else "built and not running" if st.get("await_env")
+                 else "not running"))
+        if st.get("await_env"):
+            print("[builderbot] its env is not filled in, which is the operator's: "
+                  "Env on the docker row", file=sys.stderr)
+        raise SystemExit(0)
+    if waited >= 21:
+        sys.exit("[builderbot] ERROR: no build appeared within twenty seconds — "
+                 "the docker row on the Artifacts tab has what happened")
+sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — the row on the Artifacts tab has it")
+PY
+            ;;
+        *) die "usage: bb devapp [status|rebuild]" ;;
+    esac
+}
+
 cmd_findings_history() {
     local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/findings.py"
@@ -6006,6 +6137,7 @@ case "${1:-help}" in
     jobs)  shift; cmd_jobs "$@" ;;
     run)   shift; cmd_run "$@" ;;
     git)   shift; cmd_git "$@" ;;
+    devapp) shift; cmd_devapp "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;

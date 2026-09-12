@@ -125,7 +125,15 @@ def _clean(rec):
                      for k in GATE_KINDS},
             # Ask by default: a project nobody has decided about behaves the
             # way Claude Code does out of the box.
-            "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask")}
+            "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask"),
+            # Whether a SESSION may rebuild this project's dev instance.
+            # Off by default, and it is a real grant rather than a nicety: a
+            # rebuild runs the project's own Dockerfile and brings the
+            # container up, on the node's daemon. On for a project whose
+            # whole loop is "change it, rebuild it, look at it", which is
+            # what the operator asked for; off for everything else, where
+            # the buttons stay the operator's.
+            "devbuild": bool(rec.get("devbuild"))}
 
 
 def get(project):
@@ -215,7 +223,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              edits=None, workspace=None):
+              edits=None, devbuild=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -261,13 +269,15 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
             if edits not in EDIT_MODES:
                 return {"error": f"edits is one of {', '.join(EDIT_MODES)}, not {edits}"}
             cur["edits"] = edits
+        if devbuild is not None:
+            cur["devbuild"] = bool(devbuild)
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["edits"] != "ask"
+                or cur["edits"] != "ask" or cur["devbuild"]
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose — _clean puts the defaults
@@ -279,6 +289,8 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 rec.pop("gitpol", None)
             if cur["edits"] == "ask":
                 rec.pop("edits", None)
+            if not cur["devbuild"]:
+                rec.pop("devbuild", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)

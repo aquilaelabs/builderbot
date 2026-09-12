@@ -5,7 +5,7 @@
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll,
-         URL, DIR } from './lib.mjs';
+         refreshUntil, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -1925,6 +1925,61 @@ ok(/compose --project-name staging-two .*down/.test(dockerLog()),
 await showRow();
 ok(await page.$('#devSend'),
    '...and the project can still send another: the artifact row persists');
+
+
+
+// ---- who may rebuild it: the switch on the docker row ---------------------
+// Up, Down and Env are the operator's. REBUILD is the one a project can hand
+// to its session, because a project whose work IS the container has a loop
+// that cannot close without it — change it, rebuild it, look at what it did.
+// Off by default, and a session that tries is refused with the sentence that
+// names the switch rather than a bare 403.
+{
+  const { fileURLToPath } = await import('node:url');
+  const REPO = fileURLToPath(new globalThis.URL('../../../', import.meta.url));
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`,
+                               WORKSPACE: `${DIR}/ws` } }).trim();
+  // From NODE, not from the page: a fetch in the browser carries the
+  // operator's cookie as well as the header, and the server answers the
+  // cookie — so the call would be the operator's and the gate under test
+  // would never be reached. A session has a token and nothing else.
+  const asSession = async (body) => {
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/devapp',
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify(body) });
+    return { status: r.status, ...(await r.json()) };
+  };
+  const off = await asSession({ project: 'ep.silon', action: 'rebuild' });
+  ok(off.status === 403 && /the switch that hands it over/.test(off.error || ''),
+     `a session cannot rebuild until the project says so, and is told where the switch is (${
+        JSON.stringify(off).slice(0, 90)})`);
+  // Reading is nobody's secret: the state is how a session knows what it is
+  // looking at before it asks for anything.
+  const read = await asSession({ project: 'ep.silon', action: 'state' });
+  ok(read.status === 200 && (read.state || {}).compose === true,
+     '...while reading the row is allowed, switch or no switch');
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devbuild: true }) });
+  });
+  const on = await asSession({ project: 'ep.silon', action: 'rebuild' });
+  ok(on.status === 200 && !on.error,
+     `...and with the switch on the same call is taken (${JSON.stringify(on).slice(0, 60)})`);
+  // The row's own control, drawn from the same setting rather than from a
+  // second copy of it, and it is NOT gated with the daemon buttons: whose
+  // decision this is does not depend on a machine answering.
+  await refreshUntil(page, () => !!document.querySelector('#devClaude')?.checked);
+  ok(await page.$eval('#devClaude', e => e.checked && !e.disabled),
+     'the docker row carries the switch, ticked, and live whatever the daemon says');
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devbuild: false }) });
+  });
+  await refreshUntil(page, () => document.querySelector('#devClaude')?.checked === false);
+  ok(true, '...and turning it off takes the grant back');
+}
 
 
 

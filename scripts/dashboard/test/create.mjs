@@ -133,8 +133,13 @@ ok(md.indexOf('A widget frobnicator') > marker,
   const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
   await page.waitForSelector(btn, { timeout: 10000 });
   const drifted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  ok(!drifted.off && !/compatibility window/.test(drifted.why),
-     `a block behind inside the window offers the update and leaves the Claude button live (${
+  // Asked about the HOLD and not about `disabled`: these fixture projects
+  // have no node, and a project with no node has a dead Claude button
+  // whatever its CLAUDE.md says. What must not happen is the window
+  // becoming the reason.
+  ok(!(await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held))
+     && !/compatibility window/.test(drifted.why),
+     `a block behind inside the window offers the update and does not hold the project (${
        drifted.why.slice(0, 50)})`);
   ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
      '...and pins nothing in the bell');
@@ -195,8 +200,10 @@ ok(md.indexOf('A widget frobnicator') > marker,
   await page.click('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]');
   await page.waitForFunction(() => !((state.projects || []).find(p => p.name === 'zeta')
     ?.issues || []).some(i => i.action === 'claude-md-update'), { timeout: 20000 });
-  ok(await page.$eval(btn, b => !b.disabled),
-     '...and the update link on the row lets a session start again');
+  ok(!(await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held))
+     && !/compatibility window/.test(
+          await page.$eval(btn, b => b.dataset.tip || b.title || '')),
+     '...and the update link on the row lifts the hold, so a session can start again');
   ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
      '...with the bell\'s row gone on its own');
   ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
@@ -217,8 +224,9 @@ ok(md.indexOf('A widget frobnicator') > marker,
                      { timeout: 20000 });
   ok(!await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held),
      `a block from a LATER window is drift, not a hold (${ahead} against ${win})`);
-  ok(await page.$eval(btn, b => !b.disabled),
-     '...so the Claude button stays live on it');
+  ok(!/compatibility window/.test(
+       await page.$eval(btn, b => b.dataset.tip || b.title || '')),
+     '...so nothing about the window is held against it');
   writeFileSync(mdPath, current);
 }
 

@@ -7794,6 +7794,12 @@ function renderProjectsInto(i){
   }
 }
 
+// Whether a session in this project may rebuild its dev instance — the
+// project's own setting, off unless somebody turned it on, read from the
+// poll rather than fetched so the checkbox is right on the first draw.
+const devClaudeOn = name =>
+  !!(state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
+
 // ---- no daemon, no Docker buttons ---------------------------------------
 // The controls that act on the daemon, in one list. Not the ones that only
 // read or explain: Refresh is how you retry after wiring one up, Edit and Env
@@ -11887,6 +11893,13 @@ $("todoRevert").onclick = revertNotebook;
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports — pick one">Open</button>` : ""}
+          <label class="ndcap" id="devClaudeWrap"
+            title="a session in this project may rebuild this container and bring it
+up — the loop for a project whose work is the container itself. Off, the
+buttons here stay yours and a session is told to ask. It runs this project's
+own Dockerfile on the node's daemon, which is the same trust as its build.">
+            <input type="checkbox" id="devClaude"${
+              devClaudeOn(project) ? " checked" : ""}> Claude may rebuild</label>
           <button type="button" id="devSend" class="primary"
             title="name a container built from this project and manage it there — a
 project can have several"
@@ -11968,6 +11981,24 @@ project can have several"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
+    // Written at once, like every other control on this row: the staged
+    // half of this tab is the version, because a bump is a commit. A switch
+    // over who may press Rebuild is not, and a switch that needed Save
+    // would be a switch people leave half-set.
+    const devCl = list.querySelector("#devClaude");
+    if (devCl) devCl.onchange = async () => {
+      const on = devCl.checked;
+      devCl.disabled = true;
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devbuild: on})}).catch(() => null);
+      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
+      devCl.disabled = false;
+      if (j.error){ devCl.checked = !on; notify(j.error, true); return; }
+      notify(on ? `a session in ${project} may rebuild its dev instance`
+                : `rebuilding ${project}'s dev instance is yours again`);
+      refresh();
+    };
     // THIS project's daemon, which is its node's and need not be the default
     // one the poll asked about. The row above already draws the reason when
     // there is one, so what is passed here is the same answer the row is
