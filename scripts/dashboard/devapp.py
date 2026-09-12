@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""A project's dev instance: built here, run here, controlled from Artifacts.
+"""A project's dev instance: built here, run here, controlled from the Docker tab.
 
 The question this answers used to be a GitHub Actions bill: a private
 project's image was built on hosted minutes and pulled back to the same box
 that could have built it. Now the box builds it — `docker compose build`
-against the project's own compose file — and the Artifacts tab carries the
-controls, in the same row language as the APK it lists: Up, Down, Env,
-Rebuild.
+against the project's own compose file — and the Docker tab carries the
+controls, one row per instance: Up, Down, Env, Rebuild, Remove. The project's
+Artifacts tab keeps the row that sends it there in the first place.
 
 **Where docker actually is.** Not in this container, and not on this box: the
 daemon belongs to a sandbox VM — a node the operator enrolled with a token,

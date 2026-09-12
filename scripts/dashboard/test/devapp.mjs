@@ -1,5 +1,5 @@
 // The dev instance: a project's compose app, built and run through the host's
-// daemon, controlled from the Artifacts tab in the file rows' own language.
+// daemon, controlled from the Docker tab in the file rows' own language.
 //
 // Everything here drives the stub docker the harness provides — the argv it
 // records IS the assertion, because the module's whole safety story is that
@@ -2022,7 +2022,10 @@ ok(await page.$('#devSend'),
     return { status: r.status, ...(await r.json()) };
   };
   const off = await asSession({ project: 'ep.silon', action: 'rebuild' });
-  ok(off.status === 403 && /the switch that hands it over/.test(off.error || ''),
+  // The tab is named as well as the switch: the controls moved from the
+  // artifact row to the Docker tab and this sentence stayed behind, pointing
+  // a session at a tab that no longer has it.
+  ok(off.status === 403 && /Docker tab has the switch that hands it over/.test(off.error || ''),
      `a session cannot rebuild until the project says so, and is told where the switch is (${
         JSON.stringify(off).slice(0, 90)})`);
   // Reading is nobody's secret: the state is how a session knows what it is

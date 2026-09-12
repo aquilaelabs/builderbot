@@ -5744,8 +5744,8 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state") and (self._who() or {}).get("session") \
                 and not prefs.get(name)["devbuild"]:
             return self._json({"error": "rebuilding this project's dev instance is the "
-                                        "operator's — the docker row on the Artifacts "
-                                        "tab has the switch that hands it over"}, 403)
+                                        "operator's — its row on the Docker tab has "
+                                        "the switch that hands it over"}, 403)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(self._who())} \
                 and self._readonly(name):

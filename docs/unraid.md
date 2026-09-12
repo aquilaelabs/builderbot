@@ -508,7 +508,7 @@ SSH private keys.
 
 ## Dev instances: building a project's app
 
-The dashboard's Artifacts tab can build a project's compose app and bring it up
+The dashboard's Docker tab can build a project's compose app and bring it up
 and down — no GitHub minutes, no registry round trip. It builds on a **sandbox
 VM**: a small machine whose only job is running Docker, reached over ssh, with
 no real containers on it and no route to this server's daemon. Setting it up is
