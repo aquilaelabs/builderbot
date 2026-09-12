@@ -7808,11 +7808,15 @@ const dockerWhy = () =>
 // them off is the only shape that cannot drift between them. Disable only:
 // every renderer here redraws from state, so a daemon coming back is picked up
 // by the next ordinary draw and nothing has to remember what it switched off.
-function gateDocker(root, reason){
-  // The poll's answer by default, and the caller's when it knows better: the
-  // manager has just tried the daemon for real, so it can gate on a `ps` that
-  // failed thirty seconds inside an availability memo still saying "on".
-  const why = reason || dockerWhy();
+function gateDocker(root, why){
+  // THE CALLER SAYS WHICH DAEMON, always. There used to be a fallback to the
+  // poll's answer for a caller that passed nothing, and the poll's answer is
+  // about the DEFAULT node — so a project whose own node was fine had its
+  // controls switched off because a different machine was down, and a
+  // healthy node picked in the manager was gated by the default one's
+  // absence, which is the single wrong answer a picker can give (B109). Both
+  // callers know which daemon they are about; the fallback existed only to
+  // be wrong, so it is gone rather than defaulted.
   if (!why) return;
   (root || document).querySelectorAll(DOCKER_ACTS).forEach(b => {
     b.disabled = true;
@@ -8396,7 +8400,12 @@ function renderDockerInto(i){
   // a list read while the daemon was up is stale the moment the poll says it
   // is down, and going on showing "running" from it would be the page's own
   // memory presented as the daemon's answer.
-  const blind = !!dockerList.blind || !!dockerList.error || !!dockerWhy();
+  // The poll's verdict is about the DEFAULT node, so it speaks for this view
+  // only while this view IS the default one. Computed once, because `blind`
+  // and the gate below both used to ask and only one of them narrowed it.
+  const pollSays = (!dockerNode || dockerNode === (state?.docker?.node || dockerNode))
+    ? dockerWhy() : "";
+  const blind = !!dockerList.blind || !!dockerList.error || !!pollSays;
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
@@ -8519,8 +8528,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // The poll's verdict is about the DEFAULT node; a picked node answers for
   // itself through its own overview. Mixing them gated node B behind node
   // A's absence, which is the one wrong answer a picker can give.
-  const off = (!dockerNode || dockerNode === (state?.docker?.node || dockerNode)
-                 ? dockerWhy() : "")
+  const off = pollSays
     || (blind ? "the daemon did not answer"
                 + (dockerList.error ? ": " + dockerList.error : "") : "");
   // Which daemon this is, stated rather than inferred: the node picked
@@ -11951,7 +11959,12 @@ project can have several"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
-    gateDocker(list);
+    // THIS project's daemon, which is its node's and need not be the default
+    // one the poll asked about. The row above already draws the reason when
+    // there is one, so what is passed here is the same answer the row is
+    // wearing rather than a second opinion about another machine.
+    gateDocker(list, !da.compose ? "" : da.available ? ""
+                     : (da.why || "docker is not reachable"));
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;
