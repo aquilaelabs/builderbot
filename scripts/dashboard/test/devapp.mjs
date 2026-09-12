@@ -4,7 +4,8 @@
 // Everything here drives the stub docker the harness provides — the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll,
+         URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -1530,6 +1531,13 @@ ok(await page.$eval('.dmtab', e => !e.classList.contains('card'))
 // and carries the reason. Forced through `state` rather than by taking the
 // fake daemon away: what is being tested is the gate, and it takes exactly
 // one input.
+//
+// ...with the poll held off for the block: a refresh REPLACES state from the
+// server, which says the daemon IS reachable, so a tick landing between the
+// plant and any assertion below redraws the tab from the truth and every one
+// of them fails. That is B99's family, and it is why this file went red one
+// run in three with nothing changed.
+await holdPoll(page);
 await page.evaluate(() => {
   state.docker = { on: false, why: 'no node with a daemon — nothing to talk to' };
   dockerRev++; drawPanes();
@@ -1567,6 +1575,7 @@ ok(await page.$$eval('.dmtab .row[data-inst] .dmpill',
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');
+await freePoll(page);
 await page.evaluate(() => { state.docker = { on: true, why: '' };
                             dockerRev++; drawPanes(); });
 await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,

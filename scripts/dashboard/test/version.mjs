@@ -1415,6 +1415,37 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
                               { encoding: 'utf8' }).split('\n').filter(Boolean);
   ok(undone.includes('stamped.txt') && undone.includes('VERSION'),
      `...in one commit, the way it went (${undone.join(', ')})`);
+
+  // ---- what a window move costs, before it is pressed (B92) --------------
+  // One project can move the compatibility window: the one whose checkout
+  // carries the CLAUDE.md template every other project's block is compared
+  // against. A minor bump there ends the Claude sessions on every project
+  // that has a block, and nothing said so before the button was pressed. The
+  // two files that do it are the test, rather than a project's name.
+  mkdirSync(`${S}/config/templates`, { recursive: true });
+  writeFileSync(`${S}/config/templates/project-CLAUDE.md`,
+    '<!-- BUILDERBOT:ENV:BEGIN -->\n<!-- BUILDERBOT:ENV:WINDOW 0.5 -->\nx\n'
+    + '<!-- BUILDERBOT:ENV:END -->\n');
+  const held = `${WS}/mdcost`;
+  rmSync(held, { recursive: true, force: true });
+  mkdirSync(held, { recursive: true });
+  writeFileSync(`${held}/README.md`, 'x\n');
+  execFileSync('git', ['-C', held, 'init', '-q', '.'], { env });
+  execFileSync('bash', [BB, 'claude-md', '--init', `${held}/CLAUDE.md`],
+               { env: { ...env, BB_RELAYED: '1' } });
+  const cost = await page.evaluate(async () => {
+    const one = await (await fetch('/api/version?project=stampproj')).json();
+    const other = await (await fetch('/api/version?project=alpha')).json();
+    return { one: one.window_cost, other: other.window_cost };
+  });
+  ok(cost.one && cost.one.projects.includes('mdcost'),
+     `the project that carries the template says which projects a window move would hold (${
+       JSON.stringify(cost.one || {}).slice(0, 80)})`);
+  ok(cost.one.window === '0.5',
+     '...and the window they are all on, which is the one that would move');
+  ok(!cost.other,
+     '...while a project that moves nobody\'s window says nothing, rather than warning about a cost it has not got');
+  rmSync(held, { recursive: true, force: true });
   rmSync(S, { recursive: true, force: true });
 }
 

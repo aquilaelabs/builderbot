@@ -5001,8 +5001,9 @@ find_chromium() {
 # browser and land in a directory, each named from its path (/ -> index.png).
 # --full and --scale exist because README screenshots need the whole page at
 # 2x — capabilities MediaReducer's tools/screenshots grew privately before
-# this subsumed them; --resize is the imagemagick downscale that keeps those
-# PNGs repo-sized; --wait absorbs pages whose async fetches settle after
+# this subsumed them; --resize is the downscale that keeps those PNGs
+# repo-sized, done by the same Chromium rather than by imagemagick, which is
+# not on a node (B103); --wait absorbs pages whose async fetches settle after
 # networkidle, because a screenshot of a spinner is not a screenshot of the
 # page. The intended split: a project's own script boots its app into a
 # photogenic state, then ends with one bb shot line.
@@ -5040,9 +5041,6 @@ URLs need their scheme (http:// or https://)"
     case "${width}${height}${scale}${wait}${resize}" in
         *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
     esac
-    if [ -n "$resize" ] && ! command -v convert >/dev/null 2>&1; then
-        die "--resize needs imagemagick's convert"
-    fi
 
     # One output name only fits one shot; with several URLs (or a trailing
     # slash, or an existing directory) the output is a directory and the
@@ -5059,10 +5057,12 @@ URLs need their scheme (http:// or https://)"
     local files
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
+const fs = require("fs");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, port, ...urls] = process.argv.slice(2);
+const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
+  = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
   // Either shape of credential. A session holds a bearer token rather than a
@@ -5113,6 +5113,37 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, ...urls] = process.
       } catch {}
     }
   }
+  // The downscale, in the browser that took the shot. It used to be
+  // imagemagick's `convert`, which is in the controller's image and on no
+  // node (B103) — so the one flag a README script needs died on the machine
+  // sessions actually run on. Chromium resamples as well as convert does and
+  // is already here, by definition: nothing that can take a screenshot lacks
+  // it. On a blank page of its own, because a data: image is exactly what a
+  // photographed page's own CSP may refuse.
+  let scaler = null;
+  const shrink = async (file, width) => {
+    scaler = scaler || await b.newPage();
+    const b64 = fs.readFileSync(file).toString("base64");
+    const done = await scaler.evaluate(async ([data, wide]) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + data;
+      await img.decode();
+      if (img.width <= wide) return null;      // never upscale: that adds nothing
+      const c = document.createElement("canvas");
+      c.width = wide;
+      c.height = Math.max(1, Math.round(img.height * wide / img.width));
+      const g = c.getContext("2d");
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL("image/png").split(",")[1];
+    }, [b64, width]);
+    // In place, and metadata-free by construction: a fresh encode carries
+    // none. The full-size original is scaffolding, the downscale is the
+    // deliverable, and keeping both would double the repo cost the flag
+    // exists to avoid.
+    if (done) fs.writeFileSync(file, Buffer.from(done, "base64"));
+  };
   const p = await ctx.newPage();
   const taken = new Set();
   for (const url of urls) {
@@ -5136,20 +5167,13 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, ...urls] = process.
       out = path.join(dest, name + ".png");
     }
     await p.screenshot({ path: out, fullPage: full === "1" });
+    if (+resize) await shrink(out, +resize);
     console.log(out);
   }
   await b.close();
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
 )"
-    if [ -n "$resize" ]; then
-        # In place: the full-size original is scaffolding, the downscale is
-        # the deliverable — keeping both would double the repo cost the flag
-        # exists to avoid. -strip drops metadata for the same reason.
-        while IFS= read -r f; do
-            [ -n "$f" ] && convert "$f" -resize "${resize}x" -strip "$f"
-        done <<< "$files"
-    fi
     printf '%s\n' "$files"
 }
 

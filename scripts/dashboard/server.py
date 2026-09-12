@@ -1174,6 +1174,45 @@ def md_window(path):
     return m.group(1) if m else ""
 
 
+def version_payload(name):
+    """The Artifacts tab's version block, plus what a window move would cost
+    here. One function so every answer the tab gets carries the same warning —
+    the staged line is drawn from whichever of them came back last."""
+    cost = window_cost(name)
+    return version.payload(name) | ({"window_cost": cost} if cost else {})
+
+
+def window_cost(name):
+    """What a MINOR bump of this project would cost the others, or {}.
+
+    Only one project can answer yes: the one whose checkout carries the
+    CLAUDE.md template, because its minor IS the compatibility window every
+    other project's environment block is compared against. Moving it holds
+    each of them — sessions ended, Claude button ghosted — until its block is
+    updated, and nothing said so before the button was pressed (B92). The
+    test is the two files that do it rather than a project's name:
+    tools/version-stamp is what rewrites the window line, and the template is
+    the line it rewrites.
+    """
+    try:
+        here = WORKSPACE / name
+        if not ((here / "tools" / "version-stamp").is_file()
+                and md_window(here / "config" / "templates" / "project-CLAUDE.md")):
+            return {}
+    except OSError:
+        return {}
+    held = []
+    try:
+        for d in sorted(WORKSPACE.iterdir()):
+            if not d.is_dir() or (d / IGNORE_MARKER).exists():
+                continue
+            if md_window(d / "CLAUDE.md"):
+                held.append(d.name)
+    except OSError:
+        return {}
+    return {"window": md_window(TEMPLATE_MD), "projects": held}
+
+
 def md_gap(path):
     """A sentence when a project's block is from an EARLIER compatibility
     window than the template this controller ships, else "".
@@ -4136,7 +4175,7 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
-            return self._json(version.payload(name))
+            return self._json(version_payload(name))
         if self.path.startswith("/api/artifacts"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -5800,7 +5839,7 @@ class Handler(BaseHTTPRequestHandler):
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
-            return self._json(version.payload(name) | {"bumped": r})
+            return self._json(version_payload(name) | {"bumped": r})
         if act == "release":
             # The other half of a release, and the outward-facing one: the
             # bump decided the number, this says it happened and pushes the
@@ -5815,19 +5854,19 @@ class Handler(BaseHTTPRequestHandler):
             if not NODES_OK:
                 nodes.audit(self._principal(), "version-release", name,
                             {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
-            return self._json(version.payload(name) | {"released": r})
+            return self._json(version_payload(name) | {"released": r})
         if act == "init":
             r = version.init(name, field(req, "value"), by="operator", env=users.git_env(self._who()),
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
-            return self._json(version.payload(name) | {"created": r})
+            return self._json(version_payload(name) | {"created": r})
         if act == "unbump":
             r = version.unbump(name, by="operator", env=users.git_env(self._who()),
                                comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
-            return self._json(version.payload(name) | {"unbumped": r})
+            return self._json(version_payload(name) | {"unbumped": r})
         if act == "ask":
             # Put to the project's own session rather than answered here: it
             # can read the code and be argued with, and neither is true of a
@@ -5839,7 +5878,7 @@ class Handler(BaseHTTPRequestHandler):
             r = version.set_policy(name, field(req, "policy"))
             if r.get("error"):
                 return self._json(r, 400)
-            return self._json(version.payload(name))
+            return self._json(version_payload(name))
         return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _artifacts(self, req):
@@ -6605,6 +6644,8 @@ class Handler(BaseHTTPRequestHandler):
         name, action = req.get("name", ""), req.get("action", "update")
         if action not in ("update", "init"):
             return self._json({"error": "unknown action"}, 400)
+        if action == "update" and req.get("all"):
+            return self._claude_md_all()
         # A locked project does not get a file written into it on Claude's
         # behalf, which is what both of these are.
         if (bad := locked_out(name)):
@@ -6624,6 +6665,37 @@ class Handler(BaseHTTPRequestHandler):
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
+
+    def _claude_md_all(self, req=None):
+        """Refresh every project's CLAUDE.md block that is behind, in one press.
+
+        A window move holds every project at once (see window_cost), and the
+        only way back was the update link on each project's own row — six
+        presses to undo one bump, and each link only appears once the poll has
+        noticed (B93). The set is the same one the rows offer: a project whose
+        block differs from the template this controller ships. Nothing else is
+        touched, so a project with no CLAUDE.md is left alone — creating one is
+        a person's decision, per project, and this is not that.
+
+        Locked projects are skipped and named rather than failed: a lock
+        refuses exactly this kind of write, and one locked project must not
+        stop the other five.
+        """
+        done, failed, locked = [], [], []
+        for p in project_list(self._who()):
+            if not any(i.get("action") == "claude-md-update" for i in p.get("issues") or []):
+                continue
+            if locked_out(p["name"]):
+                locked.append(p["name"])
+                continue
+            md = WORKSPACE / p["name"] / "CLAUDE.md"
+            r = run(["bb", "claude-md", "--update", str(md)], timeout=60)
+            if r["code"] == 0:
+                done.append(p["name"])
+            else:
+                failed.append({"project": p["name"],
+                               "error": (r["out"] or "").strip()[-200:] or "update failed"})
+        return self._json({"updated": done, "failed": failed, "locked": locked})
 
     def _changelog(self, req):
         """Write back the Unreleased section a person rearranged.

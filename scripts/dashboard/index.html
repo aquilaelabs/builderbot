@@ -5493,8 +5493,17 @@ async function abLoadLog(){
 // says how many older ones it held back — this panel is read by somebody
 // asking what changed in the build in front of them, and the file behind it
 // grows for the life of the project.
+// A release the size of a book is one press away from being read, and not
+// the first thing in the way of it (B95). The first bump a project ever does
+// dates everything ever logged — 362 lines here — and this panel opens on an
+// image update, so that was the changelog: one scroll nobody finishes.
+const AB_CAP = 25;
+let abAllOf = new Set();     // sections somebody asked to see whole
+let abLogSeen = null;        // the last payload, to redraw from without refetching
+
 function abDrawLog(j){
   const el = $("abLog");
+  abLogSeen = j;
   if (!j.present){ el.innerHTML = `<p class="dim">This image carries no changelog.</p>`; return; }
   // Everything above the entry that carries the commit this account last
   // acknowledged is new to it; the line is drawn there. An image whose
@@ -5510,13 +5519,28 @@ function abDrawLog(j){
     if (!s.entries.length) continue;
     rows.push(`<h4>${esc(s.title)}${s.title === "Unreleased"
       ? ` <span class="dim">— in this image, not yet a numbered release</span>` : ""}</h4>`);
+    // How much of it to draw. Never a cut that hides the "new since you last
+    // looked" line, because that line is the one thing somebody opening this
+    // panel came for; and never "show all 27 of 30", which asks a question
+    // worth less than the two rows it saves.
+    const holds = boundary >= 0 && boundary >= i && boundary < i + s.entries.length;
+    const cut = (s.entries.length > AB_CAP + 5 && !holds && !abAllOf.has(s.title))
+      ? AB_CAP : s.entries.length;
     // The categories the section was arranged into, drawn by watching the
     // name change down a flat list: the entries arrive in the file's order
     // and the boundary below is a count through that order, so grouping here
     // costs nothing and nesting would have cost both.
     let cat = null, open = false;
     const shut = () => { if (open){ rows.push(`</ul>`); open = false; } };
+    let n = 0;
     for (const e of s.entries){
+      if (n++ === cut){
+        shut();
+        rows.push(`<p class="dim abmore"><a href="#" data-abmore="${esc(s.title)}"
+          >show all ${s.entries.length}</a> lines in ${esc(s.title)}</p>`);
+        i += s.entries.length - cut;     // the boundary counts through the file
+        break;
+      }
       const mine = e.cat || "";
       if (mine !== cat){
         shut();
@@ -5535,6 +5559,11 @@ function abDrawLog(j){
     rows.push(`<p class="dim" id="abHeld">${j.held} earlier release${j.held === 1 ? "" : "s"}`
       + ` ${j.held === 1 ? "is" : "are"} in CHANGELOG.md.</p>`);
   el.innerHTML = rows.join("") || `<p class="dim">Nothing logged yet.</p>`;
+  el.querySelectorAll("[data-abmore]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    abAllOf.add(a.dataset.abmore);
+    if (abLogSeen) abDrawLog(abLogSeen);
+  });
 }
 function openAbout(which){
   // Host and uptime read at open, not at draw: the popup should say what is
@@ -7038,6 +7067,11 @@ function drawAuth(){
   }
 }
 
+// A staged bump that moves the compatibility window: minor and major do,
+// patch does not, and only where this project owns the window at all.
+const windowMove = (part, cost) =>
+  (part === "minor" || part === "major") && (cost?.projects || []).length > 0;
+
 // Which node a sign-in was asked about, when there was more than one to
 // choose from. Drawn by drawAuth, cleared by choosing or cancelling.
 let signinPick = null;
@@ -7288,6 +7322,35 @@ async function claudeMd(name, action, link){
     return;
   }
   refresh();                            // the warning goes away on its own
+}
+
+// Every project whose block is behind, in one press (B93). The set is the
+// server's — the same projects whose rows carry the link — so this cannot
+// disagree with what the bell just said was held.
+async function claudeMdAll(link){
+  if (link.dataset.busy) return;
+  link.dataset.busy = "1";
+  const said = link.textContent;
+  link.textContent = "updating…";
+  try{
+    const r = await fetch("/api/claude-md", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action: "update", all: true})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
+    const n = (j.updated || []).length;
+    // Named, not counted, when something did not go: a failure nobody can
+    // name is a failure nobody can fix.
+    const left = [...(j.failed || []).map(f => `${f.project}: ${f.error}`),
+                  ...(j.locked || []).map(p => `${p} is locked`)];
+    notify(`${n} CLAUDE.md block${n === 1 ? "" : "s"} updated`
+           + (left.length ? ` · ${left.join(" · ")}` : ""), left.length > 0);
+  }catch(e){
+    notify("could not do that: " + e, true);
+    link.textContent = said; link.dataset.busy = "";
+    return;
+  }
+  refresh();
 }
 
 // ---- custom commands --------------------------------------------------
@@ -12017,6 +12080,18 @@ project can have several"
       const parts = Object.entries(verPending);
       const policy = verPolicyPending;
       if (!parts.length && policy == null) return "";
+      // A window move is the one thing on this tab that reaches other
+      // projects: it ends their sessions. Asked here as well as said on the
+      // staged line, because the line can be scrolled past and this cannot
+      // (B92). Anything else saves without a question, as it always has.
+      const cost = ver?.window_cost;
+      const moves = parts.find(([comp, part]) => !comp && windowMove(part, cost));
+      if (moves && !confirm(
+            `Bump the ${moves[1]} — this moves the compatibility window.\n\n`
+            + `${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
+            + `(${cost.projects.join(", ")}) will have their Claude sessions ended `
+            + `and held until each CLAUDE.md is updated. The bell offers that in `
+            + `one press afterwards.`)) return "";
       verPending = {}; verPolicyPending = null;
       const done = [];
       if (policy != null){
@@ -12312,6 +12387,10 @@ this directory">Ask Claude</button>
   function verSection(v){
     const f = v.forms || {};
     const staged = verPending[v.component || ""];
+    // What a window move costs, when this project is the one that owns the
+    // window (the server decides that, from the files that move it). A
+    // COMPONENT's version is its own and carries none of it.
+    const cost = v.component ? null : ver?.window_cost;
     const line = (label, value, cls = "") => value
       ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
       : "";
@@ -12353,6 +12432,18 @@ this directory">Ask Claude</button>
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
                v.unreleased === 1 ? "y" : "ies"}`
              : `, with no changelog entries to date`}</span></div>` : "")
+      // What a MINOR bump costs everything else, said BEFORE Save rather than
+      // discovered after it (B92): the minor is the compatibility window, so
+      // moving it ends the Claude sessions on every project whose block is
+      // from the old one and holds them until each is updated. The count is
+      // the server's, from the blocks that actually exist.
+      + (windowMove(staged, cost) ? `<div class="verln"><span></span>
+           <span class="vermark bad">this moves the compatibility window from ${
+             esc(cost.window)} to ${esc((v.next[staged] || "").split(".").slice(0, 2).join("."))
+             }: ${cost.projects.length} project${cost.projects.length === 1 ? "'s" : "s'"
+             } Claude session${cost.projects.length === 1 ? "" : "s"} end and ${
+             cost.projects.length === 1 ? "it is" : "they are"} held until each
+             CLAUDE.md is updated, which the bell then offers in one press</span></div>` : "")
       + line("a build now", f.semver)
       + (v.running ? line("running here", v.running, stale ? "" : "off") : "")
       + (stale ? `<div class="verln"><span></span><span class="vermark">${
@@ -14717,6 +14808,9 @@ function drawBell(){
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
+  // ...and the projects a window move is holding, which come as one each and
+  // are drawn as one row when there is more than one.
+  const mds = att.filter(a => a.kind === "md");
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -14768,7 +14862,19 @@ function drawBell(){
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
     // ...and the nodes. Out of window is red and names the projects it
     // stops; behind is amber and waits for a press on the Nodes tab.
-    ...att.map(a => a.kind === "md"
+    // A window move holds every project at once, so several of these is the
+    // normal case after a minor bump and one row per project was six rows
+    // saying one thing. Collapsed into one, with one press behind it (B93).
+    ...(mds.length > 1 ? [`<div class="bnote ask bad">
+        <div class="btag">CLAUDE.md out of window</div>
+        <div class="bwhy">${mds.length} projects have an environment block from ${
+          esc(mds[0].from)} and this BuilderBot is ${esc(mds[0].to)}: ${
+          mds.map(m => esc(m.project)).join(", ")}. No session runs in any of
+          them until they are updated</div>
+        <div class="bfoot"><span>sessions there are stopped</span>
+          <span class="acts"><a href="#" data-bmdall="1">Update all ${mds.length}</a></span></div></div>`]
+      : []),
+    ...att.filter(a => a.kind !== "md" || mds.length === 1).map(a => a.kind === "md"
       // A project's CLAUDE.md block from another window: red like an agent
       // out of window, because it stops the same thing — its sessions —
       // and the fix is the row's own link, offered here too.
@@ -14823,6 +14929,10 @@ function drawBell(){
   panel.querySelectorAll("[data-bmd]").forEach(a => a.onclick = e => {
     e.preventDefault();
     claudeMd(a.dataset.bmd, "update", a);
+  });
+  panel.querySelectorAll("[data-bmdall]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    claudeMdAll(a);
   });
 }
 
