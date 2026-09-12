@@ -4019,13 +4019,8 @@ const bootFor = arg => {
   const row = (state?.projects || []).find(p => p.name === proj);
   return row?.session_boot || state?.boot || "";
 };
-// `here`: the session on this container while the project's node cannot
-// take one — asked for by a tap on the dead button's menu, carried as a
-// query flag the controller reads and ttyd ignores, and stamped with THIS
-// container's boot, since that is the machine bb-tty runs on for it.
-const ttydUrl = (arg, here) => `/term/?arg=${encodeURIComponent(
-  arg.startsWith("claude:") && (here ? state?.boot : bootFor(arg))
-    ? `${arg}:b:${here ? state.boot : bootFor(arg)}` : arg)}${here ? "&here=1" : ""}`;
+const ttydUrl = (arg) => `/term/?arg=${encodeURIComponent(
+  arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -4869,8 +4864,12 @@ function newShell(proj){
   if (!arg){ notify("Too many terminals open for that directory.", true); return; }
   // A shell on a project whose node cannot take one opens on this container
   // and says so: a shell is where the node gets looked at, and a JSON error
-  // in the frame was what the operator got instead of one.
-  const here = !!(state?.projects || []).find(p => p.name === proj)?.session_why;
+  // in the frame was what the operator got instead of one. Only when a NODE
+  // refused, which is what session_at names — a project with no node has
+  // always had its shell here, and announcing that would be news about
+  // nothing.
+  const pr = (state?.projects || []).find(p => p.name === proj);
+  const here = !!(pr?.session_why && pr?.session_at);
   if (here) notify(`${proj}'s node cannot take a session now; this shell is on the controller`);
   openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}${here ? " (here)" : ""}`, here});
 }
@@ -5068,7 +5067,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg, t.here))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -6736,22 +6735,25 @@ function projectRow(p, live, cls, inTab){
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
          (p.locked || notMine(p)
-          // The sign-in that matters for a session on a NODE is the one in
-          // that node's home, which this container cannot see (roadmap #24).
-          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
+          // Not signed in, wherever the session would run: the controller
+          // keeps the account's Claude identity now (R47) — which node holds
+          // the credential is the node's business, but whether there is one
+          // at all is answerable here, and a session cannot start without it.
+          || (!signedIn() && !live.has(myClaude(p.name)))
           || heldWhy(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : heldWhy(p) ? heldWhy(p)
-                 // The node cannot take a session: the press offers one on
-                 // this container instead, with the reason — never a lockout.
-                 : p.session_why ? `${p.session_why} Press for a session on this container instead`
+                 // No node, or one that cannot take a session: the press
+                 // opens the reason under the row, since there is nowhere
+                 // else a Claude session could go.
+                 : p.session_why ? p.session_why
+                 : !signedIn() && !live.has(myClaude(p.name))
+                   ? "you are not signed in to Claude — the Doctor card has the way in"
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
-                 : !p.session_at && !signedIn() && !live.has(myClaude(p.name))
-                   ? "this container is not signed in to Claude — the Doctor card has the way in"
                  : p.session_at
                    ? `Claude — a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
                  : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"
@@ -6813,8 +6815,12 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // implying nobody is there (roadmap #24).
         : p.session_at && !p.session_why
           ? `<div class="sub sessline">sessions run on ${esc(p.session_at)}</div>`
+        // `session_at` is the node's name, so a reason WITH one is a machine
+        // that is broken — red — and a reason without one is a project that
+        // simply has no node yet, which is a normal state and not a fault.
         : p.session_why
-          ? `<div class="sub sessline bad">${esc(p.session_why)}</div>` : ""}
+          ? `<div class="sub sessline${p.session_at ? " bad" : ""}">${
+               esc(p.session_why)}</div>` : ""}
     </div>
 `;
 }
@@ -6934,9 +6940,11 @@ function pJobWire(){
   document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
 }
 
-// Who this container is signed in to Claude as, under the doctor verdict —
-// the first thing to get right on a new box, and the last place anybody would
-// think to look for it on the command line.
+// Which Anthropic account this account is signed in to, under the doctor
+// verdict — the first thing to get right on a new box, and the last place
+// anybody would think to look for it on the command line. The login itself
+// is a node's: each machine signs in for itself and keeps the grant it
+// alone refreshes, so what is drawn here is the identity and nothing else.
 function drawAuth(){
   const el = $("docAuth"), a = state?.claude_auth, lg = state?.signin;
   if (!a || a.unknown){ el.hidden = true; return; }
@@ -6996,24 +7004,25 @@ function drawAuth(){
   }
   const busy = claudeSessions();
   if (paint(el, a.signed_in
-    ? `<span class="sub grow" title="claude auth status">signed in${
+    ? `<span class="sub grow" title="${a.nodes === 1 ? "reported by the node that signed in"
+         : `reported by the ${a.nodes} nodes that signed in`} — the login stays there">signed in${
          a.email ? " as " + esc(a.email) : ""}${a.plan ? ` · ${esc(a.plan)}` : ""}</span>
        <button id="bSignOut"${busy.length ? " disabled" : ""} title="${busy.length
          ? `end ${busy.length === 1 ? "this session" : "these sessions"} first: ${
              esc(busy.join(", "))}`
-         : "sign out of Claude — here and on every node holding this login"}">Sign out</button>`
+         : "sign out of Claude, on every node holding this login"}">Sign out</button>`
     : `<span class="sub grow bad">not signed in to Claude — sessions will not start</span>
        <button id="bSignIn" class="primary"
-         title="opens a terminal and runs the sign-in flow">Sign in</button>`)){
+         title="runs the sign-in on a node, with the code pasted back here">Sign in</button>`)){
     const out = $("bSignOut"), inb = $("bSignIn");
     if (out) out.onclick = signOut;
-    // A terminal, because the flow is a URL to open and a code to paste back.
     if (inb) inb.onclick = signIn;
   }
 }
 
 // Sign in, however many times it takes. No terminal: the flow runs under a
-// pty the server holds, so this is one request and the card does the rest.
+// pty on the NODE — which is where Claude Code is installed — and the card
+// does the rest, so this is one request from here.
 async function signIn(){
   const b = $("bSignIn");
   if (b){ b.disabled = true; b.textContent = "Starting…"; }
@@ -7047,21 +7056,21 @@ async function sendCode(){
       headers:{"Content-Type":"application/json"}, body: JSON.stringify({code})});
     const j = await r.json();
     if (j.error) notify(j.error, true);
-    else { f.value = ""; notify("sent — watch the sign-in terminal"); }
+    else { f.value = ""; notify("sent — the card says what the sign-in makes of it"); }
   }catch(e){ notify("could not reach the server: " + e, true); }
   b.disabled = false; b.textContent = "Send";
   refresh();
 }
 
 async function signOut(){
-  // Every node, not this container: one Anthropic account per BuilderBot
-  // account, so signing out is signing out everywhere. A node that is not
-  // dialing in right now does it when it comes back — the sentence says so
-  // rather than implying they all go at once.
+  // Every node: one Anthropic account per BuilderBot account, so signing out
+  // is signing out everywhere. A node that is not dialing in right now does
+  // it when it comes back — the sentence says so rather than implying they
+  // all go at once.
   if (!confirm("Sign out of Claude?\n\nThis signs out every node that holds "
-               + "your login, not just this container — one that is offline "
-               + "does it when it reconnects. Sessions stop working until you "
-               + "sign in again.")) return;
+               + "your login — one that is offline does it when it "
+               + "reconnects. Sessions stop working until you sign in "
+               + "again.")) return;
   const b = $("bSignOut");
   b.disabled = true; b.textContent = "Signing out…";
   try{
@@ -13937,8 +13946,8 @@ function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
   if (p?.session_why && !liveSessions().has(myClaude(name))){
-    // The node cannot take one: the chooser offers this container, with
-    // the reason, and nothing starts until that is pressed.
+    // There is nowhere for it to run: the press opens the reason under the
+    // row rather than a tab, which is the whole of what it can do.
     resumeFor = resumeFor === name ? null : name;
     drawProjects(state.projects);
     return;
@@ -13951,14 +13960,14 @@ function openClaude(name, ev){
   drawProjects(state.projects);
 }
 
-function startClaude(name, sessionId, here){
+function startClaude(name, sessionId){
   resumeFor = null;
   // Redraw the card, not just the tabs: the chooser is a child of it and would
   // otherwise sit there until the next poll, over a choice already made.
   if (state) drawProjects(state.projects);
   openTab({kind:"term",
            arg: sessionId ? `claude:${name}:r:${sessionId}` : `claude:${name}`,
-           label: here ? `Claude: ${name} (here)` : `Claude: ${name}`, here: !!here});
+           label: `Claude: ${name}`});
 }
 
 function placeResumeMenu(){
@@ -13970,12 +13979,12 @@ function placeResumeMenu(){
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
   m.innerHTML = p.session_why
-    // The node refused: one choice, this container, and the reason above it.
-    ? `<div class="sub">${esc(p.session_why)}</div>` +
-      `<button data-h="1">Start on this container instead — the tree and the notebook, without ${
-        esc(p.session_at || "the node")}'s toolchains</button>`
-    : `<button data-r="1">Resume — ${esc(p.last_claude.was_open
-        ? "open when the container stopped" : ago(p.last_claude.when))}</button>` +
+    // No node, or one that refused, and there is nowhere else: a session
+    // runs on a node and this container carries no Claude Code. The reason,
+    // and no choice under it — a menu with nothing in it would be a button
+    // that lies.
+    ? `<div class="sub">${esc(p.session_why)}</div>`
+    : `<button data-r="1">Resume — ${esc(ago(p.last_claude.when))}</button>` +
       `<button data-n="1">New conversation</button>`;
   card.appendChild(m);
   const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
@@ -13983,7 +13992,6 @@ function placeResumeMenu(){
   m.style.top = (a.bottom - c.top + 4) + "px";
   m.querySelector("[data-r]") && (m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id));
   m.querySelector("[data-n]") && (m.querySelector("[data-n]").onclick = () => startClaude(p.name, null));
-  m.querySelector("[data-h]") && (m.querySelector("[data-h]").onclick = () => startClaude(p.name, null, true));
   // ...and brought into the sidebar, which scrolls. Pressing Claude on a
   // project whose session has ENDED opens this chooser instead of a tab —
   // that is the design, and it is the only thing the press does — so a

@@ -9,11 +9,13 @@
      Your project's own notes live BELOW the end marker and are never touched.
      Edits inside this block are lost on the next --update; put them below. -->
 
-You are running inside **BuilderBot**, a long-lived container on an Unraid
-server. It is a Claude Code workstation and the controller for one or more
-nodes — the machines where builds, tests, CI and the Android emulator actually
-run. This file describes the environment; it is not a description of the
-project itself.
+You are running inside **BuilderBot**, on one of its **nodes** — the machines
+where sessions, builds, tests, CI and the Android emulator run. The controller
+is a long-lived container on an Unraid server: it keeps the dashboard, the
+notebook and the record, carries no Claude Code, and starts no session, so
+there is nowhere else for this conversation to be. `bb status` names the
+machine you are on. This file describes the environment; it is not a
+description of the project itself.
 
 ## Check this file is current, first
 
@@ -50,7 +52,7 @@ Two things about doing it:
 - The refresh lands **for the next session**. Your context already holds the
   old text, so re-read this file if you need the new content now.
 - If the environment turns out to disagree with what this file says, the
-  container is right and the file is stale. Trust `bb doctor` and `bb status`
+  machine is right and the file is stale. Trust `bb doctor` and `bb status`
   over anything written here.
 
 Do not create a `CLAUDE.md` anywhere one does not already exist — `--init` is
@@ -58,38 +60,29 @@ the user's decision, not a session's.
 
 ## What persists and what does not
 
-This matters more than anything else here. The container is disposable and gets
-recreated on every image update.
-
-**Survives a container restart** — because it is on a mounted volume:
+This matters more than anything else here. Three of the things you touch are
+not this machine's own, and those three are the ones that survive it being
+rebuilt:
 
 | Thing | Where |
 |---|---|
-| This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
-| Your session transcripts and memory files | `~/.claude/` |
-| Claude Code login, shell history, AVDs | `~` (the home volume) |
-| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the package store, symlinked into place. `bb packages` lists them and says where it is |
-| Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
+| This project, including uncommitted work | `/workspace/<project>` — the projects share, mounted whole at `/workspace`, so every folder in it is here and on every other node |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the packages store this node mounts, symlinked into place. `bb packages` lists them and says where it is |
+| The notebook — roadmap, bugs, rules, memories, transcripts | the controller's, reached through `bb`. Nothing of it is kept here |
 
-**Does not survive** — anything written outside those paths:
+Everything else is this machine's own disk: your shell history and caches
+under `~`, the AVDs, `/tmp`, anything a package manager put on it. That
+survives a reboot and is nobody's backup.
 
-- `/tmp`, `/var`, and the rest of the root filesystem
-- `/opt` — but most of what looks like it lives there is a symlink onto the
-  package store and *does* persist: the Android packages, the Playwright browsers,
-  anything `bb packages install` put there. What actually comes from the image is
-  the bootstrap — `sdkmanager`, `adb`, the CLI tools
-- System packages installed ad hoc with `apt-get install`
-- Running processes, including the emulator and any dev server
+So: **never `apt-get install` something and consider the problem solved.** A
+tool a project needs is installed through the package manager on its node
+(the Tools tab), which puts it on the store — where it persists, where
+`bb packages` can see it, and where the next node gets it too. Say what is
+missing rather than installing it yourself.
 
-So: **never `apt-get install` something and consider the problem solved.** It
-will be gone after the next update. A tool a project needs is installed
-through the package manager on its node (the Tools tab); the controller
-carries what it needs in the image. Say what is missing rather than
-installing it yourself.
-
-Uncommitted work in this project is **not** at risk from a container restart.
-It is still worth committing, but do not panic-commit on the theory that the
-container is about to eat it.
+Uncommitted work in this project is **not** at risk from a restart of
+anything: it is on the share. It is still worth committing, but do not
+panic-commit on the theory that something is about to eat it.
 
 ## Stay in this directory
 
@@ -100,7 +93,7 @@ projects, and do not go looking for context in them — if something seems to be
 missing, ask.
 
 A sibling directory holding a `.bbignore` file is not a project at all — it is
-the container's own storage (the package store) or something the operator chose to
+BuilderBot's own storage (the package store) or something the operator chose to
 hide. Leave those alone too.
 
 If this session was started from the dashboard, that is also enforced: the file
@@ -144,30 +137,35 @@ set as permission to open a window on it.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
 
-## Toolchains beyond the image
+## The toolchain is the store, not the machine
 
-The image is a bootstrap, not a toolbox. The heavy toolchains — Flutter, the
-.NET SDK, Swift, the Android emulator and its system images, the Playwright
-browsers — live on a share outside it, so which of them exist on *this*
-container is a runtime fact, not something to infer from this file:
+**What this node carries by itself is small**: `git`, `tmux`, `jq`,
+`python3`, `curl`, and Docker where it runs containers. That is what its
+provisioner installs and all it installs.
+
+Everything else — `node`, the JDK, the Android SDK and its system images,
+Playwright's browsers with their module, Flutter, the .NET SDK, Swift, the
+lint tools — lives on the **packages store**, a share this node mounts. So
+which of them exist here is a runtime fact, not something to infer from this
+file:
 
 ```bash
 bb packages            # what is installed, where each one lives, and what is not
-bb packages --local    # ...on this container, when the answer above is a node's
 ```
 
-**`bb packages` answers for the store this project actually builds with.** With a
-node, that is the node's — the same machine `bb build`, `bb test` and `bb emu`
-go to — so what it lists is what a build here can use. Without one there is
-nothing: packages are installed on nodes, never on the controller, and a
-project with no node cannot compile. `bb nodes` says which node is this
-project's. (`bb packages --local` lists the controller's own store, which holds
-only what its boot keeps for `bb shot`.)
+**It answers for the store this project builds with**, which is this
+machine's — the same one `bb build`, `bb test` and `bb emu` use — so what it
+lists is what a build here can use. `bb nodes` names it.
 
 `bb status` prints the same summary in two lines. Check before concluding a
 tool is missing, and check before reaching for a system package manager —
 the thing you want may be one `bb packages install` away, or already installed
 somewhere PATH does not look until the next shell.
+
+Never `apt-get` around a gap: what you install by hand is on this machine
+only, invisible to `bb packages`, and gone when the node is rebuilt. One
+`bb lint` check skipping, or `bb shot` failing to find its module, means a
+recipe is not installed yet — say which.
 
 If a project needs one that is not there, **say so and ask** — you cannot
 install it yourself. `bb packages install` refuses to run from a session and tells
@@ -196,14 +194,11 @@ bb emu gpu        # hardware or software rendering, and why
 The emulator is **not** started automatically, holds a few GB of RAM, and runs
 one at a time — so start it when you need it and stop it when you are done.
 
-**When the project has a node, every `bb emu` verb runs there.** The node's
-own emulator, images and GPU are used, the output streams back, and what a
-verb writes — `bb emu shot` for a screenshot, `bb emu gfx PKG` for real
-per-frame timings — comes back into `dist/`. `bb emu install FILE` sends an
-APK from `dist/` along. From a session on the controller you cannot reach
-that emulator with `adb`; the verbs are the way in. From a session **on the
-node** — `bb status` says which this is — the verbs run right here and
-`adb` reaches it directly. `bb emu create API` builds its AVD when the
+**The emulator is this machine's**, and so are the system images, the GPU and
+the adb it answers on — the verbs run right here and `adb` reaches it
+directly. What a verb writes lands in `dist/`: `bb emu shot` for a
+screenshot, `bb emu gfx PKG` for real per-frame timings. `bb emu install
+FILE` installs from `dist/`. `bb emu create API` builds its AVD when the
 node's store has none yet.
 
 Which API levels exist is what the node's packages store holds a system
@@ -249,7 +244,7 @@ screen:
 bb emu gpu        # hardware or software, and why
 ```
 
-With a GPU passed through, the container starts a headless X server for it at
+With a GPU passed through, this machine starts a headless X server for it at
 boot and `bb emu start` uses `-gpu host` *if EGL actually answers there with a
 vendor driver*. It tests rather than assumes, because the failure mode in
 between is the expensive one: Mesa will happily answer on an X server it
@@ -269,9 +264,9 @@ you should say so rather than guessing from a headless emulator.
 
 ## What you can build, and where
 
-Compiling happens on the project's **node** — a machine the operator
-enrolled, with its own toolchains — and never in this container. Which node
-is a per-project setting, and a project may have none.
+Compiling happens here, on the node this project is bound to, with the
+toolchains this machine carries. Which node that is is a per-project setting
+the operator owns.
 
 ```bash
 bb build            # the project's build command, on its node
@@ -279,26 +274,31 @@ bb test             # its test command, on its node
 bb run -- CMD       # anything else there, from a snapshot of this tree
 ```
 
-**A project with no node is a normal state, not a broken one.** You can read
-every file, change any of them, run the linters and the project's own
-non-compiling checks, commit and push. What you cannot do is produce a
-binary: `bb build` refuses and says so rather than half-working.
+**You are reading this ON a node, because there is nowhere else to read it
+from.** A session runs on the machine its project is bound to: the controller
+keeps the dashboard, the notebook and the record, carries no Claude Code, and
+starts no session at all. A project with no node has no session — pressing
+Claude on it says so and names what to do, rather than opening a conversation
+that cannot build anything.
 
-When that happens there are exactly two honest answers, and the refusal
-names whichever applies:
+So the node you are on is the whole of what you have: its toolchains, its
+`/dev/kvm`, its card, its share mounts. `bb nodes` names it and `bb packages`
+says what it carries.
+
+**When its toolchain is missing what a build needs, there are two honest
+answers** and the refusal names whichever applies:
 
 - **The project can push** — commit, push, and let CI build it. That is the
   fallback, and it is a real one: the workflow runs on a runner with the
   toolchain.
 - **It cannot push** — then say plainly that the project cannot be built
-  from here until the operator picks a node or grants push rights. Do not
-  invent a local build, do not `apt-get` a compiler, and do not report
+  until the operator installs it from the Tools tab or grants push rights. Do
+  not invent a local build, do not `apt-get` a compiler, and do not report
   success you did not observe.
 
-**The same rule applies when the node is missing a toolchain.** A node that
-carries no JDK cannot build an Android app, and `bb build` refuses before
-queueing anything, naming the tool and the Tools tab. Again: CI if the
-project can push, otherwise say so.
+**That is not hypothetical.** A node that carries no JDK cannot build an
+Android app, and `bb build` refuses before queueing anything, naming the tool
+and the Tools tab. Again: CI if the project can push, otherwise say so.
 
 `bb nodes` names the project's node and what its census reports it carries.
 
@@ -306,11 +306,10 @@ project can push, otherwise say so.
 
 Only relevant when a phone is connected on this project's node.
 
-A phone is driven from a **node**, not from this container: whichever node
-has adb is where a handset is paired and connected, on the dashboard's Phone
-tab, and a project's sessions reach the phone on the project's node and no
-other. Pairing is once per node; if the phone is not showing as connected,
-the answer is almost always Connect rather than Pair.
+A phone is paired and connected on a **node**, on the dashboard's Phone tab,
+and a project's sessions reach the phone on the project's node and no other.
+Pairing is once per node; if the phone is not showing as connected, the
+answer is almost always Connect rather than Pair.
 
 **You cannot reach it directly, and that is deliberate.** The handset is kept
 on an adb server of its own, so `adb devices` here shows the emulator and
@@ -354,7 +353,7 @@ a shared machine and root on it is not a user's to allow (their own phone
 is). On **Allow** the node runs that command as root and hands you the
 output, on **Deny** you are told no. A second command is a second question.
 It works only on a node provisioned as a sandbox — somebody's own machine is
-not yours to run root on — and a project with no node has nothing to ask.
+not yours to run root on.
 A node whose system changes are locked to its own console refuses the ask
 outright and says so; that is the operator's decision, not a fault.
 Write the reason you would want to read, and ask for the smallest command
@@ -407,8 +406,8 @@ they came to negotiate, and a number applied on arrival skips the
 conversation they wanted. Do not propose `1.0.0` unless they raise it.
 
 **The number is this project's own, and nothing here suggests one** — not an
-example in this file, not the version of the container you are running in,
-not a sibling project's. A number you did not derive from this code base is
+example in this file, not BuilderBot's own version, not a sibling
+project's. A number you did not derive from this code base is
 the wrong number, however plausible it looks.
 
 **A repo that ships two products has two versions.** An APK and a browser
@@ -897,9 +896,8 @@ only when the finding is genuinely a false positive, and say why.
 
 The controller runs no Actions runner. Every runner lives on a node the
 operator enrolled — the dashboard's Nodes tab installs one — and carries that
-node's own name as a label, which is how a workflow chooses it. A session on
-the node is on the same machine as its runner; one on the controller is not.
-`bb status` says which this is.
+node's own name as a label, which is how a workflow chooses it. A workflow
+labelled with this machine's name runs right here, beside you.
 
 ```yaml
 runs-on: [self-hosted, bb-sandbox]
@@ -915,27 +913,11 @@ Four implications:
   registry knows; compare the job's `Requested labels:` against it.
 - `bb lint` refuses a `runs-on` naming a label no runner carries, so that
   mismatch is caught here instead of on GitHub.
-- A CI job's console output is archived on the node, under its data store.
-  `bb ci-log` reads the newest run — right there from a session on the node,
-  fetched across from one on the controller; `--list` shows what is kept.
+- A CI job's console output is archived on the node that ran it, under its
+  data store. `bb ci-log` reads the newest run — this machine's directly, and
+  another node's fetched across; `--list` shows what is kept.
 
-## Toolchain already present
-
-Do not install these. On the controller they are in the image:
-
-`node 22` · `npm`/`yarn`/`pnpm` · `python 3.12` + `uv`/`pipx` ·
-`playwright` (chromium/firefox/webkit) · `git`/`git-lfs`/`gh` ·
-`ripgrep`/`fd`/`fzf`/`jq`/`yq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
-`shellcheck`/`hadolint`/`actionlint`/`ruff` · `lsof`/`strace`/`tree` ·
-`mise` for per-project tool pinning
-
-No JDK and no Android SDK on the controller: compiling happens on a node.
-There the toolchain is the packages store, and `bb packages` is the list: the
-JDK, the Android SDK, Playwright's browsers with their module, and the lint
-tools are all recipes there, installed from the dashboard's Tools tab with
-that node picked. One `bb lint` check skipping, or `bb shot` failing to
-find its module, means a recipe is not installed yet — say which, and let
-the operator install it; never `apt-get` around it.
+## Linting, versions and logs
 
 Before pushing anything that touches shell scripts, Dockerfiles, workflows,
 compose files or XML, run:
@@ -955,17 +937,12 @@ Check `bb status` for versions and `bb doctor` when something environmental
 looks wrong — it diagnoses auth, connectivity and GPU state in one pass. Bare
 `bb` lists everything it can do.
 
-The container clock is set from the host's `TZ`, so timestamps you print are
-local time, not UTC. Worth stating explicitly when you quote one.
+Timestamps you print are this machine's local time, not UTC. Worth stating
+explicitly when you quote one.
 
-The container's own log rotates on every start, which is worth knowing when
-something broke across a restart:
-
-```bash
-bb logs            # this boot
-bb logs -p         # the previous boot
-bb logs --list     # what is kept
-```
+`bb logs` reads the controller's own log — this boot, `-p` the one before it,
+`--list` what is kept. Worth knowing when something broke across a restart of
+the dashboard rather than of anything here.
 
 <!-- BUILDERBOT:ENV:END -->
 
@@ -1002,8 +979,9 @@ by hand cost four commands and still could not see the failed builds.
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a
-  weekly cron rebuild, so the base image stays fresh. Claude Code is not in
-  the image — it is installed into the home volume at first boot. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  weekly cron rebuild, so the base image stays fresh. Claude Code is in
+  neither the image nor the boot: a session runs on a node, which carries its
+  own. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
   but building the image on the box that runs the image is circular — a bad
   image would take down the runner that has to build the fix. **A pull request
   does not build it** — that used to be two hosted builds for one answer, the

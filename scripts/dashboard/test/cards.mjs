@@ -714,9 +714,12 @@ await page.waitForFunction(() => !document.getElementById('bSignOut')?.disabled,
                            { timeout: 25000 });
 ok(true, 'with the last one ended, it comes alive');
 
-// Signed out: the offer flips, and signing in opens a terminal, because the
-// flow is a URL to open and a code to paste back.
-writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
+// Signed out. The card reads the RECORD now, not `claude auth status`: the
+// controller holds no credential and has no Claude to ask (R47), so what
+// "signed in" means here is that some node reports being signed in.
+const claudeRecord = (d) => writeFileSync(`${DIR}/home/.claude/.bb-grant.json`,
+  JSON.stringify(d));
+claudeRecord({ gen: 2, email: '', plan: '', nodes: {} });
 // Kept asking rather than asked once: the verdict is cached for 20s and the
 // page polls every 15, which together outlast any patience worth calling a
 // timeout. See refreshUntil.
@@ -733,11 +736,9 @@ ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => 
 // card, means SOME NODE reports being signed in — and signing out moves a
 // generation, which is the only thing that can reach a node that is not
 // listening, because being signed out has no date to compare.
-writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 mkdirSync(`${DIR}/home/.claude`, { recursive: true });
-writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, JSON.stringify({
-  gen: 4, email: 'you@example.com', plan: 'max',
-  nodes: { n_fixture: { email: 'you@example.com', at: 1 } } }));
+claudeRecord({ gen: 4, email: 'you@example.com', plan: 'max',
+               nodes: { n_fixture: { email: 'you@example.com', at: 1 } } });
 await refreshUntil(page, () => document.getElementById('bSignOut') !== null);
 ok((await page.$eval('#docAuth', e => e.textContent)).includes('you@example.com'),
    'the card names the Anthropic account a node reports being signed in as');
@@ -752,8 +753,8 @@ ok(mark.gen === 5 && !Object.keys(mark.nodes || {}).length && !mark.email,
    '...moving the generation, clearing the nodes, and releasing the Anthropic account');
 ok(!existsSync(`${DIR}/home/.claude/.credentials.json`),
    '...with no credential on the controller at any point, because none is kept here');
-rmSync(`${DIR}/home/.claude/.bb-grant.json`, { force: true });
-writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
+claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
+               nodes: { n_fixture: { email: 'tester@example.com', at: 1 } } });
 
 // ---- the sign-in runs where Claude IS, which is a node ------------------
 // Claude Code is installed for the account that runs sessions, and that is a
@@ -778,15 +779,12 @@ writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
     body: JSON.stringify({ action: 'cancel' }) }); });
 }
 
-// ---- ...and here, when no node is running sessions ----------------------
-// The fallback while this container still carries Claude. No terminal
-// anywhere in it: the flow runs under a pty the server holds, so the whole
-// thing is drivable — which it never was while it lived in a tmux session
-// behind ttyd. The stub claude is shaped like the real one: a URL, a prompt
-// with no newline after it, and a line read back.
-//
-// Drained, because a drained node takes no work: that is the state this
-// container is the only place left to sign in from.
+// ---- ...and nowhere, when no node is running sessions -------------------
+// There is no fallback: this container carries no Claude Code, so a sign-in
+// has no machine to run on and says so. The local pty flow that used to live
+// here went with the binary (R47); what the card does with a flow — the
+// link, the code field, the focus across polls — is driven in agent.mjs now,
+// where a node's job log can actually be posted to.
 await page.evaluate(async () => {
   const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
   for (const n of ns.filter(x => x.kind === 'agent'))
@@ -794,87 +792,19 @@ await page.evaluate(async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'drain', id: n.id }) });
 });
-writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
-await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
-await page.click('#bSignIn');
-await page.waitForFunction(() => document.getElementById('authCode') !== null,
-                           { timeout: 25000 });
-ok((await page.$eval('#docAuth a', a2 => a2.href)).includes('oauth/authorize'),
-   'Sign in starts the flow and the card carries its link, tappable');
-// In the button's own answer, not fifteen seconds later on the next poll:
-// the flow prints the URL about a second in, and start() waits for it.
-const started = await page.evaluate(async () => {
-  const t0 = performance.now();
-  const r = await fetch('/api/signin', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  return { ms: performance.now() - t0, url: !!(await r.json()).signin?.url };
-});
-ok(started.url && started.ms < 8000,
-   `...and the link is in the reply that starts it (${Math.round(started.ms)}ms)`);
-ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
-   '...opening away from the dashboard, not over it');
-ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),
-   '...and no terminal was opened for it at all');
-
-// The code is pasted into that field on a phone, while the card is polling
-// every 1.2s to catch the answer. A poll must not take the field away: the
-// card layout used to re-append every card on every poll, and a node leaving
-// the document takes the focus — and the on-screen keyboard — with it.
-await page.click('#authCode');
-ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
-   'the code field takes focus when it is tapped');
-await page.evaluate(() => { refresh(); refresh(); });
-await page.waitForTimeout(1500);
-ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
-   '...and keeps it across the polls that are watching for the answer');
-await page.evaluate(() => applyCards(false));
-ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
-   '...even when the card order is reapplied, since nothing actually moved');
-
-// A code that is not one never reaches the process.
-const junk = await page.evaluate(async () => {
-  const send = code => fetch('/api/login-code', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }) }).then(r => r.status);
-  return { link: await send('https://claude.com/cai/oauth/authorize?code=true'),
-           blank: await send('  \n\t '), long: await send('x'.repeat(5000)) };
-});
-ok(junk.link === 400 && junk.blank === 400 && junk.long === 400,
-   'the link alone, an empty paste and a novel are refused; nothing else is');
-page.errors = [];
-
-// Everything else goes to the flow, junk stripped rather than refused, and
-// the flow's own verdict comes back to the card. This paste carries the lot:
-// base64 padding, a line break from a wrapped copy, a space, a control
-// character, a zero-width mark from an HTML copy button, and the authorize
-// URL the code page sets flush against the code so that Copy takes both.
-const padded = await page.evaluate(async () => {
-  const r = await fetch('/api/login-code', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: '\u200bwrong+code/12\n34 =\u0003=https://claude.com/cai/oauth/authorize?code=true' }) });
-  return r.status;
-});
-ok(padded === 200, '...while everything a real paste drags along goes through');
-await page.waitForFunction(() => /did not finish|Login failed/.test(
-  document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
-ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
-   'a refused code is reported on the card, in the words the flow used');
-ok(/\[got wrong\+code\/1234==\]/.test(await page.$eval('#docAuth', e => e.textContent)),
-   '...and what reached the flow was the code, without what the copy added');
-
-// And a good one signs in, which flips the whole row.
-await page.click('#bSignIn');
-await page.waitForFunction(() => document.getElementById('authCode') !== null,
-                           { timeout: 25000 });
-await page.fill('#authCode', 'goodcode1234');
-await page.click('#bAuthCode');
-await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
-                           { timeout: 30000 });
-ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === true
-   && (await page.$eval('#docAuth', e => e.textContent)).includes('signed in as'),
-   'a good code signs in, and the card goes back to saying who you are');
-ok(await page.$('#authCode') === null,
-   '...with the code field gone, because there is nothing left to ask');
+{
+  const nowhere = await page.evaluate(async () => {
+    const r = await fetch('/api/signin', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    return { status: r.status, ...(await r.json()) };
+  });
+  ok(nowhere.status === 400 && /no node is running sessions/.test(nowhere.error || ''),
+     `with no node running sessions there is nowhere to sign in, and it says so (${
+       (nowhere.error || '').slice(0, 56)})`);
+  // That refusal is a 400 by design and the browser logs every one as a
+  // failed resource. Cleared, so the check below is about the page.
+  page.errors = [];
+}
 
 // ---- the runner card -------------------------------------------------------
 // A view of the NODES' runners and nothing else: this container ran a runner

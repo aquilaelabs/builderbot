@@ -71,9 +71,6 @@ function renderSettingsInto(i){
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
   {title: "Claude Code", fields: [
-    {key: "claude_auto_update", label: "Update at every start", type: "bool"},
-    {key: "claude_channel", label: "Channel", type: "choice",
-     hint: "stable is the tested release, latest the newest, next the preview."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
      hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
   {title: "Debugging", fields: [

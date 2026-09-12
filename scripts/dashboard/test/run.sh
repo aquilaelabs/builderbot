@@ -780,6 +780,18 @@ d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
 u._save(d)
 PY
 
+# ...and its Claude identity. The controller holds no credential now (R47) —
+# each machine signs in for itself — so "signed in" here is a RECORD: which
+# Anthropic account this BuilderBot account is bound to, and which nodes
+# report being signed in as it. Without one every suite reads the box as
+# signed out, which ghosts every Claude button and reddens every project row.
+mkdir -p "$S/home/.claude"
+cat > "$S/home/.claude/.bb-grant.json" <<'GRANT'
+{"gen": 1, "email": "tester@example.com", "plan": "max",
+ "nodes": {"n_fixture": {"email": "tester@example.com", "at": 1}}}
+GRANT
+chmod 600 "$S/home/.claude/.bb-grant.json"
+
 # ---- the docker-host node --------------------------------------------------
 # The suite needs one node whose daemon the controller can address, and it
 # used to get one from DOCKER_HOST: the server mirrored the variable into an

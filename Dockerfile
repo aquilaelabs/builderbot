@@ -226,12 +226,13 @@ RUN set -eux; \
     chown -R builder:builder "${WORKSPACE}"
 
 # ---------------------------------------------------------------------------
-# Claude Code is NOT in this image. It is Anthropic's proprietary binary
-# ("all rights reserved"), and this image is published: baking it in would be
-# redistributing it. The first boot installs it into the home volume
-# (scripts/startup.d/20-claude-code.sh, into ~/.npm-global, which precedes
-# /usr/local on PATH), where every later update also lands — so the container
-# self-updates without a rebuild, and the image ships only what it may.
+# Claude Code is NOT in this image, and is not installed at boot either: this
+# container runs no session. A session runs on the node its project is bound
+# to, which is where Claude Code is installed and where the login it uses
+# lives (R47). Two reasons, and either would do — it is Anthropic's
+# proprietary binary ("all rights reserved") and this image is published, so
+# baking it in would be redistributing it; and a controller that cannot start
+# a conversation cannot start one on the wrong machine.
 #
 # web-ext (MPL) is here: the controller carries what it needs in the image,
 # and there is no package list at boot (R29, then the operator's call:
@@ -284,10 +285,9 @@ RUN set -eux; \
     chmod -R +x /opt/builderbot/scripts; \
     ln -sf /opt/builderbot/scripts/bb /usr/local/bin/bb; \
     # /opt/builderbot/bin sits first on PATH and holds privilege-dropping
-    # wrappers, so `docker exec -it builderbot claude` runs as `builder`
+    # wrappers, so `docker exec -it builderbot bb` runs as `builder`
     # (correct HOME, correct file ownership) instead of as root.
     mkdir -p /opt/builderbot/bin; \
-    ln -sf /opt/builderbot/scripts/as-builder /opt/builderbot/bin/claude; \
     ln -sf /opt/builderbot/scripts/as-builder /opt/builderbot/bin/bb; \
     chown -R builder:builder /opt/builderbot/skel
 

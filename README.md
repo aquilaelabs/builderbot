@@ -1,27 +1,26 @@
 # BuilderBot
 
-One container that is a **Claude Code workstation** and the **controller for
-your build nodes** — the machines where builds, tests, CI and the Android
-emulator run — built to live on an Unraid server with your projects mounted
-straight in.
+One container that is the **controller for your build nodes** — the machines
+where Claude sessions, builds, tests, CI and the Android emulator run — built
+to live on an Unraid server with your projects mounted straight in.
 
 ```
   ┌─────────────────────── BuilderBot ────────────────────────┐
-  │  claude · node 22 · python 3 + uv · gh · docker           │
-  │  playwright (chromium/firefox/webkit)                     │
-  │  git/git-lfs · ripgrep/fd/fzf/jq · build-essential · mise │
+  │  the dashboard · the notebook · the record                │
+  │  node 22 · python 3 + uv · gh · docker · playwright       │
   │                                                           │
-  │  nodes ──► builds, tests, CI and the emulator run there:  │
-  │            jdk · android sdk · flutter · … from a store   │
+  │  nodes ──► sessions, builds, tests, CI and the emulator:  │
+  │            claude · jdk · android sdk · … from a store    │
   │                                                           │
-  │  /workspace  ◄─────────  /mnt/user/projects   │
+  │  /workspace  ◄─────────  /mnt/user/projects               │
   │    every folder in there is a project                     │
   └───────────────────────────────────────────────────────────┘
 ```
 
-The container starts, runs its install/setup hooks, registers the runner, and
-stays up. You `docker exec` into it to use Claude Code; GitHub sends CI jobs
-to the same box. New images publish automatically to GHCR whenever a push to
+The container starts, runs its install/setup hooks, and stays up. It carries
+**no Claude Code**: a session runs on the node its project is bound to, opened
+from the dashboard, and the controller keeps the dashboard, the notebook and
+the record. New images publish automatically to GHCR whenever a push to
 `main` changes what the image is built from (plus a weekly refresh), so
 updating is Unraid's one-click **update ready** flow.
 
@@ -50,7 +49,7 @@ private tmux server and photographs it with `bb shot` — the pattern the
 
 | | |
 |---|---|
-| **Claude Code** | `@anthropic-ai/claude-code`, auto-updated on every start |
+| **Claude Code** | Not in the image: a session runs on a node, and the node installs it |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [package store](#the-package-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
@@ -107,15 +106,15 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 | Dir | Holds |
 |---|---|
-| `home/` | Claude Code login, npm globals, shell history, AVDs — survives image updates |
+| `home/` | each account's home — shell history, npm globals — and the AVDs; survives image updates |
 | `config/` | your custom startup hooks (`config/startup.d/*.sh`) + persistent logs (`config/logs/`) |
 
-The dashboard starts early in the boot, before the Claude Code update, any
-project's own `setup.sh` and the SDK/Playwright/Android hooks — so the web UI
-is reachable in seconds rather than after the whole start-up. For a few of
-those seconds it knows less than it will: the package store is listed as a project
-until the hook that marks it runs, git columns are blank, Claude's version is
-unknown. All of that corrects itself on the next poll. `bb logs` now times each
+The dashboard starts early in the boot, before any project's own `setup.sh`
+and the SDK/Playwright hooks — so the web UI is reachable in seconds rather
+than after the whole start-up. For a few of those seconds it knows less than
+it will: the package store is listed as a project until the hook that marks
+it runs, and git columns are blank. All of that corrects itself on the next
+poll. `bb logs` now times each
 hook and prints how far into the boot it started, so "what is the wait" is a
 question the log answers.
 | `work/` | GitHub Actions job checkouts + runner diagnostics |
@@ -206,11 +205,12 @@ it actually answers, and says it is a sandbox — and —
 when a GPU is passed through — whether its **graphics stack** is usable or
 only CUDA is.
 
-If you're on a Claude subscription (no API key):
-
-```bash
-docker exec -it BuilderBot bb login    # one time; survives updates
-```
+If you're on a Claude subscription (no API key), sign in from the dashboard's
+**Sign in** button, under the doctor verdict. The flow runs on a node — the
+machine Claude Code is installed on — and the code is pasted back into the
+card. Each node signs in for itself and keeps the grant it alone refreshes;
+the controller holds no credential, only which Anthropic account you are
+bound to.
 
 **CI runs on a node, not in this container.** Enroll one (step 9 in
 `docs/unraid.md` — a token from the Nodes tab, then `provision-linux.sh` on the
@@ -233,10 +233,12 @@ the same reason — they make a job look routable when nothing will pick it up.
 
 ### 8. Daily use and updating
 
+A Claude session is opened from the dashboard, on the project's row, and runs
+on that project's node. There is no `claude` in this container to exec into.
+
 ```bash
-docker exec -it BuilderBot claude                          # Claude Code
-docker exec -it -w /workspace/FreshBoot BuilderBot claude  # in a project
 docker exec -it BuilderBot bb shell                        # shell as builder
+docker exec -it BuilderBot bb status                       # what this box is
 ```
 
 **Adding a project**: make a folder in the projects share. That is the whole
@@ -264,7 +266,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | Container timezone — set yours, or timestamps read as somebody else's day |
-| `ANTHROPIC_API_KEY` | *(empty)* | API-key billing; empty = subscription login via `bb login` |
+| `ANTHROPIC_API_KEY` | *(empty)* | API-key billing, passed to the sessions on your nodes; empty = subscription login, from the dashboard's Sign in |
 | `GITHUB_URL` | *(empty)* | **Your** repo or org URL, the one node runners register with — `https://github.com/<you>/<repo>`, or an org URL to serve every repo in it. Empty until you want CI on a node |
 | `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
@@ -304,7 +306,6 @@ then executes hooks and drops privileges:
 
 | Hook | Does |
 |---|---|
-| `20-claude-code.sh` | Claude Code update, npm/pipx extras |
 | `30-git-and-auth.sh` | git identity, GitHub host keys, `gh` auth (unshielded mode only) |
 | `35-publishing.sh` | npm publish auth, ghcr docker login (socket + PAT present) |
 | `40-projects.sh` | project report, optional per-project bootstrap |
@@ -374,9 +375,8 @@ bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
-bb update          update Claude Code in place
-bb login           Claude Code subscription auth flow. On a node it first syncs
-                   this account's login with the controller's, newer wins
+bb login           Claude Code subscription auth flow, on the machine it is
+                   run on. Nothing is copied anywhere
 bb login --check   what THIS machine is signed in as, told to the controller,
                    and a sign-out taken here. The grant never travels: every
                    failure this had came from one OAuth pair living on several
@@ -428,7 +428,8 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
                    dist/ with its provenance; `--node` names another node
 bb build           the project's build command on its node, with the outputs
                    it lists — all set in the project's settings dialog
-bb test            the same for its test command
+bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
+                   suite that takes file names runs only those
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -457,11 +458,12 @@ bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
-bb tests run       run the project's test command, time it, and record the run — says first when it should finish,
-                   and ends by NAMING what went wrong: the failed assertions per file, and for a file that
-                   CRASHED the line it died on plus the fact that nothing after it ran. A crash prints no
-                   `FAIL` line and no totals, so a run that only said "failures above" cost four whole runs
-                   to read once
+bb tests run [ARGS]  run the project's test command, time it, and record the run — says first when it should
+                   finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
+                   that CRASHED the line it died on, the assertions that had already failed before it did,
+                   and the fact that nothing after it ran. A crash prints no `FAIL` line and no totals, so a
+                   run that only said "failures above" cost four whole runs to read once. ARGS go to the
+                   command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
@@ -553,10 +555,9 @@ renders exactly what a tab will show) and ImageMagick packs the `.ico`.
 The dashboard's own tab icon is this command's output, from
 `scripts/dashboard/static/favicon.svg`.
 
-`claude` and `bb` re-exec as `builder` automatically — `docker exec` lands
-as root, which would break your saved login and file ownership. A bare
-`docker exec -it BuilderBot bash` is still root; use `bb shell` for the
-normal user.
+`bb` re-execs as `builder` automatically — `docker exec` lands as root, which
+would break file ownership. A bare `docker exec -it BuilderBot bash` is still
+root; use `bb shell` for the normal user.
 
 ## The package store lives outside the image
 
@@ -1433,8 +1434,11 @@ whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
 that node when its row says the half is up and `/workspace` is mounted, and
 refuses with the reason — on the row's button and in the terminal — when
-the node cannot take one, rather than starting it on the wrong machine; a
-project with no node keeps its sessions here. A node's sessions ride its
+the node cannot take one, rather than starting it on the wrong machine. A
+project with **no** node has no Claude session at all: this container carries
+no Claude Code, so the button says so and names what to do. Its shell still
+opens here, on the same share — a tree to read, the linters, git — because
+what moved to a node is Claude and not the terminal. A node's sessions ride its
 heartbeat onto the Sessions card with an "on <node>" pill, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,

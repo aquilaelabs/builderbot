@@ -7,14 +7,16 @@ edited on the Settings tab and read by the boot hooks through bb_setting in
 lib/common.sh: this file, else the default. Nothing reads an environment
 variable for one of these any more (the rule `unreleased`).
 
-Two keys, deliberately. The first pass moved fourteen variables here; the
+Few keys, deliberately. The first pass moved fourteen variables here; the
 operator then asked which of them needed to exist at all, and most did not:
 the tab cap is a constant, the packages a node needs come from the package
 manager and the controller carries what it needs in the image, the project
 bootstrap and the icon name went with the features, and the commit identity
-is a project's own (prefs.py, the settings dialog). What is left is what
-somebody actually changes: whether Claude Code updates at boot, and to which
-channel.
+is a project's own (prefs.py, the settings dialog). Two more went with the
+Claude Code install itself (R47): this container does not carry it, so
+whether to update it here and on which channel were settings about nothing —
+a node installs its own and `claude update` in a session there keeps it
+current.
 
 GITHUB_URL stays beside the PAT it is used with, in the root-only stash the
 entrypoint builds — a session can write this file, and the org a runner token
@@ -35,10 +37,6 @@ FILE = None
 # key -> its default, its shape, and when a change takes: "live" (applied by
 # set_many) or "boot" (read by a startup hook through bb_setting).
 KEYS = {
-    "claude_auto_update": {"default": True, "kind": "bool", "applied": "boot"},
-    # An npm dist-tag of @anthropic-ai/claude-code: stable, latest or next.
-    "claude_channel": {"default": "latest", "kind": "choice",
-                       "choices": ("stable", "latest", "next"), "applied": "boot"},
     # Off, the server refuses a second Claude session on one project when
     # another account's session there is signed in to the same Claude
     # account — two people on one login is what Anthropic's terms forbid.

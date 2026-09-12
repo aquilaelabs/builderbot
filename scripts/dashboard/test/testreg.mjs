@@ -70,6 +70,22 @@ ok(/2 flagged \(40s waiting\)/.test(listed),
 ok(/slow\.mjs\s+3 tests\s+2 flagged/.test(listed),
    'the rollup is per suite: one file dominating is the more useful view');
 
+// ---- narrowing ------------------------------------------------------------
+// A change touches two files and the whole suite is minutes, so `bb tests
+// run` takes the files to run and passes them to the project's test command.
+// The projection has to follow it: asked about named suites it is those
+// suites' own measured time, and asked about the whole thing it ignores the
+// narrowed runs — projecting a full run from a two-file one would call it
+// stuck while it was still getting started.
+ok(/^projected 44s, what those 3 tests last measured, in 1 of 2 suites;/m
+     .test(bb('projection', 'slow')),
+   'a projection for named suites is those suites, by the stem a runner is asked for');
+ok(/^projected 44s, what those 5 tests last measured, in 2 of 2 suites;/m
+     .test(bb('projection', 'fast', 'slow.mjs')),
+   '...several of them, named either way, add up');
+ok(bb('projection', '--secs', 'slow').trim() === '44',
+   '...and --secs is the number alone, which is what times the run');
+
 // ---- the heuristic --------------------------------------------------------
 // A fixed wait lands just above its boundary and never below, because the
 // boundary IS the wait and everything after it is overhead.
@@ -392,10 +408,13 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
       stdio: ['ignore', 'pipe', 'pipe'] }).toString();
   } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
   // Before anything runs it says when the run should finish, from the wall
-  // time the last ingested run reported — so a run is waited for rather than
-  // guessed at, and one well past it is read as stuck.
-  ok(/^projected 40s, what the last run took over \d+ tests in \d+ suites; one past 80s is stuck, not slow$/m.test(out),
-     `bb tests run says first when it should finish, from the last run's wall time (${out.split('\n')[0]})`);
+  // time the last WHOLE run reported — so a run is waited for rather than
+  // guessed at, and one well past it is read as stuck. The last whole one,
+  // because a run narrowed to two files takes a fraction of the time and
+  // projecting the next full one from it would call it stuck while it was
+  // still getting started.
+  ok(/^projected 40s, what the last whole run took over \d+ tests in \d+ suites; one past 80s is stuck, not slow$/m.test(out),
+     `bb tests run says first when it should finish, from the last whole run's wall time (${out.split('\n')[0]})`);
   ok(/nothing timed, so nothing recorded/.test(out),
      'a run that could not start records nothing, and says so');
   ok(!/looks like a test run/.test(out),

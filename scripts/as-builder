@@ -3,10 +3,9 @@
 # Privilege-dropping wrapper, dispatched on the name it's invoked as.
 #
 # `docker exec` does NOT go through the entrypoint, so it lands you as root —
-# which would run Claude Code with HOME=/root (no saved login) and leave
-# root-owned files in your Unraid shares. Symlinks named `claude` and `bb` in
-# /opt/builderbot/bin point here so those commands re-exec as `builder`
-# whichever way you enter the container.
+# which would leave root-owned files in your Unraid shares. A symlink named
+# `bb` in /opt/builderbot/bin points here so the command re-execs as
+# `builder` whichever way you enter the container.
 #
 set -euo pipefail
 

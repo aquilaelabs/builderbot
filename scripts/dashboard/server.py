@@ -1472,7 +1472,7 @@ IGNORE_MARKER = ".bbignore"
 
 
 def _session_at(name):
-    t = session_target(name)
+    t = session_target(name, claude=True)
     if t["where"] == "node":
         # The node's boot, for the page to stamp into a terminal's URL in
         # place of this container's: bb-tty on the node compares against the
@@ -1514,7 +1514,6 @@ def project_list(who):
         pass                    # unreadable: reported by the listing below
     locked = set(load_locks())
     pins = load_project_pins()
-    stopped = last_stop()
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
@@ -1720,7 +1719,7 @@ def project_list(who):
                     # onto the projects share (lib/common.sh's
                     # claude_projects_link), so a conversation a node's
                     # session had is offered here and continued there.
-                    "last_claude": last_claude(d, d.name, stopped),
+                    "last_claude": last_claude(d),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here — and why the button is
                     # dead when its node cannot take one. The proxy decides
@@ -1880,13 +1879,17 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project, here=False):
+def session_target(project, claude=False):
+    # `claude` is the one thing that changed with R47. A project's SHELL still
+    # follows its node — the tree is that machine's mount and its toolchains
+    # are what a build there uses — and a project with NO node still gets a
+    # shell here, on the same share. What it no longer gets is a Claude
+    # session: this container carries no Claude Code, so the answer is a
+    # refusal that says what to do rather than a conversation that cannot
+    # build anything.
     """Where a session on this project runs (roadmap #24, phase 10b):
 
         {"where": "local"}                                   — this container
-        {"where": "local", "instead_of", "why"}              — this container,
-                                                               asked for while the
-                                                               node cannot take one
         {"where": "node", "id", "name", "host", "port", "ro_port"}
         {"where": "refused", "name", "why"}                  — bound to a node
                                                                that cannot take one
@@ -1908,20 +1911,26 @@ def session_target(project, here=False):
     add and nothing to unbind. The census is asked for again on the
     strength of any refusal it decided, so the next look is current.
 
-    And a refusal is never a lockout: with `here` the session runs on this
-    container instead, explicitly — the dead button's menu offers it, with
-    the reason beside it. The operator who could not start Claude to ask
-    what was wrong with the node was locked out of the one place the
-    answer lives. A session started this way is a session on the
-    controller, with the tree and the notebook and without the node's
-    toolchains, and its transcript lives here, not there; the tab says so.
+    A Claude session has no second place to run: this container carries no
+    Claude Code, so a refusal is the whole answer and the sentence has to
+    carry what to do about it. A SHELL still falls back here, which is what
+    keeps the tree, the linters and git reachable while a node is away.
     """
     nid = (prefs.get(project) or {}).get("node") or "" if project else ""
+    # ONE SENTENCE, and not a red one on the page: a project with no node is
+    # a normal state, not a fault. `name` is what tells the two apart
+    # downstream — empty here, the node's name when a node refused — so the
+    # row can say this plainly and keep red for the machine that is broken.
+    no_node = {"where": "refused", "name": "",
+               "why": f"{project or 'this project'} has no node, and a Claude session "
+                      "runs on one — pick one in the project's settings, or enroll "
+                      "one on the Nodes tab"} if claude \
+        else {"where": "local"}
     if not nid or NODES_OK:
-        return {"where": "local"}
+        return no_node
     n = nodes.node(nid)
     if not n or n.get("kind") == "local":
-        return {"where": "local"}
+        return no_node
     name = n.get("name") or nid
     rep = n.get("reported") or {}
     se = rep.get("session")
@@ -1991,11 +2000,11 @@ def session_target(project, here=False):
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
                 "boot": str(se.get("boot") or "")}
-    if here:
-        return {"where": "local", "instead_of": name, "why": why}
     return {"where": "refused", "name": name,
             "why": why + ("." if passing else
-                          ". Unbind the node in the project's settings dialog to work here instead.")}
+                          ". Sessions run on a node and nowhere else — this container "
+                          "carries no Claude Code — so the way on is that machine "
+                          "coming back, or another node in the project's settings.")}
 
 # A session name without the account that owns it. Shell sessions are named
 # `<uid>~shell-…` since roadmap #26 — two people opening a terminal on one
@@ -2052,14 +2061,6 @@ def claude_sessions(sessions):
     return out
 
 
-def _term_here(rest):
-    """Whether a /term request asks for the session on THIS container when
-    the project's node cannot take one — `here=1` in the query, which the
-    dead Claude button's menu sends. An explicit tap, never a default."""
-    _, sep, query = rest.partition("?")
-    return sep and any(kv == "here=1" for kv in query.split("&"))
-
-
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -2093,22 +2094,21 @@ _homes = {}
 
 
 def claude_logins(rows):
-    """Which Claude account each BuilderBot account is signed in as, read
-    from the login Claude Code keeps in that account's home, and whether
-    two of them share one. Anthropic's consumer terms allow one person per
-    Claude account, so two BuilderBot accounts on one login is the thing
-    the per-account homes exist to avoid — said on the row rather than
-    left for somebody to work out."""
+    """Which Anthropic account each BuilderBot account is signed in as, and
+    whether two of them share one.
+
+    From the RECORD, not from a credential: no login lives on this container
+    (R47), and what it keeps instead is which Anthropic account each of its
+    accounts is bound to, as the node that signed in reported it.
+
+    Anthropic's consumer terms allow one person per Claude account, so two
+    BuilderBot accounts on one login is the thing the per-account homes exist
+    to avoid — said on the row rather than left for somebody to work out.
+    """
     out = []
     for u in rows:
-        email = ""
         home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
-        try:
-            j = json.loads((Path(home) / ".claude.json").read_text())
-            email = str(((j.get("oauthAccount") or {}).get("emailAddress")) or "")[:200]
-        except (OSError, ValueError, AttributeError):
-            email = ""
-        out.append(u | {"claude": email})
+        out.append(u | {"claude": claudegrant.state(home)["email"]})
     seen = {}
     for u in out:
         if u["claude"]:
@@ -2220,27 +2220,14 @@ def node_tmux_sessions():
     return rows
 
 
-def last_stop():
-    """Project -> transcript id, as recorded by the supervisor on its way down.
-
-    Written by scripts/supervisor.sh on SIGTERM. Distinguishes "this project
-    has an old transcript lying about" from "this conversation was open when
-    the container stopped", which is the one worth offering to resume.
-    """
-    try:
-        v = json.loads((STATE / "last-sessions.json").read_text())
-        s = v.get("sessions")
-        return s if isinstance(s, dict) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
-
-
-def last_claude(project_dir, name, stopped):
+def last_claude(project_dir):
     """The most recent Claude transcript for a working directory, or None.
 
     Used to offer "resume" rather than silently starting a fresh conversation
-    in a project that already had one — the tmux session dies with a container
-    restart, but the transcript does not.
+    in a project that already had one — a session's tmux dies with the machine
+    it ran on, but the transcript does not: every account's ~/.claude/projects
+    is a link onto the projects share (lib/common.sh's claude_projects_link),
+    so this reads what a session on a node wrote.
     """
     d = CLAUDE_PROJECTS / str(project_dir).replace("/", "-")
     try:
@@ -2250,10 +2237,7 @@ def last_claude(project_dir, name, stopped):
     if not files:
         return None
     newest = max(files, key=lambda f: f.stat().st_mtime)
-    return {"id": newest.stem, "when": int(newest.stat().st_mtime),
-            # True when this is the conversation that was actually open when
-            # the container was stopped, not merely the last file touched.
-            "was_open": stopped.get(name) == newest.stem}
+    return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
 
 
 def claude_launcher_path(project):
@@ -2510,6 +2494,17 @@ AUTH_TTL = int(os.environ.get("BB_AUTH_TTL") or 20)
 AUTH_TTL_FAST = 5
 
 
+# What gets removed from a pasted code before it is handed to the flow:
+# whitespace of every kind (a wrapped copy brings line breaks, a phone
+# keyboard adds a trailing space), control characters, and the zero-width
+# marks HTML copy buttons smuggle along. Everything printable stays. This is
+# deliberately a strip-list and not an allow-list: two rounds of guessing the
+# code's alphabet each refused a real code with advice to copy it again, to an
+# operator who had copied it. The code is somebody else's credential format;
+# judging it is the flow's job, and the flow says why in its own words.
+CODE_JUNK = re.compile(r"[^!-~]+")
+
+
 def claude_auth(fresh=False, home=""):
     """{signed_in, email} — or {"unknown": True} on a claude too old to ask.
 
@@ -2543,37 +2538,14 @@ def _read_auth(home=""):
     # only once it is next run — and on a controller that carries no Claude
     # there is no binary to ask at all. What the account is signed in AS is
     # what the node that signed in reported, stored beside the grant.
+    # The record, and only the record. There is no `claude` here to ask, and
+    # asking one would answer about this container rather than about the
+    # machines the account's sessions actually run on.
     st = claudegrant.state(home)
-    if st["gen"] or st["email"] or st["nodes"]:
-        state = {"signed_in": st["signed_in"], "email": st["email"],
-                 "plan": st["plan"], "nodes": len(st["nodes"])}
-        _auth[home] = {"at": time.monotonic(), "state": state}
-        return state
-    env = dict(os.environ) | ({"HOME": home} if home else {})
-    r = run(["claude", "auth", "status", "--json"], timeout=20, env=env)
-    try:
-        d = json.loads(r["out"]) if r["code"] == 0 else {}
-        state = {"signed_in": bool(d.get("loggedIn")),
-                 "email": d.get("email") or "",
-                 "plan": d.get("subscriptionType") or ""}
-    except (ValueError, TypeError):
-        # An older claude has no `auth` subcommand and says so on stderr. Not
-        # knowing is not the same as being signed out, and offering to sign
-        # somebody out of nothing is worse than offering nothing.
-        state = {"unknown": True}
+    state = {"signed_in": st["signed_in"], "email": st["email"],
+             "plan": st["plan"], "nodes": len(st["nodes"])}
     _auth[home] = {"at": time.monotonic(), "state": state}
     return state
-
-
-# What gets removed from a pasted code before it is handed to the flow:
-# whitespace of every kind (a wrapped copy brings line breaks, a phone
-# keyboard adds a trailing space), control characters, and the zero-width
-# marks HTML copy buttons smuggle along. Everything printable stays. This is
-# deliberately a strip-list and not an allow-list: two rounds of guessing the
-# code's alphabet each refused a real code with advice to copy it again, to an
-# operator who had copied it. The code is somebody else's credential format;
-# judging it is the flow's job, and the flow says why in its own words.
-CODE_JUNK = re.compile(r"[^!-~]+")
 
 
 def doctor_payload():
@@ -2598,9 +2570,10 @@ import notify                                                    # noqa: E402
 notify.configure(run=run)
 
 # ---- signing in ------------------------------------------------------------
-# The flow runs under a pty this server holds, rather than in a terminal the
-# operator has to work in. See signin.py for why every part of the terminal
-# turned out to be somewhere it could go wrong.
+# The flow runs as a job on a NODE — the machine Claude Code is installed on
+# (R47) — and the card here carries its link and takes the code back. See
+# signin.py for why every part of doing it in a terminal turned out to be
+# somewhere it could go wrong.
 import signin                                                    # noqa: E402
 
 # ---- who may sign in --------------------------------------------------------
@@ -3268,14 +3241,6 @@ def revisions(who=None, projects=None):
 # Who has polled lately, in memory: presence, not a record. See chat.online.
 _polls = {}
 
-# The last time each (project, account) was announced as starting a session,
-# so a race between two requests in the same instant cannot say it twice. In
-# memory because it is about this run of the container, and a restart having
-# forgotten is right: the sessions went with it.
-_announced = {}
-ANNOUNCE_S = 60
-
-
 def snapshot(who):
     if who and who.get("name") and users.uid_of(who):
         _polls[who["name"]] = time.time()
@@ -3742,8 +3707,9 @@ class Handler(BaseHTTPRequestHandler):
         and what is refused instead is a SECOND SESSION ON ONE ANTHROPIC
         ACCOUNT. Two dashboard accounts signed in to the same Anthropic login
         would share its limits and make whose-work-is-whose unanswerable, and
-        the check is a real one rather than a guess: every account has its own
-        home and its own ~/.claude, so the login in it says who it is.
+        the check is a real one rather than a guess: the node that signed each
+        account in reported which Anthropic account it was, and that record is
+        what this compares.
 
         Enforced HERE and not only in the page, for the reason bb-tty's own
         header gives about the lock file: a rule only the UI honors is a
@@ -3766,32 +3732,15 @@ class Handler(BaseHTTPRequestHandler):
         project = arg[len("claude:"):].split(":")[0]
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        # A session on a node is in THAT machine's tmux with that account's
-        # login there, neither of which this container can see: the
-        # announcement and the one-Anthropic-account rule are the node's
-        # own to make (phase 10c gives its hooks the API for the first).
-        if session_target(project)["where"] != "local":
+        # Every Claude session is on a node now (R47), so this container has
+        # no tmux socket to ask. What it has is the census: the node reports
+        # its session names on every heartbeat, and a name says whose it is.
+        # The rule is made from the last thing the node said — a few seconds
+        # stale, which two people starting in the same instant could slip
+        # through, and the alternative is not making it at all.
+        t = session_target(project, claude=True)
+        if t["where"] != "node":
             return ""
-        # Announced to everybody sharing the project, ONCE. Three things make
-        # one start look like several, and the first two were what put the
-        # same line in the channel twice:
-        #
-        #   * ttyd's client asks for /term/token and then /term/ws, both
-        #     carrying the same ?arg=, and BOTH arrive before bb-tty has made
-        #     the session — so "does it exist yet" was false for each of them
-        #     and the line landed twice, which is what a phone showed;
-        #   * a dropped socket reconnects and a waking phone reloads the
-        #     iframe. By then the session exists, which the check does catch.
-        #
-        # The window covers both without knowing anything about ttyd's URLs or
-        # its headers — gating on the upgrade was the first fix and it cannot
-        # be tested through fetch, which refuses to set Connection.
-        mysess = users.tmux_prefix(me) + tmux_name(f"claude-{project}")
-        fresh = mysess not in {x["name"] for x in tmux_sessions()}
-        if fresh and time.time() - _announced.get((project, uid), 0) > ANNOUNCE_S:
-            _announced[(project, uid)] = time.time()
-            chat.event(project, uid,
-                       f"{me['name']} started a Claude session on {project}")
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
@@ -3800,10 +3749,11 @@ class Handler(BaseHTTPRequestHandler):
         store = users.load()["users"]
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         owner = users.owner_name()
-        for s in tmux_sessions():
-            if tmux_base(s["name"]) != tmux_name(f"claude-{project}"):
+        want = tmux_name(f"claude-{project}")
+        for sess in node_tmux_sessions():
+            if sess.get("node_id") != t["id"] or tmux_base(sess["name"]) != want:
                 continue
-            other = tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
+            other = tmux_owner(sess["name"]) or users.uid_of(users.get(owner or ""))
             if not other or other == uid:
                 continue                  # our own session: this is a reattach
             if (claude_auth(home=home_for(other)).get("email") or "") == mine:  # noqa: E501
@@ -3905,7 +3855,13 @@ class Handler(BaseHTTPRequestHandler):
         # loopback. session_target says why a node cannot take one, and the
         # row's button carries the same sentence.
         rest0 = self.path[len("/term"):]
-        target = session_target(_arg_project(_term_arg(rest0)), here=_term_here(rest0))
+        # A SHELL is this container's own and always has been: a tree to look
+        # at, the linters, git. Only a CLAUDE session needs a node, because
+        # only Claude is the thing this container no longer carries — so the
+        # question is asked about a claude: argument and about nothing else.
+        arg0 = _term_arg(rest0)
+        target = session_target(_arg_project(arg0),
+                                claude=arg0.startswith("claude:"))
         if target["where"] == "refused":
             return self._json({"error": target["why"]}, 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
@@ -4862,35 +4818,20 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(r, 400 if r.get("error") else 200)
 
     def _claude_login(self, req=None):
-        """This account's Claude login, both directions (roadmap #24, bug
-        #64): the credentials file from the account's home here, so the
-        node's copy of that home is signed in the same — and, with a body,
-        the node handing back a NEWER one.
+        """This account's Claude identity, both directions (R47) — and no
+        credential in either.
 
-        Only a session token minted FOR an account fetches it — the one the
-        terminal proxy stamps into a node-bound terminal's URL — and only
-        that account's: the account is in the token, signed, not in a
-        parameter. A session on the node can read the same file out of its
-        own home once it is there, so this hands it nothing it will not
-        hold anyway. What it is not is a share: the credential goes to the
-        one machine, into the one home, 0600, and only when that home is
-        not signed in already (bb login decides that on the node).
+        GET is a node asking who this BuilderBot account is bound to and
+        what the generation is; POST is a node saying what it signed in as.
+        The grant itself never moves: each machine signs in for itself and
+        refreshes the one it holds, because a refresh ROTATES the refresh
+        token and two copies of one grant sign each other out (bug #64,
+        B100). claudegrant.py's header is the long version.
 
-        The file is the OAuth grant — a refresh token as well as the access
-        token — and the refresh DOES rotate it: the operator ran sessions on
-        a node for a day and came back to a controller that said it was
-        signed out, because the node had refreshed and this copy still held
-        a refresh token the server had retired (bug #64). Two machines
-        cannot each keep a copy and expect both to work, so the copies are
-        kept in step instead: whichever machine refreshes has the newer
-        grant and puts it back here, and this container stays the one place
-        that holds the account's current one.
-
-        Newer means a later `expiresAt`, which is what a refresh moves. An
-        older grant is refused rather than stored, so a node that has been
-        offline for a week cannot undo a sign-in that happened while it was
-        away, and the copy it replaces is kept beside it for one round —
-        a bad write signs somebody out, and that file is the way back.
+        Only a session token minted FOR an account speaks here — the one the
+        terminal proxy stamps into a node-bound terminal's URL — and only for
+        that account: the account is in the token, signed, not in a
+        parameter.
         """
         me = self._who()
         if not me:
@@ -4939,9 +4880,9 @@ class Handler(BaseHTTPRequestHandler):
         this endpoint with the session's token, and the same modules write
         them: `note` (a file the session is about to edit, with a guess at
         the symbol; answers who else has it open), `asked` (what the person
-        typed, into the project feed), `started` (the session began,
-        which _claude_held announces for a local session and cannot see
-        for one on a node), and `seen` (what the notebook has done since
+        typed, into the project feed), `started` (the session began — the
+        only place that is announced from, since every session is on a
+        node), and `seen` (what the notebook has done since
         this session was last told — the answer goes back into the turn the
         hook is already in, which is how a session stays current without
         anybody pressing a button, roadmap #27).
@@ -5397,9 +5338,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(signin.cancel() | {"signin": signin.state()})
         # WHERE it runs. Claude Code is installed where sessions are, which
         # is a node — so the flow goes there, on the node the operator picked
-        # or the one node there is. Falling back to this container while it
-        # still carries Claude; R47's last step takes that away, and then the
-        # refusal below is the only answer.
+        # or the one node there is. There is no other answer: this container
+        # carries no Claude Code, so with no node the refusal below is it.
         uid = users.uid_of(self._who())
         want = field(req, "node")
         # A node that runs SESSIONS, which is the same test session_target
@@ -5417,15 +5357,17 @@ class Handler(BaseHTTPRequestHandler):
         if pick:
             return self._json(signin.start_on_node(nodes, pick["id"], uid, pick["name"])
                               | {"signin": signin.state()})
-        if want or (live and len(live) > 1):
+        if live:
             return self._json({"error": "which node should the sign-in run on? "
                                         + ", ".join(n["name"] for n in live),
                                "nodes": [n["name"] for n in live]}, 400)
-        # In the asking account's home: `claude auth login` writes to
-        # $HOME/.claude, and this card is how a new account signs in to their
-        # OWN Claude (roadmap #26).
-        return self._json(signin.start(home_for(uid))
-                          | {"signin": signin.state()})
+        # And nowhere else. Claude Code is installed for the account that runs
+        # sessions, which is a node's; this container carries none, so there
+        # is no flow here to fall back to and saying so is the whole answer.
+        return self._json({"error": "no node is running sessions, and a Claude "
+                                    "sign-in runs on the machine Claude is "
+                                    "installed on. Enroll one on the Nodes tab, or "
+                                    "wait for one to come back"}, 400)
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow.
@@ -5460,12 +5402,13 @@ class Handler(BaseHTTPRequestHandler):
                           400 if r.get("error") else 200)
 
     def _signout(self, req):
-        """Sign this container out of Claude.
+        """Sign this account out of Claude, on every machine it is on.
 
-        The other half — signing in — is not here, because it cannot be: the
-        flow wants a browser and a code pasted back, so the page opens a
-        terminal for it. Signing out is one command with no conversation in
-        it, so it is a button.
+        There is nothing here to delete — the credentials are the nodes' —
+        so what this does is move the generation and clear the record. Each
+        node compares generations on its next check and signs ITSELF out
+        when its own is behind, which is what reaches one that is not
+        listening: being signed out has no date, and a counter does.
         """
         # Not while a conversation of THIS account's is running. Signing out
         # pulls the ground from under the sessions it started, and a page that
@@ -5478,8 +5421,11 @@ class Handler(BaseHTTPRequestHandler):
         # account that sees everything still only owns what it opened.
         me = users.uid_of(self._who())
         # The name says whose (roadmap #24): a prefix is that account's, and
-        # the bare one is the owner's.
-        busy = sorted(n for n in (x["name"] for x in tmux_sessions())
+        # the bare one is the owner's. Every node's sessions as well as this
+        # container's — a conversation runs on a node now, and it is exactly
+        # the one the sign-out would pull the credential out from under.
+        busy = sorted(n for n in (x["name"] for x in
+                                  tmux_sessions() + node_tmux_sessions())
                       if tmux_base(n).startswith("claude-")
                       and (tmux_owner(n) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)

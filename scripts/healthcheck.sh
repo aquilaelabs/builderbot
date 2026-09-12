@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Healthy = the supervisor is alive and `claude` is on PATH. When the runner is
-# enabled we also want its process present.
+# Healthy = the supervisor is alive. Claude is not checked because it is not
+# here: this container keeps the dashboard, the notebook and the record, and
+# sessions run on a node, which carries its own.
 set -uo pipefail
 
 . /opt/builderbot/scripts/lib/common.sh
@@ -11,9 +12,5 @@ set -uo pipefail
 # supervisor as healthy.
 pgrep -f '/opt/builderbot/scripts/supervisor\.sh' >/dev/null \
     || { echo "supervisor not running"; exit 1; }
-
-command -v claude >/dev/null 2>&1 || {
-    su builder -c 'command -v claude' >/dev/null 2>&1 || { echo "claude not on PATH"; exit 1; }
-}
 
 echo "ok"

@@ -1,10 +1,11 @@
 // The Settings tab (roadmap R29, then the operator's cut): what is left after
-// asking which settings need to exist at all — whether Claude Code updates at
-// boot, and which channel — plus the commit identity, which became a
-// project's own setting in its dialog. What is exercised for real: the store
-// through the endpoint, the tab's rows, the identity landing in the repo's
-// own config through /api/prefs and coming out of bb settings, and
-// bb_setting — the boot scripts' read — run as bash against the same file.
+// asking which settings need to exist at all — two switches, since the Claude
+// Code update settings went with the install itself (R47) — plus the commit
+// identity, which became a project's own setting in its dialog. What is
+// exercised for real: the store through the endpoint, the tab's rows, the
+// identity landing in the repo's own config through /api/prefs and coming out
+// of bb settings, and bb_setting — the boot scripts' read — run as bash
+// against the same file.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -26,7 +27,7 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the tab ---------------------------------------------------------------
 await page.evaluate(() => openSettingsTab());
-await page.waitForSelector('.settingstab [data-set="claude_channel"]', { timeout: 15000 });
+await page.waitForSelector('.settingstab [data-set="claude_shared_login"]', { timeout: 15000 });
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
 ok(groups.join('|') === 'Claude Code|Debugging',
    `the tab's stored settings are the two groups that survived the question "does this need to exist" — and nothing that should be a constant or a project's (${groups.join(', ')})`);
@@ -34,37 +35,35 @@ ok(groups.join('|') === 'Claude Code|Debugging',
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
    'debug mode is off until somebody turns it on');
-ok(await page.$eval('.settingstab [data-set="claude_auto_update"]', e => e.checked && e.closest('label') !== null)
-   && await page.$eval('.settingstab [data-set="claude_channel"]', e => e.tagName === 'SELECT' && e.value === 'latest'),
-   'the update switch sits in its label and the channel is a select, on latest by default');
-ok(await page.$eval('.settingstab [data-set="claude_shared_login"]', e => e.type === 'checkbox' && !e.checked),
-   'the shared-login switch is a checkbox, off by default');
-ok((await page.$$eval('.settingstab [data-set="claude_channel"] option', os => os.map(o => o.value))).join(',') === 'stable,latest,next',
-   '...offering the channels the package publishes: stable, latest, next');
-ok(await page.$eval('.settingstab [data-group="Claude Code"] .actbar .state', e => /next start/.test(e.textContent)),
-   'the section says a change takes at the next start');
+ok(await page.$eval('.settingstab [data-set="claude_shared_login"]', e => e.type === 'checkbox'
+     && !e.checked && e.closest('label') !== null),
+   'the shared-login switch is a checkbox in its label, off by default');
+ok(await page.$eval('.settingstab [data-group="Claude Code"] .actbar .state', e => /now/.test(e.textContent)),
+   'the section says a change takes now, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
-await page.selectOption('.settingstab [data-set="claude_channel"]', 'stable');
-await page.uncheck('.settingstab [data-set="claude_auto_update"]');
+await page.check('.settingstab [data-set="claude_shared_login"]');
 await page.click('.settingstab [data-group="Claude Code"] .setApply');
-await page.waitForFunction(() => state?.settings?.settings?.claude_channel?.value === 'stable', null, { timeout: 30000 });
-ok(read().claude_channel === 'stable' && read().claude_auto_update === false,
-   'Apply writes both under /config and the poll carries them');
+await page.waitForFunction(() => state?.settings?.settings?.claude_shared_login?.value === true, null, { timeout: 30000 });
+ok(read().claude_shared_login === true,
+   'Apply writes it under /config and the poll carries it');
 await page.waitForFunction(() => !document.querySelector('.settingstab [data-group="Claude Code"] .pill'), null, { timeout: 30000 });
-ok(true, '...and the fields are then the owners: no default pill');
-const bad = await post('/api/settings', { set: { claude_channel: 'nightly' } });
-ok(bad.status === 400 && /one of stable, latest, next/.test(bad.body.error || ''),
-   'a channel the package does not publish is refused, naming the three');
-ok((await post('/api/settings', { set: { max_tabs: 5 } })).status === 400,
+ok(true, '...and the field is then the owner: no default pill');
+const bad = await post('/api/settings', { set: { claude_shared_login: 'maybe' } });
+ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
+ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400,
    '...and a key that stopped being a setting is refused too');
+// Back off: this is a stored setting and nothing in the harness resets it
+// between files, so leaving the refusal stood down would be this file
+// changing what every file after it is testing.
+await post('/api/settings', { set: { claude_shared_login: false } });
 
 // ---- what the boot script reads ------------------------------------------------
 const setting = (key, dflt) => execFileSync('bash', ['-c',
   `. ${JSON.stringify(join(HERE, '..', '..', 'lib', 'common.sh'))}; bb_setting ${key} ${JSON.stringify(dflt)}`],
   { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
-ok(setting('claude_channel', 'latest') === 'stable', 'bb_setting hands the boot hook the saved channel');
-ok(setting('claude_auto_update', 'true') === 'false', '...and a saved false as the word false, so is_true reads it');
+ok(setting('claude_shared_login', 'true') === 'false',
+   'bb_setting hands a boot hook the saved value, a false as the word false so is_true reads it');
 ok(setting('nothing_saved', 'dflt') === 'dflt', '...and the default when nothing is saved — no environment variable is read any more');
 
 // ---- the commit identity is the account's ----------------------------------

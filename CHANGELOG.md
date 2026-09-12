@@ -14,6 +14,7 @@
 - A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
 - A node's sessions can be granted another machine's logs — the agent's journal, the runner's, the terminal server's — from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong — the failed assertions per file, and for a file that crashed the line it died on — and bb tests last reads that verdict off the previous run without running anything (815d40e)
+- bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
 
 ### Changed
 
@@ -28,6 +29,8 @@
 - The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
 - Signing out of Claude signs out every node holding that login, and one that is offline signs itself out when it reconnects. One Anthropic account per BuilderBot account: a second signed in on a node is refused rather than propagated (815d40e)
 - Each node signs in to Claude for itself and keeps its own login: nothing copies an OAuth grant between machines now, which is what made a login expire at random. Signing out reaches every node, and one that is offline signs itself out when it reconnects (32c2998)
+- Claude sessions run on a node, not on the BuilderBot container: nothing installs Claude Code here any more, and a project with no node says so on its button instead of opening a conversation that cannot build anything (7b34c58)
+- The Users tab names which Anthropic account each BuilderBot account is signed in to, and still warns when two of them share one (7b34c58)
 
 ### Fixed
 

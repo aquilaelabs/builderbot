@@ -52,7 +52,6 @@ bb — BuilderBot helper
   bb changelog rm N      drop one that stopped being true
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
-  bb update              update Claude Code (and npm globals) in place
   bb login               run the Claude Code auth flow. On a node it first
                          keeps this account's login in step with the
                          controller's, in whichever direction is newer
@@ -93,9 +92,11 @@ bb — BuilderBot helper
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
-  bb tests run           run the project's test command, time it, and record the run.
+  bb tests run [ARGS]    run the project's test command, time it, and record the run.
                          Ends by NAMING what went wrong — the failed assertions,
-                         and for a file that crashed the line it died on
+                         and for a file that crashed the line it died on.
+                         ARGS go to the command, so a suite that takes file
+                         names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
   bb rules               the house rules for this project — the operator's and yours
   bb rules show NAME     one of them in full — what a conditional rule says
@@ -127,7 +128,8 @@ bb — BuilderBot helper
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
   bb build               the project's build command, on its node (settings dialog)
-  bb test                the project's test command, on its node
+  bb test [ARGS]         the project's test command, on its node; ARGS are
+                         appended to it, to narrow a run to some of it
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -213,7 +215,10 @@ cmd_status() {
         else
             printf 'unstamped'
         fi)"
-    version claude claude --version
+    # Only where a session runs: the controller carries no Claude Code (R47),
+    # and a dash against it there reads as something missing rather than as
+    # something that was never meant to be here.
+    if on_node; then version claude claude --version; fi
     version node   node --version
     version npm    npm --version
     version python python3 --version
@@ -261,12 +266,6 @@ cmd_projects() {
     [ "$found" -eq 1 ] || echo "  none mounted"
 }
 
-cmd_update() {
-    log "updating Claude Code"
-    install_claude_code "$(bb_setting claude_version CLAUDE_CODE_VERSION latest)" \
-        || die "update failed — the image's baked-in version is still on PATH"
-    claude --version
-}
 
 # What this machine is signed in as, told to the controller (R47).
 #
@@ -438,6 +437,11 @@ cmd_login() {
              | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
         log "sign in here — this machine keeps its own login"
     fi
+    # And on the controller there is nothing to run: Claude Code is installed
+    # where sessions are, which is a node (R47). The dashboard's Sign in
+    # starts the flow on one and takes the code back; this says the same.
+    command -v claude >/dev/null 2>&1 \
+        || die "this machine carries no Claude Code — a sign-in runs on a node, from the dashboard's Sign in button, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path — start a session and use its
     # slash command — is the fallback for an image whose claude predates the
@@ -2576,9 +2580,13 @@ RULESPY
 # "FAILURES above". That cost four nine-minute runs to find one timeout.
 #
 # So the log is read rather than skimmed. Per file: its failed assertions by
-# name, or — when it printed no totals line — the fact that it died and the
-# line it died on. Nothing here re-runs anything; a failure is explained from
-# the log the run already wrote, which is what `bb tests last` reads too.
+# name, and — when it printed no totals line — the fact that it died and the
+# line it died on. Both, for a file that did both: a crash is usually the
+# second symptom, a click on something an assertion three lines up has
+# already said is missing, and a verdict that printed only the death sent
+# the reader to the wrong line. Nothing here re-runs anything; a failure is
+# explained from the log the run already wrote, which is what `bb tests last`
+# reads too.
 tests_verdict() {
     BB_VERDICT_LOG="$1" python3 - <<'VERDICT'
 import os, re, sys
@@ -2653,6 +2661,17 @@ for f in bad:
     if f["totals"] is None:
         print(f"  {f['name']}  CRASHED" + (f" at {f['where']}" if f.get("where") else ""))
         print(f"      {f['why'][:160]}")
+        # What had already gone wrong before it died. A crash is usually the
+        # SECOND symptom — a click on something an earlier assertion has just
+        # said is not there — and printing only the death sends the next
+        # reader to the wrong line.
+        if f["fails"]:
+            print(f"      {len(f['fails'])} assertion{'' if len(f['fails']) == 1 else 's'}"
+                  " had already failed:")
+            for x in f["fails"][:10]:
+                print(f"        {x[:148]}")
+            if len(f["fails"]) > 10:
+                print(f"        ...and {len(f['fails']) - 10} more")
         print("      no totals line, so nothing after this point in that file ran")
     else:
         print(f"  {f['name']}  {f['totals'][1]} failed")
@@ -2731,8 +2750,10 @@ cmd_tests() {
         # last run, and how the finish compared: the projection is the
         # measurement's whole point, and a run nobody can time is guessed at.
         local rc=0 t0 want took
-        BB_TESTS_PROJECT="$proj" "$0" tests projection 2>/dev/null || true
-        want="$(BB_TESTS_PROJECT="$proj" "$0" tests projection --secs 2>/dev/null || echo 0)"
+        # With what is being run, so a narrowed run is projected from those
+        # suites rather than from the whole thing.
+        BB_TESTS_PROJECT="$proj" "$0" tests projection "$@" 2>/dev/null || true
+        want="$(BB_TESTS_PROJECT="$proj" "$0" tests projection --secs "$@" 2>/dev/null || echo 0)"
         t0=$(date +%s)
         if BB_TEST_TIMING=1 BB_PROJECT="$proj" "$0" test "$@" 2>&1 | tee "$log"
         then rc=0
@@ -2856,14 +2877,33 @@ elif op == "projection":
     # `--secs` is the bare number, for `bb tests run` to hold up against
     # the clock when the run ends.
     p = reg.payload(proj)
-    wall = p["last_wall_ms"] / 1000 if p["last_wall_ms"] else p["total_ms"] / 1000
-    if rest[:1] == ["--secs"]:
+    want = [a for a in rest if a != "--secs"]
+    if want:
+        # A NARROWED run: the projection is the sum of the suites named, not
+        # what the whole thing took. Matched on the stem, because that is how
+        # a runner is asked for one (`cards`, not `cards.mjs`).
+        stems = {w.split("/")[-1].split(".")[0] for w in want}
+        picked = [s_ for s_ in p["suites"] if s_["suite"].split(".")[0] in stems]
+        wall = sum(s_["ms"] for s_ in picked) / 1000
+        n = sum(s_["n"] for s_ in picked)
+        took = f"what those {n} tests last measured, in {len(picked)} of {len(p['suites'])} suites"
+    else:
+        # ...and a whole run is projected from the last WHOLE run. A narrowed
+        # one is minutes shorter by design, and taking its wall time as the
+        # projection would report the next full run as stuck at the point it
+        # was only getting started.
+        full = [r for r in p["runs"] if (r.get("suites") or 0) >= len(p["suites"])]
+        wall = (full[-1]["wall"] if full else 0) or (
+            p["last_wall_ms"] / 1000 if p["last_wall_ms"] else p["total_ms"] / 1000)
+        took = (f"what the last whole run took over {p['n']} tests in "
+                f"{len(p['suites'])} suites")
+    if rest[:1] == ["--secs"] or "--secs" in rest:
         print(f"{wall:.0f}")
     elif not wall:
         print("no projection yet — nothing measured on this project; this run records the first")
     else:
-        print(f"projected {wall:.0f}s, what the last run took over {p['n']} tests in "
-              f"{len(p['suites'])} suites; one past {2 * wall:.0f}s is stuck, not slow")
+        print(f"projected {wall:.0f}s, {took}; "
+              f"one past {2 * wall:.0f}s is stuck, not slow")
 
 elif op == "show":
     if not rest:
@@ -4390,7 +4430,13 @@ for g in rec.get("outputs") or []:
     [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
     local -a args=(--role "$role") g
     for g in "${rec[@]:2}"; do [ -n "$g" ] && args+=(--out "$g"); done
-    cmd_run "${args[@]}" "$@" -- sh -c "$cmd"
+    # Anything else on the line is APPENDED TO THE COMMAND, not read as a flag
+    # of this one: `bb test cards auth` runs the project's test command with
+    # `cards auth` after it, which for a suite that takes file names is how a
+    # session narrows a run to what it just changed. A whole suite is minutes;
+    # the two files a change touches are seconds, and a verb that could not
+    # say which meant every check cost the whole thing (R33).
+    cmd_run "${args[@]}" -- sh -c "$cmd \"\$@\"" "$role" "$@"
 }
 
 # bb ci-labels — the runner labels the registry knows (phase 7), for a
@@ -5191,7 +5237,9 @@ cmd_doctor() {
         fi
     }
     echo "== doctor =="
-    check "claude on PATH"            command -v claude
+    # Claude Code is a node's, so a controller has nothing to check for: a
+    # failed check nobody can fix is worse than no check (R47).
+    if on_node; then check "claude on PATH" command -v claude; fi
     check "workspace writable"        test -w "$WORKSPACE"
     check "home writable"             test -w "$HOME"
     check "git identity configured"   git config --get user.email
@@ -5809,7 +5857,6 @@ case "${1:-help}" in
     changelog) shift; cmd_changelog "$@" ;;
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
-    update)   cmd_update ;;
     login)    shift; cmd_login "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;

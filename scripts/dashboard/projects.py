@@ -228,7 +228,6 @@ _KEYED = {
     "bugs.json":          ["projects", "history", "batch"],
     "versions.json":      ["projects"],
     "findings-log.json":  ["projects"],
-    "last-sessions.json": ["sessions"],
     "devapps.json":       [None],
     # What Claude runs on here. Keyed by project name like the rest, and it has
     # to move with a rename or the renamed project silently reverts to claude's

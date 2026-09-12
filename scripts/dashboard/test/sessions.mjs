@@ -360,6 +360,24 @@ ok(await phone.evaluate(() => {
      return document.querySelector('.col.side').getAnimations().length > 0;
    }),
    'the view slides across the switch');
+// A Claude session runs on a NODE (R47), so the chooser is what the press
+// opens when one COULD start — a project with no node gets the reason under
+// the row instead, which is agent.mjs's. So alpha gets a node reporting a
+// session half good enough to take one, for as long as this block needs it.
+const bapi = async (path, body, hdrs) => (await fetch(URL.replace(/\/$/, '') + path, {
+  method: body ? 'POST' : 'GET',
+  headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+             'Content-Type': 'application/json', ...(hdrs || {}) },
+  ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' });
+await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
+    cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
+    session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
+               workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
+  { Authorization: 'Bearer ' + deskbox.token });
+await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
+await refreshUntil(phone, () => (state?.projects || [])
+  .find(p => p.name === 'alpha')?.session_at === 'deskbox');
 await phone.click('#projects [data-c="alpha"]');
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
@@ -403,6 +421,10 @@ await phone.setViewportSize({ width: 400, height: 800 });
 await phone.click('.resumemenu [data-n]');
 await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && document.body.dataset.view === 'terminal');
 ok(true, 'phone: New conversation opens the Claude tab and switches to the terminal');
+// ...and alpha goes back to having no node, which is how every other file
+// here finds it.
+await bapi('/api/prefs', { project: 'alpha', node: '' });
+await bapi('/api/v1/nodes', { action: 'retire', id: deskbox.id });
 ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && await phone.$eval('#tabbar', el => getComputedStyle(el).flexWrap === 'nowrap'),
    'strip is one row with scroll arrows');
 
