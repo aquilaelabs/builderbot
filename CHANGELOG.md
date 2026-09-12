@@ -48,6 +48,10 @@
 - Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
 - Editing a changelog entry, a roadmap item, a bug's title or any other sentence on a phone now shows the whole line in a box that grows to fit it, instead of thirty characters of it in a one-line field (e9595bf)
 - bb shot signs in to the dashboard rather than only sending a header, so a screenshot of a page with a terminal in it shows the terminal instead of a reconnect prompt (0662979)
+- The Sign in button says why a sign-in was refused instead of sitting on Starting, and asks which node when there is more than one that could run it (a424adc)
+- A minor bump now says what it will cost before you press it, naming the projects whose Claude sessions it ends, and the bell offers to restamp every one of them in a single press afterwards (a5b4f7a)
+- bb shot --resize works on a node: the downscale is done by the browser that took the screenshot rather than by imagemagick, which is only on the controller (a5b4f7a)
+- A huge release section in the About panel shows its first 25 lines with a press for the rest, instead of a scroll nobody finishes (a5b4f7a)
 
 ## 0.5.0 — 2026-09-10
 

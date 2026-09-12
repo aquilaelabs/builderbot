@@ -174,6 +174,43 @@ ok(sizes['neither'] < sizes['android and compose'] - 900,
      '...which the server also reads as current, so the row offers no update');
 
   rmSync(P, { recursive: true, force: true });
+
+  // ---- a window move, and the one press that undoes it (B93) -------------
+  // A minor bump moves the compatibility window, which holds EVERY project at
+  // once: sessions ended, Claude button ghosted, until each block is updated.
+  // The only control used to be the link on each project's own row, so six
+  // projects was six presses. The bell reports them; the bell now fixes them.
+  const holds = ['mdheld1', 'mdheld2'];
+  for (const name of holds){
+    const D = `${DIR}/ws/${name}`;
+    rmSync(D, { recursive: true, force: true });
+    mkdirSync(D, { recursive: true });
+    writeFileSync(`${D}/README.md`, 'x\n');
+    execFileSync('git', ['-C', D, 'init', '-q', '.'],
+                 { env: { ...base, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x.invalid',
+                          GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x.invalid' } });
+    bb(['claude-md', '--init', `${D}/CLAUDE.md`]);
+    // ...from another window, which is exactly what a bump leaves behind.
+    writeFileSync(`${D}/CLAUDE.md`, readFileSync(`${D}/CLAUDE.md`, 'utf8')
+      .replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+/, 'BUILDERBOT:ENV:WINDOW 0.1'));
+  }
+  await refreshUntil(page, () => (state.attention || [])
+    .filter(a => a.kind === 'md').length >= 2, { timeout: 40000 });
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel [data-bmdall]', { timeout: 10000 });
+  ok(await page.$$eval('#bellPanel [data-bmd]', a => a.length) === 0,
+     'several projects held by one window move are one row in the bell, not one each');
+  const row = await page.$eval('#bellPanel .bnote.ask.bad', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/mdheld1/.test(row) && /mdheld2/.test(row) && /Update all 2/.test(row),
+     `...naming them and offering the one press (${row.slice(0, 90)})`);
+  await page.click('#bellPanel [data-bmdall]');
+  await page.waitForFunction(() => /CLAUDE\.md blocks? updated/.test(
+    document.getElementById('toast')?.textContent || ''), null, { timeout: 30000 });
+  ok(holds.every(n => /BUILDERBOT:ENV:WINDOW 0\.1/.test(
+       readFileSync(`${DIR}/ws/${n}/CLAUDE.md`, 'utf8')) === false),
+     '...and one press restamps every one of them');
+  for (const n of holds) rmSync(`${DIR}/ws/${n}`, { recursive: true, force: true });
+
   await done(browser);
 }
 

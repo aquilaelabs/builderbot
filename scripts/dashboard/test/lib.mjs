@@ -233,6 +233,26 @@ export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } =
   }
 }
 
+// Hold the poll off while a test drives state it planted itself.
+//
+// The page refreshes every fifteen seconds and a refresh REPLACES `state`
+// from the server. A test that plants something the server does not say —
+// state.docker = {on:false}, an attention row, a session that is not there —
+// and then makes several assertions about it is racing that timer: usually
+// it wins, and about one run in three a tick lands mid-block and the page
+// redraws from the truth instead. That is bug B99's whole family, and it
+// cost a bisect that blamed a commit.
+//
+// So: plant, assert, release. `refresh` is a top-level function declaration,
+// so the binding can be swapped and put back — nothing in the page has to
+// know about this.
+export const holdPoll = page => page.evaluate(() => {
+  if (!window.__heldRefresh){ window.__heldRefresh = refresh; refresh = async () => {}; }
+});
+export const freePoll = page => page.evaluate(() => {
+  if (window.__heldRefresh){ refresh = window.__heldRefresh; window.__heldRefresh = null; }
+});
+
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
   // through the selector: these are often Playwright's own selector flavour

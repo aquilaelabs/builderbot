@@ -635,6 +635,32 @@ print(json.dumps({"kept": [s["title"] for s in kept], "held": held, "series": se
      `a release's categories are shown, each over its own lines (${
        JSON.stringify(grouped.cats)}, ${grouped.lists.length} lists)`);
 
+  // A release the size of the first bump — everything ever logged, dated in
+  // one move — is capped with a press to see the rest (B95). Not the section
+  // holding the "new since you last looked" line, which is the one thing
+  // somebody opening this panel came for.
+  await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 0, series: '0.7',
+    sections: [{ title: '0.7.0 \u2014 2026-10-01', entries:
+      Array.from({ length: 60 }, (_, n) => ({ text: `line ${n}`, shas: [], cat: '' })) }] }));
+  const capped = await page.$eval('#abLog', e => ({
+    shown: e.querySelectorAll('li').length,
+    more: e.querySelector('[data-abmore]')?.textContent.trim() || '' }));
+  ok(capped.shown === 25 && /show all 60/.test(capped.more),
+     `a release of sixty lines draws twenty-five and offers the rest (${
+       capped.shown}, "${capped.more}")`);
+  await page.click('#abLog [data-abmore]');
+  ok(await page.$$eval('#abLog li', ls => ls.length) === 60
+     && await page.$('#abLog [data-abmore]') === null,
+     '...and the press draws the whole of it, with nothing left to press');
+  // ...while a section carrying the boundary is never cut, whatever its size:
+  // the line marking what is new is the panel's whole job on an update.
+  await page.evaluate(() => abDrawLog({ present: true, seen: 'deadbee', held: 0, series: '0.7',
+    sections: [{ title: '0.7.1 \u2014 2026-10-02', entries:
+      Array.from({ length: 60 }, (_, n) => ({ text: `line ${n}`, shas: n === 50 ? ['deadbee'] : [], cat: '' })) }] }));
+  ok(await page.$$eval('#abLog li', ls => ls.length) === 60
+     && await page.$('#abLog .abnew') !== null,
+     '...and a section holding the "new since you last looked" line is drawn whole');
+
   // ...and the panel says where they went, in a line rather than by stopping.
   await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 4, series: '0.7',
     sections: [{ title: '0.7.0 \u2014 2026-10-01', entries: [{ text: 'a thing', shas: [] }] }] }));
@@ -801,6 +827,18 @@ await page.evaluate(async () => {
   ok(nowhere.status === 400 && /no node is running sessions/.test(nowhere.error || ''),
      `with no node running sessions there is nowhere to sign in, and it says so (${
        (nowhere.error || '').slice(0, 56)})`);
+  // ...and the BUTTON says it, which is the half that was missing: the press
+  // used to fire and forget, so a refusal left it reading "Starting…" for
+  // ever with nothing on screen. The card repaints only when its html
+  // changes and a refusal changes none of it, so the button is put back by
+  // the press itself.
+  await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
+  await page.click('#bSignIn');
+  await page.waitForFunction(() => /no node is running sessions/.test(
+    document.getElementById('toast')?.textContent || ''), null, { timeout: 15000 });
+  ok(true, '...and pressing Sign in says the refusal rather than swallowing it');
+  ok(await page.$eval('#bSignIn', b => !b.disabled && b.textContent === 'Sign in'),
+     '...with the button live again, not left saying Starting…');
   // That refusal is a 400 by design and the browser logs every one as a
   // failed resource. Cleared, so the check below is about the page.
   page.errors = [];
