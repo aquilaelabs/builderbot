@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.46"
+AGENT_VERSION = "0.5.47"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2412,10 +2412,25 @@ class Agent:
 
     def loop(self):
         delay = 1
-        # The ttyds go with this process: a stop of the unit (an update, a
-        # reboot) ends them, and the tmux server they attached — the
-        # sessions themselves — is its own daemon and outlives both.
+        # What is THIS process's to end, ended by it. The ttyds go: a stop of
+        # the unit is an update or a reboot, and the new agent starts its own.
+        # The tmux servers they attached do not — they are their own daemons,
+        # the sessions are inside them, and a conversation should survive an
+        # agent update the way it survives a ttyd restart.
+        #
+        # That was already the intent and systemd was undoing it: the default
+        # KillMode=control-group takes every process in the cgroup after this
+        # handler returns, tmux included, so Update agent ended every session
+        # on the machine (B107). The unit says KillMode=process now, which
+        # means the jobs are this handler's to end too — with control-group
+        # systemd was killing those, and leaving a build running while the
+        # controller re-queues it is the one thing that change could have
+        # cost.
         def bye(*_):
+            with self.lock:
+                running = list(self.jobs.values())
+            for j in running:
+                j.cancel()
             self.session_stop()
             self.runner_stop()
             raise SystemExit(0)

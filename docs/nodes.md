@@ -1793,24 +1793,27 @@ MACHINE: the toolchains, the card and `/dev/kvm` are its own, from
 `nodes/provision-linux.sh` and the packages store. `bb emu` on a
 controller with no node for the project refuses and says where it runs.
 A node's sessions outlive a controller restart on purpose (the tmux is the
-node's); what must not is the idle rule — the Settings tab's "end a Claude
-session after N idle minutes" rides the hello reply into node.json and the
-agent enforces it on its own tmux, controller up or down (idle.py).
-The account's CLAUDE LOGIN is kept in step rather than copied once: the
-grant is an OAuth pair and a refresh rotates the refresh token, so two
-machines each holding a copy sign each other out — which is exactly what
-happened after a day of node sessions (bug #64). `bb login --sync` moves
-whichever grant has the later `expiresAt`, up or down; an older one is
-refused rather than stored, and the copy it replaces is kept beside it for
-one round. It runs on every connection AND on every prompt of a running
-session (`bb-keep-login`, a UserPromptSubmit hook, throttled to ten minutes
-and not throttled at all inside the grant's last half hour). The second of
-those is what makes it work: a refresh happens inside a running session, and
-while a connection was the only moment the copies were compared, a session on
-another node held a retired grant until somebody opened a terminal tab there
-— hours, and what it looks like is "Login expired" at random (B100). The controller stays the one place that
-holds the account's current grant, and a machine that has been away cannot
-undo a sign-in that happened while it was gone.
+node's) and, since B107, an AGENT restart too: the unit is installed with
+`KillMode=process`, because systemd's default takes the whole cgroup and the
+agent's cgroup holds the ttyds, the tmux servers under them and the Claude
+sessions inside those — so Update agent ended every conversation on the
+machine. The agent stops what is its own on SIGTERM, its ttyds and its jobs,
+and leaves the tmux alone. What must NOT outlive anything is the idle rule —
+the Settings tab's "end a Claude session after N idle minutes" rides the
+hello reply into node.json and the agent enforces it on its own tmux,
+controller up or down (idle.py).
+The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
+itself and keeps the grant it alone refreshes, because a refresh rotates the
+refresh token and two machines holding copies of one grant sign each other
+out — which is what a day of node sessions produced twice (bug #64, B100).
+What crosses the wire is two sentences and no secret: "I am signed in as X"
+going up, and a generation coming back, which is the only thing that can
+carry a sign-out to a machine that was not listening. `bb login --check`
+sends it on every connection and every prompt (`bb-keep-login`, a
+UserPromptSubmit hook, throttled to ten minutes), the agent sends the same
+answer for every account on the machine on its heartbeat so the record is
+true with no session running (B104), and the controller holds the identity
+and no credential at all.
 A machine with no systemd runs its runner as run.sh in the foreground under
 the agent — supervised, taken down with it, reported by the same pgrep as a
 service — which is what makes §20's GUEST class implementable on something

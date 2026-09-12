@@ -2212,6 +2212,26 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   ok(mdWin === minor,
      `...and the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line is the same minor (${
        mdWin || 'unset'} against ${minor})`);
+
+  // ---- the sessions are not the agent's unit to kill (B107) --------------
+  // systemd's default KillMode takes every process in the unit's cgroup on a
+  // stop, and the agent's cgroup holds the ttyds, the tmux servers under
+  // them and the Claude sessions inside those — so Update agent ended every
+  // conversation on the machine. Read off the provisioner because that is
+  // where the unit is written, and a shell file has no other check that
+  // would notice the line going away.
+  const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
+  ok(/AGENT_KILLMODE='KillMode=process'/.test(prov)
+     && /svc_install builderbot-agent .*"\$AGENT_KILLMODE"/.test(prov),
+     'the agent unit is installed with KillMode=process, so a stop does not take the sessions');
+  ok(!/svc_install\s+(?!builderbot-agent)\S+.*AGENT_KILLMODE/.test(prov),
+     '...and nothing else is: a runner that kept only its main process would orphan a CI job');
+  // ...and the agent ends what IS its own, which the new KillMode makes its
+  // responsibility: with control-group systemd killed the job children, and
+  // a build left running while the controller re-queues it is the one thing
+  // that change could have cost.
+  ok(/def bye\(\*_\):[\s\S]{0,400}?j\.cancel\(\)[\s\S]{0,200}?self\.session_stop\(\)/.test(src),
+     'the agent cancels its running jobs on SIGTERM, since systemd no longer does it');
 }
 
 await done(browser);
