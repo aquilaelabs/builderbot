@@ -6929,7 +6929,11 @@ function drawProjects(all){
     // than shown in a toast that is gone in seven seconds: the page may not
     // even have been open when it failed.
     : pJob?.error
-    ? `<div class="row">
+    // Named, like the running row above it. A project row carries a red
+    // `.sub` of its own now — why no session can start here — so "the red
+    // line in the projects card" stopped being one thing, and the test that
+    // waited for one to CLEAR waited forever on somebody else's.
+    ? `<div class="row jobfail">
          <div class="grow">
            <div class="name">${esc(pJob.name)}</div>
            <div class="sub bad">${esc(pJob.error)}</div>

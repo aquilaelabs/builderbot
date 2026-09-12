@@ -828,10 +828,10 @@ ok(true, 'the dialog closes once the clone is accepted, rather than holding the 
 // card, not in a toast that is gone in seven seconds — the page may not even
 // have been open when it happened.
 await page.waitForFunction(() => {
-  const s = document.querySelector('#projects .row .sub.bad');
+  const s = document.querySelector('#projects .row.jobfail .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
-ok(await page.$eval('#projects .row .sub.bad',
+ok(await page.$eval('#projects .row.jobfail .sub.bad',
      s => s.closest('.row').querySelector('.name').textContent === 'kproj'),
    'the failure is carried under the name the project would have had');
 ok(await page.$('#projects .row.job') === null
@@ -840,7 +840,7 @@ ok(await page.$('#projects .row.job') === null
 ok(!existsSync(`${DIR}/ws/kproj`), '...and a failed clone leaves no directory');
 ok(await page.$('#bJobOk') !== null, 'the failure stays until it is dismissed');
 await page.click('#bJobOk');
-await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
+await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail .sub.bad'));
 ok(true, '...and dismissing clears it');
 await page.click('#bNewProj');
 await page.click('#pClone');
@@ -895,10 +895,10 @@ await page.waitForFunction(() => !document.querySelector('#projects .row.job'),
                            { timeout: 30000 });
 ok(!existsSync(`${DIR}/ws/slowclone`),
    'Abort stops it and removes the half-cloned directory');
-ok((await page.$eval('#projects .row .sub.bad', el => el.textContent)).includes('stopped'),
+ok((await page.$eval('#projects .row.jobfail .sub.bad', el => el.textContent)).includes('stopped'),
    '...and says so rather than looking like a failure of its own');
 await page.click('#bJobOk');
-await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
+await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
 // The chain is GitHub whichever state a project is in — the link form for one
@@ -979,7 +979,7 @@ await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 await page.waitForFunction(() => {
-  const s = document.querySelector('#projects .row .sub.bad');
+  const s = document.querySelector('#projects .row.jobfail .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
 ok(true, 'a link runs as a job too, and its failure lands on the card');
