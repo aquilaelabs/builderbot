@@ -97,6 +97,20 @@ is_mountpoint() {
 # or the home volume's .sdk. What the marker and the settings name.
 sdk_store_root() {
     local root="${SDK_ROOT:-/sdk}"
+    # ...and the one place the name means something else. The agent on a node
+    # exports SDK_ROOT as the SCOPE directory — <store>/linux-x86_64 — because
+    # that is also what it sets BUILDER_HOME and ANDROID_HOME from, and a CI
+    # runner's .env carries the same (agent.mjs asserts it). Here SDK_ROOT is
+    # the store, which sdk_root then scopes, so taking the agent's at its word
+    # scoped it twice: /mnt/SDK/linux-x86_64/linux-x86_64, a directory that
+    # does not exist, and every toolchain on the node read as not installed
+    # while it sat there (B89). One name, two meanings; this is where they
+    # meet, so this is where it is settled. Guarded on the scope directory NOT
+    # containing another of the same name, so a store somebody really did call
+    # linux-x86_64 is still taken at its word.
+    if [ "$(basename "$root")" = "$(sdk_scope)" ] && [ ! -d "$root/$(sdk_scope)" ]; then
+        root="$(dirname "$root")"
+    fi
     if [ -d "$root" ] && [ -w "$root" ]; then
         # /sdk is the image's own default and exists in the image whether or
         # not anybody mapped a share there, so it has to prove it is a mount

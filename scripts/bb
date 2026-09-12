@@ -407,6 +407,47 @@ cmd_login() {
         claude_login_check "${2:-}"
         return 0
     fi
+    # `--list` is every account ON THIS MACHINE and what it is signed in to
+    # Claude as, as JSON, changing nothing. The agent asks for it and carries
+    # the answer up on its heartbeat, so the controller learns of a login made
+    # here without waiting for a session to run and report one (B104).
+    #
+    # Read from the files rather than from `claude auth status`: those files
+    # ARE what it reads, and this runs for every account on the box rather
+    # than for one, where a subprocess each would be the cost of the thing.
+    if [ "${1:-}" = --list ]; then
+        BB_USERS_DIR="$BUILDER_USERS" python3 - <<'LISTPY'
+import json, os, re
+
+# Every account's home on this machine. The owner has no bare directory here:
+# on a node every account is prefixed and homed under users/ (common.sh's
+# owner_uid says why), so the uid is simply the directory's name.
+out = []
+root = os.environ.get("BB_USERS_DIR") or ""
+try:
+    names = sorted(os.listdir(root))
+except OSError:
+    names = []
+for name in names[:64]:
+    if not re.fullmatch(r"u_[0-9a-f]{8}", name):
+        continue
+    home = os.path.join(root, name)
+    email = ""
+    try:
+        d = json.load(open(os.path.join(home, ".claude.json")))
+        email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
+    except (OSError, ValueError, AttributeError, TypeError):
+        email = ""
+    # The credential is what makes it a login rather than a leftover name: a
+    # signed-out home keeps .claude.json and loses this file, and reporting
+    # the stale name would keep the card claiming a login that is gone.
+    if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+        email = ""
+    out.append({"uid": name, "email": email})
+print(json.dumps(out))
+LISTPY
+        return 0
+    fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
     # that job's pty as its terminal (roadmap R47). The account is the one the
     # dashboard asked for and the home is resolved here, by the same user_home

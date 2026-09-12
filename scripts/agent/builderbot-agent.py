@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.45"
+AGENT_VERSION = "0.5.46"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2457,6 +2457,13 @@ class Agent:
             # so the dashboard's Sessions card lists them beside its own.
             if self.ttyd:
                 sample["sessions"] = self.sessions_now()
+            # ...and what each account here is signed in to Claude as, on its
+            # own slower clock, so the controller's record is true without a
+            # session having to run (B104). Absent from most heartbeats,
+            # which the controller reads as "no news" rather than as none.
+            logins = self.logins_now()
+            if logins is not None:
+                sample["logins"] = logins
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st == 204:
@@ -2994,6 +3001,54 @@ class Agent:
                 rows.append({"name": parts[0], "attached": parts[2].strip() not in ("", "0"),
                              "cwd": parts[3], "title": parts[4]})
         return rows[:64]
+
+    # What each account on this machine is signed in to Claude as, refreshed
+    # at most this often. It is two file reads per account and no subprocess
+    # per account, but it is also news that changes about once a week, and
+    # the heartbeat runs every poll.
+    LOGINS_EVERY = 300
+
+    def logins_now(self):
+        """Which Anthropic account each BuilderBot account here is signed in
+        as, or None when there is nothing new to say (B104).
+
+        The controller holds no credential and learns of a login only when
+        something on the machine tells it. That used to be a session's hook
+        and nothing else, so a node signed in with no session running stayed
+        "not signed in" on the card until somebody opened one — and after a
+        sign-out, the way back needed the very thing the card was refusing.
+        The agent is already here and already tends these homes, so it says
+        so on the heartbeat.
+
+        Asked of the BUNDLE rather than read here: where an account lives on
+        this machine is bb's answer, and a second copy of that rule in this
+        file is how the two would drift. `.bb/current` is the copy a shell on
+        this node already runs, so this costs no fetch.
+        """
+        now = time.time()
+        if now - getattr(self, "_logins_at", 0) < self.LOGINS_EVERY:
+            return None
+        self._logins_at = now
+        store = pkg_root(self.state)
+        bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
+        if not (bb and os.path.isfile(bb)):
+            return None
+        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+               "LANG": "C.UTF-8"}
+        try:
+            who = self.as_user(env, self.session_account())
+        except RuntimeError:
+            return None
+        if not who:
+            return None
+        try:
+            p = subprocess.run(["bash", bb, "login", "--list"], env=env,
+                               capture_output=True, text=True, timeout=20,
+                               check=False, **who)
+            rows = json.loads(p.stdout) if p.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+        return rows[:64] if isinstance(rows, list) else None
 
     def kill_sessions(self, names):
         for name in names:

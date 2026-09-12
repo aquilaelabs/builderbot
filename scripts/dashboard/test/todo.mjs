@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1583,11 +1583,19 @@ await page.waitForFunction(i => !!document.querySelector(
   `#todoList .todo[data-id="${i}"]`), clashId, { timeout: 10000 });
 const clashBox = () => page.$eval('#todoClash',
   el => el.textContent.replace(/\s+/g, ' '));
+// With the poll held for the three steps it takes: a redraw between opening
+// the box and pressing its button detaches the button, and the click then
+// fails as "element was detached" or waits out its timeout on a node that is
+// no longer in the document (B99). The window is these three lines, so
+// nothing else in the block loses its poll.
 const rewordTo = async (text) => {
-  await page.click(`#todoList .todo[data-id="${clashId}"][data-step="-1"] .ed`);
-  await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-  await page.fill('.editbox textarea', text);
-  await page.click('.editbox .primary');
+  await holdPoll(page);
+  try{
+    await page.click(`#todoList .todo[data-id="${clashId}"][data-step="-1"] .ed`);
+    await page.waitForSelector('.editbox textarea', { timeout: 10000 });
+    await page.fill('.editbox textarea', text);
+    await page.click('.editbox .primary');
+  } finally { await freePoll(page); }
 };
 const clashText = () => read().projects.alpha
   .find(r => String(r.id) === clashId).text;

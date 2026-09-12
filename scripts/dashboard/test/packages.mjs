@@ -763,4 +763,38 @@ ok(rel.some(t => /Android NDK/.test(t) && /Needs android-tools, installed with i
 ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
    '...and the one it needs says what needs it');
 
+// ---- the two meanings of SDK_ROOT (B89) ----------------------------------
+// On the controller SDK_ROOT is the STORE and bb appends this machine's
+// scope to it. On a node the agent exports it as the scope directory
+// already, because that is also what BUILDER_HOME and ANDROID_HOME are made
+// from and what a CI runner's .env carries. Taken at its word on a node it
+// was scoped twice — /mnt/SDK/linux-x86_64/linux-x86_64, a directory that
+// does not exist — and every toolchain on that node read as not installed
+// while it sat there. Shell-level, because that is where the answer is
+// decided and where both machines ask for it.
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { fileURLToPath } = await import('node:url');
+  const LIB = fileURLToPath(new globalThis.URL('../../lib/common.sh', import.meta.url));
+  const sh = (root) => execFileSync('bash', ['-c',
+    `. ${JSON.stringify(LIB)}; printf '%s %s' "$(sdk_store_root)" "$(sdk_root)"`],
+    { encoding: 'utf8', env: { ...process.env, SDK_ROOT: root } }).trim();
+  const scope = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; sdk_scope`],
+                             { encoding: 'utf8' }).trim();
+  const store = mkdtempSync(`${tmpdir()}/bbstore-`);
+  mkdirSync(`${store}/${scope}`);
+  ok(sh(`${store}/${scope}`) === `${store} ${store}/${scope}`,
+     `SDK_ROOT naming the scope directory resolves to the store and back to itself (${sh(`${store}/${scope}`)})`);
+  ok(sh(store) === `${store} ${store}/${scope}`,
+     '...and naming the store still means the store, which is what the controller sets');
+  // ...and a store somebody really did call linux-x86_64 is taken at its
+  // word, because the scope directory inside it settles which it is.
+  const odd = mkdtempSync(`${tmpdir()}/bbodd-`);
+  mkdirSync(`${odd}/${scope}/${scope}`, { recursive: true });
+  ok(sh(`${odd}/${scope}`) === `${odd}/${scope} ${odd}/${scope}/${scope}`,
+     '...while a store whose own name is the scope keeps it, since it holds one');
+}
+
 await done(browser);
