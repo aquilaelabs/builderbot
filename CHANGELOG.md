@@ -60,7 +60,7 @@
 - The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
 - A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
-- A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
+- A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons, or hides what is running, for a project on a node that is answering (d877327, d264132)
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
 - Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
 - The Docker tab's node picker appears on a fresh page instead of only after something else redrew the tab, so a box with two nodes can choose between them (a479cf2)
