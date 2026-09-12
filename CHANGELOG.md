@@ -58,6 +58,7 @@
 - The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
 - A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
+- A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons for a project on a node that is answering (d877327)
 
 ## 0.5.0 — 2026-09-10
 
