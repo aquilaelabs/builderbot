@@ -1592,47 +1592,60 @@ await holdPoll(page);
 // Planted the way the server sends it, `node` included: the poll says which
 // daemon it is about and the page gates only that one. A stub without the id
 // would be testing a payload the server does not send.
-await page.evaluate(() => {
+// PLANTED AND READ IN ONE EVALUATE. Every assertion below is about the same
+// painted moment, and asking for them one at a time gave the page eight
+// chances to repaint between the plant and the last of them — which is how
+// this block went red on a loaded box with nothing changed, at a different
+// assertion each time (B99's family). holdPoll stops the fifteen-second
+// refresh; it does not stop a revision landing, and there is no need to make
+// it: drawPanes() is synchronous, so one call reads one frame.
+const dead = await page.evaluate(() => {
   state.docker = { on: false, node: dockerNode,
                    why: 'no node with a daemon — nothing to talk to' };
   dockerRev++; drawPanes();
+  const q = s2 => [...document.querySelectorAll(s2)];
+  const mk = document.getElementById('bDockerNew');
+  return {
+    newOff: mk?.disabled === true,
+    tip: mk?.dataset.tip || mk?.title || '',
+    acts: q('.dmtab [data-dm="up"],.dmtab [data-dm="down"]').map(b => b.disabled),
+    empty: document.querySelector('.dmtab .empty')?.textContent || '',
+    refreshLive: document.getElementById('bDockerRe')?.disabled === false,
+    files: q('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]').map(b => b.disabled),
+    removes: q('.dmtab [data-dm="remove"]').map(b => b.disabled),
+    off: q('.dmtab .row[data-inst]').map(r => r.classList.contains('off')),
+    pills: q('.dmtab .row[data-inst] .dmpill').map(e => e.textContent),
+  };
 });
-await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === true,
-                           null, { timeout: 8000 });
-ok(await page.$$eval('.dmtab [data-dm="up"],.dmtab [data-dm="down"]',
-                     bs => bs.length > 0 && bs.every(b => b.disabled)),
+ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
 // data-tip, not title: tipify() runs after the gate on this surface and turns
 // one into the other, which is the point — the reason is worn the way every
 // other explanation here is.
-ok(await page.$eval('#bDockerNew', b => /no node with a daemon/.test(b.dataset.tip || b.title)),
+ok(/no node with a daemon/.test(dead.tip),
    '...each carrying the reason rather than just refusing');
-ok(/no node with a daemon/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+ok(/no node with a daemon/.test(dead.empty),
    '...and the tab says it in words, since a tooltip is unreachable on a phone');
-ok(await page.$eval('#bDockerRe', b => !b.disabled),
+ok(dead.refreshLive,
    'Refresh stays live — it is the retry, and disabling it would strand you');
-ok(await page.$$eval('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]',
-                     bs => bs.every(b => !b.disabled)),
+ok(dead.files.every(x => !x),
    '...as do Edit and Env: a compose file is a file whatever can run it');
 // ...and so does Remove, which is the correction: it is a record on this side
 // with a `down` in front of it as a courtesy. Gated with the daemon buttons,
 // a row on a machine that had gone away could be removed by nobody — and the
 // row is the only control over the thing it names.
-ok(await page.$$eval('.dmtab [data-dm="remove"]',
-                     bs => bs.length > 0 && bs.every(b => !b.disabled)),
+ok(dead.removes.length > 0 && dead.removes.every(x => !x),
    '...and so does Remove: the record is this side\'s, and a stranded row must go');
 // The rows stay, and stop claiming anything. The tab used to render one error
 // line and no rows at all, throwing away everything it could still honestly
 // say — which is most of it: what an instance is, and what it was built from,
 // live on this side. Only "running" is the daemon's to know, and an
 // unreachable daemon is not evidence that anything stopped.
-ok(await page.$$eval('.dmtab .row[data-inst]', rs => rs.length > 0),
+ok(dead.off.length > 0,
    'the rows are still listed with no daemon — the tab shows what is on record');
-ok(await page.$$eval('.dmtab .row[data-inst]',
-                     rs => rs.every(r => r.classList.contains('off'))),
+ok(dead.off.every(Boolean),
    '...greyed, every one of them, so an inert row looks inert before you press');
-ok(await page.$$eval('.dmtab .row[data-inst] .dmpill',
-                     ss => ss.length > 0 && ss.every(e => /state unknown/.test(e.textContent))),
+ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
    '...saying the state is unknown rather than reporting one nobody asked for');
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),

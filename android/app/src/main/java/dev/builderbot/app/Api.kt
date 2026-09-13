@@ -101,7 +101,28 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun nodes() = get("/api/v1/nodes")
     suspend fun nodeAct(id: String, action: String) =
         post("/api/v1/nodes", json("action" to action, "id" to id))
+    // The packages store, and what may be added to it. The listing is NOT
+    // administrators-only — what a node carries decides whether a build can
+    // run there, and that is everybody's question; installing is theirs.
+    // `node` empty means the controller's own store, which is what the
+    // dashboard's picker calls the first entry.
+    suspend fun packages(node: String) =
+        get("/api/packages" + if (node.isBlank()) "" else "?node=${enc(node)}")
+    suspend fun packageAct(node: String, action: String, names: List<String>) =
+        post("/api/packages", json("action" to action, "node" to node,
+                                   "names" to JSONArray(names)))
     suspend fun users() = get("/api/users")
+    /** One account, in one Save — the same verb the dashboard's modal uses, so
+     *  the owner protections that live in users.py hold here too. A blank
+     *  password leaves the existing one alone. */
+    suspend fun userEdit(name: String, role: String, projects: List<String>, password: String) =
+        post("/api/users", json("action" to "edit", "name" to name, "role" to role,
+                                "projects" to JSONArray(projects), "password" to password))
+    suspend fun userAdd(name: String, password: String, role: String) =
+        post("/api/users", json("action" to "add", "name" to name,
+                                "password" to password, "role" to role))
+    suspend fun userRemove(name: String) =
+        post("/api/users", json("action" to "remove", "name" to name))
     suspend fun profile() = get("/api/profile")
     suspend fun profileSave(fields: Map<String, String>) =
         post("/api/profile", json("action" to "save", "profile" to JSONObject(fields)))

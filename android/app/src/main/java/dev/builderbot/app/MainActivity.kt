@@ -50,6 +50,7 @@ import dev.builderbot.app.ui.MoreScreen
 import dev.builderbot.app.ui.NodesScreen
 import dev.builderbot.app.ui.ProfileScreen
 import dev.builderbot.app.ui.ProjectScreen
+import dev.builderbot.app.ui.ToolsScreen
 import dev.builderbot.app.ui.UsersScreen
 
 class MainActivity : ComponentActivity() {
@@ -127,6 +128,7 @@ fun BuilderBotApp(openOn: String) {
                 composable("nodes") { NodesScreen(store) }
                 composable("more") { MoreScreen(store, isAdmin, nav, onSignOut = { WatchService.stop(context); store.signOut(); signedIn = false }) }
                 composable("users") { UsersScreen(store) }
+                composable("tools") { ToolsScreen(store, isAdmin) }
                 composable("profile") { ProfileScreen(store) }
             }
         }
