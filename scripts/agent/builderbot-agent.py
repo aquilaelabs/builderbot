@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.51"
+AGENT_VERSION = "0.5.52"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1151,7 +1151,16 @@ def session_now(state):
     for d in dirs + ["/usr/local/bin", "/usr/bin"]:
         exe = os.path.join(d, "claude")
         if os.access(exe, os.X_OK):
-            claude = _run([exe, "--version"], timeout=15).split("\n")[0][:40] or "installed"
+            # Through the probe, for the same reason the toolchains go through
+            # it: a binary that is there and cannot START used to hand its own
+            # crash text back as the version, forty characters of it, on the
+            # doctor card. A claude that cannot run is a node that cannot hold
+            # a session, so it reports as none and says why in the log.
+            out_, dead = _probe([exe, "--version"], timeout=15)
+            if dead:
+                _probe_died("claude", exe, out_, dead)
+            else:
+                claude = out_.split("\n")[0][:40] or "installed"
             break
     out["claude"] = claude
     # This machine's boot, in the form bb-tty's boot_id() computes: a
