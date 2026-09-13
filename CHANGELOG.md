@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The companion app has a Tools screen: what each node's packages store holds, with Install and Remove on a package, so a missing toolchain can be fixed from a phone (87ad70b)
+- The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
+
 ### Upgrading
 
 - A minor version moves the compatibility window: every project's CLAUDE.md block needs its one-line update, and a project on a node needs that node's agent updated too, before sessions will start there again (dbf8170)
