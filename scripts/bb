@@ -293,7 +293,7 @@ claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
     BB_LOGIN_AUTH="$(bb_auth_header)" python3 - "${1:-}" <<'PY' || true
-import json, os, subprocess, sys
+import json, os, shutil, subprocess, sys
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
 
@@ -328,17 +328,62 @@ def claude(*args, timeout=30):
 
 
 def whoami():
-    """Signed in here, and as whom. Claude is on this machine, so this is the
-    one place that can be asked."""
+    """Signed in here, and as whom — read from the FILES, not by asking the
+    CLI.
+
+    This runs on every prompt (bb-keep-login), and `claude auth status` put a
+    THIRD process on the one ~/.claude/.credentials.json an account has.
+    Claude Code locks that file to refresh it, because a refresh rotates the
+    refresh token; two sessions of one account already contend, and the loser
+    is told "another Claude Code process is refreshing it" and its turn fails
+    (B112). `bb login --list` has read these same facts out of the files since
+    it was written, for exactly this reason, and this is that reader.
+
+    The rule is --list's: .claude.json carries oauthAccount.emailAddress, and
+    .credentials.json existing is what makes it a login rather than a leftover
+    name — a sign-out keeps the first and removes the second, which is how
+    `claude auth logout` here is still noticed. What this CANNOT see is a
+    credential the server has since refused, because no file records that; it
+    surfaces the moment a session runs, and is a rarer thing than the failed
+    turns asking cost.
+    """
+    # Claude Code being HERE is still part of the question — the old reader
+    # got that for free by running it, and a home kept after an uninstall
+    # would otherwise report a login this machine cannot use.
+    if not shutil.which("claude"):
+        return False, ""
+    home = os.environ.get("HOME") or ""
+    if not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+        return False, ""
+    try:
+        with open(os.path.join(home, ".claude.json")) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False, ""
+    email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
+    return bool(email), email
+
+
+def plan_now():
+    """The subscription, and the one fact no file carries in the form the card
+    shows: `claude auth status` says "max" where .claude.json's oauthAccount
+    says organizationType "claude_max", and those are not the same field — one
+    is the subscription and one is the organization, which coincide for a
+    personal account and need not for a seat.
+
+    So it is still asked of the CLI, but only when the CONTROLLER has none,
+    which is once after a sign-in: sign_out clears the stored plan, so the
+    next sign-in learns it again and every prompt in between touches no
+    credential. An empty plan never overwrites a stored one (claudegrant's
+    `if plan:`), so a failure here loses nothing.
+    """
     r = claude("auth", "status", "--json", timeout=20)
     if not r or r.returncode != 0:
-        return False, "", ""
+        return ""
     try:
-        d = json.loads(r.stdout)
+        return str(json.loads(r.stdout).get("subscriptionType") or "")[:40]
     except (ValueError, TypeError):
-        return False, "", ""
-    return (bool(d.get("loggedIn")), str(d.get("email") or ""),
-            str(d.get("subscriptionType") or ""))
+        return ""
 
 
 def my_gen():
@@ -358,7 +403,7 @@ def keep_gen(n):
     os.replace(GEN + ".new", GEN)
 
 
-here, mine, plan = whoami()
+here, mine = whoami()
 r = bbapi.call("/api/v1/claude-login", auth=auth)
 if r.get("error"):
     e = str(r["error"])
@@ -387,8 +432,13 @@ if not here:
     bbapi.call("/api/v1/claude-login", {"signed_in": False}, auth=auth)
     sys.exit(1)
 
+# Asked of the CLI only when the controller has no plan for this account —
+# see plan_now(). Every other prompt sends "", which leaves the stored one be.
+known = str(r.get("plan") or "")
+plan = known or plan_now()
 w = bbapi.call("/api/v1/claude-login",
-               {"email": mine, "plan": plan, "signed_in": True}, auth=auth)
+               {"email": mine, "plan": "" if known else plan,
+                "signed_in": True}, auth=auth)
 if w.get("error"):
     # The one-account rule, and it is the whole reason this call exists.
     refused(w["error"])
