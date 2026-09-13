@@ -1316,6 +1316,12 @@ cmd_logs() {
                 esac
                 ;;
             *[0-9]*) lines="$1" ;;
+            # A flag this does not know used to fall straight through, so
+            # `bb logs --node X --nope` quietly read the AGENT's journal and
+            # looked like the stream had been honoured. A wrong answer that
+            # looks like an answer is the worst of the three outcomes.
+            *) die "bb logs: no such option \`$1'. Streams are --agent," \
+                   "--runner and --terminal; see \`bb logs --list'" ;;
         esac
         shift
     done

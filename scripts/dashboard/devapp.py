@@ -360,13 +360,32 @@ def sync_work_tree(project, instance):
     repo = WORKSPACE / project
     if not (repo / ".git").exists():
         return f"{project} is not a git repository, so there is no branch to build"
+    # DETACHED, both when it is made and every time it moves. A branch can be
+    # checked out in one worktree at a time, and this tree is not the one that
+    # matters: the project's own checkout is where people work. Claiming the
+    # branch here broke it in both directions —
+    #
+    #   building an instance pinned to the branch the project is standing on
+    #   was refused outright ("'rack-drift' is already used by worktree at
+    #   /workspace/word-jumble"), which is the ordinary case, not an edge one;
+    #
+    #   and the reverse, which is worse because nothing says it: a build tree
+    #   holding `main` meant the operator's own session could no longer
+    #   `git checkout main`, a dashboard button quietly taking a branch
+    #   hostage from somebody's shell.
+    #
+    # Nothing is ever committed here — the tree exists to be compose's
+    # --project-directory — so it wants the ref's COMMIT and no claim on the
+    # name. A tree made before this and still holding a branch detaches on its
+    # next build and gives the name back.
     if not at.exists():
         r = _run(["git", "-C", str(repo), "worktree", "add", "--force",
-                  str(at), ref], timeout=120)
+                  "--detach", str(at), ref], timeout=120)
         if r["code"] != 0:
             return f"could not make a worktree at {ref}: " + _why_not(r["out"])
     else:
-        r = _run(["git", "-C", str(at), "checkout", "--force", ref], timeout=120)
+        r = _run(["git", "-C", str(at), "checkout", "--force", "--detach", ref],
+                 timeout=120)
         if r["code"] != 0:
             return f"could not put the build tree on {ref}: " + _why_not(r["out"])
     try:

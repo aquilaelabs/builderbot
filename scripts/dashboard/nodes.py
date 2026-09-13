@@ -955,6 +955,11 @@ def _census(c):
         "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
         "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
         "url": str(ar.get("url") or "")[:200],
+        # The systemd unit its output goes to, when it has one — what the
+        # runner log stream journalctls. Empty from an agent that predates
+        # the field and from a node running it in the foreground, and the
+        # stream reads runner.log then.
+        "unit": re.sub(r"[^A-Za-z0-9._@-]", "", str(ar.get("unit") or ""))[:120],
         "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
                    for x in (ar.get("labels") or [])[:16] if str(x)]}}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
@@ -1176,8 +1181,17 @@ LOG_STREAMS = {
     "agent": {"what": "the agent's own journal — what it did, and why a job failed",
               "argv": ["journalctl", "-u", "builderbot-agent", "--no-pager",
                        "-n", "{lines}"]},
+    # TWO SHAPES, and the node says which it is in. Under systemd the runner
+    # is a service and its output is the journal's; with no systemd the agent
+    # runs run.sh itself and redirects it into runner.log under the data
+    # store. Reading the file unconditionally is what this did, so the answer
+    # on every properly installed runner was "No such file or directory".
+    # `unit` picks the first; an agent too old to report one falls to the
+    # second, which is exactly what it used to do.
     "runner": {"what": "the CI runner's service log", "store": "data",
-               "argv": ["tail", "-n", "{lines}", "{data}/runner.log"]},
+               "argv": ["tail", "-n", "{lines}", "{data}/runner.log"],
+               "unit_argv": ["journalctl", "-u", "{unit}", "--no-pager",
+                             "-n", "{lines}"]},
     "terminal": {"what": "the terminal server's log", "store": "data",
                  "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
 }
@@ -1247,6 +1261,13 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     except (TypeError, ValueError):
         n_lines = 200
     fills = {"lines": str(n_lines)}
+    # The unit form when the node reported one, and then the data store is not
+    # needed at all — a node whose runner is a service may keep no runner.log.
+    unit = ((((tgt.get("reported") or {}).get("services") or {})
+             .get("actions-runner") or {}).get("unit") or "")
+    if spec.get("unit_argv") and unit:
+        spec = dict(spec, argv=spec["unit_argv"], store=None)
+        fills["unit"] = str(unit)
     if spec.get("store"):
         path = ((tgt.get("reported") or {}).get("stores") or {}).get(
             spec["store"], {}).get("path")

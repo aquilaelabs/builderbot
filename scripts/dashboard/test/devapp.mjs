@@ -2140,6 +2140,37 @@ ok(await page.$('#devSend'),
     await api({ project: 'ep.silon', instance: 'onbranch', action: 'remove' });
     await idle();
   }
+  // THE ARRANGEMENT THE OPERATOR WAS IN: the project's own checkout standing
+  // on the branch the instance is pinned to. git allows a branch in one
+  // worktree at a time, so a build tree that CLAIMED the name was refused
+  // outright — "'rack-drift' is already used by worktree at
+  // /workspace/word-jumble" — for what is the ordinary arrangement rather
+  // than an edge of one.
+  {
+    // The trap in the OTHER direction, and the one that fails first: a build
+    // tree holding a branch is a branch the person's own shell can no longer
+    // check out — a button here taking a name hostage. Asserted rather than
+    // called, so it reads as a failure with a name on it and not a stack.
+    let moved = '';
+    try { G('checkout', '-q', 'sidebranch'); }
+    catch (e) { moved = String(e.stderr || e).split('\n')[0]; }
+    ok(!moved, `the project's own checkout can still move onto the branch a build tree was made from${
+       moved ? ` — ${moved.slice(0, 90)}` : ''}`);
+    const again = await api({ project: 'ep.silon', instance: 'main', action: 'rebuild' });
+    ok(!again.error, `a branch the project itself is standing on still builds (${
+       JSON.stringify(again).slice(0, 70)})`);
+    await idle();
+    ok(existsSync(`${DIR}/ws/ep-silon-main-build/ONLY-ON-SIDE.txt`),
+       '...from that branch, rather than from whatever else was lying around');
+    ok(G('rev-parse', '--abbrev-ref', 'HEAD').trim() === 'sidebranch',
+       '...with the project left standing exactly where it was');
+    const head = execFileSync('git', ['-C', `${DIR}/ws/ep-silon-main-build`,
+                                      'rev-parse', '--abbrev-ref', 'HEAD'],
+                              { env, encoding: 'utf8' }).trim();
+    ok(head === 'HEAD',
+       `...and the build tree claims no branch name, so it blocks nobody's checkout (${head})`);
+    G('checkout', '-q', '-');
+  }
   const off = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: '' });
   ok(off.ok && off.ref === '', '...and clearing it puts the build back on the project itself');
   // The worktree first: git refuses to delete a branch that one has checked
