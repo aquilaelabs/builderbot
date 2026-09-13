@@ -329,9 +329,60 @@ def _active_job(project, instance):
 # make over ssh, in the same order, with the compose file and env travelling
 # beside them — so a node needs nothing but the token it enrolled with.
 # `{cdir}` is the directory the agent writes those files into.
+def work_tree(project, instance):
+    """Where an instance pinned to a REF is built from, or None.
+
+    A git worktree beside the project on the share — the same
+    `<project>-<something>` shape a second person's session already uses, so
+    the projects list knows what it is looking at (and it carries a .bbignore
+    besides). A worktree rather than a checkout, because the tree is shared:
+    switching the project's own branch to look at a build moves it under every
+    session and every person on it, and the Git view refuses that outright
+    while somebody's session is standing in the directory.
+    """
+    ref = str(_read_rec(project, instance).get("ref") or "").strip()
+    if not ref:
+        return None
+    return WORKSPACE / f"{_slug(project)}-{_slug(instance)}-build"
+
+
+def sync_work_tree(project, instance):
+    """Put the instance's worktree on its ref, making it if it is not there.
+
+    Returns "" or the reason it could not. Run before a build rather than
+    when the ref is set: the ref is a setting and the branch it names moves,
+    so what matters is where it points at the moment something is built.
+    """
+    at = work_tree(project, instance)
+    if at is None:
+        return ""
+    ref = str(_read_rec(project, instance).get("ref") or "").strip()
+    repo = WORKSPACE / project
+    if not (repo / ".git").exists():
+        return f"{project} is not a git repository, so there is no branch to build"
+    if not at.exists():
+        r = _run(["git", "-C", str(repo), "worktree", "add", "--force",
+                  str(at), ref], timeout=120)
+        if r["code"] != 0:
+            return f"could not make a worktree at {ref}: " + _why_not(r["out"])
+    else:
+        r = _run(["git", "-C", str(at), "checkout", "--force", ref], timeout=120)
+        if r["code"] != 0:
+            return f"could not put the build tree on {ref}: " + _why_not(r["out"])
+    try:
+        # server.py's own name for it, spelled here rather than imported:
+        # this module is configured by the server, not a child of it.
+        (at / ".bbignore").write_text("a build tree, not a project\n")
+    except OSError:
+        pass                             # the marker is a courtesy to the list
+    return ""
+
+
 def _plan(project, instance, action):
     pname = _pname(project, instance)
-    pdir = (str(WORKSPACE / project) if _read_rec(project, instance).get("source") != "file"
+    at = work_tree(project, instance)
+    pdir = (str(at) if at is not None
+            else str(WORKSPACE / project) if _read_rec(project, instance).get("source") != "file"
             else (dev_data_dir(project, instance, make=False)
                   or str(Path(DEVDATA) / pname)))
     base = [DOCKER, "compose", "--project-name", pname,
@@ -1418,7 +1469,14 @@ def _compose(project, instance, *args):
         pdir = (dev_data_dir(project, instance, make=False)
                 or str(Path(DEVDATA) / _pname(project, instance)))
     else:
-        pdir = str(WORKSPACE / project)
+        # ...or the instance's own build tree, when it is pinned to a ref.
+        # The SAME answer _plan gives, because the two are one command built
+        # twice: the controller's runner uses this and an agent node gets the
+        # plan, and the first version of this shipped with only the plan
+        # changed — so a controller-run build quietly came from the project's
+        # checkout while the row said it came from a branch.
+        at = work_tree(project, instance)
+        pdir = str(at) if at is not None else str(WORKSPACE / project)
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
             "--project-directory", pdir, "-f", str(cf)]
     ep = env_path(project, instance)
@@ -1996,6 +2054,10 @@ def _overview_here(picked):
         filed = is_file_source(project)
         head, dirty = ("", False) if filed else (_head(project), _dirty(project))
         for inst in sorted(store[project]):
+            # ...except an instance pinned to a ref, which is built from its
+            # own tree and answers for that rather than for the working copy.
+            pin = str((store[project][inst] or {}).get("ref") or "").strip()
+            ihead, idirty = (_head(project, inst), False) if pin else (head, dirty)
             # The picker's node only, resolved exactly as the ACTIONS on
             # the row resolve it (_instance_node): the record's node, else
             # the PROJECT's, else the default. Those two chains used to
@@ -2037,8 +2099,12 @@ def _overview_here(picked):
                 "changed": (not (rec.get("rev") if same_daemon else "")
                             or (same_daemon
                                 and rec.get("rev") != (built_rev(project, inst)
-                                                       if filed else head))
-                            or (dirty and not filed)),
+                                                       if filed else ihead))
+                            or (idirty and not filed)),
+                # What it is pinned to, when it is: the row says which branch
+                # it builds from rather than leaving "built from 1a2b3c" to
+                # mean a commit on a branch nobody can see from here.
+                "ref": pin,
                 # Migrate is drawn from this, and only ever rendered on this
                 # page — it was fed by a field this function did not set, so it
                 # had never appeared at all. A directory listing, which this
@@ -2272,6 +2338,50 @@ def create_instance(project, name, node=""):
     _bump()
     return {"ok": True, "project": project, "instance": slug,
             "name": _pname(project, slug)}
+
+
+def set_ref(project, instance, ref):
+    """Pin an instance to a branch (or a commit), or clear it with "".
+
+    What it changes is where the next BUILD comes from, and nothing else: the
+    running containers, the env and the data are the instance's own either
+    way. Validated against the project's own repository rather than taken as
+    given, because this string reaches `git checkout` — and refusing an
+    unknown ref here is a sentence, where finding out at build time is a
+    failed job.
+    """
+    ref = " ".join(str(ref or "").split())[:120]
+    if instance not in (_load().get(project) or {}):
+        return {"error": f"{project} has no instance called {instance}"}
+    if ref:
+        repo = WORKSPACE / project
+        if not (repo / ".git").exists():
+            return {"error": f"{project} is not a git repository, so there is "
+                             "no branch to build from"}
+        r = _run(["git", "-C", str(repo), "rev-parse", "--verify",
+                  "--quiet", ref + "^{commit}"], timeout=15)
+        if r["code"] != 0:
+            return {"error": f"{project} has no branch or commit called {ref}"}
+    with _lock:
+        d = _load()
+        rec = _rec(d, project, instance)
+        if ref:
+            rec["ref"] = ref
+        else:
+            rec.pop("ref", None)
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "ref": ref}
+
+
+def refs_of(project):
+    """The branches this project could be built from, newest commit first,
+    for the picker on the row. Local branches only: a remote-tracking one
+    would be a build of something nobody here has fetched."""
+    r = _run(["git", "-C", str(WORKSPACE / project), "for-each-ref",
+              "--sort=-committerdate", "--format=%(refname:short)",
+              "refs/heads/"], timeout=15)
+    return [b.strip() for b in (r["out"] or "").splitlines() if b.strip()][:60]
 
 
 @_on_instance
@@ -2975,7 +3085,7 @@ def built_rev(project, instance=MAIN):
     questions the row asks — what was this built from, and has it moved since.
     """
     if not is_file_source(project):
-        return _head(project)
+        return _head(project, instance)
     h = hashlib.sha256()
     for part in (_container_text(project), read_env(project, instance) or ""):
         h.update(part.encode("utf-8", "replace"))
@@ -2991,9 +3101,15 @@ def _container_text(name):
         return ""
 
 
-def _head(project):
+def _head(project, instance=None):
+    """The commit an instance is built FROM: the project tree's HEAD, or the
+    ref's own tip when the instance is pinned to one. Both answers come from
+    the project's repository, so a branch that has never been checked out is
+    still a commit this can name."""
+    ref = (str(_read_rec(project, instance).get("ref") or "").strip()
+           if instance else "")
     r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
-              "HEAD"], timeout=10)
+              ref or "HEAD"], timeout=10)
     return r["out"].strip() if r["code"] == 0 else ""
 
 
@@ -3072,8 +3188,13 @@ def state(project, instance=MAIN):
         # Only worth a second call when nothing is running: a running stack
         # self-evidently has containers, and this is on the artifacts poll.
         out["exists"] = out["running"] or _exists(project, instance)
-        head = _head(project)
-        dirty = _dirty(project)
+        head = _head(project, instance)
+        # An instance pinned to a ref is not waiting on the working copy: its
+        # build tree is its own, and an uncommitted edit in the project's tree
+        # says nothing about it. What "moved" means there is that the BRANCH
+        # has, which is the comparison above.
+        pinned = bool(_read_rec(project, instance).get("ref"))
+        dirty = False if pinned else _dirty(project)
         moved = bool(built.get("rev")) and built.get("rev") != head
         out["changed"] = not built.get("rev") or moved or dirty
         # WHICH of the two, because they are different facts and the row was
@@ -3184,6 +3305,13 @@ def rebuild(project, instance=MAIN, ack=""):
     clash = name_clash(project, instance)
     if clash:
         return {"error": clash}
+    # Pinned to a ref: put its build tree there first. Before the job rather
+    # than inside it, because the tree is the CONTROLLER's to write — it holds
+    # the credentials and the share is mounted here — and a node's agent runs
+    # compose against a directory that must already be right.
+    moved = sync_work_tree(project, instance)
+    if moved:
+        return {"error": moved}
     r = _submit(project, instance, "rebuild")
     if r.get("error"):
         return r

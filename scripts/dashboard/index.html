@@ -2223,7 +2223,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook — a memory's body, a rule, a bug's repro —
    is a page, not a control: it keeps the reading width. */
@@ -2243,7 +2243,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2256,7 +2256,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
+  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line — the Phone tab's Connect and
@@ -2346,6 +2346,8 @@ button[aria-busy="true"]{opacity:.75}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
 .dmgrant{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dmref{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dmref select{width:auto;max-width:100%}
 .dmgrant select{width:auto;max-width:100%}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
@@ -8297,6 +8299,36 @@ function dmRouteLine(d){
 // checkbox sitting under Remove broke. The long half of the explanation rides
 // the `?` rather than a native title, because a title cannot be tapped and
 // this tab is read on a phone.
+// Which branch this instance builds from. A project's tree is SHARED — every
+// session and every person on it sees one checkout — so "build the other
+// branch" cannot mean switching it: the Git view refuses that outright while
+// somebody's session stands in the directory, and rightly. Pinned here, the
+// build comes from a worktree of its own and the project's tree is not
+// touched at all.
+//
+// Staged and applied like the route above it, because it is a setting.
+const dmRefDraft = {};
+
+function dmRefLine(d){
+  if (d.source === "file" || !mayDocker()) return "";
+  const refs = dockerList?.refs?.[d.project] || [];
+  if (!refs.length) return "";
+  const key = `${d.project}|${d.instance}`;
+  const saved = d.ref || "";
+  const pick = dmRefDraft[key] ?? saved;
+  return `<div class="sub dmref"><label for="${esc("dmr-" + key)}">Build from</label>
+    <select id="${esc("dmr-" + key)}" data-dmref="${esc(key)}" aria-label="which branch to build">
+      <option value=""${saved ? "" : " selected"}>whatever the project is on</option>${
+      refs.map(b => `<option value="${esc(b)}"${b === pick ? " selected" : ""}>${
+        esc(b)}</option>`).join("")}</select>
+    <button type="button" data-dmrefapply="${esc(key)}"${
+      pick === saved ? " disabled" : ""} title="build this container from that branch from now on">Apply</button>${
+    helpIcon("The build comes from a worktree of that branch beside the project, "
+      + "so the project's own checkout is left where it is and nobody else's "
+      + "session moves. Its containers, env and data are unchanged; only what "
+      + "the next build is made of.")}</div>`;
+}
+
 function dmGrantLine(d){
   // Not for a container written here: its compose file IS the thing, so there
   // is no project codebase for a session to rebuild it from.
@@ -8651,7 +8683,8 @@ function dmState(d, job, mine, busy, blind){
   if (mine && job.error) return esc(job.error.split("\n")[0]);
   if (d.running) return `running · ${d.containers} container(s)`;
   if (d.exists) return "stopped — its containers are still there";
-  if (d.built_rev) return `built from ${esc(d.built_rev)}, not running`;
+  if (d.built_rev) return `built from ${d.ref ? esc(d.ref) + " " : ""}${
+    esc(d.built_rev)}, not running`;
   return "never built";
 }
 
@@ -8707,6 +8740,7 @@ function renderDockerInto(i){
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${dmRefLine(d)}
         ${dmGrantLine(d)}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
@@ -8922,6 +8956,35 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // setting, not the instance's.
   // Staged on the pick, written by Apply — the same shape as the route line
   // above it, and as every other setting on the page.
+  el.querySelectorAll("[data-dmref]").forEach(sel => sel.onchange = () => {
+    const key = sel.dataset.dmref;
+    const row = sel.closest("[data-inst]");
+    const saved = (dockerList?.instances || []).find(
+      x => `${x.project}|${x.instance}` === key)?.ref || "";
+    if (sel.value === saved) delete dmRefDraft[key];
+    else dmRefDraft[key] = sel.value;
+    const b = row?.querySelector("[data-dmrefapply]");
+    if (b) b.disabled = sel.value === saved;
+  });
+  el.querySelectorAll("[data-dmrefapply]").forEach(btn => btn.onclick = async () => {
+    const key = btn.dataset.dmrefapply;
+    const [project, instance] = key.split("|");
+    const ref = dmRefDraft[key];
+    if (ref === undefined) return;
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "ref", ref})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmRefDraft[key];
+      notify(ref ? `${project}/${instance} builds from ${ref} now`
+                 : `${project}/${instance} builds from the project's own checkout again`);
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("the branch: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
   el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
     const project = sel.dataset.dmclaude;
     if (sel.value === sel.dataset.was) delete dmGrantDraft[project];

@@ -4400,6 +4400,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": why, "blind": True,
                                    "instances": [], "containers": []})
             got = devapp.overview(nid or None)
+            # The branches each listed project could be built from. Here
+            # rather than per row: they come from one `for-each-ref` per
+            # project, and the picker needs them before anybody presses.
+            got["refs"] = {p: devapp.refs_of(p)
+                           for p in {i["project"] for i in got.get("instances") or []}
+                           if not devapp.is_file_source(p)}
             # An instance of a project this account was not given is one of
             # the projects hidden from it, wearing a different hat — and a
             # node is shared, so a restricted account asking about its own
@@ -5823,6 +5829,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)
         if act == "remove":
             r = devapp.remove_instance(name, inst)
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "ref":
+            # Which branch this instance builds from. `docker-write` above
+            # has already had its say, so this is an administrator's like
+            # every other thing that changes what a container IS.
+            r = devapp.set_ref(name, inst, field(req, "ref"))
             return self._json(r, 400 if r.get("error") else 200)
         if act == "migrate-name":
             return self._json(devapp.migrate_name(name, inst))
