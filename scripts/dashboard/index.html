@@ -8695,6 +8695,21 @@ async function cSubmit(){
              return fail("could not create it: " + e); }
 }
 
+// How a job ENDED, in one line: the LAST non-empty line of its error, not the
+// first.
+//
+// These errors are "<what failed>:\n<the tool's own output>", kept from the
+// END (devapp's `("up failed:\n" + out)[-500:]`), so the first line is the
+// LABEL and the row showed "up failed:" with docker's actual reason dropped.
+// That is the same mistake the agent made printing a dead toolchain's first
+// line — ".NET said: Process terminated." and nothing of the sentence after
+// it that named the missing library. Where an error is one line, the first
+// and the last are the same line and nothing changes.
+function jobWhy(err){
+  const lines = String(err || "").split("\n").map(l => l.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : "";
+}
+
 // What a build was made FROM, in the row's own words.
 //
 // The ref here is the one stamped AT BUILD TIME, never the Ref line's value.
@@ -8723,7 +8738,7 @@ function dmState(d, job, mine, busy, blind){
   // stopped left the row showing the state it happened to be in, so the only
   // account of what went wrong was in the tail below it — and an abort, which
   // ends a job on purpose, said nothing at all.
-  if (mine && job.error) return esc(job.error.split("\n")[0]);
+  if (mine && job.error) return esc(jobWhy(job.error));
   if (d.running) return `running · ${d.containers} container(s)`;
   if (d.exists) return "stopped — its containers are still there";
   if (d.built_rev) return `${dmBuilt(d)}, not running`;
