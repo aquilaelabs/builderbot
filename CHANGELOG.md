@@ -87,6 +87,8 @@
 - An option bb logs does not recognise is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honoured (a868e5a)
 - A node no longer claims a toolchain that is installed but cannot start: a build needing it is refused up front instead of failing on the machine, and the node's log names the binary, how it died and everything it printed (8dceb05, 3b77fa9)
 - Installing .NET on a node now brings the ICU runtime with it, instead of landing an SDK that cannot start on a machine that does not already have it (2520794)
+- A failed dev-instance build says what actually went wrong on its row, instead of showing the words above the error and none of it (38e5db3)
+- A node reporting a Claude it cannot run now reports none, so the doctor card stops showing a crash message where the version belongs (38e5db3)
 
 ## 0.5.0 — 2026-09-10
 
