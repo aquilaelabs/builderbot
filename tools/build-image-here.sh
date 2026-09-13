@@ -19,7 +19,8 @@
 # worse than no build.
 set -eu
 
-cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+CDPATH=
+cd -- "$(dirname -- "$0")/.."
 IMAGE=${BB_IMAGE:-ghcr.io/stencil-projects/builderbot}
 
 command -v docker >/dev/null 2>&1 || {
