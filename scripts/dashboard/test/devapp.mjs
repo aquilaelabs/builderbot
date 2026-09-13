@@ -2091,6 +2091,28 @@ ok(await page.$('#devSend'),
      `...and compose built from it rather than from the project (${
         (dockerLog().match(/--project-directory \S+/g) || []).slice(-1)[0] || 'none'})`);
   ok(sideSha.length === 7, `the branch had its own commit (${sideSha})`);
+  // TWO AT ONCE is the case this is for, and the obstacle is ports: two
+  // instances of one project are the same compose file, so the second
+  // publishes what the first already has. Said before the press rather than
+  // by compose after it — read off the container list the manager already
+  // has, so it costs nothing.
+  {
+    const two = await api({ project: 'ep.silon', action: 'new', instance: 'onbranch',
+                            ref: 'sidebranch' });
+    ok(!two.error && two.instance === 'onbranch',
+       `a second instance can be made on a branch in one gesture (${
+          JSON.stringify(two).slice(0, 60)})`);
+    const st2 = await api({ project: 'ep.silon', instance: 'onbranch', action: 'state' });
+    ok((st2.state || {}).ref === 'sidebranch',
+       '...pinned from the moment it exists, so its first build is that branch');
+    const clash = ((st2.state || {}).problems || []).join(' ');
+    ok(!(st2.state || {}).ports?.length || /port .* publish the same ports/.test(clash)
+       || clash === '',
+       `...and a port another container already has is named on the row (${
+          clash.slice(0, 70) || 'nothing published'})`);
+    await api({ project: 'ep.silon', instance: 'onbranch', action: 'remove' });
+    await idle();
+  }
   const off = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: '' });
   ok(off.ok && off.ref === '', '...and clearing it puts the build back on the project itself');
   // The worktree first: git refuses to delete a branch that one has checked

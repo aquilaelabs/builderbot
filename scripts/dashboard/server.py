@@ -5818,6 +5818,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"text": devapp.starter(name)})
         if act == "new":
             r = devapp.create_instance(name, inst, field(req, "node"))
+            if not r.get("error") and field(req, "ref"):
+                # Pinned before the build the dialog starts, or the first one
+                # comes from the project's checkout and the row says otherwise.
+                p = devapp.set_ref(name, r["instance"], field(req, "ref"))
+                if p.get("error"):
+                    return self._json(p, 400)
             if not r.get("error") and isinstance(req.get("text"), str) \
                     and req["text"].strip():
                 # Written before the build that follows, so the first one has

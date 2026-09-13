@@ -2969,6 +2969,35 @@ def problems(project, cfg):
     return out
 
 
+def taken_ports(project, instance, ports):
+    """The host ports this instance would publish that something ELSE on the
+    same daemon already has, as ["6789 (jumble)", ...].
+
+    Two instances of one project publish the same ports by construction —
+    they are the same compose file — so "run the branch beside the one that
+    is up" collides on the second Up and compose says so in its own words,
+    after the press. This is the same fact before it: read off the container
+    list the manager already has, which is one `ps` it already paid for.
+
+    A compose file whose published ports come from the env has an answer (the
+    env file is per instance); one that hard-codes them does not, and what
+    this owes that case is a sentence rather than a surprise.
+    """
+    want = {str(p.get("published") or "").strip()
+            for p in (ports or []) if str(p.get("published") or "").strip()}
+    if not want:
+        return []
+    mine = _pname(project, instance)
+    out = []
+    for c in (containers().get("containers") or []):
+        if c.get("project") == mine:
+            continue                     # our own, which Up replaces
+        for p in _published(c.get("ports") or []):
+            if str(p) in want:
+                out.append(f"{p} ({c.get('name') or c.get('project') or 'another container'})")
+    return sorted(set(out))
+
+
 def wiring(cfg):
     """What this compose publishes and what it mounts.
 
@@ -3167,6 +3196,11 @@ def state(project, instance=MAIN):
            # already pressed and is told nothing.
            "interrupted": bool(built.get("building_since")
                                and not _active_job(project, instance)),
+           # Which branch it builds from, when it is pinned to one. On the
+           # base dict rather than inside the `if a["on"]` below: what an
+           # instance is built FROM is a fact about the record, and a daemon
+           # that is not answering does not make it unknown.
+           "ref": str(_read_rec(project, instance).get("ref") or ""),
            "job": job_view(project, instance)}
     if a["on"]:
         cfg = _config(project, instance)
@@ -3174,9 +3208,18 @@ def state(project, instance=MAIN):
         rs = risks(project, cfg)
         out["risks"] = rs
         out["problems"] = problems(project, cfg) + host_map()[1]
+        out.update(wiring(cfg))
+        # ...and the ports somebody else is already on. After wiring(), which
+        # is what says which ports this instance wants, and phrased as a
+        # problem because that is exactly what it is: a compose that cannot
+        # start as written, on this daemon, right now.
+        clash = taken_ports(project, instance, out.get("ports"))
+        if clash:
+            out["problems"] = out["problems"] + [
+                "port " + ", ".join(clash) + " — two instances of one project "
+                "publish the same ports, so the second needs its own in its env"]
         # A name it used to have, whose things are still under it.
         out["stale_name"] = stale_name(project, instance)
-        out.update(wiring(cfg))
         out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for

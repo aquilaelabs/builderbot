@@ -3420,6 +3420,17 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Defaults to this project's node from its settings
         dialog; an instance stays bound to the node it was created on.</div>
     </div>
+    <!-- Which branch it builds from. Offered here as well as on the row
+         because this is the gesture that makes a SECOND instance, and a
+         second instance is usually a second branch: a pull request beside
+         the one that is up. -->
+    <div class="field" id="dnRefField" hidden>
+      <label for="dnRef">Build from<span class="help" data-tip="a worktree of that branch beside the project; the project's own checkout is not touched" tabindex="0">?</span></label>
+      <select id="dnRef"></select>
+      <div class="hint">Its own worktree, so the project's checkout stays
+        where it is. Two instances of one project publish the same ports,
+        so the second needs its own in its env.</div>
+    </div>
     <!-- The env, seeded from the project's .env.example. Here rather than
          after the first build: without it the build runs, stops at the gate
          for want of a value, and asks for the same thing one screen later. -->
@@ -8127,6 +8138,13 @@ function openSendToDocker(project){
   fillNodeSelect($("dnNode"), $("dnNodeField"),
                  state?.projects?.find(p => p.name === project)
                    ?.prefs?.node || dockerNode);
+  // The branches the manager already knows about for this project — it lists
+  // them per project on the answer the tab is drawn from, so the dialog costs
+  // nothing to fill.
+  const refs = dockerList?.refs?.[project] || [];
+  $("dnRefField").hidden = !refs.length;
+  $("dnRef").innerHTML = `<option value="">whatever the project is on</option>`
+    + refs.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
   $("dnmodal").hidden = false;
   // Fetched per open, and only shown when the project actually declares an
   // example: a blank Environment box on a project with nothing to fill in is
@@ -8199,6 +8217,7 @@ async function dnSubmit(){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project, action:"new", instance:name,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
+                            ref: $("dnRefField").hidden ? "" : $("dnRef").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
