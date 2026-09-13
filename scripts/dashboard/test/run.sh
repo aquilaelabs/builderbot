@@ -690,6 +690,23 @@ fresh() {
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
         ! -name toolstore ! -name vendored-junk ! -name .claude -exec rm -rf {} +
+    # ...nor one that UNLINKED a project. create.mjs unlinks alpha through the
+    # real /api/unlink, which is meant to take the remote, the stored token
+    # and the push grant all at once — so `run.sh create cards` handed cards
+    # an alpha that pushes nowhere, and its chain dialog, which expects a
+    # deploy key, failed on two assertions and then timed out. Alphabetical
+    # order is why CI never met it: cards runs first in a whole run.
+    # Put back, not removed: the grant is seeded above as a literal, the way
+    # locked-projects is, so a fixture does not lean on a migration.
+    printf '{"alpha":{"repo":"owner/alpha","host":"github.com","how":"key","at":1756000000}}\n' \
+        > "$S/state/push-rights.json"
+    rm -rf "$S/state/gitcreds"          # ...and a token a link dialog stored
+    ( cd "$S/ws" \
+      && git -C alpha remote set-url origin git@github.com:owner/alpha.git 2>/dev/null \
+         || git -C alpha remote add origin git@github.com:owner/alpha.git
+      cd "$S/ws" \
+      && git -C ep.silon remote set-url origin https://gitlab.example/eps.git 2>/dev/null \
+         || git -C ep.silon remote add origin https://gitlab.example/eps.git ) 2>/dev/null || true
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/dockerstate"; mkdir -p "$S/dockerstate"
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"

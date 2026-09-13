@@ -254,7 +254,15 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // top of Changes, Switch and Delete on a branch, Revert on a commit.
   writeFileSync(`${B}/a.txt`, 'one\ntwo\nfour\n');
   await page.evaluate(() => getNotebook('beta').view('git'));
-  await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] #gitCommit'), { timeout: 20000 });
+  // Waited for the CHANGED FILE, not just for the view to exist. #gitCommit
+  // is there as soon as the form draws, which happens before git status has
+  // caught up with the write above — so Discard was missing about one run in
+  // two, and the file passed on its own the next time. The wait throws by
+  // name if the row never comes, so the assertion below still proves all six.
+  await refreshUntil(page, () => !!document.querySelector(
+    '.nb .nbview[data-view="git"] #gitCommit')
+    && !!document.querySelector('.nb .nbview[data-view="git"] [data-gitdiscard="a.txt"]'),
+    { timeout: 20000 });
   const view = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     net: !v.querySelector('#gitNet').hidden, push: !v.querySelector('[data-gitact="push"]').disabled,
     commitBar: !!v.querySelector('.gcommitbar[data-add] #gitMsg'),
