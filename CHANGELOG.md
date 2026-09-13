@@ -78,6 +78,7 @@
 - The Docker tab's rebuild dial is saved with Apply beside it rather than the moment it is picked, like every other setting on the page (c84b1ca)
 - Pulldowns are no longer blown up on a phone: the rule that keeps iOS from zooming applies to fields you type into, and a picker never zoomed, so every select on every tab was oversized for nothing (0839ca5)
 - A row's own words are one size everywhere: a step reads like the item it belongs to, and a bug's fields like every other field, instead of two sizes half a pixel apart (0839ca5)
+- The Docker tab stays on the node you picked when you come back to it, and the line under the picker names that node rather than the default one (0bd3c7d)
 
 ## 0.5.0 — 2026-09-10
 
