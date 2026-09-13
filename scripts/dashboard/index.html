@@ -2345,9 +2345,15 @@ button[aria-busy="true"]{opacity:.75}
 .ndpaths input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
-.dmgrant{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.dmref{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.dmref select{width:auto;max-width:100%}
+/* The two settings a container row carries, as one block rather than two
+   loose lines: they are read together (which branch, and who may build it),
+   and a phone was stacking them with the row's own line spacing between, so
+   they looked like two unrelated strays. */
+.dmgrant,.dmref{display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  margin:2px 0}
+.dmref + .dmgrant{margin-top:0}
+.dmgrant select,.dmref select{width:auto;max-width:100%}
+.dmgrant label,.dmref label{color:var(--dim);flex:0 0 auto}
 .dmgrant select{width:auto;max-width:100%}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
@@ -8335,17 +8341,22 @@ function dmRefLine(d){
   const key = `${d.project}|${d.instance}`;
   const saved = d.ref || "";
   const pick = dmRefDraft[key] ?? saved;
-  return `<div class="sub dmref"><label for="${esc("dmr-" + key)}">Build from</label>
+  // The `?` rides the LABEL (docs/design-language.md, Controls), not the end
+  // of the row: a row of controls wraps on a phone, and an icon last wrapped
+  // onto a line of its own, where it read as a stray mark belonging to
+  // nothing.
+  return `<div class="sub dmref"><label for="${esc("dmr-" + key)}">Build from${
+      helpIcon("The build comes from a worktree of that branch beside the project, "
+        + "so the project's own checkout is left where it is and nobody else's "
+        + "session moves. Its containers, env and data are unchanged; only what "
+        + "the next build is made of.")}</label>
     <select id="${esc("dmr-" + key)}" data-dmref="${esc(key)}" aria-label="which branch to build">
       <option value=""${saved ? "" : " selected"}>whatever the project is on</option>${
       refs.map(b => `<option value="${esc(b)}"${b === pick ? " selected" : ""}>${
         esc(b)}</option>`).join("")}</select>
     <button type="button" data-dmrefapply="${esc(key)}"${
-      pick === saved ? " disabled" : ""} title="build this container from that branch from now on">Apply</button>${
-    helpIcon("The build comes from a worktree of that branch beside the project, "
-      + "so the project's own checkout is left where it is and nobody else's "
-      + "session moves. Its containers, env and data are unchanged; only what "
-      + "the next build is made of.")}</div>`;
+      pick === saved ? " disabled" : ""} title="build this container from that branch from now on"
+      >Apply</button></div>`;
 }
 
 function dmGrantLine(d){
@@ -8355,7 +8366,12 @@ function dmGrantLine(d){
   const saved = devClaudeMode(d.project);
   const pick = dmGrantDraft[d.project] ?? saved;
   return `<div class="sub dmgrant"><label for="${
-      esc(`dmg-${d.project}`)}">Claude may rebuild</label>
+      esc(`dmg-${d.project}`)}">Claude may rebuild${
+    helpIcon(`A session in ${d.project} builds this from the project's codebase `
+      + `and brings it up: on ask it says what the rebuild is for and waits for `
+      + `you, on auto it just runs. Making a container, removing one, Up, Down `
+      + `and Env are yours whatever this says, and it covers every instance of `
+      + `${d.project}.`)}</label>
     <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
             data-was="${esc(saved)}"
             aria-label="whether a session may rebuild ${esc(d.project)}">${
@@ -8363,12 +8379,7 @@ function dmGrantLine(d){
         v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
     <button type="button" data-dmclaudeapply="${esc(d.project)}"${
       pick === saved ? " disabled" : ""} title="save who may rebuild ${
-      esc(d.project)}'s containers">Apply</button>${
-    helpIcon(`A session in ${d.project} builds this from the project's codebase `
-      + `and brings it up: on ask it says what the rebuild is for and waits for `
-      + `you, on auto it just runs. Making a container, removing one, Up, Down `
-      + `and Env are yours whatever this says, and it covers every instance of `
-      + `${d.project}.`)}</div>`;
+      esc(d.project)}'s containers">Apply</button></div>`;
 }
 
 function dockerJob(){
@@ -8684,6 +8695,19 @@ async function cSubmit(){
              return fail("could not create it: " + e); }
 }
 
+// What a build was made FROM, in the row's own words.
+//
+// The ref here is the one stamped AT BUILD TIME, never the Ref line's value.
+// That line is the setting for the next build, and repointing an instance does
+// not rebuild it — so reading the setting to describe what is already built
+// says "built from rack-drift 244e38d" about a branch that may never have been
+// built here at all. The commit is the truth; the branch is the setting, and
+// the moment the two disagree is the moment this line is worth reading.
+function dmBuilt(d){
+  return `built from ${d.built_ref ? esc(d.built_ref) + " " : ""}${
+    esc(d.built_rev)}`;
+}
+
 // What one dev instance is doing, in a line: the action bar's status.
 function dmState(d, job, mine, busy, blind){
   // Nothing was asked, so nothing is claimed. What it was built from is still
@@ -8691,8 +8715,8 @@ function dmState(d, job, mine, busy, blind){
   // carrying into a listing nobody can act on.
   if (blind)
     return d.built_rev
-      ? `built from ${esc(d.built_rev)} — the daemon is not answering, so
-         whether it is up is unknown`
+      ? `${dmBuilt(d)} — the daemon is not answering, so whether it is up is
+         unknown`
       : "never built — the daemon is not answering";
   if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
   // How a job ENDED, which this row never said. A build that failed or was
@@ -8702,8 +8726,7 @@ function dmState(d, job, mine, busy, blind){
   if (mine && job.error) return esc(job.error.split("\n")[0]);
   if (d.running) return `running · ${d.containers} container(s)`;
   if (d.exists) return "stopped — its containers are still there";
-  if (d.built_rev) return `built from ${d.ref ? esc(d.ref) + " " : ""}${
-    esc(d.built_rev)}, not running`;
+  if (d.built_rev) return `${dmBuilt(d)}, not running`;
   return "never built";
 }
 
@@ -8807,20 +8830,21 @@ for the rest of the work"
               : "move its env and data from " + esc(d.stale_name) + " to " + esc(d.name)}"
             >Migrate</button>` : ""}
         <button type="button" data-dm="rebuild" ${
-          // Live when the code has moved — and also when the last attempt on
-          // this instance failed, which is the case that stranded the row: a
-          // build records itself before the `up` that follows it, so an up
-          // that failed left Rebuild asleep on the grounds that the build was
-          // current. It was; the run was not, and retrying it is the obvious
-          // thing to want from a row that just went red.
-          (!d.changed && !(mine && job.error)) || busy ? "disabled" : ""}
+          // A button that refuses is not information. This slept whenever the
+          // build matched the code, which is defensible and was read as
+          // broken: the operator pinned an instance to a branch, pressed
+          // Apply, and had nothing to press. What "the code has moved" is
+          // worth is a SENTENCE, which the state line above and this title
+          // both carry — and a rebuild when nothing moved is a cached build
+          // and a restart, behind a confirm that says so.
+          busy ? "disabled" : ""}
           title="${!d.built_rev
             ? "build the first image, then bring it up"
             : d.changed
-              ? "build from " + esc(d.project) + "'s codebase, then down and up"
+              ? "build from " + esc(d.ref || d.project) + "'s codebase, then down and up"
               : (mine && job.error)
                 ? "run it again — the last attempt did not finish"
-                : "the last build is current — this wakes when the code moves"}">${
+                : "the last build is current — this builds it again anyway"}">${
           d.built_rev ? "Rebuild" : "Build"}</button>
         ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
             busy ? "disabled" : ""}

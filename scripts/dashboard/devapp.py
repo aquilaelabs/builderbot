@@ -500,8 +500,7 @@ def _compose_done(job, state):
             row = _rec(d, project, instance)
             row.pop("await_env", None)
             if not row.get("rev") or row.get("daemon") != daemon_id():
-                row.update(rev=built_rev(project, instance), at=int(time.time()),
-                           daemon=daemon_id(), daemon_uid=_uid())
+                _stamp(row, project, instance)
             write_json(FILE, d)
     if action == "remove":
         _remove_records(project, instance)
@@ -509,12 +508,25 @@ def _compose_done(job, state):
     _bump()
 
 
+def _stamp(row, project, instance):
+    """Write down what a build produced: the revision, and the ref it came from.
+
+    The ref is written HERE, at the moment of the build, rather than read off
+    the record when the row is drawn. The record's `ref` is the SETTING —
+    which branch the NEXT rebuild will use — and changing it does not move
+    what is already built. A row that describes a finished build from the
+    setting says "built from <branch> <sha>" about a branch that may never
+    have been built at all.
+    """
+    row.update(rev=built_rev(project, instance), at=int(time.time()),
+               built_ref=str(row.get("ref") or ""),
+               daemon=daemon_id(), daemon_uid=_uid())
+
+
 def _record_build(project, instance):
     with _lock:
         d = _load()
-        _rec(d, project, instance).update(rev=built_rev(project, instance),
-                                          at=int(time.time()), daemon=daemon_id(),
-                                          daemon_uid=_uid())
+        _stamp(_rec(d, project, instance), project, instance)
         write_json(FILE, d)
 
 
@@ -2085,6 +2097,12 @@ def _overview_here(picked):
                 # it happened on, and a record from another names nothing here.
                 "built_rev": rec.get("rev", "") if same_daemon else "",
                 "built_at": rec.get("at", 0) if same_daemon else 0,
+                # The ref that build was made from, stamped when it was made —
+                # a different question from `ref` below, which is the pin the
+                # NEXT build will use. Repointing an instance does not rebuild
+                # it, so reading the pin to describe what is already built
+                # names a branch that may never have been built here.
+                "built_ref": rec.get("built_ref", "") if same_daemon else "",
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
                 "compose": compose_file(project, inst) is not None,
                 "source": "file" if filed else "project",
@@ -2101,9 +2119,9 @@ def _overview_here(picked):
                                 and rec.get("rev") != (built_rev(project, inst)
                                                        if filed else ihead))
                             or (idirty and not filed)),
-                # What it is pinned to, when it is: the row says which branch
-                # it builds from rather than leaving "built from 1a2b3c" to
-                # mean a commit on a branch nobody can see from here.
+                # What the NEXT build will use, when it is pinned to
+                # something: the Ref line's own value, and what the row warns
+                # about when it differs from what is already built.
                 "ref": pin,
                 # Migrate is drawn from this, and only ever rendered on this
                 # page — it was fed by a field this function did not set, so it
@@ -3169,7 +3187,8 @@ def state(project, instance=MAIN):
     # nothing — up() refuses on a live missing_env() rather than on the flag.
     if built.get("daemon") != daemon_id():
         built = {k: v for k, v in built.items()
-                 if k not in ("rev", "at", "await_env", "building_since")}
+                 if k not in ("rev", "at", "built_ref", "await_env",
+                              "building_since")}
     out = {"compose": True, "available": a["on"], "why": a["why"],
            # WHICH machine that was about, which the row could not say. An
            # instance is pinned to the node it was made on and a project
@@ -3185,6 +3204,12 @@ def state(project, instance=MAIN):
            "name": _pname(project, instance),
            "needs_build": True,
            "built_rev": built.get("rev", ""), "built_at": built.get("at", 0),
+           # The ref the build was MADE from, stamped when it was made. Not
+           # `ref` below, which is the setting for the next one: a build does
+           # not move because the pin did. Empty on a build made before this
+           # was recorded, and then the row names the revision alone rather
+           # than a branch nobody wrote down.
+           "built_ref": built.get("built_ref", ""),
            "missing_env": missing_env(project, instance),
            "await_env": bool(built.get("await_env")),
            # A marker with no build running behind it means the container went
@@ -3310,8 +3335,7 @@ def _job_up(project, instance, run):
         # reads that as never-built-here, and without the second test the row
         # would go on saying so with the instance up in front of it.
         if not row.get("rev") or row.get("daemon") != daemon_id():
-            row.update(rev=built_rev(project, instance), at=int(time.time()),
-                       daemon=daemon_id(), daemon_uid=_uid())
+            _stamp(row, project, instance)
         write_json(FILE, d)
     _bump()
     return {"state": "succeeded"}
@@ -3405,10 +3429,7 @@ def _job_rebuild(project, instance, run):
                     "error": "build failed — the tail of its output is below"}
         with _lock:
             d = _load()
-            _rec(d, project, instance).update(rev=built_rev(project, instance),
-                                              at=int(time.time()),
-                                              daemon=daemon_id(),
-                                              daemon_uid=_uid())
+            _stamp(_rec(d, project, instance), project, instance)
             write_json(FILE, d)
         run.step("stopping")
         _run(_compose(project, instance, "down"), timeout=180,
