@@ -2431,7 +2431,22 @@ and runs build → down → up — unless the rebuild finds new settings in
 `.env.example`, where it stops after down, rewrites the env as the new
 example with the old values preserved in comments, and leaves Up for the
 operator. Before the first build the button reads
-**Build**, and nothing is built until it is pressed. A compose that
+**Build**, and nothing is built until it is pressed.
+**Build from** picks the branch it is built from. A project's tree is shared —
+one checkout for every session and person on it — so this does not switch it:
+the build comes from a git worktree of that branch beside the project, marked
+with a `.bbignore` so the projects list knows what it is, and the project's own
+checkout is left where it is. The row then says which branch it was built from,
+and "the code has moved" means that branch has, not the working copy. **Send to
+Docker manager** offers the same picker, because a second instance is usually a
+second branch: a pull request running beside the one that is up.
+
+Two instances of one project are the same compose file, so they publish the
+same host ports and the second cannot start as written. That is said **before**
+the press — the row names the port and what already has it, read off the
+container list the tab already has — and the answer is the per-instance env
+file, which is where a compose written with `${PORT}` takes its ports from. A
+compose that hard-codes them has no answer but a sentence. A compose that
 references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
 convention — in a per-instance directory the VM makes itself, so that share is
 mounted over there and needs no mount here at all. BuilderBot itself gets the

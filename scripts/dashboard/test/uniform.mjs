@@ -296,7 +296,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
+    const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).

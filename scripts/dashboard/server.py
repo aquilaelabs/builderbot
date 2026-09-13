@@ -3960,6 +3960,40 @@ class Handler(BaseHTTPRequestHandler):
             sel.close()
             up.close()
 
+    def _static(self, rel, ctype):
+        """A file that IS the app — index.html and the tab scripts — served so
+        a browser notices when the image changes.
+
+        They went out with no validator and no cache directive at all, which
+        leaves it to the browser's own heuristics: a phone could hold the old
+        page across a container update and show yesterday's dashboard against
+        today's server, with nothing on screen admitting it. `no-cache` is not
+        "do not store", it is "ask me first" — so the usual answer stays a 304
+        of a few bytes and the new bytes arrive the moment the file changes.
+        The tag is the file's own size and mtime, which is what changes when
+        an image does, and costs one stat rather than a hash of 700KB.
+        """
+        try:
+            st = (HERE / rel).stat()
+            body, zipped = self._gzip((HERE / rel).read_bytes())
+        except OSError:
+            return self._json({"error": "not found"}, 404)
+        tag = f'W/"{st.st_size:x}-{st.st_mtime_ns:x}"'
+        if self.headers.get("If-None-Match") == tag:
+            self.send_response(304)
+            self.send_header("ETag", tag)
+            self.send_header("Cache-Control", "no-cache")
+            return self.end_headers()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        if zipped:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", tag)
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        return self.wfile.write(body)
+
     def _gzip(self, body):
         """The body, compressed when the client takes gzip and it pays.
 
@@ -4072,27 +4106,9 @@ class Handler(BaseHTTPRequestHandler):
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js"):
-            try:
-                body, zipped = self._gzip((HERE / path[1:]).read_bytes())
-            except OSError:
-                return self._json({"error": "not found"}, 404)
-            self.send_response(200)
-            self.send_header("Content-Type",
-                             "text/javascript; charset=utf-8")
-            if zipped:
-                self.send_header("Content-Encoding", "gzip")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            return self.wfile.write(body)
+            return self._static(path[1:], "text/javascript; charset=utf-8")
         if self.path.split("?")[0] in ("/", "/index.html"):
-            body, zipped = self._gzip((HERE / "index.html").read_bytes())
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            if zipped:
-                self.send_header("Content-Encoding", "gzip")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            return self.wfile.write(body)
+            return self._static("index.html", "text/html; charset=utf-8")
         if fav := self.FAVICONS.get(self.path.split("?")[0]):
             name, ctype = fav
             try:
@@ -4384,6 +4400,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": why, "blind": True,
                                    "instances": [], "containers": []})
             got = devapp.overview(nid or None)
+            # The branches each listed project could be built from. Here
+            # rather than per row: they come from one `for-each-ref` per
+            # project, and the picker needs them before anybody presses.
+            got["refs"] = {p: devapp.refs_of(p)
+                           for p in {i["project"] for i in got.get("instances") or []}
+                           if not devapp.is_file_source(p)}
             # An instance of a project this account was not given is one of
             # the projects hidden from it, wearing a different hat — and a
             # node is shared, so a restricted account asking about its own
@@ -5796,6 +5818,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"text": devapp.starter(name)})
         if act == "new":
             r = devapp.create_instance(name, inst, field(req, "node"))
+            if not r.get("error") and field(req, "ref"):
+                # Pinned before the build the dialog starts, or the first one
+                # comes from the project's checkout and the row says otherwise.
+                p = devapp.set_ref(name, r["instance"], field(req, "ref"))
+                if p.get("error"):
+                    return self._json(p, 400)
             if not r.get("error") and isinstance(req.get("text"), str) \
                     and req["text"].strip():
                 # Written before the build that follows, so the first one has
@@ -5807,6 +5835,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)
         if act == "remove":
             r = devapp.remove_instance(name, inst)
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "ref":
+            # Which branch this instance builds from. `docker-write` above
+            # has already had its say, so this is an administrator's like
+            # every other thing that changes what a container IS.
+            r = devapp.set_ref(name, inst, field(req, "ref"))
             return self._json(r, 400 if r.get("error") else 200)
         if act == "migrate-name":
             return self._json(devapp.migrate_name(name, inst))

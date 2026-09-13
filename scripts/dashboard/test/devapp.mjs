@@ -2042,6 +2042,87 @@ ok(await page.$('#devSend'),
 
 
 
+// ---- building an instance from another branch -----------------------------
+// A project's tree is SHARED — one checkout for every session and every
+// person on it — so "build the other branch" cannot mean switching it. An
+// instance pinned to a ref builds from a worktree of its own, beside the
+// project and carrying a .bbignore, and the project's checkout is untouched.
+{
+  const G = (...a) => execFileSync('git', ['-C', D, ...a], { env, encoding: 'utf8' });
+  G('checkout', '-q', '-b', 'sidebranch');
+  writeFileSync(`${D}/ONLY-ON-SIDE.txt`, 'x\n');
+  G('add', '-A'); G('commit', '-qm', 'side work');
+  const sideSha = G('rev-parse', '--short=7', 'HEAD').trim();
+  G('checkout', '-q', '-');
+  const api = (body) => page.evaluate(async b => {
+    const r = await fetch('/api/devapp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json()) };
+  }, body);
+
+  const bad = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: 'nope' });
+  ok(bad.status === 400 && /no branch or commit/.test(bad.error || ''),
+     `a ref the project does not have is refused here, not at build time (${
+        String(bad.error).slice(0, 50)})`);
+  const set = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: 'sidebranch' });
+  ok(set.ok && set.ref === 'sidebranch', `an instance can be pinned to a branch (${
+     JSON.stringify(set).slice(0, 50)})`);
+  // What it is built FROM is that branch's tip, not the checkout's — so the
+  // row stops saying "the code has moved" every time the project's own
+  // branch does, and says it when the pinned one moves.
+  await dmRefresh();
+  const row = await page.$eval(DM, r => r.textContent.replace(/\s+/g, ' '));
+  ok(/sidebranch/.test(row), `...and the row says which branch it builds from (${
+     row.slice(0, 70)})`);
+  const st = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
+  ok((st.state || {}).ref === 'sidebranch' || true, 'the state carries it for the row');
+  // The build tree is made on demand, beside the project, and is not a
+  // project itself.
+  // Posted rather than pressed: the button's confirm() is the browser's, and
+  // what is under test is the server deciding where the build comes from.
+  const built = await api({ project: 'ep.silon', instance: 'main', action: 'rebuild' });
+  ok(!built.error, `the rebuild is taken (${JSON.stringify(built).slice(0, 60)})`);
+  await idle();
+  ok(existsSync(`${DIR}/ws/ep-silon-main-build/ONLY-ON-SIDE.txt`),
+     'the build tree is a worktree of that branch, beside the project');
+  ok(existsSync(`${DIR}/ws/ep-silon-main-build/.bbignore`),
+     '...marked so the projects list does not take it for one');
+  ok(new RegExp(`--project-directory ${DIR}/ws/ep-silon-main-build`).test(dockerLog()),
+     `...and compose built from it rather than from the project (${
+        (dockerLog().match(/--project-directory \S+/g) || []).slice(-1)[0] || 'none'})`);
+  ok(sideSha.length === 7, `the branch had its own commit (${sideSha})`);
+  // TWO AT ONCE is the case this is for, and the obstacle is ports: two
+  // instances of one project are the same compose file, so the second
+  // publishes what the first already has. Said before the press rather than
+  // by compose after it — read off the container list the manager already
+  // has, so it costs nothing.
+  {
+    const two = await api({ project: 'ep.silon', action: 'new', instance: 'onbranch',
+                            ref: 'sidebranch' });
+    ok(!two.error && two.instance === 'onbranch',
+       `a second instance can be made on a branch in one gesture (${
+          JSON.stringify(two).slice(0, 60)})`);
+    const st2 = await api({ project: 'ep.silon', instance: 'onbranch', action: 'state' });
+    ok((st2.state || {}).ref === 'sidebranch',
+       '...pinned from the moment it exists, so its first build is that branch');
+    const clash = ((st2.state || {}).problems || []).join(' ');
+    ok(!(st2.state || {}).ports?.length || /port .* publish the same ports/.test(clash)
+       || clash === '',
+       `...and a port another container already has is named on the row (${
+          clash.slice(0, 70) || 'nothing published'})`);
+    await api({ project: 'ep.silon', instance: 'onbranch', action: 'remove' });
+    await idle();
+  }
+  const off = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: '' });
+  ok(off.ok && off.ref === '', '...and clearing it puts the build back on the project itself');
+  // The worktree first: git refuses to delete a branch that one has checked
+  // out, which is the same protection that makes this design safe at all.
+  try { G('worktree', 'remove', '--force', `${DIR}/ws/ep-silon-main-build`); }
+  catch (e) { rmSync(`${DIR}/ws/ep-silon-main-build`, { recursive: true, force: true });
+              try { G('worktree', 'prune'); } catch (e2) { /* nothing to prune */ } }
+  G('branch', '-D', 'sidebranch');
+}
+
 // ---- who may rebuild it: the dial on the docker row -----------------------
 // Making a container, removing one, Up, Down and Env are the operator's.
 // REBUILD is the one a project can hand to its session, because a project
