@@ -90,6 +90,7 @@
 - A failed dev-instance build says what actually went wrong on its row, instead of showing the words above the error and none of it (38e5db3)
 - A node reporting a Claude it cannot run now reports none, so the doctor card stops showing a crash message where the version belongs (38e5db3)
 - Signing in to Claude on a node no longer loses the odd turn to "another Claude Code process is refreshing it": the per-prompt check reads the login from disk instead of running Claude Code alongside your session (543d8a2)
+- A node the controller cannot reach over ssh keeps its Docker controls: whether a container can be built, brought up or taken down is now decided by the node's own agent, which is what runs them, and only the listing of what is running still needs the ssh (be9957e)
 
 ## 0.5.0 — 2026-09-10
 
