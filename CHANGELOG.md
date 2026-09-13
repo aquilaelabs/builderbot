@@ -38,6 +38,8 @@
 - A project with no node no longer explains itself in a paragraph on every row: the Claude button is ghosted and says why on hover (4807a91)
 - A project's row says who has a Claude session open, and in red why nobody can, instead of naming the machine sessions run on (9651ee6)
 - A project's environment block is rendered to CLAUDE.local.md, which git does not carry, so CLAUDE.md is the project's own notes and a window move stops leaving every project with a 900-line change to commit (9127ee5)
+- The dashboard on a phone shows four projects on its first screen instead of two and a half: the desk cards start folded, a project row keeps its session and notebook buttons and folds the rest behind one, and every row is a little tighter (50ea516)
+- The changelog editor fits twelve entries on a screen instead of seven, with each line's controls beside its words, and moving a line keeps your place instead of scrolling back to the top (50ea516)
 
 ### Fixed
 
