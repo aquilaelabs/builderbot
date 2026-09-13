@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.52"
+AGENT_VERSION = "0.5.53"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1099,6 +1099,14 @@ def census(state):
         "system": platform.system().lower(), "arch": platform.machine(),
         "hostname": socket.gethostname(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
+        if shutil.which("docker") else "",
+        # The daemon's OWN id, which is how the controller tells two VMs that
+        # have worn one address apart — a rebuilt sandbox, a second machine
+        # given the old one's IP. It used to read it over ssh with `docker
+        # info`, and that reader went when the Docker tab stopped judging an
+        # agent node by the controller's ssh (B111); reported here, the same
+        # value arrives by the route the work already takes.
+        "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "sshd": _sshd_listening(),

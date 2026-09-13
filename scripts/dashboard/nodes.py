@@ -886,7 +886,7 @@ def _census(c):
     for k in ("cpu", "mem_mb"):
         with contextlib.suppress(TypeError, ValueError):
             out[k] = int(c.get(k) or 0)
-    for k in ("os", "docker", "gpu", "hostname"):
+    for k in ("os", "docker", "docker_id", "gpu", "hostname"):
         if c.get(k):
             out[k] = str(c[k])[:120]
     # The two placement dimensions (door 9), as fields the agent reports.

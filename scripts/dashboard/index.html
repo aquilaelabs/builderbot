@@ -8892,9 +8892,22 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // The poll's verdict is about the DEFAULT node; a picked node answers for
   // itself through its own overview. Mixing them gated node B behind node
   // A's absence, which is the one wrong answer a picker can give.
+  // WHAT SWITCHES THE BUTTONS OFF is whether this node can be ACTED on, which
+  // is not whether this controller can see what is running there. On an agent
+  // node compose goes to the agent and runs against that machine's own
+  // socket, so a controller that cannot ssh in changes nothing about whether
+  // Up works — and gating on the listing ghosted Up, Down, Rebuild and Send
+  // on a node where all four would have worked (B111). A listing that failed
+  // still greys the ROWS, because what they would claim about running and
+  // stopped is exactly what nobody asked.
   const off = pollSays
-    || (blind ? "the daemon did not answer"
-                + (dockerList.error ? ": " + dockerList.error : "") : "");
+    || (dockerList.on === false ? (dockerList.why || "the daemon did not answer") : "");
+  // Said, not switched off: a listing that failed is worth a line, and the
+  // line has to say that the buttons under it still work.
+  const note = off || (dockerList.error
+    ? `the daemon did not answer: ${dockerList.error} — the rows cannot say `
+      + `what is running, though the controls still work through the agent`
+    : "");
   // Which daemon this is, stated rather than inferred: the node picked
   // above names it, and saying which machine the buttons below act on is
   // worth a line whatever the arrangement.
@@ -8902,7 +8915,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // default node, so on any other one this line named a machine the tab was
   // not talking to, in an address, which reads as proof.
   const src = dockerList?.src || state?.docker || {};
-  const srcLine = !off && src.kind
+  const srcLine = !note && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
@@ -8942,8 +8955,8 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
         <button type="button" data-rdeny="${a.id}">Deny</button>
         <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
       </span></div>`).join("");
-  el.innerHTML = `<div class="dmtab">${picker}${askRows}${off
-      ? `<div class="empty">${esc(off)}</div>` : srcLine}${
+  el.innerHTML = `<div class="dmtab">${picker}${askRows}${note
+      ? `<div class="empty">${esc(note)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
     // machine nobody just asked.

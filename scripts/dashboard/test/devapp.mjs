@@ -1684,19 +1684,48 @@ await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled
                            null, { timeout: 8000 });
 ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean');
 
-// The same again, but for real: the stub daemon stops answering `docker
-// version` at all, which is a VM that is powered off or an address that is not
-// one. The server must not spend its `ps` timeout finding that out — every row
-// it can draw comes from the store on this side — and the tab must come back
-// with them rather than with one error line.
+// The same again, but for real. TWO different failures now, because they are
+// two different questions (B111): whether this node can be ACTED on, which on
+// an agent node is whether its agent is dialing in and what it says it
+// carries, and whether the controller can SEE what is running, which is still
+// a `docker ps` from here. The first switches the buttons off; the second
+// only greys what the rows would claim.
+//
+// This block drives the FIRST: the node's own census stops reporting a
+// daemon, which is a docker that died on a machine still talking to us. The
+// server must not spend its `ps` timeout finding that out — every row it can
+// draw comes from the store on this side — and the tab must come back with
+// them rather than with one error line.
 {
   writeFileSync(`${DIR}/dockerstate/version.fail`, '');
+  const nodeNow = await page.evaluate(() => dockerNode);
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ docker: '' }));
+  // Waited for on THE ANSWER, not on the node record behind it: the census is
+  // the agent's to send and rides its own poll, so the row updating and this
+  // endpoint saying so are a moment apart, and the record being right is not
+  // what the assertions below are about.
   const t0 = Date.now();
-  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
-  await page.waitForFunction(() => dockerList && dockerList.blind === true,
-                             null, { timeout: 20000 });
-  ok(Date.now() - t0 < 15000,
-     'a daemon that is not there is asked nothing — no ps timeout to sit through');
+  await holdPoll(page);
+  const seen = await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === false){
+        dockerList = raw; dockerRev++; drawPanes();
+        return { on: false, why: raw.why || '(none)', blind: raw.blind,
+                 ups: [...document.querySelectorAll('.dmtab [data-dm="up"]')].map(b => b.disabled) };
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return { on: true, why: '(it never went off)', ups: [] };
+  }, nodeNow);
+  await freePoll(page);
+  ok(seen.on === false && Date.now() - t0 < 25000,
+     `a daemon the node does not report is asked nothing — no ps timeout to sit through (${
+        seen.why.slice(0, 40)})`);
+  ok(/reports no daemon|not dialing in/.test(seen.why),
+     `...and the reason is the node's own, not the controller's ssh (${seen.why.slice(0, 70)})`);
+  ok(seen.ups.length > 0 && seen.ups.every(Boolean),
+     `...so every control is off, which is what "cannot act" means (${JSON.stringify(seen.ups)})`);
   // Waited for, not drawn by hand. The build the Send above queued is still
   // moving the devapp revision, and every move nulls dockerList and refetches
   // — a drawPanes() here can land on the null and paint "loading…" with no
@@ -1706,15 +1735,60 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
     && document.querySelectorAll('.dmtab .row[data-inst]').length > 0,
     null, { timeout: 20000 });
   ok(true, '...and the manager still lists what is on record');
-  const blindWhy = await page.$eval('.dmtab .empty', e => e.textContent);
-  ok(/does not answer|not answering/.test(blindWhy),
-     '...with the daemon\'s own words for why it is all greyed');
-  // ...and the words that say what to DO. Docker's connect error leads with
+
+  // THE SECOND QUESTION, and the one B111 is about. The node reports its
+  // daemon again — so it can be acted on — while the controller's own `docker
+  // ps` to it fails, which is exactly the arrangement that ghosted everything:
+  // a probe the WORK does not use deciding whether the work may happen.
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  rmSync(`${DIR}/dockerstate/version.fail`, { force: true });
+  writeFileSync(`${DIR}/dockerstate/ps.fail`, '');
+  await holdPoll(page);
+  const live = await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === true && raw.blind === true){
+        // The status poll's own copy, which is held still by holdPoll and is
+        // about this same node — the tab reads it too, and a stale "docker
+        // does not answer" there would gate the row whatever this answer
+        // says. Set to what the next poll would fetch.
+        state.docker = { on: true, why: '', node: id };
+        dockerList = raw; dockerRev++; drawPanes();
+        return { ups: [...document.querySelectorAll('.dmtab [data-dm="up"]')].map(b => b.disabled),
+                 empty: document.querySelector('.dmtab .empty')?.textContent || '' };
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return { ups: [], empty: '(the node never came back)' };
+  }, nodeNow);
+  await freePoll(page);
+  ok(live.ups.length > 0 && live.ups.some(x => x === false),
+     `a listing the controller cannot make does NOT switch off controls that run on the agent (${
+        JSON.stringify(live.ups)})`);
+  const seenWhy = live.empty;
+  ok(/did not answer/.test(seenWhy) && /controls still work/.test(seenWhy),
+     `...and the line says both halves: what failed, and that the buttons did not (${
+        seenWhy.slice(0, 60)})`);
+  // ...in docker's own words, cut from the TAIL. Its connect error leads with
   // the ssh command it ran and hides the reason at the very end, so cutting
-  // it from the front left the row saying "command [ssh -l bb -o Connect…"
-  // and nothing else — the half the operator already knew (B106).
-  ok(/No route to host/.test(blindWhy) && !/ConnectTimeout/.test(blindWhy),
-     `...which is the reason and not the command line (${blindWhy.slice(-60)})`);
+  // from the front left "command [ssh -l bb -o Connect…" and nothing else —
+  // the half the operator already knew (B106). This line is now the whole
+  // account of what is not known, so it is the message.
+  ok(/No route to host/.test(seenWhy) && !/ConnectTimeout/.test(seenWhy),
+     `...which is the reason and not the command line (${seenWhy.slice(-60)})`);
+  rmSync(`${DIR}/dockerstate/ps.fail`, { force: true });
+
+  // Back to the shape where the node CANNOT be acted on, for what follows:
+  // Remove's two halves are only a pair when the down cannot happen.
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ docker: '' }));
+  writeFileSync(`${DIR}/dockerstate/version.fail`, '');
+  await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === false){ dockerList = raw; dockerRev++; drawPanes(); return; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }, nodeNow);
   // And a row on a daemon that is not answering can still be got rid of.
   // Down is the first half of a remove and needs the daemon; forgetting the
   // record is the second and is this side's own file, so the verb does the
@@ -1744,8 +1818,17 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
       null, { timeout: 20000 });
     ok(true, '...and the row is gone from the manager');
   }
+  // BOTH halves back: the census reporting a daemon again is what lets the
+  // node be acted on, and the ssh answering again is what lets it be seen.
   rmSync(`${DIR}/dockerstate/version.fail`, { force: true });
-  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === true && !raw.blind){ dockerList = raw; dockerRev++; drawPanes(); return; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }, nodeNow);
   await page.waitForFunction(() => dockerList && !dockerList.blind,
                              null, { timeout: 20000 });
   // Asked again until it holds rather than sampled once: the status poll can
@@ -1771,11 +1854,19 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 // wrecked — so the daemon has to carry the label nodes/provision-linux.sh puts on the
 // one it made, and an unlabelled machine is refused rather than driven.
 {
-  writeFileSync(`${DIR}/dockerstate/unlabelled`, '');
-  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
-  await page.waitForFunction(() => dockerList && dockerList.blind === true,
-                             null, { timeout: 20000 });
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  // Through the CENSUS, because that is where the stamp is read from on an
+  // agent node now: the provisioner writes it on the machine and the agent
+  // reports it, rather than the controller reading a daemon label over an ssh
+  // that has nothing to do with how the work gets there (B111).
+  const nodeStamp = await page.evaluate(() => dockerNode);
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ sandbox: false }));
+  await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === false){ dockerList = raw; dockerRev++; drawPanes(); return; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }, nodeStamp);
   // Waited for rather than assumed: the repaint is synchronous but the tab
   // has to be the one on screen, and an earlier file leaving another
   // document in the pane is enough to lose the race.
@@ -1787,8 +1878,14 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   // and nothing since.
   ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
      '...saying what to run on the VM, since re-running it is the whole fix');
-  rmSync(`${DIR}/dockerstate/unlabelled`, { force: true });
-  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.on === true && !raw.blind){ dockerList = raw; dockerRev++; drawPanes(); return; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }, nodeStamp);
   await page.waitForFunction(() => dockerList && !dockerList.blind,
                              null, { timeout: 20000 });
   ok(true, '...and a stamped one is talked to again');
@@ -1810,15 +1907,28 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   const rec = () => (store()['ep.silon'] || {}).main || {};
   ok(!!rec().rev && !!rec().daemon_uid,
      'a build records which daemon it landed on, by that daemon\'s own id');
-  writeFileSync(`${DIR}/dockerstate/uid`, 'A-DIFFERENT-VM');
-  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
-  await page.waitForFunction(() => dockerList && !dockerList.blind, null, { timeout: 20000 });
+  // Through the CENSUS, for the same reason as the stamp above: the daemon's
+  // own id is what the node reports about itself now, not something the
+  // controller reads over an ssh the work does not use (B111).
+  const nodeUid = await page.evaluate(() => dockerNode);
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`,
+                JSON.stringify({ docker_id: 'A-DIFFERENT-VM' }));
+  await page.evaluate(async (id) => {
+    for (let i = 0; i < 80; i++){
+      const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
+      if (raw.src && raw.on === true && !raw.blind){
+        dockerList = raw; dockerRev++; drawPanes();
+        if (!(dockerList.instances || []).some(x => x.built_rev)) return;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }, nodeUid);
   ok(!rec().rev && !rec().daemon_uid,
      '...and pointing this at another sandbox clears it: the new daemon is the '
      + 'source of truth, not the last one\'s answers');
   ok(!!(store()['ep.silon'] || {}).main,
      '...while the instance itself stays — its compose and its env are this side\'s');
-  rmSync(`${DIR}/dockerstate/uid`, { force: true });
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await page.waitForFunction(() => dockerList && !dockerList.blind, null, { timeout: 20000 });
 }

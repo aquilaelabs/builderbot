@@ -930,6 +930,83 @@ def source():
             "strays": stray_map_entries(host_map()[0])}
 
 
+def _agent_here():
+    """The node these docker calls are addressed at, when it is an AGENT node
+    whose agent is dialing in — else None.
+
+    THE WHOLE OF B111 IS THIS DISTINCTION. On an agent node nothing about
+    compose goes over ssh: _submit sends the entire plan to the agent and the
+    agent runs it against that machine's own local docker socket. So the
+    controller's ssh is the wrong question to judge the page by, and asking it
+    is how a node the controller cannot ssh to had its Up, Down, Rebuild and
+    Send ghosted while every one of them would have worked.
+
+    A node with no agent keeps the ssh path below, which is the only way into
+    one.
+    """
+    nid = getattr(_node_ctx, "node", None)
+    if not nid or queue is None:
+        return None
+    n = queue.node(nid)
+    return n if n and n.get("kind") == "agent" else None
+
+
+def _available_agent(n):
+    """Whether an agent node can run compose, from what it says about itself.
+
+    Two facts, both already in its census and neither of them ours to probe:
+    `docker` is the server version that node's own `docker version` printed,
+    which is exactly "can the agent run compose here", and `sandbox` is the
+    provisioner's stamp — the same thing the label check below reads over ssh,
+    asked on the machine that carries it.
+
+    Nothing is run. That matters: this sits on the status poll's path, which
+    walks it for the default node every fifteen seconds, so a probe here would
+    be a job on that node around the clock.
+
+    The agent DIALING IN is the first of the two, and the honest one: a job is
+    how everything here reaches that machine, and job_add refuses one on a
+    node whose agent is quiet. Probing its docker over ssh to answer a
+    question the ssh has no part in was the whole mistake.
+
+    The daemon's own id comes with them, from the same census. It is how two
+    VMs wearing one address are told apart (adopt), and it used to be read
+    over ssh with `docker info` — the reader this replaces. An agent too old
+    to report it sends nothing, and a record with no id is judged on its
+    address alone, which is what every record written before the field is
+    judged on and is documented as safe.
+    """
+    if not n.get("live"):
+        return {"on": False,
+                "why": f"{n['name']}'s agent is not dialing in — everything "
+                       "here runs as a job on it, so nothing can until it "
+                       "does. The Nodes tab says when it was last seen"} | source()
+    rep = n.get("reported") or {}
+    if not rep:
+        return {"on": False,
+                "why": f"{n['name']} has not said what it carries yet — its "
+                       "agent dials in every few seconds, so this answers "
+                       "itself shortly"} | source()
+    if not rep.get("docker"):
+        return {"on": False,
+                "why": f"docker does not answer on {n['name']}: its agent "
+                       "reports no daemon there. Install docker on that "
+                       "machine, or check the agent's account is in its "
+                       "docker group"} | source()
+    if not rep.get("sandbox"):
+        return {"on": False,
+                "why": f"{n['name']} is not a BuilderBot sandbox — it does "
+                       "not report the provisioner's stamp, and a container "
+                       "here runs as root on that machine. Run "
+                       "nodes/provision-linux.sh on it (again is fine, it "
+                       "only adds what is missing); see "
+                       "docs/sandbox-vm.md"} | source()
+    uid = str(rep.get("docker_id") or "")
+    if uid:
+        adopt(uid)
+    return {"on": True, "why": "", "id": uid} | source()
+
+
 def available():
     """Whether the VM answers, and if not, why — said rather than guessed.
 
@@ -940,6 +1017,9 @@ def available():
     kind is refused here, in one place, rather than half-working down the
     line: the controls grey out wearing this sentence.
     """
+    n = _agent_here()
+    if n:
+        return _available_agent(n)
     addr = docker_host()
     if not addr:
         return {"on": False,
@@ -1314,8 +1394,13 @@ def containers():
     r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
              timeout=25)
     if r["code"] != 0:
-        return {"error": " ".join((r["out"] or "docker did not answer").split())[:200],
-                "containers": []}
+        # From the TAIL, through the same reader availability uses. Cut from
+        # the front, as this was, docker's connect error reads "command [ssh
+        # -l bb -o Connect…" and stops — the half the operator already knew
+        # (B106). It mattered less when a failed listing only greyed rows
+        # nobody could act on; now that the controls stay live and this line
+        # is the whole account of what is not known, it is the message.
+        return {"error": _why_not(r["out"]), "containers": []}
     # Which compose projects are this dashboard's, asked of the store rather
     # than read off the name. A name used to answer it by carrying a prefix,
     # which meant every container had a longer name so that this one function
@@ -2157,6 +2242,14 @@ def _overview_here(picked):
                                 else ""),
             })
     return {"error": cs["error"], "blind": blind, "node": picked,
+            # TWO QUESTIONS, kept apart — which is the whole of B111. "Can we
+            # ACT" is availability: on an agent node compose runs on the
+            # agent, against that machine's own socket, so a controller that
+            # cannot ssh there changes nothing about whether Up works. "Can we
+            # SEE" is the listing, which is still a `docker ps` from here and
+            # does need the ssh. Folding the second into the first ghosted
+            # every control on a node where all of them would have worked.
+            "on": bool(got.get("on")), "why": got.get("why") or "",
             # WHICH DAEMON THIS ANSWER IS ABOUT, in its own words. The page had
             # only the status poll's copy, which is the DEFAULT node's — so the
             # line under the picker named a machine the picker was not on, and
