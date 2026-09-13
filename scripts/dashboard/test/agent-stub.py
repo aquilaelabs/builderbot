@@ -234,9 +234,40 @@ def run_system(job):
     return state, code, []
 
 
+# A CENSUS IS THE AGENT'S TO SEND, so no API sets one — and the fields the
+# controller reads off a census are exactly the ones worth testing against (a
+# runner's systemd unit, a store's headroom, what a node carries). This is the
+# way in: a test writes census-extra.json in the stub's own directory and the
+# next poll sends it, merged one level deep so adding `services` does not mean
+# restating the stores. Absent — the normal case — and the census is CENSUS.
+EXTRA = os.path.join(CDIR_ROOT, "census-extra.json")
+
+
+def census_now():
+    extra = {}
+    try:
+        with open(EXTRA) as f:
+            extra = json.load(f)
+    except (OSError, ValueError):
+        extra = {}
+    out = dict(CENSUS)
+    for k, v in (extra if isinstance(extra, dict) else {}).items():
+        out[k] = ({**out[k], **v} if isinstance(v, dict) and isinstance(out.get(k), dict)
+                  else v)
+    return out
+
+
+def _extra_stamp():
+    try:
+        return os.stat(EXTRA).st_mtime_ns
+    except OSError:
+        return 0
+
+
 def main():
-    call("hello", {"census": CENSUS, "version": "harness", "running": []})
+    call("hello", {"census": census_now(), "version": "harness", "running": []})
     last_hello = time.time()
+    stamp = _extra_stamp()
     while True:
         # Long-polled, so a queued job is picked up at once and an idle loop
         # costs one held request rather than a spin.
@@ -262,9 +293,13 @@ def main():
                             "error": "" if state == "succeeded"
                             else "stopped" if state == "canceled"
                             else f"exit {code}"})
-        # The census only rides hello, and the row goes stale without it.
-        if time.time() - last_hello > 120:
-            call("hello", {"census": CENSUS, "version": "harness", "running": []})
+        # The census only rides hello, and the row goes stale without it —
+        # and a test that has just rewritten the overlay is waiting for one,
+        # so a changed file sends it now rather than in two minutes.
+        now = _extra_stamp()
+        if now != stamp or time.time() - last_hello > 120:
+            stamp = now
+            call("hello", {"census": census_now(), "version": "harness", "running": []})
             last_hello = time.time()
 
 

@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.48"
+AGENT_VERSION = "0.5.49"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1148,8 +1148,21 @@ def services_now():
             with open(os.path.join(RUNNER_DIR, ".builderbot-labels")) as f:
                 labels = [x for x in f.read().split(",") if x]
         pg = _run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Listener")])
+        # WHERE ITS OUTPUT GOES, which only this machine knows. Under systemd
+        # svc.sh writes the unit's name into .service and the listener's
+        # output is the journal's; in the foreground it is runner.log under
+        # the data store, which is where the controller looked unconditionally
+        # — so `bb logs --node X --runner` answered "No such file or
+        # directory" on every node where the runner is installed properly.
+        # Empty when there is no unit, and the controller reads the file then.
+        unit = ""
+        if has_systemd():
+            with contextlib.suppress(OSError):
+                with open(os.path.join(RUNNER_DIR, ".service")) as f:
+                    unit = f.read().strip()[:120]
         out["actions-runner"] = {"installed": True, "name": str(j.get("agentName") or "")[:80],
                                  "url": str(j.get("gitHubUrl") or "")[:200],
+                                 "unit": unit,
                                  "labels": labels[:16], "active": bool(pg),
                                  "busy": bool(_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Worker")]))}
     else:

@@ -10,6 +10,7 @@
 // agent's own file proves the running and the guest-node refusal.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
+import { writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -172,6 +173,75 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   ok((await api('/api/phone', { action: 'outcome', id: sess.body.id }, beta)).body.error,
      "...and another project's session cannot read its outcome");
   await api('/api/phone', { action: 'deny', id: sess.body.id });
+}
+
+// ---- a machine log off the node, which is the same root job ----------------
+// `bb logs --node X --agent|--runner|--terminal` and the Debug grant behind
+// it. Here rather than in nodes.mjs because the gate is only half of it: past
+// the grant this IS root_wait, so proving WHICH command it runs needs a node
+// that runs one, and this file's stub is the only one that does.
+{
+  const set = v => api('/api/settings', { set: { debug_mode: v } });
+  const readLog = (stream) => api('/api/nodelog',
+    { node: sandbox.name, stream, lines: 5, project: 'alpha' });
+  // The argv off the job the read queued, which is the exact question — the
+  // output only says what the command happened to print.
+  const ranArgv = async r => ((((await api(`/api/v1/jobs?n=20`)).body.jobs || [])
+    .find(j => j.id === r.body.job) || {}).spec?.config?.argv || []).join(' ');
+  await set(true);
+  await api('/api/v1/nodes', { action: 'log-grant', id: sandbox.id, from: [sandbox.id] });
+
+  // THE RUNNER'S OUTPUT GOES TO ONE OF TWO PLACES and only the node knows
+  // which: the journal when svc.sh made it a service, runner.log under the
+  // data store when the agent runs run.sh in the foreground instead. This
+  // read the file unconditionally, so on every node where the runner is
+  // installed properly — which is every node this project provisions —
+  // `--runner` answered "No such file or directory".
+  //
+  // A census is the agent's to send, so the shape is set through the stub's
+  // own overlay rather than through an API that should not exist. Waited for
+  // by watching the row rather than by sleeping: the stub's poll is a long
+  // one, so any fixed number here would be either flaky or five seconds.
+  mkdirSync(`${DIR}/sandboxdata`, { recursive: true });
+  const census = async (unit) => {
+    const f = `${DIR}/sandboxdata/census-extra.json`;
+    if (unit === null) rmSync(f, { force: true });
+    else writeFileSync(f, JSON.stringify({ services: { 'actions-runner': {
+      installed: true, active: true, unit } } }));
+    for (let i = 0; i < 120; i++){
+      const n = ((await api('/api/v1/nodes')).body.nodes || []).find(x => x.id === sandbox.id);
+      if ((n?.reported?.services?.['actions-runner']?.unit || '') === (unit || '')) return true;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return false;
+  };
+
+  ok(await census('actions.runner.example.sandbox.service'),
+     'the node reports which systemd unit its runner is, when it is one');
+  let r = await readLog('runner');
+  let argv = await ranArgv(r);
+  ok(/^journalctl -u actions\.runner\.example\.sandbox\.service/.test(argv),
+     `...and the runner log is then read from that unit's journal (${argv || 'nothing ran'})`);
+  ok(!/runner\.log/.test(argv),
+     '...not from a runner.log that a node with a service never writes');
+
+  // No unit — an agent too old to report the field, or a node with no systemd
+  // running run.sh in the foreground. The file, exactly as before.
+  ok(await census(''), 'a node whose runner is not a service reports no unit');
+  r = await readLog('runner');
+  argv = await ranArgv(r);
+  ok(/^tail -n 5 .*runner\.log$/.test(argv),
+     `...and is read from runner.log under its data store instead (${argv || 'nothing ran'})`);
+
+  // The other two streams are one shape each and have nowhere to differ.
+  ok(/^journalctl -u builderbot-agent/.test(await ranArgv(await readLog('agent'))),
+     "...the agent's own log is its journal");
+  ok(/ttyd\.log$/.test(await ranArgv(await readLog('terminal'))),
+     '...and the terminal server writes a file under the data store');
+
+  await census(null);
+  await api('/api/v1/nodes', { action: 'log-grant', id: sandbox.id, from: [] });
+  await set(false);
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
