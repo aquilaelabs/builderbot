@@ -542,11 +542,29 @@ for (const kind of kinds){
   await page.waitForSelector('.nb .nbview:not([hidden]) .field', { timeout: 20000 });
   const views = await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view));
   const heads = {};
+  // Read the ruler when it has STOPPED MOVING, rather than after a fixed
+  // pause. 150ms was enough on an idle box and not on a loaded one, so the
+  // Bugs view came back two pixels lower than every other about one run in
+  // three and this check went red for the suite rather than for the page
+  // (B116). Two agreeing reads is the condition; the pause was never the
+  // thing being tested.
+  const settled = async (w) => {
+    let last = null;
+    for (let i = 0; i < 80; i++){
+      const now = await page.evaluate(x => {
+        const h = document.querySelector(`.nb .nbview[data-view="${x}"] > .nbhead`);
+        return h ? Math.round(h.getBoundingClientRect().top) : null;
+      }, w);
+      if (now !== null && now === last) return;
+      last = now;
+      await sleep(50);
+    }
+  };
   for (const v of views){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
-    await sleep(150);
+    await settled(v);
     heads[v] = await page.evaluate(w => {
       const view = document.querySelector(`.nb .nbview[data-view="${w}"]`);
       const shown = [...view.children].filter(e => e.offsetHeight > 0 || e.offsetWidth > 0);

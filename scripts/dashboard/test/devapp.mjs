@@ -439,6 +439,17 @@ ok(!failed.running && /mount source path/.test(failed.log || ''),
 await idle();
 await openManager();
 await page.waitForSelector(`${DM} .dmlog`, { timeout: 20000 });
+// The row's one-line summary is the REASON, not the label. A compose failure
+// arrives as "up failed:\n<docker's output>" kept from the end, so reading its
+// first line put "up failed:" on the row and dropped what docker actually
+// said — the same shape as a node reporting ".NET said: Process terminated."
+// and losing the sentence that named the missing library.
+ok(await page.evaluate(() => [
+     jobWhy('up failed:\ncreating network: pool overlaps'),
+     jobWhy('build failed — the tail of its output is below'),
+     jobWhy(''),
+   ].join(' | ')) === 'creating network: pool overlaps | build failed — the tail of its output is below | ',
+   'a failed job is summarised by its reason, not by the label above it');
 ok(await page.$eval(`${DM} .dmlog`, e => e.dataset.tail === '1'),
    '...and that tail is pinned to its end, which is where the error is');
 // Rebuild has to wake for the retry. A build records itself before the up
@@ -2276,7 +2287,12 @@ ok(await page.$('#devSend'),
   // not depend on a machine answering. Drawn from the same setting rather
   // than a second copy of it.
   const SW = '.dmtab [data-dmclaude="ep.silon"]';
-  await page.evaluate(() => openDocker());
+  // Through the manager's own opener, which waits for the ROWS to be there.
+  // A bare openDocker() returns before the list has arrived, so this was a
+  // twenty-second bet on a fetch finishing — and it lost in a full run on a
+  // loaded box while passing alone straight afterwards (B118). The dial is
+  // drawn from that list, so the row being present is the real condition.
+  await dmRefresh();
   await page.waitForFunction(s2 => document.querySelector(s2)?.value === 'auto',
                              SW, { timeout: 20000 });
   ok(await page.$eval(SW, e => e.value === 'auto' && !e.disabled

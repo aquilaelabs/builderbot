@@ -1591,10 +1591,24 @@ const clashBox = () => page.$eval('#todoClash',
 const rewordTo = async (text) => {
   await holdPoll(page);
   try{
-    await page.click(`#todoList .todo[data-id="${clashId}"][data-step="-1"] .ed`);
-    await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-    await page.fill('.editbox textarea', text);
-    await page.click('.editbox .primary');
+    // OPEN TO SAVE IN ONE EVALUATE. Four round trips gave the list four
+    // chances to repaint under the box and take it away, which is what this
+    // kept failing on — `page.fill` with the textarea gone. holdPoll stops the
+    // fifteen-second refresh and not the notebook's own redraw when a revision
+    // moves, so holding it was never going to be enough; doing the whole
+    // gesture inside one evaluate leaves no gap to lose. The save handler
+    // reads the textarea's value directly, so setting it IS the typing here.
+    const why = await page.evaluate(({ id, txt }) => {
+      const ed = document.querySelector(`#todoList .todo[data-id="${id}"][data-step="-1"] .ed`);
+      if (!ed) return 'no row to reword';
+      ed.click();
+      const box = document.querySelector('.editbox');
+      if (!box) return 'the edit box did not open';
+      box.querySelector('textarea').value = txt;
+      box.querySelector('.primary').click();
+      return '';
+    }, { id: clashId, txt: text });
+    if (why) throw new Error(`reword: ${why}`);
   } finally { await freePoll(page); }
 };
 const clashText = () => read().projects.alpha
