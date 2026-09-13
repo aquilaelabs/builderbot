@@ -85,6 +85,7 @@
 - Rebuild on the Docker tab is always pressable: it used to go to sleep whenever the build already matched the code, so pinning a container to a branch and pressing Apply left nothing to press (48a76d8)
 - Reading a node's runner log now works on a node where the runner is a service: it reads that service's journal instead of a file only a node without systemd ever writes (a868e5a)
 - An option bb logs does not recognise is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honoured (a868e5a)
+- A node no longer claims a toolchain that is installed but cannot start: a build needing it is refused up front instead of failing on the machine, and the node's log names the binary, how it died and what it said (8dceb05)
 
 ## 0.5.0 — 2026-09-10
 

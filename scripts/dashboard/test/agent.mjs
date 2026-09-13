@@ -1311,6 +1311,47 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       });
       ok(cens && !(cens.reported.toolchains || {})['android-sdk'],
          'an empty cmdline-tools directory is not reported as an Android SDK');
+      // ...and neither is a binary that is there and cannot START. The
+      // version probe read stdout-or-stderr and dropped the status, so a
+      // toolchain that aborted on launch was read as one that printed
+      // something odd and went on the row as "present" — which is how
+      // bb-sandbox-redhat advertised .NET while dumping core every ten
+      // minutes. A tool that dies is not a tool this node has.
+      {
+        mkdirSync(`${PK}/swift/usr/bin`, { recursive: true });
+        writeFileSync(`${PK}/swift/usr/bin/swift`,
+          '#!/bin/sh\necho "Couldn\'t find a valid ICU package installed on the system." >&2\nkill -ABRT $$\n',
+          { mode: 0o755 });
+        // rust's shape beside it, which must NOT change: a non-zero exit
+        // with a sentence means installed and awkward, and that is what
+        // "present" is for.
+        mkdirSync(`${PK}/rust/cargo/bin`, { recursive: true });
+        writeFileSync(`${PK}/rust/cargo/bin/cargo`,
+          '#!/bin/sh\necho "error: rustup could not choose a version" >&2\nexit 1\n',
+          { mode: 0o755 });
+        // A census rides hello, which is ten minutes apart — so ask for a
+        // fresh one the way the controller does when it refuses a job on a
+        // stale answer, rather than waiting out the cadence.
+        await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+                                    argv: ['sh', '-c', 'command -v adb'] });
+        const after = await until(async () => {
+          const n = await nodeById(minted.id);
+          const tc = n?.reported?.toolchains || {};
+          return tc.rust ? tc : null;
+        }, 60000);
+        ok(after && !after.swift,
+           `a toolchain that dies when asked its version is left out of the census (${
+              JSON.stringify(after?.swift)})`);
+        ok(after && after.rust === 'present',
+           `...while one that merely exits non-zero with a sentence is still present (${
+              JSON.stringify(after?.rust)})`);
+        ok(/swift .*died on signal 6.*valid ICU package/.test(agentLog().replace(/\n/g, ' '))
+           || /died on signal 6/.test(agentLog()),
+           `...and the agent's log names the binary, how it died and what it said (${
+              (agentLog().split('\n').find(l => /died on signal/.test(l)) || 'nothing said').slice(0, 110)})`);
+        rmSync(`${PK}/swift`, { recursive: true, force: true });
+        rmSync(`${PK}/rust`, { recursive: true, force: true });
+      }
       // ...and a job refused on that answer says how old the answer is, and
       // asks the node for a fresh one. The census rides hello every ten
       // minutes, so a refusal can be reasoning about the node as it was nine
