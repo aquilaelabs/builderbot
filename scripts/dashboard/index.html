@@ -95,6 +95,12 @@
      nobody chooses and everybody inherits. */
   --f-note:11px/1.5 system-ui,sans-serif;      /* the quiet explainer */
   --f-ui:12px/1.5 system-ui,sans-serif;        /* secondary UI text */
+  /* A ROW'S OWN WORDS: a roadmap item, a bug's title, a changelog entry, a
+     branch name. The one voice above --f-ui, and the line between them is
+     what a row IS against what is about it. Named because it had drifted
+     into two — 13px in some rows and 12.5px in others, for the same job, a
+     half-pixel apart and nobody's decision. */
+  --f-row:13px/1.45 system-ui,sans-serif;      /* what a row says */
   --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
@@ -978,12 +984,12 @@ textarea,select{
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:13px/1.5 var(--mono)}
-/* The sidebar's own selects — the Claude card's pickers. Same phone rules as
-   every other field: finger-height, and 16px so iOS does not zoom the page
-   into them. */
+/* The sidebar's own selects — the Claude card's pickers. A phone gives them
+   the finger height and nothing else: a select does not zoom iOS, so it keeps
+   the size of the text beside it. */
 .side .card select{padding:6px 8px;font:12px/1.3 inherit;min-height:30px}
 @media(max-width:900px){
-  .side .card select{font-size:16px;min-height:var(--tap)}
+  .side .card select{min-height:var(--tap)}
 }
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* A value that is ONE LINE of prose, in a box that can show all of it. An
@@ -1019,13 +1025,20 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* Same reasoning for the compose editor: YAML is lines, and a box four of them
    tall is one you scroll to read a service. */
 #cYml,#cEnv{min-height:40vh;resize:vertical;white-space:pre;overflow-wrap:normal}
-/* 16px on a phone: iOS Safari zooms the page into any smaller field on
-   focus, and this fixed layout has no way to zoom back out. */
-@media(max-width:900px){ .modal input,.modal textarea,.modal select,
-  .row input,.row select,
-  .uimenu input,.uimenu textarea,.uimenu select,
-  .doctab input,.doctab select,.doctab textarea,
-  .nb input,.nb textarea,.nb select{font-size:16px} }
+/* 16px on a phone, FOR THINGS YOU TYPE INTO. iOS Safari zooms the page into a
+   text field smaller than that when it takes focus, and this fixed layout has
+   no way to zoom back out.
+   A SELECT is not one of them: tapping a picker opens a list, it never zooms,
+   and nothing was ever gained by inflating it. What it cost is visible on any
+   phone — the fields are mono, and 16px mono beside an 11px label is the
+   biggest thing on the tab, so every pulldown read as shouting. They keep the
+   field size, which is the size of the text around them. */
+@media(max-width:900px){ .modal input:not([type=checkbox]):not([type=radio]),
+  .modal textarea,
+  .row input:not([type=checkbox]):not([type=radio]),
+  .uimenu input:not([type=checkbox]):not([type=radio]),.uimenu textarea,
+  .doctab input:not([type=checkbox]):not([type=radio]),.doctab textarea,
+  .nb input:not([type=checkbox]):not([type=radio]),.nb textarea{font-size:16px} }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
@@ -1264,7 +1277,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    face, the way a drop box and a send box do. */
 .clog .clrow{display:flex;flex-direction:column;gap:5px}
 .clog .clrow textarea.cltext{width:100%;box-sizing:border-box;
-  padding:7px 8px;font:12.5px/1.5 system-ui,sans-serif}
+  padding:7px 8px;font:var(--f-row)}
 .clog .clmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .clog .clmeta select{flex:0 0 auto;width:auto;min-width:0}
 .clog .clmeta .sp{flex:1 1 auto}
@@ -1360,7 +1373,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .grow[data-sha]:last-child{border-bottom:0}
 @media(hover:hover){ .grow[data-sha]:hover{background:var(--btn)} }
 .grow[data-sha].on{background:var(--btn-hi)}
-.grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:13px/1.3 system-ui,sans-serif}
+.grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-row)}
 .grow .gsub .pill{margin-right:4px}
 .grow .gmeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-note);color:var(--dim)}
 .gl0{stroke:var(--accent)} .gl1{stroke:var(--note)} .gl2{stroke:var(--warn)}
@@ -1541,9 +1554,11 @@ pre.diff .d-ctx{color:var(--dim)}
 /* pre-wrap, because a step may be written across a few lines: one step is one
    message the operator sends by hand, so the cheap unit has to be able to hold
    a paragraph rather than pushing a plan into more steps than it needs. */
-.todo .txt{min-width:0;font:13px/1.45 system-ui,sans-serif;
+.todo .txt{min-width:0;font:var(--f-row);
   overflow-wrap:anywhere;cursor:text;white-space:pre-wrap}
-.todo.step .txt{font-size:12.5px}
+/* A step is one of these, not a smaller kind of one: it was 12.5 against the
+   item's 13, which reads as a rendering accident rather than a hierarchy.
+   What makes it secondary is its indent and its number, not half a pixel. */
 /* Struck through means *sent*, not done. It stays where it was — the order is
    the record — so that a step that was handed over and quietly not carried out
    is still there to send again. */
@@ -1669,10 +1684,10 @@ pre.diff .d-ctx{color:var(--dim)}
 .dropbox .q{font:12px/1.5 system-ui,sans-serif;color:var(--ink);margin-bottom:7px}
 .dropbox .q span{color:var(--dim)}
 .dropbox input{width:100%;box-sizing:border-box;padding:6px 8px;
-  font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
+  font:var(--f-row);min-height:var(--tap)}
 @media(max-width:900px){ .dropbox input{font-size:16px} }
 .dropbox textarea{width:100%;box-sizing:border-box;padding:7px 8px;
-  font:12.5px/1.5 system-ui,sans-serif;min-height:86px;resize:vertical;
+  font:var(--f-row);min-height:86px;resize:vertical;
   white-space:pre-wrap}
 @media(max-width:900px){ .dropbox textarea{font-size:16px} }
 /* Rewording is not a deletion; it borrows the box and not the red. */
@@ -1687,7 +1702,7 @@ pre.diff .d-ctx{color:var(--dim)}
   font:12px/1.4 system-ui,sans-serif;min-height:24px}
 @media(hover:hover){ .addstep .link:hover{color:var(--accent)} }
 .addstep textarea{flex:1;min-width:0;padding:5px 8px;
-  font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
+  font:var(--f-row);min-height:var(--tap)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ .addstep textarea{font-size:16px} }
 /* Moving things about: dim until it can, like every other row control. */
@@ -1797,7 +1812,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .bug{border-top:1px solid var(--line);padding:2px 0}
 .bug:first-child{border-top:0}
 .bug>summary{padding:8px 2px}
-.bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
+.bug .btitle{flex:1;min-width:0;font:var(--f-row);
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
 /* The same three colours the bell's dot uses for the same three meanings —
@@ -1823,7 +1838,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .bug .bfield label,.mem .bfield label,.tst .bfield label{
   font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
   text-transform:uppercase;letter-spacing:.4px;display:block}
-.bug .bval,.mem .bval,.tst .bval{font:12.5px/1.5 system-ui,sans-serif;
+.bug .bval,.mem .bval,.tst .bval{font:var(--f-ui);
   white-space:pre-wrap;overflow-wrap:anywhere}
 .bval.dim{color:var(--dim)}
 .bugform .two{display:flex;gap:6px}
@@ -2276,13 +2291,21 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      - the row's own inset comes in 3px, which is every row on every tab
      - the icons that are not the session or the notebook fold behind …
    `…` is hidden on a desktop, where there is room for all of them. */
+/* The fold control itself: absent where there is room for every icon. It has
+   to be as specific as `button.eye` and it has to come FIRST, or the phone
+   rule below it cannot win at equal specificity — which is how the button
+   showed on a desktop, and then on neither. */
+button.eye.rowmore{display:none}
 @media(max-width:900px){
   :root{--row-y:8px}
-  .card .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
-  .projtab .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
-  .card .row.moreon .acts .eye,
-  .projtab .row.moreon .acts .eye{display:inline-flex}
-  .rowmore{display:inline-flex}
+  /* The hide is scoped to a row that is NOT folded out, so the two states
+     cannot fight: a `.moreon` rule that merely re-showed them lost on
+     specificity to this one (three :not()s outrank one class), and pressing
+     … re-stacked the row without producing a single extra icon. */
+  .card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
+  .projtab .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){
+    display:none}
+  button.eye.rowmore{display:inline-flex}
   .row.moreon .rowmore{color:var(--accent)}
   /* ...and with three icons rather than six they fit BESIDE the name, which
      is where the height actually was: a stacked row spends a whole 38px line
@@ -2294,7 +2317,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .card .row[data-row]:not(.moreon) .acts,
   .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 }
-.rowmore{display:none}
 button[aria-busy="true"]{opacity:.75}
 
 /* The configuration plane on an agent row (docs/nodes.md §12): sections of

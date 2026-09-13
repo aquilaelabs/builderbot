@@ -76,6 +76,8 @@
 - The Claude may rebuild switch sits on its own line of the Docker row, instead of its label wrapping into three words inside the buttons (c4f0596)
 - A session told it may not rebuild a dev instance is pointed at the Docker tab, where the switch actually is, instead of the Artifacts tab (f57d018)
 - The Docker tab's rebuild dial is saved with Apply beside it rather than the moment it is picked, like every other setting on the page (c84b1ca)
+- Pulldowns are no longer blown up on a phone: the rule that keeps iOS from zooming applies to fields you type into, and a picker never zoomed, so every select on every tab was oversized for nothing (0839ca5)
+- A row's own words are one size everywhere: a step reads like the item it belongs to, and a bug's fields like every other field, instead of two sizes half a pixel apart (0839ca5)
 
 ## 0.5.0 — 2026-09-10
 

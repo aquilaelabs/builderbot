@@ -53,8 +53,11 @@ different left edges in one tab is what retyped padding produces.
 The field skin (ground, edge, radius) is applied to the elements globally,
 so a new surface's controls match by existing. What a surface adds is
 sizing: full-width 13px mono controls mean joining the `.modal input, …`
-sizing group, its 16px phone rule (iOS zooms into anything smaller) and its
-`:focus` group. Tap targets are `min-height: var(--tap)`. A row of filters
+sizing group, its 16px phone rule and its `:focus` group. **That 16px is for
+fields you type into**, because iOS zooms the page into a smaller one when it
+takes focus and this layout cannot zoom back. A `<select>` never zooms, so it
+keeps the field size at every width: a 16px mono picker beside an 11px label
+is the loudest thing on the tab, and it was on every tab. Tap targets are `min-height: var(--tap)`. A row of filters
 is `<div class="field histbar">`.
 
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
