@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.49"
+AGENT_VERSION = "0.5.50"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -491,6 +491,58 @@ def _run(argv, timeout=5):
         return ""
 
 
+_PROBE_SAID = set()
+
+
+def _probe(argv, timeout=5):
+    """Ask a tool for its version: what it said, and whether it ANSWERED.
+
+    _run cannot tell those apart — it hands back stdout or stderr and drops
+    the status — so a binary that ABORTS on startup read as a tool that
+    printed something odd, and _clean_version called that "present". The node
+    then advertised a toolchain it cannot run, and the controller placed work
+    there that could only fail on arrival. Measured on bb-sandbox-redhat,
+    where the packages store's dotnet dies every census while the row said
+    the node had .NET.
+
+    Death by SIGNAL, or a probe that never comes back, is the line. A
+    non-zero EXIT is not: `flutter --version` as root and rustup with no
+    default toolchain both exit non-zero with a sentence, and both mean the
+    tool is installed and being awkward, which is what "present" is for.
+
+    Run with core dumps off. A version probe has no business leaving a core
+    file, and one that crashes on every census left a machine collecting them
+    ten minutes apart with nothing in any log saying which binary it was.
+    """
+    wrapped = ["sh", "-c", 'ulimit -c 0 2>/dev/null; exec "$@"', "probe", *argv]
+    try:
+        p = subprocess.run(wrapped, capture_output=True, text=True, timeout=timeout,
+                           check=False)
+    except subprocess.TimeoutExpired:
+        return "", f"did not answer within {timeout}s"
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", str(e)[:80]
+    out = (p.stdout or p.stderr).strip()
+    return out, (f"died on signal {-p.returncode}" if p.returncode < 0 else "")
+
+
+def _probe_died(name, path, out, why):
+    """Say it once, and leave the name out of the census.
+
+    Out, because reporting a toolchain that cannot start is what lets the
+    controller send work here that can only fail. Once per agent process,
+    because the census runs every ten minutes and the interesting part — the
+    tool's own first line, which is the whole diagnosis — does not change; a
+    restart says it again, which is when somebody is looking anyway.
+    """
+    if name in _PROBE_SAID:
+        return
+    _PROBE_SAID.add(name)
+    said = (out.splitlines() or [""])[0][:200]
+    log(f"toolchain: {path} {why} when asked its version, so {name} is not in "
+        f"this node's census" + (f" — it said: {said}" if said else ""))
+
+
 def _mem():
     tot = avail = 0
     try:
@@ -773,14 +825,22 @@ def _toolchains(state):
         return shutil.which(name)
     j = find("java")
     if j:
-        m = re.search(r'version "([^"]+)"', _run([j, "-version"]))
-        tc["java"] = m.group(1) if m else "present"
+        out, dead = _probe([j, "-version"])
+        if dead:
+            _probe_died("java", j, out, dead)
+        else:
+            m = re.search(r'version "([^"]+)"', out)
+            tc["java"] = m.group(1) if m else "present"
     for name in ("flutter", "dotnet", "node", "go", "swift", "cargo"):
         p = find(name)
         if p and os.path.isfile(p):
             arg = "version" if name == "go" else "--version"
             key = "rust" if name == "cargo" else name
-            tc[key] = _clean_version((_run([p, arg], timeout=20).splitlines() or [""])[0])
+            out, dead = _probe([p, arg], timeout=20)
+            if dead:
+                _probe_died(key, p, out, dead)
+            else:
+                tc[key] = _clean_version((out.splitlines() or [""])[0])
     p = find("android-sdk")
     if p and os.path.isfile(p):
         tc["android-sdk"] = "present"
