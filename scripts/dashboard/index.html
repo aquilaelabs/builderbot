@@ -2249,6 +2249,33 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      buttons keep their own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
 }
+/* A ROW ON A PHONE, measured: a project row was 140px against 98 on a
+   desktop, on a screen a third as wide — six rows to a screen where a
+   desktop gets nine, and a third of each row was its six icon buttons.
+   Nothing here shrinks type or tap targets (11px and 38px are at the floor
+   already); what it does is show fewer things at once.
+     - the row's own inset comes in 3px, which is every row on every tab
+     - the icons that are not the session or the notebook fold behind …
+   `…` is hidden on a desktop, where there is room for all of them. */
+@media(max-width:900px){
+  :root{--row-y:8px}
+  .card .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
+  .projtab .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
+  .card .row.moreon .acts .eye,
+  .projtab .row.moreon .acts .eye{display:inline-flex}
+  .rowmore{display:inline-flex}
+  .row.moreon .rowmore{color:var(--accent)}
+  /* ...and with three icons rather than six they fit BESIDE the name, which
+     is where the height actually was: a stacked row spends a whole 38px line
+     on its buttons. Folded out, they wrap under it again, which is what
+     asking for them means. */
+  .card .row[data-row]:not(.moreon),
+  .projtab .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;
+    flex-wrap:wrap}
+  .card .row[data-row]:not(.moreon) .acts,
+  .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
+}
+.rowmore{display:none}
 button[aria-busy="true"]{opacity:.75}
 
 /* The configuration plane on an agent row (docs/nodes.md §12): sections of
@@ -6013,6 +6040,16 @@ function findingsRulesHtml(rows){
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands — it is written in the same order.
 let cards = {order: [], closed: []};   // filled from the markup once it exists, below
+// Which cards a phone has been told to open, for this page's life. A phone's
+// first screen was 470 of its 844 pixels of Tools, Administration and Runner
+// before the first project appeared, and those are desk things: on a phone
+// every card but Projects starts folded, the way a document tab's sections
+// do. Not saved, and not applied to a desktop, so the arrangement somebody
+// made at a desk is theirs and stays as they left it.
+const phoneOpen = new Set();
+const cardShut = key => cards.closed.includes(key)
+  || (isPhone() && key !== "projects" && !phoneOpen.has(key));
+
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
                                            // issued before that carries a
@@ -6044,7 +6081,7 @@ function applyCards(animate){
   // the class on under it would cut the tween short.
   cardEls().forEach(el => {
     if (!el.getAnimations().length)
-      el.classList.toggle("closed", cards.closed.includes(el.dataset.card));
+      el.classList.toggle("closed", cardShut(el.dataset.card));
   });
   play?.();
 }
@@ -6060,8 +6097,9 @@ function adoptCards(next){
   const reorder = prev.order.join() !== cards.order.join();
   if (cardsSynced && !noMotion())
     cardEls().forEach(el => {
-      const k = el.dataset.card, shut = cards.closed.includes(k);
-      if (shut !== prev.closed.includes(k) && rendered(el) && !el.getAnimations().length)
+      const k = el.dataset.card, shut = cardShut(k);
+      if (shut !== el.classList.contains("closed") && rendered(el)
+          && !el.getAnimations().length)
         slideCard(el, shut);
     });
   applyCards(cardsSynced && reorder);
@@ -6081,6 +6119,15 @@ async function saveCards(){
 
 function toggleCard(key){
   const el = document.querySelector(`.card[data-card="${key}"]`);
+  // On a PHONE the fold is a view, not an arrangement: it is kept for the
+  // page's life and never written, so opening Tools on a phone to press one
+  // button does not reach across to the desktop the arrangement was made on.
+  if (isPhone()){
+    const shut = !el.classList.contains("closed");
+    if (shut) phoneOpen.delete(key); else phoneOpen.add(key);
+    slideCard(el, shut);
+    return;
+  }
   const closing = !cards.closed.includes(key);
   cards.closed = closing ? [...cards.closed, key] : cards.closed.filter(k => k !== key);
   slideCard(el, closing);
@@ -6720,6 +6767,16 @@ function shortWhy(why){
 // how one of them quietly stops offering Notebook.
 function wireProjectRows(root){
   tipify(root);
+  // A phone shows the two controls a phone is for — the session and the
+  // notebook — and folds the rest behind this. Six 38px buttons were a third
+  // of a 140px row, on a screen that fits six rows; the row is the list, and
+  // a list should be names. CSS decides which are hidden, so the desktop is
+  // untouched and nothing here has to know the breakpoint.
+  root.querySelectorAll("[data-more]").forEach(b => b.onclick = () => {
+    const row = b.closest(".row");
+    const on = row.classList.toggle("moreon");
+    b.setAttribute("aria-expanded", on ? "true" : "false");
+  });
   root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
     if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
@@ -6868,6 +6925,8 @@ Renaming moves the directory and everything keyed to it">${GEAR}</button>
       ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
         title="delete — moves it to /workspace/.trash and keeps every file. Its
 roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
+      <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
+        aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
       ${sessionWord(p.name) ? `<div class="sub sessline">${esc(sessionWord(p.name))}${
         othersOn(p.name).length
@@ -7405,6 +7464,15 @@ const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
 // runs on, and a pencil promises editing one thing. Drawn stroked at the same
 // 1.4 weight as its neighbours — an eight-toothed ring and a hub, which is the
 // only gear shape that stays legible at 16px.
+// The rest of a row's controls, folded on a phone. An icon rather than a
+// typed ellipsis: every other control in that cluster is one, and a cluster
+// with text in it stops being an icon cluster — which is a real rule here,
+// not a nicety (uniform.mjs reads a set of TEXT buttons as an action bar and
+// holds it to a bar's shape).
+const DOTS = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/>
+  <circle cx="12.8" cy="8" r="1.3"/></svg>`;
+
 const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
   <circle cx="8" cy="8" r="2.1"/></svg>`;
