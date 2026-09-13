@@ -1,7 +1,7 @@
 // The Phone tab: a handset on wireless adb, driven from a node. Its own
 // classic script beside index.html, per the new-surface rule: same page,
 // same global scope, one file per surface. Chrome comes from docSurface()
-// and the hard rules are held by uniform.mjs — this file only fills slots.
+// and the hard rules are held by uniform.mjs; this file only fills slots.
 //
 // The controller has no adb and holds no phone. Every node whose census
 // reports adb is a place a phone can be paired and connected, each holding
@@ -11,7 +11,7 @@
 // One owner per connection. Whoever connects a phone is the only account
 // that can disconnect it, and the only one asked when a session wants to
 // touch it. Everybody else sees the connection with its controls greyed and
-// the owner named — the phone is on somebody's desk, and they are the one
+// the owner named: the phone is on somebody's desk, and they are the one
 // who said yes to it.
 //
 // Fetched on demand rather than on the fifteen-second poll: a probe is a job
@@ -28,7 +28,7 @@ function openPhoneTab(){
 }
 
 // Connecting, pairing and disconnecting are any account's: a phone is its
-// owner's, not the administrators' — whoever connects one is the only
+// owner's, not the administrators': whoever connects one is the only
 // account that can disconnect it or answer a session asking for it, and
 // the server holds that. Kept as a function so the call sites read as the
 // question they ask.
@@ -79,18 +79,18 @@ function renderPhoneInto(i){
     d.setBar(`<span class="sp"></span>
       <button type="button" id="phRefresh" title="ask again now">Refresh</button>`);
     d.list.innerHTML = `<div class="hint">No node carries adb. A phone is driven from
-      a node — install android-tools on one from the Tools tab, and it appears here.</div>`;
+      a node: install android-tools on one from the Tools tab, and it appears here.</div>`;
     wirePhoneTab(d.el);
     return;
   }
   const held = n && n.owner && !n.mine;   // somebody else's connection
   const off = held || !n.live || !mayPhone();
-  const offWhy = held ? `connected by ${esc(n.owner.name)} — only they can change it`
+  const offWhy = held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
     : "";
   d.setBar(`${nodes.length ? `<label class="pick">Node <select id="phPick" aria-label="node">${
       nodes.map(x => `<option value="${esc(x.id)}"${x.id === n?.id ? " selected" : ""}>${
-        esc(x.name)}${x.phone ? ` — ${esc(x.phone.model || "phone")}` : ""}${
+        esc(x.name)}${x.phone ? `: ${esc(x.phone.model || "phone")}` : ""}${
         x.live ? "" : ", quiet"}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
     <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
@@ -105,9 +105,9 @@ function renderPhoneInto(i){
        <div class="grow"><div class="name">${state}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
-           ? `${esc(n.name)} is not dialing in — nothing reaches its adb right now`
+           ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? esc(dev.serial)
-           : "try Connect first — a pairing outlives a restart, so it is usually already done"}</div></div>
+           : "try Connect first: a pairing outlives a restart, so it is usually already done"}</div></div>
        ${dev && n.mine && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"
          >Disconnect</button></span>` : ""}
      </div>`,
@@ -122,7 +122,7 @@ function renderPhoneInto(i){
          off ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
        ${ph.you && phIp === ph.you
-         ? `<div class="sub">this device — you are reading this on it</div>` : ""}
+         ? `<div class="sub">this device; you are reading this on it</div>` : ""}
      </div>`,
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
@@ -139,11 +139,11 @@ function renderPhoneInto(i){
        <div class="sub">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
             Android closes the pairing dialog the moment you leave it, and the
-            port goes with it — so pair from another device with that dialog
+            port goes with it, so pair from another device with that dialog
             open here, or skip it: pairing is once per node, and Connect is
             all you need after that.`
          : `Wireless debugging → <b>Pair device with pairing code</b>, and
-            leave that dialog open — it cancels when you navigate away. Its
+            leave that dialog open; it cancels when you navigate away. Its
             port is not the one the main screen shows.`}</div>
      </div>`,
   ];
@@ -155,7 +155,7 @@ function renderPhoneInto(i){
   if (known.length)
     rows.push(`<div class="row"><div class="grow">
         <div class="name">Remembered on ${esc(n.name)}</div>
-        <div class="sub">paired or connected here before — Connect is all they need</div>
+        <div class="sub">paired or connected here before: Connect is all they need</div>
       </div></div>`,
       ...known.map(k => `<div class="row phknown" data-ip="${esc(k.ip)}">
         <div class="grow">
@@ -170,7 +170,7 @@ function renderPhoneInto(i){
           </div>
         </div></div>`));
   // What a session is waiting on, above everything else it could be doing:
-  // somebody is blocked on it, and that somebody asked YOU — a request only
+  // somebody is blocked on it, and that somebody asked YOU: a request only
   // ever reaches the account that connected the phone it is about.
   for (const a of asks)
     rows.push(`<div class="row phask">

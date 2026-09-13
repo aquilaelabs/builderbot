@@ -1,11 +1,11 @@
-// The Profile tab: the signed-in account's own settings — who they are,
+// The Profile tab: the signed-in account's own settings, who they are,
 // how their commits are signed, and their password. Its own classic script
 // beside index.html, per the new-surface rule; chrome from docSurface(),
 // conformance held by uniform.mjs.
 //
 // Per ACCOUNT, and only ever the account asking: the server answers
 // /api/profile for whoever is signed in, so there is nothing here to pick
-// and nothing an administrator does on somebody's behalf — that is the
+// and nothing an administrator does on somebody's behalf; that is the
 // Users tab. The commit identity lives here rather than in a project's
 // settings because two people on one project are two authors: it reaches
 // every session this account starts as git's environment, which outranks
@@ -13,7 +13,7 @@
 let profile = null, profileRev = 0;
 // Typed and not yet saved, kept across the poll's redraws: a field that
 // emptied itself mid-sentence would be unusable (docs/design-language.md,
-// Settings — nothing takes effect until Save).
+// Settings; nothing takes effect until Save).
 const profileDraft = {};
 
 function openProfileTab(){
@@ -33,7 +33,7 @@ async function loadProfile(){
 
 // Key, label, what the ? beside it says, input type. The label sits above
 // the field and the explanation rides the help icon (docs/design-language.md,
-// Controls) — a filled-in field still says what it is.
+// Controls): a filled-in field still says what it is.
 const PROFILE_FIELDS = [
   ["account", "Account name", "what you sign in with. Changing it signs your other browsers out", "text"],
   ["full_name", "Your name", "", "text"],
@@ -68,7 +68,7 @@ function renderProfileInto(i){
           <div class="actbar">
             <span class="state${profile.git_ready === false ? " warn" : ""}">${
               profile.git_ready === false
-                ? "no author for commits yet — a Claude session waits for a name and an email here"
+                ? "no author for commits yet: a Claude session waits for a name and an email here"
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
           </div>
@@ -98,7 +98,7 @@ function renderProfileInto(i){
         </div>
       </div>
     </div>`;
-  d.setFoot(`Your commits carry the git name and email above in every session and shell you open, whichever project — the account name stays what you sign in with.`);
+  d.setFoot(`Your commits carry the git name and email above in every session and shell you open, whichever project: the account name stays what you sign in with.`);
   wireProfile(d.el);
 }
 
@@ -129,8 +129,8 @@ function wireProfile(root){
       if (j.error) return notify(j.error, true);
       for (const k of Object.keys(profileDraft)) delete profileDraft[k];
       notify(j.name !== profile?.name
-        ? `saved — you are ${j.name} now; other browsers signed in as you sign out`
-        : "saved — your next session and shell carry it");
+        ? `saved; you are ${j.name} now; other browsers signed in as you sign out`
+        : "saved: your next session and shell carry it");
       await loadProfile();
       refresh();                      // the Claude buttons follow git_ready
     }catch(e){ notify("profile: " + e, true); }
@@ -149,7 +149,7 @@ function wireProfile(root){
         body: JSON.stringify({action: "password", current: cur, password: a})});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
-      notify("password changed — sign in again where you are asked to");
+      notify("password changed: sign in again where you are asked to");
       ["pfCur", "pfNew", "pfNew2"].forEach(id => { const el = root.querySelector("#" + id); if (el) el.value = ""; });
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (pw.isConnected) unbusy(pw, "Change password"); }

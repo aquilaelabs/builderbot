@@ -13,18 +13,18 @@ and `--dim`, status `--accent` / `--warn` / `--bad` / `--note`, buttons
 `--btn` / `--btn-hi`. Twelve schemes repaint the page by swapping nine of
 them, so a hardcoded hex is a spot the schemes cannot reach.
 
-**A filled accent surface is `--accent-deep`, and what sits on it is `--ink`
-— never `--dim`.** The active tab, a primary button, a button that is on, a
+**A filled accent surface is `--accent-deep`, and what sits on it is `--ink`,
+never `--dim`.** The active tab, a primary button, a button that is on, a
 view bar's current tab, an open select's chosen row, the text selection: all
 one token, so all one answer. `--accent-deep` carries a lightness cap for
-exactly this reason — the accents range from `#2fb8c6` to `#ffb000`, and
+exactly this reason: the accents range from `#2fb8c6` to `#ffb000`, and
 forty percent of black is not enough darkening under the bright ones. Five
 schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
-email" above a text box — on an accent fill, at 2.51:1.
+email" above a text box, on an accent fill, at 2.51:1.
 
 ## Shape
 
@@ -63,7 +63,7 @@ is `<div class="field histbar">`.
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
 or three words and no more: a field that is filled in still says what it
 is, which a placeholder cannot. Where there is something the label cannot
-say — a password's rules, what blank means, what a rename costs — it rides
+say (a password's rules, what blank means, what a rename costs) it rides
 the `?` beside it: `helpIcon(text)`, a circle with a tooltip that opens on
 hover and on a tap, so a phone reads it too. Most fields need none: "Your
 email" explains itself, and a `?` saying so is noise. Never a dash and a
@@ -76,7 +76,7 @@ field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
 **Controls on a row line up at their bottom edge.** A row mixes fields that
-carry a label above them with bare controls — a select, a button, a remove —
+carry a label above them with bare controls (a select, a button, a remove)
 and a centred line floats the bare one between its neighbour's label and its
 field. The bottom is the line the eye reads, whatever is stacked above it and
 whatever each control's own height is, so a row of controls sets
@@ -87,8 +87,8 @@ different height.
 
 **A file field is a button of ours and the name of what was picked.** The
 browser's own chooser stays hidden: its button wears the browser's skin,
-not the page's, and there is no styling it. A `.filepick` — a button that
-opens the chooser, and the picked name beside it — is the shape.
+not the page's, and there is no styling it. A `.filepick`: a button that
+opens the chooser, and the picked name beside it: is the shape.
 
 **An open `<select>` is the page's own menu, not the platform's.** The list
 a select opens is drawn by the browser, so page CSS cannot reach it: on
@@ -105,14 +105,14 @@ where a native select truncated it, and `test/uniform.mjs` measures every
 select as one line high at phone width.
 
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
-node", not "Enroll node…" — whether a dialog follows is not the reader's
+node", not "Enroll node…": whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
 **A list of choices is in ALPHABETICAL order unless something says
 otherwise, and what says otherwise says why in place.** The colour schemes,
 the git hosts, the hypervisors and the package catalog were each in the order
-somebody happened to write them in — this box's own hypervisor first, then
-whatever was added next — which is an order only that person can predict, and
+somebody happened to write them in; this box's own hypervisor first, then
+whatever was added next, which is an order only that person can predict, and
 a reader ends up scanning the whole list twice. Alphabetical is the default
 because it needs no explanation and a new entry has one place to go. Three
 exceptions exist and each is a sentence in the code: `Default` leads the
@@ -125,7 +125,7 @@ installed first because that is the half you came to act on.
 roadmap item, a bug's title, a changelog entry or the reason something was
 dropped runs to three hundred: on a phone every one of those was a field you
 could not read what you were editing in. A proseline wraps, grows to its
-content and never scrolls inside itself. It is still one line — Enter does
+content and never scrolls inside itself. It is still one line: Enter does
 not make a newline in one, and the surface's own Enter handler still runs.
 `proseline()` does the growing and a MutationObserver wires every one that
 appears, so there is nothing for a new surface to remember; `arriveBox` is
@@ -137,11 +137,11 @@ a proseline.
 **What the width test measures:** on every document tab, at desktop and at
 phone width, the union of each control row's controls and each lone control
 against the smaller of `--ctl-w` and nine tenths of the tab's box. A prose
-editor in the notebook — a memory's body, a rule, a bug's repro — is a page
+editor in the notebook (a memory's body, a rule, a bug's repro) is a page
 rather than a control and keeps the reading width.
 
-**Every group of settings ends with one action bar** — the state line and
-its Apply or Save at the right — and nothing else in the group carries a
+**Every group of settings ends with one action bar**: the state line and
+its Apply or Save at the right, and nothing else in the group carries a
 button. One place to look for the press, on every section of every tab.
 
 **A control never spans its container.** A button, a select, a text field,
@@ -149,7 +149,7 @@ or a row of them side by side, is at most `var(--ctl-w)` wide and never the
 full width of the tab, card or band it sits in: it stops short, with the
 band's own inset and room beside it, at every width. Full-width controls
 read as a form pretending to be a page. The one exception is a control
-whose whole point is the width — a terminal, a log. `test/uniform.mjs`
+whose whole point is the width: a terminal, a log. `test/uniform.mjs`
 measures every control and control row on every tab against the surface
 holding it.
 
@@ -158,12 +158,12 @@ holding it.
 Nothing on a tab takes effect until Save or Apply is pressed. A select that
 saves the moment it is changed, a checkbox that writes on the click, is a
 control that cannot be reconsidered, and the same section's Save then means
-two different things. So every group of settings — on the Settings, Users,
-Nodes and Artifacts tabs and in the project dialogs — has one Save or Apply
+two different things. So every group of settings, on the Settings, Users,
+Nodes and Artifacts tabs and in the project dialogs: has one Save or Apply
 at its foot, and reads its fields when that is pressed. The one exception
 is the colour scheme in the gear: a theme is looked at, not decided, and a
 swatch that needed a second press to be seen would be answering a question
-nobody asked. Buttons that *do* something — install, build, connect, end —
+nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
 ## Document tabs
@@ -175,7 +175,7 @@ the band list, a quiet `.fnote` footer) and returns the slots to fill. States
 are `.loading` / `.empty` / `.hint.bad` inside the list.
 
 **The bar is a band, not a row of controls.** What the tab is about goes at
-its left — a node picker, the filters, a one-line count — and the action on
+its left (a node picker, the filters, a one-line count) and the action on
 it at the right, where a row's buttons and a section's status already sit, so
 every tab's Refresh is in one place and lines up with the column of actions
 under it. The band spans the tab; the controls in it are capped one by one
@@ -199,7 +199,7 @@ the sidebar's cards are the one arrangement that is stored.
 
 Every set of two or more text buttons is an action bar (`.actbar`): the
 status on its own `.state` line, the buttons after it at the right, their
-own size at every width — a phone gives them the finger height, never the
+own size at every width: a phone gives them the finger height, never the
 row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
@@ -221,19 +221,19 @@ back to, so cancelling it removes it.
 ## Long lists
 
 A list that can outgrow a screen shows a page at a time, through `paginate`
-and nothing else — one helper applied to the DOM after a list draws, rather
+and nothing else: one helper applied to the DOM after a list draws, rather
 than each renderer growing its own. It draws a `.pagemore` footer: what is
 shown of the total, then Show N more, Show all and Fewer as each becomes
 worth offering. It is a bar the framework owns, so it is exempt from the
 action-bar rule and its shape is the same on every list.
 
 Deliberately not numbered pages: these lists are read in an order that means
-something — bugs by severity, jobs newest first, the roadmap by the order
-the work has to happen in — so "page 4" names nothing.
+something: bugs by severity, jobs newest first, the roadmap by the order
+the work has to happen in, so "page 4" names nothing.
 
 Two judgements are yours. A list that only just crosses the line is left
 whole, which `paginate` does for you. And a list somebody SCANS for a name
-rather than reads in order — the package catalog — is not paged at all,
+rather than reads in order (the package catalog) is not paged at all,
 because hiding half of it behind a button is worse than a long page.
 
 The state is per list and per notebook. A notebook is a clone of one
@@ -262,7 +262,7 @@ list to add to it.
 
 Save and Revert at the notebook's foot show only on the views that stage
 something behind them (Roadmap, Briefing, the version on Artifacts). A view
-that writes through or only reads — Bugs, Tests, Analysis, Git — has no foot.
+that writes through or only reads (Bugs, Tests, Analysis, Git) has no foot.
 
 ## Both sizes
 
@@ -282,7 +282,7 @@ them is off under `prefers-reduced-motion`.
 
 **The page waits on its own ground.** Nothing can be drawn in a pane until
 the first snapshot lands, and an empty one used to be black and wearing the
-active pane's outline — the loudest element on the page, showing nothing, for
+active pane's outline: the loudest element on the page, showing nothing, for
 as long as that took. Until then `body.booting` gives the pane the page's
 ground and the same quiet `loading…` line every other surface waits with, and
 the first draw that had state to draw takes the class off.
@@ -296,7 +296,7 @@ with a scale on it.
 
 ## Meters
 
-A bar that measures something real — a disk, memory, a load — is a meter:
+A bar that measures something real (a disk, memory, a load) is a meter:
 a label, a track, a value. Meters come in stacks, and a stack is read as
 one set of gauges, so every track in it is the same width and the values
 sit in one right-aligned column. The value column has a fixed width sized

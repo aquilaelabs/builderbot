@@ -1,11 +1,11 @@
 // The Jobs tab: the queue, readable and stoppable. Phase 4 of docs/nodes.md
-// — every job the controller has taken (an exec on a node, a compose action
+//: every job the controller has taken (an exec on a node, a compose action
 // on a dev instance, an agent self-update), where it was placed, what it is
 // doing now, how it ended, and its log. Its own classic script beside
 // index.html, per the new-surface rule (§13): same page, same global scope,
 // one file per surface.
 //
-// Chrome comes from docSurface() and the hard rules are held by uniform.mjs —
+// Chrome comes from docSurface() and the hard rules are held by uniform.mjs;
 // this file only fills slots. Data comes from /api/v1/jobs, fetched when the
 // "jobs" revision token moves, never from the status poll. The one verb is
 // Cancel; a job is never edited, and a finished one is history (door 1).
@@ -78,7 +78,7 @@ function jobStatePill(j){
   return `<span class="pill ${cls} jbstate">${esc(word)}</span>`;
 }
 
-// Where and when: the node by name, and the timings that are known — a
+// Where and when: the node by name, and the timings that are known: a
 // queued job has only its wait so far, a finished one how long it took.
 function jobWhen(j){
   const node = jobsNodes[j.node] || (j.node ? j.node : "any node that fits");
@@ -148,15 +148,15 @@ function renderJobsInto(i){
           open ? "Hide log" : "Log"}</button>
         ${over || j.cancel ? "" : `<button type="button" class="danger" data-jb="cancel"
           title="${j.state === "queued" ? "take it off the queue before it starts"
-                   : "stop it where it is — the row moves when the runner reports that it did"}">Cancel</button>`}
+                   : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>`}
       </div>
     </div>`;
   }).join("");
   d.list.innerHTML = rows + (!jobsList.length
     ? `<div class="empty">${jobsActive ? "nothing is running or waiting"
-                                       : "no jobs yet — a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
-  // Paged like every other long list here. This one grows without bound —
-  // every compose action, exec and agent update lands on it forever — so it
+                                       : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
+  // Paged like every other long list here. This one grows without bound:
+  // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
   paginate(d.list, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
   d.setFoot(`jobs are placed once, on the node that fit when they were taken,
@@ -167,7 +167,7 @@ function renderJobsInto(i){
 function wireJobsTab(root){
   const f = root.querySelector("#jbActive");
   if (f) f.onchange = () => { jobsActive = f.checked; jobsList = null; jobsRev++; drawPanes(); loadJobs(); };
-  // Every tail sits at its own bottom after a draw — the end is where the
+  // Every tail sits at its own bottom after a draw: the end is where the
   // reason is, the same rule the manager's compose log keeps.
   root.querySelectorAll('.jblog[data-tail="1"]').forEach(t => { t.scrollTop = t.scrollHeight; });
   root.querySelectorAll(".jbrow").forEach(row => {

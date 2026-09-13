@@ -1,12 +1,12 @@
 // The Nodes tab: the node registry, editable. Phases 2 and 3 of
-// docs/nodes.md — CRUD over ssh docker hosts, capability toggles, labels,
+// docs/nodes.md: CRUD over ssh docker hosts, capability toggles, labels,
 // pool, concurrency, test, drain, retire; and now enrollment: minting the
 // one-time token an agent dials in with, the live/quiet state of each agent
 // node, the numbers its heartbeat carries, and revoking its credential. Its
 // own classic script beside index.html, per the new-surface rule (§13): same
 // page, same global scope, one file per surface.
 //
-// Chrome comes from docSurface() and the hard rules are held by uniform.mjs —
+// Chrome comes from docSurface() and the hard rules are held by uniform.mjs;
 // this file only fills slots. Data comes from /api/v1/nodes, fetched when the
 // "nodes" revision token moves, never from the status poll.
 
@@ -17,7 +17,7 @@ let nodesAgent = null;           // the agent this controller ships: {digest, ve
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
-// the DOM because the tab repaints on every heartbeat — a field that lived
+// the DOM because the tab repaints on every heartbeat: a field that lived
 // only in the row would lose its text every 25 seconds.
 const nodesConf = {};
 let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
@@ -46,15 +46,15 @@ async function loadNodes(){
 
 // A button that starts something goes dead the moment it is pressed.
 //
-// Every action here awaits a round trip — the POST, then loadNodes(), then
-// the repaint — and for that second or two the control looked exactly as it
+// Every action here awaits a round trip: the POST, then loadNodes(), then
+// the repaint, and for that second or two the control looked exactly as it
 // did before the click. So there was no way to tell a press that had landed
 // from one that had missed, and a second press queued a second job or
 // collected a "one at a time" refusal for its trouble.
 //
 // Only the gap: the repaint that follows draws the real state (n.applying,
 // the runner's census, a queued job) and replaces this element entirely, so
-// the restore below fires only when nothing repainted — an error, or an
+// the restore below fires only when nothing repainted: an error, or an
 // action that changes no state. Put the confirm() BEFORE the call, so
 // cancelling leaves the button alive.
 async function pressing(btn, fn){
@@ -78,13 +78,13 @@ async function nodeAct(body){
 
 // What a node can do, offered as toggles. The list is the server's
 // (nodes.CAPABILITIES); repeated here only as labels, and an unknown one
-// coming back in a record still renders — data wins over this table.
+// coming back in a record still renders: data wins over this table.
 // What a node can do for a project is what is INSTALLED on it, not a set of
 // toggles: a project names one node and that node does all of its work (the
 // operator's decision, 2 Sep). So the row shows the toolchains the census
 // found, and the Tools tab is where they are added. The capability field
-// still exists underneath — it is the vocabulary of the node-side refusal,
-// §15 door 7 — and every node now carries the full set.
+// still exists underneath; it is the vocabulary of the node-side refusal,
+// §15 door 7, and every node now carries the full set.
 const TOOL_LABELS = {java: "java", "android-sdk": "android sdk", emulator: "emulator",
                      flutter: "flutter", dotnet: ".NET", node: "node", go: "go"};
 
@@ -93,7 +93,7 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet — the Tools tab installs them
+    return `<div class="sub ndtools dim">no toolchains yet: the Tools tab installs them
       onto this node, and what is here is what a project bound to it can build</div>`;
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
@@ -139,15 +139,15 @@ function mountState(m, reported){
   if (!r) return ["not applied yet", "warn"];
   const diff = r.source !== m.source || !!r.ro !== !!m.ro;
   if (!r.mounted) return [r.error
-    ? `not mounted: ${r.error}${/access denied/i.test(r.error) ? " — the host's export rule names another address" : ""}`
-    : `not mounted${r.source ? ` — fstab has ${r.source}` : ""}`, "bad"];
+    ? `not mounted: ${r.error}${/access denied/i.test(r.error) ? ": the host's export rule names another address" : ""}`
+    : `not mounted${r.source ? `: fstab has ${r.source}` : ""}`, "bad"];
   const from = r.real && r.real !== r.source ? `mounted from ${r.real} (fstab says ${r.source})`
                                              : `mounted${r.ro ? ", read-only" : ""}`;
-  return [diff ? `${from} — applying will change it` : from, diff ? "warn" : ""];
+  return [diff ? `${from}: applying will change it` : from, diff ? "warn" : ""];
 }
 
 // The Actions runner on this node (phase 7), as a section: what the census
-// says is there, and the labels an install would register with — the node's
+// says is there, and the labels an install would register with: the node's
 // own name among them, which is the label a workflow's runs-on uses to land
 // here. Install and Remove are system jobs like the rest of the plane.
 function nodeRunnerSection(n, c){
@@ -159,15 +159,15 @@ function nodeRunnerSection(n, c){
     url: want.url || ""};
   // The verdict first, because "installed" and "will actually pick up a job"
   // are different states and the old line buried the difference in the
-  // middle of a sentence — a runner registered with no listener reads as
+  // middle of a sentence: a runner registered with no listener reads as
   // healthy right up until a workflow sits in "Waiting for a runner".
   const [verdict, vcls] = !rep.installed
     ? [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""]
     : rep.busy ? ["running a job right now", "ok"]
-    : rep.active ? ["listening — idle, waiting for a job", "ok"]
-    : ["installed but NOT listening, so no workflow will reach it — Reinstall runner", "bad"];
+    : rep.active ? ["listening: idle, waiting for a job", "ok"]
+    : ["installed but NOT listening, so no workflow will reach it: Reinstall runner", "bad"];
   // A listening runner has demonstrably finished registering, whatever the
-  // census could read off .runner — so only a runner that is NOT listening
+  // census could read off .runner, so only a runner that is NOT listening
   // gets the "may not have finished" reading. Saying it of a working one sent
   // the operator to reinstall a runner that was fine.
   const detail = rep.installed
@@ -215,22 +215,22 @@ function nodeSessionsSection(n){
   let status, cls, body;
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
-    body = `<div class="sub">This node's agent predates sessions on a node — Update agent, and
+    body = `<div class="sub">This node's agent predates sessions on a node: Update agent, and
       it reports the half that runs them.</div>`;
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
-    body = `<div class="sub">${esc(se.why || "no session account — provision it with --session-user")}.
+    body = `<div class="sub">${esc(se.why || "no session account: provision it with --session-user")}.
       A project bound to this node keeps a dead Claude button until this half is up.</div>`;
   } else {
     const gaps = [];
     const wsErr = (n.reported?.mounts || []).find(m => m.path === "/workspace")?.error || "";
     if (!se.workspace && wsErr) gaps.push(`the projects share is not mounted at /workspace: ${wsErr}${
-      /access denied/i.test(wsErr) ? " — the host's NFS export names another address; change the rule there" : ""}`);
+      /access denied/i.test(wsErr) ? ": the host's NFS export names another address; change the rule there" : ""}`);
     else if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
-      ? `the projects share is not mounted at /workspace yet — this machine came up ${se.up_s} seconds ago, and a network mount lands a moment after boot`
-      : "the projects share is not mounted at /workspace — add it under Storage");
-    else if (se.writable === false) gaps.push("the projects share is mounted read-only — untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
-    if (!se.boot) gaps.push("the agent reports no boot id — Update agent");
+      ? `the projects share is not mounted at /workspace yet; this machine came up ${se.up_s} seconds ago, and a network mount lands a moment after boot`
+      : "the projects share is not mounted at /workspace: add it under Storage");
+    else if (se.writable === false) gaps.push("the projects share is mounted read-only: untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
+    if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
     [status, cls] = gaps.length ? ["blocked", "bad"]
       : [list.length ? `${list.length} open` : "ready", "ok"];
     body = `
@@ -239,8 +239,8 @@ function nodeSessionsSection(n){
         se.claude ? esc(se.claude) : "no Claude Code installed for that account yet"}.
         A project bound to this node opens its Claude sessions on this machine.</div>
       ${gaps.map(g => `<div class="sub bad">${esc(g)}</div>`).join("")}
-      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}
-        — listed on the Sessions card, and ended from there</div>` : ""}`;
+      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}:
+        listed on the Sessions card, and ended from there</div>` : ""}`;
   }
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
 }
@@ -248,8 +248,8 @@ function nodeSessionsSection(n){
 // The node's path mapping (docs/nodes.md §11): what this container's paths
 // are called on that machine, because its daemon resolves a compose file's
 // bind sources over there. Nearly always the identity now that the projects
-// share is mounted at /workspace on both sides — path parity is a rule, not
-// a setting — so it lives under Advanced with the actions that are rarely
+// share is mounted at /workspace on both sides: path parity is a rule, not
+// a setting, so it lives under Advanced with the actions that are rarely
 // pressed, and says why it is there. Still read by devapp.host_map for
 // every node addressed, so it is not gone.
 function nodeAdvancedSection(n, stale, inflight){
@@ -278,7 +278,7 @@ function nodeAdvancedSection(n, stale, inflight){
         : "Lock keeps this node's mounts, address and root managed at the OS level: Apply storage, Apply network and a root command are refused while it is on."}</span>
       <button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}"
         title="${n.config?.lock ? "let the dashboard apply storage, network and root commands here again"
-          : "refuse system changes from here — the machine's fstab, address and root stay its administrator's at the console"}">${
+          : "refuse system changes from here: the machine's fstab, address and root stay its administrator's at the console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
     ${state?.settings?.settings?.debug_mode?.value ? `
@@ -290,21 +290,21 @@ function nodeAdvancedSection(n, stale, inflight){
         (n.config?.log_from || []).length ? ` (${(n.config.log_from || []).length})` : ""}</button>
     </div>` : ""}
     <div class="actbar">
-      <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
+      <span class="state">Drain finishes what is running and takes nothing new: what makes the machine safe
         to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
       <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
         title="${n.state === "draining" ? "take new work again"
-          : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
+          : "finish what is running, accept nothing new: what makes a node safe to reboot"}">${
         n.state === "draining" ? "Undrain" : "Drain"}</button>
       ${!n.agent?.revoked ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
         title="${stale ? esc(staleWhy(n))
           : inflight("cache-clear") ? "already clearing"
-          : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">${
+          : "drop this node's build caches: every project's. A cold cache costs the next build time, never correctness"}">${
         inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
       ${!n.agent?.revoked ? `<button type="button" class="danger" data-nd="revoke"
         title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
       <button type="button" class="danger" data-nd="retire"
-        title="take it off every list. Its row and its history stay — an id is never reused">Remove</button>
+        title="take it off every list. Its row and its history stay: an id is never reused">Remove</button>
     </div>`;
   return docSection("nodes", "advanced", "Advanced",
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
@@ -315,7 +315,7 @@ function nodeStale(n){
     && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
 }
 
-// The window a version promises — "0.4" of "0.4.27", empty for anything that
+// The window a version promises: "0.4" of "0.4.27", empty for anything that
 // is not WINDOW.BUILD. Empty means "cannot say" and is never read as a
 // mismatch: an agent built before the window existed is behind for the
 // ordinary reason and does not need a louder claim invented about it.
@@ -332,16 +332,16 @@ function windowGap(n){
 function staleWhy(n){
   const mine = n.agent?.version || "?", ship = nodesAgent?.version;
   return windowGap(n)
-    ? `${n.name} runs agent ${mine} and this controller ships ${ship} — a DIFFERENT `
+    ? `${n.name} runs agent ${mine} and this controller ships ${ship}: a DIFFERENT `
       + `compatibility window (${agentWindow(mine)} against ${agentWindow(ship)}). `
       + `Inside one window any agent works with any controller; across one that was `
       + `never promised, so update it before relying on this node`
-    : `${n.name} runs agent ${mine} and this controller ships ${ship} — press `
+    : `${n.name} runs agent ${mine} and this controller ships ${ship}: press `
       + `Update agent first, so nothing is sent that the agent may not know`;
 }
 
 // Which stores a storage apply would move: saved somewhere other than where
-// the node reports them. `cache` is left out — the agent does not copy it
+// the node reports them. `cache` is left out: the agent does not copy it
 // (rebuildable, and a cold cache costs time and never correctness), so
 // promising a move here would be a lie.
 function storeMoves(n){
@@ -395,13 +395,13 @@ function nodeDrift(n){
 
 
 // The configuration plane (docs/nodes.md §12) as three sections: the
-// runner, storage (mounts and stores), network. One record underneath —
-// Save keeps the whole draft — so the status line reads the same in both
+// runner, storage (mounts and stores), network. One record underneath:
+// Save keeps the whole draft, so the status line reads the same in both
 // editors: is there anything to press Apply for, and what.
 // System changes locked to the node's own console (the Lock under
 // Advanced): the sections still show desired beside reported, and Apply
 // says why it will not go. The rule is the server's; this is the courtesy.
-const LOCKED_WHY = "system changes on this node are locked to its own console — Unlock under Advanced";
+const LOCKED_WHY = "system changes on this node are locked to its own console: Unlock under Advanced";
 function nodeConfSections(n){
   const c = nodeDraft(n);
   const d = c.draft;
@@ -433,7 +433,7 @@ function nodeConfSections(n){
   };
   const stores = ["data", "packages", "cache", "artifacts"].map(role => {
     const r = rep.stores?.[role];
-    const now = r ? (r.free_mb === null ? `${r.path} — missing` : `${r.path}, ${
+    const now = r ? (r.free_mb === null ? `${r.path}: missing` : `${r.path}, ${
       r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
     return `
     <div class="ndstore">
@@ -454,13 +454,13 @@ function nodeConfSections(n){
   const pending = drift ? drift.storage.concat(drift.network === "unknown" ? [] : drift.network) : [];
   // An apply that ran and did not work, said where the button is. A failed
   // apply leaves the drift exactly as it was, so the section went back to
-  // "4 changes to apply" and mentioned the attempt nowhere — which is
+  // "4 changes to apply" and mentioned the attempt nowhere, which is
   // indistinguishable from a button that does nothing, and is what the
   // operator saw.
   //
-  // ONLY WHILE IT IS STILL THE ANSWER. A failure that has been overtaken —
+  // ONLY WHILE IT IS STILL THE ANSWER. A failure that has been overtaken:
   // the node matches now, the operator is typing, the agent is behind, one
-  // is running — is history, and the current state is the more useful
+  // is running: is history, and the current state is the more useful
   // sentence. So it is reported only when this kind still has something to
   // apply and nothing more immediate is true.
   const stillPending = {storage: !!drift?.storage.length,
@@ -474,25 +474,25 @@ function nodeConfSections(n){
     la && la.state !== "succeeded" && la.what === kind && stillPending[kind]
     && !busyNow && !stale && !c.dirty
       ? [`the last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
-          la.error ? ": " + la.error : ""} — its log is on the Jobs tab. Nothing on the `
+          la.error ? ": " + la.error : ""}: its log is on the Jobs tab. Nothing on the `
          + "node changed for whatever did not apply; fix it and Apply again.", "bad"]
       : null;
-  // The state line answers one question — is there anything to press Apply
-  // for — and names the changes when there is, so the button is not a leap.
+  // The state line answers one question: is there anything to press Apply
+  // for, and names the changes when there is, so the button is not a leap.
   const [status, statusCls] = busyNow
-    ? [`applying ${busyNow.what}${busyNow.what === "network" ? " — waiting for it to dial back in" : "…"}`, "note"]
+    ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
     : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
-    : c.dirty ? ["unsaved — Save keeps it on the record; Apply makes the node match", "warn"]
-    : !drift ? ["nothing configured yet — the node runs on whatever it was set up with", ""]
+    : c.dirty ? ["unsaved: Save keeps it on the record; Apply makes the node match", "warn"]
+    : !drift ? ["nothing configured yet: the node runs on whatever it was set up with", ""]
     : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
         pending.slice(0, 3).join("; ")}${pending.length > 3 ? "; …" : ""}`, "warn"]
     : drift.network === "unknown"
       ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
       : ["the node matches what is saved here", "ok"];
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
-      title="keep this on the node's record — Apply is what makes the node match it">Save</button>`;
+      title="keep this on the node's record: Apply is what makes the node match it">Save</button>`;
   const storage = `
-      <div class="sub">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
+      <div class="sub">Mounts: what this node mounts at boot, applied through bb-sandbox on it${
         d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
         saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
       ${mounts}
@@ -517,7 +517,7 @@ function nodeConfSections(n){
   // spec it is sent is the same everywhere; the agent detects the backend
   // (netplan, NetworkManager, systemd-networkd, wicked, ifupdown, dhcpcd)
   // and reports it in the census, so the row can say so before the job goes
-  // — or say that a change would be refused, on a machine with none.
+  //, or say that a change would be refused, on a machine with none.
   const dist = rep.distro;
   const NET_BACKENDS = {netplan: "netplan", networkmanager: "NetworkManager",
     "systemd-networkd": "systemd-networkd", wicked: "wicked", ifupdown: "/etc/network/interfaces",
@@ -572,8 +572,8 @@ function nodeConfSections(n){
     : failedFor("network") ? "bad" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
   // .ndconf and .ndconfbody: the names the suite finds the plane by; the
   // sections are its children, so a test can read them in order.
-  // Storage and Network edit the machine's own configuration — fstab, and
-  // whatever owns its network — which only a node provisioned as a sandbox (a MANAGED node,
+  // Storage and Network edit the machine's own configuration: fstab, and
+  // whatever owns its network, which only a node provisioned as a sandbox (a MANAGED node,
   // roadmap #23) hands over. A container node or a guest machine keeps its
   // mounts and its address its own, and the tab says so rather than
   // offering buttons the agent refuses.
@@ -584,7 +584,7 @@ function nodeConfSections(n){
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
       : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
-         provisioned as a sandbox — ${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"} — so its mounts
+         provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}), so its mounts
          and its address are its own to change.${rep.system === "darwin"
            ? " Its packages land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
   </div></div>`;
@@ -618,26 +618,26 @@ function nodeMeters(n){
   // ({path, free_mb, total_mb}) and moves every ten minutes; the heartbeat
   // flattens each one to a bare free-space number and arrives every poll
   // (nodes.heartbeat). So the census gives the shape and the sample gives
-  // the freshness — never the sample alone, which has no total to take a
+  // the freshness: never the sample alone, which has no total to take a
   // percentage of and no path to name.
   for (const [role, st] of Object.entries(rep.stores || {})){
     const live = s.stores?.[role];
     const free = typeof live === "number" ? live : st?.free_mb;
     if (free === null || free === undefined){
-      out.push(meter(role, 0, "missing", `${st?.path || role} — the node cannot see it`));
+      out.push(meter(role, 0, "missing", `${st?.path || role}: the node cannot see it`));
       continue;
     }
     const total = st?.total_mb || 0;
     const used = total ? Math.max(0, total - free) : 0;
     out.push(meter(role, total ? used / total * 100 : 0, `${gb(free)} free`,
-                   `${st?.path || ""}${total ? ` — ${gb(used)} of ${gb(total)} used` : ""}`));
+                   `${st?.path || ""}${total ? `: ${gb(used)} of ${gb(total)} used` : ""}`));
   }
   return out.length ? `<div class="ndmeters">${out.join("")}</div>` : "";
 }
 
 
-// The node's page: a header band — name, state, where it is, its agent and
-// the one control that is about the agent — then the sections.
+// The node's page: a header band: name, state, where it is, its agent and
+// the one control that is about the agent, then the sections.
 function renderNodesInto(i){
   const d = docSurface(i, "nodes");
   if (!d) return;
@@ -651,15 +651,15 @@ function renderNodesInto(i){
     return;
   }
   // One node at a time, picked at the top. Every node's whole configuration
-  // on one page was a wall — mounts, four stores, network, the runner, the
-  // actions, per row, for every machine — and the fold that hid it only
+  // on one page was a wall: mounts, four stores, network, the runner, the
+  // actions, per row, for every machine, and the fold that hid it only
   // moved the problem: the settings you came for were two taps down and the
   // ones you did not care about were still in the way. So the tab is a
   // picker and one machine, in sections, like the Docker manager and the
   // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
-  // Enrolled machines only. The controller has a node record of its own —
+  // Enrolled machines only. The controller has a node record of its own;
   // that is how a share it mounts is recognized as the same store a node
-  // mounts, and how install arbitration works across the pair — but it is
+  // mounts, and how install arbitration works across the pair, but it is
   // not a machine anybody configures from here: it runs no work (roadmap
   // #16), takes no packages (#26), and every section on this tab is about
   // something it does not have. So it is registry plumbing, not a row.
@@ -668,7 +668,7 @@ function renderNodesInto(i){
   const n = live.find(x => x.id === nodesPick);
   d.setBar(`${live.length ? `<label class="pick">Node <select id="ndPick" aria-label="node">${
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
-        esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
+        esc(x.name)}: ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
     <span class="actbar">
       <button type="button" id="ndVm">Create sandbox VM</button>
@@ -714,7 +714,7 @@ function renderNodesInto(i){
     // An update was pressed less than three minutes ago and the agent has
     // not come back with the new digest: the job row is gone the moment the
     // agent swaps itself in, but the row only learns that from its next
-    // hello — so for that gap the button stays busy and the line says what
+    // hello, so for that gap the button stays busy and the line says what
     // is being waited for, rather than offering the same press again.
     const updating = stale && (inflight("self-update")
       || Date.now() - (nodesUpdating[n.id] || 0) < 180000);
@@ -729,14 +729,14 @@ function renderNodesInto(i){
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
                               : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
-            updating ? `updating to agent ${esc(nodesAgent?.version || "")} — it swaps itself in and dials back; the row follows its next hello`
+            updating ? `updating to agent ${esc(nodesAgent?.version || "")}; it swaps itself in and dials back; the row follows its next hello`
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
-            : `Test runs uname through the agent — the channel, end to end`}</span>
+            : `Test runs uname through the agent: the channel, end to end`}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
-            title="${updating ? "the update is queued — the row follows the agent's next hello"
-              : `hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
+            title="${updating ? "the update is queued: the row follows the agent's next hello"
+              : `hand the node the agent this controller ships (${esc(nodesAgent.version)}); it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
-          <button type="button" data-nd="test" title="run uname on it through the agent — the channel, end to end">Test</button>
+          <button type="button" data-nd="test" title="run uname on it through the agent: the channel, end to end">Test</button>
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", "Health",
@@ -746,7 +746,7 @@ function renderNodesInto(i){
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
-    // inside it needs one — Storage and Network — nodeConfSections decides.
+    // inside it needs one (Storage and Network) nodeConfSections decides.
     const plane = n.kind === "agent" && !pending;
     return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
@@ -765,20 +765,20 @@ function renderNodesInto(i){
     </div>`;
   }).join("");
   // Nothing enrolled. Said where the rows would be, rather than an empty
-  // picker over an empty page — the Enroll button above is the whole of what
+  // picker over an empty page: the Enroll button above is the whole of what
   // there is to do here.
   const none = live.length ? "" :
     `<div class="empty ndnone">No node is enrolled. A node is the machine the
-      work runs on — builds, tests, CI and the Android emulator — and this
+      work runs on (builds, tests, CI and the Android emulator) and this
       container runs none of it. <b>Enroll node…</b> above mints a token and
       shows the one command to run on that machine.</div>`;
-  // Enrolling is a dialog now (#ndmodal), not two panels appended here — see
+  // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
   // take the name being typed with it, because this list is not where it is.
   d.list.innerHTML = rows + none
-    + (!nodesList.length ? `<div class="empty">no nodes — which cannot happen:
+    + (!nodesList.length ? `<div class="empty">no nodes, which cannot happen:
         local is seeded at boot. If you can read this, the store broke.</div>` : "");
-  d.setFoot(`A node does the work of the projects bound to it — pick one in a project's
+  d.setFoot(`A node does the work of the projects bound to it: pick one in a project's
     settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
 }
@@ -807,11 +807,11 @@ function wireNodesTab(root){
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
   // Which nodes' MACHINE logs a session on this one may read. A tick per
   // node, this one first and named as itself, because its own journal is as
-  // much root's as anybody else's — "it is only looking at itself" is the
+  // much root's as anybody else's; "it is only looking at itself" is the
   // reasoning that makes a boundary stop meaning anything. Only reachable
   // while the controller's debug switch is on; the switch grants nothing.
   const debugForm = (n) => {
-    document.getElementById("ndTitle").textContent = `Debug settings — ${n.name}`;
+    document.getElementById("ndTitle").textContent = `Debug settings: ${n.name}`;
     boxWidth(false);
     const rows = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired");
     const have = new Set(n.config?.log_from || []);
@@ -822,7 +822,7 @@ function wireNodesTab(root){
         <div class="logset">${rows.map(x => `
           <div class="logdays setrow"><label class="ndcap">
             <input type="checkbox" data-grant="${esc(x.id)}"${have.has(x.id) ? " checked" : ""}>
-            <span>${esc(x.name)}${x.id === n.id ? " — itself" : ""}</span></label></div>`).join("")}
+            <span>${esc(x.name)}${x.id === n.id ? ": itself" : ""}</span></label></div>`).join("")}
         </div>
         ${rows.length ? "" : `<div class="hint">No other node is enrolled.</div>`}
       </div>
@@ -889,7 +889,7 @@ function wireNodesTab(root){
     };
   };
   const mintToken = (m) => {
-    document.getElementById("ndTitle").textContent = `${m.name} — enroll it with one of these`;
+    document.getElementById("ndTitle").textContent = `${m.name}: enroll it with one of these`;
     boxWidth(true);
     body.innerHTML = `<div class="field ndtoken">
         <div class="hint">shown once; the controller keeps only a hash. On a
@@ -897,7 +897,7 @@ function wireNodesTab(root){
           together:</div>
         <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
-        <div class="hint">on a Mac, as yourself — one directory and a launchd agent, no root:</div>
+        <div class="hint">on a Mac, as yourself: one directory and a launchd agent, no root:</div>
         <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         <div class="hint">or on a machine that already has python3, the agent alone:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
@@ -917,8 +917,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   // vmtemplate.py, over the same nodes/unraid-vm.xml the repository keeps.
   //
   // The two identities are fields rather than surprises. Unraid mints its own
-  // pair when the VM is made in Form view — the nvram file on disk is named
-  // after its uuid, and any DHCP reservation was made against its MAC — so a
+  // pair when the VM is made in Form view: the nvram file on disk is named
+  // after its uuid, and any DHCP reservation was made against its MAC, so a
   // minted pair is right for a machine that does not exist yet and Unraid's
   // is right the moment it does. Blank mints one.
   const vmDraft = {hv: "unraid", name: "bb-sandbox", cores: 6, memory_gb: 16,
@@ -940,7 +940,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const takes = k => (kind.wants || []).includes(k);
     body.innerHTML = `<div class="field vmform">
         <div class="hint">A node is a machine the controller sends work to. Pick what runs
-          it and this writes the machine — sized the same everywhere, with an identity of
+          it and this writes the machine: sized the same everywhere, with an identity of
           its own.</div>
         <div class="setrow col">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
@@ -951,7 +951,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
           ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
           ${f("disk_gb", "Disk GiB", kind.id === "unraid"
-              ? "set in Unraid's own form — the XML only names the file" : "",
+              ? "set in Unraid's own form: the XML only names the file" : "",
               ' type="number" min="8" max="8192"')}
           ${takes("vmid") ? f("vmid", "VM id", "Proxmox numbers its machines, 100 and up",
               ' type="number" min="100"') : ""}
@@ -966,7 +966,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       ${made ? `<div class="field vmmade">
         <div class="hint">${esc(made.label)}: its own${made.uuid && takes("uuid")
           ? ` uuid <code>${esc(made.uuid)}</code> and` : ""} MAC
-          <code>${esc(made.mac)}</code> — never a second machine's.</div>
+          <code>${esc(made.mac)}</code>: never a second machine's.</div>
         <pre class="ndcmd vmxml" id="vmXml">${esc(made.text)}</pre>
         <ol class="vmsteps">${(made.steps || []).map(x =>
           `<li>${esc(x)}</li>`).join("")}</ol>
@@ -981,7 +981,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       el.oninput = () => { vmDraft[el.dataset.vk] = el.value; };
     });
     // Switching manager redraws the form: which fields it takes differ, and
-    // so does the range a MAC has to be in — one typed for the old one would
+    // so does the range a MAC has to be in: one typed for the old one would
     // be refused, so it goes back to being minted.
     const hvSel = body.querySelector("#vm_hv");
     if (hvSel) hvSel.onchange = () => {
@@ -1023,7 +1023,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   if (vm) vm.onclick = async () => {
     modal.hidden = false;
     vmForm(null);
-    // The list of managers comes from the server — it is the templates that
+    // The list of managers comes from the server; it is the templates that
     // are actually shipped, not a copy of them here. Asked once per dialog,
     // and the form redraws with the real picker when it lands.
     if (!vmKinds){
@@ -1079,8 +1079,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
-      // The verb, said on the button for the round trip and — for the
-      // actions whose effect the row cannot see at once — beyond it.
+      // The verb, said on the button for the round trip and, for the
+      // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
                retire: "Removing", paths: "Saving", "check-paths": "Checking"}[act] || "Working");
@@ -1088,7 +1088,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
-        else if (j.ok) notify("update queued — the row follows the agent's next hello");
+        else if (j.ok) notify("update queued: the row follows the agent's next hello");
         else delete nodesUpdating[id];
         return;
       }
@@ -1115,7 +1115,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         const out = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndtest`);
         if (out){ out.hidden = false; out.textContent = "asking…"; }
         const j = await nodeAct({action: "test", id});
-        // Repainted underneath by the loadNodes() in nodeAct — find the
+        // Repainted underneath by the loadNodes() in nodeAct: find the
         // row again rather than writing to the one that was replaced.
         const now = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndtest`) || out;
         if (!now) return;
@@ -1135,7 +1135,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                            nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
     }
   });
-  // The field that had the caret before this repaint gets it back — the
+  // The field that had the caret before this repaint gets it back: the
   // tab redraws on every heartbeat, and a form that drops the caret every
   // 25 seconds is not a form anybody can type into.
   if (nodesFocus && nodesFocus.id){
@@ -1194,12 +1194,12 @@ function wireNodeConf(row, id){
       // keystroke in a path field does not need the whole tab redrawn.
       if (k === "net:mode" || k === "type"){ nodesRev++; drawPanes(); }
       else {
-        // Both editors carry a Save and the status line — one record, two
-        // sections — so every copy moves.
+        // Both editors carry a Save and the status line: one record, two
+        // sections, so every copy moves.
         fold.querySelectorAll("[data-nsave]").forEach(b => { b.disabled = false; });
         fold.querySelectorAll("[data-napply]").forEach(x => { x.disabled = true; });
         fold.querySelectorAll(".ndconfstate").forEach(st => {
-          st.textContent = "unsaved — Save keeps it on the record; Apply makes the node match";
+          st.textContent = "unsaved: Save keeps it on the record; Apply makes the node match";
           st.className = "state ndconfstate warn";
         });
       }
@@ -1247,7 +1247,7 @@ function wireNodeConf(row, id){
           + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
           + `out of fstab. Directories and data stay.`)) return;
       // Moving a store copies what is in it, which can be tens of gigabytes
-      // and take a while — so it is asked about rather than started by a
+      // and take a while, so it is asked about rather than started by a
       // text field losing focus.
       const moving = storeMoves(n);
       if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `

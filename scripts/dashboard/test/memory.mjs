@@ -29,7 +29,7 @@ ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
-ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
+ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on that project');
 // On the strip's FIRST tab, whichever that is — the default is read off the
 // strip rather than marked on a button, so reordering the tabs moves it.
@@ -66,7 +66,7 @@ ok(await page.$('#memIndex') === null,
 // fields for it come only with Edit, the way a bug report's do.
 const ixOf = name => page.$eval(`#memList .mem:has(.mname:text-is("${name}")) .bfield .bval`,
   d => d.textContent.replace(/\s+/g, ' ').trim());
-ok(await ixOf('tabs') === 'Prefers tabs — spaces are a fight not worth having',
+ok(await ixOf('tabs') === 'Prefers tabs: spaces are a fight not worth having',
    '...its line is shown on the memory it points at, title and hook');
 ok(/not in the index/.test(await ixOf('loose')),
    'a memory with no line says so on the row, which is why Claude misses it');

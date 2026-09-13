@@ -844,7 +844,7 @@ execFileSync('git', ['-C', A, 'commit', '-qm', 'two'], { env });
 // clones of one template, so every id inside exists twice, and neither
 // :visible nor offsetParent separates them — both are laid out. The title is
 // the only thing in the markup that tells them apart.
-const nb = name => `.nb:has(#memTitle:text-is("Notebook — ${name}"))`;
+const nb = name => `.nb:has(#memTitle:text-is("Notebook: ${name}"))`;
 let NB = nb('alpha');
 
 const browser = await launch();

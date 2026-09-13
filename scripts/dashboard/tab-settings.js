@@ -1,14 +1,14 @@
 // The Settings tab: controller-scoped settings, graduated out of the gear
 // popup the moment there was more than a flyout's worth (docs/nodes.md §13).
-// The gear keeps the per-browser items — theme, layout — and one entry that
+// The gear keeps the per-browser items (theme, layout) and one entry that
 // opens this; everything the CONTROLLER owns and can apply live belongs here,
 // where it has room to say what it does and what it costs.
 //
 // Its own classic script beside index.html, per the new-surface rule. Chrome
 // from docSurface(); conformance held by uniform.mjs.
 
-// The tab repaints when what it shows has moved on the poll — a value saved
-// here, or by another window — and not otherwise, so typing is not swept
+// The tab repaints when what it shows has moved on the poll: a value saved
+// here, or by another window, and not otherwise, so typing is not swept
 // away by a poll that changed nothing. A string, compared whole by drawPanes.
 function settingsLive(){
   return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days]);
@@ -36,7 +36,7 @@ function openSettingsTab(){
 function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
-  d.setBar(`<span class="dim">controller settings — what this container does,
+  d.setBar(`<span class="dim">controller settings: what this container does,
     changeable while it runs. Appearance stays in the gear: it is this
     browser's, not the controller's.</span>`);
   d.list.innerHTML = `
@@ -55,7 +55,7 @@ function renderSettingsInto(i){
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
     </div>`;
-  d.setFoot(`a change takes now, or at the next start — each section says which.`);
+  d.setFoot(`a change takes now, or at the next start: each section says which.`);
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wireSettingsSections(d.el);
@@ -64,7 +64,7 @@ function renderSettingsInto(i){
   if (nd) nd.onclick = openNodesTab;
 }
 
-// The settings that used to be environment variables (roadmap R29) — what is
+// The settings that used to be environment variables (roadmap R29): what is
 // left of them after the operator asked which needed to exist at all. Each
 // group is one section with one Apply, a field that has never been saved
 // says so beside it, and the bar says whether a change takes now or at the
@@ -77,7 +77,7 @@ const SETTING_GROUPS = [
     {key: "debug_mode", label: "Let nodes be granted each other's machine logs", type: "bool",
      hint: "Adds Debug settings to a node's row, where you grant it the nodes whose "
          + "agent, runner and terminal logs its sessions may read. It grants nothing "
-         + "by itself, and a node is not granted its own — a journal is root's on any "
+         + "by itself, and a node is not granted its own: a journal is root's on any "
          + "machine. Off, a session reads only its project's own CI and test logs."}]},
 ];
 
@@ -139,7 +139,7 @@ function wireSettingsSections(el){
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
         const boot = Object.keys(set).some(k => j.meta?.[k]?.applied === "boot");
-        notify(boot ? "saved — it takes at the next start" : "saved");
+        notify(boot ? "saved; it takes at the next start" : "saved");
         refresh();
       }catch(e){ notify("settings: " + e, true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
@@ -152,8 +152,8 @@ function wireSettingsSections(el){
 }
 
 // Ending Claude sessions nobody has used for a while. One rule for this
-// container and every node, and a node enforces it itself — the value rides
-// the agent's hello and lives in its node.json — so it holds while this
+// container and every node, and a node enforces it itself: the value rides
+// the agent's hello and lives in its node.json, so it holds while this
 // controller is down. That is the point: a node's sessions outlive a
 // controller restart on purpose, and the rule about when they end must not.
 function idleSection(){
@@ -170,7 +170,7 @@ function idleSection(){
       </div>
       <div class="actbar">
         <span class="state">takes now, and a node hears on its next poll</span>
-        <button type="button" id="idleApply" title="save it — a node hears on its next poll">Apply</button>
+        <button type="button" id="idleApply" title="save it: a node hears on its next poll">Apply</button>
       </div>
     </div>`;
 }

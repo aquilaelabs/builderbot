@@ -577,9 +577,9 @@ ok(list[0].id === 'local',
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => {
     const t = document.getElementById('runner')?.textContent || '';
-    return /listening — idle/.test(t) && /runs-on: \[self-hosted, shed\]/.test(t);
+    return /listening, idle/.test(t) && /runs-on: \[self-hosted, shed\]/.test(t);
   }, null, { timeout: 15000 });
-  ok(await page.$eval('#runner', e => /listening — idle/.test(e.textContent)
+  ok(await page.$eval('#runner', e => /listening, idle/.test(e.textContent)
        && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      'the Runner card carries a node runner, with the runs-on that lands a job on it');
   await runnerCensus({});

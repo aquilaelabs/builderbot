@@ -22,8 +22,8 @@ NOTES
   <Category>Tools: Productivity:</Category>
   <WebUI>http://[IP]:[PORT:7680]/</WebUI>
   <TemplateURL/>
-  <!-- Unreachable while this repo is private — raw.githubusercontent.com
-       answers 404 to Unraid's unauthenticated fetch — and that is fine. The
+  <!-- Unreachable while this repo is private, because raw.githubusercontent.com
+       answers 404 to Unraid's unauthenticated fetch, and that is fine. The
        container seeds Unraid's own icon cache at startup (see the "Unraid icon
        cache" mapping below), and Unraid only downloads when the cache is
        empty. This value must still be NON-EMPTY: getIcon() returns early on an
