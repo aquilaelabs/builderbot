@@ -37,8 +37,12 @@
     {"method": "GET", "path": "/api/v1/nodes", "fields": ["nodes", "agent"],
      "nodes": ["id", "name", "state", "kind", "live", "config", "reported"]},
     {"method": "POST", "path": "/api/v1/nodes", "actions": ["lock", "unlock", "drain", "online"]},
-    {"method": "GET", "path": "/api/users", "fields": ["users", "owner", "me", "roles"],
+    {"method": "GET", "path": "/api/packages", "fields": ["items", "job", "root", "shared"],
+     "items": ["name", "label", "about", "installed", "version", "size", "needs", "updatable"]},
+    {"method": "POST", "path": "/api/packages", "actions": ["install", "remove"]},
+    {"method": "GET", "path": "/api/users", "fields": ["users", "owner", "me", "roles", "projects"],
      "users": ["name", "role", "projects", "profile"]},
+    {"method": "POST", "path": "/api/users", "actions": ["edit", "add", "remove"]},
     {"method": "GET", "path": "/api/profile", "fields": ["name", "role", "profile", "git", "git_ready"]},
     {"method": "POST", "path": "/api/profile", "actions": ["save", "password"]},
     {"method": "POST", "path": "/api/prefs", "actions": ["(project settings)"]}

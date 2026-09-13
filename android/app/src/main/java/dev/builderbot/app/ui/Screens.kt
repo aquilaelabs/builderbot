@@ -5,6 +5,8 @@
 package dev.builderbot.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -321,27 +324,133 @@ suspend fun act(api: Api, id: String, action: String): String = try {
 @Composable
 fun UsersScreen(store: Store) {
     val api = store.api() ?: return
+    val scope = rememberCoroutineScope()
     val (us, reload) = load("users") { api.users() }
+    var said by remember { mutableStateOf("") }
+    var open by remember { mutableStateOf("") }      // the account being edited
+    var adding by remember { mutableStateOf(false) }
+    var ask by remember { mutableStateOf("") }       // the account Remove is asking about
+    val all = us.value
+    val roles = all?.strs("roles") ?: listOf("user", "admin")
+    val everyProject = all?.strs("projects") ?: emptyList()
+    val owner = all?.str("owner") ?: ""
+    val me = all?.str("me") ?: ""
+
+    if (ask.isNotBlank()) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { ask = "" },
+        title = { Text("Remove $ask?") },
+        text = { Text("The account goes. Its home on a node, and anything it committed, stay where they are.") },
+        confirmButton = { Button(onClick = {
+            val name = ask; ask = ""
+            scope.launch {
+                said = try { api.userRemove(name); "$name removed" }
+                       catch (e: Exception) { e.message ?: e.toString() }
+                reload()
+            }
+        }) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = { ask = "" }) { Text("Cancel") } })
+
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Users", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = { adding = !adding }) { Text(if (adding) "Cancel" else "Add") }
                 TextButton(onClick = reload) { Text("Refresh") }
             }
+            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 0.dp), color = Accent)
             if (us.error != null) Problem(us.error)
-            Dim("Roles and projects are changed on the dashboard's Users tab; this is the list.")
+            if (adding) AddAccount(api, roles) { msg -> said = msg; adding = false; reload() }
         }
-        items(us.value?.arr("users") ?: emptyList()) { u ->
+        items(all?.arr("users") ?: emptyList()) { u ->
+            val name = u.str("name")
             Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
-                Row {
-                    Text(u.str("name"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Row(Modifier.clickable { open = if (open == name) "" else name },
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Text(u.str("role"), color = if (u.str("role") == "user") MaterialTheme.colorScheme.onSurface else Accent)
                 }
                 val pr = u.obj("profile")
                 Dim(listOf(pr.str("full_name"), pr.str("email")).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "no profile yet" })
                 Dim("projects: " + u.strs("projects").joinToString(", ").ifBlank { "none" })
+                if (open == name) EditAccount(
+                    api, u, roles, everyProject,
+                    // The owner is the one account that cannot go or be
+                    // demoted, and an admin removing themselves is the other
+                    // way to be locked out. users.py refuses both; ghosting
+                    // them here is so the refusal is not the first you hear.
+                    mayRemove = name != owner && name != me,
+                    onDone = { msg -> said = msg; open = ""; reload() },
+                    onRemove = { ask = name })
             }
             HorizontalDivider()
+        }
+        item { Dim("A user sees only the projects listed for them. Everything here is an administrator's, and the owner cannot be removed or demoted.") }
+    }
+}
+
+@Composable
+private fun AddAccount(api: Api, roles: List<String>, onDone: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var pw by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf("user") }
+    Card(Modifier.fillMaxWidth().padding(16.dp, 6.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Account name") },
+                              singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(pw, { pw = it }, label = { Text("Password") }, singleLine = true,
+                              visualTransformation = PasswordVisualTransformation(),
+                              modifier = Modifier.fillMaxWidth())
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (r in roles) FilterChip(selected = role == r, onClick = { role = r }, label = { Text(r) })
+            }
+            Button(enabled = name.isNotBlank() && pw.isNotBlank(),
+                   onClick = { scope.launch {
+                       onDone(try { api.userAdd(name.trim(), pw, role); "${name.trim()} added" }
+                              catch (e: Exception) { e.message ?: e.toString() })
+                   } }, modifier = Modifier.padding(top = 8.dp)) { Text("Add account") }
+            Dim("Projects are given after it exists — open the row.")
+        }
+    }
+}
+
+@Composable
+private fun EditAccount(api: Api, u: JSONObject, roles: List<String>, everyProject: List<String>,
+                        mayRemove: Boolean, onDone: (String) -> Unit, onRemove: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val name = u.str("name")
+    // Keyed on the account, so opening a second row does not inherit the
+    // first one's unsaved picks.
+    var role by remember(name) { mutableStateOf(u.str("role")) }
+    var picked by remember(name) { mutableStateOf(u.strs("projects").toSet()) }
+    var pw by remember(name) { mutableStateOf("") }
+    var saving by remember(name) { mutableStateOf(false) }
+    Column(Modifier.padding(top = 8.dp)) {
+        Text("Role", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (r in roles) FilterChip(selected = role == r, onClick = { role = r }, label = { Text(r) })
+        }
+        Text("Projects", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+        if (everyProject.isEmpty()) Dim("no projects to give yet")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (p in everyProject) FilterChip(
+                selected = p in picked,
+                onClick = { picked = if (p in picked) picked - p else picked + p },
+                label = { Text(p) })
+        }
+        OutlinedTextField(pw, { pw = it }, label = { Text("New password (leave blank to keep)") },
+                          singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                          modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(enabled = !saving, onClick = {
+                saving = true
+                scope.launch {
+                    onDone(try { api.userEdit(name, role, picked.toList(), pw); "$name saved" }
+                           catch (e: Exception) { e.message ?: e.toString() })
+                }
+            }) { Text("Save") }
+            if (mayRemove) OutlinedButton(onClick = onRemove) { Text("Remove", color = Bad) }
         }
     }
 }
@@ -482,6 +591,9 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             }
         }
         TextButton(onClick = { nav.navigate("profile") }) { Text("Profile") }
+        // Not gated on isAdmin: the listing is what a build can use, which is
+        // everybody's question, and the server refuses the two buttons.
+        TextButton(onClick = { nav.navigate("tools") }) { Text("Tools") }
         if (isAdmin) TextButton(onClick = { nav.navigate("users") }) { Text("Users") }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("The watch", fontWeight = FontWeight.SemiBold)
@@ -501,5 +613,140 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         Dim("Signed in to ${store.server} as ${store.user}")
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = onSignOut) { Text("Sign out") }
+    }
+}
+
+// ---- tools: what a node carries, and adding to it -------------------------------
+// The dashboard's Tools tab, as much of it as a phone is the right shape for:
+// which packages a store holds, and Install or Remove on one of them. The
+// listing is everybody's — what a node carries decides whether a build can run
+// there — and the two buttons are an administrator's, which is the server's
+// rule and not this screen's opinion.
+//
+// Android system images are deliberately not here. They are a picker over an
+// API-level catalog with flavours and ABIs, and choosing one on a phone is
+// worse than choosing it on the tab that has room for it.
+
+@Composable
+fun ToolsScreen(store: Store, isAdmin: Boolean) {
+    val api = store.api() ?: return
+    val scope = rememberCoroutineScope()
+    var node by remember { mutableStateOf("") }
+    var said by remember { mutableStateOf("") }
+    var ask by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
+    val (nd, _) = load("tools-nodes") { api.nodes() }
+    val (pk, reload) = load("tools-$node") { api.packages(node) }
+    val nodes = nd.value?.arr("nodes")
+        ?.filter { it.str("kind") == "agent" && it.str("state") != "retired" } ?: emptyList()
+    val job = pk.value?.obj("job")
+    val busy = job?.bool("running") == true
+
+    // The press, once the dialog has been answered. Reloaded rather than
+    // guessed at: an install is a job, and what the row should say next is
+    // what the server reports about it, not what pressing implied.
+    fun act(action: String, name: String) {
+        ask = null
+        scope.launch {
+            said = try {
+                api.packageAct(node, action, listOf(name))
+                if (action == "install") "installing $name…" else "removing $name…"
+            } catch (e: Exception) { e.message ?: e.toString() }
+            reload()
+        }
+    }
+
+    ask?.let { (action, item) ->
+        val size = item.str("size")
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = null },
+            title = { Text(if (action == "install") "Install ${item.str("label")}?"
+                           else "Remove ${item.str("label")}?") },
+            text = {
+                Column {
+                    Text(if (action == "install")
+                            "It downloads onto the store " + (if (node.isBlank()) "here" else "on this node") +
+                            (if (size.isNotBlank()) " — $size." else ".")
+                         else "The files go; nothing that was built with it is touched.")
+                    if (item.strs("needs").isNotEmpty())
+                        Dim("needs " + item.strs("needs").joinToString(", "))
+                }
+            },
+            confirmButton = { Button(onClick = { act(action, item.str("name")) }) {
+                Text(if (action == "install") "Install" else "Remove") } },
+            dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } })
+    }
+
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Tools", style = MaterialTheme.typography.titleLarge,
+                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = reload) { Text("Refresh") }
+            }
+            if (nodes.isNotEmpty()) Row(
+                Modifier.fillMaxWidth().padding(16.dp, 0.dp)
+                        .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = node.isBlank(), onClick = { node = "" },
+                           label = { Text("controller") })
+                for (n in nodes) FilterChip(selected = node == n.str("id"),
+                                            onClick = { node = n.str("id") },
+                                            label = { Text(n.str("name")) })
+            }
+            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 8.dp), color = Accent)
+            if (pk.error != null) Problem(pk.error)
+            pk.value?.let { v ->
+                if (v.str("root").isNotBlank())
+                    Dim("store: ${v.str("root")}" + if (v.bool("shared")) " (a mapped share)" else "")
+            }
+            if (busy && job != null) Card(Modifier.fillMaxWidth().padding(16.dp, 6.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.width(16.dp).height(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("${job.str("action")} ${job.str("current")}".trim(),
+                             fontWeight = FontWeight.SemiBold)
+                    }
+                    // The last line it printed, which for a download is the
+                    // only thing that moves. Not the whole tail: this is a
+                    // phone, and the tab with room for the log is the one on
+                    // a desk.
+                    job.strs("log").lastOrNull { it.isNotBlank() }?.let { Mono(it) }
+                }
+            }
+            if (pk.value == null && pk.error == null) Loading()
+        }
+        items(pk.value?.arr("items") ?: emptyList()) { p ->
+            val installed = p.bool("installed")
+            val wrong = p.str("wrong_platform")
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.str("label"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(if (p.bool("unknown")) "unknown"
+                         else if (installed) p.str("version").ifBlank { "installed" }
+                         else "not installed",
+                         color = if (p.bool("unknown")) Warn else if (installed) Ok else MaterialTheme.colorScheme.onSurfaceVariant,
+                         style = MaterialTheme.typography.labelMedium)
+                }
+                Dim(p.str("about"))
+                Dim(listOf(p.str("size"), if (p.strs("needs").isEmpty()) "" else "needs " + p.strs("needs").joinToString(", "))
+                        .filter { it.isNotBlank() }.joinToString(" · "))
+                when {
+                    wrong.isNotBlank() -> Text("not for this node — $wrong", color = Warn,
+                                               style = MaterialTheme.typography.bodySmall)
+                    p.bool("unknown") -> Text("this node has not reported its store yet",
+                                              color = Warn, style = MaterialTheme.typography.bodySmall)
+                    !isAdmin -> {}
+                    else -> Row(Modifier.padding(top = 6.dp)) {
+                        OutlinedButton(enabled = !busy,
+                                       onClick = { ask = (if (installed) "remove" else "install") to p }) {
+                            Text(if (installed) "Remove" else "Install")
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+        }
+        item { if (!isAdmin) Dim("Installing and removing is an administrator's — these are gigabytes on somebody else's disk.") }
     }
 }
