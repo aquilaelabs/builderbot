@@ -461,11 +461,18 @@ def node_for():
     project can do on its node is what is installed there, and the project
     names the node."""
     try:
-        # The newest node with a REACHABLE daemon — docker_nodes() already
-        # drops the ones there is no way into. "Newest online" was not
-        # enough: an agent node that has never dialed in has no address, so
-        # it can hold a project's containers only in principle, and picking
-        # it left the manager talking to nothing.
+        # The newest node the manager has somewhere to SEND to. Not the newest
+        # whose daemon answers, which is what this used to claim and is a
+        # different question (B113): docker_nodes() drops a node with no
+        # address, and an address is not an answer. Asking for real would put
+        # a ten-second docker call per candidate on the status poll's path and
+        # make a project's containers follow a VM's uptime around, so the
+        # honest fix is an explicit setting rather than a probe here.
+        #
+        # Still better than "newest online", which is what it replaced: an
+        # agent node that has never dialed in has no address at all, so it
+        # could hold a project's containers only in principle, and picking it
+        # left the manager talking to nothing.
         got = [n for n in docker_nodes() if n["kind"] != "local"]
         if got:
             return sorted(got, key=lambda n: n["created"])[-1]["id"]
@@ -650,9 +657,10 @@ def node_revoke(principal, node_id):
 def docker_nodes():
     """The docker-host nodes, for every picker — active ones with somewhere
     to send docker to. An agent node that has never dialed in has no known
-    address yet, so it is not offered: the picker's job is to name daemons
-    the manager can reach, and a row with no way in would be a row that
-    only ever says 'no answer'."""
+    address yet, so it is not offered: a row with no way in would be a row
+    that only ever says 'no answer'. Somewhere to send to, note, and not a
+    daemon that answers — nothing here asks, and the tab is where a node that
+    does not answer says so."""
     # Every node with a way in. Not narrowed by capability any more — a node
     # does everything — so the two exclusions left are the honest ones: a
     # node the manager cannot reach would be a row that only ever says "no
