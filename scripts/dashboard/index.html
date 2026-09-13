@@ -1271,7 +1271,26 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
 .clog .none{color:var(--dim);font:var(--f-note)}
-@media(max-width:900px){ .clog .clrow textarea.cltext{font-size:16px} }
+@media(max-width:900px){
+  .clog .clrow textarea.cltext{font-size:16px}
+  /* The commit is a lookup, not a label: on a phone it is on the row's own
+     title and out of the layout, where it was taking the space between the
+     category and the buttons. */
+  .clog .clsha{display:none}
+}
+/* ON A DESKTOP AN ENTRY IS ONE LINE. Stacked, its controls sat a full tab
+   away from the words they act on — 200px on a 950px sheet — and a section
+   of thirty entries was sixty rows of near-identical furniture to read past.
+   The stack stays on a phone, where the words need the whole width and the
+   controls under them are already adjacent. */
+@media(min-width:901px){
+  .clog .clrow{flex-direction:row;align-items:flex-start;gap:8px}
+  .clog .clrow textarea.cltext{flex:1 1 auto}
+  .clog .clmeta{flex:0 0 auto;flex-wrap:nowrap;padding-top:2px}
+  .clog .clmeta .sp{display:none}
+  .clog .clsha{max-width:8em;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+}
 /* A card body that is prose-and-controls rather than rows: the same inner
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
@@ -2249,6 +2268,33 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      buttons keep their own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
 }
+/* A ROW ON A PHONE, measured: a project row was 140px against 98 on a
+   desktop, on a screen a third as wide — six rows to a screen where a
+   desktop gets nine, and a third of each row was its six icon buttons.
+   Nothing here shrinks type or tap targets (11px and 38px are at the floor
+   already); what it does is show fewer things at once.
+     - the row's own inset comes in 3px, which is every row on every tab
+     - the icons that are not the session or the notebook fold behind …
+   `…` is hidden on a desktop, where there is room for all of them. */
+@media(max-width:900px){
+  :root{--row-y:8px}
+  .card .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
+  .projtab .row .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
+  .card .row.moreon .acts .eye,
+  .projtab .row.moreon .acts .eye{display:inline-flex}
+  .rowmore{display:inline-flex}
+  .row.moreon .rowmore{color:var(--accent)}
+  /* ...and with three icons rather than six they fit BESIDE the name, which
+     is where the height actually was: a stacked row spends a whole 38px line
+     on its buttons. Folded out, they wrap under it again, which is what
+     asking for them means. */
+  .card .row[data-row]:not(.moreon),
+  .projtab .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;
+    flex-wrap:wrap}
+  .card .row[data-row]:not(.moreon) .acts,
+  .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
+}
+.rowmore{display:none}
 button[aria-busy="true"]{opacity:.75}
 
 /* The configuration plane on an agent row (docs/nodes.md §12): sections of
@@ -5652,7 +5698,13 @@ const KEYS = [
 // wrong side of.
 let showMacros = false, showSessions = false, showChat = false;
 
-window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
+// ...and the cards fold or unfold with it: which of them start shut is a
+// question about the width, so crossing the breakpoint has to ask it again.
+// A rotation is the case that matters.
+window.matchMedia("(max-width:900px)").addEventListener("change", () => {
+  render();
+  applyCards();
+});
 
 // One panel at a time on the phone: opening any of the three closes the others.
 function mobPanel(which){
@@ -6013,6 +6065,16 @@ function findingsRulesHtml(rows){
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands — it is written in the same order.
 let cards = {order: [], closed: []};   // filled from the markup once it exists, below
+// Which cards a phone has been told to open, for this page's life. A phone's
+// first screen was 470 of its 844 pixels of Tools, Administration and Runner
+// before the first project appeared, and those are desk things: on a phone
+// every card but Projects starts folded, the way a document tab's sections
+// do. Not saved, and not applied to a desktop, so the arrangement somebody
+// made at a desk is theirs and stays as they left it.
+const phoneOpen = new Set();
+const cardShut = key => cards.closed.includes(key)
+  || (isPhone() && key !== "projects" && !phoneOpen.has(key));
+
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
                                            // issued before that carries a
@@ -6044,7 +6106,7 @@ function applyCards(animate){
   // the class on under it would cut the tween short.
   cardEls().forEach(el => {
     if (!el.getAnimations().length)
-      el.classList.toggle("closed", cards.closed.includes(el.dataset.card));
+      el.classList.toggle("closed", cardShut(el.dataset.card));
   });
   play?.();
 }
@@ -6060,8 +6122,9 @@ function adoptCards(next){
   const reorder = prev.order.join() !== cards.order.join();
   if (cardsSynced && !noMotion())
     cardEls().forEach(el => {
-      const k = el.dataset.card, shut = cards.closed.includes(k);
-      if (shut !== prev.closed.includes(k) && rendered(el) && !el.getAnimations().length)
+      const k = el.dataset.card, shut = cardShut(k);
+      if (shut !== el.classList.contains("closed") && rendered(el)
+          && !el.getAnimations().length)
         slideCard(el, shut);
     });
   applyCards(cardsSynced && reorder);
@@ -6081,6 +6144,15 @@ async function saveCards(){
 
 function toggleCard(key){
   const el = document.querySelector(`.card[data-card="${key}"]`);
+  // On a PHONE the fold is a view, not an arrangement: it is kept for the
+  // page's life and never written, so opening Tools on a phone to press one
+  // button does not reach across to the desktop the arrangement was made on.
+  if (isPhone()){
+    const shut = !el.classList.contains("closed");
+    if (shut) phoneOpen.delete(key); else phoneOpen.add(key);
+    slideCard(el, shut);
+    return;
+  }
   const closing = !cards.closed.includes(key);
   cards.closed = closing ? [...cards.closed, key] : cards.closed.filter(k => k !== key);
   slideCard(el, closing);
@@ -6720,6 +6792,16 @@ function shortWhy(why){
 // how one of them quietly stops offering Notebook.
 function wireProjectRows(root){
   tipify(root);
+  // A phone shows the two controls a phone is for — the session and the
+  // notebook — and folds the rest behind this. Six 38px buttons were a third
+  // of a 140px row, on a screen that fits six rows; the row is the list, and
+  // a list should be names. CSS decides which are hidden, so the desktop is
+  // untouched and nothing here has to know the breakpoint.
+  root.querySelectorAll("[data-more]").forEach(b => b.onclick = () => {
+    const row = b.closest(".row");
+    const on = row.classList.toggle("moreon");
+    b.setAttribute("aria-expanded", on ? "true" : "false");
+  });
   root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
     if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
@@ -6868,6 +6950,8 @@ Renaming moves the directory and everything keyed to it">${GEAR}</button>
       ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
         title="delete — moves it to /workspace/.trash and keeps every file. Its
 roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
+      <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
+        aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
       ${sessionWord(p.name) ? `<div class="sub sessline">${esc(sessionWord(p.name))}${
         othersOn(p.name).length
@@ -7405,6 +7489,15 @@ const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
 // runs on, and a pencil promises editing one thing. Drawn stroked at the same
 // 1.4 weight as its neighbours — an eight-toothed ring and a hub, which is the
 // only gear shape that stays legible at 16px.
+// The rest of a row's controls, folded on a phone. An icon rather than a
+// typed ellipsis: every other control in that cluster is one, and a cluster
+// with text in it stops being an icon cluster — which is a real rule here,
+// not a nicety (uniform.mjs reads a set of TEXT buttons as an action bar and
+// holds it to a bar's shape).
+const DOTS = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/>
+  <circle cx="12.8" cy="8" r="1.3"/></svg>`;
+
 const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
   <circle cx="8" cy="8" r="2.1"/></svg>`;
@@ -8123,6 +8216,11 @@ async function openDevEnv(project, instance){
 // A route picked and not yet applied, per instance — the tab redraws when
 // the daemon answers, and a pick a redraw put back could never be applied.
 const dmRouteDraft = {};
+// ...and the same for the rebuild dial, per project. Nothing on a tab takes
+// effect until Apply (docs/design-language.md, Settings): this wrote on the
+// pick when it was a switch, which is a control that cannot be reconsidered
+// and reads differently from every other setting on the page.
+const dmGrantDraft = {};
 
 function dmRouteLine(d){
   const r = d.route;
@@ -8158,12 +8256,18 @@ function dmGrantLine(d){
   // Not for a container written here: its compose file IS the thing, so there
   // is no project codebase for a session to rebuild it from.
   if (d.source === "file" || !mayDocker()) return "";
+  const saved = devClaudeMode(d.project);
+  const pick = dmGrantDraft[d.project] ?? saved;
   return `<div class="sub dmgrant"><label for="${
       esc(`dmg-${d.project}`)}">Claude may rebuild</label>
     <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
+            data-was="${esc(saved)}"
             aria-label="whether a session may rebuild ${esc(d.project)}">${
       DEVBUILD_MODES.map(([v, l]) => `<option value="${v}"${
-        v === devClaudeMode(d.project) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>${
+        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+    <button type="button" data-dmclaudeapply="${esc(d.project)}"${
+      pick === saved ? " disabled" : ""} title="save who may rebuild ${
+      esc(d.project)}'s containers">Apply</button>${
     helpIcon(`A session in ${d.project} builds this from the project's codebase `
       + `and brings it up: on ask it says what the rebuild is for and waits for `
       + `you, on auto it just runs. Making a container, removing one, Up, Down `
@@ -8767,22 +8871,34 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // Whose Rebuild it is. Written at once, like the row's other controls, and
   // the answer redraws every row of that project — it is the project's
   // setting, not the instance's.
-  el.querySelectorAll("[data-dmclaude]").forEach(sel => {
-    const was = sel.value;
-    sel.onchange = async () => {
-      const project = sel.dataset.dmclaude, mode = sel.value;
-      sel.disabled = true;
+  // Staged on the pick, written by Apply — the same shape as the route line
+  // above it, and as every other setting on the page.
+  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
+    const project = sel.dataset.dmclaude;
+    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
+    else dmGrantDraft[project] = sel.value;
+    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
+    const project = btn.dataset.dmclaudeapply;
+    const mode = dmGrantDraft[project];
+    if (!mode) return;
+    busy(btn, "Applying");
+    try{
       const r = await fetch("/api/prefs", {method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devbuild: mode})}).catch(() => null);
-      const j = r ? await r.json().catch(() => ({})) : {error: "could not reach the server"};
-      sel.disabled = false;
-      if (j.error){ sel.value = was; notify(j.error, true); return; }
+        body: JSON.stringify({project, devbuild: mode})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmGrantDraft[project];
       notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
              : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
              : `rebuilding ${project}'s containers is yours again`);
       refresh();
-    };
+      dockerRev++; drawPanes();
+    }catch(e){ notify("the dial: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
@@ -11726,7 +11842,11 @@ $("todoRevert").onclick = revertNotebook;
         ${b.remote || locked ? "" : `<span class="acts">${b.name === git.main ? "" : `<select data-gitaskkind aria-label="what to ask">
             <option value="merge">merge into ${esc(git.main || "main")}</option><option value="rebase">rebase onto ${esc(git.main || "main")}</option>
             <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
-            title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${b.head ? "" : `<button type="button"
+            title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${
+            b.head ? "" : `<button type="button" data-gitmerge="${esc(b.name)}"
+            title="merge ${esc(b.name)} into ${esc(st.branch || "this branch")}, here. Switch first to
+merge the other way, and push it yourself after — this does not touch the remote"
+            >Merge</button>`}${b.head ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
             b.head || b.name === git.main ? "" : `<button type="button" class="danger"
             data-gitdelete="${esc(b.name)}" title="delete the branch — refused while it holds commits no other branch has">Delete</button>`}</span>`}
@@ -11812,6 +11932,11 @@ $("todoRevert").onclick = revertNotebook;
     });
     body.querySelectorAll("[data-gitswitch]").forEach(b => b.onclick = () =>
       gitAct("switch", {name: b.dataset.gitswitch}, gitBusy(b), "Switching"));
+    // No confirmation: a merge makes a commit rather than destroying one, and
+    // the row says which way round it goes. What it can leave behind is a
+    // conflict, and the Changes section is already the place that says so.
+    body.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = () =>
+      gitAct("merge", {name: b.dataset.gitmerge}, gitBusy(b), "Merging"));
     body.querySelectorAll("[data-gitaskfile]").forEach(b => b.onclick = () =>
       gitAsk("diff", {path: b.dataset.gitaskfile}, gitBusy(b)));
     body.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = () => {
@@ -12307,11 +12432,23 @@ project can have several"
       const flat = () => gs.flatMap(g => g.entries.map(e => [g, e]));
       const swap = (a, i, k) => { const t = a[i]; a[i] = a[i + k]; a[i + k] = t; };
 
-      const draw = () => {
+      // Where the reader was, across a redraw. Every gesture here rebuilds the
+      // whole pane — which is fine for ten entries and not for sixty, where
+      // one press of ↑ threw away the scroll position and the focus, so
+      // moving a line three places meant finding its button three times.
+      // `keep` is the ENTRY OBJECT rather than an index, because the indices
+      // are what the move just changed.
+      // The sheet's slot is what scrolls (`.box.sheet .sheetslot{overflow:auto}`),
+      // and the pane is its child. Named rather than walked, because a guess
+      // that finds the wrong element restores a scroll nobody moved.
+      const scroller = () => pane.closest(".sheetslot") || pane.parentElement;
+      const draw = (keep, sel) => {
         const opts = (cur) => ["", ...names().filter(Boolean)]
           .map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${
             esc(n || "no category")}</option>`).join("")
           + `<option value="\u0000new">new category…</option>`;
+        const box = scroller();
+        const top = box ? box.scrollTop : null;
         pane.innerHTML =
           `<div class="clog">
              <div class="hint">Sessions add the lines; the order, the categories
@@ -12330,7 +12467,7 @@ project can have several"
                    <div class="clrow" data-g="${gi}" data-e="${ei}">
                      <textarea class="cltext proseline" rows="1" maxlength="300"
                        aria-label="what changed">${esc(e.text)}</textarea>
-                     <div class="clmeta">
+                     <div class="clmeta" title="${esc((e.shas || []).join(", "))}">
                        <select class="clcat" aria-label="category">${opts(g.name)}</select>
                        <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
                        <span class="sp"></span>
@@ -12347,6 +12484,12 @@ project can have several"
            </div>
            ${dated ? `<div class="verlogpane">${esc(dated)}</div>` : ""}`;
         wire();
+        if (top != null && box) box.scrollTop = top;
+        if (keep){
+          const at = flat().findIndex(([, x]) => x === keep);
+          const row = at >= 0 ? pane.querySelectorAll(".clrow")[at] : null;
+          row?.querySelector(sel || "textarea")?.focus();
+        }
       };
 
       const wire = () => {
@@ -12384,7 +12527,9 @@ project can have several"
                                            + (b.dataset.emv === "up" ? 0 : 1), 0, e);
             else tg.entries.splice(b.dataset.emv === "up" ? tg.entries.length : 0, 0, e);
             gs = gs.filter(x => x.entries.length);
-            draw();
+            // ...and the button that moved it is under the same finger, so a
+            // line goes three places in three presses rather than three hunts.
+            draw(e, `[data-emv="${b.dataset.emv}"]`);
           });
           row.querySelector(".clcat").onchange = ev => {
             let to = ev.target.value;
@@ -14607,12 +14752,12 @@ async function rnSubmit(){
   // decisions and only one of them was being asked about.
   const restartNow = !(prefChanged && running)
     ? false
-    : confirm(`Restart the Claude session in ${name} now?\n\n`
+    : confirm(`End the Claude session in ${name} now?\n\n`
         + `What it runs on is read when a session starts, so this takes `
-        + `effect at the next one either way. OK restarts it now — the `
-        + `conversation is resumed, but anything it is in the middle of `
-        + `doing is lost. Cancel saves the setting and leaves the session `
-        + `alone.`);
+        + `effect at the next one either way. OK ends it — press Claude to `
+        + `start it again and the conversation is resumed, but anything it `
+        + `is in the middle of doing is lost. Cancel saves the setting and `
+        + `leaves the session alone.`);
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -14637,13 +14782,16 @@ async function rnSubmit(){
       // is: a session quietly left on the old model is exactly the confusion
       // this whole thing exists to remove, and a session deliberately left
       // running is not a fault to colour red.
-      if (running && prefChanged && !j.restarted)
+      if (running && prefChanged && !j.ended)
         notify(restartNow
-                 ? `${name}: saved, but the session was not restarted — `
+                 ? `${name}: saved, but the session was not ended — `
                    + (j.why || "it is still on what it started with")
                  : `${name}: saved. Its running session keeps what it started `
-                   + `with until you restart it.`,
+                   + `with until you end it and press Claude again.`,
                restartNow);
+      else if (restartNow && j.ended)
+        notify(`${name}: saved, and its session ended — press Claude to start `
+               + `one on it, resuming the conversation`);
     }
     if (!needRename){
       closeRename();

@@ -5,7 +5,7 @@
 // here writes through the dashboard, because this step has no actions.
 import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const B = `${DIR}/ws/beta`;
@@ -181,6 +181,48 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   const rv = await act('revert', { sha: third.sha });
   ok(rv.ok && /^Revert/.test(git('log', '-1', '--format=%s')) && !/three/.test(git('show', 'HEAD:a.txt')),
      'Revert is a new commit undoing the picked one');
+  // Merging is the view's own, not an ask any more: the operator merges a
+  // branch here and pushes it themselves, rather than handing it to a session
+  // to do. Into the branch the tree is ON — nothing switches for you.
+  {
+    // Put back exactly, at the end: the assertions after this one read the
+    // fixture's own branches and the content of its files, and a merge that
+    // landed somebody else's commits on main would move both.
+    const was = git('rev-parse', 'HEAD').trim();
+    git('checkout', '-q', '-b', 'ready'); writeFileSync(`${B}/r.txt`, 'r\n');
+    git('add', 'r.txt'); git('commit', '-q', '-m', 'Ready work');
+    git('checkout', '-q', main);
+    ok((await act('merge', { name: main })).error, 'the branch the tree is on cannot be merged into itself');
+    const m = await act('merge', { name: 'ready' });
+    ok(m.ok && existsSync(`${B}/r.txt`) && (await api('what=status')).branch === main,
+       `Merge brings a branch into the one the tree is on (${m.out || m.error})`);
+    // A TRACKED file, because untracked is not dirty to git and not to this
+    // either: `_dirty` lists everything but untracked, so a stray new file
+    // never stands between somebody and a merge.
+    writeFileSync(`${B}/a.txt`, 'dirty\n');
+    ok(/uncommitted changes/.test((await act('merge', { name: 'topic' })).error || ''),
+       '...refused with a dirty tree, so the merge is its own commit');
+    git('checkout', '--', 'a.txt');
+    ok((await act('merge', { name: 'nope' })).error, '...and a branch that is not there is refused');
+    // A conflict is LEFT, not aborted: the Changes section lists the files
+    // and offers the merge in progress to the session, which is the only
+    // thing that can finish it.
+    git('checkout', '-q', '-b', 'clashA'); writeFileSync(`${B}/clash.txt`, 'from A\n');
+    git('add', 'clash.txt'); git('commit', '-q', '-m', 'A');
+    git('checkout', '-q', main);
+    git('checkout', '-q', '-b', 'clashB'); writeFileSync(`${B}/clash.txt`, 'from B\n');
+    git('add', 'clash.txt'); git('commit', '-q', '-m', 'B');
+    const c = await act('merge', { name: 'clashA' });
+    ok(/does not merge/.test(c.error || '') && /hands the merge to Claude/.test(c.error || ''),
+       `a conflicting merge says so and names what finishes it (${String(c.error).slice(0, 60)})`);
+    ok((await api('what=status')).files.some(f => f.state === 'conflict'),
+       '...and leaves the conflict standing, for the Changes section to offer');
+    git('merge', '--abort');
+    git('checkout', '-q', main);
+    git('reset', '--hard', '-q', was);
+    for (const b of ['ready', 'clashA', 'clashB']) git('branch', '-D', b);
+    rmSync(`${B}/r.txt`, { force: true }); rmSync(`${B}/clash.txt`, { force: true });
+  }
   ok((await act('delete', { name: 'feature' })).ok && !git('branch', '--list', 'feature'),
      'Delete removes a branch that is fully merged');
   git('checkout', '-q', '-b', 'lonely'); writeFileSync(`${B}/l.txt`, 'l\n'); git('add', 'l.txt'); git('commit', '-q', '-m', 'Lonely work');

@@ -346,6 +346,59 @@ fun UsersScreen(store: Store) {
     }
 }
 
+// ---- installing the newer build of this app ------------------------------------
+// The card that says the app is behind used to end with "in BuilderBot's
+// Artifacts tab", which means: go to a desktop, download a file, move it to
+// the phone. The APK is an artifact the dashboard already serves and the
+// phone is already authenticated to it, so the whole errand is a download
+// and an intent.
+//
+// Android asks the person to confirm the install every time, and asks for
+// "install unknown apps" the first time — this cannot and should not install
+// anything quietly. What it removes is the desktop, not the decision.
+@Composable
+private fun InstallNewer(api: Api, apk: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var said by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Button(enabled = !busy, onClick = {
+            scope.launch {
+                busy = true
+                said = try {
+                    // Into the cache directory the provider publishes, under
+                    // the name the dashboard reported, replacing whatever an
+                    // earlier attempt left: two builds of the same app in the
+                    // cache is a way to install the older one by accident.
+                    val dir = java.io.File(context.cacheDir, "apk")
+                    dir.mkdirs()
+                    dir.listFiles()?.forEach { it.delete() }
+                    val file = api.download(api.apkPath(apk), java.io.File(dir, apk))
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context, context.packageName + ".files", file)
+                    context.startActivity(
+                        android.content.Intent(android.content.Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    ""
+                } catch (e: Exception) {
+                    // Named rather than swallowed: the two that actually
+                    // happen are a dashboard that has no APK in dist/ yet and
+                    // a phone that has not been allowed to install from here.
+                    e.message ?: "it did not download"
+                }
+                busy = false
+            }
+        }) { Text(if (busy) "Downloading…" else "Install it") }
+        if (said.isNotBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text(said, color = Bad)
+        }
+    }
+}
+
 // ---- profile -------------------------------------------------------------------
 
 @Composable
@@ -417,8 +470,9 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             if (serverApi > BuildConfig.TARGET_API) Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("This app is behind the dashboard", color = Warn, fontWeight = FontWeight.SemiBold)
-                    Text("The dashboard serves API $serverApi and this build was written for ${BuildConfig.TARGET_API}. Some screens may show blanks until you install the newer app" +
-                        (if (m.str("apk").isNotBlank()) ": ${m.str("apk")} in BuilderBot's Artifacts tab." else "."))
+                    Text("The dashboard serves API $serverApi and this build was written for ${BuildConfig.TARGET_API}. Some screens may show blanks until the newer app is installed" +
+                        (if (m.str("apk").isNotBlank()) ": ${m.str("apk")}." else "."))
+                    if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"))
                 }
             } else if (serverApi < BuildConfig.TARGET_API) Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Column(Modifier.padding(12.dp)) {

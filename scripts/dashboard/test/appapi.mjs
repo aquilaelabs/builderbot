@@ -5,8 +5,8 @@
 // that is renamed, or a number moved on one side and not the others fails
 // here — before the app finds out by drawing blanks. Moving the surface is
 // fine; moving it without the app is what this catches.
-import { ok, done, URL } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { ok, done, URL, DIR } from './lib.mjs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -35,13 +35,28 @@ ok(typeof meta.body.version === 'string' && typeof meta.body.apk === 'string',
 let missing = [];
 for (const e of surface.endpoints) {
   if (e.method !== 'GET') continue;
+  // A download is bytes and has no fields to check: what it owes is that the
+  // path still serves the file, which is what the app's own self-update rides
+  // on. Asked with a file put there for the purpose rather than whatever the
+  // other suites happen to have left in alpha's dist/.
+  if (e.binary) {
+    mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
+    writeFileSync(`${DIR}/ws/alpha/dist/surface-probe.bin`, 'not json\n');
+    const r = await fetch(`${URL.replace(/\/$/, '')}/api/artifact?project=alpha&path=`
+                          + encodeURIComponent('dist/surface-probe.bin'), { headers: H });
+    const body = await r.text();
+    if (r.status !== 200 || body !== 'not json\n')
+      missing.push(`${e.path}: HTTP ${r.status}, ${body.slice(0, 40)}`);
+    rmSync(`${DIR}/ws/alpha/dist/surface-probe.bin`, { force: true });
+    continue;
+  }
   const path = e.path.replace('project=&', 'project=alpha&').replace(/project=$/, 'project=alpha');
   const r = await get(path);
   if (r.status !== 200) { missing.push(`${e.path}: HTTP ${r.status} ${r.body?.error || ''}`); continue; }
   for (const f of e.fields || []) if (!(f in r.body)) missing.push(`${e.path}: no "${f}" in the answer`);
   // The rows' fields, on the first row where there is one.
   for (const [key, want] of Object.entries(e)) {
-    if (['method', 'path', 'fields', 'actions'].includes(key)) continue;
+    if (['method', 'path', 'fields', 'actions', 'binary'].includes(key)) continue;
     const rows = r.body[key];
     if (!Array.isArray(rows) || !rows.length) continue;
     for (const f of want) if (!(f in rows[0])) missing.push(`${e.path}: rows of "${key}" carry no "${f}"`);

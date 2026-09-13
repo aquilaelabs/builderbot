@@ -1378,6 +1378,39 @@ ENV_END='<!-- BUILDERBOT:ENV:END -->'
 md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
     'index($0,b){f=1} f{print} index($0,e){exit}' "$1"; }
 
+# md_file DIR — where this project's environment block lives.
+#
+# CLAUDE.local.md, which is the render and is not in git: the template is the
+# source and a rendered block is an artifact, so git carries the template and
+# the project's own notes and never the output (roadmap R50). Claude Code
+# loads it beside CLAUDE.md — 2.1.270 lists it among the instruction files it
+# reads, as "the local file" — so a session is briefed by both and neither
+# has to import the other.
+#
+# CLAUDE.md is the fallback, because that is where every block written before
+# the move still is. It is the migration and nothing more: the first --update
+# moves the block out and leaves the notes, and after that the old place holds
+# none. server.md_file draws the same line and the two have to agree.
+md_file() {
+    local dir="$1"
+    if [ -f "$dir/CLAUDE.local.md" ]; then printf '%s\n' "$dir/CLAUDE.local.md"
+    else printf '%s\n' "$dir/CLAUDE.md"; fi
+}
+
+# Keep the rendered block out of git WITHOUT touching the project's own
+# .gitignore: .git/info/exclude is this checkout's, never committed, and
+# never reaches anybody else's history. A project that is not a git
+# repository needs nothing done.
+md_exclude() {
+    local dir="$1" gitdir excl
+    gitdir="$(git -C "$dir" rev-parse --git-dir 2>/dev/null)" || return 0
+    case "$gitdir" in /*) ;; *) gitdir="$dir/$gitdir" ;; esac
+    excl="$gitdir/info/exclude"
+    mkdir -p "$(dirname "$excl")" 2>/dev/null || return 0
+    grep -qxF '/CLAUDE.local.md' "$excl" 2>/dev/null && return 0
+    printf '%s\n' '/CLAUDE.local.md' >> "$excl" 2>/dev/null || true
+}
+
 # md_render TEMPLATE TARGET — the block this project should have.
 #
 # Parts of the file only matter to some projects: Android, the dev instance,
@@ -1467,7 +1500,11 @@ cmd_claude_md() {
         esac
         shift
     done
-    target="${target:-$PWD/CLAUDE.md}"
+    # A DIRECTORY resolves to whichever file carries the block; a file is
+    # taken as given, so an explicit path still means what it says.
+    if [ -z "$target" ]; then target="$(md_file "$PWD")"
+    elif [ -d "$target" ]; then target="$(md_file "$target")"; fi
+    local mddir; mddir="$(dirname "$target")"
 
     # `--is-stale` is the question a gate asks, and the only mode that answers
     # with its exit code alone: 0 when this project's block EXISTS and differs
@@ -1520,16 +1557,27 @@ cmd_claude_md() {
 
     if [ ! -f "$target" ]; then
         if [ "$mode" = init ]; then
-            # Rendered, not copied: a new file must come out the same as an
-            # --update would leave it, or the first check after --init reports
-            # drift against the file it just wrote.
-            { md_render "$TEMPLATE_MD" "$target"
-              awk -v e="$ENV_END" 'p{print} index($0,e){p=1}' "$TEMPLATE_MD"
-            } > "$target"
-            log "created ${target} — fill in the project section below the end marker"
+            # Two files: the rendered block, which is not in git, and the
+            # project's own notes, which are. Rendered rather than copied, or
+            # the first check after --init reports drift against the file it
+            # just wrote. An existing CLAUDE.md is left exactly as it is —
+            # a cloned repository's own notes are not ours to overwrite.
+            md_render "$TEMPLATE_MD" "$mddir/CLAUDE.local.md" > "$mddir/CLAUDE.local.md"
+            md_exclude "$mddir"
+            if [ ! -f "$mddir/CLAUDE.md" ]; then
+                # The notes half, starting at its own first heading: the
+                # separator under the end marker divided two halves of one
+                # file and has nothing to divide in a file of its own.
+                awk -v e="$ENV_END" 'p{print} index($0,e){p=1}' "$TEMPLATE_MD" \
+                    | awk '!seen && ($0 == "" || $0 == "---"){next} {seen=1; print}' \
+                    > "$mddir/CLAUDE.md"
+                log "created ${mddir}/CLAUDE.local.md and ${mddir}/CLAUDE.md — fill in the project section"
+            else
+                log "created ${mddir}/CLAUDE.local.md — your CLAUDE.md is untouched"
+            fi
             return 0
         fi
-        die "no ${target}. Create one with: bb claude-md --init"
+        die "no environment block in ${mddir}. Create one with: bb claude-md --init"
     fi
 
     if ! grep -qF "$ENV_BEGIN" "$target" || ! grep -qF "$ENV_END" "$target"; then
@@ -1562,15 +1610,28 @@ cmd_claude_md() {
     local out; out="$(mktemp)"
     # shellcheck disable=SC2064
     trap "rm -f '$tmp_new' '$tmp_cur' '$out'" RETURN
-    awk -v b="$ENV_BEGIN" -v e="$ENV_END" -v repl="$tmp_new" '
-        index($0,b) { while ((getline line < repl) > 0) print line; skip=1; next }
+    # The block is written whole to its own file rather than spliced between
+    # markers in somebody's notes: it is a render, and a render is replaced,
+    # not merged.
+    cat "$tmp_new" > "$mddir/CLAUDE.local.md"
+    md_exclude "$mddir"
+    if [ "$target" != "$mddir/CLAUDE.md" ]; then
+        log "${mddir}/CLAUDE.local.md: environment block updated"
+        return 0
+    fi
+    # ...and out of CLAUDE.md, where it used to live. Everything outside the
+    # markers is left exactly as it is, title and notes alike: that rule is
+    # what makes this safe to run on a file somebody else wrote, and tidying
+    # a heading is not worth breaking it for.
+    awk -v b="$ENV_BEGIN" -v e="$ENV_END" '
+        index($0,b) { skip=1; next }
         index($0,e) { skip=0; next }
         !skip       { print }
-    ' "$target" > "$out"
-
-    grep -qF "$ENV_END" "$out" || die "refused to write: the result lost its end marker"
-    cat "$out" > "$target"
-    log "${target}: environment block updated; your project section is untouched"
+    ' "$mddir/CLAUDE.md" > "$out"
+    grep -qF "$ENV_BEGIN" "$out" && die "refused to write: the block is still in CLAUDE.md"
+    cat "$out" > "$mddir/CLAUDE.md"
+    log "${mddir}: the environment block is CLAUDE.local.md now, which this checkout ignores"
+    log "  CLAUDE.md keeps your project section; commit its removal when you are ready"
 }
 
 # Reduce a SARIF report to grouped markdown.

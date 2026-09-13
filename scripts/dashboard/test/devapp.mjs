@@ -2143,6 +2143,11 @@ ok(await page.$('#devSend'),
   ok(await page.$eval(SW, e => e.value === 'auto' && !e.disabled
                               && [...e.options].map(o => o.value).join() === 'deny,ask,auto'),
      'the docker tab carries the dial, on auto, with all three settings and live whatever the daemon says');
+  // Nothing on a tab takes effect until Apply (docs/design-language.md,
+  // Settings). This wrote on the pick when it was a switch, which is the one
+  // control on the page that could not be reconsidered.
+  ok(await page.$eval('.dmtab [data-dmclaudeapply="ep.silon"]', b => b.disabled),
+     '...with its Apply asleep until something is picked');
   ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
      '...and not on the artifact row, which is where it was asked not to be');
   // Turned off from the row itself, which is the gesture this is for —
@@ -2150,6 +2155,13 @@ ok(await page.$('#devSend'),
   // checkbox, because the checkbox is redrawn from the poll and its state
   // between the click and the next payload is nobody's answer.
   await page.selectOption(SW, 'deny');
+  ok(await page.$eval('.dmtab [data-dmclaudeapply="ep.silon"]', b => !b.disabled),
+     '...which wakes on a pick that differs from what is saved');
+  // The pick alone changes nothing on the server: read it back before the
+  // press, not after, or this proves only that the press works.
+  ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 200,
+     '...and until it is pressed the grant is exactly what it was');
+  await page.click('.dmtab [data-dmclaudeapply="ep.silon"]');
   // Falsy, not `'deny'`: a record with nothing left in it is removed rather
   // than stored, so the row's prefs go back to the thin default and the
   // field is simply absent. Absent and deny are the same answer here.

@@ -434,6 +434,51 @@ for (const kind of kinds){
        L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
 }
 
+// ---- a setting is written by Save, never by the pick -----------------------
+// docs/design-language.md, Settings: nothing on a tab takes effect until Save
+// or Apply is pressed, because a select that writes on the change is a control
+// that cannot be reconsidered, and the same section's Save then means two
+// different things. The one exception is the colour scheme in the gear, which
+// is not on a document tab and is not measured here.
+//
+// Read off the HANDLERS, which is the only place the answer lives: a control
+// that writes and one that stages look identical in the markup. The page
+// assigns `el.onchange = …` almost everywhere, and a function's own source
+// says whether it posts. What this cannot see is a listener added with
+// addEventListener, so it is a guard against the easy mistake rather than a
+// proof — the easy mistake being the one that shipped: a dial that saved on
+// the pick because writing it there was three lines shorter.
+//
+// Filters and pickers are not settings and are allowed to act at once. They
+// give themselves away by calling a LOADER rather than fetching: `loadJobs()`,
+// `phFetch(…)`, `loadDocker()`. Only a literal fetch of an /api/ path in the
+// handler itself is a write on the pick.
+async function writesOnPick(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const out = [];
+    for (const e of box.querySelectorAll('select, input[type=checkbox], input[type=radio]')){
+      const src = String(e.onchange || '') + String(e.oninput || '');
+      if (/fetch\s*\(\s*["'`]\/api\//.test(src))
+        out.push(`${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${
+          e.dataset.dmclaude ? '[data-dmclaude]' : ''}`);
+    }
+    return { wrote: out };
+  });
+}
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  const W = await writesOnPick();
+  ok(!W.err && W.wrote.length === 0,
+     `[${kind}] no setting writes itself on the pick${
+       W.err ? ` (${W.err})` : W.wrote.length ? ` — ${W.wrote.join(', ')}` : ''}`);
+}
+
 // ---- adding goes at the top ------------------------------------------------
 // The control that adds to a notebook view is the first band under its head
 // row, above the list, at both widths — never at the foot, where a phone

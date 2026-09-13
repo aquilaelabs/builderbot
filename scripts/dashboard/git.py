@@ -375,6 +375,37 @@ def act(repo, action, args, env=None, may_push=True):
             return {"error": "there are uncommitted changes — commit or discard them before switching, so they cannot be carried onto the wrong branch"}
         r = _run(repo, "switch", "--", name, env=env)
         return _done(r, f"on {name}")
+    if action == "merge":
+        # Into the branch the tree is ON, which is what git does and the only
+        # thing a person can reason about from a row: to put a feature into
+        # main you Switch to main and press Merge on the feature. Nothing
+        # here switches for you — a button that moved the tree under you on
+        # the way to doing something else is how you lose track of where you
+        # are.
+        name = _ok_branch(args.get("name"))
+        if not name or not _has_branch(repo, name):
+            return {"error": "no such branch"}
+        into = (status(repo).get("branch") or "")
+        if not into or into == "(detached)":
+            return {"error": "not on a branch"}
+        if name == into:
+            return {"error": f"{name} is the branch the tree is on"}
+        if _dirty(repo):
+            return {"error": "there are uncommitted changes — commit or discard them first, "
+                             "so the merge is its own commit"}
+        r = _run(repo, "merge", "--no-edit", name, env=env)
+        if r["code"]:
+            # LEFT IN CONFLICT on purpose, where revert aborts. A conflicted
+            # merge is a state this view already knows: the Changes section
+            # lists the files and offers the merge in progress to the
+            # session, which is the one thing that can finish it. Aborting
+            # would throw that away to say the same sentence.
+            if any(f["state"] == "conflict" for f in status(repo).get("files", [])):
+                return {"error": f"{name} does not merge into {into} cleanly — the files are "
+                                 "under Changes, with the button that hands the merge to Claude"}
+            _run(repo, "merge", "--abort", env=env)
+            return {"error": r["out"] or "could not merge"}
+        return _done(r, f"merged {name} into {into}")
     if action == "revert":
         sha = str(args.get("sha") or "")
         if not SHA_RE.match(sha):

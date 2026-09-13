@@ -1077,6 +1077,28 @@ ENV_BEGIN = "<!-- BUILDERBOT:ENV:BEGIN -->"
 ENV_END = "<!-- BUILDERBOT:ENV:END -->"
 
 
+def md_file(d):
+    """Where a project's environment block lives, for a project DIRECTORY.
+
+    `CLAUDE.local.md`, which is the render and is gitignored: the template in
+    this repo is the source, and a rendered block is an artifact, so git
+    carries the template and the project's own notes and never the output
+    (roadmap R50). Claude Code loads it beside CLAUDE.md — 2.1.270 names it
+    "the local file" among the instruction files it reads — so a session is
+    briefed by both without either importing the other.
+
+    Falls back to CLAUDE.md, which is where every block written before the
+    move still is. That fallback is the migration and nothing else: the first
+    `bb claude-md --update` moves the block out and leaves the notes, and from
+    then on the old place holds none. Without it every project would read as
+    having no block at all the moment this shipped, which is the state that
+    ghosts the Claude button.
+    """
+    d = Path(d)
+    local = d / "CLAUDE.local.md"
+    return local if local.is_file() else d / "CLAUDE.md"
+
+
 def md_block(path):
     """The environment block of a CLAUDE.md, markers included, or None.
 
@@ -1206,7 +1228,7 @@ def window_cost(name):
         for d in sorted(WORKSPACE.iterdir()):
             if not d.is_dir() or (d / IGNORE_MARKER).exists():
                 continue
-            if md_window(d / "CLAUDE.md"):
+            if md_window(md_file(d)):
                 held.append(d.name)
     except OSError:
         return {}
@@ -1284,7 +1306,7 @@ def compat_holds():
     except OSError:
         return out
     for d in dirs:
-        md = d / "CLAUDE.md"
+        md = md_file(d)
         why = md_gap(md) if md.is_file() else ""
         if not why:
             why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
@@ -1355,13 +1377,15 @@ def _compat_loop():
 PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # a repo name, near enough
 
 def build_claude_md(about, tree=None):
-    """A new project's CLAUDE.md: the block this project should have, with the
-    section below the end marker replaced by the operator's own notes when they
-    gave any.
+    """A new project's two files, as (block, notes).
 
-    The same file `bb claude-md --init` writes; building it here as well means
+    The block is what goes in CLAUDE.local.md and is not committed; the notes
+    are CLAUDE.md, the operator's own when they gave any and the template's
+    placeholder section otherwise.
+
+    The same pair `bb claude-md --init` writes; building it here as well means
     the notes land in one write instead of a copy the operator then has to
-    edit. No notes → the template's own placeholder section.
+    edit.
 
     `tree` is where it is about to land, and it is rendered for that tree, or
     the first poll after creating the project reports drift against the file
@@ -1379,8 +1403,15 @@ def build_claude_md(about, tree=None):
     i = text.find(ENV_END)
     tail = text[i + len(ENV_END):] if i >= 0 else ""
     if about:
-        tail = "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
-    return block + tail
+        tail = "## About this project\n\n" + about.rstrip() + "\n"
+    # Starting at its own first heading: the separator under the end marker
+    # divided two halves of one file, and there is nothing to divide in a
+    # file of its own. Line by line rather than lstrip of a character set,
+    # which would also eat the first dash of real content.
+    lines = tail.splitlines()
+    while lines and lines[0].strip() in ("", "---"):
+        lines.pop(0)
+    return block, "\n".join(lines) + ("\n" if lines else "")
 
 
 # The builder user's ssh directory. Overridable through BUILDER_HOME for the
@@ -1643,9 +1674,10 @@ def project_list(who):
         # status endpoint rather than being reported as the one thing wrong.
         md_hold = ""
         try:
-            has_md = (d / "CLAUDE.md").is_file()
+            mdf = md_file(d)
+            has_md = mdf.is_file()
         except OSError:
-            has_md = False
+            mdf, has_md = d / "CLAUDE.local.md", False
 
         # linked defaults to True and github to False: each gates an offered
         # action (the chain on the row; the GitHub command buttons), and a
@@ -1695,8 +1727,8 @@ def project_list(who):
                 branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
                 if not has_md:
                     issues.append({"level": "warning", "action": "claude-md-init",
-                                   "text": "no CLAUDE.md — create one"})
-                elif (md := md_state(d / "CLAUDE.md")) == "stale":
+                                   "text": "no environment block — create one"})
+                elif (md := md_state(mdf)) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
                     # every time the image gains a feature. From an OLDER
@@ -1705,10 +1737,10 @@ def project_list(who):
                     # block from a later window is drift like any other: the
                     # container has not been rebuilt yet, which md_gap says
                     # more about.
-                    md_hold = md_gap(d / "CLAUDE.md")
+                    md_hold = md_gap(mdf)
                     issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": ("CLAUDE.md environment block is from an older "
-                                            f"compatibility window ({md_window(d / 'CLAUDE.md')} "
+                                   "text": ("the environment block is from an older "
+                                            f"compatibility window ({md_window(mdf)} "
                                             f"against {md_window(TEMPLATE_MD)}) — update")
                                    if md_hold else
                                    "CLAUDE.md environment block is out of date — update"})
@@ -1790,7 +1822,7 @@ def project_list(who):
                     # node being out of window is not this row's hold.
                     "held": md_hold or held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", ""),
-                    "md_window": md_window(d / "CLAUDE.md") if has_md else "",
+                    "md_window": md_window(mdf) if has_md else "",
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -2279,24 +2311,6 @@ def last_claude(project_dir):
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
 
 
-def claude_launcher_path(project):
-    """The script bb-tty writes to start this project's session.
-
-    bb-tty owns the name and the directory; this mirrors them because the
-    restart below runs that same file. Mirrored rather than shared for the
-    reason tmux_name is mirrored in three places: one is bash, one is python,
-    and the rule is short enough to state twice and check with a test.
-    """
-    home = Path(os.environ.get("BUILDER_HOME", str(Path.home())))
-    d = os.environ.get("XDG_CACHE_HOME") or str(home / ".cache")
-    return Path(d) / "builderbot" / f"claude-run-{project}.sh"
-
-
-# The agent build that learned the respawn op. Below it the node drops the op
-# and says nothing, so the controller has to know rather than guess.
-RESPAWN_AGENT = "0.5.44"
-
-
 def _ver(v):
     """A version as a tuple of ints, for comparing one agent against another.
     Anything unparseable sorts first, which reads as "too old"."""
@@ -2306,62 +2320,39 @@ def _ver(v):
         return ()
 
 
-def respawn_claude(project):
-    """Restart a project's Claude session onto the setting just saved.
+def end_claude(project):
+    """End this project's Claude session, so the next press of Claude starts
+    one on the setting just saved.
 
-    `tmux respawn-pane -k` replaces the pane's process and keeps the session,
-    so the browser stays attached and nothing has to reload — where killing the
-    session would leave a dead terminal in an iframe and a tab to repair. The
-    launcher re-reads the preference when it runs, and `--respawn` tells it to
-    resume the newest transcript, so the conversation continues on the new
-    model rather than being replaced by a fresh one.
+    It used to RESPAWN the pane in place — `tmux respawn-pane -k` running the
+    launcher again with `--respawn` — which kept the session, and the browser
+    tab attached to it, and meant the change landed somewhere nobody was
+    looking. The operator's call (12 Sep): end it, and let the button start it
+    again. Simpler to say and simpler to trust, and it asks nothing of a
+    node's agent that killing a session from the Sessions card has not asked
+    for months — so the version gate that came with the respawn op is gone
+    with it.
 
-    What is lost is a turn in flight, which is why the dialog asks first.
-
-    A session on a NODE is the same gesture through its agent, and it used to
-    be missed entirely: this looked only at the container's own tmux, so a
-    project whose sessions run on a node was always told "no session is
-    running here" while its row said there was one. The page reads
-    tmux_sessions() + node_tmux_sessions() and this read half of that.
-
-    The node half is asked for rather than done — the op is queued for the
-    agent's held poll — so what comes back says the restart was sent, which
-    is the most that is true from here.
+    A session ended is not a conversation lost: the transcript is the
+    account's own and the Claude button resumes it. What it costs is the turn
+    in flight, which is what the dialog asking about it says.
     """
     session = tmux_name("claude-" + project)
     if session not in {s["name"] for s in tmux_sessions()}:
+        # On a node, through its agent, under the name that machine knows it
+        # by — the same path the Sessions card's kill takes.
         on_node = next((x for x in node_tmux_sessions()
                         if x["name"] == session), None)
         if not on_node:
-            return {"restarted": False, "why": "no session is running here"}
-        # An agent that predates the op would drop it silently and this
-        # would report a restart that never happened, which is the one
-        # outcome worse than not restarting (agent-compat: add a verb, keep
-        # a fallback, and say so when the fallback is what you got).
-        av = (nodes.node(on_node["node_id"]) or {}).get("agent") or {}
-        if _ver(av.get("version")) < _ver(RESPAWN_AGENT):
-            return {"restarted": False,
-                    "why": f"{on_node['node']}'s agent is behind "
-                           f"({av.get('version') or 'unknown'}), so it cannot "
-                           f"restart a session yet. Update it on the Nodes tab."}
-        r = nodes.session_tmux(on_node["node_id"],
-                               [{"session": on_node["node_name"], "respawn": True}])
+            return {"ended": False, "why": "no session is running here"}
+        r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
         if r.get("error"):
-            return {"restarted": False, "why": r["error"]}
-        return {"restarted": True, "on_node": on_node["node"]}
-    launcher = claude_launcher_path(project)
-    if not launcher.is_file():
-        # Started by an image that predates the self-resolving launcher, or the
-        # cache was cleared. Saying so beats killing the session to make a
-        # point: the setting is saved and the next start will use it.
-        return {"restarted": False,
-                "why": "this session predates the restartable launcher — "
-                       "it keeps its current model until you start a new one"}
-    r = run(["tmux", "respawn-pane", "-k", "-t", session,
-             str(launcher), "--respawn"], timeout=20)
+            return {"ended": False, "why": r["error"]}
+        return {"ended": True, "on_node": on_node["node"]}
+    r = run(["tmux", "kill-session", "-t", "=" + session], timeout=10)
     if r["code"] != 0:
-        return {"restarted": False, "why": (r["out"] or "tmux refused").strip()[:200]}
-    return {"restarted": True}
+        return {"ended": False, "why": (r["out"] or "tmux refused").strip()[:200]}
+    return {"ended": True}
 
 
 def github_url():
@@ -4680,7 +4671,7 @@ class Handler(BaseHTTPRequestHandler):
             # change alone, because the same write happens when nothing is
             # running and there is nothing to interrupt.
             if not r.get("error") and req.get("restart"):
-                r |= respawn_claude(name)
+                r |= end_claude(name)
             return self._json(r, 400 if r.get("error") else 200)
         if path.startswith("/api/devapp"):
             return self._devapp(req)
@@ -6452,12 +6443,17 @@ class Handler(BaseHTTPRequestHandler):
         if name in set(load_locks()):
             return self._json({"error": "locked — the padlock on its row unlocks it"}, 403)
         action = field(req, "action")
-        if action == "switch":
+        # Both of these rewrite the working tree. A merge is not a switch, but
+        # it lands other people's files in a directory a session is reading
+        # and editing right now, which is the same surprise for the same
+        # reason, so it waits for the same moment.
+        if action in ("switch", "merge"):
             mine = tmux_name(f"claude-{name}")
             if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
                    for s in tmux_sessions() + node_tmux_sessions()):
                 return self._json({"error": "the owner's Claude session is running in this "
-                                            "directory — end it before switching the branch "
+                                            f"directory — end it before "
+                                            f"{'switching the branch' if action == 'switch' else 'merging'} "
                                             "under it"}, 409)
         if action == "ask":
             live = [x["name"] for x in tmux_sessions()]
@@ -6693,12 +6689,15 @@ class Handler(BaseHTTPRequestHandler):
             here = set()
         if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
-        md = WORKSPACE / name / "CLAUDE.md"
+        # The DIRECTORY, not a file: bb resolves which of the two carries the
+        # block, and after an update that is CLAUDE.local.md rather than the
+        # name this used to hand it.
+        md = md_file(WORKSPACE / name)
         if action == "init" and md.is_file():
-            return self._json({"error": f"{name} already has a CLAUDE.md"}, 400)
+            return self._json({"error": f"{name} already has an environment block"}, 400)
         if action == "update" and not md.is_file():
-            return self._json({"error": f"{name} has no CLAUDE.md"}, 400)
-        r = run(["bb", "claude-md", f"--{action}", str(md)], timeout=60)
+            return self._json({"error": f"{name} has no environment block"}, 400)
+        r = run(["bb", "claude-md", f"--{action}", str(WORKSPACE / name)], timeout=60)
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
@@ -6767,8 +6766,7 @@ class Handler(BaseHTTPRequestHandler):
             if locked_out(p["name"]):
                 locked.append(p["name"])
                 continue
-            md = WORKSPACE / p["name"] / "CLAUDE.md"
-            r = run(["bb", "claude-md", "--update", str(md)], timeout=60)
+            r = run(["bb", "claude-md", "--update", str(WORKSPACE / p["name"])], timeout=60)
             if r["code"] == 0:
                 done.append(p["name"])
             else:
