@@ -27,6 +27,11 @@ if [ "$mode" = --all ]; then
     exit 0
 fi
 
+# A dash inside a code span is CONTENT, not punctuation: the dashboard's
+# minimize button is that glyph, and the README has to be able to name it.
+# Write one that way and both a reader and this checker can tell which it is.
+strip_code () { sed 's/`[^`]*`//g'; }
+
 base=$(git merge-base HEAD origin/main 2>/dev/null) || base=$(git rev-parse HEAD)
 bad=0
 # Tracked files: only the lines this branch adds. Untracked: all of it, since
@@ -34,9 +39,9 @@ bad=0
 for f in $(git diff --name-only "$base" 2>/dev/null; git ls-files --others --exclude-standard); do
     [ -f "$f" ] || continue
     if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-        n=$(git diff -U0 "$base" -- "$f" | grep -I '^+' | grep -Iv '^+++' | grep -c "$em" || true)
+        n=$(git diff -U0 "$base" -- "$f" | grep -I '^+' | grep -Iv '^+++' | strip_code | grep -c "$em" || true)
     else
-        n=$(grep -cI "$em" "$f" 2>/dev/null || true)
+        n=$(strip_code < "$f" | grep -cI "$em" 2>/dev/null || true)
     fi
     [ "${n:-0}" -gt 0 ] 2>/dev/null || continue
     echo "  $f: $n added line(s) with an em dash"
