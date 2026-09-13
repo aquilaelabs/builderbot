@@ -2,13 +2,13 @@
 
 Two ways to run it:
 
-* **Option A — Docker template** *(recommended)*: a native Unraid container
+* **Option A, the Docker template** *(recommended)*: a native Unraid container
   with a form-based settings page and **one-click updates** from the Docker
   tab whenever a new image is published.
-* **Option B — Compose Manager plugin**: the `docker-compose.yml` from this
+* **Option B, the Compose Manager plugin**: the `docker-compose.yml` from this
   repo, if you prefer compose stacks.
 
-Pick one — both create a container named the same thing, so don't run both.
+Pick one: both create a container named the same thing, so don't run both.
 
 Either way, start with the two shared steps below.
 
@@ -27,7 +27,7 @@ those rows. Nothing else.
 
 | I want to… | Host GHCR token | Shielded `GITHUB_PAT` | SSH key | Per-project token |
 |---|:--:|:--:|:--:|:--:|
-| Pull the image at all — *everyone needs this* | ● | | | |
+| Pull the image at all: *everyone needs this* | ● | | | |
 | Run Claude against the mounted projects, no remote git | ● | | | |
 | `git clone` / `pull` / `push` private repos from inside | ● | | ● | *or* ● |
 | Run a self-hosted runner for **one repo** | ● | ● | | |
@@ -37,9 +37,9 @@ those rows. Nothing else.
 
 | Credential | Type | Permissions | Lives where |
 |---|---|---|---|
-| **Host GHCR token** | PAT **(classic)** | `read:packages` — nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
-| **`GITHUB_PAT`** (shielded) | PAT (fine-grained), resource owner = **the org** | *One* permission — see the runner-scope table below | `/secrets/builderbot.env`, root-only. Never visible to sessions |
-| **SSH key** | ed25519, **no passphrase** | n/a — access is whatever the git host grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
+| **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
+| **`GITHUB_PAT`** (shielded) | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | `/secrets/builderbot.env`, root-only. Never visible to sessions |
+| **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
 **Runner scope decides the `GITHUB_PAT` permission**, and it is the only one
@@ -51,19 +51,19 @@ that token needs:
 | `https://github.com/ORG` | Organization permissions → **Self-hosted runners**: Read and write |
 
 *Metadata: Read-only* is added automatically and can't be removed. Do **not**
-add Contents or Pull requests here — nothing in the shielded path uses them,
+add Contents or Pull requests here; nothing in the shielded path uses them,
 and workflow jobs check code out with the per-run `GITHUB_TOKEN` GitHub
 injects, never with this PAT.
 
 ### Three things that trip people up
 
 **SSH authenticates git, not the API.** A key covers `clone`/`pull`/`push`.
-It does nothing for `gh pr create` or `gh release create` — those are REST
+It does nothing for `gh pr create` or `gh release create`; those are REST
 calls, and there is no container-wide token for them. Opening PRs from your
 desktop is the intended arrangement and the tightest one available.
 
 **A token is readable by Claude, and that's unavoidable.** Over HTTPS, "git can
-authenticate with it" and "sessions can't read it" are contradictory — same
+authenticate with it" and "sessions can't read it" are contradictory: same
 user, same file. Only the ssh-agent breaks that tie. What a per-project token
 changes is the blast radius rather than the exposure: it is scoped to one
 repository and named by that repository's `.git/config`, so a token that opens
@@ -71,7 +71,7 @@ one repo opens one repo.
 
 **Pushing images from inside** needs the (off-by-default) Docker socket *and*
 a classic token with `write:packages`; fine-grained tokens don't cover GitHub
-Packages. Enabling the socket is root-equivalent on the host — see the notes
+Packages. Enabling the socket is root-equivalent on the host; see the notes
 at the end before doing it.
 
 ## Shared step 2: log the Unraid host into GHCR
@@ -106,7 +106,7 @@ mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 # The package store: Android platforms/emulator/system images and any toolchain
-# you install later. On a normal share rather than appdata — it is bulk data,
+# you install later. On a normal share rather than appdata; it is bulk data,
 # it is not written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/sdk
 chown 99:100 /mnt/user/sdk
@@ -119,7 +119,7 @@ chown 99:100 /mnt/user/sdk
 ### Install
 
 Get the template onto the flash drive. The repo is private, so a plain
-`wget` of the raw URL returns 404 — pick one of these:
+`wget` of the raw URL returns 404, so pick one of these:
 
 **Copy it over (simplest, no token).** The flash drive is an SMB share. On a
 desktop logged into GitHub, open `unraid/builderbot.xml` → **Raw** → save,
@@ -127,7 +127,7 @@ then drop it into `\\<TOWER>\flash\config\plugins\dockerMan\templates-user\`
 as `my-builderbot.xml`.
 
 **Fetch via the API.** Note this needs a token with *repository contents*
-read — the `read:packages` token from step 2 will **not** work (it returns
+read: the `read:packages` token from step 2 will **not** work (it returns
 404, because GitHub answers 404 rather than 403 for things your token can't
 see). Use a fine-grained token with Contents: read, or a classic one with
 `repo`. Also note `raw.githubusercontent.com` does not reliably accept
@@ -146,7 +146,7 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* the projects folder (`/mnt/user/projects`) mapped to `/workspace` — one
+* the projects folder (`/mnt/user/projects`) mapped to `/workspace`: one
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / work
@@ -157,7 +157,7 @@ Fill in `GITHUB_PAT` (each account's commit identity is set on its Profile tab),
 **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already
-exists**, so changing a default here — a path, the dashboard port — does
+exists**, so changing a default here (a path, the dashboard port) does
 nothing to a running container until you edit that setting on it yourself.
 
 ### Give the container time to stop
@@ -167,12 +167,12 @@ that window to power the emulator down instead of yanking it, and to save the
 terminals so the next boot can put them back.
 
 **Unraid gives it ten seconds by default, and that is often not enough.**
-Unraid always passes the timeout explicitly when it stops a container —
+Unraid always passes the timeout explicitly when it stops a container:
 `DockerClient.php` calls `/containers/<id>/stop?t=` with `DOCKER_TIMEOUT`,
-default `10` — so the container's own `--stop-timeout` is ignored and nothing
+default `10`, so the container's own `--stop-timeout` is ignored and nothing
 in Extra Params can change it. The only lever is the Unraid setting:
 
-**Settings → Docker → Docker Stop Timeout** — raise it to **60** or more.
+**Settings → Docker → Docker Stop Timeout**: raise it to **60** or more.
 (Docker only waits as long as it needs to; a container with nothing running
 still stops instantly, so a larger number costs nothing on a quiet box.)
 
@@ -188,7 +188,7 @@ container will wait in total, if you would rather it gave up sooner.
 
 **Claude sessions are not affected by any of this.** They run on their
 projects' nodes, in tmux there, and a controller that stops does not touch
-them — the dashboard simply cannot reach them until it is back.
+them: the dashboard simply cannot reach them until it is back.
 
 ### Stopping cleanly before an update
 
@@ -196,12 +196,12 @@ Nothing you care about lives in the container: projects are bind mounts to the
 array, and sessions, memory files, logins and AVDs are all on the home volume.
 Uncommitted work is not at risk from a restart.
 
-**The container handles the rest itself** — see *Give the container time to
+**The container handles the rest itself**; see *Give the container time to
 stop* above. Stopping it powers the emulator down and saves the terminals, on
 SIGTERM. There is no checklist to run first. Sessions and CI are unaffected:
 both are on nodes, and a node does not stop with this container.
 
-From a terminal rather than the Unraid UI, pass a timeout — Docker's own
+From a terminal rather than the Unraid UI, pass a timeout: Docker's own
 default is 10 seconds:
 
 ```bash
@@ -216,12 +216,12 @@ Getting this wrong is recoverable, not fatal: an AVD that cold-boots next
 time, and a conversation you resume from the dashboard rather than one that
 closed itself.
 
-### Updating — the whole point
+### Updating: the whole point
 
 CI publishes a fresh `:latest` for any push to `main` that changes what the
 image is built from, and on a weekly schedule. On the **Docker** tab, Unraid's
 *Check for Updates* compares your running image's digest against GHCR and flips
-the container to **update ready** — click it and you're on the new build.
+the container to **update ready**: click it and you're on the new build.
 That's the entire update procedure. Ansible not required. Most updates pull
 only the layers that changed; the Monday build is rebuilt from scratch on
 purpose (that is the one that refreshes packages) and pulls everything.
@@ -241,12 +241,12 @@ container icon and only downloads when **both** are missing
 
 | copy | path | survives a reboot |
 |---|---|---|
-| RAM | `/usr/local/emhttp/state/plugins/dynamix.docker.manager/images/<Name>-icon.png` | no — tmpfs |
+| RAM | `/usr/local/emhttp/state/plugins/dynamix.docker.manager/images/<Name>-icon.png` | no: tmpfs |
 | disk | `/var/lib/docker/unraid/images/<Name>-icon.png` | yes |
 
 So keep the disk copy warm and the download never happens. Container settings →
 **Unraid icon cache** → `/var/lib/docker/unraid/images`, apply, and the
-container writes `BuilderBot-icon.png` there on every start — including right
+container writes `BuilderBot-icon.png` there on every start, including right
 after an image update, which is when Unraid clears the cache and re-downloads.
 
 Two things that will silently defeat it:
@@ -259,7 +259,7 @@ Two things that will silently defeat it:
   container can see its own container name. If you renamed this container from
   `BuilderBot`, the icon is not found: the cache is keyed by that name.
 
-The one-time equivalent, if you would rather not add a mapping — just redo it
+The one-time equivalent, if you would rather not add a mapping: just redo it
 if you ever recreate `docker.img`:
 
 ```bash
@@ -272,7 +272,7 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose packages store holds the
 emulator and its images (Tools tab, node picked) and whose own `/dev/kvm` and
-card do the work. A node is a machine you enroll from the Nodes tab —
+card do the work. A node is a machine you enroll from the Nodes tab:
 `nodes/provision-linux.sh` on a VM or a spare box, `provision-macos.sh` on a
 Mac. Nothing here needs a device or a runtime flag for it.
 
@@ -285,11 +285,11 @@ notebook context.
 
 1. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
-   same port, behind the same sign-in — a login page with a 30-day cookie,
+   same port, behind the same sign-in: a login page with a 30-day cookie,
    not the browser's credentials prompt, and only asked once
 2. Apply, then click the container's **WebUI** link
 3. **The first page asks you to make the owner account.** There is no
-   password in the template — it would sit there readable forever, and it is
+   password in the template; it would sit there readable forever, and it is
    the one credential that opens a shell on this box. Do it straight away:
    until somebody claims the container, whoever can reach the port can. After
    that, `bb users passwd <name>` changes a password and the Users tab adds
@@ -302,18 +302,18 @@ and browser terminals backed by tmux.
 
 The Projects card is the list of folders in the projects share, and it says
 what is wrong with each one rather than hiding it. Errors fold away behind a
-button — no git repository, or ownership the container cannot work with, in red.
+button: no git repository, or ownership the container cannot work with, in red.
 Warnings stay in the list in amber, because they are asking for something: no
 `CLAUDE.md`, or one whose environment block has fallen behind the image. Both
 are underlined links that fix themselves in place. A row with an error carries
 no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
-A directory with a `.bbignore` file in it is not treated as a project — the
+A directory with a `.bbignore` file in it is not treated as a project: the
 container marks its own paths that way (the package store, if you put it inside
 the projects share, as the default does), and you can drop the same file into
 anything you would rather the card ignored.
 
-**New project…** at the foot of the card creates one — a fresh local repo built
+**New project…** at the foot of the card creates one: a fresh local repo built
 from the name and description you give it, or a clone of a GitHub repository
 the container's deploy key or PAT can already reach, which needs only the URL:
 the name comes from the repository and the `CLAUDE.md` is drafted from its own
@@ -321,26 +321,26 @@ README and build files.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
 the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
-Right-click gives you the browser's menu only — tmux's would be drawn
-underneath it — and Alt+right-click still opens tmux's if you want it.
+Right-click gives you the browser's menu only: tmux's would be drawn
+underneath it, and Alt+right-click still opens tmux's if you want it.
 
 The `bb` commands card sits between two more: **Linux commands** (disk,
-memory, processes, ports — live on any shell) above it, and **Git & GitHub**
+memory, processes, ports: live on any shell) above it, and **Git & GitHub**
 below, which grays out when the active shell's directory is not a git
-repository — and grays just its `gh` half when the repo has no GitHub remote.
+repository, and grays just its `gh` half when the repo has no GitHub remote.
 Last comes a card for your own: **+** takes a title and a list of command
 lines, and the button it makes types them into the terminal in order. They
 are kept in `/config`, so they survive updates.
 
 The page starts with one workspace tab; every tab, that one included, can be
-minimized. **Claude** opens one session per project — resumable if a previous
-conversation exists — and **Shell** opens another terminal each time you click
+minimized. **Claude** opens one session per project: resumable if a previous
+conversation exists, and **Shell** opens another terminal each time you click
 it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
 `Claude: <project>`), with the full path on hover. Tabs can be dragged to
 reorder (on a phone, hold for half a second first) and pinned to a left or
 right pane for a side-by-side view. A pane's ✕ only collapses the split.
 
-A tab's **—** minimizes it: the terminal or Claude session keeps running and is
+A tab's **`—`** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
 session for good is the ✕ in the Sessions card (or a middle-click on its tab),
 and that is the only thing that asks. The sidebar cards collapse on a click of
@@ -348,8 +348,8 @@ their header and can be dragged into any order; the ▤ button in the top bar
 resets them.
 
 The tab strip is stored on the container rather than in the browser, so a phone
-shows what the desktop has open. **Terminals survive a restart of the container**
-— the shutdown saves each one's directory and the last screenful of its
+shows what the desktop has open. **Terminals survive a restart of the container**:
+the shutdown saves each one's directory and the last screenful of its
 scrollback under the Config path in `sessions/`, and startup puts them back.
 What was *running* in them does not come back; that went down with the
 container. A Claude session is not the container's to lose: it is in its
@@ -376,7 +376,7 @@ else:
 
 The read-only mount is the whole design. The scanner binaries stay on the host,
 so a session can read what was found but cannot run a scan, change the rules,
-or rewrite the report — the container consumes the output and has no path back
+or rewrite the report: the container consumes the output and has no path back
 to the tool that produced it.
 
 `bb findings` reduces SARIF to grouped markdown with repo-relative paths.
@@ -408,8 +408,8 @@ the `image:`/`build:` lines in the compose file as commented.
 ## Shielding secrets (PAT + SSH keys) from Claude sessions
 
 Anything set as a container *variable* (template field / compose `environment:`)
-is visible to every process inside — including every shell opened here and
-everything a session asks this container to run on its behalf — and so is
+is visible to every process inside, including every shell opened here and
+everything a session asks this container to run on its behalf, and so is
 anything in `/home/builder`. The shielded path for both kinds of credential is one
 root-only folder:
 
@@ -433,29 +433,29 @@ root-only folder:
    *variable* empty.
 
 **Git access is a separate question from the runner PAT.** Over HTTPS,
-"git can use it" and "Claude can't read it" are mutually exclusive — a
+"git can use it" and "Claude can't read it" are mutually exclusive: a
 credential the session's git authenticates with is one the session can read.
 Pick per your taste:
 
 | Approach | Result |
 |---|---|
-| SSH key in `secrets/ssh/` | Usable *and* unreadable — the only option that gives both |
-| Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it — a token that opens one repo opens one repo |
+| SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
+| Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it: a token that opens one repo opens one repo |
 | `gh auth login` in a session | Same exposure, and a separate token you can revoke independently |
 
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
 every key from `secrets/ssh/`; sessions get only the agent's socket. When
 Claude runs `git push`, the agent signs the authentication challenge on its
-behalf — the key *works* everywhere, but the private key bytes are never
+behalf: the key *works* everywhere, but the private key bytes are never
 readable by any session, so it cannot be copied out of the container. (Keys
-placed in `~/.ssh` instead keep working too — that's the simple, unshielded
+placed in `~/.ssh` instead keep working too: that's the simple, unshielded
 option.)
 
 With several deploy keys loaded, one per private repo, ssh needs telling
 which key belongs to which repo. The dashboard's **New project…** clone
 form does that for you: it lists the loaded keys (their public halves,
 straight from the agent), and picking one writes the selector and alias
-and clones through them — the
+and clones through them: the
 same picker also shows the public key to paste into the repo's
 **Settings → Deploy keys** on GitHub. Adding a *new* key is still the
 host-side flow above: drop the private key in `secrets/ssh/` and restart
@@ -463,15 +463,15 @@ the container so the agent picks it up.
 
 The same picker appears when **linking** a local repo to GitHub (the chain
 icon on a project row that has no remote): pick the key, or none if a PAT
-is configured. Linking only ever targets an *empty* GitHub repository —
+is configured. Linking only ever targets an *empty* GitHub repository,
 and with a PAT, one that does not exist yet is created for you, private.
 
-**You never need a sudo password to manage any of this** — and a password
+**You never need a sudo password to manage any of this**, and a password
 field would actually punch a hole in the model (it would have to live
 somewhere Claude could read). Administration happens from the Unraid side,
 where you're already root: edit the secrets folder on the host and restart
 the container, or hop in as root with
-`docker exec -it -u 0 BuilderBot bash` — a door only someone with host
+`docker exec -it -u 0 BuilderBot bash`: a door only someone with host
 access can use. Inside the container, the `builder` user (Claude) has no
 password to find and no sudo to escalate with.
 
@@ -483,9 +483,9 @@ What happens then:
 * The runner never holds the PAT: a `sudo`-whitelisted root helper
   (`mint-runner-token`) reads the stash and hands back only short-lived
   (1-hour) registration tokens.
-* The `builder` user has **no general sudo** — exactly one command is
+* The `builder` user has **no general sudo**: exactly one command is
   whitelisted, and it only ever outputs registration tokens, never the PAT.
-* **All log output is redacted** — both the persistent file and
+* **All log output is redacted**: both the persistent file and
   `docker logs` pass through filters that strip known token shapes
   (`github_pat_…`, `ghp_…`, `sk-ant-…`, `npm_…`, JWTs) *and* the literal
   values of every configured secret. So logs stay safe for Claude to read
@@ -494,13 +494,13 @@ What happens then:
   isn't there to do it). Git works through the shielded agent keys; run
   `gh auth login` manually if you also want the API CLI.
 
-`bb doctor` shows which mode you're in — `runner credential: shielded` vs
+`bb doctor` shows which mode you're in: `runner credential: shielded` vs
 `in environment`, and `github ssh auth works (shielded agent key)` vs
 `(~/.ssh key file)`.
 
 Honest limits: container-root can always read the stash (that's what makes
 the runner and the agent work); a session can still *use* the agent to push
-while it's running (usage is the point — extraction is what's blocked);
+while it's running (usage is the point: extraction is what's blocked);
 `ANTHROPIC_API_KEY` can't be hidden from Claude Code since Claude Code
 itself must send it; and `NPM_TOKEN` lands in `~/.npmrc` if you use it.
 Shielding covers the credentials with real blast radius: the PAT and the
@@ -509,18 +509,18 @@ SSH private keys.
 ## Dev instances: building a project's app
 
 The dashboard's Docker tab can build a project's compose app and bring it up
-and down — no GitHub minutes, no registry round trip. It builds on a **sandbox
+and down: no GitHub minutes, no registry round trip. It builds on a **sandbox
 VM**: a small machine whose only job is running Docker, reached over ssh, with
 no real containers on it and no route to this server's daemon. Setting it up is
 [sandbox-vm.md](sandbox-vm.md), and it is the only arrangement.
 
 A separate machine needs no filtering, which is the point: there is nothing
-over there to protect. Anything else — an address of another kind, or none —
+over there to protect. Anything else (an address of another kind, or none)
 turns every Docker control off with the reason on it.
 
 One limit survives the move, because it is not the daemon's. A compose file can
-ask for the machine directly — `privileged: true`, `network_mode: host`, a bind
-mount of `/` — and the container it makes is a container like any other. So the
+ask for the machine directly: `privileged: true`, `network_mode: host`, a bind
+mount of `/`, and the container it makes is a container like any other. So the
 file is read before anything starts, what it reaches for is named on the row,
 and a confirmation is asked once per set. That is a warning rather than a
 refusal: a compose may want a host path for good reasons, and nothing here can
@@ -553,7 +553,7 @@ docker exec -it BuilderBot bb status                       # overview
 ```
 
 `claude` and `bb` re-exec themselves as the `builder` user, because
-`docker exec` (and the WebUI **Console** button) land you in as root — which
+`docker exec` (and the WebUI **Console** button) land you in as root, which
 would lose your saved Claude login and write root-owned files into your
 shares. A bare `docker exec -it BuilderBot bash` *is* root; use `bb shell`.
 
@@ -595,7 +595,7 @@ node, or tick the image on the Tools tab.
 | PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
 | GHCR (docker) | requires the (off-by-default) Docker socket mount; then `docker login` happens automatically from `GITHUB_PAT` and `docker push ghcr.io/stencil-projects/<image>` works |
 | Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
-| GitHub Releases | `gh release create` — `gh` is already authenticated |
+| GitHub Releases | `gh release create`: `gh` is already authenticated |
 
 ---
 
@@ -612,7 +612,7 @@ not host-root.
 | Log | Where | Survives image updates? |
 |---|---|---|
 | Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
-| — or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share — e.g. on the array — and the log moves there automatically | ✅ |
+| ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
 | Runner diagnostics (`_diag`) | `/mnt/user/appdata/BuilderBot/work/_diag/` | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
 | Android emulator | `/mnt/user/appdata/BuilderBot/home/.android/emulator.log` | ✅ |
@@ -622,7 +622,7 @@ to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to
 run when something misbehaves.
 
 The log **rotates on every container start**, so one file is one container
-lifetime — which is what you want when diagnosing an update that went wrong,
+lifetime, which is what you want when diagnosing an update that went wrong,
 since the boot before it is still intact rather than blended into the same
 stream:
 
@@ -633,14 +633,14 @@ bb logs -p 3       # three boots back
 ```
 
 Sixty generations at most are kept. A container stuck in a restart loop
-burns through them quickly — if that happens, raise it or grab the files off
+burns through them quickly, if that happens, raise it or grab the files off
 the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
 (`chown -R 99:100 /mnt/user/projects/FreshBoot`) or set
 `CHOWN_PROJECTS=true` to do it for all of them at every start. The container
-never chowns the projects share itself — that folder is yours, and a container
+never chowns the projects share itself; that folder is yours, and a container
 quietly changing the ownership of a share because it started is a surprise, not
 a repair. It warns in the log if it cannot write there, and the dashboard names
 any project it cannot read, write or enter.
@@ -648,13 +648,13 @@ any project it cannot read, write or enter.
 **`/mnt/user` vs `/mnt/cache`.** Mount through `/mnt/user` (the FUSE layer).
 Mixing direct-disk and user-share paths for the same data corrupts files.
 
-**Public repos.** Don't point a node's runner at a public repository — anyone
+**Public repos.** Don't point a node's runner at a public repository: anyone
 who can open a PR could run code on that machine.
 
 **Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
 SIGTERM; the emulator is powered down and Claude sessions close their turn.
-A node's runner is unaffected — nodes do not stop with this container.
+A node's runner is unaffected: nodes do not stop with this container.
 
-**Image size.** Nothing large is baked in any more — no JDK, no Android SDK,
-and the Playwright browsers live on the package store — so a pull is well under
+**Image size.** Nothing large is baked in any more: no JDK, no Android SDK,
+and the Playwright browsers live on the package store, so a pull is well under
 a gigabyte. Updates are layer-diffed, so routine updates move far less data.
