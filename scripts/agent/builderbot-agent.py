@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.51"
+AGENT_VERSION = "0.5.53"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1100,6 +1100,14 @@ def census(state):
         "hostname": socket.gethostname(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
+        # The daemon's OWN id, which is how the controller tells two VMs that
+        # have worn one address apart — a rebuilt sandbox, a second machine
+        # given the old one's IP. It used to read it over ssh with `docker
+        # info`, and that reader went when the Docker tab stopped judging an
+        # agent node by the controller's ssh (B111); reported here, the same
+        # value arrives by the route the work already takes.
+        "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
+        if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
@@ -1151,7 +1159,16 @@ def session_now(state):
     for d in dirs + ["/usr/local/bin", "/usr/bin"]:
         exe = os.path.join(d, "claude")
         if os.access(exe, os.X_OK):
-            claude = _run([exe, "--version"], timeout=15).split("\n")[0][:40] or "installed"
+            # Through the probe, for the same reason the toolchains go through
+            # it: a binary that is there and cannot START used to hand its own
+            # crash text back as the version, forty characters of it, on the
+            # doctor card. A claude that cannot run is a node that cannot hold
+            # a session, so it reports as none and says why in the log.
+            out_, dead = _probe([exe, "--version"], timeout=15)
+            if dead:
+                _probe_died("claude", exe, out_, dead)
+            else:
+                claude = out_.split("\n")[0][:40] or "installed"
             break
     out["claude"] = claude
     # This machine's boot, in the form bb-tty's boot_id() computes: a

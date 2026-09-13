@@ -41,6 +41,11 @@ CDIR_ROOT = os.environ["STUB_AGENT_DIR"]
 # the rest is a plausible small VM so the meters have something to draw.
 CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           "sshd": True, "docker": True,
+          # The daemon's own id, which the controller adopts: a record is
+          # about the machine that answered, and this is what tells two VMs
+          # wearing one address apart. The same value the docker stub's
+          # `info` prints, so the two agree about which daemon this is.
+          "docker_id": "STUBDAEMON1",
           # Provisioned as a sandbox, so the controller offers it system
           # jobs — the root ask (R38) is one, and it runs below as this
           # process rather than as root: the suite proves the asking and the

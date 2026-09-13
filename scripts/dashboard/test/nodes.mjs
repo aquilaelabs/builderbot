@@ -292,7 +292,14 @@ ok(list[0].id === 'local',
     const e = document.querySelector('.dmtab .empty');
     return e && e.textContent.trim() ? e.textContent : false;
   }, null, { timeout: 15000 }).then(h => h.jsonValue());
-  ok(/not a BuilderBot sandbox|does not answer|docker does not answer/.test(emptyWhy),
+  // FOUR refusals, not three. The fixture kills the host, and which of
+  // available()'s two probes notices first depends on the box: `docker
+  // version` failing gives "does not answer", and `docker version` answering
+  // while `docker info` does not gives "answers but will not say what it is".
+  // Both are the thing under test — a reason on screen instead of a spinner —
+  // and listing only three made the fourth read as a failure in a full run
+  // while the file passed alone.
+  ok(/not a BuilderBot sandbox|does not answer|will not say what it is/.test(emptyWhy),
      `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
   await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
