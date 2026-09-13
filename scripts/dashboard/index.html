@@ -1271,7 +1271,26 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
 .clog .none{color:var(--dim);font:var(--f-note)}
-@media(max-width:900px){ .clog .clrow textarea.cltext{font-size:16px} }
+@media(max-width:900px){
+  .clog .clrow textarea.cltext{font-size:16px}
+  /* The commit is a lookup, not a label: on a phone it is on the row's own
+     title and out of the layout, where it was taking the space between the
+     category and the buttons. */
+  .clog .clsha{display:none}
+}
+/* ON A DESKTOP AN ENTRY IS ONE LINE. Stacked, its controls sat a full tab
+   away from the words they act on — 200px on a 950px sheet — and a section
+   of thirty entries was sixty rows of near-identical furniture to read past.
+   The stack stays on a phone, where the words need the whole width and the
+   controls under them are already adjacent. */
+@media(min-width:901px){
+  .clog .clrow{flex-direction:row;align-items:flex-start;gap:8px}
+  .clog .clrow textarea.cltext{flex:1 1 auto}
+  .clog .clmeta{flex:0 0 auto;flex-wrap:nowrap;padding-top:2px}
+  .clog .clmeta .sp{display:none}
+  .clog .clsha{max-width:8em;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+}
 /* A card body that is prose-and-controls rather than rows: the same inner
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
@@ -5679,7 +5698,13 @@ const KEYS = [
 // wrong side of.
 let showMacros = false, showSessions = false, showChat = false;
 
-window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
+// ...and the cards fold or unfold with it: which of them start shut is a
+// question about the width, so crossing the breakpoint has to ask it again.
+// A rotation is the case that matters.
+window.matchMedia("(max-width:900px)").addEventListener("change", () => {
+  render();
+  applyCards();
+});
 
 // One panel at a time on the phone: opening any of the three closes the others.
 function mobPanel(which){
@@ -12407,11 +12432,23 @@ project can have several"
       const flat = () => gs.flatMap(g => g.entries.map(e => [g, e]));
       const swap = (a, i, k) => { const t = a[i]; a[i] = a[i + k]; a[i + k] = t; };
 
-      const draw = () => {
+      // Where the reader was, across a redraw. Every gesture here rebuilds the
+      // whole pane — which is fine for ten entries and not for sixty, where
+      // one press of ↑ threw away the scroll position and the focus, so
+      // moving a line three places meant finding its button three times.
+      // `keep` is the ENTRY OBJECT rather than an index, because the indices
+      // are what the move just changed.
+      // The sheet's slot is what scrolls (`.box.sheet .sheetslot{overflow:auto}`),
+      // and the pane is its child. Named rather than walked, because a guess
+      // that finds the wrong element restores a scroll nobody moved.
+      const scroller = () => pane.closest(".sheetslot") || pane.parentElement;
+      const draw = (keep, sel) => {
         const opts = (cur) => ["", ...names().filter(Boolean)]
           .map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${
             esc(n || "no category")}</option>`).join("")
           + `<option value="\u0000new">new category…</option>`;
+        const box = scroller();
+        const top = box ? box.scrollTop : null;
         pane.innerHTML =
           `<div class="clog">
              <div class="hint">Sessions add the lines; the order, the categories
@@ -12430,7 +12467,7 @@ project can have several"
                    <div class="clrow" data-g="${gi}" data-e="${ei}">
                      <textarea class="cltext proseline" rows="1" maxlength="300"
                        aria-label="what changed">${esc(e.text)}</textarea>
-                     <div class="clmeta">
+                     <div class="clmeta" title="${esc((e.shas || []).join(", "))}">
                        <select class="clcat" aria-label="category">${opts(g.name)}</select>
                        <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
                        <span class="sp"></span>
@@ -12447,6 +12484,12 @@ project can have several"
            </div>
            ${dated ? `<div class="verlogpane">${esc(dated)}</div>` : ""}`;
         wire();
+        if (top != null && box) box.scrollTop = top;
+        if (keep){
+          const at = flat().findIndex(([, x]) => x === keep);
+          const row = at >= 0 ? pane.querySelectorAll(".clrow")[at] : null;
+          row?.querySelector(sel || "textarea")?.focus();
+        }
       };
 
       const wire = () => {
@@ -12484,7 +12527,9 @@ project can have several"
                                            + (b.dataset.emv === "up" ? 0 : 1), 0, e);
             else tg.entries.splice(b.dataset.emv === "up" ? tg.entries.length : 0, 0, e);
             gs = gs.filter(x => x.entries.length);
-            draw();
+            // ...and the button that moved it is under the same finger, so a
+            // line goes three places in three presses rather than three hunts.
+            draw(e, `[data-emv="${b.dataset.emv}"]`);
           });
           row.querySelector(".clcat").onchange = ev => {
             let to = ev.target.value;
