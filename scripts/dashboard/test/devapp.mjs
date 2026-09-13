@@ -225,8 +225,14 @@ ok(/BUILDKIT=0/.test(log),
    '...and builds with the classic builder, which needs no helper container');
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
-ok(r.rebuild && /the code has moved since/.test(r.text) === false,
-   'Rebuild goes back to sleep once the build matches the code');
+// Rebuild does NOT go to sleep when the build matches the code, which it used
+// to: a button that refuses is not information, and the operator met it by
+// pinning an instance to a branch, pressing Apply, and having nothing to
+// press. What "the code has moved" is worth is a sentence — the row's state
+// line and the button's own title both carry it — and a rebuild that changed
+// nothing is a cached build and a restart, behind a confirm that says so.
+ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
+   'Rebuild stays live once the build matches the code, and says which it is');
 
 // ---- the route (phase 8) --------------------------------------------------
 // The instance is up on the sandbox and publishes 7475: its route is lan on
@@ -2071,11 +2077,20 @@ ok(await page.$('#devSend'),
   // row stops saying "the code has moved" every time the project's own
   // branch does, and says it when the pinned one moves.
   await dmRefresh();
-  const row = await page.$eval(DM, r => r.textContent.replace(/\s+/g, ' '));
-  ok(/sidebranch/.test(row), `...and the row says which branch it builds from (${
-     row.slice(0, 70)})`);
+  const refPick = await page.$eval(DM, r => r.querySelector('[data-dmref]')?.value || '');
+  ok(refPick === 'sidebranch', `...and the Ref control holds it (${refPick || 'empty'})`);
   const st = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
-  ok((st.state || {}).ref === 'sidebranch' || true, 'the state carries it for the row');
+  ok((st.state || {}).ref === 'sidebranch', 'the state carries the pin for the row');
+  // The PIN is not a build. Pressing Apply changes what the next build is made
+  // of and moves nothing that already exists, so what is built here still
+  // names no branch — the commit is the truth, the branch is the setting, and
+  // this is the moment they disagree.
+  ok(!(st.state || {}).built_ref,
+     `...and what is already built names no branch, because it was built before the pin (${
+        JSON.stringify((st.state || {}).built_ref)})`);
+  const pinned = await page.evaluate(x => dmBuilt(x), st.state);
+  ok(!/sidebranch/.test(pinned),
+     `...so the row's built-from line does not claim it (${pinned})`);
   // The build tree is made on demand, beside the project, and is not a
   // project itself.
   // Posted rather than pressed: the button's confirm() is the browser's, and
@@ -2091,6 +2106,18 @@ ok(await page.$('#devSend'),
      `...and compose built from it rather than from the project (${
         (dockerLog().match(/--project-directory \S+/g) || []).slice(-1)[0] || 'none'})`);
   ok(sideSha.length === 7, `the branch had its own commit (${sideSha})`);
+  // NOW it is true, and the line says it: the ref is stamped by the build that
+  // used it, so it names the branch and the commit together. Read off dmBuilt
+  // rather than the row, because a running instance's state line says it is
+  // running — this is the sentence it falls back to, and the one the blind
+  // listing carries.
+  const after = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
+  ok((after.state || {}).built_ref === 'sidebranch',
+     `...and the build stamps which branch it came from (${
+        JSON.stringify((after.state || {}).built_ref)})`);
+  const line = await page.evaluate(x => dmBuilt(x), after.state);
+  ok(/^built from sidebranch [0-9a-f]{7}$/.test(line),
+     `...and the row's line names both (${line})`);
   // TWO AT ONCE is the case this is for, and the obstacle is ports: two
   // instances of one project are the same compose file, so the second
   // publishes what the first already has. Said before the press rather than
