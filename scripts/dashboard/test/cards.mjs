@@ -352,6 +352,37 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'my-app'),
                      { timeout: 20000 });
 }
+// ---- a phone folds the rest of a row behind one icon -----------------------
+// Three icons beside the name, the rest on demand: a row was 140px against 98
+// on a desktop and a third of it was six buttons. What this pins is the
+// FOLDING OUT, which shipped broken — the rule that hides the extra icons
+// carries three :not()s and outranked the rule that showed them again, so
+// pressing … re-stacked the row and produced nothing (the operator found it
+// on their phone, which is the only place it renders).
+{
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
+  const row = '#projects .row:has(.name:text-is("alpha"))';
+  const shown = () => page.$$eval(`${row} .acts .eye`,
+    bs => bs.filter(b => b.offsetParent !== null).length);
+  const folded = await shown();
+  ok(folded === 3, `a phone row shows the session, the notebook and the fold (${folded})`);
+  await page.click(`${row} [data-more]`);
+  await page.waitForTimeout(250);
+  const open = await shown();
+  ok(open > folded, `...and pressing it shows the rest (${folded} -> ${open})`);
+  ok(await page.$eval(`${row} [data-more]`, b => b.getAttribute('aria-expanded') === 'true'),
+     '...saying so, for anything that is not looking at the pixels');
+  await page.click(`${row} [data-more]`);
+  await page.waitForTimeout(250);
+  ok(await shown() === folded, '...and pressing it again folds them away');
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.waitForTimeout(400);
+  const desk = await shown();
+  ok(desk > 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent === null),
+     `on a desktop every icon is there and the fold is not (${desk} icons)`);
+}
+
 // ---- the row's session line: who is here, or why nobody can be -------------
 // Never WHICH MACHINE. That is on the project's settings, it is the same for
 // every session on the project, and a row that said it spent a line on
@@ -1484,10 +1515,12 @@ ok(await page.evaluate(() => {
 // ...and still fits while a tip is actually up, which is the case that made
 // the first fix incomplete: display:none stopped the resting overflow and left
 // the hovered one.
-await page.hover('#projects .row .acts [data-tip]:last-child');
+// The last VISIBLE one: the row's last child is the fold control now, which
+// is display:none at this width, and hovering something hidden waits forever.
+const lastTip = page.locator('#projects .row .acts [data-tip]:visible').last();
+await lastTip.hover();
 await page.waitForTimeout(250);
-ok(await page.$eval('#projects .row .acts [data-tip]:last-child',
-                    e => getComputedStyle(e, '::after').display) === 'block',
+ok(await lastTip.evaluate(e => getComputedStyle(e, '::after').display) === 'block',
    '...while a tooltip still appears on hover');
 ok(await page.evaluate(() => {
      const s = document.querySelector('.col.side');
@@ -1527,11 +1560,11 @@ ok(after.every(d => d === 'none'),
 // ::after after :active stopped matching, so the next tip opened one character
 // wide and ran down the whole card. Reported as "something crazy with the
 // tooltips"; these icons dim instead, so there is nothing left to be caught by.
-const other = '#projects .row .acts [data-tip]:last-child';
-const ob = await (await page.$(other)).boundingBox();
+// The last VISIBLE one again: a hidden last child has no box to move to.
+const ob = await lastTip.boundingBox();
 await page.mouse.move(ob.x + ob.width / 2, ob.y + ob.height / 2);
 await page.waitForTimeout(250);
-const moved = await page.$eval(other, e => {
+const moved = await lastTip.evaluate(e => {
   const c = getComputedStyle(e, '::after'); return [c.display, parseFloat(c.width)];
 });
 ok(moved[0] === 'block' && moved[1] > 100,
