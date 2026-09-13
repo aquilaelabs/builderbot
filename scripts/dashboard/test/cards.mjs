@@ -426,7 +426,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   // A no-node project is the same answer: it was silent before, which left
   // the operator looking at a ghosted button with nothing anywhere saying why.
   await plant({ session_at: '', locked: false,
-                session_why: 'alpha has no node, and a Claude session runs on one — pick one '
+                session_why: 'alpha has no node, and a Claude session runs on one. Pick one '
                            + "in the project's settings, or enroll one on the Nodes tab" });
   ok(/has no node/.test(await line()) && !/pick one/.test(await line()),
      `a project with no node says so too, without the instruction (${await line()})`);
@@ -950,7 +950,7 @@ ok(/no runner on any node/.test(rc.body) && /Nodes tab installs one/.test(rc.bod
    'with no runner anywhere the card says so, and where one is installed');
 rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
   listening: true, busy: false, labels: ['bb-sandbox'] }]);
-ok(/bb-sandbox/.test(rc.body) && /listening — idle/.test(rc.body)
+ok(/bb-sandbox/.test(rc.body) && /listening, idle/.test(rc.body)
    && /runs-on: \[self-hosted, bb-sandbox\]/.test(rc.body),
    'a listening node runner leads with the node\'s name, which is the label a workflow uses');
 rc = await runnerCard([{ node: 'bb-sandbox', live: false, installed: true,

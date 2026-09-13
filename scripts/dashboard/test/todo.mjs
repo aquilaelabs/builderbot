@@ -57,7 +57,7 @@ ok(await page.$eval(`${row('alpha')} [data-m]`,
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await nbTab(page, 'roadmap');
-ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
+ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on the list');
 await page.waitForFunction(() => document.getElementById('todoHint').textContent.length > 0);
 ok((await page.$eval('#todoHint', el => el.textContent)).includes('every Claude session'),

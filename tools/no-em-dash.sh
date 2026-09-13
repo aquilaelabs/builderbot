@@ -27,10 +27,16 @@ if [ "$mode" = --all ]; then
     exit 0
 fi
 
-# A dash inside a code span is CONTENT, not punctuation: the dashboard's
-# minimize button is that glyph, and the README has to be able to name it.
-# Write one that way and both a reader and this checker can tell which it is.
-strip_code () { sed 's/`[^`]*`//g'; }
+# A dash that is the WHOLE of something is CONTENT, not punctuation, and this
+# does not look at those: a code span, an HTML text node holding nothing else
+# (the minimize button IS that glyph), a string holding nothing else (a value
+# that is not there, printed as a dash). Write one of those that way and both
+# a reader and this checker can tell which kind it is.
+strip_code () {
+    sed -e 's/`[^`]*`//g' -e 's/>[[:space:]]*\xe2\x80\x94[[:space:]]*</></g' \
+        -e "s/[\"'][[:space:]]*\xe2\x80\x94[[:space:]]*[\"']//g" \
+        -e 's/|[[:space:]]*\xe2\x80\x94[[:space:]]*|/||/g'
+}
 
 base=$(git merge-base HEAD origin/main 2>/dev/null) || base=$(git rev-parse HEAD)
 bad=0

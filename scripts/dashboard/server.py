@@ -1993,8 +1993,12 @@ def session_target(project, claude=False):
     # downstream — empty here, the node's name when a node refused — so the
     # row can say this plainly and keep red for the machine that is broken.
     no_node = {"where": "refused", "name": "",
+               # A full stop, not a dash: shortWhy() on the page cuts this
+               # at the first sentence end to put the fact on the row and
+               # leave the instruction to the tooltip, and the dash it used
+               # to cut at is gone from the page's vocabulary.
                "why": f"{project or 'this project'} has no node, and a Claude session "
-                      "runs on one — pick one in the project's settings, or enroll "
+                      "runs on one. Pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:

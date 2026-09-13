@@ -1,12 +1,12 @@
 // The Users tab: who may sign in, and which projects they see. Step 3 of
 // roadmap #22; the design and the reasoning are docs/users.md and are not
 // repeated here. Its own classic script beside index.html, per the
-// new-surface rule — same page, same global scope, one file per surface.
+// new-surface rule: same page, same global scope, one file per surface.
 //
 // Chrome comes from docSurface() and the hard rules are held by uniform.mjs;
 // this file fills slots. Every rule about WHO may do WHAT lives on the server
 // (users.py): a row that cannot be deleted is drawn without the control and
-// says why, rather than being offered one that fails — but the store refuses
+// says why, rather than being offered one that fails, but the store refuses
 // it regardless, because `bb users` reaches the same rules from a shell.
 
 let usersList = null;            // last answer, or null before the first
@@ -57,7 +57,7 @@ function userRow(u){
     ? (u.projects.length
         ? `<span class="sub">sees</span> ` + u.projects.map(
             p => `<span class="pill">${esc(p)}</span>`).join(" ")
-        : `<span class="sub dim">sees nothing yet — it can sign in, and every
+        : `<span class="sub dim">sees nothing yet; it can sign in, and every
              project is hidden until one is given</span>`)
     : `<span class="sub">sees every project</span>`;
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
@@ -68,11 +68,11 @@ function userRow(u){
       <div class="uscope">${scope}</div>
       <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
         ? `signed in to Claude as ${esc(u.claude)}${u.claude_shared_with?.length
-            ? ` — the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}: fine while one person is behind both, since Anthropic's terms allow one person per Claude account`
+            ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}: fine while one person is behind both, since Anthropic's terms allow one person per Claude account`
             : ""}`
-        : "no Claude login yet — its sessions sign in on first use"}</div>
+        : "no Claude login yet: its sessions sign in on first use"}</div>
       ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given a
-        different role — it is the account every other rule here is a guard rail
+        different role; it is the account every other rule here is a guard rail
         around. Its name can be changed.</div>` : ""}
     </div>
     <div class="actbar">
@@ -81,20 +81,20 @@ function userRow(u){
         title="everything about this account in one dialog, saved together">Edit</button>
       ${isOwner
         ? `<button type="button" class="danger" disabled
-             title="the owner cannot be deleted — rename it instead">Remove</button>`
+             title="the owner cannot be deleted: rename it instead">Remove</button>`
         : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
     </div>
   </div>`;
 }
 
 // Which projects a `user` account may see. Only the ones the admin doing the
-// giving can see themselves — the server filters again, so this is the honest
+// giving can see themselves: the server filters again, so this is the honest
 // list rather than the enforcing one.
 function renderUsersInto(i){
   const d = docSurface(i, "users");
   if (!d) return;
   d.setBar(`<span class="dim">who may sign in here, and which projects they
-    see. A project somebody was not given does not appear for them at all —
+    see. A project somebody was not given does not appear for them at all,
     not greyed out, absent.</span>`);
   if (usersList === null){
     d.list.innerHTML = `<div class="row"><div class="sub">loading<span class="dots"></span></div></div>`;
@@ -145,7 +145,7 @@ function renderUsersInto(i){
 function wireUsers(el){
   el.querySelectorAll("[data-uremove]").forEach(b => b.onclick = () => {
     const n = b.dataset.uremove;
-    if (confirm(`Remove ${n}? They lose access immediately — any session they `
+    if (confirm(`Remove ${n}? They lose access immediately: any session they `
                 + `have signed in with stops working on the next request.`))
       usersAct({action: "remove", name: n});
   });
@@ -165,7 +165,7 @@ function wireUsers(el){
 // ---- the edit dialog ------------------------------------------------------
 // Everything about one account in one place, saved together (docs/
 // design-language.md, Settings): its name, role, projects, the Profile
-// fields an administrator may fill in for somebody, and a new password —
+// fields an administrator may fill in for somebody, and a new password,
 // which an administrator sets without the current one, that being the way
 // back in for somebody locked out. The owner's role is not on offer; the
 // store refuses it anyway. Built once, on first use, and filled per open.
