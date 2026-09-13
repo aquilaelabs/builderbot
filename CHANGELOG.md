@@ -83,6 +83,8 @@
 - The Docker tab stays on the node you picked when you come back to it, and the line under the picker names that node rather than the default one (0bd3c7d)
 - A browser picks up a new BuilderBot image without being forced to: the dashboard's own page is served so it revalidates, instead of a phone holding yesterday's page against today's server (c5202e1)
 - Rebuild on the Docker tab is always pressable: it used to go to sleep whenever the build already matched the code, so pinning a container to a branch and pressing Apply left nothing to press (48a76d8)
+- Reading a node's runner log now works on a node where the runner is a service: it reads that service's journal instead of a file only a node without systemd ever writes (a868e5a)
+- An option bb logs does not recognise is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honoured (a868e5a)
 
 ## 0.5.0 — 2026-09-10
 
