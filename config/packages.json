@@ -463,6 +463,23 @@
         "tool": "dotnet",
         "reports": "dotnet"
       },
+      "system": {
+        "dnf": [
+          "libicu"
+        ],
+        "apk": [
+          "icu-libs"
+        ],
+        "pacman": [
+          "icu"
+        ],
+        "xbps": [
+          "icu"
+        ],
+        "emerge": [
+          "dev-libs/icu"
+        ]
+      },
       "platforms": [
         "linux/*"
       ],
