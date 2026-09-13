@@ -8,6 +8,26 @@
 // supposed to be.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 
+// ---- the app's own files carry a validator --------------------------------
+// index.html IS the application, and it went out with no ETag and no cache
+// directive at all — so whether a phone noticed a container update was left
+// to the browser's heuristics, and the failure is silent: yesterday's page
+// against today's server, with nothing on screen admitting it. `no-cache`
+// means "ask me first", so the usual answer is a 304 of a few bytes.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  for (const path of ['/', '/tab-nodes.js']){
+    const r = await fetch(URL.replace(/\/$/, '') + path, { headers: H });
+    const tag = r.headers.get('etag');
+    ok(r.status === 200 && !!tag && /no-cache/.test(r.headers.get('cache-control') || ''),
+       `${path} is served with a validator and asked to be revalidated (${
+         tag || 'no etag'}, ${r.headers.get('cache-control') || 'no directive'})`);
+    const again = await fetch(URL.replace(/\/$/, '') + path,
+                              { headers: { ...H, 'If-None-Match': tag } });
+    ok(again.status === 304, `...and an unchanged ${path} comes back 304 (${again.status})`);
+  }
+}
+
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
