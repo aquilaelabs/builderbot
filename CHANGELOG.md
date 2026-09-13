@@ -20,6 +20,7 @@
 - The Git view merges a branch itself: Merge on a branch row brings it into the one the tree is on, instead of handing the job to Claude (7210eff)
 - The companion app installs its own newer build: when it is behind the dashboard, Install it downloads the APK and hands it to Android, instead of sending you to a desktop for the file (474f3e4)
 - A dev instance can be built from another branch: pick it on the container's row and the build comes from a worktree of that branch, leaving the project's own checkout where it is (7864b97)
+- A second instance of a project can run beside the first on another branch, and a port the other one already has is named on the row before you press rather than by compose after (133fab3)
 
 ### Changed
 
