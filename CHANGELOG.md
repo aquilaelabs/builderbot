@@ -86,6 +86,7 @@
 - Reading a node's runner log now works on a node where the runner is a service: it reads that service's journal instead of a file only a node without systemd ever writes (a868e5a)
 - An option bb logs does not recognise is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honoured (a868e5a)
 - A node no longer claims a toolchain that is installed but cannot start: a build needing it is refused up front instead of failing on the machine, and the node's log names the binary, how it died and everything it printed (8dceb05, 3b77fa9)
+- Installing .NET on a node now brings the ICU runtime with it, instead of landing an SDK that cannot start on a machine that does not already have it (2520794)
 
 ## 0.5.0 — 2026-09-10
 
