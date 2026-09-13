@@ -319,6 +319,29 @@ ok(list[0].id === 'local',
   await page.waitForFunction(() => dockerList && !dockerList.blind,
                              null, { timeout: 30000 });
   ok(true, 'switching back to the live node recovers without a reload');
+  // ...and the tab REMEMBERS which node that was. The pick lived in a page
+  // variable, so a reload went back to whichever node is the default — not
+  // the one anybody chose, and reliably the wrong entry in the picker. It
+  // rides in the tab's arg now, which is the part of a tab that is saved,
+  // and `identity()` for a kind that is not `multi` is the kind alone, so
+  // the arg can move without splitting the tab in two.
+  const want = await page.evaluate(() =>
+    (nodesList || []).find(x => x.name === 'sandbox')?.id);
+  ok(await page.evaluate(() => tabs.find(t => t.kind === 'docker')?.arg) === want,
+     'the docker tab carries the node it is on, so it is saved with the layout');
+  // The line under the picker names the daemon the PICKER is on, which it
+  // read off the status poll — and the poll is the default node's answer, so
+  // it named a machine the tab was not talking to, in an address. Read
+  // BEFORE the reload below, which throws the answer away on purpose.
+  ok(await page.evaluate(() => (dockerList?.src?.where || '').length > 0),
+     'the manager\'s own answer says which daemon it is about');
+  ok(await page.evaluate(w => {
+       dockerNode = '';                        // as a fresh page would start
+       dockerList = null;
+       TABKINDS.docker.open();
+       return dockerNode === w;
+     }, want),
+     '...and the tab\'s first draw picks the saved node up, not the default');
   await page.evaluate(() => { const t = tabs.find(x => x.kind === 'docker');
                               if (t) hideTab(t.id); });
 }

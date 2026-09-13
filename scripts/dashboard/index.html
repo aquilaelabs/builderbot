@@ -4223,7 +4223,10 @@ const TABKINDS = {
               // ...and phRev, because a session's rebuild request is answered
               // on this tab and arrives on the phone payload's ask list.
               live: () => `${dockerRev}/${nodesRev}/${phRev}`,
-              open: () => { if (!dockerList) loadDocker();
+              open: () => { const t = dockerTab();
+                            if (!dockerNode && t?.arg && t.arg !== "__docker")
+                              dockerNode = t.arg;
+                            if (!dockerList) loadDocker();
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
               render: (i) => renderNodesInto(i), live: () => nodesRev,
@@ -8045,9 +8048,29 @@ let dockerRev = 0;                       // bumped when it changes, so a pane
 let dockerNode = "";
 const dockerSeen = {};
 
+// The node the tab is on rides in its `arg`, which is the one part of a tab
+// that is saved. `identity()` for a kind that is not `multi` is the kind
+// alone, so the arg can change without splitting the tab in two — and a
+// reload stops landing on whichever node is the DEFAULT, which is not the one
+// anybody picked and was reliably the second entry in the picker.
+function dockerTab(){ return tabs.find(t => t.kind === "docker"); }
+
 function openDocker(){
-  openTab({kind: "docker", arg: "__docker", label: "Docker"});
+  const t = dockerTab();
+  if (!dockerNode && t?.arg && t.arg !== "__docker") dockerNode = t.arg;
+  openTab({kind: "docker", arg: dockerNode || "__docker", label: "Docker"});
   loadDocker();
+}
+
+// ...and remembered when it changes, which is the only moment it can be
+// written: the picker is the only thing that moves it deliberately.
+function dockerNodeKeep(){
+  const t = dockerTab();
+  if (!t) return;
+  const want = dockerNode || "__docker";
+  if (t.arg === want) return;
+  t.arg = want;
+  saveLayout();
 }
 
 let dockerAsk = 0;                       // which ask is newest, so an older
@@ -8783,7 +8806,10 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // Which daemon this is, stated rather than inferred: the node picked
   // above names it, and saying which machine the buttons below act on is
   // worth a line whatever the arrangement.
-  const src = state?.docker || {};
+  // The PICKED node's own answer, not the poll's — the poll is about the
+  // default node, so on any other one this line named a machine the tab was
+  // not talking to, in an address, which reads as proof.
+  const src = dockerList?.src || state?.docker || {};
   const srcLine = !off && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
         // A mapped path this container does not have. Not a fault: it can be a
@@ -8856,6 +8882,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   const pk = el.querySelector("#dmNode");
   if (pk) pk.onchange = () => {
     dockerNode = pk.value;
+    dockerNodeKeep();
     // The last-known answer first — instant, honestly stale (the blind path
     // says so) — and a fresh ask behind it.
     dockerList = dockerSeen[dockerNode] || null;

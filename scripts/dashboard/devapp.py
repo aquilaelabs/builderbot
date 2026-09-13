@@ -2054,6 +2054,12 @@ def _overview_here(picked):
                                 else ""),
             })
     return {"error": cs["error"], "blind": blind, "node": picked,
+            # WHICH DAEMON THIS ANSWER IS ABOUT, in its own words. The page had
+            # only the status poll's copy, which is the DEFAULT node's — so the
+            # line under the picker named a machine the picker was not on, and
+            # said so in an address, which is the one thing there that looks
+            # like proof.
+            "src": source(),
             "instances": out,
             # The running job, if there is one. The manager used to look for
             # it on the status snapshot under a key nothing has ever set, so
