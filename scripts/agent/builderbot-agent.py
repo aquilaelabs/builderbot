@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.50"
+AGENT_VERSION = "0.5.51"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -510,13 +510,17 @@ def _probe(argv, timeout=5):
     default toolchain both exit non-zero with a sentence, and both mean the
     tool is installed and being awkward, which is what "present" is for.
 
-    Run with core dumps off. A version probe has no business leaving a core
-    file, and one that crashes on every census left a machine collecting them
-    ten minutes apart with nothing in any log saying which binary it was.
+    There is no attempt to stop a crashing probe dumping core, because there
+    is no way to from here. This ran under `ulimit -c 0` for one build on the
+    theory that a version probe has no business leaving a core file — and the
+    kernel ignores RLIMIT_CORE when core_pattern is a PIPE, which is what
+    both machines here have (apport on one, systemd-coredump on the other).
+    Measured, not assumed: the limit reads back as 0 and the process is
+    dumped anyway. The dumps stop when the tool does; what this can do is
+    say which binary it was, which is the part nobody had.
     """
-    wrapped = ["sh", "-c", 'ulimit -c 0 2>/dev/null; exec "$@"', "probe", *argv]
     try:
-        p = subprocess.run(wrapped, capture_output=True, text=True, timeout=timeout,
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
                            check=False)
     except subprocess.TimeoutExpired:
         return "", f"did not answer within {timeout}s"
@@ -538,7 +542,12 @@ def _probe_died(name, path, out, why):
     if name in _PROBE_SAID:
         return
     _PROBE_SAID.add(name)
-    said = (out.splitlines() or [""])[0][:200]
+    # The whole of what it said, newlines folded — not its first line, which
+    # was the first cut of this and threw the answer away: .NET's startup
+    # failures open with "Process terminated." on a line of their own and put
+    # the reason on the next one, so the log carried the half that says
+    # nothing and dropped the half somebody has to act on.
+    said = " ".join((out or "").split())[:300]
     log(f"toolchain: {path} {why} when asked its version, so {name} is not in "
         f"this node's census" + (f" — it said: {said}" if said else ""))
 

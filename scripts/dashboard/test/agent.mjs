@@ -1319,8 +1319,13 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // minutes. A tool that dies is not a tool this node has.
       {
         mkdirSync(`${PK}/swift/usr/bin`, { recursive: true });
+        // Two lines, in .NET's own shape: the reason is on the SECOND one,
+        // which is what the log has to reach. Logging the first line alone
+        // carried "Process terminated." and dropped the answer.
         writeFileSync(`${PK}/swift/usr/bin/swift`,
-          '#!/bin/sh\necho "Couldn\'t find a valid ICU package installed on the system." >&2\nkill -ABRT $$\n',
+          '#!/bin/sh\necho "Process terminated." >&2\n'
+          + 'echo "Couldn\'t find a valid ICU package installed on the system." >&2\n'
+          + 'kill -ABRT $$\n',
           { mode: 0o755 });
         // rust's shape beside it, which must NOT change: a non-zero exit
         // with a sentence means installed and awkward, and that is what
@@ -1345,10 +1350,10 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
         ok(after && after.rust === 'present',
            `...while one that merely exits non-zero with a sentence is still present (${
               JSON.stringify(after?.rust)})`);
-        ok(/swift .*died on signal 6.*valid ICU package/.test(agentLog().replace(/\n/g, ' '))
-           || /died on signal 6/.test(agentLog()),
-           `...and the agent's log names the binary, how it died and what it said (${
-              (agentLog().split('\n').find(l => /died on signal/.test(l)) || 'nothing said').slice(0, 110)})`);
+        ok(/swift died on signal 6 .*Process terminated\. Couldn't find a valid ICU package/
+             .test(agentLog()),
+           `...and the log names the binary, how it died and ALL of what it said — the reason is on its second line (${
+              (agentLog().split('\n').find(l => /died on signal/.test(l)) || 'nothing said').slice(-90)})`);
         rmSync(`${PK}/swift`, { recursive: true, force: true });
         rmSync(`${PK}/rust`, { recursive: true, force: true });
       }
