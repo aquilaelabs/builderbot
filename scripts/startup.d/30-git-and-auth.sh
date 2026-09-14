@@ -24,19 +24,9 @@ git config --global advice.waitingForEditor false
 
 # A git token belongs to one project: typed into the clone dialog, stored at
 # /config/gitcreds/<project> and named by that repo's own .git/config, so a
-# token that opens one repository opens one repository.
-#
-# A session-visible GITHUB_PAT is still honoured, because that variable exists
-# to mint node runner tokens and shielding it is the operator's choice — when
-# it is not shielded, refusing to use it would be pretending not to see it.
-if [ -n "${GITHUB_PAT:-}" ]; then
-    if printf '%s' "$GITHUB_PAT" | gh auth login --with-token >/dev/null 2>&1; then
-        gh auth setup-git >/dev/null 2>&1 || true
-        log "gh CLI authenticated from GITHUB_PAT"
-    else
-        warn "gh auth login failed — check GITHUB_PAT scopes"
-    fi
-fi
+# token that opens one repository opens one repository. There is no
+# container-wide GitHub token: a node's runner token is the node's, kept
+# root-only through mint-runner-token, and gh is not signed in here.
 
 # Pre-trust GitHub's SSH host keys so `git clone git@github.com:...` doesn't
 # stall on an interactive prompt inside a non-tty job.

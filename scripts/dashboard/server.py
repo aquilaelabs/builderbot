@@ -1449,9 +1449,9 @@ def gh_authed():
 
     Asked of gh rather than the environment, because gh is what actually
     answers the credential prompt (`gh auth setup-git` at startup): this is
-    true exactly when an https remote will work, whether a session-visible
-    GITHUB_PAT or a manual `gh auth login` made it so. `gh auth token` is
-    offline and instant; `gh auth status` phones home.
+    true exactly when an https remote will work, which only a `gh auth login`
+    typed in a shell makes so. `gh auth token` is offline and instant;
+    `gh auth status` phones home.
     """
     return run(["gh", "auth", "token"], timeout=10)["code"] == 0
 
@@ -2359,40 +2359,54 @@ def end_claude(project):
     return {"ended": True}
 
 
-def github_url():
-    """The org or repo a node's runner registers with: GITHUB_URL, and
-    nothing else now that this container runs no runner of its own to read
-    a registration back from. Empty when unset."""
-    return os.environ.get("GITHUB_URL", "")
+# The root-only helper that keeps each node's runner token and mints from
+# it: the builder account's one sudo rule (Dockerfile). Nothing here ever
+# sees a token: store hands one in on stdin, every other verb prints a
+# derived answer, and --check says only that one is there and for which URL.
+RUNNER_HELPER = "/opt/builderbot/scripts/mint-runner-token"
 
 
-def mint_runner_token(kind):
-    """A runner token for a node: the root-only helper via its one sudo
-    rule, or a session-visible PAT."""
-    r = run(["sudo", "-n", "/opt/builderbot/scripts/mint-runner-token", kind], timeout=60)
+def _helper_why(r):
+    why = (r["out"].strip().splitlines() or ["the helper printed nothing"])[-1]
+    return re.sub(r"^\[builderbot\] ERROR: ", "", why)[:200]
+
+
+def mint_runner_token(kind, node_id):
+    """A registration or removal token for a node's runner, minted from the
+    token stored for that node."""
+    r = run(["sudo", "-n", RUNNER_HELPER, kind, node_id], timeout=60)
     if r["code"] == 0 and r["out"].strip():
         return {"token": r["out"].strip().splitlines()[-1]}
-    pat, url = os.environ.get("GITHUB_PAT", ""), github_url()
-    if pat and url:
-        path = url.split("://", 1)[-1].split("/", 1)[-1].strip("/")
-        scope = f"/repos/{path}" if "/" in path else f"/orgs/{path}"
-        req = urllib.request.Request(
-            f"https://api.github.com{scope}/actions/runners/{kind}-token",
-            method="POST", headers={"Authorization": "Bearer " + pat,
-                                    "Accept": "application/vnd.github+json"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return {"token": json.load(resp).get("token", "")}
-        except (OSError, ValueError) as e:
-            return {"error": f"GitHub refused: {e}"}
-    # The helper's own last line, which names what is missing: the stash had
-    # the PAT and lacked GITHUB_URL once, and the sentence here said the
-    # opposite, so the operator went looking for the wrong variable.
-    why = (r["out"].strip().splitlines() or ["the helper printed nothing"])[-1]
-    why = re.sub(r"^\[builderbot\] ERROR: ", "", why)[:160]
-    return {"error": f"the controller cannot mint a runner token: {why}. GITHUB_URL and "
-                     "GITHUB_PAT are set on the controller, as its variables or GITHUB_PAT "
-                     "in the shielded secrets file; bb doctor says whether it has them"}
+    return {"error": f"the controller cannot mint a runner token: {_helper_why(r)}"}
+
+
+def runner_token_state(node_id):
+    """Whether a token is stored for this node, and for which URL and forge.
+    The token itself never comes back."""
+    r = run(["sudo", "-n", RUNNER_HELPER, "--check", node_id], timeout=20)
+    got = dict(l.split("=", 1) for l in r["out"].splitlines() if "=" in l) if r["code"] == 0 else {}
+    return {"stored": r["code"] == 0, "url": got.get("RUNNER_URL", ""),
+            "forge": got.get("RUNNER_FORGE", "")}
+
+
+def runner_token_store(node_id, url, forge, token):
+    """Hand a node's token to the helper on stdin: it never rides an argv,
+    where every account on the box could read it off ps."""
+    try:
+        p = subprocess.run(["sudo", "-n", RUNNER_HELPER, "store", node_id],
+                           input=f"RUNNER_URL={url}\nRUNNER_FORGE={forge}\nRUNNER_TOKEN={token}\n",
+                           capture_output=True, text=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"error": f"could not store the token: {e}"}
+    r = {"code": p.returncode, "out": ((p.stdout or "") + (p.stderr or "")).strip()}
+    if r["code"]:
+        return {"error": _helper_why(r)}
+    return {"ok": True}
+
+
+def runner_token_forget(node_id):
+    r = run(["sudo", "-n", RUNNER_HELPER, "forget", node_id], timeout=20)
+    return {"ok": True} if r["code"] == 0 else {"error": _helper_why(r)}
 
 
 def node_runners():
@@ -3722,6 +3736,11 @@ class Handler(BaseHTTPRequestHandler):
     def _nodes_for(self, rows):
         scope = self._node_scope()
         rows = rows if scope is None else [n for n in rows if n["id"] in scope]
+        # Whether a runner token is stored for each agent node: asked of the
+        # helper, which says yes or no and never the token.
+        for n in rows:
+            if n.get("kind") == "agent":
+                n["runner_token"] = runner_token_state(n["id"])["stored"]
         # Whether THIS account's Claude login has been given to each node,
         # answered here rather than by handing the page a uid to compare
         # against: the grant list is every account that has one, which is
@@ -4811,11 +4830,34 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
-            # The Actions runner on a node (phase 7): a system job, with
-            # the URL from the controller's environment unless one is typed.
+            # The Actions runner on a node (phase 7): a system job, minting
+            # from the token stored for this node. The URL is the record's,
+            # written when the token was, so the token and the address it
+            # was made for cannot come apart.
             r = nodes.node_runner(self._principal(), nid, bool(req.get("want", True)),
                                   req.get("labels"),
-                                  field(req, "url") or github_url())
+                                  token=runner_token_state(nid)["stored"])
+        elif act == "runner-token":
+            # The node's runner token: forge and URL onto the record, the
+            # token itself into the root-only store through the helper.
+            # Not forges.parse: that wants owner/repo, and a runner's address
+            # is as often an organization, one segment deep.
+            url = field(req, "url").strip()
+            at = re.fullmatch(r"https://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
+            if not at:
+                r = {"error": "the URL is the https address of the repository or "
+                              "organization the runner registers with"}
+            elif not nodes.node(nid):
+                r = {"error": "no such node"}
+            else:
+                forge = forges.forge_of(at.group(1)).get("kind") or "git"
+                r = runner_token_store(nid, url, forge, str(req.get("token") or "").strip())
+                if not r.get("error"):
+                    r = nodes.node_runner_url(self._principal(), nid, url, forge)
+        elif act == "runner-forget":
+            r = runner_token_forget(nid)
+            if not r.get("error"):
+                nodes.audit(self._principal(), "node-runner-forget", nid, {})
         elif act == "paths":
             # What this container's paths are called on the node's machine
             # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
@@ -5380,7 +5422,7 @@ class Handler(BaseHTTPRequestHandler):
             # now from the root-only stash and never stored: the PAT stays
             # here, the hour-long token goes to the node that asked.
             kind = "remove" if field(req, "kind") == "remove" else "registration"
-            r = mint_runner_token(kind)
+            r = mint_runner_token(kind, nid)
             nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
             return self._json(r, 400 if r.get("error") else 200)
         if verb == "hello":

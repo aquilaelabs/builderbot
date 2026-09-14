@@ -539,7 +539,20 @@ print(json.dumps(out))
   ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
      && await page.$eval(`${ROW} [data-nrunner="install"]`, b => /Install runner/.test(b.textContent)),
      'the CI runner section says there is none, and offers to install one');
+  // The token first: Install is dead until one is stored for the node, and
+  // storing it is its own press, so the token never rides the install.
+  ok(await page.$eval(`${ROW} [data-nrunner="install"]`, b => b.disabled)
+     && await page.$eval(`${ROW} .ndrunstate`, e => /no token stored/.test(e.textContent)),
+     'Install runner is dead until a token is stored for the node, and the section says so');
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
+  await page.fill(`${ROW} [data-k="runner:token"]`, 'github_pat_TESTTOKEN1234');
+  await page.click(`${ROW} [data-nrunnertoken]`);
+  await page.waitForFunction(sel => /token stored for https:\/\/github\.com\/example-org/.test(
+    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} [data-k="runner:token"]`, e => e.value === '' && e.type === 'password')
+     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => !b.disabled)
+     && !!(await page.$(`${ROW} [data-nrunnerforget]`)),
+     'Save token keeps it root-only, clears the field, says which address it is for, and wakes Install');
   await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
   // Dead the moment it is pressed, not when the answer comes back. Every
   // action here awaits a POST, then loadNodes(), then a repaint — a second

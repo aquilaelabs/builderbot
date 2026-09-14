@@ -5709,19 +5709,21 @@ NODEPY
         printf '  [skip] no nvidia gpu passed through\n'
     fi
     fi
-    if [ -n "${GITHUB_PAT:-}" ]; then
-        printf '  [ok]   runner credential: GITHUB_PAT in environment (visible to sessions)\n'
-    elif sudo -n /opt/builderbot/scripts/mint-runner-token --check >/dev/null 2>&1; then
-        # Presence is not validity — ask GitHub, so a revoked or expired token
-        # cannot keep reporting [ok] here.
-        if sudo -n /opt/builderbot/scripts/mint-runner-token --validate >/dev/null 2>&1; then
-            printf '  [ok]   runner credential: shielded, and GitHub accepts the token\n'
-        else
-            printf '  [FAIL] runner credential: shielded but GitHub rejected it (revoked/expired?) — see: bb logs\n'
-            ok=1
-        fi
+    # Each node's runner token, kept root-only and asked about through the
+    # helper. Presence is not validity: GitHub is asked, so a revoked or
+    # expired token cannot keep reading [ok] here.
+    runner_ids="$(sudo -n /opt/builderbot/scripts/mint-runner-token --list 2>/dev/null || true)"
+    if [ -z "$runner_ids" ]; then
+        printf '  [skip] no runner token stored for any node (the runner section of a node on the Nodes tab takes one)\n'
     else
-        printf '  [skip] no runner credential (only needed to install a runner on a node)\n'
+        for rid in $runner_ids; do
+            if sudo -n /opt/builderbot/scripts/mint-runner-token --validate "$rid" >/dev/null 2>&1; then
+                printf '  [ok]   runner token for %s: stored root-only, and GitHub accepts it\n' "$rid"
+            else
+                printf '  [FAIL] runner token for %s: GitHub rejected it (revoked or expired?)\n' "$rid"
+                ok=1
+            fi
+        done
     fi
     # `gh auth status`, said as what it is. This line used to read "git over
     # https not authenticated", which is a claim about pushing and this is not

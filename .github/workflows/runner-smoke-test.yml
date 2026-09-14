@@ -52,11 +52,3 @@ jobs:
         continue-on-error: true
         run: docker info >/dev/null 2>&1 && echo "docker reachable" || echo "no docker socket — expected default"
 
-      - name: Secrets must not be visible here
-        run: |
-          # The runner job runs as the same unprivileged user as a Claude
-          # session, so the shielded PAT must be absent from this environment.
-          if [ -n "${GITHUB_PAT:-}" ]; then
-            echo "FAIL: GITHUB_PAT is visible to workflow jobs"; exit 1
-          fi
-          echo "ok: shielded PAT not present in the job environment"

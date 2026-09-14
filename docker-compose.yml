@@ -39,12 +39,6 @@ services:
       # subscription instead (`docker exec -it builderbot bb login`).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
-      # --- GitHub Actions runners, on nodes --------------------------------
-      # CI runs on the nodes you enroll; this container only mints their
-      # registration tokens. Prefer the secrets folder for the PAT.
-      GITHUB_URL: ${GITHUB_URL:-}
-      GITHUB_PAT: ${GITHUB_PAT:-}
-
       # --- shutdown ---------------------------------------------------------
       # How long a stop may spend deregistering the runner, powering the
       # emulator down and ending Claude sessions. Docker kills the container
@@ -78,12 +72,6 @@ services:
 
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}
-
-      # --- security ---------------------------------------------------------
-      # Scrub GITHUB_PAT from what sessions can see (node runner tokens are
-      # minted from the root-only stash instead). Set false only if you want the
-      # legacy behavior back (PAT visible, gh auto-authenticated).
-      SHIELD_SECRETS: ${SHIELD_SECRETS:-true}
 
       # --- optional extras --------------------------------------------------
       # Only used with the /unraid-icons mount below: Unraid names the cached
@@ -129,11 +117,11 @@ services:
       # fetches the Icon URL when its cache is empty.
       # - /var/lib/docker/unraid/images:/unraid-icons
 
-      # Recommended for the runner PAT and git ssh keys: a root-owned
-      # (chmod 700) folder with builderbot.env (GITHUB_PAT=...) and an ssh/
-      # subfolder of private keys. Secrets provided here are shielded from
-      # Claude sessions (keys are served via a root-owned ssh-agent) — the
-      # GITHUB_PAT env var above and keys in home/.ssh are not.
+      # Recommended for git ssh keys and any publishing token: a root-owned
+      # (chmod 700) folder with an ssh/ subfolder of private keys and *.env
+      # files (NPM_TOKEN=...). Secrets provided here are shielded from Claude
+      # sessions (keys are served via a root-owned ssh-agent); keys in
+      # home/.ssh are not.
       # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
 
       # --- host Docker access (OFF by default) ------------------------------

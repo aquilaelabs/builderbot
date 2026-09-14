@@ -81,7 +81,7 @@ decisions you need to make.
 | Credential | Lives where | Used for |
 |---|---|---|
 | **GHCR pull token**: classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the image while the package is private; a public package needs none. Fine-grained PATs don't work for GHCR pulls |
-| **Runner PAT** (fine-grained, owned by the org, and only for minting registration tokens for runners on your *nodes*. Repo: *Administration R/W*. Org: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens) that is its only job. Skip if `ENABLE_RUNNER=false` |
+| **Runner token** (fine-grained, owned by the org, and only for registering runners on your *nodes*. Repo: *Administration R/W*. Org: *Self-hosted runners R/W*. Nothing else) | Typed into the runner section of the node's row on the **Nodes tab**; kept root-only on the controller | Registers that node's runner with your repo or org. Never visible to sessions |
 | **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
 
 ### 1. Authorize the server to pull the image (one-time)
@@ -129,26 +129,27 @@ Root-owned, so its contents are **never readable by Claude sessions**:
 ```bash
 mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
 
-cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
-GITHUB_PAT=github_pat_xxxxxxxxxxxxxxxx
-EOF
-
 cp /path/to/git-key /mnt/user/appdata/BuilderBot/secrets/ssh/id_ed25519
+
+# only if a session publishes to npm: any *.env file here is loaded the same way
+cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
+NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
+EOF
 
 chown -R root:root /mnt/user/appdata/BuilderBot/secrets
 chmod -R go-rwx    /mnt/user/appdata/BuilderBot/secrets
 ```
 
-What this buys you: the PAT is scrubbed from every session's environment
-(the runner mints tokens through a root-only sudo helper instead), SSH keys
-are served by a root-owned `ssh-agent` (sessions can push with them, never
-read them), and all logs are redacted of token patterns *and* the literal
-secret values. Details and threat model: [docs/unraid.md, Shielding
+What this buys you: SSH keys are served by a root-owned `ssh-agent`
+(sessions can push with them, never read them), a token in a `*.env` file
+here never enters a session's environment, and all logs are redacted of
+token patterns *and* the literal secret values. A node's runner token is
+not a file here: it is typed on the Nodes tab and kept root-only by the
+controller. Details and threat model: [docs/unraid.md, Shielding
 secrets](docs/unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions).
 
-Skippable if you don't care about shielding: put the PAT in the `GITHUB_PAT`
-variable and keys in `home/.ssh/` instead; everything works, Claude can
-just see them.
+Skippable if you don't care about shielding: put keys in `home/.ssh/`
+instead; everything works, Claude can just see them.
 
 ### 4. Install the container
 
@@ -174,7 +175,6 @@ Required / usually touched:
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
-| `GITHUB_URL` | Repo (`https://github.com/OWNER/REPO`) or org (`https://github.com/ORG`) that node runners register with |
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 
 Everything else has sane defaults: full reference below.
@@ -266,9 +266,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | Container timezone: set yours, or timestamps read as somebody else's day |
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing, passed to the sessions on your nodes; empty = subscription login, from the dashboard's Sign in |
-| `GITHUB_URL` | *(empty)* | **Your** repo or org URL, the one node runners register with: `https://github.com/<you>/<repo>`, or an org URL to serve every repo in it. Empty until you want CI on a node |
-| `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners: prefer the secrets folder; values here are session-visible |
-| `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `NPM_TOKEN` | *(none)* | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
@@ -2992,9 +2989,8 @@ the active shell is *in*, not just whether it is a shell: outside a git
 repository the whole list grays out, and in a repository whose remotes do not
 include GitHub, just the `gh` half does: the hover text says which it is.
 The verdict follows a `cd` on the next status poll, and the ghosting only
-reflects the repo; `gh` itself still needs its own auth (a session-visible
-`GITHUB_PAT` or
-`gh auth login`) to answer.
+reflects the repo; `gh` itself still needs its own auth (`gh auth login`
+in a shell) to answer.
 
 ### Your own commands
 

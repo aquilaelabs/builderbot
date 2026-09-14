@@ -30,7 +30,7 @@ PGID="${PGID:-100}"
 # No git token here: a project carries its own, in the clone dialog. What is
 # left is the PAT that mints registration tokens for NODE runners, which is
 # shielded rather than explained.
-SECRET_VARS=(GITHUB_PAT ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN NODE_TOKEN)
+SECRET_VARS=(ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN NODE_TOKEN)
 
 # DOCKER_HOST is the operator's to write as the sandbox VM's address — just the
 # machine, `10.0.0.9` — and it is also a variable the docker CLI reads for
@@ -88,13 +88,12 @@ s/eyJ[A-Za-z0-9_-]\{20,\}\.[A-Za-z0-9._-]\{10,\}/[REDACTED]/g
 SED
 
     local var val esc found=0 names=""
-    for var in "${SECRET_VARS[@]}" GITHUB_URL; do
+    for var in "${SECRET_VARS[@]}"; do
         val="${!var:-}"
         [ -n "$val" ] || continue
         printf '%s=%q\n' "$var" "$val" >> "$stash"
-        # Literal-value redaction rule (skip short strings and the non-secret
-        # GITHUB_URL).
-        if [ "$var" != "GITHUB_URL" ] && [ "${#val}" -ge 8 ]; then
+        # Literal-value redaction rule (skip short strings).
+        if [ "${#val}" -ge 8 ]; then
             found=$((found + 1))
             names="${names:+$names,}${var}"
             esc="$(printf '%s' "$val" | sed -e 's/[&/\]/\\&/g' -e 's/[][^$.*]/\\&/g')"
@@ -108,17 +107,9 @@ SED
     if [ "$found" -gt 0 ]; then
         log "secrets: loaded ${found} value(s) [${names}]"
     elif [ -d /secrets ]; then
-        warn "secrets: /secrets is mounted but no values loaded — expected files named *.env containing e.g. GITHUB_PAT=..."
+        warn "secrets: /secrets is mounted but no values loaded: expected files named *.env containing e.g. NPM_TOKEN=..."
     else
         log "secrets: no /secrets mount and no secret variables set"
-    fi
-
-    if is_true "${SHIELD_SECRETS:-true}"; then
-        # Node runner tokens are minted through the sudo helper; nothing
-        # running as builder needs the raw PAT. Claude-facing tools DO need
-        # their own credentials (ANTHROPIC_API_KEY, NPM_TOKEN), so those stay.
-        unset GITHUB_PAT
-        log "secrets shielded: GITHUB_PAT removed from the session environment"
     fi
 }
 

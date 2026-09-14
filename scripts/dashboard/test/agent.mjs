@@ -158,13 +158,6 @@ writeFileSync(`${DIR}/runner-src/run.sh`, `#!/bin/sh
 exec -a "$(cd "$(dirname "$0")" && pwd)/bin/Runner.Listener" sleep 300
 `, { mode: 0o755 });
 execFileSync('tar', ['-czf', `${DIR}/runner.tar.gz`, '-C', `${DIR}/runner-src`, '.']);
-writeFileSync(`${DIR}/bin/sudo`, `#!/bin/sh
-# What the real helper says, on stderr, when the stash lacks the URL.
-[ -f "${DIR}/mint-fail" ] && case "$*" in *mint-runner-token*) echo "[builderbot] ERROR: no GITHUB_URL in the stash" >&2; exit 1 ;; esac
-case "$*" in *mint-runner-token*registration*) echo AAAREGTOKEN; exit 0 ;;
-             *mint-runner-token*remove*) echo AAAREMOVETOKEN; exit 0 ;; esac
-echo "sudo: refused" >&2; exit 1
-`, { mode: 0o755 });
 // Tailscale, stood in for: `funnel` calls are recorded and reflected in the
 // serve status the census reads, so the funnel that is reported is the one
 // that was asked for.
@@ -1616,29 +1609,32 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------
   {
-    const nourl = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true, url: 'ftp://nope' });
-    ok(/GitHub org or repo URL/.test(nourl.error || ''), 'installing a runner needs the URL it registers with');
+    // The token is the NODE's (R53 step 2): stored root-only through the
+    // helper, with the address it registers with on the record, and an
+    // install cannot start without one. Nothing here ever reads it back.
+    const notoken = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true });
+    ok(/no runner token stored/.test(notoken.error || ''), 'installing a runner needs a token stored for the node first');
+    ok(/https address/.test((await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'ftp://nope', token: 'github_pat_TESTTOKEN1234' })).error || ''),
+       '...and storing one needs the https address it registers with');
+    const kept = await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'https://github.com/example-org', token: 'github_pat_TESTTOKEN1234' });
+    const recorded = await nodeById(minted.id);
+    const rowJson = JSON.stringify(recorded);
+    ok(kept.ok && recorded.services?.['actions-runner']?.url === 'https://github.com/example-org'
+       && recorded.services['actions-runner'].forge === 'github' && recorded.runner_token === true
+       && !/TESTTOKEN/.test(rowJson) && /RUNNER_TOKEN=github_pat_TESTTOKEN1234/.test(readFileSync(`${DIR}/runner-store/${minted.id}.env`, 'utf8')),
+       `the token goes to the root-only store and only its URL, forge and presence reach the record (${kept.error || 'stored'})`);
+    // Forgotten, an install says so with the helper's own sentence.
+    ok((await api('/api/v1/nodes', { action: 'runner-forget', id: minted.id })).ok
+       && !existsSync(`${DIR}/runner-store/${minted.id}.env`)
+       && /no runner token stored/.test((await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true })).error || ''),
+       'Forget token drops it from the store, and the next install asks for one again');
+    await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'https://github.com/example-org', token: 'github_pat_TESTTOKEN1234' });
     // An install that failed is said, with the reason its log gave, until one
     // works. The census only knows what is installed, so a failed attempt used
     // to read as "install asked for; not reported yet" for as long as nobody
     // pressed Install again: a node sat twelve hours like that behind libicu.
-    // A controller with no runner credential used to answer "GITHUB_PAT is
-    // not stashed" whatever the helper had actually said: the operator's
-    // stash had the PAT and lacked GITHUB_URL, and read the wrong sentence.
-    writeFileSync(`${DIR}/mint-fail`, '');
-    const nomint = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
-      url: 'https://github.com/example-org' });
-    const nfin = await until(async () => {
-      const r = await api(`/api/v1/jobs?id=${nomint.job}`);
-      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-    }, 30000);
-    rmSync(`${DIR}/mint-fail`, { force: true });
-    ok(nfin?.state === 'failed' && /cannot mint a runner token: no GITHUB_URL in the stash/.test(nfin?.log || '')
-       && /set on the controller/.test(nfin?.log || '') && !/GITHUB_PAT is not stashed/.test(nfin?.log || ''),
-       `with no runner credential on the controller the install fails with the helper's own reason and where it is set (${(nfin?.log || '').slice(-140).replace(/\n/g, ' / ')})`);
     writeFileSync(`${DIR}/runner-fail`, '');
-    const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
-      url: 'https://github.com/example-org' });
+    const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true });
     const bfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${bad.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -1652,7 +1648,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
          failedRow?.why || failedCard?.failed?.why || 'nothing'})`);
     rmSync(`${DIR}/runner-fail`, { force: true });
     const inst = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
-      labels: ['gpu', 'bad label!'], url: 'https://github.com/example-org' });
+      labels: ['gpu', 'bad label!'] });
     ok(inst.ok && /^j_/.test(inst.job), `Install runner queues a system job (${inst.job || inst.error})`);
     const ifin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${inst.job}`);

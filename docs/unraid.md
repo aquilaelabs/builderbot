@@ -25,7 +25,7 @@ before creating anything.
 Find the rows that describe what you want; you need every credential marked in
 those rows. Nothing else.
 
-| I want to… | Host GHCR token | Shielded `GITHUB_PAT` | SSH key | Per-project token |
+| I want to… | Host GHCR token | Runner token (Nodes tab) | SSH key | Per-project token |
 |---|:--:|:--:|:--:|:--:|
 | Pull the image at all: *everyone needs this* | ● | | | |
 | Run Claude against the mounted projects, no remote git | ● | | | |
@@ -38,14 +38,14 @@ those rows. Nothing else.
 | Credential | Type | Permissions | Lives where |
 |---|---|---|---|
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
-| **`GITHUB_PAT`** (shielded) | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | `/secrets/builderbot.env`, root-only. Never visible to sessions |
+| **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes tab; kept root-only on the controller. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
-**Runner scope decides the `GITHUB_PAT` permission**, and it is the only one
-that token needs:
+**Runner scope decides the runner token's permission**, and it is the only
+one that token needs:
 
-| `GITHUB_URL` | Permission to grant |
+| Address typed on the node | Permission to grant |
 |---|---|
 | `https://github.com/OWNER/REPO` | Repository permissions → **Administration**: Read and write |
 | `https://github.com/ORG` | Organization permissions → **Self-hosted runners**: Read and write |
@@ -150,9 +150,9 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / work
-* fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), TZ
+* fields for `ANTHROPIC_API_KEY` (masked) and TZ
 
-Fill in `GITHUB_PAT` (each account's commit identity is set on its Profile tab), leave
+Each account's commit identity is set on its Profile tab; leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
@@ -417,9 +417,9 @@ root-only folder:
    ```bash
    mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
 
-   # the runner PAT
+   # any publishing token a session should use but never read (optional)
    cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
-   GITHUB_PAT=github_pat_xxxxxxxxxxxxxxxx
+   NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
    EOF
 
    # any git ssh keys (no passphrase; filename doesn't matter)
@@ -429,10 +429,9 @@ root-only folder:
    chmod -R go-rwx   /mnt/user/appdata/BuilderBot/secrets
    ```
 2. Set the template's **Secrets directory** field (or uncomment the
-   `/secrets` volume in compose) to that folder, and leave the `GITHUB_PAT`
-   *variable* empty.
+   `/secrets` volume in compose) to that folder.
 
-**Git access is a separate question from the runner PAT.** Over HTTPS,
+**Git access is a separate question from the runner token.** Over HTTPS,
 "git can use it" and "Claude can't read it" are mutually exclusive: a
 credential the session's git authenticates with is one the session can read.
 Pick per your taste:
@@ -593,9 +592,8 @@ node, or tick the image on the Tools tab.
 |---|---|
 | npm | set `NPM_TOKEN`, then `npm publish` |
 | PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
-| GHCR (docker) | requires the (off-by-default) Docker socket mount; then `docker login` happens automatically from `GITHUB_PAT` and `docker push ghcr.io/stencil-projects/<image>` works |
 | Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
-| GitHub Releases | `gh release create`: `gh` is already authenticated |
+| GitHub Releases | `gh release create`, after `gh auth login` in a shell |
 
 ---
 

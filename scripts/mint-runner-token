@@ -1,55 +1,99 @@
 #!/usr/bin/env bash
 #
-# Root-only helper that mints GitHub Actions runner registration/removal
-# tokens from the shielded secrets stash, so the unprivileged `builder` user
-# (and any Claude session running as it) never holds the PAT itself.
+# Root-only helper that keeps each node's runner token and mints GitHub
+# Actions runner registration and removal tokens from it, so the unprivileged
+# `builder` user (and any Claude session running as it) never holds the
+# token itself.
 #
-# The builder user may run exactly this script via sudo (see the image's
-# sudoers rule). It accepts one argument and reads everything else from the
-# root-only stash — sudo's env_reset means the caller cannot inject values.
+# The builder user may run exactly this script via sudo (the image's sudoers
+# rule). A token comes in on stdin once and lives under a root-only directory
+# keyed by node id; every other verb prints a derived answer and never the
+# token. sudo's env_reset means the caller cannot inject values.
 #
-#   mint-runner-token registration   print a 1-hour runner registration token
-#   mint-runner-token remove         print a runner removal token
-#   mint-runner-token --check        exit 0 if a credential is present (offline)
-#   mint-runner-token --validate     ask GitHub whether that credential is live
+#   mint-runner-token store NODE          keep RUNNER_URL=, RUNNER_TOKEN= (and RUNNER_FORGE=) read on stdin
+#   mint-runner-token forget NODE         drop the node's token
+#   mint-runner-token --check NODE        exit 0 and print the URL and forge when a token is stored (offline)
+#   mint-runner-token --validate NODE     ask the host whether that token is live
+#   mint-runner-token --list              the node ids with a token, one per line
+#   mint-runner-token registration NODE   print a 1-hour runner registration token
+#   mint-runner-token remove NODE         print a runner removal token
 #
 set -euo pipefail
 
 . /opt/builderbot/scripts/lib/common.sh
 
-STASH=/run/builderbot/secrets.env
+# Under /config rather than /run so a token survives the container being
+# recreated; root-only, so the dashboard and every session reach it only
+# through this script.
+STORE=/config/runner-tokens
 
 [ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
 
-kind="${1:-registration}"
+kind="${1:-}"
+node="${2:-}"
 case "$kind" in
-    registration|remove|--check|--validate) ;;
-    *) die "usage: mint-runner-token [registration|remove|--check|--validate]" ;;
+    store|forget|--check|--validate|registration|remove)
+        [[ "$node" =~ ^n_[0-9a-f]{8}$ ]] || die "usage: mint-runner-token $kind NODE_ID" ;;
+    --list) ;;
+    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID, or --list" ;;
+esac
+file="$STORE/$node.env"
+
+case "$kind" in
+    --list)
+        [ -d "$STORE" ] || exit 0
+        for f in "$STORE"/n_*.env; do
+            [ -f "$f" ] || continue
+            b="${f##*/}"
+            printf '%s\n' "${b%.env}"
+        done
+        exit 0 ;;
+    store)
+        url=""; token=""; forge="github"
+        while IFS= read -r line; do
+            case "$line" in
+                RUNNER_URL=*)   url="${line#RUNNER_URL=}" ;;
+                RUNNER_TOKEN=*) token="${line#RUNNER_TOKEN=}" ;;
+                RUNNER_FORGE=*) forge="${line#RUNNER_FORGE=}" ;;
+            esac
+        done
+        [[ "$url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._/-]+$ ]] \
+            || die "the URL is the https address of the repository or organization the runner registers with"
+        [[ "$token" =~ ^[A-Za-z0-9._-]{8,}$ ]] || die "the token is one line of letters, digits, . _ and -"
+        [[ "$forge" =~ ^[a-z]{1,16}$ ]] || die "not a forge kind"
+        install -d -m 0700 -o root -g root "$STORE"
+        umask 077
+        printf 'RUNNER_URL=%q\nRUNNER_FORGE=%q\nRUNNER_TOKEN=%q\n' "$url" "$forge" "$token" > "$file.new"
+        mv -f "$file.new" "$file"
+        echo "stored"
+        exit 0 ;;
+    forget)
+        rm -f "$file"
+        echo "forgotten"
+        exit 0 ;;
 esac
 
-[ -f "$STASH" ] || die "no secrets stashed at ${STASH}"
+[ -f "$file" ] || die "no runner token stored for $node: paste one in the runner section of its row on the Nodes tab"
 # shellcheck disable=SC1090
-. "$STASH"
+. "$file"
+[ -n "${RUNNER_URL:-}" ] && [ -n "${RUNNER_TOKEN:-}" ] || die "the token stored for $node is incomplete: store it again"
 
-# Presence only — deliberately offline, so a network blip at boot cannot stop
-# the runner from trying.
 if [ "$kind" = "--check" ]; then
-    [ -n "${GITHUB_PAT:-}" ] && [ -n "${GITHUB_URL:-}" ]
-    exit
+    printf 'RUNNER_URL=%s\nRUNNER_FORGE=%s\n' "$RUNNER_URL" "${RUNNER_FORGE:-github}"
+    exit 0
 fi
 
-# Ask GitHub whether the credential is actually live. Catches the revoked or
-# expired token that --check happily reports as present. Uses /rate_limit
-# because every valid token can call it regardless of scopes.
+[ "${RUNNER_FORGE:-github}" = github ] || die "only a GitHub repository or organization can mint a runner token here yet"
+# github_api and scope_path in common.sh read RUNNER_TOKEN and RUNNER_URL,
+# which the stored file has just set.
+
+# Ask GitHub whether the token is actually live: /rate_limit answers to any
+# valid token whatever its scopes, so a revoked one cannot pass as present.
 if [ "$kind" = "--validate" ]; then
-    [ -n "${GITHUB_PAT:-}" ] || die "no GITHUB_PAT in the stash"
     github_api GET /rate_limit >/dev/null
     echo "token accepted by GitHub"
     exit
 fi
-
-[ -n "${GITHUB_PAT:-}" ] || die "no GITHUB_PAT in the stash"
-[ -n "${GITHUB_URL:-}" ] || die "no GITHUB_URL in the stash"
 
 token="$(github_api POST "$(scope_path "$kind")" | jq -r .token)"
 [ -n "$token" ] && [ "$token" != "null" ] || die "GitHub returned no token"

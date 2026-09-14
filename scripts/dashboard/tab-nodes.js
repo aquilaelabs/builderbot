@@ -156,7 +156,7 @@ function nodeRunnerSection(n, c){
   const d = c.draft;
   if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
       !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
-    url: want.url || ""};
+    url: want.url || "", token: ""};
   // The verdict first, because "installed" and "will actually pick up a job"
   // are different states and the old line buried the difference in the
   // middle of a sentence: a runner registered with no listener reads as
@@ -189,9 +189,12 @@ function nodeRunnerSection(n, c){
   const body = `
       <div class="sub">GitHub's Actions runner as a service here; its labels decide which workflows land.</div>
       <div class="ndrunner">
-        <div class="setrow col">${lbl("", "GitHub URL", "the org or repo the runner registers with")}
+        <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with; an organization serves every repository in it")}
         <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
-          placeholder="${esc(want.url || "https://github.com/your-org")}" aria-label="GitHub URL"></div>
+          placeholder="${esc(want.url || "https://github.com/your-org")}" aria-label="repository or organization URL"></div>
+        <div class="setrow col">${lbl("", "Token", "a token that may register runners there: it is kept root-only on the controller, and no session or page can read it back")}
+        <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
+          placeholder="${n.runner_token ? "stored; paste another to replace it" : "paste a token"}" aria-label="runner token"></div>
         <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
           placeholder="gpu, android" aria-label="labels"></div>
@@ -201,10 +204,16 @@ function nodeRunnerSection(n, c){
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}
       <div class="actbar">
         <span class="state ndrunstate${vcls ? " " + vcls : ""}">${
-          rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</span>
-        <button type="button" data-nrunner="install" ${busyNow ? "disabled" : ""}
-          title="${why || "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"}">${
+          rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}${
+          n.runner_token ? ` · token stored for ${esc(want.url || "this node")}` : " · no token stored"}</span>
+        <button type="button" data-nrunnertoken ${busyNow ? "disabled" : ""}
+          title="keep the token above for this node, root-only on the controller, with the address it registers with">Save token</button>
+        <button type="button" data-nrunner="install" ${busyNow || !n.runner_token ? "disabled" : ""}
+          title="${why || (n.runner_token ? "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"
+                                          : "save a token first: registering needs one")}">${
           rep.installed ? "Reinstall runner" : "Install runner"}</button>
+        ${n.runner_token ? `<button type="button" class="danger" data-nrunnerforget ${busyNow ? "disabled" : ""}
+          title="drop the stored token; a runner already registered keeps running, and removing it later needs a token again">Forget token</button>` : ""}
         ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" ${busyNow ? "disabled" : ""}
           title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
       </div>`;
@@ -1234,8 +1243,24 @@ function wireNodeConf(row, id){
         + `from GitHub first; workflows that target its label will wait for a runner.`)) return;
     const labels = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
     await pressing(b, () => { busy(b, want ? "Installing" : "Removing");
-      return nodeAct({action: "runner", id, want, labels, url: c.draft.runner?.url || ""}); });
+      return nodeAct({action: "runner", id, want, labels}); });
   });
+  const tokenBtn = fold.querySelector("[data-nrunnertoken]");
+  if (tokenBtn) tokenBtn.onclick = () => pressing(tokenBtn, async () => {
+    busy(tokenBtn, "Saving");
+    const r = await nodeAct({action: "runner-token", id, url: c.draft.runner?.url || "",
+                             token: c.draft.runner?.token || ""});
+    // The token leaves the page the moment it is handed over, either way.
+    if (c.draft.runner) c.draft.runner.token = "";
+    if (!r.error){ nodesRev++; drawPanes(); }
+  });
+  const forgetBtn = fold.querySelector("[data-nrunnerforget]");
+  if (forgetBtn) forgetBtn.onclick = () => {
+    if (!confirm("Forget this node's runner token?\n\nA runner already registered keeps running; installing or removing one later needs a token again.")) return;
+    pressing(forgetBtn, async () => { busy(forgetBtn, "Forgetting");
+      const r = await nodeAct({action: "runner-forget", id});
+      if (!r.error){ nodesRev++; drawPanes(); } });
+  };
   fold.querySelectorAll("[data-nsave]").forEach(save => { save.onclick = () => pressing(save, async () => {
     busy(save, "Saving");
     const r = await nodeAct({action: "config", id, config: c.draft});

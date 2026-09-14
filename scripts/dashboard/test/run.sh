@@ -237,6 +237,32 @@ done
 exec "$REAL_GIT" "\$@"
 GEOF
 chmod +x "$S/bin/git"
+# mint-runner-token, stood in for on the server's PATH as `sudo`: the root-only
+# store is a directory here and the minted tokens are fixed strings, so a test
+# can store, check, mint and forget without root and without GitHub.
+mkdir -p "$S/runner-store"
+cat > "$S/bin/sudo" <<SEOF
+#!/bin/sh
+store="$S/runner-store"
+SEOF
+cat >> "$S/bin/sudo" <<'EOF'
+while [ $# -gt 0 ]; do case "$1" in */mint-runner-token) shift; break ;; esac; shift; done
+kind="$1"; node="$2"
+case "$kind" in
+    --list) ls "$store" 2>/dev/null | sed 's/\.env$//'; exit 0 ;;
+    store)  cat > "$store/$node.env"; echo stored; exit 0 ;;
+    forget) rm -f "$store/$node.env"; echo forgotten; exit 0 ;;
+esac
+[ -f "$store/$node.env" ] || { echo "[builderbot] ERROR: no runner token stored for $node: paste one in the runner section of its row on the Nodes tab" >&2; exit 1; }
+case "$kind" in
+    --check)      grep -E '^RUNNER_(URL|FORGE)=' "$store/$node.env"; exit 0 ;;
+    --validate)   echo "token accepted"; exit 0 ;;
+    registration) echo AAAREGTOKEN; exit 0 ;;
+    remove)       echo AAAREMOVETOKEN; exit 0 ;;
+esac
+echo "sudo: refused" >&2; exit 1
+EOF
+chmod +x "$S/bin/sudo"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
 mkdir -p "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)"
