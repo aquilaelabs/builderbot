@@ -666,6 +666,15 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            `a controller that does not answer refuses every call until it is back (${r.code})`);
         r = gate({});
         ok(r.code === 0, '...and answers again the moment it does');
+        // A controller that answers with a refusal is up. A session idle past
+        // its token's twelve hours is refused "not signed in", and the gate
+        // used to read any error without "HTTP" in it as no connection at all,
+        // so it told that session BuilderBot was restarting after an update.
+        fresh();
+        rmSync(`${cache}/builderbot/token-alpha`, { force: true });
+        r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
+        ok(r.code === 0 && !/not answering/.test(r.err),
+           `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
       }
       // bb itself in the node role: a relayed verb is the controller's
       // answer and nothing else — the dispatch used to fall through and run

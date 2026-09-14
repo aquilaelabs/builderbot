@@ -87,6 +87,17 @@ def call(path, body=None, auth="", method="", timeout=30):
     The shape every caller in bb already handled: an HTTP error whose body
     is JSON comes back as that JSON (the server's own sentence), any other
     failure as an error string. POST when a body is given, GET otherwise."""
+    return request(path, body, auth, method, timeout)[1]
+
+
+def request(path, body=None, auth="", method="", timeout=30):
+    """call(), with the HTTP status beside the answer: (status, answer).
+
+    The status is None when nothing answered at all: no connection, a
+    timeout, a pin that did not match. call() cannot say that, because a
+    refusal the server words ("not signed in") and a refused connection both
+    come back as {"error": sentence}, and telling them apart by the wording
+    is how bb-gate came to report an expired token as BuilderBot being down."""
     hdrs = {"Authorization": auth or os.environ.get("BB_AUTH_HEADER", "")}
     data = None
     if body is not None:
@@ -100,15 +111,15 @@ def call(path, body=None, auth="", method="", timeout=30):
         fresh = r.getheader("X-BB-Session", "")
         c.close()
     except (OSError, http.client.HTTPException) as e:
-        return {"error": str(e)}
+        return None, {"error": str(e)}
     if fresh and fresh.startswith("bbs_"):
         keep_token(fresh)
     if r.status == 204 or not payload:
-        return {} if r.status < 400 else {"error": f"HTTP {r.status}"}
+        return r.status, ({} if r.status < 400 else {"error": f"HTTP {r.status}"})
     try:
         got = json.loads(payload)
     except ValueError:
-        return {"error": f"HTTP {r.status}"}
+        return r.status, {"error": f"HTTP {r.status}"}
     if r.status >= 400 and isinstance(got, dict) and not got.get("error"):
         got["error"] = f"HTTP {r.status}"
-    return got
+    return r.status, got

@@ -80,13 +80,17 @@ def stamp_file(project):
 
 
 def controller_answers(project):
-    """True when the controller answered a status request now."""
+    """True when the controller answered a status request now.
+
+    Any HTTP answer counts, a refusal included: a session whose token has
+    expired is talking to a controller that is up, and telling it BuilderBot
+    is restarting sends everybody to look at an update that did nothing. The
+    status decides it, never the wording, because the server's refusals are
+    sentences ("not signed in") with nothing in them to test for."""
     if bbapi is None:
         return True                     # nothing to ask with; never refuse blind
-    r = bbapi.call("/api/status", auth="Bearer " + token(project), timeout=8)
-    if r.get("error") and "HTTP" not in str(r.get("error")):
-        return False                    # no connection: down, or restarting
-    return True                         # an answer, even a refusal, is a controller that is up
+    status, _ = bbapi.request("/api/status", auth="Bearer " + token(project), timeout=8)
+    return status is not None           # None: no connection, so down or restarting
 
 
 def md_check(project, flag):
@@ -155,7 +159,7 @@ def main():
         return 0
     why = ""
     if not controller_answers(project):
-        why = ("BuilderBot is not answering — it is restarting after an update, or down. "
+        why = ("BuilderBot is not answering: it is restarting after an update, or down. "
                "Nothing runs until it is back: wait, then try again. If this keeps up, the "
                "operator checks the container.")
     elif md_check(project, "--out-of-window"):
