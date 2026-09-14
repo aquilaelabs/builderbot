@@ -75,6 +75,40 @@ ok(!list.some(n => n.kind === 'ssh'),
 ok(list[0].id === 'local',
    'local lists first — the one node every deployment has');
 
+// ---- the default node runs docker, when any node says so (B113) -----------
+// node_for() took the newest node with an ADDRESS, and an address is not a
+// daemon: a Mac enrolled as a guest, with ssh and no docker, would have become
+// the host of every instance nobody bound to a node. The census already says
+// which nodes run docker, so those are preferred, with nothing asked on the
+// status poll's path. Its own scratch store, so the harness's nodes stay put.
+{
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile
+spec = importlib.util.spec_from_file_location('nodes',
+  ${JSON.stringify(new globalThis.URL('../nodes.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(state=tempfile.mkdtemp())
+def node(name, docker, created):
+    mint = m.enroll_mint('user:test', name)
+    census = {'cpu': 2, 'mem_mb': 4096, 'arch': 'x86_64', 'system': 'linux', 'sshd': True, 'docker': docker}
+    m.enroll(m.authenticate(mint['token']), census, '10.0.0.' + str(created), user='bb')
+    m._exec('UPDATE nodes SET created = ? WHERE id = ?', (created, mint['id']))
+    return mint['id']
+older = node('olderbox', '27.1.1', 10)
+newer = node('guestmac', '', 20)
+out = {'older': older, 'newer': newer, 'pick': m.node_for()}
+m._exec("UPDATE nodes SET reported = json_set(reported, '$.docker', '27.1.1') WHERE id = ?", (newer,))
+out['both'] = m.node_for()
+m._exec("UPDATE nodes SET reported = json_set(reported, '$.docker', '') WHERE id IN (?, ?)", (older, newer))
+out['neither'] = m.node_for()
+print(json.dumps(out))
+`], { encoding: 'utf8' }).trim());
+  ok(got.pick === got.older,
+     `the default node is one whose census says docker runs there, not the newest with an address (${got.pick})`);
+  ok(got.both === got.newer, '...the newest of those when more than one does');
+  ok(got.neither === got.newer, '...and the newest with an address when none says so, as before');
+}
+
 // ---- the seam: work says which node it belongs to --------------------------
 // A compose action claims the job slot; the claim now asks node_for() and
 // the answer rides the job the page polls. Fixed in phase 1 — docker work is

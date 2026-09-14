@@ -503,26 +503,27 @@ def node_paths_set(principal, node_id, text):
 
 
 def node_for():
-    """The default node for work nobody bound to one — the newest enrolled,
-    else local. There is nothing to narrow by: a node does everything, what a
-    project can do on its node is what is installed there, and the project
-    names the node."""
+    """The default node for work nobody bound to one: the newest enrolled
+    node that runs docker, else the newest enrolled, else local. There is
+    nothing else to narrow by: a node does everything, what a project can do
+    on its node is what is installed there, and the project names the node."""
     try:
-        # The newest node the manager has somewhere to SEND to. Not the newest
-        # whose daemon answers, which is what this used to claim and is a
-        # different question (B113): docker_nodes() drops a node with no
-        # address, and an address is not an answer. Asking for real would put
-        # a ten-second docker call per candidate on the status poll's path and
-        # make a project's containers follow a VM's uptime around, so the
-        # honest fix is an explicit setting rather than a probe here.
+        # The newest node whose census says docker runs there, else the newest
+        # the manager has somewhere to send to (B113). An address is not a
+        # daemon: a Mac enrolled as a guest, with ssh and no docker, would
+        # otherwise be the host of every instance nobody bound to a node. The
+        # census is what the node last said about itself, so nothing is asked
+        # on the status poll's path, and the choice holds still while a
+        # machine is off instead of following its uptime around.
         #
         # Still better than "newest online", which is what it replaced: an
         # agent node that has never dialed in has no address at all, so it
         # could hold a project's containers only in principle, and picking it
         # left the manager talking to nothing.
         got = [n for n in docker_nodes() if n["kind"] != "local"]
-        if got:
-            return sorted(got, key=lambda n: n["created"])[-1]["id"]
+        runs = [n for n in got if (n.get("reported") or {}).get("docker")]
+        if runs or got:
+            return sorted(runs or got, key=lambda n: n["created"])[-1]["id"]
     except sqlite3.Error:
         pass                     # a broken store falls back to the answer
     return LOCAL                 # that was always true before it existed
