@@ -213,8 +213,9 @@ bound to.
 
 **CI runs on a node, not in this container.** Enroll one (step 9 in
 `docs/unraid.md`: a token from the Nodes tab, then `provision-linux.sh` on the
-machine), open its row on the Nodes tab and press **Install runner**. It
-registers under the node's own name, which is the label a workflow uses:
+machine), open its row on the Nodes tab, add a runner for your git host
+and press **Install runner** on it. It registers under the node's own name,
+which is the label a workflow uses:
 
 ```yaml
 jobs:
@@ -1620,13 +1621,13 @@ open daemon port, nothing dialling in. (A node added as a plain `ssh` docker
 host, the arrangement from before the agent, still runs compose from here
 over ssh.)
 
-**A CI runner per node.** The same fold installs the host's Actions runner
-on the node, GitHub's or Gitea's `act_runner`: it registers with the
-repository or organization address and the token saved for that node (kept
-root-only on the controller), and labels `builderbot, self-hosted, linux,
-<arch>, <node name>` plus any extra, so a workflow's `runs-on` names the node
-it should land on. The row says whether the runner is listening or busy;
-Remove deregisters it first. `bb ci-labels` lists every label the registry knows
+**CI runners per node, one per git host.** The same fold lists the node's
+runners and adds one with its host, address and token (kept root-only on
+the controller): GitHub's runner and Gitea's `act_runner` side by side,
+each registered with labels `builderbot, self-hosted, linux, <arch>, <node
+name>` plus any extra, so a workflow's `runs-on` names the node it should
+land on whichever host its repository is on. Each row says whether its
+runner is listening or busy; Remove deregisters it first. `bb ci-labels` lists every label the registry knows
 and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.

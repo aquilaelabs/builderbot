@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.54"
+AGENT_VERSION = "0.5.55"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -340,6 +340,78 @@ RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # prebuilt one named here for the suite.
 ACT_RUNNER_BIN = os.environ.get("BUILDERBOT_ACT_RUNNER_BIN", "")
 ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/act_runner/releases/latest"
+
+def runner_slot(url):
+    """The slot a runner's address maps to: its host and path, lowercase,
+    letters, digits, dots and dashes, so it can name a directory on the
+    node, a token file on the controller and a row on the tab. One runner
+    per slot per node, since a runner's name on its host is the node's.
+    The same function lives in scripts/dashboard/nodes.py; the two must agree."""
+    rest = re.sub(r"^[a-z]+://", "", str(url or "").strip().lower()).rstrip("/")
+    rest = re.sub(r"\.git$", "", rest)
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9.]+", "-", rest)).strip("-.")[:60]
+
+
+def _runner_record(d):
+    """The runner's own record of its registration in directory d, whichever
+    runner: GitHub's writes agentName and gitHubUrl (with a BOM), act_runner
+    writes name, address and id. {} when none is registered there."""
+    try:
+        with open(os.path.join(d, ".runner"), encoding="utf-8-sig") as f:
+            j = json.load(f)
+        return j if isinstance(j, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def runner_dirs():
+    """Every directory holding a registered runner: RUNNER_DIR itself for a
+    runner registered before a node could hold several (its unit names that
+    path, so it stays), and RUNNER_DIR/<slot> for each since. [(dir, record)]."""
+    out = []
+    rec = _runner_record(RUNNER_DIR)
+    if rec:
+        out.append((RUNNER_DIR, rec))
+    try:
+        subs = sorted(os.listdir(RUNNER_DIR))
+    except OSError:
+        subs = []
+    for sub in subs:
+        d = os.path.join(RUNNER_DIR, sub)
+        rec = _runner_record(d) if os.path.isdir(d) else {}
+        if rec:
+            out.append((d, rec))
+    return out
+
+
+def _runner_state(d, rec):
+    """One runner as the census reports it: what it registered as and
+    whether its listener is up, read from its own files."""
+    labels = []
+    with contextlib.suppress(OSError):
+        with open(os.path.join(d, ".builderbot-labels")) as f:
+            labels = [x for x in f.read().split(",") if x]
+    # GitHub's runner listens as bin/Runner.Listener; act_runner as
+    # `<dir>/act_runner daemon`, in the foreground under this agent.
+    pg = (_run(["pgrep", "-f", os.path.join(d, "bin/Runner.Listener")])
+          or _run(["pgrep", "-f", os.path.join(d, "act_runner") + " daemon"]))
+    # WHERE ITS OUTPUT GOES, which only this machine knows. Under systemd
+    # svc.sh writes the unit's name into .service and the listener's output
+    # is the journal's; in the foreground it is runner.log under the data
+    # store. Empty when there is no unit, and the controller reads the file.
+    unit = ""
+    if has_systemd():
+        with contextlib.suppress(OSError):
+            with open(os.path.join(d, ".service")) as f:
+                unit = f.read().strip()[:120]
+    url = str(rec.get("gitHubUrl") or rec.get("address") or "")[:200]
+    # GitHub's .runner says agentName and gitHubUrl; act_runner's says name
+    # and address, which is also how the two are told apart.
+    return {"installed": True, "slot": runner_slot(url),
+            "name": str(rec.get("agentName") or rec.get("name") or "")[:80],
+            "url": url, "forge": "gitea" if "address" in rec else "github",
+            "unit": unit, "labels": labels[:16], "active": bool(pg),
+            "busy": bool(_run(["pgrep", "-f", os.path.join(d, "bin/Runner.Worker")]))}
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
 # stand in for it, like the rest of the tools the agent drives.
 TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
@@ -1220,50 +1292,10 @@ def services_now():
     listener is up. Read from the runner's own files, so a runner installed
     by hand reports the same way one installed from the tab does."""
     out = {}
-    cfg = os.path.join(RUNNER_DIR, ".runner")
-    if os.path.isfile(cfg):
-        try:
-            # utf-8-sig, not utf-8: GitHub's config.sh writes .runner with a
-            # BOM, and json.load on a plain utf-8 handle raises on it. That
-            # fell into the except below and reported a correctly registered
-            # runner as one whose name "did not come back" — indistinguishable
-            # from the genuinely half-installed state this census exists to
-            # tell apart.
-            with open(cfg, encoding="utf-8-sig") as f:
-                j = json.load(f)
-        except (OSError, ValueError):
-            j = {}
-        labels = []
-        with contextlib.suppress(OSError):
-            with open(os.path.join(RUNNER_DIR, ".builderbot-labels")) as f:
-                labels = [x for x in f.read().split(",") if x]
-        # GitHub's runner listens as bin/Runner.Listener; act_runner as
-        # `<dir>/act_runner daemon`, in the foreground under this agent.
-        pg = (_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Listener")])
-              or _run(["pgrep", "-f", os.path.join(RUNNER_DIR, "act_runner") + " daemon"]))
-        # WHERE ITS OUTPUT GOES, which only this machine knows. Under systemd
-        # svc.sh writes the unit's name into .service and the listener's
-        # output is the journal's; in the foreground it is runner.log under
-        # the data store, which is where the controller looked unconditionally
-        # — so `bb logs --node X --runner` answered "No such file or
-        # directory" on every node where the runner is installed properly.
-        # Empty when there is no unit, and the controller reads the file then.
-        unit = ""
-        if has_systemd():
-            with contextlib.suppress(OSError):
-                with open(os.path.join(RUNNER_DIR, ".service")) as f:
-                    unit = f.read().strip()[:120]
-        # GitHub's .runner says agentName and gitHubUrl; act_runner's says
-        # name and address, which is also how the two are told apart.
-        out["actions-runner"] = {"installed": True,
-                                 "name": str(j.get("agentName") or j.get("name") or "")[:80],
-                                 "url": str(j.get("gitHubUrl") or j.get("address") or "")[:200],
-                                 "forge": "gitea" if "address" in j else "github",
-                                 "unit": unit,
-                                 "labels": labels[:16], "active": bool(pg),
-                                 "busy": bool(_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Worker")]))}
-    else:
-        out["actions-runner"] = {"installed": False}
+    # Every runner on this node, one per git host, and the first of them
+    # under the old single key too, for a controller from before the list.
+    out["runners"] = [_runner_state(d, rec) for d, rec in runner_dirs()]
+    out["actions-runner"] = out["runners"][0] if out["runners"] else {"installed": False}
     # Tailscale: whether it is here, this node's MagicDNS name (the funnel
     # URL is https://<that>), and which https ports are funnelled to which
     # local ports — read from tailscale's own status, so a funnel set by
@@ -2410,8 +2442,8 @@ class Agent:
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
-        self.runner_proc = None
-        self.runner_tried = 0
+        self.runner_procs = {}            # runner directory -> its process
+        self.runner_tried = {}            # runner directory -> when it was last started
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -2509,15 +2541,16 @@ class Agent:
         return st, r
 
     def runner_env_sync(self):
-        """An existing runner's .env, kept equal to what runner_env_text says
-        now: the node's toolchain and where CI logs are archived. _apply_runner
+        """Every runner's .env, kept equal to what runner_env_text says now:
+        the node's toolchain and where CI logs are archived. _apply_runner
         writes it at install; a runner installed before this agent knew a
         line (bb-sandbox's was) ran with less. Rewritten when it differs, and
-        the service cycled so the runner reads it — only while it is idle: a
+        the service cycled so the runner reads it, only while it is idle: a
         restart under a running job would kill the job."""
-        d = RUNNER_DIR
-        if not os.path.isfile(os.path.join(d, ".runner")):
-            return
+        for d, _rec in runner_dirs():
+            self._runner_env_sync(d)
+
+    def _runner_env_sync(self, d):
         want = runner_env_text(self.state)
         try:
             with open(os.path.join(d, ".env")) as f:
@@ -2544,8 +2577,8 @@ class Agent:
             self._sh(quiet, ["bash", "./svc.sh", "stop"], cwd=d)
             self._sh(quiet, ["bash", "./svc.sh", "start"], cwd=d)
         else:
-            self.runner_stop()
-            self.runner_start(who)
+            self.runner_stop(d)
+            self.runner_start(who, d=d)
 
     def running(self):
         with self.lock:
@@ -4067,21 +4100,26 @@ class Agent:
         want = bool(cfg.get("want", True))
         who = self.drop_privileges({})
         user = self.state.get("user") or "root"
-        d = RUNNER_DIR
+        url = str(cfg.get("url") or "")
+        slot = str(cfg.get("slot") or "") or runner_slot(url)
+        # This runner's directory, one per git host: the one already
+        # registered for this address (RUNNER_DIR itself for a runner from
+        # before a node could hold several), else RUNNER_DIR/<slot>.
+        d = self._runner_dir_for(slot, url)
         # Which host's runner: what is installed decides a removal, the
         # record decides an install.
-        installed = self._runner_file(d)
+        installed = _runner_record(d)
         if (installed.get("address") if installed else cfg.get("forge") == "gitea"):
-            return self._apply_act_runner(job, cfg, want, who, d, installed)
+            return self._apply_act_runner(job, cfg, want, who, d, installed, slot)
         if not want:
             if not os.path.isfile(os.path.join(d, ".runner")):
                 job.say("no runner is installed here\n")
                 return "succeeded", 0
-            st, r = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            st, r = self.ctl.call("runner-token", {"kind": "remove", "slot": slot}, timeout=60)
             if st != 200 or not r.get("token"):
                 job.say(f"could not get a removal token from the controller: {r.get('error', st)}\n")
                 return "failed", 69
-            self.runner_stop()
+            self.runner_stop(d)
             if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
                 self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
                 self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
@@ -4092,7 +4130,6 @@ class Agent:
             self.hello()
             job.say("runner removed\n")
             return "succeeded", 0
-        url = str(cfg.get("url") or "")
         if not url.startswith("https://github.com/"):
             job.say(f"refused: the runner registers with a GitHub org or repo URL, not {url!r}\n")
             return "failed", 65
@@ -4153,7 +4190,7 @@ class Agent:
             if os.path.isfile(os.path.join(d, "svc.sh")):
                 self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
                 self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
-            st, rr = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            st, rr = self.ctl.call("runner-token", {"kind": "remove", "slot": slot}, timeout=60)
             gone = False
             if st == 200 and rr.get("token"):
                 gone = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove",
@@ -4164,7 +4201,7 @@ class Agent:
                 for junk in (".runner", ".credentials", ".credentials_rsaparams", ".service"):
                     with contextlib.suppress(OSError):
                         os.remove(os.path.join(d, junk))
-        st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
+        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
         if st != 200 or not r.get("token"):
             job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
             return "failed", 69
@@ -4202,26 +4239,25 @@ class Agent:
             # run.sh in the foreground under this agent, which supervises it
             # and takes it down with itself; the census's pgrep of
             # Runner.Listener reports it exactly as it would the service.
-            if not self.runner_start(who, job):
+            if not self.runner_start(who, job, d):
                 return "failed", 1
-            job.say("no systemd here — the runner runs in the foreground under this agent\n")
+            job.say("no systemd here: the runner runs in the foreground under this agent\n")
         self.hello()
         job.say("runner installed and started\n")
         return "succeeded", 0
 
     @staticmethod
-    def _runner_file(d):
-        """The runner's own record of its registration, whichever runner:
-        GitHub's writes agentName and gitHubUrl (with a BOM), act_runner
-        writes name, address and id. {} when none is registered."""
-        try:
-            with open(os.path.join(d, ".runner"), encoding="utf-8-sig") as f:
-                j = json.load(f)
-            return j if isinstance(j, dict) else {}
-        except (OSError, ValueError):
-            return {}
+    def _runner_dir_for(slot, url=""):
+        """Where a runner for this address lives, or would: the directory
+        already registered for it, else RUNNER_DIR/<slot>."""
+        want = url.rstrip("/").lower()
+        for d, rec in runner_dirs():
+            have = str(rec.get("gitHubUrl") or rec.get("address") or "").rstrip("/").lower()
+            if (want and have == want) or (not want and runner_slot(have) == slot):
+                return d
+        return os.path.join(RUNNER_DIR, slot) if slot else RUNNER_DIR
 
-    def _apply_act_runner(self, job, cfg, want, who, d, installed):
+    def _apply_act_runner(self, job, cfg, want, who, d, installed, slot):
         """Gitea's or Forgejo's runner (R53): act_runner, one static binary,
         registered with a token the controller fetches from the host's API
         with the node's own credential, and run as `act_runner daemon` in
@@ -4235,11 +4271,11 @@ class Agent:
                 job.say("no runner is installed here\n")
                 return "succeeded", 0
             rid = str(installed.get("id") or "")
-            st, r = self.ctl.call("runner-token", {"kind": "remove", "runner_id": rid}, timeout=60)
+            st, r = self.ctl.call("runner-token", {"kind": "remove", "slot": slot, "runner_id": rid}, timeout=60)
             if st != 200 or r.get("error"):
                 job.say(f"could not delete the runner on its host: {r.get('error', st)}; "
                         "taking the local one down anyway\n")
-            self.runner_stop()
+            self.runner_stop(d)
             shutil.rmtree(d, ignore_errors=True)
             self.hello()
             job.say("runner removed\n")
@@ -4279,11 +4315,12 @@ class Agent:
         self.own_dir(d, who)
         if installed:
             job.say("a runner is already registered here; deleting it on its host before registering again\n")
-            self.runner_stop()
-            self.ctl.call("runner-token", {"kind": "remove", "runner_id": str(installed.get("id") or "")}, timeout=60)
+            self.runner_stop(d)
+            self.ctl.call("runner-token", {"kind": "remove", "slot": slot,
+                                           "runner_id": str(installed.get("id") or "")}, timeout=60)
             with contextlib.suppress(OSError):
                 os.remove(os.path.join(d, ".runner"))
-        st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
+        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
         if st != 200 or not r.get("token"):
             job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
             return "failed", 69
@@ -4303,18 +4340,18 @@ class Agent:
         with open(os.path.join(d, ".env"), "w") as f:
             f.write(runner_env_text(self.state))
         self.own_dir(d, who)
-        if not self.runner_start(who, job):
+        if not self.runner_start(who, job, d):
             return "failed", 1
         self.hello()
         job.say("runner installed and started\n")
         return "succeeded", 0
 
-    def runner_start(self, who, job=None):
-        """The runner as a child of this process, as the enrolled account,
-        its output into runner.log under the data store: GitHub's run.sh, or
-        `act_runner daemon`. Its own session, so a stop reaches the listener
-        and the workers it forks alike."""
-        d = RUNNER_DIR
+    def runner_start(self, who, job=None, d=None):
+        """The runner in directory d as a child of this process, as the
+        enrolled account, its output into runner.log under the data store:
+        GitHub's run.sh, or `act_runner daemon`. Its own session, so a stop
+        reaches the listener and the workers it forks alike."""
+        d = d or RUNNER_DIR
         say = job.say if job else (lambda t: log(t.rstrip("\n")))
         if os.path.isfile(os.path.join(d, "run.sh")):
             argv = ["bash", "./run.sh"]
@@ -4332,53 +4369,53 @@ class Agent:
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "runner.log")
         try:
             out = open(logf, "ab")
-            self.runner_proc = subprocess.Popen(argv, cwd=d, env=env,
-                                                stdin=subprocess.DEVNULL, stdout=out, stderr=out,
-                                                start_new_session=True, **who)
+            self.runner_procs[d] = subprocess.Popen(argv, cwd=d, env=env,
+                                                    stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                                    start_new_session=True, **who)
             out.close()
         except (OSError, RuntimeError) as e:
             say(f"the runner could not start: {e}\n")
-            self.runner_proc = None
+            self.runner_procs.pop(d, None)
             return False
-        self.runner_tried = time.time()
-        log(f"runner: {' '.join(argv)} started in the foreground (pid {self.runner_proc.pid}), log {logf}")
+        self.runner_tried[d] = time.time()
+        log(f"runner: {' '.join(argv)} started in the foreground (pid {self.runner_procs[d].pid}), log {logf}")
         return True
 
-    def runner_stop(self):
-        p = self.runner_proc
-        self.runner_proc = None
-        if p is None or p.poll() is not None:
-            return
-        for sig, wait in ((signal.SIGTERM, 10.0), (signal.SIGKILL, 3.0)):
-            with contextlib.suppress(OSError):
-                os.killpg(p.pid, sig)
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                p.wait(wait)
-                return
+    def runner_stop(self, d=None):
+        """Stop the runner in directory d, or every one this agent started."""
+        for dd in ([d] if d else list(self.runner_procs)):
+            p = self.runner_procs.pop(dd, None)
+            if p is None or p.poll() is not None:
+                continue
+            for sig, wait in ((signal.SIGTERM, 10.0), (signal.SIGKILL, 3.0)):
+                with contextlib.suppress(OSError):
+                    os.killpg(p.pid, sig)
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    p.wait(wait)
+                    break
 
     def runner_check(self):
-        """Once a loop, where there is no systemd: a configured runner that
-        is not running is started — after this agent restarted, or after
-        run.sh exited — not more often than every thirty seconds. One
-        already listening from an earlier agent process is left to it."""
-        d = RUNNER_DIR
-        if not os.path.isfile(os.path.join(d, ".runner")):
-            return
-        # GitHub's runner is systemd's where there is systemd; act_runner is
-        # always this agent's.
-        if has_systemd() and not os.path.isfile(os.path.join(d, "act_runner")):
-            return
-        if self.runner_proc is not None and self.runner_proc.poll() is None:
-            return
-        if time.time() - self.runner_tried < 30:
-            return
-        if (_run(["pgrep", "-f", os.path.join(d, "bin/Runner.Listener")])
-                or _run(["pgrep", "-f", os.path.join(d, "act_runner") + " daemon"])):
-            self.runner_tried = time.time()
-            return                          # an earlier agent's; working
-        log("runner: not running; starting run.sh" if self.runner_proc is None
-            else f"runner: run.sh exited ({self.runner_proc.returncode}); starting again")
-        self.runner_start(self.drop_privileges({}))
+        """Once a loop: every configured runner this agent is responsible
+        for that is not running is started (after this agent restarted, or
+        after it exited), not more often than every thirty seconds each.
+        GitHub's runner is systemd's where there is systemd; act_runner is
+        always this agent's. One already listening from an earlier agent
+        process is left to it."""
+        for d, _rec in runner_dirs():
+            if has_systemd() and not os.path.isfile(os.path.join(d, "act_runner")):
+                continue
+            p = self.runner_procs.get(d)
+            if p is not None and p.poll() is None:
+                continue
+            if time.time() - self.runner_tried.get(d, 0) < 30:
+                continue
+            if (_run(["pgrep", "-f", os.path.join(d, "bin/Runner.Listener")])
+                    or _run(["pgrep", "-f", os.path.join(d, "act_runner") + " daemon"])):
+                self.runner_tried[d] = time.time()
+                continue                    # an earlier agent's; working
+            log(f"runner {os.path.basename(d)}: not running; starting" if p is None
+                else f"runner {os.path.basename(d)}: exited ({p.returncode}); starting again")
+            self.runner_start(self.drop_privileges({}), d=d)
 
     def _apply_funnel(self, job, cfg):
         """Tailscale Funnel for one local port on https 443 (docs/nodes.md

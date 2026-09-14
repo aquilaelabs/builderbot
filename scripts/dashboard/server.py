@@ -2371,11 +2371,11 @@ def _helper_why(r):
     return re.sub(r"^\[builderbot\] ERROR: ", "", why)[:200]
 
 
-def mint_runner_token(kind, node_id, runner_id=""):
-    """A registration or removal token for a node's runner, minted from the
-    token stored for that node. `runner_id` is the runner's id on a Gitea,
-    where removal is a deletion there rather than a token."""
-    argv = ["sudo", "-n", RUNNER_HELPER, kind, node_id]
+def mint_runner_token(kind, node_id, slot, runner_id=""):
+    """A registration or removal token for one of a node's runners, minted
+    from the token stored for it. `runner_id` is the runner's id on a
+    Gitea, where removal is a deletion there rather than a token."""
+    argv = ["sudo", "-n", RUNNER_HELPER, kind, node_id, slot]
     if re.fullmatch(r"[0-9]{1,12}", str(runner_id or "")):
         argv.append(str(runner_id))
     r = run(argv, timeout=60)
@@ -2384,20 +2384,24 @@ def mint_runner_token(kind, node_id, runner_id=""):
     return {"error": f"the controller cannot mint a runner token: {_helper_why(r)}"}
 
 
-def runner_token_state(node_id):
-    """Whether a token is stored for this node, and for which URL and forge.
-    The token itself never comes back."""
-    r = run(["sudo", "-n", RUNNER_HELPER, "--check", node_id], timeout=20)
-    got = dict(l.split("=", 1) for l in r["out"].splitlines() if "=" in l) if r["code"] == 0 else {}
-    return {"stored": r["code"] == 0, "url": got.get("RUNNER_URL", ""),
-            "forge": got.get("RUNNER_FORGE", "")}
+def runner_tokens_all():
+    """{node id: {slot, ...}} for every runner token stored, from one call
+    to the helper's --list. Which runners have a token, and nothing else."""
+    r = run(["sudo", "-n", RUNNER_HELPER, "--list"], timeout=20)
+    out = {}
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                out.setdefault(parts[0], set()).add(parts[1])
+    return out
 
 
-def runner_token_store(node_id, url, forge, token):
-    """Hand a node's token to the helper on stdin: it never rides an argv,
+def runner_token_store(node_id, slot, url, forge, token):
+    """Hand a runner's token to the helper on stdin: it never rides an argv,
     where every account on the box could read it off ps."""
     try:
-        p = subprocess.run(["sudo", "-n", RUNNER_HELPER, "store", node_id],
+        p = subprocess.run(["sudo", "-n", RUNNER_HELPER, "store", node_id, slot],
                            input=f"RUNNER_URL={url}\nRUNNER_FORGE={forge}\nRUNNER_TOKEN={token}\n",
                            capture_output=True, text=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError) as e:
@@ -2408,8 +2412,8 @@ def runner_token_store(node_id, url, forge, token):
     return {"ok": True}
 
 
-def runner_token_forget(node_id):
-    r = run(["sudo", "-n", RUNNER_HELPER, "forget", node_id], timeout=20)
+def runner_token_forget(node_id, slot):
+    r = run(["sudo", "-n", RUNNER_HELPER, "forget", node_id, slot], timeout=20)
     return {"ok": True} if r["code"] == 0 else {"error": _helper_why(r)}
 
 
@@ -2424,24 +2428,29 @@ def node_runners():
     for n in nodes.node_list():
         if n["kind"] != "agent":
             continue
-        rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
-        want = (n.get("services") or {}).get("actions-runner") or {}
-        # A runner job in flight keeps the row while it runs: a Remove takes
-        # the ask off the record the moment it is pressed, and the row went
-        # with it before the node had said a word.
-        applying = (n.get("applying") or {}).get("what") == "runner"
-        if not (rep.get("installed") or want.get("want") or applying):
-            continue
-        out.append({"node": n["name"], "id": n["id"], "live": bool(n.get("live")),
-                    "installed": bool(rep.get("installed")),
-                    "listening": bool(rep.get("active")), "busy": bool(rep.get("busy")),
-                    "name": rep.get("name") or "", "url": rep.get("url") or "",
-                    "labels": rep.get("labels") or want.get("labels") or [],
-                    # Why a runner that was asked for is not there, and whether
-                    # the install that would put it there is running now.
-                    "failed": n.get("runner_failed"),
-                    "installing": applying and bool(want.get("want")),
-                    "removing": applying and not want.get("want")})
+        asked = nodes.runners_of(n)
+        reported = {r.get("slot"): r for r in nodes.runners_reported(n)}
+        ap = n.get("applying") or {}
+        failed = n.get("runner_failed") or {}
+        for slot in sorted(set(asked) | set(reported)):
+            want = asked.get(slot) or {}
+            rep = reported.get(slot) or {}
+            # A runner job in flight keeps the row while it runs: a Remove
+            # takes the ask off the record the moment it is pressed, and the
+            # row went with it before the node had said a word.
+            applying = ap.get("what") == "runner" and (ap.get("slot") or slot) == slot
+            if not (rep.get("installed") or want.get("want") or applying):
+                continue
+            out.append({"node": n["name"], "id": n["id"], "slot": slot, "live": bool(n.get("live")),
+                        "installed": bool(rep.get("installed")),
+                        "listening": bool(rep.get("active")), "busy": bool(rep.get("busy")),
+                        "name": rep.get("name") or "", "url": rep.get("url") or want.get("url") or "",
+                        "labels": rep.get("labels") or want.get("labels") or [],
+                        # Why a runner that was asked for is not there, and
+                        # whether the install that would put it there runs now.
+                        "failed": failed if failed and (failed.get("slot") or slot) == slot else None,
+                        "installing": applying and bool(want.get("want")),
+                        "removing": applying and not want.get("want")})
     return out
 
 
@@ -3740,11 +3749,12 @@ class Handler(BaseHTTPRequestHandler):
     def _nodes_for(self, rows):
         scope = self._node_scope()
         rows = rows if scope is None else [n for n in rows if n["id"] in scope]
-        # Whether a runner token is stored for each agent node: asked of the
-        # helper, which says yes or no and never the token.
+        # Which of each node's runners has a token stored: asked of the
+        # helper once, which names slots and never a token.
+        tokens = runner_tokens_all() if any(n.get("kind") == "agent" for n in rows) else {}
         for n in rows:
             if n.get("kind") == "agent":
-                n["runner_token"] = runner_token_state(n["id"])["stored"]
+                n["runner_tokens"] = sorted(tokens.get(n["id"], set()))
         # Whether THIS account's Claude login has been given to each node,
         # answered here rather than by handing the page a uid to compare
         # against: the grant list is every account that has one, which is
@@ -4834,13 +4844,14 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
-            # The Actions runner on a node (phase 7): a system job, minting
-            # from the token stored for this node. The URL is the record's,
-            # written when the token was, so the token and the address it
-            # was made for cannot come apart.
-            r = nodes.node_runner(self._principal(), nid, bool(req.get("want", True)),
+            # One of the node's runners (phase 7, one per git host): a system
+            # job, minting from the token stored for that runner. The URL is
+            # the record's, written when the token was, so the token and the
+            # address it was made for cannot come apart.
+            slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
+            r = nodes.node_runner(self._principal(), nid, slot, bool(req.get("want", True)),
                                   req.get("labels"),
-                                  token=runner_token_state(nid)["stored"])
+                                  token=slot in runner_tokens_all().get(nid, set()))
         elif act == "runner-token":
             # The node's runner token: forge and URL onto the record, the
             # token itself into the root-only store through the helper.
@@ -4861,13 +4872,16 @@ class Handler(BaseHTTPRequestHandler):
                 forge = field(req, "forge")
                 if forge not in ("github", "gitea"):
                     forge = forges.forge_of(at.group(1)).get("kind") or "git"
-                r = runner_token_store(nid, url, forge, str(req.get("token") or "").strip())
+                slot = nodes.runner_slot(url)
+                r = runner_token_store(nid, slot, url, forge, str(req.get("token") or "").strip())
                 if not r.get("error"):
-                    r = nodes.node_runner_url(self._principal(), nid, url, forge)
+                    r = nodes.node_runner_url(self._principal(), nid, slot, url, forge)
+                    r["slot"] = slot
         elif act == "runner-forget":
-            r = runner_token_forget(nid)
+            slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
+            r = runner_token_forget(nid, slot)
             if not r.get("error"):
-                nodes.audit(self._principal(), "node-runner-forget", nid, {})
+                r = nodes.node_runner_forget(self._principal(), nid, slot)
         elif act == "paths":
             # What this container's paths are called on the node's machine
             # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
@@ -5432,7 +5446,12 @@ class Handler(BaseHTTPRequestHandler):
             # now from the root-only stash and never stored: the PAT stays
             # here, the hour-long token goes to the node that asked.
             kind = "remove" if field(req, "kind") == "remove" else "registration"
-            r = mint_runner_token(kind, nid, field(req, "runner_id"))
+            # An agent that predates slots names none: the node's one runner.
+            slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
+            if not slot:
+                only = list(nodes.runners_of(nodes.node(nid) or {}))
+                slot = only[0] if len(only) == 1 else ""
+            r = mint_runner_token(kind, nid, slot, field(req, "runner_id"))
             nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
             return self._json(r, 400 if r.get("error") else 200)
         if verb == "hello":

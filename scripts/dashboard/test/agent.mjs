@@ -134,7 +134,7 @@ echo "config $*" >> "$(dirname "$0")/calls.log"
 if [ "$1" = remove ]; then rm -f "$(dirname "$0")/.runner"; exit 0; fi
 # What the real one says on a RHEL node with no libicu, and then exits: the
 # reason first and GitHub's advice under it.
-if [ -f "$(dirname "$0")/../runner-fail" ]; then
+if [ -f "$(dirname "$0")/../runner-fail" ] || [ -f "$(dirname "$0")/../../runner-fail" ]; then
   echo "Libicu's dependencies is missing for Dotnet Core 6.0"
   echo "Execute sudo ./bin/installdependencies.sh to install any missing Dotnet Core 6.0 dependencies."
   exit 1
@@ -1620,62 +1620,64 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(off.ok && cleared, '...and 0 reaches it the same way');
   }
 
-  // ---- the Actions runner as a service on the node (phase 7) ----------------
+  // ---- the CI runners on the node, one per git host (phase 7, R53) ----------
   {
-    // The token is the NODE's (R53 step 2): stored root-only through the
-    // helper, with the address it registers with on the record, and an
-    // install cannot start without one. Nothing here ever reads it back.
-    const notoken = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true });
-    ok(/no runner token stored/.test(notoken.error || ''), 'installing a runner needs a token stored for the node first');
+    const GH = 'github.com-example-org', GT = 'git.example.test-3000-example-org';
+    const runnerOf = (n, slot) => (n.reported.services?.runners || []).find(r => r.slot === slot);
+    const ended = async job => until(async () => {
+      const r = await api(`/api/v1/jobs?id=${job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    // The token is the runner's, stored root-only through the helper under
+    // the node and the runner's slot, with the address it registers with on
+    // the record, and an install cannot start without one. Nothing here
+    // ever reads it back.
+    const notoken = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true });
+    ok(/no such runner/.test(notoken.error || ''), 'installing a runner needs it added to the node first');
     ok(/https address/.test((await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'ftp://nope', token: 'github_pat_TESTTOKEN1234' })).error || ''),
-       '...and storing one needs the https address it registers with');
+       '...and adding one needs the https address it registers with');
     const kept = await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'https://github.com/example-org', token: 'github_pat_TESTTOKEN1234' });
     const recorded = await nodeById(minted.id);
     const rowJson = JSON.stringify(recorded);
-    ok(kept.ok && recorded.services?.['actions-runner']?.url === 'https://github.com/example-org'
-       && recorded.services['actions-runner'].forge === 'github' && recorded.runner_token === true
-       && !/TESTTOKEN/.test(rowJson) && /RUNNER_TOKEN=github_pat_TESTTOKEN1234/.test(readFileSync(`${DIR}/runner-store/${minted.id}.env`, 'utf8')),
-       `the token goes to the root-only store and only its URL, forge and presence reach the record (${kept.error || 'stored'})`);
-    // Forgotten, an install says so with the helper's own sentence.
-    ok((await api('/api/v1/nodes', { action: 'runner-forget', id: minted.id })).ok
-       && !existsSync(`${DIR}/runner-store/${minted.id}.env`)
-       && /no runner token stored/.test((await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true })).error || ''),
-       'Forget token drops it from the store, and the next install asks for one again');
+    ok(kept.ok && kept.slot === GH && recorded.services?.runners?.[GH]?.url === 'https://github.com/example-org'
+       && recorded.services.runners[GH].forge === 'github' && recorded.runner_tokens?.includes(GH)
+       && !/TESTTOKEN/.test(rowJson) && /RUNNER_TOKEN=github_pat_TESTTOKEN1234/.test(readFileSync(`${DIR}/runner-store/${minted.id}.${GH}.env`, 'utf8')),
+       `the token goes to the root-only store under the node and slot, and only its URL, forge and presence reach the record (${kept.error || kept.slot})`);
+    // Forgotten, the runner is off the list and an install says so.
+    ok((await api('/api/v1/nodes', { action: 'runner-forget', id: minted.id, slot: GH })).ok
+       && !existsSync(`${DIR}/runner-store/${minted.id}.${GH}.env`)
+       && !(await nodeById(minted.id)).services?.runners?.[GH]
+       && /no such runner/.test((await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true })).error || ''),
+       'Forget token drops it from the store and the runner from the record');
     await api('/api/v1/nodes', { action: 'runner-token', id: minted.id, url: 'https://github.com/example-org', token: 'github_pat_TESTTOKEN1234' });
     // An install that failed is said, with the reason its log gave, until one
     // works. The census only knows what is installed, so a failed attempt used
     // to read as "install asked for; not reported yet" for as long as nobody
     // pressed Install again: a node sat twelve hours like that behind libicu.
     writeFileSync(`${DIR}/runner-fail`, '');
-    const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true });
-    const bfin = await until(async () => {
-      const r = await api(`/api/v1/jobs?id=${bad.job}`);
-      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-    }, 30000);
+    const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true });
+    const bfin = await ended(bad.job);
     const failedRow = await until(async () => (await nodeById(minted.id)).runner_failed || null, 10000);
-    const failedCard = ((await api('/api/status')).node_runners || []).find(x => x.id === minted.id);
-    ok(bfin?.state === 'failed' && failedRow?.id === bad.job
+    const failedCard = ((await api('/api/status')).node_runners || []).find(x => x.id === minted.id && x.slot === GH);
+    ok(bfin?.state === 'failed' && failedRow?.id === bad.job && failedRow.slot === GH
        && /^Libicu's dependencies is missing for Dotnet Core 6\.0/.test(failedRow?.why || '')
        && /Libicu/.test(failedCard?.failed?.why || ''),
-       `a failed runner install is reported with the reason its log gave (${bfin?.state}: ${
+       `a failed runner install is reported with the reason its log gave, on its own row (${bfin?.state}: ${
          failedRow?.why || failedCard?.failed?.why || 'nothing'})`);
     rmSync(`${DIR}/runner-fail`, { force: true });
-    const inst = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
+    const inst = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true,
       labels: ['gpu', 'bad label!'] });
     ok(inst.ok && /^j_/.test(inst.job), `Install runner queues a system job (${inst.job || inst.error})`);
-    const ifin = await until(async () => {
-      const r = await api(`/api/v1/jobs?id=${inst.job}`);
-      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-    }, 30000);
-    const calls = existsSync(`${DIR}/runner/calls.log`) ? readFileSync(`${DIR}/runner/calls.log`, 'utf8') : '';
+    const ifin = await ended(inst.job);
+    const calls = existsSync(`${DIR}/runner/${GH}/calls.log`) ? readFileSync(`${DIR}/runner/${GH}/calls.log`, 'utf8') : '';
     ok(ifin && ifin.state === 'succeeded' && /registering agentbox with https:\/\/github.com\/example-org/.test(ifin.log),
-       `the agent unpacks the runner and registers it (${ifin?.state}: ${(ifin?.log || '').slice(-200).replace(/\n/g, ' / ')})`);
+       `the agent unpacks the runner into the runner's own directory and registers it (${ifin?.state}: ${(ifin?.log || '').slice(-200).replace(/\n/g, ' / ')})`);
     ok(/config --unattended --replace --url https:\/\/github.com\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot,self-hosted,linux,x64,agentbox,gpu,badlabel --work _work/.test(calls)
        && /svc install/.test(calls) && /svc start/.test(calls)
        && /RUNNER_ROOT_OK/.test(calls),
        'config.sh gets the minted token, the node\'s name, the default labels plus its own name, and svc.sh installs and starts it');
     ok(!/AAAREGTOKEN/.test(ifin?.log || ''), '...and the token never reaches the job log');
-    const renv = existsSync(`${DIR}/runner/.env`) ? readFileSync(`${DIR}/runner/.env`, 'utf8') : '';
+    const renv = existsSync(`${DIR}/runner/${GH}/.env`) ? readFileSync(`${DIR}/runner/${GH}/.env`, 'utf8') : '';
     ok(/^BB_CI_LOG_DIR=.*agentdata\/ci-logs$/m.test(renv) && existsSync(`${DIR}/agentdata/ci-logs`),
        'the runner\'s .env points its workflows\' archive step at the data store, and the directory is there');
     // The rest of that file is the node's job environment: without it a CI
@@ -1686,65 +1688,57 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
        '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');
     const rn = await until(async () => { const n = await nodeById(minted.id);
-      return n.reported.services?.['actions-runner']?.installed ? n : null; });
-    ok(rn && rn.reported.services['actions-runner'].name === 'agentbox'
-       && rn.reported.services['actions-runner'].labels.includes('agentbox')
-       && rn.services['actions-runner'].want === true,
-       'the census reports the runner, its name and labels; the record keeps the ask');
+      return runnerOf(n, GH)?.installed ? n : null; });
+    ok(rn && runnerOf(rn, GH).name === 'agentbox' && runnerOf(rn, GH).labels.includes('agentbox')
+       && rn.services.runners[GH].want === true
+       && rn.reported.services['actions-runner']?.slot === GH,
+       'the census reports the runner under its slot, with its name and labels, and as the single key too; the record keeps the ask');
     ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
     const labels = execFileSync('bash', [`${REPO}/scripts/bb`, 'ci-labels'],
       { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
     ok(/^agentbox$/m.test(labels) && /^gpu$/m.test(labels) && /^builderbot$/m.test(labels),
        'bb ci-labels lists the node runner\'s labels beside this box\'s own');
-    const rm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: false });
-    const rfin = await until(async () => {
-      const r = await api(`/api/v1/jobs?id=${rm.job}`);
-      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-    }, 30000);
-    ok(rfin && rfin.state === 'succeeded' && !existsSync(`${DIR}/runner`) && /runner removed/.test(rfin.log),
-       'Remove runner deregisters with a removal token and takes the directory away');
+    // A second runner on the same node, for a Gitea (R53): the same fold, a
+    // different host. The picker says which when the address is a private
+    // host the catalog has never seen; act_runner registers with a token the
+    // controller fetches from that host, every label takes :host so a job
+    // runs on this machine's own toolchain, and removal is a deletion by id
+    // there. Both runners stand at once, each in its own directory.
+    const gk = await api('/api/v1/nodes', { action: 'runner-token', id: minted.id,
+      url: 'https://git.example.test:3000/example-org', forge: 'gitea', token: 'giteatokenABCDEF' });
+    const gr = await nodeById(minted.id);
+    ok(gk.ok && gk.slot === GT && gr.services.runners[GT].forge === 'gitea' && gr.services.runners[GH].url === 'https://github.com/example-org'
+       && /RUNNER_FORGE=gitea/.test(readFileSync(`${DIR}/runner-store/${minted.id}.${GT}.env`, 'utf8')),
+       `a private host is named through the picker and added beside the GitHub runner (${gk.error || 'stored'})`);
+    const gi = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GT, want: true, labels: ['gpu'] });
+    const gfin = await ended(gi.job);
+    const acts = existsSync(`${DIR}/runner/${GT}/act-calls.log`) ? readFileSync(`${DIR}/runner/${GT}/act-calls.log`, 'utf8') : '';
+    ok(gfin?.state === 'succeeded' && /registering agentbox with https:\/\/git\.example\.test:3000\/example-org/.test(gfin.log)
+       && /act register --no-interactive --instance https:\/\/git\.example\.test:3000\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
+       && /act daemon/.test(acts) && !/AAAREGTOKEN/.test(gfin.log),
+       `act_runner registers with the host from its own directory, every label as :host, and runs as a daemon under the agent (${gfin?.state}: ${(gfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
+    const gn = await until(async () => { const n = await nodeById(minted.id);
+      const a = runnerOf(n, GT); return a?.installed && a.forge === 'gitea' && runnerOf(n, GH)?.installed ? n : null; }, 20000);
+    ok(gn && runnerOf(gn, GT).name === 'agentbox' && runnerOf(gn, GT).active === true
+       && runnerOf(gn, GT).url === 'https://git.example.test:3000/example-org'
+       && gn.reported.services.runners.length === 2,
+       "the census reports both runners at once: GitHub's and act_runner as installed, listening and Gitea's");
+    const card = ((await api('/api/status')).node_runners || []).filter(x => x.id === minted.id);
+    ok(card.length === 2 && card.some(x => x.slot === GH && x.installed) && card.some(x => x.slot === GT && x.listening),
+       'the Runner card carries a row per runner on the node');
+    // Removed one at a time: GitHub's with a removal token, Gitea's by id.
+    const rm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: false });
+    const rfin = await ended(rm.job);
+    ok(rfin && rfin.state === 'succeeded' && !existsSync(`${DIR}/runner/${GH}`) && existsSync(`${DIR}/runner/${GT}`) && /runner removed/.test(rfin.log),
+       "Remove runner deregisters GitHub's with a removal token and takes its directory away, leaving the other runner standing");
+    const grm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GT, want: false });
+    const grfin = await ended(grm.job);
+    const scalls = existsSync(`${DIR}/runner-store/calls.log`) ? readFileSync(`${DIR}/runner-store/calls.log`, 'utf8') : '';
+    ok(grfin?.state === 'succeeded' && !existsSync(`${DIR}/runner/${GT}`) && new RegExp(`^remove \\S+ ${GT} 7$`, 'm').test(scalls),
+       `Remove runner deletes the Gitea runner on its host by id and takes its directory away (${grfin?.state}; ${scalls.trim().split('\n').pop() || 'no deletion'})`);
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
-      return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
-    ok(rn2 !== null, '...and the census says so');
-    // Gitea's runner (R53): the same fold, a different host. The picker says
-    // which when the address is a private host the catalog has never seen;
-    // act_runner registers with a token the controller fetches from that
-    // host, every label takes :host so a job runs on this machine's own
-    // toolchain, and removal is a deletion by id there.
-    {
-      const gk = await api('/api/v1/nodes', { action: 'runner-token', id: minted.id,
-        url: 'https://git.example.test:3000/example-org', forge: 'gitea', token: 'giteatokenABCDEF' });
-      const gr = await nodeById(minted.id);
-      ok(gk.ok && gr.services['actions-runner'].forge === 'gitea'
-         && /RUNNER_FORGE=gitea/.test(readFileSync(`${DIR}/runner-store/${minted.id}.env`, 'utf8')),
-         `a private host is named through the picker and stored as gitea (${gk.error || 'stored'})`);
-      const gi = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true, labels: ['gpu'] });
-      const gfin = await until(async () => {
-        const r = await api(`/api/v1/jobs?id=${gi.job}`);
-        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 30000);
-      const acts = existsSync(`${DIR}/runner/act-calls.log`) ? readFileSync(`${DIR}/runner/act-calls.log`, 'utf8') : '';
-      ok(gfin?.state === 'succeeded' && /registering agentbox with https:\/\/git\.example\.test:3000\/example-org/.test(gfin.log)
-         && /act register --no-interactive --instance https:\/\/git\.example\.test:3000\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
-         && /act daemon/.test(acts) && !/AAAREGTOKEN/.test(gfin.log),
-         `act_runner registers with the host, every label as :host, and runs as a daemon under the agent (${gfin?.state}: ${(gfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
-      const gn = await until(async () => { const n = await nodeById(minted.id);
-        const a = n.reported.services?.['actions-runner']; return a?.installed && a.forge === 'gitea' ? n : null; }, 20000);
-      ok(gn && gn.reported.services['actions-runner'].name === 'agentbox' && gn.reported.services['actions-runner'].active === true
-         && gn.reported.services['actions-runner'].url === 'https://git.example.test:3000/example-org',
-         "the census reports act_runner as installed, listening, and Gitea's");
-      const grm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: false });
-      const grfin = await until(async () => {
-        const r = await api(`/api/v1/jobs?id=${grm.job}`);
-        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 30000);
-      const scalls = existsSync(`${DIR}/runner-store/calls.log`) ? readFileSync(`${DIR}/runner-store/calls.log`, 'utf8') : '';
-      ok(grfin?.state === 'succeeded' && !existsSync(`${DIR}/runner`) && /^remove \S+ 7$/m.test(scalls),
-         `Remove runner deletes the runner on its host by id and takes the directory away (${grfin?.state}; ${scalls.trim().split('\n').pop() || 'no deletion'})`);
-      const gn2 = await until(async () => { const n = await nodeById(minted.id);
-        return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
-      ok(gn2 !== null, '...and the census says so');
-    }
+      return (n.reported.services?.runners || []).length === 0 && n.reported.services?.['actions-runner']?.installed === false ? n : null; });
+    ok(rn2 !== null, '...and the census says so, under the list and the single key alike');
   }
 
   // ---- emulation as a job (phase 9) --------------------------------------------

@@ -536,28 +536,25 @@ print(json.dumps(out))
      `each store is a meter with its headroom (${meters.map(m => m.label + ' ' + m.val).join(', ')})`);
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
      'the row shows what is installed on the node, which is what a project bound to it can build');
-  ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
-     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => /Install runner/.test(b.textContent)),
-     'the CI runner section says there is none, and offers to install one');
-  // The token first: Install is dead until one is stored for the node, and
-  // storing it is its own press, so the token never rides the install.
-  ok(await page.$eval(`${ROW} [data-nrunner="install"]`, b => b.disabled)
-     && await page.$eval(`${ROW} .ndrunstate`, e => /no token stored/.test(e.textContent)),
-     'Install runner is dead until a token is stored for the node, and the section says so');
-  ok(await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea')),
-     'the runner section offers the host kind, GitHub or Gitea, read from the address unless picked');
+  const GH = 'github.com-example-org', RUN = `${ROW} .ndrun[data-slot="${GH}"]`;
+  ok(await page.$eval(`${ROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
+     && await page.$(`${ROW} .ndrunadd[data-add="runner"] [data-nrunneradd]`) !== null
+     && await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea')),
+     'the CI runners section says there is none and adds one at the top, with the host kind read from the address unless picked');
+  // Adding a runner is its own press, so the token never rides the install:
+  // it goes to the root-only store, the row appears with Install awake.
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
   await page.fill(`${ROW} [data-k="runner:token"]`, 'github_pat_TESTTOKEN1234');
-  await page.click(`${ROW} [data-nrunnertoken]`);
-  await page.waitForFunction(sel => /token stored for https:\/\/github\.com\/example-org/.test(
-    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), ROW, { timeout: 10000 });
-  ok(await page.$eval(`${ROW} [data-k="runner:token"]`, e => e.value === '' && e.type === 'password')
-     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => !b.disabled)
-     && !!(await page.$(`${ROW} [data-nrunnerforget]`)),
-     'Save token keeps it root-only, clears the field, says which address it is for, and wakes Install');
   await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
+  await page.click(`${ROW} [data-nrunneradd]`);
+  await page.waitForSelector(RUN, { timeout: 10000 });
+  ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && /token stored/.test(e.textContent))
+     && await page.$eval(`${RUN} [data-nrunner="install"]`, b => !b.disabled && /Install runner/.test(b.textContent))
+     && !!(await page.$(`${RUN} [data-nrunnerforget]`))
+     && await page.$eval(`${ROW} [data-k="runner:token"]`, e => e.value === '' && e.type === 'password'),
+     'Add runner keeps the token root-only, clears the field, and lists the runner with Install awake and Forget token beside it');
   // Dead the moment it is pressed, not when the answer comes back. Every
-  // action here awaits a POST, then loadNodes(), then a repaint — a second
+  // action here awaits a POST, then loadNodes(), then a repaint: a second
   // or two in which the button looked untouched, so there was no telling a
   // press that landed from one that missed. Read synchronously after the
   // click dispatches, before any await resolves.
@@ -565,20 +562,20 @@ print(json.dumps(out))
     const b = document.querySelector(sel + ' [data-nrunner="install"]');
     b.click();
     return b.disabled;
-  }, ROW);
+  }, RUN);
   ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
   await page.waitForFunction(sel => /applying runner/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   // The runner section says so itself, in its own state line, with the
   // buttons it has taken away: the operator pressed Install, then Remove,
   // and read nothing but two dead buttons while the first job ran.
-  ok(await page.$eval(`${ROW} .ndrunstate`, e => /installing now/.test(e.textContent))
-     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => b.disabled),
-     'while the install runs the runner section says installing now, beside the buttons it has disabled');
+  ok(await page.$eval(`${RUN} .ndrunstate`, e => /installing now/.test(e.textContent))
+     && await page.$eval(`${RUN} [data-nrunner="install"]`, b => b.disabled),
+     'while the install runs the runner\'s row says installing now, beside the buttons it has disabled');
   const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
   ok(rj && rj.node === minted.id && rj.spec.config.url === 'https://github.com/example-org'
-     && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu'),
-     `Install runner queues the system job with the node's name among the labels (${rj?.spec?.config?.labels?.join(',')})`);
+     && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu') && rj.spec.config.slot === GH,
+     `Install runner queues the system job for that runner with the node's name among the labels (${rj?.spec?.config?.labels?.join(',')})`);
   await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
   await page.waitForFunction(sel => !/applying/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
@@ -588,10 +585,10 @@ print(json.dumps(out))
   const failedVerdict = await page.evaluate(({ id, sel }) => {
     const n = nodesList.find(x => x.id === id);
     const keep = { f: n.runner_failed, s: n.services };
-    n.runner_failed = { id: 'j_x', ended: 1789350000, why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
-    n.services = { ...(n.services || {}), 'actions-runner': { want: true, labels: [], url: '' } };
+    n.runner_failed = { id: 'j_x', slot: 'github.com-example-org', ended: 1789350000, why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
+    n.services = { ...(n.services || {}), runners: { 'github.com-example-org': { want: true, labels: [], url: 'https://github.com/example-org' } } };
     nodesRev++; drawPanes();
-    const e = document.querySelector(sel + ' .ndrunstate');
+    const e = document.querySelector(sel + ' .ndrun[data-slot="github.com-example-org"] .ndrunstate');
     const out = { text: e?.textContent || '', bad: !!e?.classList.contains('bad') };
     n.runner_failed = keep.f; n.services = keep.s; nodesRev++; drawPanes();
     return out;
@@ -601,10 +598,10 @@ print(json.dumps(out))
   const removingVerdict = await page.evaluate(({ id, sel }) => {
     const n = nodesList.find(x => x.id === id);
     const keep = { a: n.applying, s: n.services };
-    n.applying = { id: 'j_y', what: 'runner' };
-    n.services = { ...(n.services || {}), 'actions-runner': { want: false, labels: [], url: '' } };
+    n.applying = { id: 'j_y', what: 'runner', slot: 'github.com-example-org' };
+    n.services = { ...(n.services || {}), runners: { 'github.com-example-org': { want: false, labels: [], url: 'https://github.com/example-org' } } };
     nodesRev++; drawPanes();
-    const e = document.querySelector(sel + ' .ndrunstate');
+    const e = document.querySelector(sel + ' .ndrun[data-slot="github.com-example-org"] .ndrunstate');
     const out = e?.textContent || '';
     n.applying = keep.a; n.services = keep.s; nodesRev++; drawPanes();
     return out;
@@ -618,20 +615,23 @@ print(json.dumps(out))
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, services: svc },
                            version: shipped.version, digest: shipped.digest }) });
+  // The single key an agent from before the list sends, with no slot: it
+  // joins the record's one runner rather than making a second row.
   await runnerCensus({ 'actions-runner': { installed: true, active: false, busy: false,
                                            name: '', labels: ['builderbot', 'shed'] } });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => /NOT listening/.test(
-    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), ROW, { timeout: 10000 });
-  ok(await page.$eval(`${ROW} .ndrunstate`, e => /no workflow will reach it/.test(e.textContent)
-       && /registration may not have finished/.test(e.textContent) && e.classList.contains('bad')),
-     'a runner that is registered but not listening says so, rather than reading as installed');
-  await runnerCensus({ 'actions-runner': { installed: true, active: true, busy: true,
-                                           name: 'shed', url: 'https://github.com/example-org',
-                                           labels: ['builderbot', 'shed'] } });
+    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
+  ok(await page.$eval(`${RUN} .ndrunstate`, e => /no workflow will reach it/.test(e.textContent)
+       && /registration may not have finished/.test(e.textContent) && e.classList.contains('bad'))
+     && await page.$$eval(`${ROW} .ndrun`, rows => rows.length === 1),
+     'a runner that is registered but not listening says so, rather than reading as installed, on the one row');
+  await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: true,
+                                   name: 'shed', url: 'https://github.com/example-org',
+                                   labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
-  await page.waitForFunction(sel => document.querySelector(sel + ' .ndrunbusy'), ROW, { timeout: 10000 });
-  ok(await page.$eval(`${ROW} .ndrunstate`, e => /running a job/.test(e.textContent)
+  await page.waitForFunction(sel => document.querySelector(sel + ' .ndrunbusy'), RUN, { timeout: 10000 });
+  ok(await page.$eval(`${RUN} .ndrunstate`, e => /running a job/.test(e.textContent)
        && /registered as shed/.test(e.textContent)),
      '...and one that is working says which job-taking state it is in, by name');
   // The label is the only thing that pins a workflow to THIS machine —
@@ -646,8 +646,8 @@ print(json.dumps(out))
   // the order still holds.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {
        const kids = [...e.querySelectorAll(':scope > details.sect > summary .t')].map(t => t.textContent.trim());
-       return kids.indexOf('CI runner') >= 0 && kids.indexOf('Storage') >= 0
-              && kids.indexOf('CI runner') < kids.indexOf('Storage');
+       return kids.indexOf('CI runners') >= 0 && kids.indexOf('Storage') >= 0
+              && kids.indexOf('CI runners') < kids.indexOf('Storage');
      }), '...and the runner section comes before the mounts, not after the network');
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
@@ -666,9 +666,9 @@ print(json.dumps(out))
   // The sidebar's Runner card carries every node with a runner, not only
   // this container's — a workflow lands on whichever runner its runs-on
   // matches, and GitHub was the only place that answer existed.
-  await runnerCensus({ 'actions-runner': { installed: true, active: true, busy: false,
-                                           name: 'shed', url: 'https://github.com/example-org',
-                                           labels: ['builderbot', 'shed'] } });
+  await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: false,
+                                   name: 'shed', url: 'https://github.com/example-org',
+                                   labels: ['builderbot', 'shed'] }] });
   // "shed" is not the condition: the card has carried the name since the
   // install press above, on whichever poll landed since, and refresh() asked
   // while the fifteen-second poll is out returns at once and re-polls after

@@ -105,7 +105,7 @@ somewhere-elses.
   },
   "ssh": { "addr": "ssh://bb@10.0.0.9" },   // kind=ssh, bootstrap or legacy
   "capabilities": ["docker-host", "package-build"],
-  "services": { "actions-runner": { "labels": "builderbot,linux,x64" } },
+  "services": { "runners": { "github.com-your-org": { "url": "https://github.com/your-org", "forge": "github", "want": true, "labels": ["builderbot", "linux", "x64"] } } },
   "labels": { "arch": "amd64", "os": "debian12", "gpu": "none",
               "disposable": "true" },
   "concurrency": 1,
@@ -178,7 +178,8 @@ GitHub, not work the controller places. So the model splits in two:
 - **capabilities**: what the scheduler may place jobs against
   (`docker-host`, `package-build`, `deploy-target`)
 - **services**: long-lived things the controller installs and supervises on
-  a node (`actions-runner` first; anything else later)
+  a node (the CI runners, one per git host, under `runners`; anything else
+  later)
 
 Same screen, same enrollment, different lifecycle. Runner labels become a
 per-node field, which an org wants anyway, because "the arm64 runners" is a
@@ -1372,9 +1373,11 @@ root-only stash by the same helper the container's runner uses, audited,
 never stored; the PAT stays here: registers as the enrolled account with
 labels `builderbot, self-hosted, linux, <arch>, <node name>` plus any typed,
 and installs and starts it with the runner's own `svc.sh`. Remove
-deregisters with a removal token first. The census reports the service
-(`services.actions-runner`: registered as what, with which labels,
-listening or busy), the node record keeps what was asked for, and `bb
+deregisters with a removal token first. The census reports every runner
+(`services.runners`, one per git host: its slot, registered as what, with
+which labels, listening or busy, and `services.actions-runner` as the first
+of them for a controller from before the list), the node record keeps what
+was asked for under each slot, and `bb
 ci-labels` lists every label the registry knows; this box's and every
 node runner's, with `--write` regenerating `.github/actionlint.yaml` from
 it; `bb lint` notes a declared label no runner carries. **A project's CI
