@@ -291,7 +291,7 @@ github_api() {
         2*) printf '%s' "$body" ;;
         401) die "GitHub rejected the token (401) on ${path} — it is invalid, revoked, or expired." ;;
         403) die "GitHub denied the request (403) on ${path}. This is ${scope_hint}." ;;
-        404) die "GitHub returned 404 on ${path}. Either RUNNER_URL points somewhere that does not exist, or the token cannot see it — GitHub answers 404 rather than 403 for resources a token has no access to. This is ${scope_hint}." ;;
+        404) die "GitHub returned 404 on ${path}. Either RUNNER_URL points somewhere that does not exist, or the token cannot see it: GitHub answers 404 rather than 403 for resources a token has no access to. This is ${scope_hint}." ;;
         *)   die "GitHub API returned ${code} on ${path}: $(printf '%s' "$body" | tr -d '\n' | head -c 200)" ;;
     esac
 }
