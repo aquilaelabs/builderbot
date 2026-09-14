@@ -10,13 +10,16 @@
 # keyed by node id; every other verb prints a derived answer and never the
 # token. sudo's env_reset means the caller cannot inject values.
 #
-#   mint-runner-token store NODE          keep RUNNER_URL=, RUNNER_TOKEN= (and RUNNER_FORGE=) read on stdin
-#   mint-runner-token forget NODE         drop the node's token
-#   mint-runner-token --check NODE        exit 0 and print the URL and forge when a token is stored (offline)
-#   mint-runner-token --validate NODE     ask the host whether that token is live
-#   mint-runner-token --list              the node ids with a token, one per line
-#   mint-runner-token registration NODE   print a 1-hour runner registration token
-#   mint-runner-token remove NODE         print a runner removal token
+# A node holds one runner per git host, so a token is keyed by the node
+# and the runner's SLOT: its address as a name (github.com-your-org).
+#
+#   mint-runner-token store NODE SLOT          keep RUNNER_URL=, RUNNER_TOKEN= (and RUNNER_FORGE=) read on stdin
+#   mint-runner-token forget NODE SLOT         drop that runner's token
+#   mint-runner-token --check NODE SLOT        exit 0 and print the URL and forge when a token is stored (offline)
+#   mint-runner-token --validate NODE SLOT     ask the host whether that token is live
+#   mint-runner-token --list                   "NODE SLOT" per stored token, one per line
+#   mint-runner-token registration NODE SLOT   print a runner registration token
+#   mint-runner-token remove NODE SLOT [ID]    GitHub: print a runner removal token; Gitea: delete runner ID there
 #
 set -euo pipefail
 
@@ -31,21 +34,24 @@ STORE=/config/runner-tokens
 
 kind="${1:-}"
 node="${2:-}"
+slot="${3:-}"
+runner_id="${4:-}"
 case "$kind" in
     store|forget|--check|--validate|registration|remove)
-        [[ "$node" =~ ^n_[0-9a-f]{8}$ ]] || die "usage: mint-runner-token $kind NODE_ID" ;;
+        [[ "$node" =~ ^n_[0-9a-f]{8}$ ]] && [[ "$slot" =~ ^[a-z0-9.-]{1,64}$ ]] \
+            || die "usage: mint-runner-token $kind NODE_ID SLOT" ;;
     --list) ;;
-    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID, or --list" ;;
+    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID SLOT, or --list" ;;
 esac
-file="$STORE/$node.env"
+file="$STORE/$node.$slot.env"
 
 case "$kind" in
     --list)
         [ -d "$STORE" ] || exit 0
-        for f in "$STORE"/n_*.env; do
+        for f in "$STORE"/n_*.*.env; do
             [ -f "$f" ] || continue
-            b="${f##*/}"
-            printf '%s\n' "${b%.env}"
+            b="${f##*/}"; b="${b%.env}"
+            printf '%s %s\n' "${b%%.*}" "${b#*.}"
         done
         exit 0 ;;
     store)
@@ -73,17 +79,54 @@ case "$kind" in
         exit 0 ;;
 esac
 
-[ -f "$file" ] || die "no runner token stored for $node: paste one in the runner section of its row on the Nodes tab"
+[ -f "$file" ] || die "no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes tab"
 # shellcheck disable=SC1090
 . "$file"
-[ -n "${RUNNER_URL:-}" ] && [ -n "${RUNNER_TOKEN:-}" ] || die "the token stored for $node is incomplete: store it again"
+[ -n "${RUNNER_URL:-}" ] && [ -n "${RUNNER_TOKEN:-}" ] || die "the token stored for $slot on $node is incomplete: store it again"
 
 if [ "$kind" = "--check" ]; then
     printf 'RUNNER_URL=%s\nRUNNER_FORGE=%s\n' "$RUNNER_URL" "${RUNNER_FORGE:-github}"
     exit 0
 fi
 
-[ "${RUNNER_FORGE:-github}" = github ] || die "only a GitHub repository or organization can mint a runner token here yet"
+# Gitea and Forgejo: act_runner takes a registration token from the host's
+# API, and a runner is deleted there by id rather than by a removal token.
+if [ "${RUNNER_FORGE:-github}" = gitea ]; then
+    rest="${RUNNER_URL#https://}"
+    host="${rest%%/*}"
+    path="${rest#*/}"; path="${path%/}"; path="${path%.git}"
+    case "$path" in
+        */*) scope="repos/$path" ;;
+        "")  die "could not read an owner from ${RUNNER_URL}" ;;
+        *)   scope="orgs/$path" ;;
+    esac
+    gitea_api() {
+        local method="$1" path="$2" resp code
+        resp="$(curl -sS -w $'\n%{http_code}' -X "$method" \
+            -H "Authorization: token ${RUNNER_TOKEN}" -H "Accept: application/json" \
+            "https://${host}/api/v1${path}" 2>&1)" \
+            || die "could not reach ${host} for ${path} (network/DNS?)"
+        code="${resp##*$'\n'}"
+        case "$code" in
+            2*) printf '%s' "${resp%$'\n'*}" ;;
+            401) die "${host} rejected the token (401): it is invalid, revoked or expired" ;;
+            403) die "${host} denied the request (403) on ${path}: the token needs write on the organization or repository" ;;
+            404) die "${host} has nothing at ${path}: check the address, or the token cannot see it" ;;
+            *)   die "${host} answered ${code} on ${path}" ;;
+        esac
+    }
+    case "$kind" in
+        --validate)   gitea_api GET /user >/dev/null; echo "token accepted by ${host}" ;;
+        registration) token="$(gitea_api GET "/${scope}/actions/runners/registration-token" | jq -r .token)"
+                      [ -n "$token" ] && [ "$token" != "null" ] || die "${host} returned no token"
+                      printf '%s\n' "$token" ;;
+        remove)       [[ "$runner_id" =~ ^[0-9]{1,12}$ ]] || die "removing a Gitea runner needs its id"
+                      gitea_api DELETE "/${scope}/actions/runners/${runner_id}" >/dev/null
+                      echo "removed" ;;
+    esac
+    exit 0
+fi
+[ "${RUNNER_FORGE:-github}" = github ] || die "runners register with GitHub, Gitea or Forgejo; ${RUNNER_FORGE} has none here"
 # github_api and scope_path in common.sh read RUNNER_TOKEN and RUNNER_URL,
 # which the stored file has just set.
 

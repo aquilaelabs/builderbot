@@ -164,6 +164,26 @@ def migrate():
             except sqlite3.Error:
                 _db.rollback()
                 raise
+    _migrate_runners()
+
+
+def _migrate_runners():
+    """A record's single runner ask becomes an entry under its slot, once:
+    the records written before a node could hold several."""
+    for r in _rows("SELECT id, services FROM nodes"):
+        try:
+            sv = json.loads(r["services"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        ar = sv.get("actions-runner") if isinstance(sv, dict) else None
+        if not isinstance(ar, dict):
+            continue
+        runners = sv.get("runners") if isinstance(sv.get("runners"), dict) else {}
+        if ar.get("url") and runner_slot(ar["url"]) not in runners:
+            runners[runner_slot(ar["url"])] = {k: ar[k] for k in ("url", "forge", "want", "labels") if k in ar}
+        sv["runners"] = runners
+        sv.pop("actions-runner", None)
+        _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(sv), r["id"]))
 
 
 def _statements(text):
@@ -229,7 +249,9 @@ def node_list(all=False):
         if j["type"] != "system":
             continue
         try:
-            busy[j["node"]] = {"id": j["id"], "what": json.loads(j["spec"]).get("apply", "")}
+            sp = json.loads(j["spec"])
+            busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
+                               "slot": str((sp.get("config") or {}).get("slot") or "")}
         except (ValueError, AttributeError):
             busy[j["node"]] = {"id": j["id"], "what": ""}
     # ...and the last system job that FINISHED on each, which is the only
@@ -253,7 +275,8 @@ def node_list(all=False):
         # install, and that failure was nobody's last.
         if spec.get("apply") == "runner" and j["node"] not in runner:
             runner[j["node"]] = {"id": j["id"], "state": j["state"], "ended": j["ended"],
-                                 "want": (spec.get("config") or {}).get("want", True)}
+                                 "want": (spec.get("config") or {}).get("want", True),
+                                 "slot": str((spec.get("config") or {}).get("slot") or "")}
         if j["node"] in done:
             continue
         done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
@@ -277,23 +300,49 @@ def node_list(all=False):
     return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
-def _runner_failed(row, last, applying):
-    """The runner install that failed on a node: {id, ended, why}, or None.
 
-    Only while it is still the answer: the record asks for a runner, the
-    census reports none, and no runner apply is in flight that could be the
-    retry. The census knows only what is installed, so without this a failed
-    install read as "asked for; not reported yet" for as long as nobody
-    pressed Install again."""
+def runner_slot(url):
+    """The slot a runner's address maps to: its host and path, lowercase,
+    letters, digits, dots and dashes, so it can name a directory on the
+    node, a token file on the controller and a row on the tab. One runner
+    per slot per node, since a runner's name on its host is the node's.
+    The same function lives in scripts/agent/builderbot-agent.py; the two must agree."""
+    rest = re.sub(r"^[a-z]+://", "", str(url or "").strip().lower()).rstrip("/")
+    rest = re.sub(r"\.git$", "", rest)
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9.]+", "-", rest)).strip("-.")[:60]
+
+
+def runners_of(row):
+    """The runners a node's record asks for, by slot: {slot: {url, forge,
+    want, labels}}."""
+    r = (row.get("services") or {}).get("runners")
+    return r if isinstance(r, dict) else {}
+
+
+def runners_reported(row):
+    """The runners a node's census reports, as a list."""
+    r = ((row.get("reported") or {}).get("services") or {}).get("runners")
+    return r if isinstance(r, list) else []
+
+
+def _runner_failed(row, last, applying):
+    """The runner install that failed on a node: {id, slot, ended, why}, or
+    None.
+
+    Only while it is still the answer: the record asks for that runner, the
+    census reports none for it, and no runner apply is in flight that could
+    be the retry. The census knows only what is installed, so without this a
+    failed install read as "asked for; not reported yet" for as long as
+    nobody pressed Install again."""
     if not last or last["state"] != "failed" or not last["want"]:
         return None
     if (applying or {}).get("what") == "runner":
         return None
-    want = (row.get("services") or {}).get("actions-runner") or {}
-    rep = ((row.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
-    if not want.get("want") or rep.get("installed"):
+    slot = last.get("slot") or ""
+    want = runners_of(row).get(slot) or {}
+    if not want.get("want") or any(r.get("slot") == slot and r.get("installed") for r in runners_reported(row)):
         return None
-    return {"id": last["id"], "ended": last["ended"], "why": _failed_why(last["id"])}
+    return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": _failed_why(last["id"])}
 
 
 _WHY = {}
@@ -1006,18 +1055,32 @@ def _census(c):
                 # What mount said when it failed — the server's own reason.
                 "error": str(m.get("error") or "")[:200]})
     sv = c.get("services") if isinstance(c.get("services"), dict) else {}
+
+    def one_runner(ar):
+        url = str(ar.get("url") or "")[:200]
+        return {
+            "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
+            "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
+            "url": url,
+            "slot": re.sub(r"[^a-z0-9.-]", "", str(ar.get("slot") or ""))[:60] or runner_slot(url),
+            # Which host's runner it is: GitHub's, or Gitea's act_runner.
+            # Empty from an agent that predates the field.
+            "forge": re.sub(r"[^a-z]", "", str(ar.get("forge") or ""))[:16],
+            # The systemd unit its output goes to, when it has one: what the
+            # runner log stream journalctls. Empty from an agent that predates
+            # the field and from a node running it in the foreground, and the
+            # stream reads runner.log then.
+            "unit": re.sub(r"[^A-Za-z0-9._@-]", "", str(ar.get("unit") or ""))[:120],
+            "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
+                       for x in (ar.get("labels") or [])[:16] if str(x)]}
+    # One runner per git host (R53). An agent that predates the list sends
+    # the single key only, and that becomes a list of one.
+    listed = sv.get("runners") if isinstance(sv.get("runners"), list) else None
     ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
-    out["services"] = {"actions-runner": {
-        "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
-        "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
-        "url": str(ar.get("url") or "")[:200],
-        # The systemd unit its output goes to, when it has one — what the
-        # runner log stream journalctls. Empty from an agent that predates
-        # the field and from a node running it in the foreground, and the
-        # stream reads runner.log then.
-        "unit": re.sub(r"[^A-Za-z0-9._@-]", "", str(ar.get("unit") or ""))[:120],
-        "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
-                   for x in (ar.get("labels") or [])[:16] if str(x)]}}
+    runners = ([one_runner(x) for x in listed[:16] if isinstance(x, dict)] if listed is not None
+               else ([one_runner(ar)] if ar.get("installed") else []))
+    out["services"] = {"runners": runners,
+                       "actions-runner": runners[0] if runners else {"installed": False}}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
     fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
     out["services"]["tailscale"] = {
@@ -1319,8 +1382,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     fills = {"lines": str(n_lines)}
     # The unit form when the node reported one, and then the data store is not
     # needed at all — a node whose runner is a service may keep no runner.log.
-    unit = ((((tgt.get("reported") or {}).get("services") or {})
-             .get("actions-runner") or {}).get("unit") or "")
+    unit = (runners_reported(tgt) or [{}])[0].get("unit") or ""
     if spec.get("unit_argv") and unit:
         spec = dict(spec, argv=spec["unit_argv"], store=None)
         fills["unit"] = str(unit)
@@ -1356,29 +1418,47 @@ def runner_labels_for(n, labels=None):
     return out[:16]
 
 
-def node_runner_url(principal, node_id, url, forge):
-    """The address and forge a node's runner registers with, onto its
-    record beside the ask. Written when the token is stored (server), so
-    the record says what the root-only store holds a token FOR; the token
-    itself is never here."""
+def node_runner_url(principal, node_id, slot, url, forge):
+    """The address and forge a runner registers with, onto the node's record
+    under its slot, beside the ask. Written when the token is stored
+    (server), so the record says what the root-only store holds a token
+    FOR; the token itself is never here."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
     services = dict(n.get("services") or {})
-    ar = dict(services.get("actions-runner") or {})
+    runners = dict(runners_of(n))
+    ar = dict(runners.get(slot) or {})
     ar.update({"url": str(url or "")[:200], "forge": str(forge or "")[:16]})
-    services["actions-runner"] = ar
+    runners[slot] = ar
+    services["runners"] = runners
     _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
-    _touch(node_id, principal, "node-runner-url", {"url": ar["url"], "forge": ar["forge"]})
+    _touch(node_id, principal, "node-runner-url", {"slot": slot, "url": ar["url"], "forge": ar["forge"]})
     return {"ok": True}
 
 
-def node_runner(principal, node_id, want, labels=None, token=False):
-    """Install or remove the Actions runner on a node, as a system job
-    (phase 7). The desired state (wanted or not, with which labels) lives
-    in the node's services column; the census reports what is there. `token`
-    is the server's word that a runner token is stored for this node, which
-    an install cannot do without; the URL is the record's, written with it."""
+def node_runner_forget(principal, node_id, slot):
+    """A runner's entry off the node's record, with its token gone from
+    the store (server): nothing left to install from."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    services = dict(n.get("services") or {})
+    runners = dict(runners_of(n))
+    runners.pop(slot, None)
+    services["runners"] = runners
+    _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
+    _touch(node_id, principal, "node-runner-forget", {"slot": slot})
+    return {"ok": True}
+
+
+def node_runner(principal, node_id, slot, want, labels=None, token=False):
+    """Install or remove one of a node's runners, as a system job (phase
+    7). The desired state per runner (wanted or not, with which labels)
+    lives in the node's services column under its slot; the census reports
+    what is there. `token` is the server's word that a token is stored for
+    that runner, which an install cannot do without; the URL and forge are
+    the record's, written with it."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -1391,19 +1471,28 @@ def node_runner(principal, node_id, want, labels=None, token=False):
         return {"error": f"the node is {n['state']} — system jobs go to an online node"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node — one at a time"}
-    ar = dict((n.get("services") or {}).get("actions-runner") or {})
+    ar = dict(runners_of(n).get(slot) or {})
+    if not ar:
+        return {"error": "no such runner on this node: add one in the runner section first"}
     url = ar.get("url") or ""
+    forge = ar.get("forge") or "github"
     if want and not token:
-        return {"error": "no runner token stored for this node: paste one in the runner "
-                         "section first, with the address it registers with"}
-    if want and not url.startswith("https://github.com/"):
-        return {"error": "only a GitHub repository or organization can take a runner yet"}
+        return {"error": "no token stored for this runner: add it in the runner section "
+                         "first, with the address it registers with"}
+    if want and forge not in ("github", "gitea"):
+        return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
+                         "beside the address"}
+    if want and (not url.startswith("https://") or (forge == "github" and not url.startswith("https://github.com/"))):
+        return {"error": "the address is the https repository or organization the runner registers with"}
     labs = runner_labels_for(n, labels) if want else []
     services = dict(n.get("services") or {})
-    services["actions-runner"] = {**ar, "want": bool(want), "labels": labs}
+    runners = dict(runners_of(n))
+    runners[slot] = {**ar, "want": bool(want), "labels": labs}
+    services["runners"] = runners
     _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
-    _touch(node_id, principal, "node-runner", {"want": bool(want), "labels": labs})
-    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}
+    _touch(node_id, principal, "node-runner", {"slot": slot, "want": bool(want), "labels": labs})
+    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"],
+           "forge": forge, "slot": slot}
     return job_add(principal, {"node": node_id}, "system",
                    {"apply": "runner", "config": cfg, "timeout": 1800})
 
@@ -1617,9 +1706,8 @@ def node_runner_label(node_id):
     n = node(node_id)
     if not n:
         return ""
-    rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
-    want = (n.get("services") or {}).get("actions-runner") or {}
-    if not (rep.get("installed") or want.get("want")):
+    if not (any(r.get("installed") for r in runners_reported(n))
+            or any(r.get("want") for r in runners_of(n).values())):
         return ""
     return re.sub(r"[^A-Za-z0-9._-]", "-", n["name"])[:40]
 
@@ -1629,11 +1717,11 @@ def runner_labels_known():
     the lint that checks a workflow's runs-on against what exists."""
     out = set()
     for n in node_list():
-        rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
-        out.update(rep.get("labels") or [])
-        want = (n.get("services") or {}).get("actions-runner") or {}
-        if want.get("want"):
-            out.update(want.get("labels") or [])
+        for r in runners_reported(n):
+            out.update(r.get("labels") or [])
+        for r in runners_of(n).values():
+            if r.get("want"):
+                out.update(r.get("labels") or [])
     return sorted(out)
 
 

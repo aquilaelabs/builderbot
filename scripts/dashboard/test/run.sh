@@ -247,18 +247,18 @@ store="$S/runner-store"
 SEOF
 cat >> "$S/bin/sudo" <<'EOF'
 while [ $# -gt 0 ]; do case "$1" in */mint-runner-token) shift; break ;; esac; shift; done
-kind="$1"; node="$2"
+kind="$1"; node="$2"; slot="$3"; f="$store/$node.$slot.env"
 case "$kind" in
-    --list) ls "$store" 2>/dev/null | sed 's/\.env$//'; exit 0 ;;
-    store)  cat > "$store/$node.env"; echo stored; exit 0 ;;
-    forget) rm -f "$store/$node.env"; echo forgotten; exit 0 ;;
+    --list) for x in "$store"/n_*.*.env; do [ -f "$x" ] || continue; b="${x##*/}"; b="${b%.env}"; echo "${b%%.*} ${b#*.}"; done; exit 0 ;;
+    store)  cat > "$f"; echo stored; exit 0 ;;
+    forget) rm -f "$f"; echo forgotten; exit 0 ;;
 esac
-[ -f "$store/$node.env" ] || { echo "[builderbot] ERROR: no runner token stored for $node: paste one in the runner section of its row on the Nodes tab" >&2; exit 1; }
+[ -f "$f" ] || { echo "[builderbot] ERROR: no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes tab" >&2; exit 1; }
 case "$kind" in
-    --check)      grep -E '^RUNNER_(URL|FORGE)=' "$store/$node.env"; exit 0 ;;
+    --check)      grep -E '^RUNNER_(URL|FORGE)=' "$f"; exit 0 ;;
     --validate)   echo "token accepted"; exit 0 ;;
     registration) echo AAAREGTOKEN; exit 0 ;;
-    remove)       echo AAAREMOVETOKEN; exit 0 ;;
+    remove)       if grep -q '^RUNNER_FORGE=gitea' "$f"; then echo "remove $node $slot $4" >> "$store/calls.log"; echo removed; else echo AAAREMOVETOKEN; fi; exit 0 ;;
 esac
 echo "sudo: refused" >&2; exit 1
 EOF

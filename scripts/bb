@@ -5716,14 +5716,15 @@ NODEPY
     if [ -z "$runner_ids" ]; then
         printf '  [skip] no runner token stored for any node (the runner section of a node on the Nodes tab takes one)\n'
     else
-        for rid in $runner_ids; do
-            if sudo -n /opt/builderbot/scripts/mint-runner-token --validate "$rid" >/dev/null 2>&1; then
-                printf '  [ok]   runner token for %s: stored root-only, and GitHub accepts it\n' "$rid"
+        while read -r rid rslot; do
+            [ -n "$rid" ] || continue
+            if sudo -n /opt/builderbot/scripts/mint-runner-token --validate "$rid" "$rslot" >/dev/null 2>&1; then
+                printf '  [ok]   runner token for %s on %s: stored root-only, and its host accepts it\n' "$rslot" "$rid"
             else
-                printf '  [FAIL] runner token for %s: GitHub rejected it (revoked or expired?)\n' "$rid"
+                printf '  [FAIL] runner token for %s on %s: its host rejected it (revoked or expired?)\n' "$rslot" "$rid"
                 ok=1
             fi
-        done
+        done <<< "$runner_ids"
     fi
     # `gh auth status`, said as what it is. This line used to read "git over
     # https not authenticated", which is a claim about pushing and this is not
