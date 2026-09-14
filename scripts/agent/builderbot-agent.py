@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.55"
+AGENT_VERSION = "0.5.56"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -4185,6 +4185,16 @@ class Agent:
         # the controller will mint a removal token, and failing that take the
         # local config out of the way so this can proceed — a runner left on
         # GitHub's side is replaced by name a moment later.
+        # The registration token FIRST, before anything standing is touched:
+        # a reinstall whose token could not be minted used to stop and
+        # uninstall the working runner, clear its registration, and only
+        # then find out, leaving the node with no runner at all.
+        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
+        if st != 200 or not r.get("token"):
+            # One line, reason last: the row reads the log's last line.
+            kept = ", so the runner already here is left as it was" if os.path.isfile(os.path.join(d, ".runner")) else ""
+            job.say(f"could not get a registration token from the controller{kept}: {r.get('error', st)}\n")
+            return "failed", 69
         if os.path.isfile(os.path.join(d, ".runner")):
             job.say("a runner is already configured here; clearing it before reinstalling\n")
             if os.path.isfile(os.path.join(d, "svc.sh")):
@@ -4201,10 +4211,6 @@ class Agent:
                 for junk in (".runner", ".credentials", ".credentials_rsaparams", ".service"):
                     with contextlib.suppress(OSError):
                         os.remove(os.path.join(d, junk))
-        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
-        if st != 200 or not r.get("token"):
-            job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
-            return "failed", 69
         job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
         code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "--unattended", "--replace",
                                           "--url", url, "--token", r["token"], "--name", name,
@@ -4313,6 +4319,13 @@ class Agent:
                     return "failed", 69
             os.chmod(exe, 0o755)
         self.own_dir(d, who)
+        # The registration token first, so a token that cannot mint leaves
+        # a runner already standing as it was.
+        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
+        if st != 200 or not r.get("token"):
+            kept = ", so the runner already here is left as it was" if installed else ""
+            job.say(f"could not get a registration token from the controller{kept}: {r.get('error', st)}\n")
+            return "failed", 69
         if installed:
             job.say("a runner is already registered here; deleting it on its host before registering again\n")
             self.runner_stop(d)
@@ -4320,10 +4333,6 @@ class Agent:
                                            "runner_id": str(installed.get("id") or "")}, timeout=60)
             with contextlib.suppress(OSError):
                 os.remove(os.path.join(d, ".runner"))
-        st, r = self.ctl.call("runner-token", {"kind": "registration", "slot": slot}, timeout=60)
-        if st != 200 or not r.get("token"):
-            job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
-            return "failed", 69
         job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
         code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", url,
                                           "--token", r["token"], "--name", name,

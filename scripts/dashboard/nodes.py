@@ -329,18 +329,19 @@ def _runner_failed(row, last, applying):
     """The runner install that failed on a node: {id, slot, ended, why}, or
     None.
 
-    Only while it is still the answer: the record asks for that runner, the
-    census reports none for it, and no runner apply is in flight that could
-    be the retry. The census knows only what is installed, so without this a
-    failed install read as "asked for; not reported yet" for as long as
-    nobody pressed Install again."""
+    Only while it is still the answer: the record asks for that runner and
+    no runner apply is in flight that could be the retry. A runner the census
+    reports as installed can carry one too: a reinstall that failed left it
+    standing, and the row says both. The census knows only what is
+    installed, so without this a failed install read as "asked for; not
+    reported yet" for as long as nobody pressed Install again."""
     if not last or last["state"] != "failed" or not last["want"]:
         return None
     if (applying or {}).get("what") == "runner":
         return None
     slot = last.get("slot") or ""
     want = runners_of(row).get(slot) or {}
-    if not want.get("want") or any(r.get("slot") == slot and r.get("installed") for r in runners_reported(row)):
+    if not want.get("want"):
         return None
     return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": _failed_why(last["id"])}
 
@@ -360,7 +361,9 @@ def _failed_why(job_id):
         lines = [x.strip() for x in job_tail(job_id).splitlines() if x.strip()]
         cmd = max((i for i, x in enumerate(lines) if x.startswith("$ ")), default=-1)
         said = lines[cmd + 1:] if 0 <= cmd < len(lines) - 1 else lines[-1:]
-        _WHY[job_id] = " · ".join(x[:160] for x in said[-2:])[:320]
+        # Long enough for the helper's 403 line, whose second half says which
+        # permission the token lacks: the part that is worth reading.
+        _WHY[job_id] = " · ".join(x[:400] for x in said[-2:])[:700]
     return _WHY[job_id]
 
 

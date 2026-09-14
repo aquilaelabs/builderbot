@@ -1694,6 +1694,20 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && rn.reported.services['actions-runner']?.slot === GH,
        'the census reports the runner under its slot, with its name and labels, and as the single key too; the record keeps the ask');
     ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
+    // A reinstall whose registration token cannot be minted (a token
+    // lacking the org permission) leaves the runner standing: it used to
+    // stop and uninstall the working service, clear the registration, and
+    // only then ask for the token, leaving the node with no runner.
+    writeFileSync(`${DIR}/runner-store/mint-fail`, '');
+    const before = readFileSync(`${DIR}/runner/${GH}/calls.log`, 'utf8');
+    const re = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true });
+    const refin = await ended(re.job);
+    const after = readFileSync(`${DIR}/runner/${GH}/calls.log`, 'utf8');
+    const why = (await nodeById(minted.id)).runner_failed?.why || '';
+    ok(refin?.state === 'failed' && /left as it was/.test(refin.log) && after === before && existsSync(`${DIR}/runner/${GH}/.runner`)
+       && /Self-hosted runners/.test(why),
+       `a reinstall whose token cannot mint leaves the working runner untouched and says which permission the token lacks (${refin?.state}: ${why.slice(-90)})`);
+    rmSync(`${DIR}/runner-store/mint-fail`, { force: true });
     const labels = execFileSync('bash', [`${REPO}/scripts/bb`, 'ci-labels'],
       { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
     ok(/^agentbox$/m.test(labels) && /^gpu$/m.test(labels) && /^builderbot$/m.test(labels),

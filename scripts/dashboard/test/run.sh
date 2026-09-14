@@ -257,7 +257,8 @@ esac
 case "$kind" in
     --check)      grep -E '^RUNNER_(URL|FORGE)=' "$f"; exit 0 ;;
     --validate)   echo "token accepted"; exit 0 ;;
-    registration) echo AAAREGTOKEN; exit 0 ;;
+    registration) [ -f "$store/mint-fail" ] && { echo "[builderbot] ERROR: GitHub denied the request (403) on /orgs/example-org/actions/runners/registration-token. This is an ORG-level call: the token needs Organization permissions -> 'Self-hosted runners': Read and write" >&2; exit 1; }
+                  echo AAAREGTOKEN; exit 0 ;;
     remove)       if grep -q '^RUNNER_FORGE=gitea' "$f"; then echo "remove $node $slot $4" >> "$store/calls.log"; echo removed; else echo AAAREMOVETOKEN; fi; exit 0 ;;
 esac
 echo "sudo: refused" >&2; exit 1

@@ -185,7 +185,8 @@ function nodeRunnerSection(n, c){
       : rep.busy ? ["running a job right now", "ok"]
       : rep.active ? ["listening: idle, waiting for a job", "ok"]
       : ["installed but NOT listening, so no workflow will reach it: Reinstall runner", "bad"];
-    if (vcls === "bad") worst = "bad"; else if (vcls === "note" && worst !== "bad") worst = "note";
+    const rowCls = failed && rep.installed && vcls === "ok" ? "warn" : vcls;
+    if (rowCls === "bad") worst = "bad"; else if (rowCls === "note" && worst !== "bad") worst = "note";
     const detail = rep.installed
       ? [rep.name ? `registered as ${rep.name}`
            : rep.active ? "" : "its registered name did not come back, so the registration may not have finished",
@@ -196,12 +197,15 @@ function nodeRunnerSection(n, c){
     // where the two buttons it disables are, rather than as a warning on a
     // runner that is working.
     const noToken = !stored ? (rep.installed ? "no token stored: add one above with this address to reinstall or remove" : "no token stored") : "";
-    const state = verdict + (detail ? " · " + detail : "") + (noToken ? " · " + noToken : "");
+    // A reinstall that failed left the runner standing: its state stays,
+    // and what went wrong follows it.
+    const late = failed && rep.installed ? ` · reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}` : "";
+    const state = verdict + (detail ? " · " + detail : "") + late + (noToken ? " · " + noToken : "");
     return `<div class="row stack2 ndrun" data-slot="${esc(slot)}"><div class="grow">
         <div class="name"><code>${esc(rep.url || want.url || slot)}</code>${hostOf(want, rep) ? ` <span class="pill">${hostOf(want, rep)}</span>` : ""}${
           rep.busy ? ` <span class="pill note ndrunbusy">running a job</span>` : ""}</div>
         <div class="actbar">
-          <span class="state ndrunstate${vcls ? " " + vcls : ""}">${esc(state)}</span>
+          <span class="state ndrunstate${rowCls ? " " + rowCls : ""}">${esc(state)}</span>
           <button type="button" data-nrunner="install" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "download the host's runner onto the node, register it with a token the controller fetches, and keep it running"
                                     : "add a token for it first: registering needs one")}">${
