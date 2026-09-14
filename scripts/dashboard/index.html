@@ -6771,13 +6771,19 @@ function drawRunner(){
     paint(el, `<div class="empty">no runner on any node: the Nodes tab installs one</div>`);
     return;
   }
+  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   paint(el, rows.map(n => {
+    // A runner job in flight comes first: a remove of a listening runner is
+    // "removing now", not "listening, idle" until the census catches up. And
+    // a failure carries its time, because a new one reads exactly like the
+    // old one otherwise, and the operator pressed Remove on that reading.
     const [word, cls] = !n.live ? ["quiet: the node has not dialed in lately", "warn"]
+      : n.installing ? ["installing now", "warn"]
+      : n.removing ? ["removing now", "warn"]
       : n.busy ? ["running a job", "ok"]
       : n.listening ? ["listening, idle", "ok"]
       : n.installed ? ["installed, not listening", "bad"]
-      : n.installing ? ["installing now", "warn"]
-      : n.failed ? [`install failed: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
+      : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
       : ["install asked for; not reported yet", "warn"];
     return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>
       <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
@@ -16124,6 +16130,10 @@ onRev("packages", () => {
 // (docs/nodes.md §13).
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
+  // ...and the Runner card, which is drawn off the status poll: a job on a
+  // node moves this rev, so the card says "installing now" and then the
+  // result inside a second or two instead of at the next fifteen-second poll.
+  refresh();
 });
 // The queue moved: a job taken, a step, a result, a cancel. Same rule: an
 // open Jobs tab refetches, and nothing about jobs rides the status poll.

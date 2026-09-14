@@ -161,8 +161,15 @@ function nodeRunnerSection(n, c){
   // are different states and the old line buried the difference in the
   // middle of a sentence: a runner registered with no listener reads as
   // healthy right up until a workflow sits in "Waiting for a runner".
-  const [verdict, vcls] = !rep.installed
-    ? (n.runner_failed ? [`install failed: ${n.runner_failed.why || "its job on the Jobs tab says why"}`, "bad"]
+  // A runner job in flight says so here, in the section's own line, beside
+  // the buttons it takes away: the config section's "applying runner" is a
+  // screen above on a phone, and two dead buttons said nothing.
+  const job = n.applying?.what === "runner" ? (want.want ? "installing" : "removing") : "";
+  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  const [verdict, vcls] = job
+    ? [`${job} now: its job is on the Jobs tab, and the buttons come back when it ends`, "note"]
+    : !rep.installed
+    ? (n.runner_failed ? [`install failed ${when(n.runner_failed.ended)}: ${n.runner_failed.why || "its job on the Jobs tab says why"}`, "bad"]
       : [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""])
     : rep.busy ? ["running a job right now", "ok"]
     : rep.active ? ["listening: idle, waiting for a job", "ok"]
@@ -201,7 +208,8 @@ function nodeRunnerSection(n, c){
         ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" ${busyNow ? "disabled" : ""}
           title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
       </div>`;
-  const status = !rep.installed ? (want.want ? "installing" : "none")
+  const status = job ? job
+    : !rep.installed ? (n.runner_failed ? "failed" : want.want ? "asked for" : "none")
     : rep.busy ? "busy" : rep.active ? "listening" : "not listening";
   return docSection("nodes", "runner", "CI runner", status, body, {cls: vcls});
 }

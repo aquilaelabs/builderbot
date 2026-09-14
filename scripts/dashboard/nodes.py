@@ -241,7 +241,7 @@ def node_list(all=False):
     done, runner = {}, {}
     for j in _rows("SELECT id, node, spec, state, error, ended FROM jobs "
                    "WHERE type = 'system' AND state IN ('succeeded', 'failed', "
-                   "'canceled') ORDER BY ended DESC LIMIT 200"):
+                   "'canceled') ORDER BY ended DESC, rowid DESC LIMIT 200"):
         if j["node"] in done and j["node"] in runner:
             continue
         try:
@@ -1847,6 +1847,17 @@ def _jbump():
     _jrev[0] += 1
 
 
+def _jstate_bump():
+    """A job was queued, taken, finished or cancelled: the jobs rev, and the
+    nodes rev with it, because a node's row carries what is applying on it,
+    its last apply and its last runner failure, all read off the jobs. An
+    open Nodes tab refetches on the nodes rev, so this is what lets it say
+    "installing now" and then the result without anybody reloading. A log
+    chunk moves only the jobs rev: a row does not change for one."""
+    _jbump()
+    _bump()
+
+
 def runner_of(job_type, kind):
     """Who executes a job of this type on a node of this kind.
 
@@ -1967,7 +1978,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
            json.dumps(spec if isinstance(spec, dict) else {}),
            json.dumps([]), pl.get("node") or "", int(time.time())))
     audit(principal, "job-add", jid, {"placement": pl, "type": type})
-    _jbump()
+    _jstate_bump()
     with _wake:
         _wake.notify_all()
     return {"ok": True, "job": jid}
@@ -2188,7 +2199,7 @@ def job_next(node_id, wait, runner="node", alive=None):
                     _exec("UPDATE jobs SET state = ?, node = ?, "
                           "started = ? WHERE id = ?",
                           (st, node_id, int(time.time()), j["id"]))
-                    _jbump()
+                    _jstate_bump()
                     return j | {"state": st, "node": node_id}
             if runner == "node":
                 asked = [r["id"] for r in _rows(
@@ -2360,7 +2371,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
-    _jbump()
+    _jstate_bump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next
     return {"ok": True}
@@ -2383,7 +2394,7 @@ def job_cancel(principal, job_id):
     elif not got[0]["cancel"]:
         _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     audit(principal, "job-cancel", job_id, {})
-    _jbump()
+    _jstate_bump()
     with _wake:
         _wake.notify_all()
     return {"ok": True}
@@ -2436,7 +2447,7 @@ def jobs_lost():
             audit("system", "job-lost", j["id"], {"node": j["node"]})
             n += 1
     if n:
-        _jbump()
+        _jstate_bump()
     return n
 
 
@@ -2458,7 +2469,7 @@ def jobs_reconcile(node_id, running):
               (int(time.time()), jid))
         audit("system", "job-lost", jid, {"node": node_id, "why": "restart"})
     if gone:
-        _jbump()
+        _jstate_bump()
 
 
 def jobs_restart_sweep():
@@ -2478,7 +2489,7 @@ def jobs_restart_sweep():
         audit("system", "job-lost", j["id"], {"why": "controller restart"})
         n += 1
     if n:
-        _jbump()
+        _jstate_bump()
     return n
 
 

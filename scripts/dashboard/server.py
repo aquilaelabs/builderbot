@@ -2385,8 +2385,14 @@ def mint_runner_token(kind):
                 return {"token": json.load(resp).get("token", "")}
         except (OSError, ValueError) as e:
             return {"error": f"GitHub refused: {e}"}
-    return {"error": "no runner credential here — GITHUB_PAT is not stashed on the controller"
-                     + (f" ({r['out'].strip()[:120]})" if r["out"].strip() else "")}
+    # The helper's own last line, which names what is missing: the stash had
+    # the PAT and lacked GITHUB_URL once, and the sentence here said the
+    # opposite, so the operator went looking for the wrong variable.
+    why = (r["out"].strip().splitlines() or ["the helper printed nothing"])[-1]
+    why = re.sub(r"^\[builderbot\] ERROR: ", "", why)[:160]
+    return {"error": f"the controller cannot mint a runner token: {why}. GITHUB_URL and "
+                     "GITHUB_PAT are set on the controller, as its variables or GITHUB_PAT "
+                     "in the shielded secrets file; bb doctor says whether it has them"}
 
 
 def node_runners():
@@ -2402,7 +2408,11 @@ def node_runners():
             continue
         rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
         want = (n.get("services") or {}).get("actions-runner") or {}
-        if not (rep.get("installed") or want.get("want")):
+        # A runner job in flight keeps the row while it runs: a Remove takes
+        # the ask off the record the moment it is pressed, and the row went
+        # with it before the node had said a word.
+        applying = (n.get("applying") or {}).get("what") == "runner"
+        if not (rep.get("installed") or want.get("want") or applying):
             continue
         out.append({"node": n["name"], "id": n["id"], "live": bool(n.get("live")),
                     "installed": bool(rep.get("installed")),
@@ -2412,7 +2422,8 @@ def node_runners():
                     # Why a runner that was asked for is not there, and whether
                     # the install that would put it there is running now.
                     "failed": n.get("runner_failed"),
-                    "installing": (n.get("applying") or {}).get("what") == "runner"})
+                    "installing": applying and bool(want.get("want")),
+                    "removing": applying and not want.get("want")})
     return out
 
 
