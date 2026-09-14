@@ -1356,10 +1356,29 @@ def runner_labels_for(n, labels=None):
     return out[:16]
 
 
-def node_runner(principal, node_id, want, labels=None, url=""):
+def node_runner_url(principal, node_id, url, forge):
+    """The address and forge a node's runner registers with, onto its
+    record beside the ask. Written when the token is stored (server), so
+    the record says what the root-only store holds a token FOR; the token
+    itself is never here."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    services = dict(n.get("services") or {})
+    ar = dict(services.get("actions-runner") or {})
+    ar.update({"url": str(url or "")[:200], "forge": str(forge or "")[:16]})
+    services["actions-runner"] = ar
+    _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
+    _touch(node_id, principal, "node-runner-url", {"url": ar["url"], "forge": ar["forge"]})
+    return {"ok": True}
+
+
+def node_runner(principal, node_id, want, labels=None, token=False):
     """Install or remove the Actions runner on a node, as a system job
-    (phase 7). The desired state — wanted or not, with which labels — lives
-    in the node's services column; the census reports what is there."""
+    (phase 7). The desired state (wanted or not, with which labels) lives
+    in the node's services column; the census reports what is there. `token`
+    is the server's word that a runner token is stored for this node, which
+    an install cannot do without; the URL is the record's, written with it."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -1372,12 +1391,16 @@ def node_runner(principal, node_id, want, labels=None, url=""):
         return {"error": f"the node is {n['state']} — system jobs go to an online node"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node — one at a time"}
-    if want and not str(url or "").startswith("https://github.com/"):
-        return {"error": "the runner registers with a GitHub org or repo URL — set GITHUB_URL "
-                         "on the controller, or type one"}
+    ar = dict((n.get("services") or {}).get("actions-runner") or {})
+    url = ar.get("url") or ""
+    if want and not token:
+        return {"error": "no runner token stored for this node: paste one in the runner "
+                         "section first, with the address it registers with"}
+    if want and not url.startswith("https://github.com/"):
+        return {"error": "only a GitHub repository or organization can take a runner yet"}
     labs = runner_labels_for(n, labels) if want else []
     services = dict(n.get("services") or {})
-    services["actions-runner"] = {"want": bool(want), "labels": labs, "url": str(url or "")[:200]}
+    services["actions-runner"] = {**ar, "want": bool(want), "labels": labs}
     _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
     _touch(node_id, principal, "node-runner", {"want": bool(want), "labels": labs})
     cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}

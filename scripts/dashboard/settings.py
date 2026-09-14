@@ -18,9 +18,10 @@ whether to update it here and on which channel were settings about nothing —
 a node installs its own and `claude update` in a session there keeps it
 current.
 
-GITHUB_URL stays beside the PAT it is used with, in the root-only stash the
-entrypoint builds — a session can write this file, and the org a runner token
-is minted for should not be a session's to change.
+A node's runner token and the address it registers with are not here
+either: they go through mint-runner-token into a root-only store keyed by
+node, because a session can write this file, and the organization a runner
+token is minted for should not be a session's to change.
 """
 import os
 import sys
