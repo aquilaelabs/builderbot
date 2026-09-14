@@ -24,6 +24,7 @@
 - The companion app installs its own newer build: when it is behind the dashboard, Install it downloads the APK and hands it to Android, instead of sending you to a desktop for the file (474f3e4)
 - A dev instance can be built from another branch, including the one the project's own checkout is standing on: the build comes from a worktree of that branch, nobody's checkout moves and no branch is locked, and the row says which branch each container was actually built from (7864b97, 48a76d8, 6ea25e9)
 - A second instance of a project can run beside the first on another branch, and a port the other one already has is named on the row before you press rather than by compose after (133fab3)
+- A node's runner can register with a Gitea or Forgejo as well as GitHub: pick the host beside the address, and the node runs Gitea's act_runner with every job on its own toolchain (77505dc)
 
 ### Changed
 
