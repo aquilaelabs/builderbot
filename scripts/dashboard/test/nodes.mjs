@@ -510,6 +510,22 @@ ok(list[0].id === 'local',
   await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
   await page.waitForFunction(sel => !/applying/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // A failed install says so on the section, with the reason the server
+  // took from its log. Drawn and read in one step, so a poll cannot repaint
+  // the row from the real payload in between.
+  const failedVerdict = await page.evaluate(({ id, sel }) => {
+    const n = nodesList.find(x => x.id === id);
+    const keep = { f: n.runner_failed, s: n.services };
+    n.runner_failed = { id: 'j_x', why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
+    n.services = { ...(n.services || {}), 'actions-runner': { want: true, labels: [], url: '' } };
+    nodesRev++; drawPanes();
+    const e = document.querySelector(sel + ' .ndrunstate');
+    const out = { text: e?.textContent || '', bad: !!e?.classList.contains('bad') };
+    n.runner_failed = keep.f; n.services = keep.s; nodesRev++; drawPanes();
+    return out;
+  }, { id: minted.id, sel: ROW });
+  ok(/install failed/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
+     `the Nodes tab says a runner install failed and why, in red (${failedVerdict.text.slice(0, 80)})`);
   // Installed and listening are different states, and the difference is the
   // one that matters: a registered runner with no listener looks healthy
   // right up until a workflow sits in "Waiting for a runner". The operator's
