@@ -82,6 +82,12 @@ ok(br.branches.find(b => b.name === 'feature')?.main_behind >= 1,
 ok(br.branches.find(b => b.name === 'feature')?.merged === true && br.branches.find(b => b.name === 'old-work')?.merged === false
    && br.branches.find(b => b.name === main)?.merged === false,
    'a branch says whether main already has everything on it, and main does not claim to be merged into itself');
+const cmp = await api('what=compare&branch=old-work');
+ok(cmp.commits?.length === 1 && cmp.commits[0].subject === 'Old work' && cmp.files?.some(f => f.path === 'old.txt' && f.added === 1)
+   && /\+old/.test(cmp.diff || '') && cmp.main === main,
+   `a branch compares against main: the commits main lacks, the files, and the diff main would take (${cmp.error || cmp.commits?.length + ' commit'})`);
+ok((await api('what=compare&branch=' + main)).error && (await api('what=compare&branch=nope')).error,
+   '...and main itself, or a branch that is not there, is refused');
 ok((await api('what=status').then(() => fetch(URL.replace(/\/$/, '') + '/api/git?project=nope&what=status',
   { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } }))).status === 400,
    'a project that is not one is refused');
@@ -341,10 +347,20 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     groups: [...v.querySelectorAll('.ggroup')].map(g => g.textContent),
     originRows: [...v.querySelectorAll('.gbranch code')].filter(c => /^origin\//.test(c.textContent)).length,
     merged: !!v.querySelector('[data-gitdeletemerged]'),
-    words: [...v.querySelectorAll('.gbranch .sub')].map(e => e.textContent).join(' | ') }));
+    words: [...v.querySelectorAll('.gbranch .sub, .gbranch .sst')].map(e => e.textContent).join(' | ') }));
   ok(grouped.into && grouped.groups.some(g => /not yet in/.test(g)) && grouped.merged && grouped.originRows === 0
      && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words),
      `branches are grouped by what to do with them: work not yet in main offers Merge into main, branches already in main offer one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 200)})`);
+  // Work not yet in main is a row you open: its commits and diff against
+  // main, read here rather than on a pull request page.
+  await page.click('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] summary');
+  await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
+  const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
+    commit: /Old work/.test(d.querySelector('.gcmpc')?.textContent || ''),
+    files: /old\.txt/.test(d.textContent), add: !!d.querySelector('pre.diff .d-add'),
+    merge: !!d.querySelector('[data-gitmerge="old-work"][data-gitinto]') }));
+  ok(opened.commit && opened.files && opened.add && opened.merge,
+     `a branch with work not yet in main opens to its commits and the diff main would take, with Merge into main at its foot (${JSON.stringify(opened)})`);
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');
   await refreshUntil(page, () => /From the view/.test(document.querySelector('.nb .nbview[data-view="git"] .gitgraph')?.textContent || ''), { timeout: 20000 });
