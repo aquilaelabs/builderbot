@@ -148,6 +148,11 @@ def parse(text):
 
 # ---- keeping an entry with its test ----------------------------------------
 
+def _stem(name):
+    """A test's name without the diagnostic a run appends in brackets."""
+    return re.sub(r"\s*\([^()]*\)\s*$", "", name or "")
+
+
 def _align(old, new):
     """Match the roster we had against the one just read, per file.
 
@@ -159,7 +164,14 @@ def _align(old, new):
     Returns {new index: old index}, and anything unpaired is genuinely new or
     genuinely gone.
     """
-    a, b = [x["name"] for x in old], [x["name"] for x in new]
+    # Compared with a trailing parenthesised diagnostic taken off: a name
+    # that ends in "(n_5659a7c...)" or "(u_920b520a)" carries a value the
+    # run minted, so the same test never spells its name the same way twice,
+    # and it would otherwise be unpaired on every ingest. With the tail gone
+    # it matches exactly here, wherever an insertion above it moved it to,
+    # and never falls through to the likeness pass where a neighbour of
+    # similar wording could claim it (bug B121).
+    a, b = [_stem(x["name"]) for x in old], [_stem(x["name"]) for x in new]
     # Standard LCS table. These are per-file rosters — a couple of hundred at
     # most — so the quadratic table is cheaper than being clever.
     t = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
@@ -228,11 +240,16 @@ def ingest(project, text, by="you"):
         for r in roster:
             by_suite.setdefault(r["suite"], []).append(r)
         fresh = {}
+        # Every old entry a new row was paired with. What is left of a suite
+        # that ran is what went, whatever its name: two entries can share a
+        # name, and a name that carries a minted value shares none.
+        matched = set()
         for suite, rows in by_suite.items():
             old = sorted([t | {"key": k} for k, t in was.items()
                           if t.get("suite") == suite],
                          key=lambda t: int(t.get("ord") or 0))
             pairs = _align(old, rows)
+            matched.update(old[i]["key"] for i in pairs.values())
             for idx, r in enumerate(rows):
                 key = f"{suite}#{r['ord']}"
                 prev = old[pairs[idx]] if idx in pairs else None
@@ -247,7 +264,10 @@ def ingest(project, text, by="you"):
                 fresh[key] = e
                 if prev is None:
                     added.append({"key": key, "name": r["name"]})
-                elif prev["name"] != r["name"]:
+                # A rename is the words changing. A bracketed value at the
+                # end changing is the same test on another run, and saying
+                # so on every ingest would bury the renames worth reading.
+                elif _stem(prev["name"]) != _stem(r["name"]):
                     renamed.append({"key": key, "was": prev["name"], "now": r["name"]})
         # Anything in a file the run did not touch is left alone: ingesting one
         # file's log must not report every other file as deleted. Only a suite
@@ -256,13 +276,9 @@ def ingest(project, text, by="you"):
         for k, t in was.items():
             if t.get("suite") not in ran:
                 fresh[k] = t
-        for suite, rows in by_suite.items():
-            old = [t | {"key": k} for k, t in was.items() if t.get("suite") == suite]
-            kept = {t["name"] for t in rows}
-            for t in old:
-                if t["name"] not in kept and not any(
-                        r["was"] == t["name"] for r in renamed):
-                    gone.append({"key": t["key"], "name": t.get("name", "")})
+        for k, t in was.items():
+            if t.get("suite") in ran and k not in matched:
+                gone.append({"key": k, "name": t.get("name", "")})
         p["tests"] = fresh
         # Kept rather than only returned: the drift is the thing this file
         # exists to catch, and an answer that only exists in the terminal of

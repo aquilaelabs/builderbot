@@ -189,12 +189,45 @@ ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
                ['drift.mjs', 'and the last one', 0.4]];
   writeFileSync(`${DIR}/run-shift2.log`, runlog(now));
   const out = bb('ingest', `${DIR}/run-shift2.log`);
-  ok(/new: 1/.test(out) && /renamed: 1/.test(out) && !/gone:/.test(out),
-     'an assertion inserted above a name that changes every run reads as one addition and one rename');
+  ok(/new: 1/.test(out) && !/renamed:/.test(out) && !/gone:/.test(out),
+     'an assertion inserted above a name that changes every run reads as one addition: the bracketed value moving is not a rename');
   const rows = read().tests;
   ok(Object.values(rows).some(t => /u_920b520a/.test(t.name || '')
        && t.protects === 'the owner is minted, not assumed'),
      '...and the description stays on the row whose words survived');
+}
+
+// Bug B121: THREE assertions inserted above a run of such names, with two
+// neighbours of similar wording among them. Pairing by likeness within two
+// ordinals could not reach a test moved by three, and gave the description
+// to the neighbour whose words were closest instead.
+{
+  const was = [['b121.mjs', 'the picker opens', 0.2],
+               ['b121.mjs', 'docker work is stamped with the node id (n_5659a7c)', 0.3],
+               ['b121.mjs', 'hyperv renders its own kind (h_1a2b3c)', 0.1],
+               ['b121.mjs', 'vmware renders its own kind (v_4d5e6f)', 0.1],
+               ['b121.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-b121.log`, runlog(was));
+  bb('ingest', `${DIR}/run-b121.log`);
+  bb('note', 'b121.mjs#2', 'the node id is the one on the record');
+  bb('note', 'b121.mjs#3', 'hyperv, not vmware');
+  const now = [['b121.mjs', 'the picker opens', 0.2],
+               ['b121.mjs', 'one inserted', 0.1],
+               ['b121.mjs', 'two inserted', 0.1],
+               ['b121.mjs', 'three inserted', 0.1],
+               ['b121.mjs', 'docker work is stamped with the node id (n_8f8f8f8)', 0.3],
+               ['b121.mjs', 'hyperv renders its own kind (h_9a9a9a)', 0.1],
+               ['b121.mjs', 'vmware renders its own kind (v_0b0b0b)', 0.1],
+               ['b121.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-b121b.log`, runlog(now));
+  const out = bb('ingest', `${DIR}/run-b121b.log`);
+  ok(/new: 3/.test(out) && !/renamed:/.test(out) && !/gone:/.test(out),
+     'three assertions inserted above names carrying minted values read as three additions, nothing gone, nothing renamed');
+  const rows = read().tests;
+  ok(rows['b121.mjs#5']?.protects === 'the node id is the one on the record'
+     && rows['b121.mjs#6']?.protects === 'hyperv, not vmware'
+     && !rows['b121.mjs#7']?.protects,
+     '...and each description followed its own test three ordinals down, not the neighbour with the closest words');
 }
 
 // Ingesting one file's log must not report every other file as deleted.
