@@ -893,9 +893,8 @@ only when the finding is genuinely a false positive, and say why.
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state, not a problem
   to fix. Do not try to read, copy, or regenerate keys.
-- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set, and it
-  answers for GitHub and nothing else. If it is not set, say so rather than
-  inventing another auth path. There is no container-wide git token: a
+- `gh` is not signed in, and nothing here signs it in: say so rather than
+  inventing an auth path. There is no container-wide git token: a
   project that needs one carries its own, set when it is cloned or from the
   chain on its row. A remote may be on any git host (GitHub, a self-hosted
   Gitea or Forgejo, Codeberg, GitLab, Bitbucket), so do not assume `gh`
