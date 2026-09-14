@@ -104,6 +104,7 @@
 - Claude sessions pick up updates to BuilderBot's session checks while they stay open, instead of keeping the versions they started with until they are restarted (b2d964b)
 - A dev instance that is not bound to a node goes to a node that runs docker, instead of simply the newest node, which could be a machine with no docker at all (f68041f)
 - The Git view says how old each commit and branch really is, instead of just now for all of them, and no longer lists origin/HEAD as a branch called origin (96e5966)
+- Reinstalling a runner whose token cannot register leaves the working runner as it was, and the row says which permission the token lacks (97c1edd)
 
 ## 0.5.0: 2026-09-10
 
