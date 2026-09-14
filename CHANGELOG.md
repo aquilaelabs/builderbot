@@ -96,6 +96,7 @@
 - A node the controller cannot reach over ssh keeps its Docker controls: whether a container can be built, brought up or taken down is now decided by the node's own agent, which is what runs them, and only the listing of what is running still needs the ssh (be9957e)
 - Unraid can tell again whether the box is running the current BuilderBot: the image is published in the format its Docker page can read, instead of one it reports as "not available" (95b02cb)
 - A session left idle until its sign-in lapsed is no longer refused with a message saying BuilderBot is restarting after an update: it keeps working, and opening its tab renews it (5248614)
+- A CI runner install that failed says so on the Runner card and the Nodes tab, with the reason from its log, instead of reading as asked for and not reported yet (02f8d0a)
 
 ## 0.5.0: 2026-09-10
 
