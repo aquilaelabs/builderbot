@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.57"
+AGENT_VERSION = "0.5.58"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3279,9 +3279,15 @@ class Agent:
         if sess not in names:
             job.say(f"no session called {sess} is running here\n")
             return "failed", 2
-        cap = lambda: self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or ""  # noqa: E731
-        mark = text[:40]
-        was = cap().count(mark)
+        # A long line lands in claude's box folded into "[Pasted text #1]"
+        # (the TUI reads a burst of typed characters as a paste), so the
+        # placeholder counts as the echo; whitespace is collapsed because
+        # the box wraps a long line at word boundaries with an indent.
+        mark = " ".join(text[:40].split())
+        def seen():
+            flat = " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+            return flat.count(mark) + flat.count("[Pasted text")
+        was = seen()
         if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
             job.say("tmux would not take the line\n")
             return "failed", 1
@@ -3290,7 +3296,7 @@ class Agent:
         # takes input and a long line is not on screen inside a short one.
         for _ in range(2 + len(text) // 120):
             time.sleep(0.25)
-            if cap().count(mark) > was:
+            if seen() > was:
                 if self._tmux(["send-keys", "-t", sess, "Enter"]) is None:
                     job.say("the line is in the box but Enter did not go\n")
                     return "failed", 1

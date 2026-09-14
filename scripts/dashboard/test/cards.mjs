@@ -1465,6 +1465,30 @@ await page.click('#rnCancel');
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
+  // With no model set, the dialog shows what Claude's default here actually
+  // is, read from the last transcript, and picking that model is picking the
+  // default: no change, so nothing is asked and nothing restarts. "Leave as
+  // is" said nothing, and choosing the model the session was already on
+  // used to count as a change (the operator's report, 14 Sep).
+  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+  const tdir = `${DIR}/home/.claude/projects/${slug}`;
+  mkdirSync(tdir, { recursive: true });
+  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
+    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
+    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
+  ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+     'with nothing set, the picker shows the model the last session ran on and the hint says it is the default');
+  const askedBefore = page.dialogs.length;
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  ok(page.dialogs.length === askedBefore, 'saving with that model left where it was asks nothing');
+  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
+       && !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.model),
+     '...restarts nothing, and stores nothing: the default is still the default');
+  rmSync(tdir, { recursive: true, force: true });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnEdits', 'accept');

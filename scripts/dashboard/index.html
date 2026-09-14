@@ -1325,7 +1325,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .tab.pc{border-left:3px solid var(--pc)}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
-.row[data-row].pc{box-shadow:inset 3px 0 var(--pc)}
+.row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -4915,7 +4915,7 @@ function drawTabs(){
     const held = drag?.moved && drag.id === t.id ? " held" : "";
     // A notebook wears its project's colour; a tool tab wears the icon its
     // button on the Tools card carries.
-    const pc = t.kind === "todo" ? colorAttrs(projectColor(t.arg)) : {cls: "", style: ""};
+    const pc = colorAttrs(projectColor(tabProject(t)));
     const icon = TABKINDS[t.kind]?.icon || "";
     return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style}>
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
@@ -5114,6 +5114,10 @@ function paintBar(pane, t, i){
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
+  // The project's colour on the strip too, so a split pane says whose it is.
+  const tone = colorTone(projectColor(tabProject(t)));
+  bar.classList.toggle("pc", !!tone);
+  bar.style.setProperty("--pc", tone || "");
   bar.querySelectorAll("[data-cp]").forEach(b =>
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
@@ -5489,7 +5493,7 @@ window.addEventListener("focus", nudgeTerminals);
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.
 // The Claude card: the standing model/effort every send applies. Options are
-// the same tables the send box used to carry; "leave as is" is the empty
+// the same tables the send box used to carry; "Claude's default" is the empty
 // value, which sends no switch at all.
 // What each policy MEANS, since the stored word is a permission level and
 // the question the operator is answering is "how much of this may Claude
@@ -5504,10 +5508,34 @@ const POLICY_LABEL = {
   minor: "patch and minor",
   open: "anything, including major",
 };
-const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
+const MODELS = [["", "Claude's default"], ["opus", "Opus"], ["sonnet", "Sonnet"],
                 ["haiku", "Haiku"], ["fable", "Fable"]];
-const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
+const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
                  ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
+// What Claude's default here actually IS, read from the last transcript
+// when the dialog opens: with nothing set the picker used to read "leave
+// as is", which says nothing, and choosing the model the session was
+// already on counted as a change and asked to restart it. The picker now
+// shows that model, and picking it is picking the default.
+let rnModelNow = "";
+const rnModelPick = () => {
+  const v = $("rnModel").value;
+  return rnPrefWas.model === "" && v === rnModelNow ? "" : v;
+};
+function rnLoadModelNow(name){
+  rnModelNow = "";
+  fetch(`/api/claude-now?project=${encodeURIComponent(name)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (rnFor !== name || !j.model) return;
+      rnModelNow = j.model;
+      if (rnPrefWas.model === "" && MODELS.some(([v]) => v === j.model)){
+        $("rnModel").value = j.model;
+        rnDrawPrefs();
+      }
+    })
+    .catch(() => {});
+}
 
 // What the dialog was opened showing, so Save can tell a real change from a
 // dialog that was merely looked at: the difference decides whether a running
@@ -5530,6 +5558,10 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+// The project a tab is about, for its colour: a notebook's, or the project
+// whose Claude session a terminal tab holds. A plain shell has none.
+const tabProject = t => t.kind === "todo" ? t.arg
+  : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
 const rnColorNow = () =>
   $("rnColor").querySelector('[aria-checked="true"]')?.dataset.color || "";
 function rnFillColor(cur){
@@ -5563,6 +5595,7 @@ function rnFillPrefs(p){
   rnFillColor(rnPrefWas.color);
   rnFillNode();
   rnFillPrefsRest(p);
+  rnLoadModelNow(rnFor);
 }
 
 // The project's node: every node but this container, because local can
@@ -5637,9 +5670,12 @@ function rnDrawPrefs(){
   const shut = !!p?.locked;
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(myClaude(rnFor));
-  const changed = $("rnModel").value !== rnPrefWas.model
+  const changed = rnModelPick() !== rnPrefWas.model
                || $("rnEffort").value !== rnPrefWas.effort
                || $("rnEdits").value !== rnPrefWas.edits;
+  const dflt = rnPrefWas.model === "" && rnModelNow
+    ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
+      + `own default here, so leaving it is not a change.` : "";
   $("rnPrefHint").textContent = shut
     ? "Locked; this project is yours to run, so no session starts here."
     : running
@@ -5647,8 +5683,8 @@ function rnDrawPrefs(){
           ? "A session is running here. Saving restarts it onto this: the "
             + "conversation is resumed, but anything mid-turn is lost."
           : "Applied when a session starts. One is running here, so changing "
-            + "this restarts it onto the same conversation.")
-      : "Applied the next time Claude starts here, and kept until you change it.";
+            + "this restarts it onto the same conversation." + dflt)
+      : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
 }
 
@@ -15143,7 +15179,7 @@ async function rnSubmit(){
   // A typed token replaces rather than clears, so the two never both go: the
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
-  const model = $("rnModel").value, effort = $("rnEffort").value;
+  const model = rnModelPick(), effort = $("rnEffort").value;
   // Read by the launcher when a session starts, like the model, so a change
   // costs a restart, and is asked about the same way.
   const edits = $("rnEdits").value;

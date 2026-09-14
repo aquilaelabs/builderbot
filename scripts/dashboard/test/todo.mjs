@@ -112,6 +112,30 @@ ok(await page.$$eval('#todoList .todo[data-step="-1"] .n',
      ns => ns.map(n => +n.textContent.slice(1)).every((v, i, a) => !i || v > a[i - 1])),
    '...and the numbers on the rows run down the page');
 
+// A long line lands in claude's input box folded into "[Pasted text #1]":
+// the TUI reads a burst of typed characters as a paste, so the words never
+// echo and a step of a few hundred characters was reported typed but not
+// sent while sitting in the box whole. The placeholder counts as the echo.
+// notify.tell against a stand-in tmux, since no fixture here folds a paste.
+{
+  const out = execFileSync('python3', ['-c', `
+import sys; sys.path.insert(0, ${JSON.stringify(join(dirname(fileURLToPath(import.meta.url)), '..'))})
+import notify
+frames = ['> ', '> [Pasted text #1]', '> [Pasted text #1]']
+calls = []
+def run(argv, timeout=10):
+    calls.append(argv)
+    if argv[1] == 'capture-pane':
+        return {"code": 0, "out": frames.pop(0) if len(frames) > 1 else frames[0]}
+    return {"code": 0, "out": ""}
+notify.configure(run=run)
+notify.SETTLE = 0
+r = notify.tell('claude-x', 'a step of ' + 'many words ' * 40, ['claude-x'])
+print(r.get('sent'), sum(1 for c in calls if c[1] == 'send-keys' and c[-1] == 'Enter'))
+`], { encoding: 'utf8' }).trim();
+  ok(out === 'True 1', `a line the box folded into a paste placeholder counts as arrived, and Enter follows (${out})`);
+}
+
 // ---- sending -----------------------------------------------------------
 // The fixture's claude-alpha is a plain shell, which is what makes this
 // testable: a shell echoes what is typed into it, which is the exact property

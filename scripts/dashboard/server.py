@@ -2324,6 +2324,32 @@ def last_claude(project_dir):
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
 
 
+MODEL_FAMILY = re.compile(r'"model"\s*:\s*"claude-(opus|sonnet|haiku|fable)')
+
+
+def claude_model_now(project_dir):
+    """The model family the newest transcript here last answered on, or "".
+
+    Read from the tail of the file when a project's settings dialog opens,
+    so with no model set the dialog can say what Claude's default actually
+    is rather than "leave as is". The tail, because a transcript runs to
+    megabytes and the answer is in its last line.
+    """
+    t = last_claude(project_dir)
+    if not t:
+        return ""
+    f = CLAUDE_PROJECTS / str(project_dir).replace("/", "-") / f"{t['id']}.jsonl"
+    try:
+        with open(f, "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 131072))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    found = MODEL_FAMILY.findall(tail)
+    return found[-1] if found else ""
+
+
 def _ver(v):
     """A version as a tuple of ints, for comparing one agent against another.
     Anything unparseable sorts first, which reads as "too old"."""
@@ -4508,6 +4534,12 @@ class Handler(BaseHTTPRequestHandler):
             if self._refused("trash"):
                 return None
             return self._trash_list()
+        if self.path.startswith("/api/claude-now"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json({"model": claude_model_now(WORKSPACE / name)})
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]

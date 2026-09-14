@@ -78,7 +78,7 @@ const SURFACE = [
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
-  'rnDrawPrefs', 'rnFillColor', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnShow', 'rnSubmit',
+  'rnDrawPrefs', 'rnFillColor', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadModelNow', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
