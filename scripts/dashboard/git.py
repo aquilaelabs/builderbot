@@ -22,7 +22,9 @@ configure() only knows where the workspace and the worktrees are.
 """
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 WORKSPACE = None
@@ -225,8 +227,16 @@ def branches(repo):
                      "short": short, "when": int(when or 0), "upstream": up,
                      "ahead": ahead, "behind": behind,
                      "main_ahead": ma, "main_behind": mb,
+                     # Nothing on it that main lacks: the row's one question
+                     # is "is this work waiting, or done", and this is done.
+                     "merged": bool(main) and not remote and name != main and ma == 0,
                      "worktree": wt, "who": _who_of(wt, name)})
     return {"main": main, "branches": rows}
+
+
+def remote_url(repo):
+    """origin's address, or "" when there is none."""
+    return (_git(repo, "remote", "get-url", "origin") or "").strip()
 
 
 def _main_branch(repo):
@@ -387,11 +397,42 @@ def act(repo, action, args, env=None, may_push=True):
         name = _ok_branch(args.get("name"))
         if not name or not _has_branch(repo, name):
             return {"error": "no such branch"}
-        into = (status(repo).get("branch") or "")
+        here = (status(repo).get("branch") or "")
+        into = _ok_branch(args.get("into")) if args.get("into") else here
         if not into or into == "(detached)":
             return {"error": "not on a branch"}
         if name == into:
-            return {"error": f"{name} is the branch the tree is on"}
+            return {"error": f"{name} is the branch the tree is on" if into == here
+                             else f"{name} cannot be merged into itself"}
+        if into != here:
+            # Into a branch the tree is NOT on: main, from wherever the tree
+            # stands. The pull request button does exactly this on a server,
+            # and nobody's checkout moves; here it is a temporary worktree on
+            # `into`, merged in and removed, so the session working in the
+            # project directory sees nothing change under it. Only main: the
+            # other direction, main into the branch you are on, is the
+            # in-place merge below, and anything else is a shell's.
+            if into != _main_branch(repo):
+                return {"error": f"a merge from here lands on {here}, or on {_main_branch(repo)}: "
+                                 f"Switch to {into} to merge into it"}
+            if not _has_branch(repo, into):
+                return {"error": "no such branch"}
+            tmp = tempfile.mkdtemp(prefix="bb-merge-")
+            try:
+                r = _run(repo, "worktree", "add", "--quiet", tmp, into, env=env)
+                if r["code"]:
+                    return {"error": r["out"] or f"could not stand on {into} to merge"}
+                r = _run(tmp, "merge", "--no-edit", name, env=env)
+                if r["code"]:
+                    _run(tmp, "merge", "--abort", env=env)
+                    return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
+                                     f"with merge into {into} picked, and it resolves the clash "
+                                     f"on its branch"}
+            finally:
+                _run(repo, "worktree", "remove", "--force", tmp, env=env)
+                shutil.rmtree(tmp, ignore_errors=True)
+                _run(repo, "worktree", "prune", env=env)
+            return {"ok": True, "out": f"merged {name} into {into}"}
         if _dirty(repo):
             return {"error": "there are uncommitted changes — commit or discard them first, "
                              "so the merge is its own commit"}

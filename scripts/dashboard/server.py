@@ -4186,6 +4186,13 @@ class Handler(BaseHTTPRequestHandler):
                 # the project's push rights, granted once in the clone dialog.
                 r["remote"] = gitview.has_remote(WORKSPACE / name)
                 r["push"] = projects.may_push(name)
+                # The host by its name (GitHub, Gitea, or the machine's own),
+                # so the view can say "in step with GitHub" and not "origin".
+                url = gitview.remote_url(WORKSPACE / name)
+                at = forges.parse(url) if url else None
+                f = forges.forge_of(at["host"]) if at else None
+                r["host"] = {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
+                             "kind": (f or {}).get("kind", "")}
             return self._json(r, 400 if r.get("error") else 200)
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -6500,7 +6507,15 @@ class Handler(BaseHTTPRequestHandler):
         # it lands other people's files in a directory a session is reading
         # and editing right now, which is the same surprise for the same
         # reason, so it waits for the same moment.
-        if action in ("switch", "merge"):
+        # A merge INTO ANOTHER branch (into: main, from wherever the tree
+        # stands) happens in a temporary worktree and moves nothing here, so
+        # the session is no reason to refuse it: that is the merge the
+        # operator makes to accept a session's work while it keeps working.
+        args_ = req.get("args") or {}
+        lands_here = action == "switch" or (
+            action == "merge" and str(args_.get("into") or "")
+            in ("", gitview.status(WORKSPACE / name).get("branch") or ""))
+        if lands_here:
             mine = tmux_name(f"claude-{name}")
             if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
                    for s in tmux_sessions() + node_tmux_sessions()):

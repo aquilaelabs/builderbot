@@ -79,6 +79,9 @@ ok(br.branches.find(b => b.name === 'claude/tabmade')?.who === 'tabmade',
    "...and a session's branch says whose");
 ok(br.branches.find(b => b.name === 'feature')?.main_behind >= 1,
    `...and how far each stands from ${main}`);
+ok(br.branches.find(b => b.name === 'feature')?.merged === true && br.branches.find(b => b.name === 'old-work')?.merged === false
+   && br.branches.find(b => b.name === main)?.merged === false,
+   'a branch says whether main already has everything on it, and main does not claim to be merged into itself');
 ok((await api('what=status').then(() => fetch(URL.replace(/\/$/, '') + '/api/git?project=nope&what=status',
   { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } }))).status === 400,
    'a project that is not one is refused');
@@ -156,6 +159,11 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   ok(execFileSync('git', [`--git-dir=${origin}`, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim() === 'Dashboard commit',
      '...and the remote has it');
   ok((await api('what=status')).upstream === `origin/${main}`, '...with the upstream set for next time');
+  git('remote', 'set-url', 'origin', 'https://github.com/example/beta.git');
+  const named = await api('what=all');
+  git('remote', 'set-url', 'origin', origin);
+  ok(named.host?.name === 'GitHub' && named.host?.kind === 'github',
+     `the payload names the host from the remote's address, so the view can say GitHub and not origin (${JSON.stringify(named.host)})`);
   // origin/HEAD is a pointer, not a branch: its short name is "origin", and
   // the view listed it as a branch called origin at the commit main is on.
   git('remote', 'set-head', 'origin', main);
@@ -187,6 +195,41 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   const held = await act('switch', { name: main });
   ok(held.status === 409 && /Claude session is running/.test(held.error),
      "Switch is refused while the owner's session stands in the directory, naming it");
+  // Merge INTO main from another branch moves nothing here, so the session
+  // is no reason to refuse it: a temporary worktree on main takes the merge,
+  // the way a pull request's button merges on a server. Commits made with
+  // plumbing, so the tree stays on topic throughout.
+  {
+    const commitFile = (parent, path, content, msg) => {
+      const idx = `${DIR}/tmp-index-${Math.random().toString(36).slice(2)}`;
+      const env = { ...process.env, GIT_INDEX_FILE: idx };
+      execFileSync('git', ['-C', B, 'read-tree', parent], { env });
+      const blob = execFileSync('git', ['-C', B, 'hash-object', '-w', '--stdin'], { input: content, encoding: 'utf8' }).trim();
+      execFileSync('git', ['-C', B, 'update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { env });
+      const tree = execFileSync('git', ['-C', B, 'write-tree'], { env, encoding: 'utf8' }).trim();
+      rmSync(idx, { force: true });
+      return execFileSync('git', ['-C', B, 'commit-tree', tree, '-p', parent, '-m', msg], { encoding: 'utf8' }).trim();
+    };
+    const tip = git('rev-parse', main);
+    git('branch', 'sidework', commitFile(main, 'side.txt', 'side\n', 'Side work'));
+    const mm = await act('merge', { name: 'sidework', into: main });
+    ok(mm.ok && git('merge-base', '--is-ancestor', 'sidework', main) === '' && (await api('what=status')).branch === 'topic'
+       && git('worktree', 'list').split('\n').length === 1 && !existsSync(`${B}/side.txt`),
+       `Merge into main lands while the session runs, leaves the tree where it was, and leaves no worktree behind (${mm.out || mm.error})`);
+    ok(/Switch to/.test((await act('merge', { name: 'sidework', into: 'feature' })).error || ''),
+       '...and only main takes a merge from elsewhere; anything else says to Switch');
+    // A clash aborts, cleans up, and names what finishes it: nothing is left
+    // half-merged on main, and no conflict lands in this tree's Changes.
+    git('update-ref', `refs/heads/${main}`, commitFile(main, 'clash2.txt', 'from main\n', 'Main side'));
+    git('branch', 'sideclash', commitFile(tip, 'clash2.txt', 'from side\n', 'Side clash'));
+    const before = git('rev-parse', main);
+    const cl = await act('merge', { name: 'sideclash', into: main });
+    ok(/does not merge/.test(cl.error || '') && /Send to Claude/.test(cl.error || '') && git('rev-parse', main) === before
+       && git('worktree', 'list').split('\n').length === 1 && !(await api('what=status')).files.some(f => f.state === 'conflict'),
+       `a merge into main that clashes is abandoned whole, with the session named as what finishes it (${String(cl.error).slice(0, 70)})`);
+    git('update-ref', `refs/heads/${main}`, tip);
+    for (const b of ['sidework', 'sideclash']) git('branch', '-D', b);
+  }
   tmuxKill('claude-beta');
   ok((await act('switch', { name: main })).ok && (await api('what=status')).branch === main,
      '...and goes through once it is gone');
@@ -293,6 +336,15 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     newBranch: !!v.querySelector('.gbranchbar[data-add] #gitNewBranch') }));
   ok(view.net && view.push && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
      `the view offers the network bar, the commit form, Discard, Switch, Delete and New branch (${JSON.stringify(view)})`);
+  const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
+    into: !!v.querySelector('[data-gitmerge="old-work"][data-gitinto]'),
+    groups: [...v.querySelectorAll('.ggroup')].map(g => g.textContent),
+    originRows: [...v.querySelectorAll('.gbranch code')].filter(c => /^origin\//.test(c.textContent)).length,
+    merged: !!v.querySelector('[data-gitdeletemerged]'),
+    words: [...v.querySelectorAll('.gbranch .sub')].map(e => e.textContent).join(' | ') }));
+  ok(grouped.into && grouped.groups.some(g => /not yet in/.test(g)) && grouped.merged && grouped.originRows === 0
+     && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words),
+     `branches are grouped by what to do with them: work not yet in main offers Merge into main, branches already in main offer one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 200)})`);
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');
   await refreshUntil(page, () => /From the view/.test(document.querySelector('.nb .nbview[data-view="git"] .gitgraph')?.textContent || ''), { timeout: 20000 });
