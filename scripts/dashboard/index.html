@@ -921,6 +921,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   to{opacity:1;transform:none}}
 .modal:not([hidden]){animation:modalIn .16s ease}
 .modal:not([hidden])>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
+/* ...and leaves the same way (the observer beside noMotion plays it): while
+   it is leaving, the arrival must not replay, and nothing under it may take
+   a tap meant for the page behind. */
+.modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
 .modal[hidden]{display:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
@@ -4572,6 +4576,46 @@ function placePinMenu(){
 // its old spot to its new one. The transform tween is what the eye follows.
 const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// Every modal leaves the way it arrived. Closing one is `hidden = true` at a
+// dozen sites, and any dialog added later closes the same way, so the leaving
+// lives on the property itself: `hidden` on a modal is its own accessor, and
+// setting it plays the tween first and puts the attribute on when the tween
+// ends. Nothing at a call site to remember, and nothing for a watcher to
+// misread: a hide of a modal already hidden is a hide, a show mid-leave
+// drops the tween and shows. (An observer on the attribute did this first,
+// and re-showing the element to play the tween was what every other test
+// on the page tripped over.)
+function armModal(el){
+  if (!el || el.__modalArmed) return;
+  el.__modalArmed = true;
+  Object.defineProperty(el, "hidden", {
+    configurable: true,
+    // Hidden the moment it is told to, to everything that asks: the poll
+    // and the cards read a dialog's state to decide what to repaint, and a
+    // dialog that read as open for the length of its tween had them draw
+    // the page as if it were. Only the pixels linger.
+    get(){ return this.hasAttribute("hidden") || this.classList.contains("leaving"); },
+    set(v){
+      if (!v){
+        this.getAnimations().forEach(a => a.cancel());
+        this.querySelector(":scope > .box")?.getAnimations().forEach(a => a.cancel());
+        this.classList.remove("leaving");
+        this.removeAttribute("hidden");
+        return;
+      }
+      if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
+      if (noMotion()){ this.setAttribute("hidden", ""); return; }
+      this.classList.add("leaving");
+      this.querySelector(":scope > .box")?.animate(
+        [{opacity: 1, transform: "none"}, {opacity: 0, transform: "translateY(6px) scale(.985)"}],
+        {duration: 150, easing: "ease"});
+      this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
+        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
+        () => {});                        // cancelled: it was shown again, and stays
+    }});
+}
+document.querySelectorAll(".modal").forEach(armModal);
+
 function flip(els, key){
   if (noMotion()) return () => {};
   const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
@@ -6109,13 +6153,18 @@ function findingsRulesHtml(rows){
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands; it is written in the same order.
 let cards = {order: [], closed: []};   // filled from the markup once it exists, below
-// Which cards a phone has been told to open, for this page's life. A phone's
-// first screen was 470 of its 844 pixels of Tools, Administration and Runner
-// before the first project appeared, and those are desk things: on a phone
-// every card but Projects starts folded, the way a document tab's sections
-// do. Not saved, and not applied to a desktop, so the arrangement somebody
-// made at a desk is theirs and stays as they left it.
-const phoneOpen = new Set();
+// Which cards a phone has been told to open. A phone's first screen was 470
+// of its 844 pixels of Tools, Administration and Runner before the first
+// project appeared, and those are desk things: on a phone every card but
+// Projects starts folded, the way a document tab's sections do. Kept on the
+// device (localStorage, this browser only) rather than in the arrangement
+// the server holds, so a card opened on the phone stays open across a
+// reload here and never reaches the desk the arrangement was made on. A
+// browser that keeps nothing starts folded, as before.
+const phoneOpen = new Set((() => {
+  try{ return JSON.parse(localStorage.getItem("bb.phoneOpen") || "[]"); }catch{ return []; }
+})());
+const keepPhoneOpen = () => { try{ localStorage.setItem("bb.phoneOpen", JSON.stringify([...phoneOpen])); }catch{} };
 const cardShut = key => cards.closed.includes(key)
   || (isPhone() && key !== "projects" && !phoneOpen.has(key));
 
@@ -6194,6 +6243,7 @@ function toggleCard(key){
   if (isPhone()){
     const shut = !el.classList.contains("closed");
     if (shut) phoneOpen.delete(key); else phoneOpen.add(key);
+    keepPhoneOpen();
     slideCard(el, shut);
     return;
   }
@@ -6377,8 +6427,10 @@ function slideHidden(el, willShow, after){
 // projects error toggle, the commands cut-off, doctor's detail, with the
 // same height tween as the card-level fold. `mutate` does the actual redraw.
 function slideBody(el, mutate){
-  const card = el.closest(".card, .mpanel");   // the phone panel hosts these too
-  if (!card || noMotion()){ mutate(); return; }
+  // The card or panel hosting it, whose height is what moves; a row in a
+  // tab has no card and slides over its own height.
+  const card = el.closest(".card, .mpanel") || el;
+  if (noMotion()){ mutate(); return; }
   const from = card.offsetHeight;
   // Only its own kind: canceling a card-level fold here would swallow the
   // class write that fold's finish handler was going to make.
@@ -6743,8 +6795,12 @@ async function resetCards(){
     if (j.error){ notify(j.error, true); return; }
     cards = j.cards; if (state) state.cards = j.cards;
   }catch(e){ notify("could not reset the cards: " + e, true); return; }
+  // Reset means every card open, on a phone as at a desk: the phone's own
+  // folds are opened and kept open here, since the default there is folded.
+  cardEls().forEach(el => phoneOpen.add(el.dataset.card));
+  keepPhoneOpen();
   // Folded cards unfold with the same tween as a click; the rest slide home.
-  shut.forEach(k => slideCard(document.querySelector(`.card[data-card="${k}"]`), false));
+  cardEls().forEach(el => { if (el.classList.contains("closed")) slideCard(el, false); });
   applyCards(true);
 }
 
@@ -6851,8 +6907,13 @@ function wireProjectRows(root){
   // untouched and nothing here has to know the breakpoint.
   root.querySelectorAll("[data-more]").forEach(b => b.onclick = () => {
     const row = b.closest(".row");
-    const on = row.classList.toggle("moreon");
-    b.setAttribute("aria-expanded", on ? "true" : "false");
+    // The row's controls wrap under its name when folded out: the row (and
+    // the card holding it) slides over the height that takes, rather than
+    // snapping to it.
+    slideBody(row, () => {
+      const on = row.classList.toggle("moreon");
+      b.setAttribute("aria-expanded", on ? "true" : "false");
+    });
   });
   root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -9850,6 +9911,7 @@ function makeNotebook(project){
   // AND next sibling, because "append it back" is how an element ends up
   // under the wrong heading.
   const sheet = root.querySelector(".nbsheet");
+  armModal(sheet);                        // a clone: the page-load pass did not see it
   let sheetHome = [], sheetClosed = null;
 
   function openSheet(title, els, onClose){

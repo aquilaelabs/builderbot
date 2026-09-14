@@ -17,7 +17,7 @@
 //
 // What is deliberately NOT here: per-kind content checks. Those live in each
 // kind's own suite. This file only holds the language every kind shares.
-import { URL, DIR, launch, newPage, ok, done, ready, sleep } from './lib.mjs';
+import { URL, DIR, launch, newPage, ok, done, ready, sleep, animatedDuring } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -717,7 +717,34 @@ for (const kind of kinds){
 // The same page, held to the same rules at phone width: nothing may scroll
 // the page sideways, and every text control is 16px so iOS does not zoom a
 // layout that cannot zoom back.
+// A modal leaves the way it arrived. The arrival is the stylesheet's; the
+// leaving is one observer on the hidden attribute, so this is what proves
+// every dialog on the page, including one added later, goes out with it.
+{
+  await page.click('#bAbout');
+  await page.waitForSelector('#aboutModal:not([hidden])');
+  const left = await animatedDuring(page, async () => {
+    await page.click('#aboutModal >> text=Close');
+    await page.waitForSelector('#aboutModal', { state: 'hidden' });
+  });
+  ok(left.some(k => /aboutModal/.test(k)),
+     `a modal leaves with a tween rather than vanishing (${left.join(', ') || 'nothing animated'})`);
+}
 await page.setViewportSize({ width: 393, height: 851 });
+// A row folding its controls out on a phone slides over the height that
+// takes; six buttons appearing under a name in one frame is a jump the eye
+// has to find.
+{
+  await page.click('#projects');
+  await page.waitForSelector('#projects .row .rowmore', { timeout: 10000 });
+  const unfolded = await animatedDuring(page, async () => {
+    await page.click('#projects .row .rowmore');
+    await page.waitForSelector('#projects .row.moreon', { timeout: 5000 });
+  });
+  ok(unfolded.some(k => /\brow\b/.test(k) || /projects/.test(k)),
+     `a project row's controls unfold with a slide on a phone (${unfolded.join(', ') || 'nothing animated'})`);
+  await page.click('#projects .row.moreon .rowmore');
+}
 await page.evaluate(() => setView('terminal'));
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,
