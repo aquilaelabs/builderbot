@@ -23,6 +23,19 @@ git('checkout', '-q', main);
 writeFileSync(`${B}/a.txt`, 'one\ntwo\n'); git('commit', '-q', '-am', 'Extend a');
 git('merge', '-q', '--no-ff', '-m', 'Merge feature', 'feature');
 git('branch', 'claude/tabmade');
+// ...and a branch whose last commit is three days old, because every row of
+// the view said "just now" whatever its age: the ms/seconds mix-up below. A
+// root commit made with plumbing: --date-order never lists a child before
+// its parent, so an old commit on top of today's would still sort first,
+// and a checkout would fight the uncommitted a.txt above.
+{
+  const three = `${Math.floor(Date.now() / 1000) - 3 * 86400} +0000`;
+  const blob = execFileSync('git', ['-C', B, 'hash-object', '-w', '--stdin'], { input: 'old\n', encoding: 'utf8' }).trim();
+  const tree = execFileSync('git', ['-C', B, 'mktree'], { input: `100644 blob ${blob}\told.txt\n`, encoding: 'utf8' }).trim();
+  const old = execFileSync('git', ['-C', B, 'commit-tree', tree, '-m', 'Old work'], { encoding: 'utf8',
+    env: { ...process.env, GIT_AUTHOR_DATE: three, GIT_COMMITTER_DATE: three } }).trim();
+  git('branch', 'old-work', old);
+}
 writeFileSync(`${B}/a.txt`, 'one\ntwo\nthree\n');
 writeFileSync(`${B}/new.txt`, 'brand new\n');
 
@@ -101,6 +114,9 @@ ok(await page.$eval(`${NB} #gitDetail`, e => !!e.querySelector('pre.diff .d-add'
 ok(await page.$eval(`${NB}`, e => [...e.querySelectorAll('.gbranch')].some(r => /claude\/tabmade/.test(r.textContent) && /tabmade's session/.test(r.textContent))
      && [...e.querySelectorAll('.gbranch')].some(r => /here/.test(r.textContent))),
    'Branches marks the one the tree is on and whose session a branch is');
+ok(await page.$eval(`${NB}`, e => { const r = [...e.querySelectorAll('.gbranch')].find(x => /old-work/.test(x.textContent));
+                                    return r && /3 days ago/.test(r.textContent) && !/just now/.test(r.textContent); }),
+   'a branch row says how old its last commit is, not "just now" for everything');
 // A commit made elsewhere reaches the open view on the git revision, not a poll.
 writeFileSync(`${B}/a.txt`, 'one\ntwo\nthree\n'); git('commit', '-q', '-am', 'Third line');
 await refreshUntil(page, () => /Third line/.test(document.querySelector('.nb .nbview[data-view="git"] .gitgraph')?.textContent || ''),
@@ -140,6 +156,12 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   ok(execFileSync('git', [`--git-dir=${origin}`, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim() === 'Dashboard commit',
      '...and the remote has it');
   ok((await api('what=status')).upstream === `origin/${main}`, '...with the upstream set for next time');
+  // origin/HEAD is a pointer, not a branch: its short name is "origin", and
+  // the view listed it as a branch called origin at the commit main is on.
+  git('remote', 'set-head', 'origin', main);
+  const withHead = (await api('what=branches')).branches;
+  ok(!withHead.some(x => x.name === 'origin' || /\/HEAD$/.test(x.name)) && withHead.some(x => x.name === `origin/${main}`),
+     `origin/HEAD is not listed as a branch called origin (${withHead.filter(x => x.remote).map(x => x.name).join(',')})`);
   ok((await act('fetch')).ok, 'Fetch brings the remote down');
   const clone = `${DIR}/beta-clone`;
   execFileSync('git', ['clone', '-q', origin, clone]);

@@ -12002,7 +12002,9 @@ $("todoRevert").onclick = revertNotebook;
       </div>`;
     const lanes = gitLanes(commits);
     const H = 34, W = 14, lanesN = Math.max(1, ...commits.map(c => c.lane + 1));
-    const ago_ = t => t ? ago(t * 1000) : "";
+    // ago() takes seconds, which is what the server sends. Times a thousand
+    // put every commit and branch in the future, and the future is "just now".
+    const ago_ = t => t ? ago(t) : "";
     const graph = commits.length ? `<div class="gitgraph" style="--glanes:${lanesN}">
       <svg class="glines" width="${lanesN * W}" height="${commits.length * H}" aria-hidden="true">${
         lanes.edges.map(e => {

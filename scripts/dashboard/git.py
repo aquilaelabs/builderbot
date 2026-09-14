@@ -202,7 +202,9 @@ def branches(repo):
             continue
         name, ref, short, when, up, track, head = f[:7]
         remote = ref.startswith("refs/remotes/")
-        if remote and name.endswith("/HEAD"):
+        # The full ref: origin/HEAD's SHORT name is "origin", so the check on
+        # the short name let it through as a branch called origin.
+        if remote and ref.endswith("/HEAD"):
             continue
         ahead = behind = 0
         m = re.search(r"ahead (\d+)", track or "")
