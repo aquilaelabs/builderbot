@@ -538,9 +538,14 @@ print(json.dumps(out))
      'the row shows what is installed on the node, which is what a project bound to it can build');
   const GH = 'github.com-example-org', RUN = `${ROW} .ndrun[data-slot="${GH}"]`;
   ok(await page.$eval(`${ROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
-     && await page.$(`${ROW} .ndrunadd[data-add="runner"] [data-nrunneradd]`) !== null
-     && await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea')),
-     'the CI runners section says there is none and adds one at the top, with the host kind read from the address unless picked');
+     && await page.$(`${ROW} .addbar[data-add="runner"] [data-nrunnershow]`) !== null
+     && await page.$(`${ROW} [data-k="runner:url"]`) === null,
+     'the CI runners section says there is none and adds one at the top, a button until pressed');
+  await page.click(`${ROW} [data-nrunnershow]`);
+  await page.waitForSelector(`${ROW} [data-k="runner:url"]`, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea'))
+     && await page.$(`${ROW} [data-nrunnercancel]`) !== null,
+     '...and the form unrolls in the band with the host kind read from the address unless picked, and a Cancel');
   // Adding a runner is its own press, so the token never rides the install:
   // it goes to the root-only store, the row appears with Install awake.
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
@@ -548,11 +553,11 @@ print(json.dumps(out))
   await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
   await page.click(`${ROW} [data-nrunneradd]`);
   await page.waitForSelector(RUN, { timeout: 10000 });
-  ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && /token stored/.test(e.textContent))
+  ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && !/no token stored/.test(e.textContent))
      && await page.$eval(`${RUN} [data-nrunner="install"]`, b => !b.disabled && /Install runner/.test(b.textContent))
      && !!(await page.$(`${RUN} [data-nrunnerforget]`))
-     && await page.$eval(`${ROW} [data-k="runner:token"]`, e => e.value === '' && e.type === 'password'),
-     'Add runner keeps the token root-only, clears the field, and lists the runner with Install awake and Forget token beside it');
+     && await page.$(`${ROW} [data-k="runner:token"]`) === null && await page.$(`${ROW} [data-nrunnershow]`) !== null,
+     'Add runner keeps the token root-only, rolls the form up, and lists the runner with Install awake and Forget token beside it');
   // Dead the moment it is pressed, not when the answer comes back. Every
   // action here awaits a POST, then loadNodes(), then a repaint: a second
   // or two in which the button looked untouched, so there was no telling a

@@ -191,7 +191,12 @@ function nodeRunnerSection(n, c){
            : rep.active ? "" : "its registered name did not come back, so the registration may not have finished",
          rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
       : "";
-    const state = verdict + (detail ? " · " + detail : "") + (stored ? " · token stored" : " · no token stored");
+    // A token is what a reinstall and a removal mint from, so a runner
+    // without one (registered before tokens were per runner) says so once,
+    // where the two buttons it disables are, rather than as a warning on a
+    // runner that is working.
+    const noToken = !stored ? (rep.installed ? "no token stored: add one above with this address to reinstall or remove" : "no token stored") : "";
+    const state = verdict + (detail ? " · " + detail : "") + (noToken ? " · " + noToken : "");
     return `<div class="row stack2 ndrun" data-slot="${esc(slot)}"><div class="grow">
         <div class="name"><code>${esc(rep.url || want.url || slot)}</code>${hostOf(want, rep) ? ` <span class="pill">${hostOf(want, rep)}</span>` : ""}${
           rep.busy ? ` <span class="pill note ndrunbusy">running a job</span>` : ""}</div>
@@ -203,14 +208,15 @@ function nodeRunnerSection(n, c){
             rep.installed ? "Reinstall runner" : "Install runner"}</button>
           ${stored ? `<button type="button" class="danger" data-nrunnerforget data-slot="${esc(slot)}" ${busyNow ? "disabled" : ""}
             title="drop the stored token and this row; a runner already registered keeps running, and removing it later needs a token again">Forget token</button>` : ""}
-          ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow ? "disabled" : ""}
-            title="${why || "deregister it from its host and take the runner off the node"}">Remove runner</button>` : ""}
+          ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
+            title="${why || (stored ? "deregister it from its host and take the runner off the node" : "add a token for it first: deregistering needs one")}">Remove runner</button>` : ""}
         </div></div></div>`;
   }).join("");
-  const body = `
-      <div class="sub">One runner per git host, GitHub's or Gitea's act_runner, each a service here; the labels decide which workflows land.</div>
-      <div class="addbar ndrunadd" data-add="runner">
-        <div class="ndrunner">
+  // Adding is a button that unrolls the form in its own band, the shape
+  // every view adds with; the form is four fields that wrap to the width
+  // they have, one per line on a phone, and its own action bar.
+  const addbar = c.addRunner ? `<div class="addbar ndrunadd" data-add="runner"><div class="grow">
+        <div class="uadd">
           <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with; an organization serves every repository in it")}
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
@@ -224,10 +230,16 @@ function nodeRunnerSection(n, c){
           <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
             placeholder="gpu, android" aria-label="labels"></div>
         </div>
-        <div class="actbar"><span class="state">a runner is added with its token; Install on its row registers it</span>
-          <button type="button" data-nrunneradd ${busyNow ? "disabled" : ""}
+        <div class="actbar"><span class="state">the token is kept root-only on the controller; Install on the runner's row registers it</span>
+          <button type="button" class="stop" data-nrunnercancel>Cancel</button>
+          <button type="button" class="primary" data-nrunneradd ${busyNow ? "disabled" : ""}
             title="keep the token root-only on the controller and put the runner on this node's list">Add runner</button></div>
-      </div>
+      </div></div>`
+    : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow ? "disabled" : ""}
+        title="a runner for another git host, or this one's under another address">Add runner</button></div>`;
+  const body = `
+      <div class="sub">One runner per git host, GitHub's or Gitea's act_runner, each a service here; the labels decide which workflows land.</div>
+      ${addbar}
       ${rows || `<div class="sub dim ndrunnone">no runner on this node</div>`}
       ${slots.length ? `<div class="sub ndrunpin">Any BuilderBot runner answers
         <code>self-hosted</code>; this node's name is the label that pins a job here, on every host:
@@ -1255,22 +1267,26 @@ function wireNodeConf(row, id){
     const want = b.dataset.nrunner === "install", slot = b.dataset.slot;
     if (!want && !confirm(`Remove the runner ${slot} from ${n?.name || "this node"}?\n\nIt is deregistered `
         + `from its host first; workflows that target its label will wait for a runner.`)) return;
-    // The labels typed in the addbar apply to the install pressed next;
-    // a reinstall with none typed keeps the runner's own.
+    // The runner's own labels, kept on its record since it was added; new
+    // ones typed in an open form apply to the install pressed next.
     const typed = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
-    const labels = typed.length ? typed : (n?.services?.runners?.[slot]?.labels || []).filter(x =>
-      !["builderbot", "self-hosted", "linux", "x64", "arm64", n?.name].includes(x));
     await pressing(b, () => { busy(b, want ? "Installing" : "Removing");
-      return nodeAct({action: "runner", id, slot, want, labels}); });
+      return nodeAct({action: "runner", id, slot, want, ...(c.addRunner && typed.length ? {labels: typed} : {})}); });
   });
+  const showBtn = fold.querySelector("[data-nrunnershow]");
+  if (showBtn) showBtn.onclick = () => { c.addRunner = true; nodesRev++; drawPanes(); };
+  const cancelBtn = fold.querySelector("[data-nrunnercancel]");
+  if (cancelBtn) cancelBtn.onclick = () => { c.addRunner = false; c.draft.runner = undefined; nodesRev++; drawPanes(); };
   const addBtn = fold.querySelector("[data-nrunneradd]");
   if (addBtn) addBtn.onclick = () => pressing(addBtn, async () => {
     busy(addBtn, "Adding");
     const r = await nodeAct({action: "runner-token", id, url: c.draft.runner?.url || "",
-                             forge: c.draft.runner?.forge || "", token: c.draft.runner?.token || ""});
-    // The token leaves the page the moment it is handed over, either way.
+                             forge: c.draft.runner?.forge || "", token: c.draft.runner?.token || "",
+                             labels: (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean)});
+    // The token leaves the page the moment it is handed over, either way;
+    // the form rolls up once the runner is on the list.
     if (c.draft.runner) c.draft.runner.token = "";
-    if (!r.error){ if (c.draft.runner) c.draft.runner.url = ""; nodesRev++; drawPanes(); }
+    if (!r.error){ c.addRunner = false; c.draft.runner = undefined; nodesRev++; drawPanes(); }
   });
   fold.querySelectorAll("[data-nrunnerforget]").forEach(b => b.onclick = () => {
     const slot = b.dataset.slot;

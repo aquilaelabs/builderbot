@@ -1418,11 +1418,11 @@ def runner_labels_for(n, labels=None):
     return out[:16]
 
 
-def node_runner_url(principal, node_id, slot, url, forge):
+def node_runner_url(principal, node_id, slot, url, forge, labels=None):
     """The address and forge a runner registers with, onto the node's record
-    under its slot, beside the ask. Written when the token is stored
-    (server), so the record says what the root-only store holds a token
-    FOR; the token itself is never here."""
+    under its slot, beside the ask, and its labels when they are given.
+    Written when the token is stored (server), so the record says what the
+    root-only store holds a token FOR; the token itself is never here."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -1430,6 +1430,8 @@ def node_runner_url(principal, node_id, slot, url, forge):
     runners = dict(runners_of(n))
     ar = dict(runners.get(slot) or {})
     ar.update({"url": str(url or "")[:200], "forge": str(forge or "")[:16]})
+    if isinstance(labels, list):
+        ar["labels"] = runner_labels_for(n, labels)
     runners[slot] = ar
     services["runners"] = runners
     _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
@@ -1484,7 +1486,8 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
                          "beside the address"}
     if want and (not url.startswith("https://") or (forge == "github" and not url.startswith("https://github.com/"))):
         return {"error": "the address is the https repository or organization the runner registers with"}
-    labs = runner_labels_for(n, labels) if want else []
+    # The runner's own labels unless new ones are typed with this press.
+    labs = runner_labels_for(n, labels if isinstance(labels, list) else ar.get("labels")) if want else []
     services = dict(n.get("services") or {})
     runners = dict(runners_of(n))
     runners[slot] = {**ar, "want": bool(want), "labels": labs}
