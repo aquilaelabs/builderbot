@@ -45,7 +45,7 @@
 - A project's environment block is rendered to CLAUDE.local.md, which git does not carry, so CLAUDE.md is the project's own notes and a window move stops leaving every project with a 900-line change to commit (9127ee5)
 - The dashboard on a phone shows four projects on its first screen instead of two and a half: the desk cards start folded, a project row keeps its session and notebook buttons and folds the rest behind one, and every row is a little tighter (50ea516)
 - The changelog editor fits twelve entries on a screen instead of seven, with each line's controls beside its words, and moving a line keeps your place instead of scrolling back to the top (50ea516)
-- The Git view groups branches by what to do with them, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session, the way a pull request merges (2ffee1e)
+- The Git view groups branches by what to do with them, opens work not yet in main to its commits and diff, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session (2ffee1e, cebd312)
 
 ### Fixed
 
