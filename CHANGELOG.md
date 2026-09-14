@@ -99,6 +99,7 @@
 - A CI runner install that failed says so on the Runner card and the Nodes tab, with when and why; both say installing now or removing now while the job runs and follow it to the end without a reload (02f8d0a, 408a497)
 - Claude sessions pick up updates to BuilderBot's session checks while they stay open, instead of keeping the versions they started with until they are restarted (b2d964b)
 - A dev instance that is not bound to a node goes to a node that runs docker, instead of simply the newest node, which could be a machine with no docker at all (f68041f)
+- The Git view says how old each commit and branch really is, instead of just now for all of them, and no longer lists origin/HEAD as a branch called origin (96e5966)
 
 ## 0.5.0: 2026-09-10
 
