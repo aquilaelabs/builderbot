@@ -1698,10 +1698,16 @@ each parent, with the branch and tag names on their rows; one commit's
 message, author, files and diff when you pick it; and the branches, marked
 with the one the tree is on and whose session's worktree sits on which
 (`claude/<account>`), with how far each stands from `main` and from its
-upstream. It reads on open and again when the tree's history moves, never on
-the poll, and every question is git plumbing on the controller against the
-project on the share: a sha or a path from the address is checked against
-what the repository itself reports before it reaches a command.
+upstream, in plain words: "3 commits not yet in main", "same as main",
+"in step with GitHub" (the host by its name, from the remote's address). The
+branches are grouped by what there is to do with them: the one the tree is
+on and `main` first, then work not yet in `main`, then branches already in
+`main` with one **Delete** for all of them, then, folded, branches only the
+remote has; a remote row that mirrors a local branch is not repeated. It
+reads on open and again when the tree's history moves, never on the poll,
+and every question is git plumbing on the controller against the project on
+the share: a sha or a path from the address is checked against what the
+repository itself reports before it reaches a command.
 
 The view acts too, each button one fixed git command with checked arguments,
 run under your author and the project's own credentials: **Fetch**, **Pull**
@@ -1709,10 +1715,14 @@ run under your author and the project's own credentials: **Fetch**, **Pull**
 the same path `bb git push` takes, offered only to a project with push
 rights) on the bar under the head row; **Commit all** with a message at the
 top of Changes and **Discard** on each file; **New branch** at the top of
-Branches, **Merge** on a branch (into the branch the tree is on, so switch
-first to go the other way; it does not touch the remote, and a conflict is
-left standing for the Changes section to hand to Claude), **Switch**
-(refused while the owner's Claude session stands in the directory, or with
+Branches, **Merge into main** on a branch (from any branch, the way a pull
+request's button merges: it lands in a temporary worktree on `main`, so the
+tree does not move and the owner's session need not end; a clash is
+abandoned whole and Send to Claude is what finishes it; nothing touches the
+remote), **Merge main into here** on the `main` row when the tree is
+elsewhere (in place, so refused while the owner's Claude session stands in
+the directory, and a conflict is left standing for the Changes section to
+hand to Claude), **Switch** (refused under a session likewise, or with
 uncommitted changes) and **Delete**, which refuses a branch holding commits
 no other branch has until you say so twice; **Revert** and **Branch here**
 on a picked commit. A session's token
