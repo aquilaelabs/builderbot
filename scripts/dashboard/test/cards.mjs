@@ -383,6 +383,34 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `on a desktop every icon is there and the fold is not (${desk} icons)`);
 }
 
+// A phone's folds are the device's: a card opened there is still open after a
+// reload (it was folding every card back on every refresh), and Reset opens
+// every card on a phone as it does at a desk. Kept in the browser, never in
+// the arrangement the server holds, so the desk's layout is untouched.
+{
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
+  const shut = k => page.$eval(`.card[data-card="${k}"]`, c => c.classList.contains('closed'));
+  const settled = k => page.waitForFunction(key => {
+    const c = document.querySelector(`.card[data-card="${key}"]`);
+    return c && !c.classList.contains('closed') && !c.getAnimations().length;
+  }, k, { timeout: 8000 });
+  ok(await shut('tools') && !await shut('projects'), 'on a phone every card but Projects starts folded');
+  await page.click('.card[data-card="tools"] h2');
+  await settled('tools');
+  await page.reload(); await ready(page); await page.waitForTimeout(400);
+  ok(!await shut('tools') && await shut('admin'),
+     'a card opened on a phone is still open after a reload, and the rest are still folded');
+  await page.evaluate(() => resetCards());
+  for (const k of ['tools', 'admin', 'runner', 'doctor']) await settled(k);
+  await page.reload(); await ready(page); await page.waitForTimeout(400);
+  ok(!await shut('admin') && !await shut('runner') && !await shut('doctor'),
+     'Reset opens every card on a phone as at a desk, and they stay open after a reload there');
+  await page.evaluate(() => { localStorage.removeItem('bb.phoneOpen'); });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.waitForTimeout(400);
+}
+
 // ---- the row's session line: who is here, or why nobody can be -------------
 // Never WHICH MACHINE. That is on the project's settings, it is the same for
 // every session on the project, and a row that said it spent a line on
