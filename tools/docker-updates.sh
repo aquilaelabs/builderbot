@@ -47,6 +47,7 @@ remote_digest () {
 
 command -v docker >/dev/null 2>&1 || { echo "no docker here" >&2; exit 1; }
 if [ $# -eq 0 ]; then
+    # shellcheck disable=SC2046  # one image per argument is the point
     set -- $(docker ps -a --format '{{.Image}}' | sort -u)
     [ $# -gt 0 ] || { echo "no containers here"; exit 1; }
 fi

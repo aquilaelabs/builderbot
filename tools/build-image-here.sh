@@ -29,20 +29,33 @@ command -v docker >/dev/null 2>&1 || {
 }
 [ -f Dockerfile ] || { echo "no Dockerfile beside this script's repo root" >&2; exit 1; }
 
-rev=$(git rev-parse HEAD)
-short=$(git rev-parse --short=7 HEAD)
+# The projects share is owned by the account the container runs as, and this
+# is run by root, which is a different uid: git refuses a repository it does
+# not think you own (CVE-2022-24765) unless it is named as safe. Named HERE,
+# per call, rather than written into root's global config, because /root on
+# Unraid is a ramdisk and that config would be gone at the next boot. Same
+# trap as the docker login on that host.
+g () { command git -c safe.directory="$PWD" "$@"; }
+
+g rev-parse HEAD >/dev/null 2>&1 || {
+    echo "not a git repository, or git cannot read it: $PWD" >&2
+    exit 1
+}
+
+rev=$(g rev-parse HEAD)
+short=$(g rev-parse --short=7 HEAD)
 built=$(date -u +%Y-%m-%dT%H:%MZ)
-branch=$(git rev-parse --abbrev-ref HEAD)
+branch=$(g rev-parse --abbrev-ref HEAD)
 target=$(head -1 VERSION 2>/dev/null | tr -d '[:space:]')
-ordinal=$(git rev-list --count HEAD)
+ordinal=$(g rev-list --count HEAD)
 # status, not diff: an untracked file is a change this build will contain
 # and `git diff HEAD` does not see one.
 dirty=''
-[ -z "$(git status --porcelain 2>/dev/null)" ] || dirty='.dirty'
+[ -z "$(g status --porcelain 2>/dev/null)" ] || dirty='.dirty'
 
 if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     v="$short"
-elif tag=$(git describe --tags --exact-match HEAD 2>/dev/null); then
+elif tag=$(g describe --tags --exact-match HEAD 2>/dev/null); then
     v="${tag#v}"
 else
     v="${target}-dev.${ordinal}+${short}"
