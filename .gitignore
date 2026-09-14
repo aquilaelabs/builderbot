@@ -29,11 +29,3 @@ android/.kotlin/
 
 # What a build produced, for the Artifacts tab and never for history.
 dist/
-
-# Two host-side scripts that are the operator's own, not the project's: one
-# builds this image on the Unraid box when the registry will not serve it, the
-# other asks each container's registry whether a newer digest exists. They live
-# here because the projects share is where they are run from, and they stay out
-# of history because nothing here depends on them.
-tools/build-image-here.sh
-tools/docker-updates.sh
