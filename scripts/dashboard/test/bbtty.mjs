@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -814,6 +814,41 @@ tmuxKill('claude-alpha');
        && !/etc/.test(envOf11('BB_ACCOUNT_NAME')),
        'a token or a name in the wrong shape is dropped rather than exported');
     tmuxKill(`${ownerUid}~shell-11`);
+
+    // The hooks a session is handed name its bundle through .bb/current, not
+    // the digest it started from (B120). The settings file is read once, when
+    // claude starts, so a resolved path kept an open session on the hooks it
+    // began with however many deliveries followed. Run from a real
+    // .bb/<digest> directory, the way a node runs it, with current pointing at it.
+    {
+      const bundles = join(DIR, 'store', '.bb');
+      const digest = join(bundles, '0123456789abcdef');
+      mkdirSync(digest, { recursive: true });
+      execFileSync('cp', ['-r', join(import.meta.dirname, '..', '..'), join(digest, 'scripts')]);
+      symlinkSync('0123456789abcdef', join(bundles, 'current'));
+      const scopeOf = () => JSON.stringify(JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid,
+        '.cache', 'builderbot', `claude-scope-${proj}.json`), 'utf8')).hooks);
+      const fromCheckout = join(realpathSync(join(import.meta.dirname, '..')), 'bb-gate');
+      ok(scopeOf().includes(`${fromCheckout} ${proj} `),
+         'run from a checkout, which has no .bb/current, the hooks keep the path they always had');
+      tmuxKill(`${ownerUid}~claude-${proj}`);
+      try {
+        execFileSync('bash', [join(digest, 'scripts', 'dashboard', 'bb-tty'), `u:${ownerUid}:claude:${proj}:b:${boot}`,
+                              'tok:bbs_abc-DEF_123', 'name:the.owner', 'owner:1'], {
+          encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+                 BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
+        });
+      } catch { /* the attach fails without a terminal */ }
+      await sleep(400);
+      const cur = join(realpathSync(bundles), 'current', 'scripts', 'dashboard');
+      const hooks = scopeOf();
+      ok(hooks.includes(`${cur}/bb-gate ${proj} `) && hooks.includes(`${cur}/bb-work-note ${proj} `)
+         && hooks.includes(`${cur}/bb-check-relay ${proj} `) && !hooks.includes('0123456789abcdef'),
+         `run from a node's bundle, every hook names .bb/current, so a delivery reaches a session already open (${hooks.slice(0, 100)})`);
+      tmuxKill(`${ownerUid}~claude-${proj}`);
+      rmSync(join(DIR, 'store'), { recursive: true, force: true });
+    }
   }
 }
 
