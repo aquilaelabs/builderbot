@@ -195,7 +195,10 @@ A long surface is sections: `docSection(kind, id, title, status, body)`, one
 fold per concern with its status on the heading, open on a desktop and
 closed on a phone. A status is a word or a number, never a sentence. A fold
 keeps its state for the page's life and a reload starts it from the default:
-the sidebar's cards are the one arrangement that is stored.
+the sidebar's cards are the one arrangement that is stored, at a desk in the
+arrangement the server holds, and on a phone on the device itself, so a
+card opened there stays open across a reload without reaching the desk.
+Reset opens every card on both.
 
 Every set of two or more text buttons is an action bar (`.actbar`): the
 status on its own `.state` line, the buttons after it at the right, their
@@ -277,8 +280,11 @@ Everything that appears, leaves, opens or changes state moves: a panel or
 menu arrives (`menuIn`), a document brought to the front fades in
 (`contentIn`), a section or card folds over its height (`slideBody`, the
 section tween), a button or tab eases its colour, a tooltip fades, a toast
-slides. A change that snaps is a change the eye has to find. Every one of
-them is off under `prefers-reduced-motion`.
+slides, a modal leaves the way it arrived (caught off the `hidden` attribute
+by one observer, so no close site has to remember), and a row folding its
+controls out on a phone slides over the height that takes. A change that
+snaps is a change the eye has to find. Every one of them is off under
+`prefers-reduced-motion`.
 
 **The page waits on its own ground.** Nothing can be drawn in a pane until
 the first snapshot lands, and an empty one used to be black and wearing the

@@ -865,6 +865,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(r.ended === true, `...whatever the pane happens to be running (${JSON.stringify(r)})`);
       tmuxKill(real);
     }
+
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),
        'a cwd outside the project\'s trees is ignored: the verb runs in the project directory');
@@ -1694,6 +1695,20 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && rn.reported.services['actions-runner']?.slot === GH,
        'the census reports the runner under its slot, with its name and labels, and as the single key too; the record keeps the ask');
     ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
+    // A reinstall whose registration token cannot be minted (a token
+    // lacking the org permission) leaves the runner standing: it used to
+    // stop and uninstall the working service, clear the registration, and
+    // only then ask for the token, leaving the node with no runner.
+    writeFileSync(`${DIR}/runner-store/mint-fail`, '');
+    const before = readFileSync(`${DIR}/runner/${GH}/calls.log`, 'utf8');
+    const re = await api('/api/v1/nodes', { action: 'runner', id: minted.id, slot: GH, want: true });
+    const refin = await ended(re.job);
+    const after = readFileSync(`${DIR}/runner/${GH}/calls.log`, 'utf8');
+    const why = (await nodeById(minted.id)).runner_failed?.why || '';
+    ok(refin?.state === 'failed' && /left as it was/.test(refin.log) && after === before && existsSync(`${DIR}/runner/${GH}/.runner`)
+       && /Self-hosted runners/.test(why),
+       `a reinstall whose token cannot mint leaves the working runner untouched and says which permission the token lacks (${refin?.state}: ${why.slice(-90)})`);
+    rmSync(`${DIR}/runner-store/mint-fail`, { force: true });
     const labels = execFileSync('bash', [`${REPO}/scripts/bb`, 'ci-labels'],
       { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
     ok(/^agentbox$/m.test(labels) && /^gpu$/m.test(labels) && /^builderbot$/m.test(labels),
@@ -1889,6 +1904,41 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
+  }
+
+  // ---- Send to Claude reaches a session on a node -------------------------
+  // The notebook's send typed into THIS container's tmux and nowhere else,
+  // so once sessions moved onto nodes every project was told "no session
+  // is running here" while its own row showed one. The line now goes as a
+  // `tell` job the agent runs by the same rule notify.tell keeps: Enter
+  // only once the pane echoes the line. A plain shell echoes, which is
+  // what makes it testable. Here, well after the blocks above ended
+  // alpha's: a name just killed is held off the list for a minute.
+  {
+    const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    const real = `${uid}~claude-alpha`;
+    tmuxKill(real);
+    tmuxNew(real, `${DIR}/ws/alpha`, ['bash', '--norc', '--noprofile']);
+    const listed = await until(async () =>
+      ((await api('/api/status')).sessions || []).find(
+        s => s.node === 'agentbox' && s.name === 'claude-alpha'), 45000, 500);
+    ok(!!listed, 'a shell standing in for the session is listed on the node');
+    const st = await api('/api/todo?project=alpha');
+    ok(st.session === 'claude-alpha',
+       'the roadmap panel sees somewhere to send when the session is on a node');
+    const added = await api('/api/todo', { action: 'add', project: 'alpha',
+                                           text: 'a step handed to the session on the node' });
+    const id = Number(added.item?.id);
+    const sent = await api('/api/todo', { action: 'send', project: 'alpha', id });
+    ok(sent.sent === true && !sent.error,
+       `Send to Claude hands the step to the session on the node (${JSON.stringify(sent).slice(0, 120)})`);
+    const typed = await until(async () =>
+      /handed to the session on the node/.test(tmuxCapture(real)) ? true : null, 30000, 500);
+    ok(typed === true, '...and the line really went into the pane there');
+    ok((sent.items || []).find(i => Number(i.id) === id)?.sent > 0,
+       '...and the item is crossed as sent, since it went');
+    await api('/api/todo', { action: 'remove', project: 'alpha', id, why: 'test' });
+    tmuxKill(real);
   }
 
   // ---- compose runs on the agent, not over ssh (roadmap #18) -----------------

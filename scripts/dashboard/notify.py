@@ -25,10 +25,17 @@ this module's `tell`.
 import time
 
 run = None
+# The other door: a session on a NODE, whose tmux this container cannot
+# reach. `on_node` answers which node row a session name means (or None),
+# and `node_tell` hands the line to that node's agent, which runs the same
+# look-before-Enter below on the pane it can see. Both None on a controller
+# with no nodes, where every session is local.
+on_node = None
+node_tell = None
 
 
-def configure(*, run):
-    globals().update(run=run)
+def configure(*, run, on_node=None, node_tell=None):
+    globals().update(run=run, on_node=on_node, node_tell=node_tell)
 
 
 # Long enough for the TUI to repaint after send-keys, short enough that the
@@ -83,6 +90,14 @@ def tell(session, text, sessions=()):
     if not text:
         return {"error": "nothing to say"}
     if session not in set(sessions):
+        return {"error": "no session is running here"}
+    # Listed, but not in this container's tmux: on a node. Since sessions
+    # moved onto nodes (roadmap #24) that is EVERY session, so the node
+    # route is the ordinary one and the local path below is the harness's.
+    if run(["tmux", "has-session", "-t", "=" + session], timeout=10)["code"] != 0:
+        row = on_node(session) if on_node else None
+        if row and node_tell:
+            return node_tell(row["node_id"], row["node_name"], text)
         return {"error": "no session is running here"}
     # Counted before, not merely looked for after. The same line may already be
     # on the screen — it is the second send of a step that did not take, and

@@ -262,8 +262,13 @@ cmd_projects() {
     for d in "$WORKSPACE"/*/; do
         [ -d "$d" ] || continue
         case "$(basename "$d")" in _work) continue ;; esac
+        # Not a project, by the same mark the dashboard's list honours: the
+        # package store, a dev instance's build tree, anything the operator
+        # chose to hide.
+        [ -f "$d/.bbignore" ] && continue
         found=1
-        if [ -d "$d/.git" ]; then
+        # -e, not -d: a worktree's .git is a file naming its repository.
+        if [ -e "$d/.git" ]; then
             printf '  %-40s git: %s\n' "$(basename "$d")" "$(git_branch "$d")"
         else
             printf '  %-40s (not a git repo)\n' "$(basename "$d")"

@@ -36,7 +36,7 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 // it moved.
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
-  'argForSession', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
+  'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
   'cSubmit', 'cardDropIndex', 'claudeMd', 'claudeMdAll', 'daemonHost', 'closeEditor',
   'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
@@ -78,7 +78,7 @@ const SURFACE = [
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
-  'rnDrawPrefs', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnShow', 'rnSubmit',
+  'rnDrawPrefs', 'rnFillColor', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',

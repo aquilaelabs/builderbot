@@ -27,28 +27,48 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the tab ---------------------------------------------------------------
 await page.evaluate(() => openSettingsTab());
-await page.waitForSelector('.settingstab [data-set="claude_shared_login"]', { timeout: 15000 });
+await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Claude Code|Debugging',
-   `the tab's stored settings are the two groups that survived the question "does this need to exist" — and nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Debugging',
+   `the tab's stored settings are the one group that survived the question "does this need to exist": nothing that should be a constant or a project's (${groups.join(', ')})`);
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
    'debug mode is off until somebody turns it on');
+// The settings a developer of BuilderBot reaches for sit behind a Debug
+// settings button in the same group, which is a real control only once
+// debug mode is saved on: a draft tick is not debug mode.
+ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
+   'Debug settings is ghosted while debug mode is off, saying to turn it on first');
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden
+     && !!f.querySelector('[data-set="claude_shared_login"]')),
+   '...and the shared-login switch is folded behind it, out of the way');
+await post('/api/settings', { set: { debug_mode: true } });
+await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
+                           null, { timeout: 30000 });
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden),
+   'debug mode on: the button is live, and the fold stays shut until it is pressed');
+await page.click('.settingstab [data-debugshow]');
+await page.waitForFunction(() => document.querySelector('.settingstab [data-debugfold]')?.checkVisibility(),
+                           null, { timeout: 8000 });
+ok(await page.$eval('.settingstab [data-debugshow]', b => b.getAttribute('aria-expanded') === 'true'),
+   'pressing it unfolds the debug settings');
 ok(await page.$eval('.settingstab [data-set="claude_shared_login"]', e => e.type === 'checkbox'
      && !e.checked && e.closest('label') !== null),
    'the shared-login switch is a checkbox in its label, off by default');
-ok(await page.$eval('.settingstab [data-group="Claude Code"] .actbar .state', e => /now/.test(e.textContent)),
+ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e => /now/.test(e.textContent)),
    'the section says a change takes now, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
 await page.check('.settingstab [data-set="claude_shared_login"]');
-await page.click('.settingstab [data-group="Claude Code"] .setApply');
+await page.click('.settingstab [data-group="Debugging"] .setApply');
 await page.waitForFunction(() => state?.settings?.settings?.claude_shared_login?.value === true, null, { timeout: 30000 });
 ok(read().claude_shared_login === true,
    'Apply writes it under /config and the poll carries it');
-await page.waitForFunction(() => !document.querySelector('.settingstab [data-group="Claude Code"] .pill'), null, { timeout: 30000 });
+await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugfold] .pill'), null, { timeout: 30000 });
 ok(true, '...and the field is then the owner: no default pill');
+ok(await page.$eval('.settingstab [data-debugfold]', f => !f.hidden),
+   '...and the fold is still open after the repaint the save caused');
 const bad = await post('/api/settings', { set: { claude_shared_login: 'maybe' } });
 ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
 ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400,
@@ -56,7 +76,7 @@ ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status =
 // Back off: this is a stored setting and nothing in the harness resets it
 // between files, so leaving the refusal stood down would be this file
 // changing what every file after it is testing.
-await post('/api/settings', { set: { claude_shared_login: false } });
+await post('/api/settings', { set: { claude_shared_login: false, debug_mode: false } });
 
 // ---- what the boot script reads ------------------------------------------------
 const setting = (key, dflt) => execFileSync('bash', ['-c',

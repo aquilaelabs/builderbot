@@ -921,6 +921,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   to{opacity:1;transform:none}}
 .modal:not([hidden]){animation:modalIn .16s ease}
 .modal:not([hidden])>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
+/* ...and leaves the same way (the observer beside noMotion plays it): while
+   it is leaving, the arrival must not replay, and nothing under it may take
+   a tap meant for the page behind. */
+.modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
 .modal[hidden]{display:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
@@ -1308,6 +1312,25 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
 .card .pad{padding:9px 12px}
+/* A project's colour: eight fixed tones, picked to read on every one of the
+   dark schemes above, worn as a bar down the left of the notebook tab and
+   the project row and as a tint on the tab while it is the one in front.
+   Set on the element as --pc from PROJECT_COLORS. */
+.pcpick{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pcpick button{width:26px;height:26px;min-height:26px;padding:0;border-radius:50%;
+  border:2px solid var(--line);background:var(--pc, transparent)}
+.pcpick button[data-color=""]{background:transparent;
+  background-image:linear-gradient(135deg, transparent 45%, var(--dim) 45%, var(--dim) 55%, transparent 55%)}
+.pcpick button[aria-checked="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ink)}
+.tab.pc{border-left:3px solid var(--pc)}
+.tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
+  border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
+.row[data-row].pc{box-shadow:inset 3px 0 var(--pc)}
+/* The Tools card's buttons carry an icon, and the tab each opens carries
+   the same one, so a button and its tab are one thing in two places. */
+.macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
+  vertical-align:-2px;margin-right:5px}
 .prefrow{display:flex;gap:10px;flex-wrap:wrap}
 /* The fact, above the explanation: what claude is running now, and whether
    this card is about to change it. */
@@ -3250,6 +3273,12 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
     </div>
+    <!-- A colour for the project: its notebook tab and its row wear it, so
+         several open notebooks tell apart without reading each label. -->
+    <div class="field" id="rnColorField">
+      <label id="rnColorLabel">Colour<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
+      <div class="pcpick" id="rnColor" role="radiogroup" aria-labelledby="rnColorLabel"></div>
+    </div>
     <!-- What this project pushes with. Reached by the chain on its row, which
          is where the remote lives for a project that has one and for a
          project that has not: the gear is the project's own settings, and a
@@ -4221,11 +4250,45 @@ function viewAfterRestart(){
 //           showing it is left alone until that data actually changes.
 //   open    run when the tab is brought up: the fetch its first draw needs.
 //   reload  give its pane bar a reload button.
+// The Tools card's icons, one per tab kind a button there opens: drawn in
+// the same 16px stroke voice as the row icons further down. Declared ahead
+// of TABKINDS, which reads them at its own initialisation, rather than
+// beside the row icons, which come ten thousand lines later (bug #27).
+const TOOL_ICONS = {
+  // A box, for what gets installed.
+  packages: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/>
+    <path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/></svg>`,
+  // Stacked containers.
+  docker: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="2.4" y="8.4" width="3.4" height="3.4"/><rect x="6.3" y="8.4" width="3.4" height="3.4"/>
+    <rect x="10.2" y="8.4" width="3.4" height="3.4"/><rect x="6.3" y="4.6" width="3.4" height="3.4"/></svg>`,
+  // A list with a clock beside it: what is queued and what is running.
+  jobs: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.8 4.4h5"/><path d="M2.8 8h4"/><path d="M2.8 11.6h5"/>
+    <circle cx="11.6" cy="10" r="2.8"/><path d="M11.6 8.6v1.5l1 .7"/></svg>`,
+  // Two machines in a rack.
+  nodes: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="2.5" y="2.8" width="11" height="4.2" rx="1"/><rect x="2.5" y="9" width="11" height="4.2" rx="1"/>
+    <path d="M5 4.9h.01"/><path d="M5 11.1h.01"/></svg>`,
+  // A handset.
+  phone: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 11.8h2"/></svg>`,
+  // A magnifier, for the scanner's findings.
+  findings: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="6.8" cy="6.8" r="4"/><path d="M9.8 9.8 13.4 13.4"/></svg>`,
+};
+// Which button on the Tools card opens which kind, so the card can be
+// stamped with the icons once at load and the tab strip can look them up.
+const TOOL_BUTTONS = {bPkgs: "packages", bDocker: "docker", bJobs: "jobs",
+                      bNodes: "nodes", bPhone: "phone", bFindings: "findings"};
+
 const TABKINDS = {
   term:     { multi: true },
   todo:     { multi: true, label: t => "Notebook: " + t.arg,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
   packages: { multi: false, label: () => "Packages",
+              icon: TOOL_ICONS.packages,
               render: (i) => renderPackagesInto(i), live: () => pkgRev,
               open: () => loadPackages() },
   projects: { multi: false, label: () => "Projects",
@@ -4238,6 +4301,7 @@ const TABKINDS = {
   // is asked for on open for the same reason, rather than only by the Nodes
   // tab happening to have been visited.
   docker:   { multi: false, label: () => "Docker",
+              icon: TOOL_ICONS.docker,
               render: (i) => renderDockerInto(i),
               // ...and phRev, because a session's rebuild request is answered
               // on this tab and arrives on the phone payload's ask list.
@@ -4248,12 +4312,15 @@ const TABKINDS = {
                             if (!dockerList) loadDocker();
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
+              icon: TOOL_ICONS.nodes,
               render: (i) => renderNodesInto(i), live: () => nodesRev,
               open: () => loadNodes() },
   jobs:     { multi: false, label: () => "Jobs",
+              icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,
               open: () => loadJobs() },
   phone:    { multi: false, label: () => "Phone",
+              icon: TOOL_ICONS.phone,
               render: (i) => renderPhoneInto(i), live: () => phRev,
               open: () => phFetch(null, true) },
   settings: { multi: false, label: () => "Controller settings",
@@ -4265,6 +4332,7 @@ const TABKINDS = {
               render: (i) => renderProfileInto(i), live: () => profileRev,
               open: () => loadProfile() },
   findings: { multi: false, label: () => "Analysis",
+              icon: TOOL_ICONS.findings,
               render: (i) => renderFindingsInto(i),
               // The ages list as well as the mtime: the mtime is a MAX, so a
               // report appearing with an OLD stamp: the exact shape of a
@@ -4572,6 +4640,50 @@ function placePinMenu(){
 // its old spot to its new one. The transform tween is what the eye follows.
 const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// Every modal leaves the way it arrived. Closing one is `hidden = true` at a
+// dozen sites, and any dialog added later closes the same way, so the leaving
+// lives on the property itself: `hidden` on a modal is its own accessor, and
+// setting it plays the tween first and puts the attribute on when the tween
+// ends. Nothing at a call site to remember, and nothing for a watcher to
+// misread: a hide of a modal already hidden is a hide, a show mid-leave
+// drops the tween and shows. (An observer on the attribute did this first,
+// and re-showing the element to play the tween was what every other test
+// on the page tripped over.)
+function armModal(el){
+  if (!el || el.__modalArmed) return;
+  el.__modalArmed = true;
+  Object.defineProperty(el, "hidden", {
+    configurable: true,
+    // Hidden the moment it is told to, to everything that asks: the poll
+    // and the cards read a dialog's state to decide what to repaint, and a
+    // dialog that read as open for the length of its tween had them draw
+    // the page as if it were. Only the pixels linger.
+    get(){ return this.hasAttribute("hidden") || this.classList.contains("leaving"); },
+    set(v){
+      if (!v){
+        this.getAnimations().forEach(a => a.cancel());
+        this.querySelector(":scope > .box")?.getAnimations().forEach(a => a.cancel());
+        this.classList.remove("leaving");
+        this.removeAttribute("hidden");
+        return;
+      }
+      if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
+      if (noMotion()){ this.setAttribute("hidden", ""); return; }
+      this.classList.add("leaving");
+      this.querySelector(":scope > .box")?.animate(
+        [{opacity: 1, transform: "none"}, {opacity: 0, transform: "translateY(6px) scale(.985)"}],
+        {duration: 150, easing: "ease"});
+      this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
+        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
+        () => {});                        // cancelled: it was shown again, and stays
+    }});
+}
+document.querySelectorAll(".modal").forEach(armModal);
+// The Tools card carries the tab icons on its buttons; the markup is static,
+// so they are put on once here rather than kept in two places.
+for (const [id, kind] of Object.entries(TOOL_BUTTONS))
+  $(id)?.insertAdjacentHTML("afterbegin", TOOL_ICONS[kind]);
+
 function flip(els, key){
   if (noMotion()) return () => {};
   const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
@@ -4801,8 +4913,12 @@ function drawTabs(){
     // Only a split has sides worth marking; a lone pane is just "the screen".
     const where = !isSplit() ? "" : panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
-    return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
-      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+    // A notebook wears its project's colour; a tool tab wears the icon its
+    // button on the Tools card carries.
+    const pc = t.kind === "todo" ? colorAttrs(projectColor(t.arg)) : {cls: "", style: ""};
+    const icon = TABKINDS[t.kind]?.icon || "";
+    return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style}>
+      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${
         // A terminal is minimized, not closed: it keeps running and is listed
@@ -5398,7 +5514,30 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: "", edits: "ask"};
+                 gate: "", edits: "ask", color: ""};
+// The colours a project can be, by the names prefs.py stores (COLORS there)
+// and the tone each is drawn in. Named at the store and mapped here so the
+// tone can be retuned for a scheme without touching what anybody saved.
+const PROJECT_COLORS = [["", ""], ["red", "#e5534b"], ["orange", "#e8883a"],
+                        ["yellow", "#d4b33a"], ["green", "#57ab5a"], ["teal", "#39b5b0"],
+                        ["blue", "#539bf5"], ["violet", "#a371f7"], ["pink", "#e0669e"]];
+const colorTone = name => (PROJECT_COLORS.find(([n]) => n === name) || [])[1] || "";
+// The class and variable an element wears for a project's colour, or
+// nothing for a project with none.
+const colorAttrs = name => {
+  const tone = colorTone(name);
+  return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
+};
+const projectColor = name =>
+  (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+const rnColorNow = () =>
+  $("rnColor").querySelector('[aria-checked="true"]')?.dataset.color || "";
+function rnFillColor(cur){
+  $("rnColor").innerHTML = PROJECT_COLORS.map(([n, tone]) =>
+    `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
+       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${
+       n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
+}
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
 // What a session may change without asking (prefs.edits), which the launcher
@@ -5419,7 +5558,9 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
-               edits: p?.prefs?.edits || "ask"};
+               edits: p?.prefs?.edits || "ask",
+               color: p?.prefs?.color || ""};
+  rnFillColor(rnPrefWas.color);
   rnFillNode();
   rnFillPrefsRest(p);
 }
@@ -6109,13 +6250,18 @@ function findingsRulesHtml(rows){
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands; it is written in the same order.
 let cards = {order: [], closed: []};   // filled from the markup once it exists, below
-// Which cards a phone has been told to open, for this page's life. A phone's
-// first screen was 470 of its 844 pixels of Tools, Administration and Runner
-// before the first project appeared, and those are desk things: on a phone
-// every card but Projects starts folded, the way a document tab's sections
-// do. Not saved, and not applied to a desktop, so the arrangement somebody
-// made at a desk is theirs and stays as they left it.
-const phoneOpen = new Set();
+// Which cards a phone has been told to open. A phone's first screen was 470
+// of its 844 pixels of Tools, Administration and Runner before the first
+// project appeared, and those are desk things: on a phone every card but
+// Projects starts folded, the way a document tab's sections do. Kept on the
+// device (localStorage, this browser only) rather than in the arrangement
+// the server holds, so a card opened on the phone stays open across a
+// reload here and never reaches the desk the arrangement was made on. A
+// browser that keeps nothing starts folded, as before.
+const phoneOpen = new Set((() => {
+  try{ return JSON.parse(localStorage.getItem("bb.phoneOpen") || "[]"); }catch{ return []; }
+})());
+const keepPhoneOpen = () => { try{ localStorage.setItem("bb.phoneOpen", JSON.stringify([...phoneOpen])); }catch{} };
 const cardShut = key => cards.closed.includes(key)
   || (isPhone() && key !== "projects" && !phoneOpen.has(key));
 
@@ -6194,6 +6340,7 @@ function toggleCard(key){
   if (isPhone()){
     const shut = !el.classList.contains("closed");
     if (shut) phoneOpen.delete(key); else phoneOpen.add(key);
+    keepPhoneOpen();
     slideCard(el, shut);
     return;
   }
@@ -6377,8 +6524,10 @@ function slideHidden(el, willShow, after){
 // projects error toggle, the commands cut-off, doctor's detail, with the
 // same height tween as the card-level fold. `mutate` does the actual redraw.
 function slideBody(el, mutate){
-  const card = el.closest(".card, .mpanel");   // the phone panel hosts these too
-  if (!card || noMotion()){ mutate(); return; }
+  // The card or panel hosting it, whose height is what moves; a row in a
+  // tab has no card and slides over its own height.
+  const card = el.closest(".card, .mpanel") || el;
+  if (noMotion()){ mutate(); return; }
   const from = card.offsetHeight;
   // Only its own kind: canceling a card-level fold here would swallow the
   // class write that fold's finish handler was going to make.
@@ -6743,8 +6892,12 @@ async function resetCards(){
     if (j.error){ notify(j.error, true); return; }
     cards = j.cards; if (state) state.cards = j.cards;
   }catch(e){ notify("could not reset the cards: " + e, true); return; }
+  // Reset means every card open, on a phone as at a desk: the phone's own
+  // folds are opened and kept open here, since the default there is folded.
+  cardEls().forEach(el => phoneOpen.add(el.dataset.card));
+  keepPhoneOpen();
   // Folded cards unfold with the same tween as a click; the rest slide home.
-  shut.forEach(k => slideCard(document.querySelector(`.card[data-card="${k}"]`), false));
+  cardEls().forEach(el => { if (el.classList.contains("closed")) slideCard(el, false); });
   applyCards(true);
 }
 
@@ -6851,8 +7004,13 @@ function wireProjectRows(root){
   // untouched and nothing here has to know the breakpoint.
   root.querySelectorAll("[data-more]").forEach(b => b.onclick = () => {
     const row = b.closest(".row");
-    const on = row.classList.toggle("moreon");
-    b.setAttribute("aria-expanded", on ? "true" : "false");
+    // The row's controls wrap under its name when folded out: the row (and
+    // the card holding it) slides over the height that takes, rather than
+    // snapping to it.
+    slideBody(row, () => {
+      const on = row.classList.toggle("moreon");
+      b.setAttribute("aria-expanded", on ? "true" : "false");
+    });
   });
   root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -6891,8 +7049,9 @@ function wireProjectRows(root){
 // into O(projects x sessions) for no gain.
 function projectRow(p, live, cls, inTab){
   const nb = nbOpen(p.name);
+  const pc = colorAttrs(p.prefs?.color);
   return `
-    <div class="row stack2" data-row="${esc(p.name)}">
+    <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
       <div class="grow">
         <div class="name">${esc(p.name)}${p.locked
           // After the name, because it is a fact about the project rather
@@ -9850,6 +10009,7 @@ function makeNotebook(project){
   // AND next sibling, because "append it back" is how an element ends up
   // under the wrong heading.
   const sheet = root.querySelector(".nbsheet");
+  armModal(sheet);                        // a clone: the page-load pass did not see it
   let sheetHome = [], sheetClosed = null;
 
   function openSheet(title, els, onClose){
@@ -14396,6 +14556,12 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 
 $("rnName").oninput = rnShow;
 $("rnGo").onclick = rnSubmit;
+$("rnColor").onclick = e => {
+  const b = e.target.closest("[data-color]");
+  if (!b) return;
+  $("rnColor").querySelectorAll("[data-color]").forEach(x => {
+    x.setAttribute("aria-checked", String(x === b)); });
+};
 ["rnModel", "rnEffort"].forEach(id => { $(id).onchange = rnDrawPrefs; });
 $("rnTokenClear").onclick = () => {
   rnClearToken = !rnClearToken;
@@ -14985,10 +15151,11 @@ async function rnSubmit(){
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const gate = rnGateNow();
+  const color = rnColorNow();
+  // With the node's group: nothing here restarts a session.
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
-    || gateKey(gate) !== rnPrefWas.gate
-;
+    || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
     || edits !== rnPrefWas.edits;
   const running = liveSessions().has(myClaude(name));
@@ -15032,7 +15199,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, edits,
-                              node, build, test, gate,
+                              node, build, test, gate, color,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

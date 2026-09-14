@@ -2262,6 +2262,15 @@ def tmux_sessions():
     return rows
 
 
+def sessions_anywhere():
+    """Every Claude session's page name, here and on the nodes: what the
+    notebook's Send to Claude has to choose from. Since sessions moved onto
+    nodes (roadmap #24) the local half is the harness's and the node half
+    is everybody's, and a list of only the first told every project it had
+    no session while its own row showed one."""
+    return [s["name"] for s in tmux_sessions()] + [s["name"] for s in node_tmux_sessions()]
+
+
 def node_tmux_sessions():
     """The sessions running on nodes (roadmap #24), shaped like this
     container's own so the Sessions card, the project rows and claude_with
@@ -2643,7 +2652,12 @@ packages.configure(run=run, write_json=write_json, state=STATE)
 # arrived, which is the one thing a permission dialog will not do.
 import notify                                                    # noqa: E402
 
-notify.configure(run=run)
+notify.configure(run=run,
+                 # A session on a node: found by the name the page uses,
+                 # told through its agent (roadmap #24). Resolved at call
+                 # time: the nodes module is imported further down.
+                 on_node=lambda s: next((x for x in node_tmux_sessions() if x["name"] == s), None),
+                 node_tell=lambda *a: nodes.tell_wait(*a))
 
 # ---- signing in ------------------------------------------------------------
 # The flow runs as a job on a NODE — the machine Claude Code is installed on
@@ -4499,7 +4513,7 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
-            live = [s["name"] for s in tmux_sessions()]
+            live = sessions_anywhere()
             return self._json({"project": name} | self._todo_state(name, live))
         if self.path.startswith("/api/rules"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -4538,8 +4552,7 @@ class Handler(BaseHTTPRequestHandler):
             # this one passed the name straight through (bug #68).
             if q.get("project", [""])[0] not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
-            got = memory.payload(q.get("project", [""])[0],
-                                 [s["name"] for s in tmux_sessions()],
+            got = memory.payload(q.get("project", [""])[0], sessions_anywhere(),
                                  home=home_for(users.uid_of(self._who())))
             return self._json(got if got is not None
                               else {"error": "not a project"}, 400 if got is None else 200)
@@ -4747,6 +4760,7 @@ class Handler(BaseHTTPRequestHandler):
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
                                 edits=field(req, "edits") or None,
                                 devbuild=req.get("devbuild"),
+                                color=req.get("color"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -5633,7 +5647,7 @@ class Handler(BaseHTTPRequestHandler):
         # session's turn, so it goes with the rest.
         if (bad := locked_out(name)):
             return self._json(bad, 409)
-        live = [s["name"] for s in tmux_sessions()]
+        live = sessions_anywhere()
         # What the caller believes it is replacing, for the verbs that
         # replace something (roadmap #26). A field's own words rather than a
         # version for the row: a session attaching details while the operator
@@ -6032,7 +6046,7 @@ class Handler(BaseHTTPRequestHandler):
             # Put to the project's own session rather than answered here: it
             # can read the code and be argued with, and neither is true of a
             # function counting commits.
-            live = [x["name"] for x in tmux_sessions()]
+            live = sessions_anywhere()
             r = version.ask(name, live, comp=field(req, "component") or "")
             return self._json(r, 400 if r.get("error") else 200)
         if act == "policy":
@@ -6370,8 +6384,7 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "remove":
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "send":
-            r = bugs.send(name, req.get("id"),
-                          [s["name"] for s in tmux_sessions()],
+            r = bugs.send(name, req.get("id"), sessions_anywhere(),
                           note=field(req, "note"))
             if r.get("error"):
                 return self._json(r, 400)
@@ -6597,7 +6610,7 @@ class Handler(BaseHTTPRequestHandler):
                                             f"{'switching the branch' if action == 'switch' else 'merging'} "
                                             "under it"}, 409)
         if action == "ask":
-            live = [x["name"] for x in tmux_sessions()]
+            live = sessions_anywhere()
             r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
             return self._json(r, 400 if r.get("error") else 200)
         env = {**projects._git_env(), **users.git_env(me)}

@@ -4,6 +4,9 @@
 
 - The companion app has a Tools screen: what each node's packages store holds, with Install and Remove on a package, so a missing toolchain can be fixed from a phone (87ad70b)
 - The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
+- The buttons on the Tools card carry icons, and the tab each opens wears the same one (47c9aa3)
+- A project can be given a colour in its settings dialog, worn by its row and its notebook tab (47c9aa3)
+- Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
 
 ### Upgrading
 
@@ -49,6 +52,7 @@
 - The changelog editor fits twelve entries on a screen instead of seven, with each line's controls beside its words, and moving a line keeps your place instead of scrolling back to the top (50ea516)
 - The Git view groups branches by what to do with them, opens work not yet in main to its commits and diff, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session (2ffee1e, cebd312)
 - A runner's token is the node's: paste it with the repository or organization address in the runner section of the node's row, and it is kept root-only on the controller. GITHUB_URL, GITHUB_PAT and SHIELD_SECRETS are gone from the container's settings (1aa17f3)
+- Dialogs close with the same tween they open with, and on a phone a project row's controls unfold with a slide instead of appearing at once (2ea5bd5)
 
 ### Fixed
 
@@ -104,6 +108,11 @@
 - Claude sessions pick up updates to BuilderBot's session checks while they stay open, instead of keeping the versions they started with until they are restarted (b2d964b)
 - A dev instance that is not bound to a node goes to a node that runs docker, instead of simply the newest node, which could be a machine with no docker at all (f68041f)
 - The Git view says how old each commit and branch really is, instead of just now for all of them, and no longer lists origin/HEAD as a branch called origin (96e5966)
+- Reinstalling a runner whose token cannot register leaves the working runner as it was, and the row says which permission the token lacks (97c1edd)
+- bb projects and bb status no longer list the package store or a dev instance's build tree as projects, and name a worktree's branch (2ea5bd5)
+- On a phone the sidebar cards you opened stay open across a reload, and Reset from the gear opens every card there as it does at a desk (2ea5bd5)
+- Send to Claude from the roadmap and the bug tracker reaches a session running on a node, and says whether the line went or was left in the box unsent (47c9aa3)
+- The Tests view no longer loses a test's description when tests are inserted above one whose name carries a run-specific value (47c9aa3)
 
 ## 0.5.0: 2026-09-10
 

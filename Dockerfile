@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile:1
-# SecretsUsedInArgOrEnv fires on ENV SSH_AUTH_SOCK, whose value is a socket
-# PATH — the rule pattern-matches names containing AUTH/KEY/TOKEN/SECRET. The
-# reasoning lives at the line itself; the directive has to be up here, because
-# BuildKit only reads check= before the first instruction.
 # check=skip=SecretsUsedInArgOrEnv
+# The check= line sits directly under syntax= because parser directives are
+# the unbroken run of comments at the very top: an ordinary comment between
+# them ends the run, and a directive after it is read as a comment. That is
+# why the skip above was in the file and the warning still printed on every
+# build. It fires on ENV SSH_AUTH_SOCK, whose value is a socket PATH (the
+# rule pattern-matches names containing AUTH/KEY/TOKEN/SECRET); the
+# reasoning lives at that line.
 # DS-0002 (image runs as root) suppressed: no USER on purpose. The entrypoint
 # must start as root to load shielded secrets into a root-owned agent and set
 # up the runner, and only then hands sessions to `builder`; a USER here would

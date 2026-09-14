@@ -58,6 +58,13 @@ DEVBUILD_MODES = ("deny", "ask", "auto")
 # the rules file stay refused whatever this says.
 EDIT_MODES = ("ask", "accept")
 
+# A colour for the project, worn by its notebook tab and its row so that
+# eight open notebooks can be told apart at a glance. Names, not hex: the
+# page maps each to a tone that sits on its palette, and a name survives a
+# theme change where a hex value picked against one background does not.
+# "" is no colour, which is the default and leaves nothing on the file.
+COLORS = ("red", "orange", "yellow", "green", "teal", "blue", "violet", "pink")
+
 _lock = threading.Lock()
 
 
@@ -130,6 +137,7 @@ def _clean(rec):
             # Ask by default: a project nobody has decided about behaves the
             # way Claude Code does out of the box.
             "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask"),
+            "color": rec.get("color") if rec.get("color") in COLORS else "",
             # Whether a SESSION may rebuild this project's dev instance,
             # and it is a real grant rather than a nicety: a rebuild runs the
             # project's own Dockerfile and brings the container up, on the
@@ -241,7 +249,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              edits=None, devbuild=None, workspace=None):
+              edits=None, devbuild=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -252,6 +260,10 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
             if model not in MODELS and model != "":
                 return {"error": f"not a model this can set: {model}"}
             cur["model"] = model
+        if color is not None:
+            if color not in COLORS and color != "":
+                return {"error": f"color is one of {', '.join(COLORS)}, or none: not {color}"}
+            cur["color"] = color
         if effort is not None:
             if effort not in EFFORTS and effort != "":
                 return {"error": f"not an effort this can set: {effort}"}
@@ -299,7 +311,7 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["model"] or cur["effort"] or cur["node"]
+        if (cur["model"] or cur["effort"] or cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["edits"] != "ask" or cur["devbuild"] != "deny"
