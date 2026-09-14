@@ -484,5 +484,18 @@ const strip = await page.$eval('.nb .nbtabs', el => {
 ok(strip.n === 7 && strip.rows >= 2 && strip.inside && strip.over <= 0,
    `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
 
+// bb projects lists what the dashboard lists: a directory carrying .bbignore
+// (the fixture's package store) is not a project, and a worktree, whose .git
+// is a file naming its repository, is one and has a branch (B122).
+{
+  git('worktree', 'add', '-q', `${DIR}/ws/beta-wt`, '-b', 'wtcheck');
+  const listed = execFileSync('bash', [`${REPO}/scripts/bb`, 'projects'],
+    { encoding: 'utf8', env: { ...process.env, WORKSPACE: `${DIR}/ws`, DASHBOARD_STATE: `${DIR}/state` } });
+  ok(/beta-wt\s+git: wtcheck/.test(listed) && !/toolstore/.test(listed) && !/beta-wt.*not a git repo/.test(listed),
+     `bb projects skips a .bbignore directory and names a worktree's branch (${listed.split('\n').filter(l => /beta-wt|toolstore/.test(l)).join(' | ') || 'neither line'})`);
+  git('worktree', 'remove', '--force', `${DIR}/ws/beta-wt`);
+  git('branch', '-D', 'wtcheck');
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);
