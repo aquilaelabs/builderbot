@@ -4875,7 +4875,8 @@ class Handler(BaseHTTPRequestHandler):
                 slot = nodes.runner_slot(url)
                 r = runner_token_store(nid, slot, url, forge, str(req.get("token") or "").strip())
                 if not r.get("error"):
-                    r = nodes.node_runner_url(self._principal(), nid, slot, url, forge)
+                    r = nodes.node_runner_url(self._principal(), nid, slot, url, forge,
+                                              req.get("labels") if isinstance(req.get("labels"), list) else None)
                     r["slot"] = slot
         elif act == "runner-forget":
             slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
