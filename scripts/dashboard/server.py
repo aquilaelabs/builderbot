@@ -4180,7 +4180,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 n = 0
             r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
-                                path=q.get("path", [""])[0], n=n)
+                                path=q.get("path", [""])[0], n=n,
+                                branch=q.get("branch", [""])[0])
             if what in ("", "all") and not r.get("error"):
                 # What the network bar may offer: a remote to talk to, and
                 # the project's push rights, granted once in the clone dialog.

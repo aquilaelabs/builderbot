@@ -36,6 +36,8 @@ LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
 SHA_RE = re.compile(r"^[0-9a-f]{4,40}$")
 US = "\x1f"
+# git's id for a tree with nothing in it: the base of a branch with no shared history.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def configure(*, workspace, worktrees=None, tell=None, tmux_name=None):
@@ -239,6 +241,40 @@ def remote_url(repo):
     return (_git(repo, "remote", "get-url", "origin") or "").strip()
 
 
+def compare(repo, name):
+    """A branch against main: the commits main lacks and the diff main would
+    take, which is what a pull request page shows before its button. Read
+    here so that page is not needed to look before Merge into main."""
+    name = _ok_branch(name)
+    main = _main_branch(repo)
+    if not name or not _has_branch(repo, name):
+        return {"error": "no such branch"}
+    if not main:
+        return {"error": "no main branch to compare against"}
+    if name == main:
+        return {"error": f"{main} is the branch the others are compared against"}
+    fmt = US.join(["%H", "%h", "%an", "%at", "%s"])
+    commits = []
+    for line in (_git(repo, "log", f"--format={fmt}", f"{main}..{name}") or "").splitlines():
+        f = line.split(US)
+        if len(f) == 5:
+            commits.append({"sha": f[0], "short": f[1], "author": f[2],
+                            "when": int(f[3] or 0), "subject": f[4]})
+    # From where the two part: git's three-dot form, except for a branch
+    # that shares no history with main at all, which three dots answer
+    # with nothing. Against the empty tree, everything on it is the diff.
+    base = (_git(repo, "merge-base", main, name) or "").strip() or EMPTY_TREE
+    files = []
+    for line in (_git(repo, "diff", "--numstat", base, name) or "").splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) == 3:
+            files.append({"path": parts[2],
+                          "added": int(parts[0]) if parts[0].isdigit() else None,
+                          "removed": int(parts[1]) if parts[1].isdigit() else None})
+    diff = _git(repo, "diff", "--no-color", base, name, timeout=30) or ""
+    return {"name": name, "main": main, "commits": commits, "files": files, "diff": _cap(diff)}
+
+
 def _main_branch(repo):
     for cand in ("main", "master"):
         if _git(repo, "show-ref", "--verify", "--quiet", f"refs/heads/{cand}") is not None:
@@ -275,7 +311,7 @@ def _cap(text):
     return cut + f"\n… cut at {DIFF_MAX // 1000}kB — the rest is in the repository\n"
 
 
-def payload(project, what, sha="", path="", n=None):
+def payload(project, what, sha="", path="", n=None, branch=""):
     """One question about one project, for the route."""
     repo = WORKSPACE / project
     if not is_repo(repo):
@@ -290,6 +326,8 @@ def payload(project, what, sha="", path="", n=None):
         return diff(repo, path)
     if what == "branches":
         return branches(repo)
+    if what == "compare":
+        return compare(repo, branch)
     if what in ("", "all"):
         return {"status": status(repo), "commits": log(repo, n or LOG_MAX),
                 **branches(repo)}

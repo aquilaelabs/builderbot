@@ -1703,7 +1703,10 @@ upstream, in plain words: "3 commits not yet in main", "same as main",
 branches are grouped by what there is to do with them: the one the tree is
 on and `main` first, then work not yet in `main`, then branches already in
 `main` with one **Delete** for all of them, then, folded, branches only the
-remote has; a remote row that mirrors a local branch is not repeated. It
+remote has; a remote row that mirrors a local branch is not repeated. A
+branch with work not yet in `main` opens to its commits and the diff `main`
+would take, which is what a pull request page shows, so that page is not
+needed to read work before accepting it. It
 reads on open and again when the tree's history moves, never on the poll,
 and every question is git plumbing on the controller against the project on
 the share: a sha or a path from the address is checked against what the

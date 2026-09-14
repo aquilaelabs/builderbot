@@ -11889,7 +11889,7 @@ $("todoRevert").onclick = revertNotebook;
   // history is a git call per question. What is open stays open across a
   // redraw: the commit picked and the files unfolded are kept by sha and
   // path, not by position.
-  let git = null, gitPick = "", gitOpenFiles = new Set();
+  let git = null, gitPick = "", gitOpenFiles = new Set(), gitOpenCmp = new Set();
   let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
   let gitPolDraft = {};                            // the policy picked and not applied
 
@@ -12035,14 +12035,10 @@ $("todoRevert").onclick = revertNotebook;
     const vsHost = b => !b.upstream ? "" : (b.ahead || b.behind)
       ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} (${host})`
       : `in step with ${host}`;
-    const branchRow = b => `<div class="row gbranch">
-        <div class="grow"><div class="name"><code>${esc(b.name)}</code>${
-            b.head ? ` <span class="pill ok">here</span>` : ""}${
+    const pills = b => `${b.head ? ` <span class="pill ok">here</span>` : ""}${
             b.who ? ` <span class="pill">${esc(b.who)}'s session</span>` : ""}${
-            b.remote ? ` <span class="pill">only on ${esc(host)}</span>` : ""}</div>
-          <div class="sub">${[b.remote ? "" : vsMain(b), vsHost(b),
-            `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
-        ${b.remote || locked ? "" : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
+            b.remote ? ` <span class="pill">only on ${esc(host)}</span>` : ""}`;
+    const acts = b => b.remote || locked ? "" : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
             <option value="merge">merge into ${esc(main)}</option><option value="rebase">rebase onto ${esc(main)}</option>
             <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
             title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${
@@ -12053,14 +12049,30 @@ $("todoRevert").onclick = revertNotebook;
             b.head ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
             b.head || b.name === main ? "" : `<button type="button" class="danger"
-            data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`}</span>`}
+            data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`}</span>`;
+    // A branch with work main lacks is a row you open: its commits and the
+    // diff main would take, which is what a pull request page shows before
+    // its button, so that page is not needed to look before Merge into main.
+    const branchRow = b => !b.remote && b.name !== main && b.main_ahead ? `<details class="sect gbranch gcmp" data-branch="${esc(b.name)}"${
+        gitOpenCmp.has(b.name) ? " open" : ""}>
+        <summary><span class="t"><code>${esc(b.name)}</code>${pills(b)}</span>
+          <span class="sst">${esc(vsMain(b))}</span></summary>
+        <div class="body"><div class="sub">${[vsHost(b), `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div>
+          <div class="gcmpbody"><div class="loading">loading…</div></div>
+          ${acts(b)}</div>
+      </details>` : `<div class="row gbranch">
+        <div class="grow"><div class="name"><code>${esc(b.name)}</code>${pills(b)}</div>
+          <div class="sub">${[b.remote ? "" : vsMain(b), vsHost(b),
+            `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
+        ${acts(b)}
       </div>`;
     const here = local.filter(b => b.head), mainRow = local.filter(b => b.name === main && !b.head);
     const waiting = local.filter(b => !b.head && b.name !== main && !b.merged);
     const finished = local.filter(b => !b.head && b.name !== main && b.merged);
     const remoteOnly = remote.filter(r => !local.some(l => r.name.endsWith("/" + l.name)));
     const group = (label, rows) => rows.length ? `<div class="sub dim ggroup">${label}</div>` + rows.map(branchRow).join("") : "";
-    const branchRows = [...here, ...mainRow].map(branchRow).join("")
+    const branchRows = `<div class="sub dim">A branch keeps work apart from ${esc(main)} until it is merged; ${esc(host)} holds a copy that only Push and Pull touch.</div>`
+      + [...here, ...mainRow].map(branchRow).join("")
       + group(`not yet in ${esc(main)}`, waiting)
       + (finished.length ? group(`already in ${esc(main)}`, finished) + (locked ? "" : `<div class="actbar gmerged">
           <span class="state">nothing on ${finished.length === 1 ? "this branch" : "these branches"} is missing from ${esc(main)}</span>
@@ -12179,6 +12191,13 @@ $("todoRevert").onclick = revertNotebook;
       });
       if (d.open && d.querySelector(".loading")) loadGitFile(d);
     });
+    body.querySelectorAll(".gcmp").forEach(d => {
+      d.addEventListener("toggle", () => {
+        if (d.open) gitOpenCmp.add(d.dataset.branch); else gitOpenCmp.delete(d.dataset.branch);
+        if (d.open && d.querySelector(".loading")) loadGitCompare(d);
+      });
+      if (d.open && d.querySelector(".loading")) loadGitCompare(d);
+    });
     body.querySelectorAll(".grow[data-sha]").forEach(r => r.onclick = () => {
       gitPick = gitPick === r.dataset.sha ? "" : r.dataset.sha;
       drawGit();
@@ -12194,6 +12213,23 @@ $("todoRevert").onclick = revertNotebook;
                             + "&what=diff&path=" + encodeURIComponent(d.dataset.path));
       const j = await r.json();
       box.innerHTML = j.error ? `<div class="hint bad">${esc(j.error)}</div>` : renderDiff(j.diff);
+    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+  }
+
+  async function loadGitCompare(d){
+    const box = d.querySelector(".gcmpbody");
+    const main = git?.main || "main";
+    try{
+      const r = await fetch("/api/git?project=" + encodeURIComponent(project)
+                            + "&what=compare&branch=" + encodeURIComponent(d.dataset.branch));
+      const j = await r.json();
+      if (j.error){ box.innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
+      const files = j.files || [];
+      box.innerHTML = `<div class="gcmpc">${(j.commits || []).map(c => `<div class="sub"><code>${esc(c.short)}</code> ${
+          esc(c.subject)} · ${esc(c.author)} · ${esc(ago(c.when))}</div>`).join("")}</div>
+        <div class="sub">${files.length} file${files.length === 1 ? "" : "s"} ${esc(main)} would take: ${files.map(f =>
+          `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
+        ${renderDiff(j.diff || "")}`;
     }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
   }
 
