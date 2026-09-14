@@ -1939,7 +1939,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear
              # account, not the job one (R47). Both matter — the flow prints a
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
-             "claude-login")
+             "claude-login",
+             # A line typed into a Claude session on the node, Enter pressed
+             # only once the pane echoes it (notify.py's rule, run where the
+             # pane is): the roadmap's and the tracker's Send to Claude.
+             "tell")
 JOB_END = ("succeeded", "failed", "canceled")
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
@@ -2130,6 +2134,53 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     # install` an hour after the operator read it as failed.
     job_cancel(principal, r["job"])
     return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
+
+
+# The first agent build that runs a `tell` job. An older one would fall
+# through to exec with no argv, and the operator would read "exit 1" where
+# the answer is "update the agent".
+TELL_AGENT = (0, 5, 57)
+
+
+def _agent_build(n):
+    v = str((n.get("agent") or {}).get("version") or "")
+    try:
+        return tuple(int(x) for x in v.split(".")[:3])
+    except ValueError:
+        return (0, 0, 0)
+
+
+def tell_wait(node_id, session, text, timeout=20):
+    """One line into a Claude session on a node, waited for: a `tell` job
+    the agent runs as notify.tell runs here (type, look for the echo, Enter
+    only if it appeared), answered in the same shape. {"sent": True} when
+    it went, {"typed": True} when it was left unsent in the box, or
+    {"error"}."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if _agent_build(n) < TELL_AGENT:
+        return {"error": f"the agent on {n['name']} is "
+                         f"{(n.get('agent') or {}).get('version') or 'an older build'}, "
+                         f"which cannot hand a line to a session there: Update it on the Nodes tab"}
+    r = job_add("dashboard", {"node": node_id}, "tell",
+                {"session": str(session), "text": str(text), "timeout": int(timeout)})
+    if r.get("error"):
+        return {"error": r["error"]}
+    deadline = time.time() + timeout + 10
+    while time.time() < deadline:
+        j = job(r["job"])
+        if j and j["state"] in JOB_END:
+            code = j.get("exit_code")
+            if j["state"] == "succeeded" and code == 0:
+                return {"ok": True, "sent": True, "text": text, "job": r["job"]}
+            if code == 3:
+                return {"ok": True, "sent": False, "typed": True, "text": text, "job": r["job"]}
+            last = [x for x in (j.get("log") or "").splitlines() if x.strip()]
+            return {"error": last[-1] if last else f"the send failed on {n['name']} (exit {code})"}
+        time.sleep(0.25)
+    job_cancel("dashboard", r["job"])
+    return {"error": f"the agent on {n['name']} took the send but did not report back within {timeout}s"}
 
 
 def root_wait(principal, node_id, argv, why="", timeout=600):

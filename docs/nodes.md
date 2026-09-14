@@ -1786,7 +1786,13 @@ console's line, a macro: as tmux commands queued for the agent
 (`nodes.session_tmux`, `{"tmux": [...]}` in the work reply), which types
 them into the pane as the dashboard types into its own; the paging
 decision (copy mode at a prompt, the program's key in a full-screen one)
-is made on the node, where the pane is. What the controller still cannot
+is made on the node, where the pane is. A LINE is different from a key:
+the notebook's Send to Claude (a roadmap step, a bug, a version or git
+question) presses Enter only once the pane echoes what was typed, so a
+permission dialog is never answered blind, and that needs the pane in
+view. So a send to a node's session is a `tell` job (`nodes.tell_wait`,
+agent 0.5.57) the agent runs by the same rule and answers in the same
+shape, sent or typed-but-unsent. What the controller still cannot
 do for a node's session is keep the one-Anthropic-account rule, which is
 the node's own. 10c landed 6 September: the image carries no JDK, no
 Android SDK, no emulator runtime and no X server, and the startup hook that

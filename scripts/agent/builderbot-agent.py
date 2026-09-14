@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.56"
+AGENT_VERSION = "0.5.57"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2153,6 +2153,8 @@ class Job(threading.Thread):
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
                 state, code = self.claude_login(spec)
+            elif self.job.get("type") == "tell":
+                state, code = self.agent.tell(self, spec)
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
@@ -3258,6 +3260,45 @@ class Agent:
         for name in names:
             log(f"sessions: ending {name} — asked from the dashboard")
             self._tmux(["kill-session", "-t", "=" + name])
+
+    def tell(self, job, spec):
+        """One line into a Claude session here, and Enter only if it
+        visibly arrived: the notebook's Send to Claude, run where the pane
+        is. The controller's notify.tell does exactly this in its own tmux
+        and cannot in this one, so the rule is repeated rather than
+        approximated: a session waiting at its prompt echoes what is typed
+        and a permission dialog swallows it, and pressing Enter into a
+        dialog blind is the one thing this must never do. Exit 0 sent, 3
+        typed but left unsent for a person to look at, 2 no such session."""
+        sess = str(spec.get("session") or "")
+        text = " ".join(str(spec.get("text") or "").split())
+        if not sess or not text:
+            job.say("nothing to say, or nobody to say it to\n")
+            return "failed", 2
+        names = {str((r or {}).get("name") or "") for r in (self.sessions_now() or [])}
+        if sess not in names:
+            job.say(f"no session called {sess} is running here\n")
+            return "failed", 2
+        cap = lambda: self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or ""  # noqa: E731
+        mark = text[:40]
+        was = cap().count(mark)
+        if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
+            job.say("tmux would not take the line\n")
+            return "failed", 1
+        # The same look-window as the controller's: two quarter-second
+        # looks, one more per 120 characters, since a TUI re-renders as it
+        # takes input and a long line is not on screen inside a short one.
+        for _ in range(2 + len(text) // 120):
+            time.sleep(0.25)
+            if cap().count(mark) > was:
+                if self._tmux(["send-keys", "-t", sess, "Enter"]) is None:
+                    job.say("the line is in the box but Enter did not go\n")
+                    return "failed", 1
+                job.say(f"sent to {sess}\n")
+                return "succeeded", 0
+        job.say(f"typed into {sess} but not sent: the pane did not echo it, so something "
+                "other than the prompt has the keyboard\n")
+        return "failed", 3
 
     def tmux_ops(self, ops):
         """Keys into a session here, as the dashboard sends them into its
