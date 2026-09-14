@@ -1620,13 +1620,13 @@ open daemon port, nothing dialling in. (A node added as a plain `ssh` docker
 host, the arrangement from before the agent, still runs compose from here
 over ssh.)
 
-**A CI runner per node.** The same fold installs GitHub's Actions runner
-on the node as a service: it registers with the org or repo URL from the
-controller's environment (or one typed there), a token the controller mints
-for the hour, and labels `builderbot, self-hosted, linux, <arch>, <node
-name>` plus any extra, so a workflow's `runs-on` names the node it should
-land on. The row says whether the runner is listening or busy; Remove
-deregisters it first. `bb ci-labels` lists every label the registry knows
+**A CI runner per node.** The same fold installs the host's Actions runner
+on the node, GitHub's or Gitea's `act_runner`: it registers with the
+repository or organization address and the token saved for that node (kept
+root-only on the controller), and labels `builderbot, self-hosted, linux,
+<arch>, <node name>` plus any extra, so a workflow's `runs-on` names the node
+it should land on. The row says whether the runner is listening or busy;
+Remove deregisters it first. `bb ci-labels` lists every label the registry knows
 and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.

@@ -258,7 +258,7 @@ case "$kind" in
     --check)      grep -E '^RUNNER_(URL|FORGE)=' "$store/$node.env"; exit 0 ;;
     --validate)   echo "token accepted"; exit 0 ;;
     registration) echo AAAREGTOKEN; exit 0 ;;
-    remove)       echo AAAREMOVETOKEN; exit 0 ;;
+    remove)       if grep -q '^RUNNER_FORGE=gitea' "$store/$node.env"; then echo "remove $node $3" >> "$store/calls.log"; echo removed; else echo AAAREMOVETOKEN; fi; exit 0 ;;
 esac
 echo "sudo: refused" >&2; exit 1
 EOF

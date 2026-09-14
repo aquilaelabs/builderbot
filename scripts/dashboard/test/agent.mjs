@@ -158,6 +158,18 @@ writeFileSync(`${DIR}/runner-src/run.sh`, `#!/bin/sh
 exec -a "$(cd "$(dirname "$0")" && pwd)/bin/Runner.Listener" sleep 300
 `, { mode: 0o755 });
 execFileSync('tar', ['-czf', `${DIR}/runner.tar.gz`, '-C', `${DIR}/runner-src`, '.']);
+// act_runner, stood in for: register writes the .runner act_runner writes
+// (name, address, labels, id) and records its arguments; daemon stays up as
+// a child so the census's pgrep sees `<dir>/act_runner daemon`.
+writeFileSync(`${DIR}/bin/act_runner`, `#!/bin/sh
+echo "act $*" >> "$(pwd)/act-calls.log"
+case "$1" in
+  register) name=; inst=; labels=
+    while [ $# -gt 0 ]; do case "$1" in --name) name="$2"; shift;; --instance) inst="$2"; shift;; --labels) labels="$2"; shift;; esac; shift; done
+    printf '{"id":7,"name":"%s","address":"%s","labels":["%s"]}' "$name" "$inst" "$labels" > "$(pwd)/.runner" ;;
+  daemon) sleep 300 ;;
+esac
+`, { mode: 0o755 });
 // Tailscale, stood in for: `funnel` calls are recorded and reflected in the
 // serve status the census reads, so the funnel that is reported is the one
 // that was asked for.
@@ -229,6 +241,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
+  BUILDERBOT_ACT_RUNNER_BIN: `${DIR}/bin/act_runner`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
@@ -1693,6 +1706,45 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
       return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
     ok(rn2 !== null, '...and the census says so');
+    // Gitea's runner (R53): the same fold, a different host. The picker says
+    // which when the address is a private host the catalog has never seen;
+    // act_runner registers with a token the controller fetches from that
+    // host, every label takes :host so a job runs on this machine's own
+    // toolchain, and removal is a deletion by id there.
+    {
+      const gk = await api('/api/v1/nodes', { action: 'runner-token', id: minted.id,
+        url: 'https://git.example.test:3000/example-org', forge: 'gitea', token: 'giteatokenABCDEF' });
+      const gr = await nodeById(minted.id);
+      ok(gk.ok && gr.services['actions-runner'].forge === 'gitea'
+         && /RUNNER_FORGE=gitea/.test(readFileSync(`${DIR}/runner-store/${minted.id}.env`, 'utf8')),
+         `a private host is named through the picker and stored as gitea (${gk.error || 'stored'})`);
+      const gi = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true, labels: ['gpu'] });
+      const gfin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${gi.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      const acts = existsSync(`${DIR}/runner/act-calls.log`) ? readFileSync(`${DIR}/runner/act-calls.log`, 'utf8') : '';
+      ok(gfin?.state === 'succeeded' && /registering agentbox with https:\/\/git\.example\.test:3000\/example-org/.test(gfin.log)
+         && /act register --no-interactive --instance https:\/\/git\.example\.test:3000\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
+         && /act daemon/.test(acts) && !/AAAREGTOKEN/.test(gfin.log),
+         `act_runner registers with the host, every label as :host, and runs as a daemon under the agent (${gfin?.state}: ${(gfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
+      const gn = await until(async () => { const n = await nodeById(minted.id);
+        const a = n.reported.services?.['actions-runner']; return a?.installed && a.forge === 'gitea' ? n : null; }, 20000);
+      ok(gn && gn.reported.services['actions-runner'].name === 'agentbox' && gn.reported.services['actions-runner'].active === true
+         && gn.reported.services['actions-runner'].url === 'https://git.example.test:3000/example-org',
+         "the census reports act_runner as installed, listening, and Gitea's");
+      const grm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: false });
+      const grfin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${grm.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      const scalls = existsSync(`${DIR}/runner-store/calls.log`) ? readFileSync(`${DIR}/runner-store/calls.log`, 'utf8') : '';
+      ok(grfin?.state === 'succeeded' && !existsSync(`${DIR}/runner`) && /^remove \S+ 7$/m.test(scalls),
+         `Remove runner deletes the runner on its host by id and takes the directory away (${grfin?.state}; ${scalls.trim().split('\n').pop() || 'no deletion'})`);
+      const gn2 = await until(async () => { const n = await nodeById(minted.id);
+        return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
+      ok(gn2 !== null, '...and the census says so');
+    }
   }
 
   // ---- emulation as a job (phase 9) --------------------------------------------

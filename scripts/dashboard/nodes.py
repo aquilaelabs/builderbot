@@ -1011,6 +1011,9 @@ def _census(c):
         "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
         "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
         "url": str(ar.get("url") or "")[:200],
+        # Which host's runner it is: GitHub's, or Gitea's act_runner. Empty
+        # from an agent that predates the field.
+        "forge": re.sub(r"[^a-z]", "", str(ar.get("forge") or ""))[:16],
         # The systemd unit its output goes to, when it has one — what the
         # runner log stream journalctls. Empty from an agent that predates
         # the field and from a node running it in the foreground, and the
@@ -1393,17 +1396,22 @@ def node_runner(principal, node_id, want, labels=None, token=False):
         return {"error": "a system job is already in flight on this node — one at a time"}
     ar = dict((n.get("services") or {}).get("actions-runner") or {})
     url = ar.get("url") or ""
+    forge = ar.get("forge") or "github"
     if want and not token:
         return {"error": "no runner token stored for this node: paste one in the runner "
                          "section first, with the address it registers with"}
-    if want and not url.startswith("https://github.com/"):
-        return {"error": "only a GitHub repository or organization can take a runner yet"}
+    if want and forge not in ("github", "gitea"):
+        return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
+                         "beside the address"}
+    if want and (not url.startswith("https://") or (forge == "github" and not url.startswith("https://github.com/"))):
+        return {"error": "the address is the https repository or organization the runner registers with"}
     labs = runner_labels_for(n, labels) if want else []
     services = dict(n.get("services") or {})
     services["actions-runner"] = {**ar, "want": bool(want), "labels": labs}
     _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
     _touch(node_id, principal, "node-runner", {"want": bool(want), "labels": labs})
-    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}
+    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"],
+           "forge": forge}
     return job_add(principal, {"node": node_id}, "system",
                    {"apply": "runner", "config": cfg, "timeout": 1800})
 

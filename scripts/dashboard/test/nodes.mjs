@@ -544,6 +544,8 @@ print(json.dumps(out))
   ok(await page.$eval(`${ROW} [data-nrunner="install"]`, b => b.disabled)
      && await page.$eval(`${ROW} .ndrunstate`, e => /no token stored/.test(e.textContent)),
      'Install runner is dead until a token is stored for the node, and the section says so');
+  ok(await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea')),
+     'the runner section offers the host kind, GitHub or Gitea, read from the address unless picked');
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
   await page.fill(`${ROW} [data-k="runner:token"]`, 'github_pat_TESTTOKEN1234');
   await page.click(`${ROW} [data-nrunnertoken]`);

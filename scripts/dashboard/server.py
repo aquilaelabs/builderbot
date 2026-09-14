@@ -2371,10 +2371,14 @@ def _helper_why(r):
     return re.sub(r"^\[builderbot\] ERROR: ", "", why)[:200]
 
 
-def mint_runner_token(kind, node_id):
+def mint_runner_token(kind, node_id, runner_id=""):
     """A registration or removal token for a node's runner, minted from the
-    token stored for that node."""
-    r = run(["sudo", "-n", RUNNER_HELPER, kind, node_id], timeout=60)
+    token stored for that node. `runner_id` is the runner's id on a Gitea,
+    where removal is a deletion there rather than a token."""
+    argv = ["sudo", "-n", RUNNER_HELPER, kind, node_id]
+    if re.fullmatch(r"[0-9]{1,12}", str(runner_id or "")):
+        argv.append(str(runner_id))
+    r = run(argv, timeout=60)
     if r["code"] == 0 and r["out"].strip():
         return {"token": r["out"].strip().splitlines()[-1]}
     return {"error": f"the controller cannot mint a runner token: {_helper_why(r)}"}
@@ -4850,7 +4854,13 @@ class Handler(BaseHTTPRequestHandler):
             elif not nodes.node(nid):
                 r = {"error": "no such node"}
             else:
-                forge = forges.forge_of(at.group(1)).get("kind") or "git"
+                # The forge from the picker when it says, else from the host:
+                # a private Gitea nobody has linked a project to yet is
+                # "another git host" to the catalog, and the picker is how
+                # the operator says otherwise.
+                forge = field(req, "forge")
+                if forge not in ("github", "gitea"):
+                    forge = forges.forge_of(at.group(1)).get("kind") or "git"
                 r = runner_token_store(nid, url, forge, str(req.get("token") or "").strip())
                 if not r.get("error"):
                     r = nodes.node_runner_url(self._principal(), nid, url, forge)
@@ -5422,7 +5432,7 @@ class Handler(BaseHTTPRequestHandler):
             # now from the root-only stash and never stored: the PAT stays
             # here, the hour-long token goes to the node that asked.
             kind = "remove" if field(req, "kind") == "remove" else "registration"
-            r = mint_runner_token(kind, nid)
+            r = mint_runner_token(kind, nid, field(req, "runner_id"))
             nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
             return self._json(r, 400 if r.get("error") else 200)
         if verb == "hello":

@@ -156,7 +156,7 @@ function nodeRunnerSection(n, c){
   const d = c.draft;
   if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
       !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
-    url: want.url || "", token: ""};
+    url: want.url || "", token: "", forge: want.forge || ""};
   // The verdict first, because "installed" and "will actually pick up a job"
   // are different states and the old line buried the difference in the
   // middle of a sentence: a runner registered with no listener reads as
@@ -187,12 +187,15 @@ function nodeRunnerSection(n, c){
   const busyNow = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
   const body = `
-      <div class="sub">GitHub's Actions runner as a service here; its labels decide which workflows land.</div>
+      <div class="sub">The host's Actions runner as a service here, GitHub's or Gitea's act_runner; its labels decide which workflows land.</div>
       <div class="ndrunner">
         <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with; an organization serves every repository in it")}
         <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
           placeholder="${esc(want.url || "https://github.com/your-org")}" aria-label="repository or organization URL"></div>
-        <div class="setrow col">${lbl("", "Token", "a token that may register runners there: it is kept root-only on the controller, and no session or page can read it back")}
+        <div class="setrow col">${lbl("", "Host", "which runner registers there: github.com is GitHub; a Gitea, Forgejo or Codeberg address takes act_runner")}
+        <select data-k="runner:forge" aria-label="host kind">${[["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]].map(([v, t]) =>
+          `<option value="${v}"${(d.runner.forge || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
+        <div class="setrow col">${lbl("", "Token", "a token that may register runners there (GitHub: a fine-grained token with Self-hosted runners or Administration R/W; Gitea: an access token with write on the organization or repository). Kept root-only on the controller; no session or page can read it back")}
         <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
           placeholder="${n.runner_token ? "stored; paste another to replace it" : "paste a token"}" aria-label="runner token"></div>
         <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
@@ -209,13 +212,13 @@ function nodeRunnerSection(n, c){
         <button type="button" data-nrunnertoken ${busyNow ? "disabled" : ""}
           title="keep the token above for this node, root-only on the controller, with the address it registers with">Save token</button>
         <button type="button" data-nrunner="install" ${busyNow || !n.runner_token ? "disabled" : ""}
-          title="${why || (n.runner_token ? "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"
+          title="${why || (n.runner_token ? "download the host's runner onto the node, register it with a token the controller fetches, and keep it running"
                                           : "save a token first: registering needs one")}">${
           rep.installed ? "Reinstall runner" : "Install runner"}</button>
         ${n.runner_token ? `<button type="button" class="danger" data-nrunnerforget ${busyNow ? "disabled" : ""}
           title="drop the stored token; a runner already registered keeps running, and removing it later needs a token again">Forget token</button>` : ""}
         ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" ${busyNow ? "disabled" : ""}
-          title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
+          title="${why || "deregister it from its host and take the runner off the node"}">Remove runner</button>` : ""}
       </div>`;
   const status = job ? job
     : !rep.installed ? (n.runner_failed ? "failed" : want.want ? "asked for" : "none")
@@ -1249,7 +1252,7 @@ function wireNodeConf(row, id){
   if (tokenBtn) tokenBtn.onclick = () => pressing(tokenBtn, async () => {
     busy(tokenBtn, "Saving");
     const r = await nodeAct({action: "runner-token", id, url: c.draft.runner?.url || "",
-                             token: c.draft.runner?.token || ""});
+                             forge: c.draft.runner?.forge || "", token: c.draft.runner?.token || ""});
     // The token leaves the page the moment it is handed over, either way.
     if (c.draft.runner) c.draft.runner.token = "";
     if (!r.error){ nodesRev++; drawPanes(); }
