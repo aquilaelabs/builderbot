@@ -132,6 +132,13 @@ mkdirSync(`${DIR}/runner-src/bin`, { recursive: true });
 writeFileSync(`${DIR}/runner-src/config.sh`, `#!/bin/sh
 echo "config $*" >> "$(dirname "$0")/calls.log"
 if [ "$1" = remove ]; then rm -f "$(dirname "$0")/.runner"; exit 0; fi
+# What the real one says on a RHEL node with no libicu, and then exits: the
+# reason first and GitHub's advice under it.
+if [ -f "$(dirname "$0")/../runner-fail" ]; then
+  echo "Libicu's dependencies is missing for Dotnet Core 6.0"
+  echo "Execute sudo ./bin/installdependencies.sh to install any missing Dotnet Core 6.0 dependencies."
+  exit 1
+fi
 name=; url=
 while [ $# -gt 0 ]; do case "$1" in --name) name="$2"; shift;; --url) url="$2"; shift;; esac; shift; done
 # With the BOM the real config.sh writes. Without it here, the census read
@@ -666,6 +673,15 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            `a controller that does not answer refuses every call until it is back (${r.code})`);
         r = gate({});
         ok(r.code === 0, '...and answers again the moment it does');
+        // A controller that answers with a refusal is up. A session idle past
+        // its token's twelve hours is refused "not signed in", and the gate
+        // used to read any error without "HTTP" in it as no connection at all,
+        // so it told that session BuilderBot was restarting after an update.
+        fresh();
+        rmSync(`${cache}/builderbot/token-alpha`, { force: true });
+        r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
+        ok(r.code === 0 && !/not answering/.test(r.err),
+           `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
       }
       // bb itself in the node role: a relayed verb is the controller's
       // answer and nothing else — the dispatch used to fall through and run
@@ -1600,6 +1616,25 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
   {
     const nourl = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true, url: 'ftp://nope' });
     ok(/GitHub org or repo URL/.test(nourl.error || ''), 'installing a runner needs the URL it registers with');
+    // An install that failed is said, with the reason its log gave, until one
+    // works. The census only knows what is installed, so a failed attempt used
+    // to read as "install asked for; not reported yet" for as long as nobody
+    // pressed Install again: a node sat twelve hours like that behind libicu.
+    writeFileSync(`${DIR}/runner-fail`, '');
+    const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
+      url: 'https://github.com/example-org' });
+    const bfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${bad.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    const failedRow = await until(async () => (await nodeById(minted.id)).runner_failed || null, 10000);
+    const failedCard = ((await api('/api/status')).node_runners || []).find(x => x.id === minted.id);
+    ok(bfin?.state === 'failed' && failedRow?.id === bad.job
+       && /^Libicu's dependencies is missing for Dotnet Core 6\.0/.test(failedRow?.why || '')
+       && /Libicu/.test(failedCard?.failed?.why || ''),
+       `a failed runner install is reported with the reason its log gave (${bfin?.state}: ${
+         failedRow?.why || failedCard?.failed?.why || 'nothing'})`);
+    rmSync(`${DIR}/runner-fail`, { force: true });
     const inst = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
       labels: ['gpu', 'bad label!'], url: 'https://github.com/example-org' });
     ok(inst.ok && /^j_/.test(inst.job), `Install runner queues a system job (${inst.job || inst.error})`);
@@ -1631,6 +1666,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && rn.reported.services['actions-runner'].labels.includes('agentbox')
        && rn.services['actions-runner'].want === true,
        'the census reports the runner, its name and labels; the record keeps the ask');
+    ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
     const labels = execFileSync('bash', [`${REPO}/scripts/bb`, 'ci-labels'],
       { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
     ok(/^agentbox$/m.test(labels) && /^gpu$/m.test(labels) && /^builderbot$/m.test(labels),

@@ -2408,7 +2408,11 @@ def node_runners():
                     "installed": bool(rep.get("installed")),
                     "listening": bool(rep.get("active")), "busy": bool(rep.get("busy")),
                     "name": rep.get("name") or "", "url": rep.get("url") or "",
-                    "labels": rep.get("labels") or want.get("labels") or []})
+                    "labels": rep.get("labels") or want.get("labels") or [],
+                    # Why a runner that was asked for is not there, and whether
+                    # the install that would put it there is running now.
+                    "failed": n.get("runner_failed"),
+                    "installing": (n.get("applying") or {}).get("what") == "runner"})
     return out
 
 

@@ -162,7 +162,8 @@ function nodeRunnerSection(n, c){
   // middle of a sentence: a runner registered with no listener reads as
   // healthy right up until a workflow sits in "Waiting for a runner".
   const [verdict, vcls] = !rep.installed
-    ? [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""]
+    ? (n.runner_failed ? [`install failed: ${n.runner_failed.why || "its job on the Jobs tab says why"}`, "bad"]
+      : [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""])
     : rep.busy ? ["running a job right now", "ok"]
     : rep.active ? ["listening: idle, waiting for a job", "ok"]
     : ["installed but NOT listening, so no workflow will reach it: Reinstall runner", "bad"];

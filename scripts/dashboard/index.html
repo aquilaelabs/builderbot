@@ -6776,6 +6776,8 @@ function drawRunner(){
       : n.busy ? ["running a job", "ok"]
       : n.listening ? ["listening, idle", "ok"]
       : n.installed ? ["installed, not listening", "bad"]
+      : n.installing ? ["installing now", "warn"]
+      : n.failed ? [`install failed: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
       : ["install asked for; not reported yet", "warn"];
     return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>
       <span class="sub ${cls}">${esc(word)}</span>${n.labels.length

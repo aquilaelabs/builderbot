@@ -176,7 +176,7 @@ walls_around() {
 # the wrong tree by mistake, not a sandbox: Bash still reaches the filesystem,
 # and the only hard boundary is not mounting the other projects at all.
 claude_scope() {
-    local proj="$1" here="${2:-}" dir out tmp mode
+    local proj="$1" here="${2:-}" dir out tmp mode hooks bundle
     # One file per project, rewritten each time rather than a fresh temp file:
     # ttyd runs this script on every browser connection, including a reattach,
     # so mktemp here would drop a file per page load. Under the cache dir
@@ -266,14 +266,28 @@ claude_scope() {
         [ "$(BB_PROJECT="$proj" bb settings --json 2>/dev/null \
              | jq -r '.edits // empty' 2>/dev/null)" = accept ] && mode=acceptEdits
     fi
+    # The hooks by a name that outlives this bundle (B120). On a node bb-tty
+    # runs from .bb/<digest>, and the settings file is read once, when claude
+    # starts, so a path resolved there kept a session on the hooks it began
+    # with for as long as it stayed open, however many deliveries followed.
+    # Through .bb/current each hook call runs whatever was delivered last, the
+    # way B66 put bb on PATH. A checkout has no current link and keeps the
+    # path it always had.
+    hooks="$(dirname "$(readlink -f "$0")")"
+    case "$hooks" in
+        */.bb/*/scripts/dashboard)
+            bundle="${hooks%/scripts/dashboard}"
+            [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
+                && hooks="${bundle%/*}/current/scripts/dashboard" ;;
+    esac
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --arg mode "$mode" \
                --arg state "${DASHBOARD_STATE:-/config}" \
-               --arg gate "$(dirname "$(readlink -f "$0")")/bb-gate" \
-               --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
-               --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
-               --arg check "$(dirname "$(readlink -f "$0")")/bb-check-relay" \
-               --arg keep "$(dirname "$(readlink -f "$0")")/bb-keep-login" \
+               --arg gate "$hooks/bb-gate" \
+               --arg note "$hooks/bb-work-note" \
+               --arg relay "$hooks/bb-prompt-relay" \
+               --arg check "$hooks/bb-check-relay" \
+               --arg keep "$hooks/bb-keep-login" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               defaultMode: $mode,

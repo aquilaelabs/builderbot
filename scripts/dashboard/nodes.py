@@ -238,16 +238,24 @@ def node_list(all=False):
     # to "4 changes to apply" — no sign an attempt had happened at all,
     # which reads as a button that does nothing. Bounded: the newest rows
     # are the only ones that could be anybody's last.
-    done = {}
+    done, runner = {}, {}
     for j in _rows("SELECT id, node, spec, state, error, ended FROM jobs "
                    "WHERE type = 'system' AND state IN ('succeeded', 'failed', "
                    "'canceled') ORDER BY ended DESC LIMIT 200"):
-        if j["node"] in done:
+        if j["node"] in done and j["node"] in runner:
             continue
         try:
             spec = json.loads(j["spec"])
         except (ValueError, TypeError):
             spec = {}
+        # The last RUNNER apply too, which the last apply of any kind hides
+        # as soon as anything else runs there: one root ask after a failed
+        # install, and that failure was nobody's last.
+        if spec.get("apply") == "runner" and j["node"] not in runner:
+            runner[j["node"]] = {"id": j["id"], "state": j["state"], "ended": j["ended"],
+                                 "want": (spec.get("config") or {}).get("want", True)}
+        if j["node"] in done:
+            continue
         done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
                            "state": j["state"], "error": (j["error"] or "")[:200],
                            "ended": j["ended"], "cfg": spec.get("config")}
@@ -265,7 +273,46 @@ def node_list(all=False):
             la["current"] = la.pop("cfg", None) == apply_cfg(
                 (r.get("config") or {}).get("desired"), la["what"])
         r["last_apply"] = la
+        r["runner_failed"] = _runner_failed(r, runner.get(r["id"]), r["applying"])
     return rows if all else [r for r in rows if r["state"] != "retired"]
+
+
+def _runner_failed(row, last, applying):
+    """The runner install that failed on a node: {id, ended, why}, or None.
+
+    Only while it is still the answer: the record asks for a runner, the
+    census reports none, and no runner apply is in flight that could be the
+    retry. The census knows only what is installed, so without this a failed
+    install read as "asked for; not reported yet" for as long as nobody
+    pressed Install again."""
+    if not last or last["state"] != "failed" or not last["want"]:
+        return None
+    if (applying or {}).get("what") == "runner":
+        return None
+    want = (row.get("services") or {}).get("actions-runner") or {}
+    rep = ((row.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
+    if not want.get("want") or rep.get("installed"):
+        return None
+    return {"id": last["id"], "ended": last["ended"], "why": _failed_why(last["id"])}
+
+
+_WHY = {}
+
+
+def _failed_why(job_id):
+    """What a failed job's log says about why, for one line on a row.
+
+    A job that ran a command failed on it, so it is that command's output,
+    the last two lines of it because a tool's advice tends to follow its
+    reason (config.sh names the missing libicu, then says to run a script).
+    A job that failed before running one ends on the agent's own sentence,
+    so it is the last line. A finished job's log never changes: read once."""
+    if job_id not in _WHY:
+        lines = [x.strip() for x in job_tail(job_id).splitlines() if x.strip()]
+        cmd = max((i for i, x in enumerate(lines) if x.startswith("$ ")), default=-1)
+        said = lines[cmd + 1:] if 0 <= cmd < len(lines) - 1 else lines[-1:]
+        _WHY[job_id] = " · ".join(x[:160] for x in said[-2:])[:320]
+    return _WHY[job_id]
 
 
 def node(node_id):
@@ -456,26 +503,27 @@ def node_paths_set(principal, node_id, text):
 
 
 def node_for():
-    """The default node for work nobody bound to one — the newest enrolled,
-    else local. There is nothing to narrow by: a node does everything, what a
-    project can do on its node is what is installed there, and the project
-    names the node."""
+    """The default node for work nobody bound to one: the newest enrolled
+    node that runs docker, else the newest enrolled, else local. There is
+    nothing else to narrow by: a node does everything, what a project can do
+    on its node is what is installed there, and the project names the node."""
     try:
-        # The newest node the manager has somewhere to SEND to. Not the newest
-        # whose daemon answers, which is what this used to claim and is a
-        # different question (B113): docker_nodes() drops a node with no
-        # address, and an address is not an answer. Asking for real would put
-        # a ten-second docker call per candidate on the status poll's path and
-        # make a project's containers follow a VM's uptime around, so the
-        # honest fix is an explicit setting rather than a probe here.
+        # The newest node whose census says docker runs there, else the newest
+        # the manager has somewhere to send to (B113). An address is not a
+        # daemon: a Mac enrolled as a guest, with ssh and no docker, would
+        # otherwise be the host of every instance nobody bound to a node. The
+        # census is what the node last said about itself, so nothing is asked
+        # on the status poll's path, and the choice holds still while a
+        # machine is off instead of following its uptime around.
         #
         # Still better than "newest online", which is what it replaced: an
         # agent node that has never dialed in has no address at all, so it
         # could hold a project's containers only in principle, and picking it
         # left the manager talking to nothing.
         got = [n for n in docker_nodes() if n["kind"] != "local"]
-        if got:
-            return sorted(got, key=lambda n: n["created"])[-1]["id"]
+        runs = [n for n in got if (n.get("reported") or {}).get("docker")]
+        if runs or got:
+            return sorted(runs or got, key=lambda n: n["created"])[-1]["id"]
     except sqlite3.Error:
         pass                     # a broken store falls back to the answer
     return LOCAL                 # that was always true before it existed

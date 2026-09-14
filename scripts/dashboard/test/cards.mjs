@@ -957,6 +957,15 @@ rc = await runnerCard([{ node: 'bb-sandbox', live: false, installed: true,
   listening: true, busy: false, labels: [] }]);
 ok(/quiet/.test(rc.body) && rc.pills.some(c => /warn/.test(c)),
    '...and a runner on a node nobody has heard from lately is amber, not green');
+rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false, listening: false,
+  busy: false, labels: [], failed: { id: 'j_1', why: "Libicu's dependencies is missing for Dotnet Core 6.0" } }]);
+ok(/install failed/.test(rc.body) && /Libicu's dependencies is missing/.test(rc.body)
+   && rc.pills.some(c => /\bbad\b/.test(c)) && !/not reported yet/.test(rc.body),
+   'a runner install that failed says so with its reason, in red, not as still waiting');
+rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false, listening: false,
+  busy: false, labels: [], installing: true }]);
+ok(/installing/.test(rc.body) && !/not reported yet/.test(rc.body),
+   '...and one being installed right now says that instead');
 ok(await page.$('#runner [data-m]') === null,
    'the card carries no Start/Stop of its own — those are the Nodes tab\'s');
 await page.evaluate(() => refresh());
