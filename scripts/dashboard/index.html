@@ -11926,15 +11926,17 @@ $("todoRevert").onclick = revertNotebook;
       ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
       local.length} branch${local.length === 1 ? "" : "es"}${
       st.upstream ? (st.ahead || st.behind
-        ? ` · ${st.ahead ? st.ahead + " ahead" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " behind " + st.upstream : (st.ahead ? " of " + st.upstream : "")}`
-        : ` · level with ${st.upstream}`) : ""}`;
+        ? ` · ${st.ahead ? st.ahead + " to push" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " to pull" : ""} (${git.host?.name || "the remote"})`
+        : ` · in step with ${git.host?.name || "the remote"}`) : ""}`;
     const net = $("gitNet");
     if (net){
       const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
       net.hidden = locked || !git.remote;
       $("gitNetState").textContent = !git.remote ? "" : !git.push
         ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
-        : st.upstream ? `${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`
+        : st.upstream ? (st.ahead && st.behind
+          ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
+          : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
         : "no upstream yet: Push sets one";
       net.querySelector('[data-gitact="push"]').disabled = !git.push;
       net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
@@ -12019,31 +12021,54 @@ $("todoRevert").onclick = revertNotebook;
           <span class="gmeta">${esc(c.author)} · ${esc(ago_(c.when))} · <code>${esc(c.short)}</code></span>
         </div>`).join("")}</div>
     </div>` : `<div class="sub dim">no commits yet</div>`;
-    const branchRows = [...local, ...remote].map(b => `<div class="row gbranch">
+    // Branches by what there is to do with them, not by date: the one the
+    // tree is on; main; work not yet in main, which is what Merge into main
+    // is for; branches already in main, which are only there to delete; and,
+    // folded, branches the remote has that this tree does not. A remote row
+    // that mirrors a local branch is not listed: its counts are on the
+    // local row already, and "origin/x" beside "x" read as two branches.
+    const main = git.main || "main", host = git.host?.name || "the remote";
+    const s_ = n => n === 1 ? "" : "s";
+    const vsMain = b => b.name === main ? "the main branch"
+      : b.main_ahead ? `${b.main_ahead} commit${s_(b.main_ahead)} not yet in ${main}${b.main_behind ? `, ${b.main_behind} behind it` : ""}`
+      : b.main_behind ? `merged into ${main}, ${b.main_behind} behind it` : `same as ${main}`;
+    const vsHost = b => !b.upstream ? "" : (b.ahead || b.behind)
+      ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} (${host})`
+      : `in step with ${host}`;
+    const branchRow = b => `<div class="row gbranch">
         <div class="grow"><div class="name"><code>${esc(b.name)}</code>${
             b.head ? ` <span class="pill ok">here</span>` : ""}${
             b.who ? ` <span class="pill">${esc(b.who)}'s session</span>` : ""}${
-            b.remote ? ` <span class="pill">remote</span>` : ""}</div>
-          <div class="sub">${[
-            b.remote ? "" : (b.name === git.main ? "the main branch"
-              : `${b.main_ahead ? b.main_ahead + " ahead" : ""}${b.main_ahead && b.main_behind ? ", " : ""}${
-                 b.main_behind ? b.main_behind + " behind" : ""}${b.main_ahead || b.main_behind ? " " : "level with "}${esc(git.main || "main")}`),
-            b.upstream ? (b.ahead || b.behind
-              ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} against ${esc(b.upstream)}`
-              : `level with ${esc(b.upstream)}`) : "",
+            b.remote ? ` <span class="pill">only on ${esc(host)}</span>` : ""}</div>
+          <div class="sub">${[b.remote ? "" : vsMain(b), vsHost(b),
             `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
-        ${b.remote || locked ? "" : `<span class="acts">${b.name === git.main ? "" : `<select data-gitaskkind aria-label="what to ask">
-            <option value="merge">merge into ${esc(git.main || "main")}</option><option value="rebase">rebase onto ${esc(git.main || "main")}</option>
+        ${b.remote || locked ? "" : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
+            <option value="merge">merge into ${esc(main)}</option><option value="rebase">rebase onto ${esc(main)}</option>
             <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
             title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${
-            b.head ? "" : `<button type="button" data-gitmerge="${esc(b.name)}"
-            title="merge ${esc(b.name)} into ${esc(st.branch || "this branch")}, here. Switch first to
-merge the other way, and push it yourself after; this does not touch the remote"
-            >Merge</button>`}${b.head ? "" : `<button type="button"
+            b.name === main ? (b.head ? "" : `<button type="button" data-gitmerge="${esc(main)}"
+            title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
+            : (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"
+            title="merge ${esc(b.name)} into ${esc(main)} without moving the tree, the way a pull request merges; push ${esc(main)} yourself after">Merge into ${esc(main)}</button>` : ""}${
+            b.head ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
-            b.head || b.name === git.main ? "" : `<button type="button" class="danger"
-            data-gitdelete="${esc(b.name)}" title="delete the branch: refused while it holds commits no other branch has">Delete</button>`}</span>`}
-      </div>`).join("");
+            b.head || b.name === main ? "" : `<button type="button" class="danger"
+            data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`}</span>`}
+      </div>`;
+    const here = local.filter(b => b.head), mainRow = local.filter(b => b.name === main && !b.head);
+    const waiting = local.filter(b => !b.head && b.name !== main && !b.merged);
+    const finished = local.filter(b => !b.head && b.name !== main && b.merged);
+    const remoteOnly = remote.filter(r => !local.some(l => r.name.endsWith("/" + l.name)));
+    const group = (label, rows) => rows.length ? `<div class="sub dim ggroup">${label}</div>` + rows.map(branchRow).join("") : "";
+    const branchRows = [...here, ...mainRow].map(branchRow).join("")
+      + group(`not yet in ${esc(main)}`, waiting)
+      + (finished.length ? group(`already in ${esc(main)}`, finished) + (locked ? "" : `<div class="actbar gmerged">
+          <span class="state">nothing on ${finished.length === 1 ? "this branch" : "these branches"} is missing from ${esc(main)}</span>
+          <button type="button" class="danger" data-gitdeletemerged="${esc(finished.map(b => b.name).join(" "))}"
+            title="delete every branch already in ${esc(main)}">Delete ${finished.length === 1 ? "it" : `all ${finished.length}`}</button>
+        </div>`) : "")
+      + (remoteOnly.length ? `<details class="sect gremote"><summary><span class="t">only on ${esc(host)}</span>
+          <span class="sst">${remoteOnly.length}</span></summary><div class="body">${remoteOnly.map(branchRow).join("")}</div></details>` : "");
     // Conflicts stop everything else, so they are said first, with the one
     // button that helps: the merge in progress handed to the session.
     const conflicts = files.filter(f => f.state === "conflict");
@@ -12129,7 +12154,14 @@ merge the other way, and push it yourself after; this does not touch the remote"
     // the row says which way round it goes. What it can leave behind is a
     // conflict, and the Changes section is already the place that says so.
     body.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = () =>
-      gitAct("merge", {name: b.dataset.gitmerge}, gitBusy(b), "Merging"));
+      gitAct("merge", {name: b.dataset.gitmerge, ...(b.dataset.gitinto ? {into: b.dataset.gitinto} : {})}, gitBusy(b), "Merging"));
+    body.querySelectorAll("[data-gitdeletemerged]").forEach(b => b.onclick = async () => {
+      const names = b.dataset.gitdeletemerged.split(" ").filter(Boolean);
+      if (!confirm(`Delete ${names.length === 1 ? names[0] : names.length + " branches"}? Everything on ${
+          names.length === 1 ? "it" : "them"} is in ${git.main || "main"} already.`)) return;
+      busy(b, "Deleting");
+      for (const name of names) await gitAct("delete", {name});
+    });
     body.querySelectorAll("[data-gitaskfile]").forEach(b => b.onclick = () =>
       gitAsk("diff", {path: b.dataset.gitaskfile}, gitBusy(b)));
     body.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = () => {
