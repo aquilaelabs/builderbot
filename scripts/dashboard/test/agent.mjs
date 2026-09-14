@@ -159,6 +159,8 @@ exec -a "$(cd "$(dirname "$0")" && pwd)/bin/Runner.Listener" sleep 300
 `, { mode: 0o755 });
 execFileSync('tar', ['-czf', `${DIR}/runner.tar.gz`, '-C', `${DIR}/runner-src`, '.']);
 writeFileSync(`${DIR}/bin/sudo`, `#!/bin/sh
+# What the real helper says, on stderr, when the stash lacks the URL.
+[ -f "${DIR}/mint-fail" ] && case "$*" in *mint-runner-token*) echo "[builderbot] ERROR: no GITHUB_URL in the stash" >&2; exit 1 ;; esac
 case "$*" in *mint-runner-token*registration*) echo AAAREGTOKEN; exit 0 ;;
              *mint-runner-token*remove*) echo AAAREMOVETOKEN; exit 0 ;; esac
 echo "sudo: refused" >&2; exit 1
@@ -1620,6 +1622,20 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // works. The census only knows what is installed, so a failed attempt used
     // to read as "install asked for; not reported yet" for as long as nobody
     // pressed Install again: a node sat twelve hours like that behind libicu.
+    // A controller with no runner credential used to answer "GITHUB_PAT is
+    // not stashed" whatever the helper had actually said: the operator's
+    // stash had the PAT and lacked GITHUB_URL, and read the wrong sentence.
+    writeFileSync(`${DIR}/mint-fail`, '');
+    const nomint = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
+      url: 'https://github.com/example-org' });
+    const nfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${nomint.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    rmSync(`${DIR}/mint-fail`, { force: true });
+    ok(nfin?.state === 'failed' && /cannot mint a runner token: no GITHUB_URL in the stash/.test(nfin?.log || '')
+       && /set on the controller/.test(nfin?.log || '') && !/GITHUB_PAT is not stashed/.test(nfin?.log || ''),
+       `with no runner credential on the controller the install fails with the helper's own reason and where it is set (${(nfin?.log || '').slice(-140).replace(/\n/g, ' / ')})`);
     writeFileSync(`${DIR}/runner-fail`, '');
     const bad = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
       url: 'https://github.com/example-org' });

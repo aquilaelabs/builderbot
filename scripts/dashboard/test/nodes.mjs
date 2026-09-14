@@ -101,12 +101,29 @@ m._exec("UPDATE nodes SET reported = json_set(reported, '$.docker', '27.1.1') WH
 out['both'] = m.node_for()
 m._exec("UPDATE nodes SET reported = json_set(reported, '$.docker', '') WHERE id IN (?, ?)", (older, newer))
 out['neither'] = m.node_for()
+# A job moving is a node row moving: what is applying on it, its last apply
+# and its last runner failure are all read off the jobs, so the nodes rev
+# has to move with a job's state or an open Nodes tab shows a button dead
+# until somebody reloads. A log chunk is not a state and moves only the jobs rev.
+r0 = m.rev()
+j = m.job_add('user:test', {'node': older}, 'exec', {'argv': ['true']})
+r1 = m.rev()
+took = m.job_next(older, 0)
+r2 = m.rev()
+m.job_log(older, j.get('job'), ['hello'])
+r2b = m.rev()
+m.job_result(older, j.get('job'), 'succeeded', 0)
+r3 = m.rev()
+out['revs'] = {'queued': r1 > r0, 'taken': r2 > r1, 'chunk': r2b == r2, 'ended': r3 > r2,
+               'job': bool(took and took.get('id') == j.get('job')), 'err': j.get('error')}
 print(json.dumps(out))
 `], { encoding: 'utf8' }).trim());
   ok(got.pick === got.older,
      `the default node is one whose census says docker runs there, not the newest with an address (${got.pick})`);
   ok(got.both === got.newer, '...the newest of those when more than one does');
   ok(got.neither === got.newer, '...and the newest with an address when none says so, as before');
+  ok(got.revs.job && got.revs.queued && got.revs.taken && got.revs.ended && got.revs.chunk,
+     `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes tab follows a job without a reload (${JSON.stringify(got.revs)})`);
 }
 
 // ---- the seam: work says which node it belongs to --------------------------
@@ -537,6 +554,12 @@ print(json.dumps(out))
   ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
   await page.waitForFunction(sel => /applying runner/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // The runner section says so itself, in its own state line, with the
+  // buttons it has taken away: the operator pressed Install, then Remove,
+  // and read nothing but two dead buttons while the first job ran.
+  ok(await page.$eval(`${ROW} .ndrunstate`, e => /installing now/.test(e.textContent))
+     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => b.disabled),
+     'while the install runs the runner section says installing now, beside the buttons it has disabled');
   const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
   ok(rj && rj.node === minted.id && rj.spec.config.url === 'https://github.com/example-org'
      && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu'),
@@ -550,7 +573,7 @@ print(json.dumps(out))
   const failedVerdict = await page.evaluate(({ id, sel }) => {
     const n = nodesList.find(x => x.id === id);
     const keep = { f: n.runner_failed, s: n.services };
-    n.runner_failed = { id: 'j_x', why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
+    n.runner_failed = { id: 'j_x', ended: 1789350000, why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
     n.services = { ...(n.services || {}), 'actions-runner': { want: true, labels: [], url: '' } };
     nodesRev++; drawPanes();
     const e = document.querySelector(sel + ' .ndrunstate');
@@ -558,8 +581,20 @@ print(json.dumps(out))
     n.runner_failed = keep.f; n.services = keep.s; nodesRev++; drawPanes();
     return out;
   }, { id: minted.id, sel: ROW });
-  ok(/install failed/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
-     `the Nodes tab says a runner install failed and why, in red (${failedVerdict.text.slice(0, 80)})`);
+  ok(/install failed (?!: )\S/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
+     `the Nodes tab says a runner install failed, when, and why, in red (${failedVerdict.text.slice(0, 80)})`);
+  const removingVerdict = await page.evaluate(({ id, sel }) => {
+    const n = nodesList.find(x => x.id === id);
+    const keep = { a: n.applying, s: n.services };
+    n.applying = { id: 'j_y', what: 'runner' };
+    n.services = { ...(n.services || {}), 'actions-runner': { want: false, labels: [], url: '' } };
+    nodesRev++; drawPanes();
+    const e = document.querySelector(sel + ' .ndrunstate');
+    const out = e?.textContent || '';
+    n.applying = keep.a; n.services = keep.s; nodesRev++; drawPanes();
+    return out;
+  }, { id: minted.id, sel: ROW });
+  ok(/removing now/.test(removingVerdict), `...and a remove in flight says removing now (${removingVerdict.slice(0, 60)})`);
   // Installed and listening are different states, and the difference is the
   // one that matters: a registered runner with no listener looks healthy
   // right up until a workflow sits in "Waiting for a runner". The operator's

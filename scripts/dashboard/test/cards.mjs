@@ -958,10 +958,14 @@ rc = await runnerCard([{ node: 'bb-sandbox', live: false, installed: true,
 ok(/quiet/.test(rc.body) && rc.pills.some(c => /warn/.test(c)),
    '...and a runner on a node nobody has heard from lately is amber, not green');
 rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false, listening: false,
-  busy: false, labels: [], failed: { id: 'j_1', why: "Libicu's dependencies is missing for Dotnet Core 6.0" } }]);
-ok(/install failed/.test(rc.body) && /Libicu's dependencies is missing/.test(rc.body)
+  busy: false, labels: [], failed: { id: 'j_1', ended: 1789350000, why: "Libicu's dependencies is missing for Dotnet Core 6.0" } }]);
+ok(/install failed (?!: )\S/.test(rc.body) && /Libicu's dependencies is missing/.test(rc.body)
    && rc.pills.some(c => /\bbad\b/.test(c)) && !/not reported yet/.test(rc.body),
-   'a runner install that failed says so with its reason, in red, not as still waiting');
+   `a runner install that failed says so with its reason and WHEN, in red, not as still waiting (${rc.body.slice(0, 60)})`);
+rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: true, listening: true,
+  busy: false, labels: [], removing: true }]);
+ok(/removing now/.test(rc.body) && !/listening/.test(rc.body),
+   '...and a runner being removed says that, ahead of the listening it was doing');
 rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false, listening: false,
   busy: false, labels: [], installing: true }]);
 ok(/installing/.test(rc.body) && !/not reported yet/.test(rc.body),
