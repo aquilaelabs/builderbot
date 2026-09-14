@@ -97,6 +97,8 @@
 - Unraid can tell again whether the box is running the current BuilderBot: the image is published in the format its Docker page can read, instead of one it reports as "not available" (95b02cb)
 - A session left idle until its sign-in lapsed is no longer refused with a message saying BuilderBot is restarting after an update: it keeps working, and opening its tab renews it (5248614)
 - A CI runner install that failed says so on the Runner card and the Nodes tab, with the reason from its log, instead of reading as asked for and not reported yet (02f8d0a)
+- Claude sessions pick up updates to BuilderBot's session checks while they stay open, instead of keeping the versions they started with until they are restarted (b2d964b)
+- A dev instance that is not bound to a node goes to a node that runs docker, instead of simply the newest node, which could be a machine with no docker at all (f68041f)
 
 ## 0.5.0: 2026-09-10
 
