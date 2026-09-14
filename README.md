@@ -1776,7 +1776,11 @@ and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
 so the rule holds while this container is down, and the tab says
 plainly what still comes from the environment and why (the placement rule and
-the unhardwiring are docs/nodes.md §13 and §11).
+the unhardwiring are docs/nodes.md §13 and §11). Its **Debugging** group is
+one switch, *Debug mode*, and a *Debug settings* button beside it that is
+live only while the switch is saved on: behind the button are the settings
+a developer of BuilderBot reaches for and nobody else should meet (letting
+two accounts share one Claude login, for one person testing two accounts).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it: parsing a compose file is the one thing the page
@@ -2234,7 +2238,9 @@ gets sent twice.
 
 **Model and effort** are not questions in that box and are not applied by it.
 They are the project's own setting, at the bottom of its **settings dialog**
-(the gear on its row), and `bb-tty` passes them as `--model` and `--effort`
+(the gear on its row, which also gives the project a **colour**: a bar down
+the left of its row and its notebook tab, so several open notebooks tell
+apart without reading each label), and `bb-tty` passes them as `--model` and `--effort`
 when it starts a session there, so a session that is up is already on them
 and a send is only ever the send.
 

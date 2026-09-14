@@ -70,28 +70,30 @@ function renderSettingsInto(i){
 // says so beside it, and the bar says whether a change takes now or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
-  {title: "Claude Code", fields: [
-    {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
-     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
-     hint: "Shows the controls kept out of the way otherwise. Today that is Debug "
-         + "settings on a node's row, where you grant it the nodes whose agent, "
-         + "runner and terminal logs its sessions may read; it grants nothing by "
-         + "itself. Off, a session reads only its project's own CI and test logs."}]},
+     hint: "Shows the controls kept out of the way otherwise: Debug settings "
+         + "here, and Debug settings on a node's row, where you grant it the "
+         + "nodes whose agent, runner and terminal logs its sessions may read. "
+         + "It grants nothing by itself."}],
+   // What a developer of BuilderBot reaches for and nobody else should
+   // meet: folded behind a Debug settings button that opens only while
+   // debug mode is on, the same way the node row's is.
+   debug: [
+    {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
+     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
 ];
+// Whether the Debugging group's fold is open: kept across repaints, since
+// the tab redraws on every poll that moves a setting.
+let debugSettingsOpen = false;
 
 function settingsSections(){
   const s = state?.settings;
   if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   return SETTING_GROUPS.map(g => {
-    const boot = g.fields.some(f => s.meta[f.key]?.applied === "boot");
-    return `<div class="row stack2" data-group="${esc(g.title)}">
-      <div class="grow">
-        <h4>${esc(g.title)}</h4>
-        <div class="logset">
-          ${g.fields.map(f => {
+    const boot = [...g.fields, ...(g.debug || [])].some(f => s.meta[f.key]?.applied === "boot");
+    const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
             // A checkbox sits inside its label, the way the Tests bar's do;
@@ -111,7 +113,25 @@ function settingsSections(){
             return `<div class="logdays setrow col">
               ${lbl(id, f.label, f.hint)}${ctl}${src(f.key)}
             </div>`;
-          }).join("")}
+    };
+    // The fold's button is a real control only while debug mode is SAVED
+    // on: what is behind it is debug's, and a draft tick that has not been
+    // applied yet is not debug mode.
+    const debugOn = !!s.settings.debug_mode?.value;
+    const fold = !g.debug ? "" : `
+          <div class="addbar" data-add="debug"><button type="button" data-debugshow
+            aria-expanded="${debugOn && debugSettingsOpen}"${debugOn ? "" : " disabled"}
+            title="${debugOn ? "the settings kept behind debug mode"
+                             : "turn Debug mode on and Apply first: these are its settings"}"
+            >Debug settings</button></div>
+          <div class="uadd" data-debugfold${debugOn && debugSettingsOpen ? "" : " hidden"}>
+            ${g.debug.map(field).join("")}
+          </div>`;
+    return `<div class="row stack2" data-group="${esc(g.title)}">
+      <div class="grow">
+        <h4>${esc(g.title)}</h4>
+        <div class="logset">
+          ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
             <span class="state">${boot ? "takes at the next start" : "takes now"}</span>
             <button type="button" class="setApply" title="save">Apply</button>
@@ -124,6 +144,12 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   el.querySelectorAll('[data-group]').forEach(box => {
+    const show = box.querySelector("[data-debugshow]"), fold = box.querySelector("[data-debugfold]");
+    if (show && fold) show.onclick = () => {
+      debugSettingsOpen = !debugSettingsOpen;
+      show.setAttribute("aria-expanded", String(debugSettingsOpen));
+      slideBody(box, () => { fold.hidden = !debugSettingsOpen; });
+    };
     const btn = box.querySelector(".setApply");
     if (!btn) return;
     const apply = async () => {

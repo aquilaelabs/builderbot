@@ -2,7 +2,7 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -1269,6 +1269,17 @@ await page.waitForSelector('.dmtab', { timeout: 15000 });
 ok(await page.$$eval('.dmtab .row', rs =>
      rs.some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off'))),
    'the manager shows a container this dashboard did not start, marked not ours');
+// Each button on the Tools card carries an icon, and the tab it opens wears
+// the same one: a button and its tab are one thing in two places.
+ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
+     bs.length === 6 && bs.every(b => b.querySelector('svg'))),
+   'every Tools button carries an icon');
+ok(await page.evaluate(() => {
+     const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
+     const tab = [...document.querySelectorAll('#tabbar .tab')]
+       .find(t => /Docker/.test(t.textContent))?.querySelector('.lbl svg')?.outerHTML;
+     return !!tab && tab === btn;
+   }), '...and the Docker tab wears the Docker button\'s icon');
 await page.click('#projects #bAllProj');
 await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
 
@@ -1410,6 +1421,39 @@ await page.selectOption('#rnModel', 'sonnet');
 ok(!await page.$eval('#rnModel', e => e.disabled)
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    'with no session running it simply applies at the next start');
+// A colour for the project: nine swatches, none by default, and the one
+// picked is worn by the row and by the notebook tab once saved.
+await page.selectOption('#rnModel', '');
+ok(await page.$$eval('#rnColor [data-color]', bs =>
+     bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
+   'the dialog offers a colour, with none picked for a project nobody coloured');
+await page.click('#rnColor [data-color="teal"]');
+await page.click('#rnGo');
+await refreshUntil(page, () => (state?.projects || [])
+  .find(p => p.name === 'alpha')?.prefs?.color === 'teal', { timeout: 20000 });
+ok(await page.$eval('.doc .projtab [data-row="alpha"]', r =>
+     r.classList.contains('pc') && /--pc:/.test(r.getAttribute('style') || '')),
+   'saving a colour puts it on the project\'s row');
+await page.evaluate(() => openNotebook('alpha'));
+await nbShown(page);
+ok(await page.evaluate(() => {
+     const t = [...document.querySelectorAll('#tabbar .tab')].find(t => /Notebook: alpha/.test(t.textContent));
+     return !!t && t.classList.contains('pc') && /--pc:/.test(t.getAttribute('style') || '');
+   }), '...and on its notebook tab');
+await page.evaluate(async () => {
+  await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ project: 'alpha', color: '' }) });
+});
+await refreshUntil(page, () => !(state?.projects || [])
+  .find(p => p.name === 'alpha')?.prefs?.color, { timeout: 20000 });
+await page.waitForFunction(() => ![...document.querySelectorAll('#tabbar .tab')]
+  .find(t => /Notebook: alpha/.test(t.textContent))?.classList.contains('pc'), null, { timeout: 20000 });
+ok(true, '...and none takes it off again');
+// Back to the projects tab, which the notebook pushed out of the pane.
+await page.click('#projects #bAllProj');
+await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+await page.click('.doc .projtab [data-rn="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 
 // Saving and interrupting are two decisions, and only one of them is asked
