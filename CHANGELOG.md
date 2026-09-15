@@ -143,6 +143,7 @@
 - BuilderBot's own suite gives the same verdict inside its dev container as on a node: the harness no longer leans on the machine's git config or its sshd (e38d20e)
 - A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
 - Installing Playwright on a fresh Ubuntu node no longer ends with its missing-dependencies warning: the recipe carries the five libraries it asked for (c08e8cc)
+- A build whose output already sits in dist/ no longer prints cp's same-file complaint (413953b)
 
 ## 0.5.0: 2026-09-10
 
