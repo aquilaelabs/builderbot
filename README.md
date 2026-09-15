@@ -475,6 +475,10 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
+bb tests lab       the lab suites (test/lab-*.mjs) against the real Gitea BB_LAB_GITEA names; each skips
+                   in one line without one, and nothing records them: a lab run is a proof, not a timing
+bb lab up|down|status  the lab's own Gitea from tools/lab/docker-compose.yml, on a machine whose docker
+                   you can reach; status prints the environment the suites want
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours

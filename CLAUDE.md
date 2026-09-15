@@ -51,8 +51,9 @@ by hand cost four commands and still could not see the failed builds.
   cannot see the shielded PAT. What you *can* run here, with no daemon:
 
   ```bash
-  bb lint                       # shellcheck / hadolint / ruff / actionlint / compose / XML — same as CI
+  bb lint                       # shellcheck / hadolint / ruff / actionlint / compose / XML, the same set as CI
   bb tests run                  # the Playwright suite, timed and recorded; bb dashboard test [cards] for one file
+  bb tests lab                  # the lab suites, against the real Gitea bb lab up brings up (tools/lab)
   python3 -m py_compile scripts/dashboard/server.py
   ```
 

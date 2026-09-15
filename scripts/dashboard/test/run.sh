@@ -891,8 +891,12 @@ if [ $# -gt 0 ]; then
     tests=()
     for t in "$@"; do tests+=("$HERE/${t%.mjs}.mjs"); done
 else
+    # Every suite but the library and the lab's: a lab-*.mjs runs against a
+    # real service (roadmap R54) and is asked for by name, `bb tests lab`.
     tests=()
-    for t in "$HERE"/*.mjs; do [ "$(basename "$t")" = lib.mjs ] || tests+=("$t"); done
+    for t in "$HERE"/*.mjs; do
+        case "$(basename "$t")" in lib.mjs|lab-*.mjs) ;; *) tests+=("$t") ;; esac
+    done
 fi
 rc=0
 for t in "${tests[@]}"; do
