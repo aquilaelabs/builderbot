@@ -16,6 +16,7 @@
 - bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
 - A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
 - A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
+- Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
 
 ### Upgrading
 
