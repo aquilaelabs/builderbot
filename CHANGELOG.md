@@ -17,6 +17,7 @@
 - A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
 - A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
 - Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
+- A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
 
 ### Upgrading
 
