@@ -19,6 +19,7 @@
 - Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
 - A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
 - Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
+- A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
 
 ### Upgrading
 
@@ -135,6 +136,7 @@
 - bb devapp answers for a project's only dev instance whatever it is called, and takes --instance for a project with several (18c206b)
 - A dev instance whose data directory cannot be made on the node (a stale mount, a file in the way) is refused with that reason before docker is asked (18c206b)
 - A node's row says when a mounted share answers Stale file handle, in red, with the fix on the host; before, it read as mounted and every use of it failed (67da994)
+- Tests run inside a dev instance start in the project's directory there when the compose file mounts it (c7a722d)
 
 ## 0.5.0: 2026-09-10
 
