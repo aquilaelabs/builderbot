@@ -138,9 +138,13 @@ services:
       # - ${DEVDATA_PATH:-/mnt/user/builderbot/devdata}:/devdata
 
     # Web dashboard + browser terminals, one port: terminals are proxied
-    # through it under /term, behind the same sign-in.
-    # ports:
-    #   - "7680:7680"
+    # through it under /term, behind the same sign-in. Published on the same
+    # number it listens on, so DASHBOARD_PORT moves both, and a dev instance
+    # of BuilderBot on a node is reachable the way any project's is. The
+    # terminal port stays inside the container: nothing on the node's own
+    # 7681 is touched.
+    ports:
+      - "${DASHBOARD_PORT:-7680}:${DASHBOARD_PORT:-7680}"
 
     # Tells the Unraid Compose Manager plugin to adopt this container.
     labels:
