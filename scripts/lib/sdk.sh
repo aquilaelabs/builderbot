@@ -26,7 +26,7 @@
 # Each recipe unpacks into its own directory under the root and is undone by
 # deleting that directory — no system packages, nothing outside the root, so
 # `bb packages remove` is a plain rm and a container rebuild changes nothing.
-SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig"
+SDK_TOOLCHAINS="android node jdk playwright flutter dotnet swift go rust zig"
 
 # What `bb packages check` and `bb packages versions` answer for when asked for nothing
 # in particular: the same catalog the dashboard renders, read from the file
