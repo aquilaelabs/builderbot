@@ -83,6 +83,10 @@ it, which is a paste rather than a questionnaire.
                        init, a writable root — and change nothing. Exit 0 when
                        it is, 1 when it is not. The same checks run first on
                        every real run, before anything is installed.
+  --dev                go ahead on a family this script has never been run
+                       on for real (Arch, SUSE, Alpine, Void, Gentoo). Debian's
+                       and RHEL's need no flag. Say how it went: a run that
+                       works is what makes the next one need no flag.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
                        Nothing here needs one: an enrolled node dials OUT and
@@ -155,6 +159,7 @@ while [ $# -gt 0 ]; do
         --cache) STORE_CACHE="$2"; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
         --check) CHECK_ONLY=1; shift ;;
+        --dev)   DEV=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -225,6 +230,13 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # Nothing here exits. A machine the script cannot take is reported by the
 # pre-flight below, beside everything else it found, so one run says the
 # whole of what is wrong rather than the first thing.
+# The families this script has been run on for real: Debian's (Ubuntu
+# 24.04 and 26.04 sandboxes) and RHEL's (a Rocky sandbox). The others are
+# written to each family's tools and never run (dev, in the dashboard's
+# word), so they need --dev to proceed, and a run that works is what moves
+# one onto this list.
+VETTED_FAMILIES=" deb rhel "
+DEV="${DEV:-0}"
 FAMILY=""; FAMILY_WHY=""
 _ids=" ${ID:-} ${ID_LIKE:-} "
 case "$_ids" in
@@ -549,6 +561,16 @@ if [ "$CHECK_FAILED" = 1 ]; then
     warn "this machine is not one this script can provision — nothing was changed"
     exit 1
 fi
+case "$VETTED_FAMILIES" in
+    *" $FAMILY "*) ;;
+    *)  if [ "$DEV" = 1 ]; then
+            chk warn "the $FAMILY family has not been provisioned for real before: --dev given, so trying it"
+        else
+            printf '\n'
+            warn "the $FAMILY family has not been provisioned for real before; run again with --dev to try it, and say how it went; nothing was changed"
+            exit 1
+        fi ;;
+esac
 if [ "$CHECK_ONLY" = 1 ]; then
     printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
     [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"

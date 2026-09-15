@@ -45,6 +45,14 @@ KEYS = {
     # accounts with the one Claude login they have. The refusal is kept,
     # not removed, because the setting is for that test and nothing else.
     "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
+    # Off, the pickers offer only what has been proven: the git hosts, the
+    # hypervisors and the provisioner's OS families that carry a vetting
+    # note (the date and what proved them) in their catalogue: the alpha
+    # tier. On, every entry is offered, the unproven ones tagged dev, and
+    # the header says dev. One tree behaves as two products: production
+    # leaves this off, a dev instance turns it on, and an entry crosses
+    # over when a lab suite or a real run proves it (roadmap R54, step 6).
+    "offer_unvetted": {"default": False, "kind": "bool", "applied": "now"},
     # Off, a session on a node reads only logs belonging to the work it is
     # doing: the CI runs for its project, and what its own test runs left.
     # The machine's own logs — the agent's journal, the runner's, the

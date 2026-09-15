@@ -1205,6 +1205,8 @@ def create(req):
         named = forges.forge_of(addr["host"])
         forge = (named if named["id"] != forges.OTHER["id"]
                  else (forges.get(_field(req, "forge")) or named))
+        if not forges.allowed(forge):
+            return {"error": forges.not_offered(forge)}, 400
         if forge["fixed"] and forge["host"] and forge["host"] != addr["host"].split(":")[0].lower():
             return {"error": f"{forge['name']} is {forge['host']}, and that "
                              f"address is on {addr['host']}"}, 400
@@ -1714,6 +1716,8 @@ def link(req):
     # wrong one for it is a contradiction rather than an override.
     forge = forges.get(_field(req, "forge")) or forges.forge_of(host)
     named = forges.forge_of(host)
+    if not forges.allowed(forge):
+        return {"error": forges.not_offered(forge)}, 400
     if named["id"] != forges.OTHER["id"] and named["id"] != forge["id"]:
         return {"error": f"{host} is {named['name']}, so it cannot be linked "
                          f"as {forge['name']}"}, 400

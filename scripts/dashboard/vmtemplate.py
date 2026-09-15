@@ -66,9 +66,15 @@ TEMPLATE = Path(__file__).resolve().parents[2] / "nodes" / "unraid-vm.xml"
 #
 # `wants` says which identity fields the dialog offers. All of them take a
 # MAC; only the ones that let a machine keep an id take a uuid.
+# Whether unvetted hypervisors may be offered, from the controller's
+# settings (server.py sets it); None reads as no. `vetted` on an entry is
+# the evidence: a VM made from it and used, or "" for a template written to
+# the hypervisor's documented shape and never run.
+unvetted_ok = None
+
 HYPERVISORS = {
     "unraid": {
-        "label": "Unraid",
+        "label": "Unraid", "vetted": "bb-sandbox, bb-sandbox-redhat and bb-dev-sandbox were all made from it (2026-09-15)",
         "file": "unraid-vm.xml", "artifact": "domain XML", "lang": "xml",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
@@ -86,7 +92,7 @@ HYPERVISORS = {
         ],
     },
     "proxmox": {
-        "label": "Proxmox VE",
+        "label": "Proxmox VE", "vetted": "",
         "file": "vm/proxmox.sh", "artifact": "shell script", "lang": "sh",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac", "vmid"),
         "steps": [
@@ -99,7 +105,7 @@ HYPERVISORS = {
         ],
     },
     "libvirt": {
-        "label": "libvirt / KVM",
+        "label": "libvirt / KVM", "vetted": "",
         "file": "vm/libvirt.sh", "artifact": "virt-install command", "lang": "sh",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
@@ -113,7 +119,7 @@ HYPERVISORS = {
         ],
     },
     "qemu": {
-        "label": "QEMU (no manager)",
+        "label": "QEMU (no manager)", "vetted": "",
         "file": "vm/qemu.sh", "artifact": "shell script", "lang": "sh",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
@@ -128,7 +134,7 @@ HYPERVISORS = {
         ],
     },
     "vmware": {
-        "label": "VMware (Workstation, Fusion, ESXi)",
+        "label": "VMware (Workstation, Fusion, ESXi)", "vetted": "",
         "file": "vm/vmware.vmx", "artifact": "VMX file", "lang": "ini",
         "mac_prefix": "00:50:56", "wants": ("uuid", "mac"),
         "steps": [
@@ -141,7 +147,7 @@ HYPERVISORS = {
         ],
     },
     "hyperv": {
-        "label": "Hyper-V",
+        "label": "Hyper-V", "vetted": "",
         "file": "vm/hyperv.ps1", "artifact": "PowerShell script", "lang": "ps",
         "mac_prefix": "00:15:5D", "wants": ("mac",),
         "steps": [
@@ -155,7 +161,7 @@ HYPERVISORS = {
         ],
     },
     "virtualbox": {
-        "label": "VirtualBox",
+        "label": "VirtualBox", "vetted": "",
         "file": "vm/virtualbox.sh", "artifact": "shell script", "lang": "sh",
         "mac_prefix": "08:00:27", "wants": ("uuid", "mac"),
         "steps": [
@@ -225,9 +231,15 @@ def catalog():
     return sorted(
         [{"id": k, "label": v["label"], "artifact": v["artifact"],
           "lang": v["lang"], "wants": list(v["wants"]),
-          "mac_prefix": v["mac_prefix"]}
-         for k, v in HYPERVISORS.items()],
+          "mac_prefix": v["mac_prefix"], "dev": not v.get("vetted")}
+         for k, v in HYPERVISORS.items() if allowed(v)],
         key=lambda h: h["label"].lower())
+
+
+def allowed(v):
+    """May this hypervisor be offered and rendered: vetted, or unvetted
+    with the setting on."""
+    return bool(v.get("vetted")) or bool(unvetted_ok and unvetted_ok())
 
 
 def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
@@ -241,6 +253,9 @@ def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
     """
     hv = str(hv or DEFAULT_HV)
     spec = HYPERVISORS.get(hv)
+    if spec and not allowed(spec):
+        return {"error": f"{spec['label']} is dev, not yet vetted, so it is not offered here: "
+                         "Settings, 'Offer dev features' puts it back, tagged dev"}
     if not spec:
         return {"error": f"no template for {hv} — "
                          f"{', '.join(HYPERVISORS)} are the ones here"}

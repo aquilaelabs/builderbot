@@ -1409,6 +1409,20 @@ await page.evaluate(async () => {
   if (n) await nodeAct({ action: 'retire', id: n.id });
 });
 
+// What is offered (roadmap R54, step 6): with unvetted features off the
+// generator knows one hypervisor, the one every sandbox here was made on,
+// and refuses the rest with the sentence that names the switch. The rest
+// of this section runs with the switch on, as a dev instance does.
+{
+  const probe = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe' }));
+  ok((probe.catalog || []).map(h => h.id).join() === 'unraid' && !probe.catalog[0].dev,
+     `with unvetted features off the generator offers Unraid alone (${(probe.catalog || []).map(h => h.id).join(', ')})`);
+  const no = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe', hv: 'proxmox' }));
+  ok(/Proxmox VE is dev, not yet vetted/.test(no.error || '') && /Offer dev features/.test(no.error || ''),
+     `...and refuses another, naming the switch (${no.error})`);
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: true } }) }); });
+}
 await page.click('.nodestab #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
@@ -1420,6 +1434,9 @@ await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv opti
 const kinds = await page.$$eval('#ndBody #vm_hv option', os => os.map(o => o.value));
 ok(kinds.includes('unraid') && kinds.includes('proxmox') && kinds.length >= 5,
    `the picker offers every hypervisor a template ships for (${kinds.join(', ')})`);
+ok(await page.$$eval('#ndBody #vm_hv option', os => os.filter(o => o.value !== 'unraid').every(o => / \(dev\)$/.test(o.textContent))
+                                                     && !/dev/.test(os.find(o => o.value === 'unraid').textContent)),
+   '...the unproven ones tagged dev and Unraid not');
 await page.fill('#ndBody #vm_name', 'bb-sandbox-2');
 await page.fill('#ndBody #vm_memory_gb', '24');
 await page.click('#ndBody #vmGo');
@@ -1508,6 +1525,8 @@ for (const [hv, want, mark] of [['vmware', /^00:50:56:/, /ethernet0\.address/],
 }
 ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).error,
    'a hypervisor with no template here says so rather than guessing');
+await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: false } }) }); });
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 

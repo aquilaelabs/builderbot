@@ -1810,7 +1810,17 @@ and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
 so the rule holds while this container is down, and the tab says
 plainly what still comes from the environment and why (the placement rule and
-the unhardwiring are docs/nodes.md §13 and §11). Its **Debugging** group is
+the unhardwiring are docs/nodes.md §13 and §11). Its **What is offered**
+group is one switch, *Offer dev features*: alpha is what has been run for
+real (GitHub and Gitea among git hosts, Unraid among the VM sandbox
+methods, Debian's and RHEL's families for the provisioner), dev is the rest,
+written to each product's documented shape and never run. Off, only alpha
+is in the pickers and a dev entry asked for by name is refused with the
+sentence that names the switch; on, dev appears tagged *(dev)* and the
+header says *dev*, so the two dashboards are never confused. Each catalogue
+entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
+the provisioner's family list), and an entry crosses over when a lab suite
+or a real run proves it. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
 a developer of BuilderBot reaches for and nobody else should meet (letting

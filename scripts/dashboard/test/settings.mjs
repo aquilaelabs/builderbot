@@ -28,9 +28,22 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 // ---- the tab ---------------------------------------------------------------
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
+// One tree, two products (roadmap R54, step 6): the switch that offers the
+// unvetted git hosts, hypervisors and OS families sits in its own group,
+// off by default, and the header carries the word while it is on.
+ok(await page.$eval('.settingstab [data-set="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked
+     && e.closest('[data-group]')?.dataset.group === 'What is offered'),
+   'the "offer dev features" switch has a group of its own and starts off');
+ok(await page.$eval('#devtag', e => e.hidden), '...and the header says nothing while it is off');
+await post('/api/settings', { set: { offer_unvetted: true } });
+await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
+ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
+   '...and says dev once it is on, so two dashboards are never confused');
+await post('/api/settings', { set: { offer_unvetted: false } });
+await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Debugging',
-   `the tab's stored settings are the one group that survived the question "does this need to exist": nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'What is offered|Debugging',
+   `the tab's stored settings are the two groups that survived the question "does this need to exist": nothing that should be a constant or a project's (${groups.join(', ')})`);
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),

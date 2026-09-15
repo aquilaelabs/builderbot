@@ -2772,6 +2772,9 @@ pending.configure(write_json=write_json, state=STATE)
 # The Settings tab's own store (roadmap R29): what used to be fourteen
 # environment variables. The builder home is where the commit identity lands.
 settings.configure(write_json=write_json, state=STATE)
+# What may be offered: the catalogues gate their unvetted entries on this
+# one switch (roadmap R54, step 6), read live so a save takes at once.
+forges.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -2960,6 +2963,7 @@ import changelog                                                 # noqa: E402
 import claudegrant                                              # noqa: E402
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
+vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,

@@ -1019,7 +1019,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         <div class="setrow col">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
             `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${
-              esc(k.label)}</option>`).join("")}</select></div>
+              esc(k.label)}${k.dev ? " (dev)" : ""}</option>`).join("")}</select></div>
         <div class="prefrow">
           ${f("name", "Name", "the machine's name, and the folder its disk goes in")}
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
