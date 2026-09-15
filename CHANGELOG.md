@@ -11,6 +11,8 @@
 - The Tools tab says when a node lacks the system libraries a package on the shared store needs, and one press installs them there without reinstalling the package; the node's row says the same (bf01db5)
 - The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
 - The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
+- A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
+- Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
 
 ### Upgrading
 
