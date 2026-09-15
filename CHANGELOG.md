@@ -132,6 +132,8 @@
 - A node that mounts the projects share at /workspace needs no path-mapping pair for it: the share maps to itself unless a pair says otherwise (94fea1a)
 - The env gate asks only for settings the compose file needs: a key the file gives a default is not missing (94fea1a)
 - The Docker tab keeps its rows on screen, marked refreshing, while a build makes the daemon slow to answer, instead of showing only loading (94fea1a)
+- bb devapp answers for a project's only dev instance whatever it is called, and takes --instance for a project with several (18c206b)
+- A dev instance whose data directory cannot be made on the node (a stale mount, a file in the way) is refused with that reason before docker is asked (18c206b)
 
 ## 0.5.0: 2026-09-10
 
