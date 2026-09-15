@@ -9,6 +9,8 @@
 - Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
 - A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
 - The Tools tab says when a node lacks the system libraries a package on the shared store needs, and one press installs them there without reinstalling the package; the node's row says the same (bf01db5)
+- The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
+- The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
 
 ### Upgrading
 
@@ -116,6 +118,9 @@
 - Send to Claude from the roadmap and the bug tracker reaches a session running on a node, and says whether the line went or was left in the box unsent (47c9aa3)
 - The Tests view no longer loses a test's description when tests are inserted above one whose name carries a run-specific value (47c9aa3)
 - Sending a roadmap step or a bug to a session no longer reports it as typed but not sent when Claude folds the long line into a paste (bf593da)
+- Renaming a project and giving it a new access token in the same save works, and the token is stored for the remote's own host and scheme (924ee49)
+- Bitbucket asks for a repository access token rather than an app password, which is the credential its username pairs with (924ee49)
+- Linking to a self-hosted Gitea, Forgejo or GitLab: a token with unusual characters is stored the way git reads it, switching a remote to its token keeps the server's http scheme and port, and a missing repository is never created under the wrong owner (924ee49)
 
 ## 0.5.0: 2026-09-10
 
