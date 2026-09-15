@@ -855,7 +855,13 @@ else
             printf '   will be owned by that uid rather than the controller'"'"'s %s\n' "$SESSION_UID"
             useradd -m -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         else
-            useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
+            # Below the distribution's range for people on purpose: the uid
+            # is the controller's, so a file this account saves on the share
+            # is owned as one saved from the controller is. useradd says so
+            # in a warning that reads as a fault; the reason goes first.
+            printf '   %s takes uid %s, the controller'"'"'s, so files on the shares match\n' "$SESSION_NAME" "$SESSION_UID"
+            useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME" 2>/dev/null \
+                || useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         fi
     fi
     getent group kvm >/dev/null 2>&1 && usermod -aG kvm "$SESSION_NAME"
