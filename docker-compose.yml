@@ -101,6 +101,16 @@ services:
       # dashboard rather than silently not showing up.
       - ${WORKSPACE_PATH:-/mnt/user/projects}:/workspace
 
+      # --- this checkout, for the container's own tests ---------------------
+      # The tree the image was built from, where a `bb devapp test` on the
+      # BuilderBot project runs its suite: the exec starts in the directory
+      # that carries the project, and this is it once /workspace is a share
+      # that does not hold this checkout (a dev instance on its own share,
+      # 15 Sep). Outside /workspace on purpose, so it is not a project of
+      # this instance's; the image's own copy at /opt/builderbot is laid out
+      # for running, not for the suite.
+      - .:/opt/builderbot/src
+
       # --- the package store ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
       # system images, plus any toolchain `bb packages install` adds. Outside the
