@@ -49,15 +49,6 @@ GATE_MODES = ("auto", "ask", "deny")
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
-# How much a session may change in this project without asking first. The
-# names are Claude Code's own permission modes, which is what the launcher
-# puts in the settings file: `default` asks before every edit, `accept`
-# lets the file tools write inside the project and still asks for
-# everything else — a shell command, a push, anything outside the tree.
-# The deny list is not affected either way: a sibling project, VERSION and
-# the rules file stay refused whatever this says.
-EDIT_MODES = ("ask", "accept")
-
 # A colour for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
@@ -134,9 +125,6 @@ def _clean(rec):
                          if isinstance(rec.get("gate"), dict)
                          and (rec.get("gate") or {}).get(k) in GATE_MODES else "auto")
                      for k in GATE_KINDS},
-            # Ask by default: a project nobody has decided about behaves the
-            # way Claude Code does out of the box.
-            "edits": (rec.get("edits") if rec.get("edits") in EDIT_MODES else "ask"),
             "color": rec.get("color") if rec.get("color") in COLORS else "",
             # Whether a SESSION may rebuild this project's dev instance,
             # and it is a real grant rather than a nicety: a rebuild runs the
@@ -249,7 +237,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              edits=None, devbuild=None, color=None, workspace=None):
+              devbuild=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -295,10 +283,6 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 if v not in GATE_MODES:
                     return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
                 cur["gate"][k] = v
-        if edits is not None:
-            if edits not in EDIT_MODES:
-                return {"error": f"edits is one of {', '.join(EDIT_MODES)}, not {edits}"}
-            cur["edits"] = edits
         if devbuild is not None:
             # The bool is still accepted: it is what the page sent before
             # this became three words, and refusing it would break a client
@@ -314,7 +298,7 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         if (cur["model"] or cur["effort"] or cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["edits"] != "ask" or cur["devbuild"] != "deny"
+                or cur["devbuild"] != "deny"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose — _clean puts the defaults
@@ -324,8 +308,6 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 rec.pop("gate", None)
             if cur["gitpol"] == GITPOL_DEFAULT:
                 rec.pop("gitpol", None)
-            if cur["edits"] == "ask":
-                rec.pop("edits", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
             d["projects"][project] = rec

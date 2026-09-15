@@ -4790,7 +4790,6 @@ class Handler(BaseHTTPRequestHandler):
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
-                                edits=field(req, "edits") or None,
                                 devbuild=req.get("devbuild"),
                                 color=req.get("color"),
                                 workspace=WORKSPACE)

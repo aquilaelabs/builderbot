@@ -1491,7 +1491,7 @@ await page.click('#rnCancel');
   rmSync(tdir, { recursive: true, force: true });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnEdits', 'accept');
+  await page.selectOption('#rnModel', 'sonnet');
   // The harness accepts every dialog; this one has to be refused, which is
   // the whole case. Put the standing handler back afterwards.
   const auto = page.listeners('dialog')[0];
@@ -1505,7 +1505,7 @@ await page.click('#rnCancel');
   ok(/Cancel saves the setting/.test(asked),
      'a running session is asked about, and the question says Cancel still saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.edits === 'accept', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.prefs?.model === 'sonnet', { timeout: 20000 });
   ok(true, '...and declining the restart still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -1518,15 +1518,15 @@ await page.click('#rnCancel');
                      { timeout: 20000 });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnEdits', 'ask');
+  await page.selectOption('#rnModel', '');
   await page.click('#rnGo');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
                              { timeout: 15000 });
-  // `|| 'ask'` because a record back at every default is REMOVED rather than
-  // stored — the file says only what somebody chose — so the row carries no
-  // edits key at all, which every reader of it defaults the same way.
+  // `|| ''` because a record back at every default is REMOVED rather than
+  // stored (the file says only what somebody chose), so the row carries no
+  // model key at all, which every reader of it defaults the same way.
   await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.edits || 'ask') === 'ask',
+    .find(p => p.name === 'alpha')?.prefs?.model || '') === '',
     { timeout: 20000 });
 }
 

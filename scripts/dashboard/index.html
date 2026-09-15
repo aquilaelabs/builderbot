@@ -3364,17 +3364,6 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
-    <!-- What a session may do here without stopping to ask. Per project,
-         because trust is: a codebase somebody has just uploaded is a project
-         where confirming every file is all the first session does. -->
-    <div class="field" id="rnEditsField">
-      <div class="setrow col">
-        <label class="lbl" for="rnEdits">Without asking<span class="help"
-          data-tip="The file tools, inside this project only. A shell command, a push and anything outside the tree still ask, and a sibling project, VERSION and the house rules stay refused whatever this says."
-          tabindex="0">?</span></label>
-        <select id="rnEdits" aria-label="what a session may do without asking"></select>
-      </div>
-    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -5542,7 +5531,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: "", edits: "ask", color: ""};
+                 gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -5572,13 +5561,6 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-// What a session may change without asking (prefs.edits), which the launcher
-// turns into Claude Code's own permission mode in the session's settings
-// file. It covers the FILE TOOLS and nothing else, so a project set to the
-// second one still asks about every shell command. The deny list is untouched
-// by either.
-const EDIT_MODES = [["ask", "nothing, confirm everything"],
-                    ["accept", "this project's files"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
@@ -5590,7 +5572,6 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
-               edits: p?.prefs?.edits || "ask",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   rnFillNode();
@@ -5648,8 +5629,7 @@ function rnFillPrefsRest(p){
     el.value = p?.prefs?.gate?.[k] || "auto";
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
-                                  ["rnEffort", EFFORTS, rnPrefWas.effort],
-                                  ["rnEdits", EDIT_MODES, rnPrefWas.edits]]){
+                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       el.innerHTML = table.map(([v, l]) =>
@@ -5671,8 +5651,7 @@ function rnDrawPrefs(){
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(myClaude(rnFor));
   const changed = rnModelPick() !== rnPrefWas.model
-               || $("rnEffort").value !== rnPrefWas.effort
-               || $("rnEdits").value !== rnPrefWas.edits;
+               || $("rnEffort").value !== rnPrefWas.effort;
   const dflt = rnPrefWas.model === "" && rnModelNow
     ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
       + `own default here, so leaving it is not a change.` : "";
@@ -15001,7 +14980,7 @@ function renameProject(name, mode = "all"){
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
-  for (const id of ["rnNameField", "rnPrefField", "rnEditsField",
+  for (const id of ["rnNameField", "rnColorField", "rnPrefField",
                     "rnGateField", "rnBuildField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
@@ -15200,9 +15179,6 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = rnModelPick(), effort = $("rnEffort").value;
-  // Read by the launcher when a session starts, like the model, so a change
-  // costs a restart, and is asked about the same way.
-  const edits = $("rnEdits").value;
   const node = $("rnNode").value;
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
@@ -15212,8 +15188,7 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color;
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
-    || edits !== rnPrefWas.edits;
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -15254,7 +15229,7 @@ async function rnSubmit(){
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort, edits,
+        body: JSON.stringify({project: name, model, effort,
                               node, build, test, gate, color,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
