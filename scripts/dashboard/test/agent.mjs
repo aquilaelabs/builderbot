@@ -718,7 +718,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const conf = bbOnNode(['git', 'fetch', '-c', 'core.sshCommand=id']);
       const other = bbOnNode(['git', 'status']);
       ok(/not accepted/.test(exec) && /not accepted/.test(conf) && /takes push, fetch/.test(other),
-         '...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it');
+         `...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it (${
+           [exec, conf, other].map(x => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')})`);
       // The identity a node session adopts is the controller's, through the
       // same settings answer bb-tty reads.
       const st = JSON.parse(bbOnNode(['settings', '--json']));
@@ -2011,7 +2012,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       }, 60000);
       ok(jb && jb.state === 'failed' && jb.exit_code === 73 && /could not make .*blocked: (Not a directory|File exists)/.test(jb.log || '')
          && !/\$ .*compose/.test(jb.log || ''),
-         `a bind directory the node cannot make fails the job with the machine's reason before the plan runs (${jb?.state} ${jb?.exit_code}: ${(jb?.log || '').split('\n').filter(l => /could not/.test(l)).join(' / ').slice(0, 120)})`);
+         `a bind directory the node cannot make fails the job with the machine's reason before the plan runs (${jb?.state} ${jb?.exit_code}; dirs=${JSON.stringify(jb?.spec?.dirs)}: ${(jb?.log || '').replace(/\s+/g, ' ').slice(-300)})`);
       ok(jb && (jb.outputs || []).some(o => o.kind === 'compose' && o.failed_at === 'preparing'),
          '...and names the step, so the row says a directory could not be made rather than that up failed');
       rmSync(`${DIR}/devdata/blocked`, { force: true });

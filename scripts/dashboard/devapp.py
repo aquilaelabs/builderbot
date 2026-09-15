@@ -1883,13 +1883,32 @@ def dev_data_dir(project, instance=MAIN, make=True):
     None when the mkdir failed. The caller then leaves BB_DEV_DATA unset and
     the compose fails loudly, which beats mounting an empty directory and
     calling it the cache drive.
+
+    On an agent node the directory is the AGENT's to make: it travels in the
+    plan's `dirs` and the agent makes it before the first step, so the path
+    is answered whether or not the node has an ssh address. An agent that
+    reports docker but no sshd (a node that is itself a container) has no
+    address and used to get no data directory at all, so its up ran with the
+    bind unplanned (found running this suite inside builderbot-dev, 15 Sep).
     """
     name = _pname(project, instance)
     if not sandbox_daemon():
-        return None
+        if not _agent_docker():
+            return None
+        return posixpath.join(DEVDATA, name)
     if make and not _devdata_run("mkdir", name):
         return None
     return posixpath.join(DEVDATA, name)
+
+
+def _agent_docker():
+    """Is the node being addressed an agent node whose census reports
+    docker? That node runs compose as a job and makes bind directories
+    itself, so it needs no ssh address for a data directory to exist."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    return bool(n and n.get("kind") == "agent"
+                and ((n.get("reported") or {}).get("docker")))
 
 
 def check_paths(node_id=None):

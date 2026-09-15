@@ -170,6 +170,15 @@ unset BUILDERBOT_ROLE BB_CONTROLLER BB_CONTROLLER_PIN BB_NODE BUILDERBOT_NODE \
       BB_NODE_PACKAGES BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
+# git's global and system config are the suite's own, not the machine's. The
+# fixtures are `git init` with no branch named, so the branch they start on
+# is whatever init.defaultBranch says: nothing on a node, so master; `main`
+# in BuilderBot's own image, whose ~/.gitconfig sets it. The relayed-push
+# refusals in agent.mjs read the policy on that branch, and went green on the
+# node and red inside builderbot-dev with nothing in the diff to explain it
+# (15 Sep). Pinned here, so a run says the same thing on every machine.
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$S/gitconfig"
+printf '[init]\n\tdefaultBranch = master\n' > "$GIT_CONFIG_GLOBAL"
 tmux new-session -d -s probe -c /tmp
 sock="$(tmux display-message -t probe -p '#{socket_path}' 2>/dev/null || true)"
 case "$sock" in
