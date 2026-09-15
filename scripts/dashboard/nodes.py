@@ -1078,6 +1078,7 @@ def _census(c):
                 "path": str(m["path"])[:200], "source": str(m.get("source") or "")[:200],
                 "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
                 "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200],
+                "stale": bool(m.get("stale")),
                 # What mount said when it failed — the server's own reason.
                 "error": str(m.get("error") or "")[:200]})
     sv = c.get("services") if isinstance(c.get("services"), dict) else {}

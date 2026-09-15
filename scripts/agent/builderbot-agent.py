@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.61"
+AGENT_VERSION = "0.5.62"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1428,6 +1428,22 @@ def mounts_now():
             else:
                 m["mounted"] = True
                 m["real"] = m.get("source") or ""
+    # A mount that is there and answers Stale file handle is worse than one
+    # that is missing: every list of mounts calls it fine and every read
+    # fails (roadmap R41; builderbot-dev's up failed on exactly this, 15
+    # Sep). Remounting on this side does not help when the export was
+    # re-created under it on the host, so the fix is named as the host's.
+    for m in got:
+        if m.get("mounted") and str(m.get("path") or "").startswith("/"):
+            try:
+                os.statvfs(m["path"])
+            except OSError as e:
+                if e.errno == errno.ESTALE:
+                    m["stale"] = True
+                    m["error"] = ("mounted, but the handle is stale: the export was re-created "
+                                  "under it on the host; re-export it there (Unraid: the share's "
+                                  "NFS setting off and on, or a pool the mover leaves alone), "
+                                  "then Apply storage here")
     return got
 
 

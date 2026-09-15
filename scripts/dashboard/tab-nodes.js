@@ -149,6 +149,9 @@ function mountState(m, reported){
   if (!r.mounted) return [r.error
     ? `not mounted: ${r.error}${/access denied/i.test(r.error) ? ": the host's export rule names another address" : ""}`
     : `not mounted${r.source ? `: fstab has ${r.source}` : ""}`, "bad"];
+  // Mounted and answering Stale file handle: the worst of the states, since
+  // every list of mounts calls it fine and every read fails.
+  if (r.stale) return [r.error || "mounted, but the handle is stale: re-export it on the host", "bad"];
   const from = r.real && r.real !== r.source ? `mounted from ${r.real} (fstab says ${r.source})`
                                              : `mounted${r.ro ? ", read-only" : ""}`;
   return [diff ? `${from}: applying will change it` : from, diff ? "warn" : ""];
@@ -433,6 +436,12 @@ function nodeDrift(n){
   for (const m of d.mounts || []){
     const [st, cls] = mountState(m, rep.mounts);
     if (cls) storage.push(`${m.path || m.source || "a mount"}: ${st}`);
+  }
+  // A stale mount is drift whether or not the desired list names it: it
+  // reads as mounted to every list and fails every read (roadmap R41).
+  for (const r of rep.mounts || []){
+    if (r.stale && !(d.mounts || []).some(m => m.path === r.path))
+      storage.push(`${r.path}: ${r.error || "mounted, but the handle is stale: re-export it on the host"}`);
   }
   for (const [role, path] of Object.entries(d.stores || {})){
     if (!path) continue;

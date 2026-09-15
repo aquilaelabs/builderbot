@@ -1666,7 +1666,7 @@ def _node_mounts_at(path):
     n = queue.node(nid) if (queue is not None and nid) else None
     for m in ((n or {}).get("reported") or {}).get("mounts") or []:
         if isinstance(m, dict) and str(m.get("path") or "").rstrip("/") == path \
-                and m.get("mounted", True):
+                and m.get("mounted", True) and not m.get("stale"):
             return True
     return False
 

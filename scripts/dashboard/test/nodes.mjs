@@ -1259,6 +1259,28 @@ print(json.dumps(out))
   const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
   ok(row?.session_at === 'shed' && row?.session_why === '',
      'and once the share is mounted the button is live there');
+  // A mount that is there and answers Stale file handle (roadmap R41): every
+  // list of mounts calls it fine and every read fails, and remounting on the
+  // node does not help when the export was re-created under it on the host.
+  // The census says so, the row says so in red with the host-side fix, and
+  // nothing treats the path as present.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, session: SE, mounts: [...CENSUS.mounts,
+      { path: '/devdata', source: 'nas:/mnt/user/bb-sandbox/devdata', type: 'nfs', ro: false, mounted: true,
+        real: 'nas:/mnt/user/bb-sandbox/devdata', stale: true,
+        error: 'mounted, but the handle is stale: the export was re-created under it on the host; re-export it there, then Apply storage here' }] },
+      version: shipped.version, digest: shipped.digest }) });
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForFunction(id => (nodesList || []).find(n => n.id === id)?.reported?.mounts?.some(m => m.path === '/devdata' && m.stale),
+                             minted.id, { timeout: 15000 });
+  ok(true, 'the census carries that a mounted share answers stale');
+  await pickNode(page, minted.id);
+  await page.waitForFunction(id => /handle is stale/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
+                             minted.id, { timeout: 15000 });
+  ok(await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`, r =>
+       /\/devdata: mounted, but the handle is stale/.test(r.textContent) && /re-export it there/.test(r.textContent)),
+     'the row says which mount is stale and that the fix is on the host, whether or not the desired list names it');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
