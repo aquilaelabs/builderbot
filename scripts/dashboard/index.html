@@ -14648,7 +14648,8 @@ $("pCreate").onclick = async () => {
   // to another mode while this request runs, and everything below must keep
   // talking about the flow the operator actually submitted.
   const mode = pMode, linkName = pLink, gen = pGen;
-  const name = $("pName").value.trim(), url = $("pUrl").value.trim();
+  const name = $("pName").value.trim();
+  let url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
   const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
@@ -14670,6 +14671,11 @@ $("pCreate").onclick = async () => {
     const fg = pForge();
     if (mode === "link" && !fg.fixed && !pHost())
       return fail(`the address you reach ${fg.name} on, e.g. git.example.com`);
+    // owner/repo alone, with the host already named beside it, is an address
+    // on that host: the placeholder shows the long form, and typing only the
+    // half the host box does not already know is the natural thing to do.
+    if (mode === "link" && /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)+$/.test(url) && pHost())
+      url = `https://${pHost()}/${url}`;
     if (mode === "link" && pLinkAuth === "token" && !linkToken)
       return fail("an access token for this project: a push has to authenticate somehow");
     if (mode === "link" && pLinkAuth === "key" && !key){

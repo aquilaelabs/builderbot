@@ -91,11 +91,16 @@ FORGES = (
      "about": "gitlab.com, or your own — replace the host. Subgroups are "
               "allowed in the path, which no other host here permits."},
     {"id": "bitbucket", "name": "Bitbucket", "host": "bitbucket.org", "fixed": True,
+     # The username Bitbucket pairs a repository or workspace ACCESS TOKEN
+     # with. An app password is paired with the account's own username
+     # instead, which nothing here asks for, so the hint names the token.
      "user": "x-token-auth",
      "kind": "", "nested": False,
-     "token": None, "hint": "an app password",
+     "token": None, "hint": "a repository access token",
      "about": "Reached with git alone, so the repository has to exist "
-              "already — create it empty on Bitbucket first."},
+              "already: create it empty on Bitbucket first, and give it a "
+              "repository access token rather than an app password, which "
+              "would need your username beside it."},
     {"id": "git", "name": "Another git host", "host": "", "fixed": False,
      "user": "oauth2",
      "kind": "", "nested": True,
@@ -192,7 +197,13 @@ def forge_of(host):
     for f in FORGES:
         if f["host"] and f["host"].lower() == h.split(":")[0]:
             return f
+    # With the port, then without it: a Gitea linked over https carries its
+    # port in the host and is remembered that way, and the same server
+    # reached over ssh afterwards names the host alone.
     told = known().get(h)
+    if not told:
+        bare = h.split(":")[0]
+        told = next((v for k, v in known().items() if k.split(":")[0] == bare), "")
     if told and told in BY_ID:
         return BY_ID[told]
     # Nobody has said what this one runs. `git` is the honest answer: git, and
@@ -389,11 +400,13 @@ def cred_user(entry, host, token, scheme="https"):
     return whoami(entry, host, token, scheme) or entry["user"]
 
 
-def create_repo(entry, host, token, path, scheme="https"):
+def create_repo(entry, host, token, path, scheme="https", user=""):
     """Make an empty private repository. "" on success, else why not.
 
     Reached only when the host has already answered "not found" for it, which
-    is the one answer that proves there is nothing there to harm.
+    is the one answer that proves there is nothing there to harm. `user` is
+    the account the token belongs to, when the host said: a repository can
+    be made under an organisation or under that account, and nowhere else.
     """
     base = api_base(entry, host, scheme)
     if not base:
@@ -413,6 +426,14 @@ def create_repo(entry, host, token, path, scheme="https"):
     if j is not None:
         return ""
     first = why
+    # The account's own path is only right when the owner IS the account:
+    # falling back to it for anybody else made owner/repo under the token's
+    # user, and the push to the address that was asked for then failed on
+    # a repository that was never there.
+    if user and owner.lower() != user.lower():
+        return (f"{entry['name']} would not create {path}: {owner} is not an "
+                f"organisation this token can create in ({first}), and the "
+                f"token is {user}'s, so it cannot make one under {owner}")
     j, why = _ask(f"{base}/user/repos", entry["kind"], token, body)
     if j is not None:
         return ""
