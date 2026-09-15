@@ -15,6 +15,7 @@
 - Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
 - bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
 - A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
+- A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
 
 ### Upgrading
 
