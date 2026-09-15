@@ -42,6 +42,7 @@
 - A second instance of a project can run beside the first on another branch, and a port the other one already has is named on the row before you press rather than by compose after (133fab3)
 - A node's runner can register with a Gitea or Forgejo as well as GitHub: pick the host beside the address, and the node runs Gitea's act_runner with every job on its own toolchain (77505dc)
 - A node holds one CI runner per git host: GitHub's and Gitea's side by side, listed on the node's row with their own Install and Remove, the same labels on each, so a project's workflow lands on the node whichever host its repository is on (05e67c4)
+- bb test can be kept inside a project's dev container: the Docker row's second picker, Claude tests, on only makes a container that is down a refusal instead of a run on the node (e38d20e)
 
 ### Changed
 
@@ -138,6 +139,8 @@
 - A node's row says when a mounted share answers Stale file handle, in red, with the fix on the host; before, it read as mounted and every use of it failed (67da994)
 - Tests run inside a dev instance start in the project's directory there when the compose file mounts it (c7a722d)
 - The sandbox VM XML the Nodes tab generates accepts any vCPU count: its CPU topology used to stay at six, which libvirt refused for anything else (c9da64c)
+- The Docker tab's node picker keeps its size on a phone instead of shouting beside its label (e38d20e)
+- BuilderBot's own suite gives the same verdict inside its dev container as on a node: the harness no longer leans on the machine's git config or its sshd (e38d20e)
 
 ## 0.5.0: 2026-09-10
 
