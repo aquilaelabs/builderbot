@@ -8,10 +8,15 @@
 services:
   builderbot:
     image: ghcr.io/stencil-projects/builderbot:${BUILDERBOT_TAG:-latest}
-    # Building locally instead of pulling? Comment out `image:` above and
-    # uncomment this block (or keep both to build and tag in one step).
-    # build:
-    #   context: .
+    # An install pulls the image; BuilderBot's own dev instance on a node
+    # builds this checkout instead, the way any project's dev instance is
+    # built from its tree: its env file sets BUILDERBOT_PULL=build and a tag
+    # of its own (BUILDERBOT_TAG=dev). With the default policy compose pulls
+    # what is missing and never builds unless asked, so `docker compose up`
+    # on a fresh install is unchanged.
+    build:
+      context: .
+    pull_policy: ${BUILDERBOT_PULL:-missing}
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
