@@ -1242,7 +1242,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* A `font:` shorthand carries the SIZE with it, and this selector outranks
    the shared phone rule, so this field alone stayed 12px on a phone and iOS
    zoomed into a layout that cannot zoom back. Every other control that sets
-   its own font says so again here (`.dmpick select`, the sidebar's selects);
+   its own font says so again here (the chat bar, the code box);
    this one had been forgotten, and uniform.mjs caught it. */
 @media(max-width:900px){ .verinit .vstart{font-size:16px} }
 .verinit .vdir{flex:0 1 auto;min-width:0}
@@ -2418,9 +2418,11 @@ button[aria-busy="true"]{opacity:.75}
 .jbfilter input{width:15px;height:15px;flex:0 0 auto}
 .jberr.warn{color:var(--warn)}
 /* The manager's node picker select keeps the house control font wherever it
-   renders: .dmtab predates the scaffold's groups. */
+   renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
+   select never zooms iOS, so it keeps the size of the text beside it and
+   takes the finger height instead (uniform.mjs measures both ways). */
 .dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
-@media(max-width:900px){ .dmpick select{font-size:16px} }
+@media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */
