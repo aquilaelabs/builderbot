@@ -272,7 +272,11 @@ pkg_refresh() {
 # nfs-utils against nfs-client), given by the caller.
 pkg() {
     case "$FAMILY" in
-        deb)    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" ;;
+        # No pty for dpkg and no needrestart dialog: run under a pseudo-
+        # terminal with its output on a pipe (ssh -t ... | tee), apt-get
+        # stopped on SIGTTOU and sat for eleven minutes (measured 15 Sep).
+        deb)    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+                apt-get -o Dpkg::Use-Pty=0 install -y -qq "$@" ;;
         rhel)   dnf -y -q install "$@" ;;
         arch)   pacman -S --noconfirm --needed --quiet "$@" >/dev/null ;;
         suse)   zypper -n -q install -y "$@" >/dev/null ;;
