@@ -148,6 +148,15 @@ remove_if_asked() {
     [ "$REMOVE" = 1 ] || return 0
     [ "$(id -u)" -eq 0 ] || { echo "run this as root: sudo bash $0 --remove" >&2; exit 1; }
     if [ -x /usr/local/sbin/bb-sandbox ]; then
+        # The copy this script carries goes in first: the machine's may
+        # predate the uninstall verb (it did on the first node this was
+        # tried on), and this script is the newer of the two by definition.
+        tmp="$(mktemp)"
+        sed -n "/^cat > \"\$BBSANDBOX_TMP\" <<'BBSANDBOX'\$/,/^BBSANDBOX\$/p" "$0" | sed '1d;$d' > "$tmp"
+        if [ -s "$tmp" ] && head -1 "$tmp" | grep -q '^#!'; then
+            install -m 0750 -o root -g root "$tmp" /usr/local/sbin/bb-sandbox
+        fi
+        rm -f "$tmp"
         exec /usr/local/sbin/bb-sandbox uninstall "$@"
     fi
     echo "nothing of BuilderBot's is installed here (no /usr/local/sbin/bb-sandbox)"
