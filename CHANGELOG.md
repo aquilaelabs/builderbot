@@ -13,6 +13,7 @@
 - The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
 - A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
 - Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
+- bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
 
 ### Upgrading
 
