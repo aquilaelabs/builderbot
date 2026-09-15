@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.68"
+AGENT_VERSION = "0.5.69"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2653,8 +2653,20 @@ class Agent:
             # half must not take the job half down with it — a packages
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
+            before = self.session_bundle
             self.session_try(r.get("bundle") or "")
             self.runner_env_sync()
+            # A bundle that moved carries a catalog that may have moved with
+            # it, and the census read that catalog before the fetch: one more
+            # hello now, so the row does not show the old answer until the
+            # next ten-minute one (R57). Once: the second sees no move.
+            if before and self.session_bundle != before and not getattr(self, "_rehello", False):
+                self._rehello = True
+                try:
+                    log("bundle moved: a fresh census follows")
+                    return self.hello()
+                finally:
+                    self._rehello = False
         return st, r
 
     def runner_env_sync(self):
@@ -4003,6 +4015,7 @@ class Agent:
                     url = f.read().strip() or url
             slot = os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR) else runner_slot(url)
             job.say(f"deregistering the runner {slot} on its forge\n")
+            job.flush()
             st, code = self._apply_runner(job, {"want": False, "slot": slot, "url": url,
                                                 "forge": "gitea" if "address" in rec else "github"})
             if st != "succeeded":
@@ -4012,7 +4025,12 @@ class Agent:
         # systemd machine, so the uninstall outlives the unit it removes;
         # anywhere else (the harness, a machine without systemd) a detached
         # process, which the removal of this one does not take with it.
+        # Started, then WATCHED for a few seconds before this job reports
+        # (B132): an uninstall that fails at once (a bb-sandbox without the
+        # verb, a refusal) must fail this job, or the controller retires a
+        # node whose machine is untouched and whose credential is then dead.
         started = False
+        proc = None
         if os.geteuid() == 0 and shutil.which("systemd-run"):
             r = subprocess.run(["systemd-run", "--unit", "builderbot-uninstall", "--collect",
                                 "--quiet", *argv], capture_output=True, text=True, check=False)
@@ -4021,12 +4039,30 @@ class Agent:
                 job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
         if not started:
             try:
-                subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True)
+                proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        start_new_session=True)
             except OSError as e:
                 job.say(f"could not start the uninstall: {e}\n")
                 return "failed", 69
-        job.say("the uninstall is running on this machine; this agent goes with it, so this is its last word\n")
+        job.say("the uninstall is running on this machine\n")
+        job.flush()
+        time.sleep(4)
+        if proc is not None:
+            code = proc.poll()
+            if code not in (None, 0):
+                job.say(f"the uninstall ended at once with exit {code}; nothing of this node was retired\n")
+                return "failed", code
+        elif started:
+            r = subprocess.run(["systemctl", "show", "-p", "ActiveState,Result", "builderbot-uninstall"],
+                               capture_output=True, text=True, check=False)
+            state = dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+            if state.get("ActiveState") in ("failed",) or state.get("Result") not in ("", "success", None):
+                tail = subprocess.run(["journalctl", "-u", "builderbot-uninstall", "--no-pager", "-n", "5", "-o", "cat"],
+                                      capture_output=True, text=True, check=False).stdout.strip()
+                job.say(f"the uninstall failed at once ({state.get('Result')}): {tail[-300:]}\n"
+                        "nothing of this node was retired\n")
+                return "failed", 70
+        job.say("it is still running; this agent goes with it, so this is its last word\n")
         return "succeeded", 0
 
     def _sh(self, job, argv, cwd=None, timeout=300):
@@ -4606,13 +4642,23 @@ class Agent:
             else:
                 arch = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64", "armv7l": "arm-7"}.get(platform.machine(), "amd64")
                 job.say("asking gitea.com for the latest act_runner release…\n")
+                rel = {}
                 try:
                     with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
                                  if re.fullmatch(rf"(gitea-runner|act_runner)-[0-9.]+-linux-{arch}", a.get("name", "")))
-                except (OSError, ValueError, StopIteration, KeyError) as e:
-                    job.say(f"could not find the act_runner release: {e}\n")
+                except (OSError, ValueError, KeyError) as e:
+                    job.say(f"could not fetch the act_runner release from {ACT_RUNNER_RELEASES}: {e}\n")
+                    return "failed", 69
+                except StopIteration:
+                    # The reason that was missing when the assets were renamed
+                    # under us (B130): what the release holds, so the next
+                    # rename is a one-line fix rather than a round trip.
+                    names = [str(a.get("name") or "") for a in rel.get("assets", [])]
+                    job.say(f"could not find the act_runner release: {rel.get('tag_name') or 'the latest release'} "
+                            f"has no asset named gitea-runner-<version>-linux-{arch} or "
+                            f"act_runner-<version>-linux-{arch}; it has {', '.join(names[:12]) or 'no assets'}\n")
                     return "failed", 69
                 job.say(f"downloading {asset}\n")
                 job.flush()
@@ -4645,6 +4691,7 @@ class Agent:
         u = urllib.parse.urlsplit(url)
         instance = f"{u.scheme}://{u.netloc}"
         job.say(f"registering {name} with {url} (instance {instance}) [{','.join(labels)}]\n")
+        job.flush()          # a register can hang; the log says where it is (B129)
         code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", instance,
                                           "--token", r["token"], "--name", name,
                                           "--labels", ",".join(f"{x}:host" for x in labels)])

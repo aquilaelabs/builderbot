@@ -2117,7 +2117,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
     const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(j.state) ? j : null; }, 30000);
-    ok(fin?.state === 'succeeded' && /uninstall is running on this machine; this agent goes with it/.test(fin.log || ''),
+    ok(fin?.state === 'succeeded' && /the uninstall is running on this machine[\s\S]*it is still running; this agent goes with it/.test(fin.log || ''),
        `the agent starts the uninstall on the machine and says it is its last word (${fin?.state}: ${(fin?.log || '').slice(-120).replace(/\n/g, ' / ')})`);
     ok(existsSync(SANDBOX_STATE + '.uninstall') && readFileSync(SANDBOX_STATE + '.uninstall', 'utf8') === 'uninstall --yes',
        '...through bb-sandbox uninstall --yes, detached from the agent');
