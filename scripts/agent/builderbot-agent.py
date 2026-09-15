@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.66"
+AGENT_VERSION = "0.5.67"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -966,6 +966,13 @@ def _clean_version(text):
             r"(?i)\s*(error|warning|woah|note)\b", line):
         return "present"
     return line[:40]
+
+
+def extract_sandbox_tool(text):
+    """The bb-sandbox script embedded in provision-linux.sh: the body of its
+    BBSANDBOX heredoc, or "" when the marker pair is not there."""
+    m = re.search(r"<<'BBSANDBOX'\n(.*?)\nBBSANDBOX\n", text, re.S)
+    return (m.group(1) + "\n") if m else ""
 
 
 def read_catalog(into):
@@ -3918,6 +3925,7 @@ class Agent:
         root's; offered by the controller only to nodes that enrolled as a
         sandbox, and refused here without bb-sandbox, which is the stamp."""
         what = spec.get("apply")
+        self.refresh_sandbox_tool(job)
         # Per verb, not one stamp for all of them (roadmap #23): storage and
         # network edit fstab and netplan, which only a machine provisioned
         # as a sandbox — a MANAGED node — hands over. A runner needs only its
@@ -3943,6 +3951,40 @@ class Agent:
             return self._apply_uninstall(job)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def refresh_sandbox_tool(self, job):
+        """The machine's bb-sandbox brought up to the bundle's copy before a
+        system job runs, when this agent is root and a copy is there to
+        compare: the provisioner wrote it once, a verb the controller now
+        asks for (uninstall, 15 Sep) may be newer than that write, and the
+        bundle carries the provisioner it is embedded in. Said when it
+        changes, silent otherwise; a machine that was never a sandbox has no
+        copy and gets none."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
+            return
+        store = pkg_root(self.state)
+        src = os.path.join(store, ".bb", "current", "nodes", "provision-linux.sh") if store else ""
+        if not src or not os.path.isfile(src):
+            return
+        try:
+            with open(src, encoding="utf-8") as f:
+                want = extract_sandbox_tool(f.read())
+            with open(SANDBOX_BIN, encoding="utf-8") as f:
+                have = f.read()
+        except OSError:
+            return
+        if not want or want == have:
+            return
+        tmp = SANDBOX_BIN + ".new"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(want)
+            os.chmod(tmp, 0o750)
+            os.replace(tmp, SANDBOX_BIN)
+        except OSError as e:
+            job.say(f"could not refresh {SANDBOX_BIN} from the bundle: {e}\n")
+            return
+        job.say(f"{SANDBOX_BIN} refreshed from the bundle\n")
 
     def _apply_uninstall(self, job):
         """Take BuilderBot off this machine, from the Nodes tab. The runners

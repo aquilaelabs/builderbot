@@ -274,6 +274,9 @@ COPY config/packages.json /opt/builderbot/config/packages.json
 # renders with an identity per VM (vmtemplate.py). Two levels above
 # server.py, where a checkout keeps them too.
 COPY nodes/unraid-vm.xml /opt/builderbot/nodes/unraid-vm.xml
+# In the bundle a node fetches, so the agent can refresh the machine's
+# bb-sandbox (embedded in it) when a system job needs a newer verb.
+COPY nodes/provision-linux.sh /opt/builderbot/nodes/provision-linux.sh
 COPY nodes/vm/ /opt/builderbot/nodes/vm/
 # The changelog, for the welcome panel: shown once per image update, so it
 # has to travel with the image it describes. Two levels above server.py,

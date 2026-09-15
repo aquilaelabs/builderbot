@@ -409,6 +409,22 @@ try {
     ok(existsSync(`${store}/.bb/current/scripts/dashboard/bb-work-note`)
        && existsSync(`${store}/.bb/current/scripts/lib/bbapi.py`),
        '...and the bundle carries the hooks bb-tty writes into a session and bb\'s API client');
+    // ...and the provisioner, which embeds bb-sandbox: the agent refreshes the
+    // machine's copy from it before a system job, so a verb the controller
+    // asks for (uninstall) is there on a node provisioned before the verb was.
+    ok(existsSync(`${store}/.bb/current/nodes/provision-linux.sh`),
+       '...and the provisioner, so the machine\'s bb-sandbox can be refreshed from the bundle');
+    {
+      const tool = execFileSync('python3', ['-c', `
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+t = m.extract_sandbox_tool(open(${JSON.stringify(`${REPO}/nodes/provision-linux.sh`)}).read())
+print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
+`], { encoding: 'utf8' }).trim().split('\n');
+      ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
+         `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
+    }
     // ...and the ones before it do not pile up forever. One directory per
     // delivery, one delivery per commit that touches bb: 33 of them in four
     // days on the first node anybody looked at. Driven directly rather than

@@ -1447,7 +1447,7 @@ accept nothing new: what makes a node safe to reboot), **Clear cache**,
 **Revoke** and **Remove** (retire: off every list, row kept as history, and an
 id is never reused), and on a node provisioned as a sandbox **Uninstall**:
 its runners deregistered on their forges, then the agent and its unit, the
-bb and builder accounts with their homes, the mounts BuilderBot used, its
+`bb` and `builder` accounts with their homes, the mounts BuilderBot used, its
 stores on that disk, the firewall rule and bb-sandbox itself taken off the
 machine, and the row retired when it is done. Docker, the packages the
 provisioner installed, the empty mountpoints and everything on the shares

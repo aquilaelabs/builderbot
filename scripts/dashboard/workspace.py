@@ -258,7 +258,7 @@ def provenance(project, rel):
 # rest of scripts/dashboard — the notebook modules, users.py, server.py —
 # because a node has no /config for them to read; the verbs that need them
 # are relayed back here (server._bb_relay).
-BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json",
+BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json", "nodes/provision-linux.sh",
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
                 "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
                 # The gate, and the template it compares a project's
