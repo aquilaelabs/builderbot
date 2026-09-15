@@ -169,12 +169,29 @@ def reset_state(state):
     there (accounts, nodes, project settings, git tokens, the notebook,
     memories, logs), so a reset pressed by mistake is a move back rather
     than a loss; earlier resets' directories are left where they are.
-    Project files are not in here at all. Returns the directory."""
+    Project files are not in here at all. Returns {dest, kept}: where it
+    went, and the names that stayed because they could not be moved (the
+    runner tokens' root-only store, a volume's mountpoint, anything the
+    filesystem refused), which the caller says rather than hides. A refusal
+    on one entry never stops the rest: a half-moved state that also stopped
+    is the worst of both."""
     state = Path(state)
     dest = state / time.strftime(".reset-%Y%m%d-%H%M%S")
     dest.mkdir()
+    kept = []
     for p in sorted(state.iterdir()):
         if p.name.startswith(".reset-"):
             continue
-        shutil.move(str(p), str(dest / p.name))
-    return dest
+        if p.name in RESET_KEEPS:
+            kept.append(p.name)
+            continue
+        try:
+            shutil.move(str(p), str(dest / p.name))
+        except OSError:
+            kept.append(p.name)
+    return {"dest": dest, "kept": kept}
+
+
+# Left where they are by a reset: the runner tokens' store is root's and the
+# mountpoint of a volume, and mint-runner-token --reset empties it instead.
+RESET_KEEPS = ("runner-tokens",)

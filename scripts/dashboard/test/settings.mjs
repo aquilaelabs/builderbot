@@ -68,14 +68,15 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = Path(tempfile.mkdtemp())
 (d / 'users.json').write_text('{}'); (d / 'logs').mkdir(); (d / 'logs' / 'a.log').write_text('x')
 (d / '.reset-20260101-000000').mkdir(); (d / '.reset-20260101-000000' / 'old').write_text('o')
-dest = m.reset_state(d)
+(d / 'runner-tokens').mkdir()
+r = m.reset_state(d); dest = r["dest"]
 print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p.name for p in dest.iterdir()),
-                  "old_kept": (d / '.reset-20260101-000000' / 'old').is_file(), "dest": dest.name}))
+                  "old_kept": (d / '.reset-20260101-000000' / 'old').is_file(), "dest": dest.name, "kept": r["kept"]}))
 `], { encoding: 'utf8' });
   const r = JSON.parse(out);
-  ok(r.moved.join() === 'logs,users.json' && r.left.length === 2 && r.left.every(n => n.startsWith('.reset-'))
-     && r.old_kept && /^\.reset-\d{8}-\d{6}$/.test(r.dest),
-     `the reset moves everything into a dated directory beside it and leaves earlier resets alone (${JSON.stringify(r)})`);
+  ok(r.moved.join() === 'logs,users.json' && r.left.join() === '.reset-20260101-000000,' + r.dest + ',runner-tokens'
+     && r.old_kept && /^\.reset-\d{8}-\d{6}$/.test(r.dest) && r.kept.join() === 'runner-tokens',
+     `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
 ok(groups.join('|') === 'What is offered|Debugging|Reset',

@@ -40,12 +40,24 @@ case "$kind" in
     store|forget|--check|--validate|registration|remove)
         [[ "$node" =~ ^n_[0-9a-f]{8}$ ]] && [[ "$slot" =~ ^[a-z0-9.-]{1,64}$ ]] \
             || die "usage: mint-runner-token $kind NODE_ID SLOT" ;;
-    --list) ;;
-    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID SLOT, or --list" ;;
+    --list|--reset) ;;
+    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID SLOT, or --list, or --reset" ;;
 esac
 file="$STORE/$node.$slot.env"
 
 case "$kind" in
+    --reset)
+        # Every stored token, for the controller's Reset: the nodes they
+        # belonged to are being forgotten, and a token for a node id that
+        # will never be minted again is a file nobody can reach or use.
+        [ -d "$STORE" ] || { echo "reset: nothing stored"; exit 0; }
+        n=0
+        for f in "$STORE"/n_*.*.env; do
+            [ -f "$f" ] || continue
+            rm -f "$f"; n=$((n + 1))
+        done
+        echo "reset: $n token(s) forgotten"
+        exit 0 ;;
     --list)
         [ -d "$STORE" ] || exit 0
         for f in "$STORE"/n_*.*.env; do

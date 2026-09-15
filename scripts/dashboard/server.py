@@ -4748,13 +4748,17 @@ class Handler(BaseHTTPRequestHandler):
             if str(req.get("confirm") or "") != "reset":
                 return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
             try:
-                dest = settings.reset_state(STATE)
+                moved = settings.reset_state(STATE)
             except OSError as e:
                 return self._json({"error": f"could not move the state aside: {e}"}, 500)
-            print(f"dashboard: {self._principal()} reset this controller; the old state is in {dest}",
-                  flush=True)
+            # The runner tokens are root's, behind the helper: forgotten
+            # there, since the nodes they were for are being forgotten here.
+            tok = run(["sudo", "-n", RUNNER_HELPER, "--reset"], timeout=20)
+            kept = [k for k in moved["kept"] if not (k == "runner-tokens" and tok["code"] == 0)]
+            print(f"dashboard: {self._principal()} reset this controller; the old state is in "
+                  f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
             threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
-            return self._json({"ok": True, "moved_to": str(dest)})
+            return self._json({"ok": True, "moved_to": str(moved["dest"]), "kept": kept})
         if path.startswith("/api/create"):
             return self._create(req)
         if path.startswith("/api/profile"):
