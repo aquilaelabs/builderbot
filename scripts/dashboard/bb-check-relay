@@ -22,6 +22,7 @@ Never loops: Claude Code marks a stop that a hook already refused once
 made to pass must not hold a session hostage. Silent on any failure of its
 own: a hook that cannot run is never worth a turn.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -108,7 +109,6 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
+    # A hook that cannot run is never worth a turn: swallowed, deliberately.
+    with contextlib.suppress(Exception):
         main()
-    except Exception:  # noqa: BLE001 — a hook that cannot run is never worth a turn
-        pass

@@ -245,8 +245,8 @@ def adopt(uid):
     with _lock:
         d = _load()
         moved = False
-        for project, insts in d.items():
-            for inst, rec in insts.items():
+        for insts in d.values():
+            for rec in insts.values():
                 if not isinstance(rec, dict) or not rec.get("rev"):
                     continue
                 # Only records about THIS address are this verification's

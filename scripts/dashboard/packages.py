@@ -37,7 +37,7 @@ def configure(*, run, write_json, state):
     globals().update(run=run, write_json=write_json, STATE=Path(state))
     globals()["VERSIONS_FILE"] = Path(state) / "pkg-versions.json"
     globals().update(zip(("_pkg_versions", "_pkg_checked", "_pkg_remembered",
-                          "_pkg_local"), load_versions()))
+                          "_pkg_local"), load_versions(), strict=True))
 
 
 # The catalog lives beside the code rather than in it: config/packages.json,
@@ -1191,7 +1191,7 @@ def node_job(principal, nid, action, names):
     # across a shared store or it is not enforced at all.
     sharers = store_sharers(nid)
     for other in [n] + sharers:
-        for j in nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
+        if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
             where = ("" if other["id"] == nid
                      else f" — it shares this packages store with {n['name']}")
             return {"error": f"a package job is already running on {other['name']}"

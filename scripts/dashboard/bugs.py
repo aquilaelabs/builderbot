@@ -48,6 +48,12 @@ write_json = None
 actor = None
 STATE = None
 FILE = None
+# Handed over by configure(): the one way a line reaches a running Claude
+# session, the tmux naming rule, and where the projects are. Declared here
+# so a reader, and a tool, can see they are this module's names.
+tell = None
+tmux_name = None
+WORKSPACE = None
 
 
 def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None,

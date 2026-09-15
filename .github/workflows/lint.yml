@@ -110,9 +110,16 @@ jobs:
             curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
               | tar -xz -C "$RUNNER_TEMP/bin" actionlint
           }
+          command -v ruff >/dev/null || {
+            tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/astral-sh/ruff/releases/latest)"
+            tag="${tag##*/}"
+            curl -fsSL "https://github.com/astral-sh/ruff/releases/download/${tag}/ruff-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar -xz --strip-components=1 -C "$RUNNER_TEMP/bin" "ruff-x86_64-unknown-linux-gnu/ruff"
+          }
           shellcheck --version | sed -n 2p
           hadolint --version
           actionlint --version
+          ruff --version
 
       - name: Shell scripts
         run: |
@@ -131,6 +138,16 @@ jobs:
         # one config for this job and for `bb lint`, so the two can never
         # disagree about what a clean Dockerfile is.
         run: hadolint Dockerfile 2>&1 | tee -a "$CI_LOG"
+
+      - name: Python
+        # The dashboard, the agent, the library and the hook scripts: by
+        # extension and by shebang, the same selection bb lint makes. The
+        # rules are ruff.toml's at the root; the agent's own pins it to the
+        # python a Rocky node carries.
+        run: |
+          mapfile -t files < <({ find scripts -type f -name '*.py'; find scripts -type f -exec grep -lE '^#!.*\bpython3?\b' {} +; } | sort -u)
+          printf 'checking %s\n' "${files[@]}"
+          ruff check "${files[@]}" 2>&1 | tee -a "$CI_LOG"
 
       - name: Workflows
         # The runner labels a runs-on may target live in .github/actionlint.yaml,

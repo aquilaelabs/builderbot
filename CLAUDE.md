@@ -51,7 +51,7 @@ by hand cost four commands and still could not see the failed builds.
   cannot see the shielded PAT. What you *can* run here, with no daemon:
 
   ```bash
-  bb lint                       # shellcheck / hadolint / actionlint / compose / XML — same as CI
+  bb lint                       # shellcheck / hadolint / ruff / actionlint / compose / XML — same as CI
   bb tests run                  # the Playwright suite, timed and recorded; bb dashboard test [cards] for one file
   python3 -m py_compile scripts/dashboard/server.py
   ```
@@ -89,7 +89,8 @@ by hand cost four commands and still could not see the failed builds.
   the environment for the dashboard's own pages. `tools/readme-shots.sh`
   regenerates the README's screenshots from a staged instance.
 
-- **Lint:** CI runs shellcheck, hadolint, actionlint, compose validation and
+- **Lint:** CI runs shellcheck, hadolint, ruff (ruff.toml at the root; the
+  agent's own pins it to the python a Rocky node carries), actionlint, compose validation and
   XML well-formedness on a node's runner; `bb lint` runs the same set here,
   and the house rule `lint` runs it as its check before a session hands
   back. **When it fails, `bb ci-log` is the first place to look** — the runner keeps

@@ -24,8 +24,6 @@ import selectors
 import shlex
 import socket
 import subprocess
-import sys
-import tempfile
 import threading
 import time
 
@@ -5595,7 +5593,7 @@ class Handler(BaseHTTPRequestHandler):
         # hands it out sets the authorize URL flush against it, so Copy takes
         # both. A code is base64url and a `#` — no colon, no slash — so the
         # cut cannot land inside a real one.
-        code = re.split(r"https?://", code, 1)[0]
+        code = re.split(r"https?://", code, maxsplit=1)[0]
         code = CODE_JUNK.sub("", code)
         if not code:
             return self._json({"error": "no code in that paste — copy the "
@@ -7155,13 +7153,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        try:
+        # No daemon, or no compose file: nothing to protect, said by the
+        # suppress rather than by a bare pass.
+        with contextlib.suppress(Exception):
             if devapp.state(name).get("exists"):
                 return self._json({"error": "its dev instance still has "
                                             "containers — press Down on the "
                                             "Artifacts tab first"}, 409)
-        except Exception:
-            pass
         body, code = projects.trash(req)
         return self._json(body, code)
 
@@ -7206,13 +7204,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        try:
+        with contextlib.suppress(Exception):    # no daemon, or no compose file
             if devapp.state(name).get("exists"):
                 return self._json({"error": "its dev instance still has "
                                             "containers — press Down on the "
                                             "Artifacts tab first"}, 409)
-        except Exception:
-            pass          # no daemon, or no compose file: nothing to protect
         body, code = projects.rename(req)
         return self._json(body, code)
 

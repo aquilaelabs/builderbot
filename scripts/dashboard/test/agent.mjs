@@ -1237,7 +1237,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // refused, with the sentence saying what to do rather than opening a
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 503 && /has no node/.test(nonode.body)
+      ok(nonode.status === 503 && /no node: pick one/.test(nonode.body)
          && /enroll one on the Nodes tab/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);

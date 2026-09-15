@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.59"
+AGENT_VERSION = "0.5.60"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2091,11 +2091,11 @@ def load_state():
     try:
         with open(NODE_JSON) as f:
             return json.load(f)
-    except OSError:
+    except OSError as e:
         raise SystemExit(f"{NODE_JSON} is missing — enroll this node first: "
-                         "builderbot-agent enroll --controller URL --token …")
+                         "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
-        raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again")
+        raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
 
 
 def save_state(state):
@@ -2544,8 +2544,8 @@ class Agent:
         import pwd
         try:
             pw = pwd.getpwnam(user)
-        except KeyError:
-            raise RuntimeError(f"enrolled account {user!r} does not exist here")
+        except KeyError as e:
+            raise RuntimeError(f"enrolled account {user!r} does not exist here") from e
         env.update({"HOME": pw.pw_dir, "USER": user, "LOGNAME": user})
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
@@ -2877,7 +2877,7 @@ class Agent:
                         raise RuntimeError(f"snapshot member escapes the workspace: {m.name}")
                 tar.extractall(ws)
         if who:
-            for d, dirs, files in os.walk(os.path.dirname(ws)):
+            for d, _dirs, files in os.walk(os.path.dirname(ws)):
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
@@ -2979,7 +2979,7 @@ class Agent:
             os.symlink(os.path.basename(into), tmp)
             os.replace(tmp, os.path.join(bbdir, "current"))
         if who:
-            for d, dirs, files in os.walk(into):
+            for d, _dirs, files in os.walk(into):
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
@@ -3147,7 +3147,7 @@ class Agent:
                 return self.session_start(into, retry=True)
         if died:
             held = "; ".join(f"port {pt}: " + (f"pid {pid} ({cmd[:40]})" if pid else "taken")
-                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))
+                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))  # noqa: B905 (3.9 on Rocky)
             self.session_stop()
             SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
                            why=f"ttyd could not bind — {held}"[:160])
@@ -3718,7 +3718,6 @@ class Agent:
         catalog) is fetched by digest into the store and run from there as
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
         per-node state — the census reports what landed."""
-        stores = self.state.get("stores") or {}
         store = pkg_root(self.state)
         if not store:
             job.say("refused: this node has no packages store\n")
@@ -3986,7 +3985,7 @@ class Agent:
         want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
         have = {m.get("path"): m for m in mounts_now()}
         bad = 0
-        for path, m in have.items():
+        for path in have:
             if not any(w.get("path") == path for w in want):
                 if self._sh(job, [SANDBOX_BIN, "remove", path]) != 0:
                     bad += 1
@@ -4171,8 +4170,8 @@ class Agent:
                     f"and empty now\n")
         for path, why in kept:
             job.say(f"{role}: {path} stays ({why})"
-                    + (f" — the old copy is in there; remove it yourself when you are "
-                       f"satisfied the move worked\n" if "empty" in (why or "").lower()
+                    + (": the old copy is in there; remove it yourself when you are "
+                       "satisfied the move worked\n" if "empty" in (why or "").lower()
                        else "\n"))
 
     def _apply_network(self, job, cfg):
@@ -4329,7 +4328,7 @@ class Agent:
             os.remove(tar_path)
         self.own_dir(d, who)
         if who:
-            for dd, dirs, files in os.walk(d):
+            for dd, _dirs, files in os.walk(d):
                 for x in [dd] + [os.path.join(dd, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])

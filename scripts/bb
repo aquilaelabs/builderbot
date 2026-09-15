@@ -4998,6 +4998,27 @@ cmd_lint() {
         fi
     fi
 
+    # The python, by extension and by shebang: the dashboard, the agent, the
+    # library, and the two hook scripts with no extension. ruff.toml at the
+    # repo root says which rules; a project without one gets ruff's defaults.
+    section "python (ruff)"
+    if need ruff; then
+        local -a pys=()
+        while IFS= read -r -d '' f; do
+            case "$f" in *.py) pys+=("$f"); continue ;; esac
+            head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\bpython3?\b' \
+                && pys+=("$f")
+        done < <(files '*')
+        if [ "${#pys[@]}" -eq 0 ]; then
+            echo "  none found"
+        elif ruff check --quiet "${pys[@]}"; then
+            printf '  [ok]   %s python file(s) clean\n' "${#pys[@]}"
+        else
+            printf '  [FAIL] ruff findings above\n'
+            rc=1
+        fi
+    fi
+
     section "github workflows (actionlint)"
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then

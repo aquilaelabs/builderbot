@@ -1,0 +1,10 @@
+# What `bb lint` holds the python to, and CI's lint job with it: pyflakes
+# (undefined and unused names), bugbear (the mistakes that read as
+# correct), a silent except, a syntax error. Style is not in this list on
+# purpose: the point of the gate is a bug caught before a build, not a
+# house style argued with a tool. Roadmap R55.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["F", "E9", "B", "S110", "PLE"]
