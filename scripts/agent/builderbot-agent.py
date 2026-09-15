@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.65"
+AGENT_VERSION = "0.5.66"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3939,8 +3939,53 @@ class Agent:
             return self._apply_runner(job, cfg)
         if what == "funnel":
             return self._apply_funnel(job, cfg)
+        if what == "uninstall":
+            return self._apply_uninstall(job)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_uninstall(self, job):
+        """Take BuilderBot off this machine, from the Nodes tab. The runners
+        first, deregistered on their forges with the tokens the controller
+        mints while this agent can still ask; then `bb-sandbox uninstall`,
+        started detached from this process because it removes this process
+        (the unit, the accounts, the files). The controller retires the
+        node when this job succeeds; the agent's last hello is its last."""
+        if not os.access(SANDBOX_BIN, os.X_OK):
+            job.say(f"refused: {SANDBOX_BIN} is not here, so this node was not provisioned as a sandbox\n")
+            return "failed", 77
+        for d, rec in runner_dirs():
+            url = str(rec.get("gitHubUrl") or rec.get("address") or "")
+            with contextlib.suppress(OSError):
+                with open(os.path.join(d, ".builderbot-url")) as f:
+                    url = f.read().strip() or url
+            slot = os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR) else runner_slot(url)
+            job.say(f"deregistering the runner {slot} on its forge\n")
+            st, code = self._apply_runner(job, {"want": False, "slot": slot, "url": url,
+                                                "forge": "gitea" if "address" in rec else "github"})
+            if st != "succeeded":
+                job.say(f"the runner {slot} could not be deregistered (exit {code}); it stays listed on its forge\n")
+        argv = [SANDBOX_BIN, "uninstall", "--yes"]
+        # Under a transient unit of its own where this agent is root on a
+        # systemd machine, so the uninstall outlives the unit it removes;
+        # anywhere else (the harness, a machine without systemd) a detached
+        # process, which the removal of this one does not take with it.
+        started = False
+        if os.geteuid() == 0 and shutil.which("systemd-run"):
+            r = subprocess.run(["systemd-run", "--unit", "builderbot-uninstall", "--collect",
+                                "--quiet", *argv], capture_output=True, text=True, check=False)
+            started = r.returncode == 0
+            if not started:
+                job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
+        if not started:
+            try:
+                subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+            except OSError as e:
+                job.say(f"could not start the uninstall: {e}\n")
+                return "failed", 69
+        job.say("the uninstall is running on this machine; this agent goes with it, so this is its last word\n")
+        return "succeeded", 0
 
     def _sh(self, job, argv, cwd=None, timeout=300):
         """One command, its output into the job's log, its exit code back.

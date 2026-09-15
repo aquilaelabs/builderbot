@@ -18,6 +18,7 @@ import hmac
 import ipaddress
 import json
 import os
+import sys
 import posixpath
 import re
 import selectors
@@ -4735,6 +4736,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
             return self._claude_md(req)
+        if path == "/api/reset":
+            # Start over at onboarding: the controller's own state moved
+            # aside (accounts, nodes, project settings, git tokens, the
+            # notebook, memories, logs), project files untouched, and the
+            # dashboard re-executes itself so the next page is Create the
+            # owner. The confirm word is the whole of the safety: this is
+            # an administrator typing "reset" into a red box.
+            if self._refused("admin"):
+                return None
+            if str(req.get("confirm") or "") != "reset":
+                return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
+            try:
+                dest = settings.reset_state(STATE)
+            except OSError as e:
+                return self._json({"error": f"could not move the state aside: {e}"}, 500)
+            print(f"dashboard: {self._principal()} reset this controller; the old state is in {dest}",
+                  flush=True)
+            threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+            return self._json({"ok": True, "moved_to": str(dest)})
         if path.startswith("/api/create"):
             return self._create(req)
         if path.startswith("/api/profile"):
@@ -4869,6 +4889,8 @@ class Handler(BaseHTTPRequestHandler):
                                field(req, "pool") or "default")
         elif act == "update":
             r = nodes.node_update(self._principal(), nid, req.get("fields") or {})
+        elif act == "uninstall":
+            r = nodes.node_uninstall(self._principal(), nid)
         elif act in ("drain", "online", "retire"):
             r = nodes.node_state(self._principal(), nid,
                                  {"drain": "draining", "online": "online",

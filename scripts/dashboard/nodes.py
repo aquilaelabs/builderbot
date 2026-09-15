@@ -1759,6 +1759,30 @@ def runner_labels_known():
     return sorted(out)
 
 
+def node_uninstall(principal, node_id):
+    """Take BuilderBot off a node from its row: a system job the agent
+    answers by deregistering its runners and starting bb-sandbox uninstall
+    detached, after which nothing of BuilderBot's is left on the machine
+    but docker, the packages and the shares' contents. The node is retired
+    when the job succeeds (job_result), so the row leaves every list the
+    way Remove's does."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node can be uninstalled from here"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox can be uninstalled "
+                         "from here: on the machine, sudo bb-sandbox uninstall"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "uninstall", "config": {}, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "node-uninstall", node_id, {"job": r["job"]})
+    return r
+
+
 def system_job_for(node_id):
     """The system job in flight for a node, if any: one at a time, because
     two applies racing on one fstab is not a state anybody wants."""
@@ -2550,6 +2574,12 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         keep = [o for o in outputs[:64] if isinstance(o, dict)]
         _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    # An uninstall that ran retires the node: the agent is gone with it, so
+    # the row leaves every list now rather than after a stale timeout.
+    if got[0]["type"] == "system" and state == "succeeded":
+        spec = (job(job_id, with_log=False) or {}).get("spec") or {}
+        if spec.get("apply") == "uninstall":
+            node_state(f"node:{node_id}", node_id, "retired")
     # The module that queued this kind of job gets to finish it. A compose
     # action run by the agent still has records to write here — what was
     # built, from which commit, on which daemon — and this is where they

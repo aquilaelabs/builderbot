@@ -24,7 +24,9 @@ node, because a session can write this file, and the organization a runner
 token is minted for should not be a session's to change.
 """
 import os
+import shutil
 import sys
+import time
 from pathlib import Path
 
 _here = os.path.dirname(os.path.abspath(__file__))
@@ -159,3 +161,20 @@ def payload():
     return {"settings": effective(),
             "meta": {k: {"applied": s["applied"], "choices": list(s.get("choices") or [])}
                      for k, s in KEYS.items()}}
+
+
+def reset_state(state):
+    """Start over: everything in the state directory moved into a dated
+    directory beside it, never deleted. `.reset-<stamp>` holds what was
+    there (accounts, nodes, project settings, git tokens, the notebook,
+    memories, logs), so a reset pressed by mistake is a move back rather
+    than a loss; earlier resets' directories are left where they are.
+    Project files are not in here at all. Returns the directory."""
+    state = Path(state)
+    dest = state / time.strftime(".reset-%Y%m%d-%H%M%S")
+    dest.mkdir()
+    for p in sorted(state.iterdir()):
+        if p.name.startswith(".reset-"):
+            continue
+        shutil.move(str(p), str(dest / p.name))
+    return dest

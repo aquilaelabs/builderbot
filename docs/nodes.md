@@ -988,6 +988,28 @@ are machines nobody set up by hand (bulk enrollment appearing is the trigger).
 The self-update mechanism (§4) is what makes swapping agents in place a
 non-event.
 
+### Leaving a machine as it was: uninstall
+
+A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
+off it is a verb of its own, in three places that do one thing: **Uninstall**
+on the node's row (Advanced), `sudo bb-sandbox uninstall` on the machine, and
+`provision-linux.sh --remove`, which runs the machine's own bb-sandbox. What
+goes is what the provisioner put there for BuilderBot alone: the agent and
+its unit, the session-ports firewall rule, the `bb` and `builder` accounts
+with their homes (Claude Code, the runners' directories, caches), the mounts
+BuilderBot used (`/workspace` and whatever a store sits on, taken out of
+fstab), the stores on the machine's own disk, `/etc/builderbot`, the sandbox
+label in `daemon.json` (docker keeps running; it takes at its next restart)
+and bb-sandbox itself. What stays is shared with the rest of the machine:
+docker and the packages the provisioner installed (nfs-common, python3,
+tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories, and
+everything on the shares, which other nodes may be using. The row's verb
+deregisters the node's runners on their forges first, while the agent can
+still ask the controller for the tokens; the two on-machine forms cannot,
+and say so. The agent starts the removal under a transient unit of its own,
+reports the job, and is gone with it; the controller retires the row when
+that result lands. Enrolling the machine again is a fresh provisioner run.
+
 ### After provisioning: reconfiguring a node from the GUI
 
 Provisioning is once; a node's storage and network change over its life, and

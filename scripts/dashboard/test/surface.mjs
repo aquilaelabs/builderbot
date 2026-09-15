@@ -36,7 +36,7 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 // it moved.
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
-  'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
+  'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'cSeg', 'cSlide',
   'cSubmit', 'cardDropIndex', 'claudeMd', 'claudeMdAll', 'daemonHost', 'closeEditor',
   'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',

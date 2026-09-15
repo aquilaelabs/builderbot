@@ -41,9 +41,45 @@ ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
    '...and says dev once it is on, so two dashboards are never confused');
 await post('/api/settings', { set: { offer_unvetted: false } });
 await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
+// Reset BuilderBot: a red verb at the foot of the tab behind a typed word,
+// refused without it, and never pressed here, since it re-executes the
+// server this whole suite is talking to. The move itself is proved at the
+// module below, on a directory of its own.
+ok(await page.$eval('.settingstab [data-group="Reset"] #setReset', b => /Reset BuilderBot/.test(b.textContent) && b.classList.contains('danger')),
+   'Reset BuilderBot sits in its own section as a red verb');
+await page.click('.settingstab #setReset');
+ok(await page.$eval('.settingstab #setResetBox .dropbox .danger', b => b.disabled)
+   && await page.$eval('.settingstab #setResetBox .dropbox .hint', h => /Project files stay/.test(h.textContent)),
+   '...which opens a typed confirmation, the real button asleep, saying project files stay');
+await page.fill('.settingstab #setResetBox input', 'reset');
+ok(await page.$eval('.settingstab #setResetBox .dropbox .danger', b => !b.disabled), '...and wakes on the word');
+await page.click('.settingstab #setResetBox .stop');
+ok(await page.$('.settingstab #setResetBox .dropbox') === null, '...and Keep it closes it with nothing done');
+const noword = await post('/api/reset', { confirm: 'yes' });
+ok(noword.status === 400 && /type reset to confirm; nothing was changed/.test(noword.body.error || ''),
+   `the endpoint refuses anything but the word (${noword.body.error})`);
+{
+  const { execFileSync } = await import('node:child_process');
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('s', ${JSON.stringify(new globalThis.URL('../settings.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = Path(tempfile.mkdtemp())
+(d / 'users.json').write_text('{}'); (d / 'logs').mkdir(); (d / 'logs' / 'a.log').write_text('x')
+(d / '.reset-20260101-000000').mkdir(); (d / '.reset-20260101-000000' / 'old').write_text('o')
+dest = m.reset_state(d)
+print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p.name for p in dest.iterdir()),
+                  "old_kept": (d / '.reset-20260101-000000' / 'old').is_file(), "dest": dest.name}))
+`], { encoding: 'utf8' });
+  const r = JSON.parse(out);
+  ok(r.moved.join() === 'logs,users.json' && r.left.length === 2 && r.left.every(n => n.startsWith('.reset-'))
+     && r.old_kept && /^\.reset-\d{8}-\d{6}$/.test(r.dest),
+     `the reset moves everything into a dated directory beside it and leaves earlier resets alone (${JSON.stringify(r)})`);
+}
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'What is offered|Debugging',
-   `the tab's stored settings are the two groups that survived the question "does this need to exist": nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'What is offered|Debugging|Reset',
+   `the tab's stored settings are the two groups that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),

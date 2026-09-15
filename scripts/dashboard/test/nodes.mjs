@@ -1615,4 +1615,45 @@ ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+// ---- Uninstall from the row --------------------------------------------------
+// Last, because it retires the node it makes. A sandbox node queues the
+// system job; a node that was not provisioned as one is refused with the
+// command to run on the machine; and the row is retired when the job
+// lands, which the fake agent reports the way a real one does.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
+    ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const shipped = (await napi('/api/v1/nodes')).agent || {};
+  const mint = async (name, census) => {
+    const m = await napi('/api/v1/nodes', { action: 'enroll', name });
+    const en = await napi('/api/v1/agent/enroll', { census, version: shipped.version, digest: shipped.digest, user: 'bb' },
+                          { Authorization: 'Bearer ' + m.token, 'Content-Type': 'application/json' });
+    return { id: m.id, token: en.token };
+  };
+  const plain = await mint('laptop', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true });
+  const shed = await mint('shed2', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true });
+  const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
+  ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
+     `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
+  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  ok(r.ok && /^j_/.test(r.job || ''), `a sandbox node queues the uninstall as a system job (${r.error || r.job})`);
+  const j = await napi(`/api/v1/jobs?id=${r.job}`);
+  ok(j.spec?.apply === 'uninstall' && j.node === shed.id, 'the job asks the agent for the uninstall');
+  const again = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  ok(/one at a time/.test(again.error || ''), '...and a second press waits for the first');
+  // The fake agent takes the job and reports it done, the way the real one does.
+  const work = await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ running: 0, wait: 0 }) });
+  const got = work.status === 200 ? await work.json() : {};
+  ok((got.job?.id || got.id) === r.job, `the agent is handed the job (${work.status})`);
+  await napi('/api/v1/agent/result', { job: r.job, state: 'succeeded', exit: 0 },
+             { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' });
+  const listed = (await napi('/api/v1/nodes')).nodes.some(n => n.id === shed.id);
+  ok(!listed, 'and the node is retired when the job succeeds, so it leaves the list');
+  await napi('/api/v1/nodes', { action: 'retire', id: plain.id });
+}
+
 await done(browser);

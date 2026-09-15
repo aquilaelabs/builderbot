@@ -92,6 +92,8 @@ if a[0] in ("add-nfs", "add-share"):
     save(); print(f"fstab: {path} now comes from {src}"); sys.exit(0)
 if a[0] == "remove":
     ms = [m for m in ms if m["path"] != a[1]]; save(); print(f"{a[1]} is no longer mounted at boot"); sys.exit(0)
+if a[0] == "uninstall":
+    open(f + ".uninstall", "w").write(" ".join(a)); sys.exit(0)
 print("unknown", a, file=sys.stderr); sys.exit(2)
 `, { mode: 0o755 });
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
@@ -2087,6 +2089,31 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       opt[0], { timeout: 10000 });
     ok(true, 'the pending row says it is waiting for enrollment');
   }
+
+  // ---- uninstall, from the Nodes tab ------------------------------------------
+  // Last, because it retires the node: the agent answers the system job by
+  // starting `bb-sandbox uninstall --yes` detached (the stub records the
+  // call; a real one removes the agent under itself) and the controller
+  // retires the row when the job succeeds. Runner deregistration was
+  // exercised above; none is left here to deregister.
+  {
+    const r = await api('/api/v1/nodes', { action: 'uninstall', id: minted.id });
+    ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
+    const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(j.state) ? j : null; }, 30000);
+    ok(fin?.state === 'succeeded' && /uninstall is running on this machine; this agent goes with it/.test(fin.log || ''),
+       `the agent starts the uninstall on the machine and says it is its last word (${fin?.state}: ${(fin?.log || '').slice(-120).replace(/\n/g, ' / ')})`);
+    ok(existsSync(SANDBOX_STATE + '.uninstall') && readFileSync(SANDBOX_STATE + '.uninstall', 'utf8') === 'uninstall --yes',
+       '...through bb-sandbox uninstall --yes, detached from the agent');
+    const gone = await until(async () => (await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id) ? null : true, 20000);
+    ok(!!gone, 'and the controller retires the node when the job lands, so the row leaves every list');
+    // Back to online for the revoke below: the stub uninstall took nothing
+    // off this machine, so the agent is still here to be revoked.
+    await api('/api/v1/nodes', { action: 'online', id: minted.id });
+    ok((await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id), '...and Undrain brings a retired row back, for what follows');
+  }
+  
+  
 
   // revoke: the credential stops working, the agent says so, the row goes quiet
   {

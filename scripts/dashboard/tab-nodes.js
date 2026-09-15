@@ -373,6 +373,10 @@ function nodeAdvancedSection(n, stale, inflight){
         title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
       <button type="button" class="danger" data-nd="retire"
         title="take it off every list. Its row and its history stay: an id is never reused">Remove</button>
+      ${n.reported?.sandbox && !n.agent?.revoked ? `<button type="button" class="danger" data-nd="uninstall"
+        ${inflight("uninstall") ? "disabled" : ""}
+        title="take BuilderBot off the machine: its runners deregistered, the agent, its accounts, the mounts it used and its files gone; docker, the packages and the shares' contents stay. The row is retired when it is done">${
+        inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>`;
   return docSection("nodes", "advanced", "Advanced",
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
@@ -1127,6 +1131,14 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
+      if (act === "uninstall"
+          && !confirm("Uninstall BuilderBot from this machine?\n\nGoes: its runners "
+                      + "(deregistered on their forges), the agent and its unit, the bb "
+                      + "and builder accounts with their homes, the mounts it used, its "
+                      + "stores on that disk, the firewall rule, bb-sandbox itself.\n\n"
+                      + "Stays: docker, the packages the provisioner installed, the empty "
+                      + "mountpoints, and everything on the shares.\n\nThe row is retired "
+                      + "when it is done. Enrolling it again is a fresh provisioner run.")) return;
       if (act === "revoke"
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
@@ -1157,7 +1169,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", paths: "Saving", "check-paths": "Checking",
+               retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
                rename: "Renaming"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();

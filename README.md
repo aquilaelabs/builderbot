@@ -1445,7 +1445,16 @@ it is reinstalled), the path
 mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
 **Revoke** and **Remove** (retire: off every list, row kept as history, and an
-id is never reused). **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
+id is never reused), and on a node provisioned as a sandbox **Uninstall**:
+its runners deregistered on their forges, then the agent and its unit, the
+bb and builder accounts with their homes, the mounts BuilderBot used, its
+stores on that disk, the firewall rule and bb-sandbox itself taken off the
+machine, and the row retired when it is done. Docker, the packages the
+provisioner installed, the empty mountpoints and everything on the shares
+stay, since the machine may be used for other things. The same removal is
+`sudo bb-sandbox uninstall` on the machine, or `provision-linux.sh --remove`;
+both say what will go and ask, and neither deregisters a runner, which only
+the row can do while the agent can still ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
 runs `nodes/provision-linux.sh --controller URL --token bbe_…` and dials in. That is
 the only way in; there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of
@@ -1820,7 +1829,13 @@ sentence that names the switch; on, dev appears tagged *(dev)* and the
 header says *dev*, so the two dashboards are never confused. Each catalogue
 entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
 the provisioner's family list), and an entry crosses over when a lab suite
-or a real run proves it. Its **Debugging** group is
+or a real run proves it. At its foot, **Reset BuilderBot** starts the
+controller over at *Create the owner*: accounts, node enrolments, project
+settings, git tokens, the notebook, memories and logs are moved into a dated
+`.reset-…` directory under `/config`, never deleted, and project files are
+not touched; it asks for the word `reset` typed, and the dashboard
+re-executes itself. Projects are trashed from the Projects tab, one at a
+time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
 a developer of BuilderBot reaches for and nobody else should meet (letting

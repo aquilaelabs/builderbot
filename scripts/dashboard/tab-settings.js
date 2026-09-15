@@ -48,6 +48,14 @@ function renderSettingsInto(i){
       <div class="grow">${idleSection()}</div>
     </div>
     ${settingsSections()}
+    <div class="row stack2" data-group="Reset">
+      <div class="grow">
+        <div class="name">Reset BuilderBot</div>
+        <div class="sub">Start over at Create the owner: accounts, node enrolments, project settings, git tokens, the notebook, memories and logs are moved aside; project files are not touched.</div>
+        <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
+        <div id="setResetBox"></div>
+      </div>
+    </div>
     <div class="row stack2">
       <div class="grow">
         <div class="name">Nodes</div>
@@ -62,6 +70,8 @@ function renderSettingsInto(i){
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
   if (nd) nd.onclick = openNodesTab;
+  const rs = d.el.querySelector("#setReset");
+  if (rs) rs.onclick = () => askReset(d.el);
 }
 
 // The settings that used to be environment variables (roadmap R29): what is
@@ -94,6 +104,39 @@ const SETTING_GROUPS = [
 // Whether the Debugging group's fold is open: kept across repaints, since
 // the tab redraws on every poll that moves a setting.
 let debugSettingsOpen = false;
+
+// The reset's confirmation, the way a project's purge asks: the word typed
+// in a box under the button, and the red verb asleep until it matches.
+// What it moves aside is said once more here, since the thing a person
+// regrets is the thing they did not read.
+function askReset(el){
+  const box = el.querySelector("#setResetBox");
+  if (!box || box.querySelector(".dropbox")) return;
+  box.innerHTML = `<div class="dropbox"><div class="hint bad">This moves every account, node
+      enrolment, project setting, git token, the notebook, memories and logs into a dated
+      directory under the controller's config and starts the dashboard over at Create the
+      owner. Project files stay where they are. Type <b>reset</b> to confirm.</div>
+    <input autocomplete="off" placeholder="reset" aria-label="type reset to confirm">
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="stop">Keep it</button>
+      <button type="button" class="danger" disabled>Reset for real</button></div></div>`;
+  const input = box.querySelector("input"), go = box.querySelector(".danger");
+  input.oninput = () => { go.disabled = input.value.trim() !== "reset"; };
+  box.querySelector(".stop").onclick = () => { box.innerHTML = ""; };
+  go.onclick = async () => {
+    busy(go, "Resetting");
+    try{
+      const r = await fetch("/api/reset", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({confirm: input.value.trim()})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); unbusy(go, "Reset for real"); return; }
+      notify("reset: the dashboard is starting over; the old state is in " + j.moved_to);
+      setTimeout(() => { location.href = "/login"; }, 2500);
+    }catch(e){ notify("the reset: " + e, true); unbusy(go, "Reset for real"); }
+  };
+  input.focus();
+}
 
 function settingsSections(){
   const s = state?.settings;
