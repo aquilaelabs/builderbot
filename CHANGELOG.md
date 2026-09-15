@@ -8,6 +8,7 @@
 - A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
 - Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
 - A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
+- The Tools tab says when a node lacks the system libraries a package on the shared store needs, and one press installs them there without reinstalling the package; the node's row says the same (bf01db5)
 
 ### Upgrading
 
