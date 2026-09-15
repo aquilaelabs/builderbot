@@ -47,6 +47,8 @@ STORE_DATA=/var/lib/builderbot/data
 STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
+# --remove and its --yes, off unless asked; read before the checks run.
+REMOVE=0; YES=""
 declare -a SHARES=() NFS=()
 CHECK_ONLY=0
 
@@ -264,7 +266,6 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # written to each family's tools and never run (dev, in the dashboard's
 # word), so they need --dev to proceed, and a run that works is what moves
 # one onto this list.
-REMOVE="${REMOVE:-0}"; YES="${YES:-}"
 VETTED_FAMILIES=" deb rhel "
 DEV="${DEV:-0}"
 FAMILY=""; FAMILY_WHY=""
