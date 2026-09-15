@@ -1326,6 +1326,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
 .row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
+/* The containers under a dev instance's row: one line each, the running
+   ones in the ok colour, the rest dim. */
+.dmsvcs{line-height:1.5}
+.dmsvc.ok{color:var(--accent)}
 /* The project's node beside its name: a sibling of .name, so the name
    element stays the name and nothing else. */
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
@@ -9001,6 +9005,10 @@ function dmRowsHtml(ins, job, blind){
         </div>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
+          `<span class="dmsvc ${c.state === "running" ? "ok" : "dim"}" title="${esc(c.image || "")}">${
+            esc(c.service || c.name)}: ${esc(c.status || c.state)}${
+            (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
         ${dmRefLine(d)}
         ${dmGrantLine(d)}

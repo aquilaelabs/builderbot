@@ -596,7 +596,7 @@ case "$1" in
         echo "exec $*" >> "$ST/docker.log"
         while [ $# -gt 0 ] && [ "$1" != exec ]; do shift; done; shift
         while [ $# -gt 0 ]; do
-          case "$1" in -T) shift ;; -e) shift 2 ;; -*) shift ;; *) break ;; esac
+          case "$1" in -T) shift ;; -e|-w|--workdir) shift 2 ;; -*) shift ;; *) break ;; esac
         done
         shift   # the service
         exec "$@" ;;

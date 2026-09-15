@@ -434,7 +434,12 @@ def _plan(project, instance, action, extra=None):
     # the run.
     test = []
     if action == "test" and extra:
-        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", extra["service"],
+        # In the project's own directory inside the container when the
+        # compose file mounts it there; the image's working directory
+        # otherwise. The first run of BuilderBot's suite inside its own
+        # instance ran at / and found no scripts/ (15 Sep).
+        wd = ["-w", extra["workdir"]] if extra.get("workdir") else []
+        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
         test = [{"name": "testing", "argv": argv, "timeout": 3600}]
     return {"up": [up], "down": [down], "remove": [down],
@@ -616,7 +621,7 @@ def _published(ports):
     return sorted(set(out))
 
 
-def route_view(project, instance, ports):
+def route_view(project, instance, ports, prefer=None):
     """The instance's route as the row draws it: the mode and port on the
     record (lan on the first published port when nothing was chosen), the
     URL that follows from the node, and whether a funnel is actually up."""
@@ -624,7 +629,9 @@ def route_view(project, instance, ports):
     r = rec.get("route") if isinstance(rec.get("route"), dict) else {}
     mode = r.get("mode") if r.get("mode") in ROUTE_MODES else "lan"
     pub = _published(ports)
-    port = r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0 else (pub[0] if pub else None)
+    liked = _published(prefer or [])
+    port = (r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0
+            else liked[0] if liked else pub[0] if pub else None)
     nid = _instance_node(project, instance)
     n = queue.node(nid) if queue is not None and nid else None
     out = {"mode": mode, "port": port, "ports": pub, "url": "", "ready": False, "why": "",
@@ -2310,8 +2317,21 @@ def _overview_here(picked):
                 # as part of starting now, so nothing on this page asks about
                 # them and no row costs a `compose config` to draw.
                 "stale_name": stale_name(project, inst),
+                # Each container of the instance, so the row can list them:
+                # an instance is one thing to Up and Down and three things
+                # to look at (the operator, 15 Sep).
+                "services": [{"service": c.get("service", ""), "name": c.get("name", ""),
+                              "state": c.get("state", ""), "status": c.get("status", ""),
+                              "ports": c.get("ports", []), "image": c.get("image", "")}
+                             for c in sorted(mine, key=lambda c: (c.get("service", ""), c.get("name", "")))],
                 "route": route_view(project, inst,
-                                    sorted({p for c in mine for p in c["ports"]})),
+                                    sorted({p for c in mine for p in c["ports"]}),
+                                    # The project's own service first: the
+                                    # lowest published port was the lab's
+                                    # Gitea's ssh, which no browser reads.
+                                    prefer=sorted({p for c in mine
+                                                   if c.get("service") in (_slug(project), _slug(inst))
+                                                   for p in c["ports"]})),
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -3591,12 +3611,41 @@ def test(project, instance=MAIN, cmd="", args=()):
     # The service the project builds, else the first one: the project's own
     # code is what the tests are about.
     service = next((n for n, sv in services.items() if sv.get("build")), next(iter(services)))
+    workdir = project_dir_inside(services[service], project)
     nid = _instance_node(project, instance)
     n = queue.node(nid) if (queue and nid) else None
     if not n or n["kind"] != "agent":
         return {"error": "tests run inside an instance on an agent node, and this one is not on one"}
     return _submit(project, instance, "test",
-                   {"service": service, "cmd": cmd, "args": [str(a) for a in args][:32]})
+                   {"service": service, "cmd": cmd, "args": [str(a) for a in args][:32],
+                    "workdir": workdir})
+
+
+def project_dir_inside(sv, project):
+    """Where a service sees the project's directory: the target of the bind
+    that carries it (the directory itself, or a parent such as the whole
+    projects share), with the rest of the path appended. "" when nothing
+    mounts it, which is an image that copied the code at build time and
+    whose own working directory is the right place."""
+    try:
+        pdir = str((WORKSPACE / project).resolve())
+    except OSError:
+        pdir = str(WORKSPACE / project)
+    for v in sv.get("volumes") or []:
+        if not isinstance(v, dict) or (v.get("type") or "") != "bind":
+            continue
+        src, tgt = str(v.get("source") or "").rstrip("/"), str(v.get("target") or "").rstrip("/")
+        if not src or not tgt:
+            continue
+        try:
+            src = str(Path(src).resolve())
+        except OSError:
+            pass
+        if pdir == src:
+            return tgt
+        if pdir.startswith(src + "/"):
+            return tgt + pdir[len(src):]
+    return ""
 
 
 def _job_down(project, instance, run):

@@ -3972,7 +3972,9 @@ shown = 0
 for _ in range(3600):
     time.sleep(1)
     j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
-    if j.get("error"):
+    # A row has an `error` of its own (the sentence the tab shows for how it
+    # ended); only an answer with no job in it is the API refusing.
+    if j.get("error") and "state" not in j:
         sys.exit(f"[builderbot] ERROR: {j['error']}")
     log = j.get("log") or ""
     if len(log) > shown:
@@ -3981,6 +3983,7 @@ for _ in range(3600):
         code = j.get("exit_code")
         if j["state"] == "succeeded":
             sys.exit(0)
+        print(f"[builderbot] {j.get('error') or 'the tests failed'} (exit {code})", file=sys.stderr)
         sys.exit(code if isinstance(code, int) and code else 1)
 sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
 PY
