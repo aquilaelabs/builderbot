@@ -5199,7 +5199,10 @@ class Handler(BaseHTTPRequestHandler):
         argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
         # git's network half runs under the account's author like everything
         # else it does with a repository: none set, none run.
-        if argv and argv[0] == "git" and users.uid_of(me) and not users.git_ready(me):
+        # Push, fetch and pull write with git, and git wants an author; a
+        # policy read and an ls-remote do not (B128).
+        if argv and argv[0] == "git" and argv[1:2] not in (["policy"], ["ls-remote"]) \
+                and users.uid_of(me) and not users.git_ready(me):
             return self._json({"error": "no name and email for commits yet — set them on "
                                         "your Profile (the gear in the dashboard's header) first"}, 403)
         if not argv or argv[0] not in RELAY_VERBS:
