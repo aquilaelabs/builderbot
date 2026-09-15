@@ -512,6 +512,7 @@ def _compose_done(job, state):
                 "stopping": "stopping it failed — the tail of its output is below",
                 "starting": "up failed — the tail of its output is below",
                 "testing": "the tests failed: their output is the job's log",
+                "preparing": "a bind directory could not be made on the node: its line is below",
                 }.get(step, "")
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
@@ -2679,6 +2680,13 @@ def instances(project):
     """
     have = list((_load().get(project) or {}).keys())
     return have or [MAIN]
+
+
+def only_instance(project):
+    """The instance a request means when it names none: the project's only
+    recorded one, else `main`."""
+    have = list((_load().get(project) or {}).keys())
+    return have[0] if len(have) == 1 else MAIN
 
 
 def states(project):

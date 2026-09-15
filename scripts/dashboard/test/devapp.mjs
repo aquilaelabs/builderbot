@@ -2505,6 +2505,14 @@ ok(await page.$('#devSend'),
   const j2 = await finished((await asSession({ project: 'ep.silon', action: 'test' })).job);
   ok(j2.state === 'failed' && j2.exit_code === 1,
      `a failing test command is a failed job carrying its exit code (${j2.state} ${j2.exit_code})`);
+  // A request naming no instance means the project's only one, whatever it
+  // is called: BuilderBot's own is builderbot-dev, and a session's bb devapp
+  // answered for a `main` that did not exist.
+  const only = await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'state' }) })).json()));
+  ok((only.state || only).name === 'ep-silon' || (only.state || only).instance === 'main',
+     `a request naming no instance is answered for the project's only one (${JSON.stringify(only.state || only).slice(0, 60)})`);
   const bad = await asSession({ project: 'ep.silon', action: 'test', args: ['$(rm -rf /)'] });
   ok(bad.status === 400 && /argument the test command cannot take/.test(bad.error || ''),
      'an argument that is not a plain word is refused before anything runs');

@@ -57,6 +57,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent status         # what this node is, and does it answer
 """
 import contextlib
+import errno
 import glob
 import hashlib
 import http.client
@@ -94,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.60"
+AGENT_VERSION = "0.5.61"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3656,7 +3657,26 @@ class Agent:
                         os.chown(d, who["user"], who["group"])
                 job.say(f"bind directory {d}\n")
             except OSError as e:
-                job.say(f"could not make {d}: {e.strerror}\n")
+                # A bind source this machine cannot make. Whether that ends
+                # the job depends on whether docker could do better: it runs
+                # as root, so an agent that is root and failed has proved
+                # docker will fail too, and a stale NFS handle or a file in
+                # the way defeats any privilege. Then the up cannot work and
+                # is not tried: docker would report the same mkdir in worse
+                # words ("mkdir /devdata: file exists" over a stale handle,
+                # measured 15 Sep). An unprivileged agent (a guest node)
+                # names it and carries on, since docker may still make it.
+                why = e.strerror or str(e)
+                hopeless = (os.geteuid() == 0 or e.errno == errno.ESTALE
+                            or isinstance(e, (NotADirectoryError, FileExistsError)))
+                hint = (": the mount under it is stale; remount it on this node"
+                        if e.errno == errno.ESTALE or "stale" in why.lower() else "")
+                if not hopeless:
+                    job.say(f"could not make {d}: {why}; this agent is not root, so docker may still\n")
+                    continue
+                job.say(f"could not make {d}: {why}{hint}\n")
+                job.outputs.append({"kind": "compose", "steps_done": 0, "failed_at": "preparing"})
+                return "failed", 73
         done = 0
         for stp in (spec.get("plan") or [])[:8]:
             if job.canceled:

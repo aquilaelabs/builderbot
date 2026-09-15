@@ -100,6 +100,7 @@ bb — BuilderBot helper
   bb tests last          that verdict again from the last run's log, running nothing
   bb tests lab           the lab suites, against the Gitea of BuilderBot's dev stack (lab profile)
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
+                         (--instance NAME on any devapp verb for a project with several)
   bb rules               the house rules for this project — the operator's and yours
   bb rules show NAME     one of them in full — what a conditional rule says
   bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
@@ -3798,6 +3799,19 @@ PY
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
 cmd_devapp() {
+    # --instance NAME before or after the verb, for a project with several;
+    # with none named the controller answers for the project's only one.
+    local -a rest=()
+    local inst="" a
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --instance) [ $# -ge 2 ] || die "--instance needs the name after it"; inst="$2"; shift 2 ;;
+            --instance=*) inst="${1#--instance=}"; shift ;;
+            *) rest+=("$1"); shift ;;
+        esac
+    done
+    set -- "${rest[@]}"
+    export BB_DEV_INSTANCE="$inst"
     local sub="${1:-status}" auth proj
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-}"
@@ -3813,6 +3827,7 @@ sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
 
 d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
+                               "instance": os.environ.get("BB_DEV_INSTANCE", ""),
                                "action": "state"},
                auth=os.environ["BB_DEV_AUTH"])
 if d.get("error"):
@@ -3857,7 +3872,7 @@ import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
 auth = os.environ["BB_DEV_AUTH"]
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj}, auth=auth)  # noqa: E731
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", "")}, auth=auth)  # noqa: E731
 
 def look():
     d = post({"action": "state"})
@@ -3947,7 +3962,8 @@ import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
 auth = os.environ["BB_DEV_AUTH"]
-r = bbapi.call("/api/devapp", {"project": proj, "action": "test", "args": sys.argv[1:]}, auth=auth)
+r = bbapi.call("/api/devapp", {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                               "action": "test", "args": sys.argv[1:]}, auth=auth)
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 jid = r.get("job") or ""
@@ -3969,7 +3985,7 @@ for _ in range(3600):
 sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
 PY
             ;;
-        *) die "usage: bb devapp [status|rebuild [--why \"what it is for\"]|test [ARGS]]" ;;
+        *) die "usage: bb devapp [--instance NAME] [status|rebuild [--why \"what it is for\"]|test [ARGS]]" ;;
     esac
 }
 

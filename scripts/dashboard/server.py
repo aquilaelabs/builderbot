@@ -5946,7 +5946,12 @@ class Handler(BaseHTTPRequestHandler):
         # a request that names a strange one is answered rather than obeyed:
         # the name decides a compose project and a data directory, and those
         # are not places to let an arbitrary string reach.
-        inst = field(req, "instance") or devapp.MAIN
+        # A request naming no instance means the project's only one, when
+        # it has exactly one: BuilderBot's own is called builderbot-dev, and
+        # bb devapp from a session was answering for a `main` that did not
+        # exist (15 Sep). With several, `main` as before; bb takes
+        # --instance for that.
+        inst = field(req, "instance") or devapp.only_instance(name)
         # What the others sharing this project would want to know before they
         # press the same button. After `inst` is resolved, because the line
         # names it — the first version read it above and took every compose

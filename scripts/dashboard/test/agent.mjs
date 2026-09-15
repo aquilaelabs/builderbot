@@ -1992,6 +1992,31 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        '...in a directory of its own under the node\'s data store');
     ok(j && (j.outputs || []).some(o => o.kind === 'compose' && o.steps_done === 1),
        '...and reports how far the plan got, which is what the controller records from');
+    // A bind directory the node cannot make is an up that cannot work, and
+    // the agent says so and runs nothing, rather than letting docker fail on
+    // the same mkdir in worse words ("file exists" over a stale NFS handle,
+    // 15 Sep). A file where the instance's data directory would go is the
+    // cheapest way to make one unmakeable.
+    {
+      const made = await api('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'blocked', node: minted.id });
+      ok(made.ok && made.instance === 'blocked', `a second instance to block (${made.error || made.instance})`);
+      writeFileSync(`${DIR}/devdata/blocked`, 'not a directory\n');
+      const up2 = await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'up' });
+      ok(up2.ok || up2.started, `Up on it is queued (${up2.error || 'ok'})`);
+      const jb = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        return api(`/api/v1/jobs?id=${one.id}`);
+      }, 60000);
+      ok(jb && jb.state === 'failed' && jb.exit_code === 73 && /could not make .*blocked: (Not a directory|File exists)/.test(jb.log || '')
+         && !/\$ .*compose/.test(jb.log || ''),
+         `a bind directory the node cannot make fails the job with the machine's reason before the plan runs (${jb?.state} ${jb?.exit_code}: ${(jb?.log || '').split('\n').filter(l => /could not/.test(l)).join(' / ').slice(0, 120)})`);
+      ok(jb && (jb.outputs || []).some(o => o.kind === 'compose' && o.failed_at === 'preparing'),
+         '...and names the step, so the row says a directory could not be made rather than that up failed');
+      rmSync(`${DIR}/devdata/blocked`, { force: true });
+      await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
+    }
     await api('/api/prefs', { project: 'ep.silon', node: '' });
   }
 
