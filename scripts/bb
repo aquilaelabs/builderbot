@@ -4822,35 +4822,46 @@ try:
     rec = json.load(sys.stdin)
 except ValueError:
     rec = {}
-# Three things, in order: the command, where it came from, then the output
-# globs. What the settings say — or, for a test, the command a project of
-# this shape obviously runs, so a repo nobody configured still answers
-# bb test. Where it came from rides along because the caller says so out
-# loud, and asking a second time would be a second relay from a node.
+# Four things, in order: the command, where it came from, whether the tests
+# run only in the container, then the output globs. What the settings say,
+# or, for a test, the command a project of this shape obviously runs, so a
+# repo nobody configured still answers bb test. Where it came from rides
+# along because the caller says so out loud, and asking a second time would
+# be a second relay from a node.
 # No apostrophes in here: the whole block is inside shell single quotes.
 role = os.environ["BB_ROLE_"]
 set_here = rec.get(role) or ""
 cmd = set_here or (rec.get("test_default") if role == "test" else "") or ""
 print(cmd)
 print("set" if set_here else ("default" if cmd else "none"))
+print("only" if rec.get("devtest") else "either")
 for g in rec.get("outputs") or []:
     print(g)
 ')
-    local cmd="${rec[0]:-}" from="${rec[1]:-none}"
+    local cmd="${rec[0]:-}" from="${rec[1]:-none}" where="${rec[2]:-either}"
     [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
     # A test runs inside the project's dev instance when it has one that is
-    # UP (roadmap R48): the container is the boundary. Otherwise on the node
-    # as before; the refusal that makes the container the only way is step 3.
-    if [ "$role" = test ] && [ "$(BB_PROJECT="$proj" "$0" devapp status 2>/dev/null \
-            | awk '$1 == "running" {print $2}')" = yes ]; then
-        echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
-        BB_PROJECT="$proj" exec "$0" devapp test "$@"
+    # UP (roadmap R48): the container is the boundary. Otherwise on the node,
+    # unless the project's Docker row says the tests are the container's
+    # only: then a container that is down is a refusal naming it, and nothing
+    # runs on the node, which is what stops a suite that tests BuilderBot
+    # from running on the BuilderBot it is running on.
+    if [ "$role" = test ]; then
+        local inst
+        inst="$(BB_PROJECT="$proj" "$0" devapp status 2>/dev/null)"
+        if [ "$(printf '%s\n' "$inst" | awk '$1 == "running" {print $2}')" = yes ]; then
+            echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
+            BB_PROJECT="$proj" exec "$0" devapp test "$@"
+        elif [ "$where" = only ]; then
+            local name; name="$(printf '%s\n' "$inst" | awk '$1 == "instance" {print $2}')"
+            die "$proj's tests run only inside its dev instance${name:+ ($name)}, which is not running: Up on the Docker tab brings it back, or bb devapp rebuild where the dial allows one. Nothing runs on the node"
+        fi
     fi
     # Said before it runs: a command nobody typed should not look like one
     # somebody did.
     [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
     local -a args=(--role "$role") g
-    for g in "${rec[@]:2}"; do [ -n "$g" ] && args+=(--out "$g"); done
+    for g in "${rec[@]:3}"; do [ -n "$g" ] && args+=(--out "$g"); done
     # Anything else on the line is APPENDED TO THE COMMAND, not read as a flag
     # of this one: `bb test cards auth` runs the project's test command with
     # `cards auth` after it, which for a suite that takes file names is how a

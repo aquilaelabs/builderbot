@@ -433,7 +433,10 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
 bb build           the project's build command on its node, with the outputs
                    it lists: all set in the project's settings dialog
 bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
-                   suite that takes file names runs only those
+                   suite that takes file names runs only those. Inside the project's
+                   dev instance whenever that is up; and where its Docker row says
+                   the tests are the container's only, a container that is down is
+                   a refusal naming it, and nothing runs on the node
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
 bb devapp rebuild [--why "..."]
@@ -481,7 +484,10 @@ bb tests last      that verdict again off the last run's log, running nothing
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
                    whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
-                   BuilderBot it runs on (roadmap R48)
+                   BuilderBot it runs on (roadmap R48). The row's second picker, "Claude tests",
+                   makes the container the only place: on `only`, a container that is down
+                   refuses rather than falling back to the node. The rebuild dial then governs
+                   testing too, since a stale container tests stale code
 bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
                    BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
                    from the Docker tab like any project's stack. Each skips in one line without one,

@@ -2452,6 +2452,32 @@ ok(await page.$('#devSend'),
     { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
+  // ---- where the tests run (roadmap R48, step 3) -------------------------
+  // Beside the dial, the same draft-then-Apply shape: `either` by default,
+  // `only` makes the container the one place bb test runs. Stored as a
+  // boolean, and absent when off, so a project left alone leaves no trace.
+  const TW = '.dmtab [data-dmtest="ep.silon"]';
+  ok(await page.$eval(TW, e => e.value === 'either' && !e.disabled
+                              && [...e.options].map(o => o.value).join() === 'either,only'),
+     'the row carries where the tests run, on either by default, with both settings');
+  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => b.disabled),
+     '...with its Apply asleep until something is picked');
+  await page.selectOption(TW, 'only');
+  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => !b.disabled),
+     '...which wakes on a pick that differs from what is saved');
+  await page.click('.dmtab [data-dmtestapply="ep.silon"]');
+  await refreshUntil(page, () => ((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+     'Apply stores it on the project, as the one boolean it is');
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devtest: false }) });
+  });
+  await refreshUntil(page, () => !((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest, { timeout: 20000 });
+  ok(!('devtest' in (JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'] || {})),
+     '...and off is absent from the record rather than stored as false');
 }
 
 
@@ -2530,6 +2556,31 @@ ok(await page.$('#devSend'),
   const down = await asSession({ project: 'ep.silon', action: 'test' });
   ok(down.status === 400 && /is not running: Up on the Docker tab/.test(down.error || ''),
      `a container that is down is said so and never started behind the operator's back (${down.error})`);
+  // The refusal that makes the container the only way (step 3): from a
+  // session on a node, with the row set to `only` and the instance down,
+  // bb test names the instance and runs nothing on the node. With the row
+  // on `either` the same call would queue a job on the node, which the
+  // fixture has none of, so that half is the routing step 1 already proves.
+  {
+    const setWhere = (only) => page.evaluate(async (v) => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devtest: v }) });
+    }, only);
+    await setWhere(true);
+    const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                      BB_TOKEN: tok, BB_NODE: 'agentbox', BB_PROJECT: 'ep.silon',
+                      BB_TREE: '/workspace/ep.silon' };
+    let out = '', code = 0;
+    try {
+      out = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/ep.silon`, env: nodeEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { code = e.status; out = String(e.stderr || '') + String(e.stdout || ''); }
+    ok(code !== 0 && /tests run only inside its dev instance \(ep-silon\), which is not running: Up on the Docker tab/.test(out)
+       && /Nothing runs on the node/.test(out),
+       `with the row on only and the instance down, bb test from a session refuses, naming the instance (${
+         code}: ${out.replace(/\s+/g, ' ').slice(0, 120)})`);
+    await setWhere(false);
+  }
   await setTest('');
 }
 

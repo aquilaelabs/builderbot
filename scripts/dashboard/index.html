@@ -8522,6 +8522,15 @@ const dmRouteDraft = {};
 // pick when it was a switch, which is a control that cannot be reconsidered
 // and reads differently from every other setting on the page.
 const dmGrantDraft = {};
+// Where a session's tests run, per project (roadmap R48, step 3): the same
+// draft-then-Apply shape as the dial above it. `either` is the default; on
+// `only`, bb test refuses when the container is down rather than running on
+// the node, which is the whole point for a project that IS the container.
+const DEVTEST_MODES = [["either", "in it when it is up, else on the node"],
+                       ["only", "only in it, never on the node"]];
+const dmTestDraft = {};
+const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
+                             ? "only" : "either");
 
 function dmRouteLine(d){
   const r = d.route;
@@ -8609,6 +8618,28 @@ function dmGrantLine(d){
     <button type="button" data-dmclaudeapply="${esc(d.project)}"${
       pick === saved ? " disabled" : ""} title="save who may rebuild ${
       esc(d.project)}'s containers">Apply</button></div>`;
+}
+
+function dmTestLine(d){
+  if (d.source === "file" || !mayDocker()) return "";
+  const saved = devTestMode(d.project);
+  const pick = dmTestDraft[d.project] ?? saved;
+  return `<div class="sub dmgrant"><label for="${
+      esc(`dmt-${d.project}`)}">Claude tests${
+    helpIcon(`Where bb test runs for ${d.project}. Inside this container `
+      + `whenever it is up either way; on "only" a container that is down is `
+      + `a refusal naming it, and nothing runs on the node, so a suite that `
+      + `tests ${d.project} cannot disturb the ${d.project} it runs beside. `
+      + `A stale container then tests stale code: the rebuild dial governs `
+      + `testing too.`)}</label>
+    <select id="${esc(`dmt-${d.project}`)}" data-dmtest="${esc(d.project)}"
+            data-was="${esc(saved)}"
+            aria-label="where a session runs ${esc(d.project)}'s tests">${
+      DEVTEST_MODES.map(([v, l]) => `<option value="${v}"${
+        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+    <button type="button" data-dmtestapply="${esc(d.project)}"${
+      pick === saved ? " disabled" : ""} title="save where ${
+      esc(d.project)}'s tests run">Apply</button></div>`;
 }
 
 function dockerJob(){
@@ -9017,6 +9048,7 @@ function dmRowsHtml(ins, job, blind){
         ${dmRouteLine(d)}
         ${dmRefLine(d)}
         ${dmGrantLine(d)}
+        ${dmTestLine(d)}
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -9142,6 +9174,32 @@ function dmWireRows(el, list = dockerList){
                  : `${project}/${instance} builds from the project's own checkout again`);
       dockerList = null; dockerRev++; loadDocker();
     }catch(e){ notify("the branch: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
+  el.querySelectorAll("[data-dmtest]").forEach(sel => sel.onchange = () => {
+    const project = sel.dataset.dmtest;
+    if (sel.value === sel.dataset.was) delete dmTestDraft[project];
+    else dmTestDraft[project] = sel.value;
+    const b = el.querySelector(`[data-dmtestapply="${CSS.escape(project)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-dmtestapply]").forEach(btn => btn.onclick = async () => {
+    const project = btn.dataset.dmtestapply;
+    const mode = dmTestDraft[project];
+    if (!mode) return;
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devtest: mode === "only"})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmTestDraft[project];
+      notify(mode === "only" ? `${project}'s tests run only inside its container now`
+             : `${project}'s tests run on the node again when its container is down`);
+      refresh();
+      dockerRev++; drawPanes();
+    }catch(e){ notify("where the tests run: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
   el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {

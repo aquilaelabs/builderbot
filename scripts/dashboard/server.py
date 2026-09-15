@@ -4794,6 +4794,7 @@ class Handler(BaseHTTPRequestHandler):
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
                                 devbuild=req.get("devbuild"),
+                                devtest=req.get("devtest"),
                                 color=req.get("color"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the

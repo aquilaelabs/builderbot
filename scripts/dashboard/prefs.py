@@ -134,7 +134,14 @@ def _clean(rec):
             # the reason in front of a person, who allows one rebuild.
             # Creating, removing and Up/Down are not on this dial at all —
             # those are docker-write, which a session never has.
-            "devbuild": _devbuild(rec.get("devbuild"))}
+            "devbuild": _devbuild(rec.get("devbuild")),
+            # Whether a session's tests run ONLY inside the project's dev
+            # instance (roadmap R48, step 3). Off, `bb test` runs there when
+            # the instance is up and on the node otherwise; on, a down
+            # instance is a refusal that names it, and nothing runs on the
+            # node. Per project because only a project with a compose file
+            # has a container to run in; global would break every other one.
+            "devtest": bool(rec.get("devtest"))}
 
 
 def _devbuild(v):
@@ -237,7 +244,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, color=None, workspace=None):
+              devbuild=None, devtest=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -292,13 +299,15 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
+        if devtest is not None:
+            cur["devtest"] = devtest in (True, 1, "1", "true", "on", "yes")
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["model"] or cur["effort"] or cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["devbuild"] != "deny"
+                or cur["devbuild"] != "deny" or cur["devtest"]
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose — _clean puts the defaults
@@ -310,6 +319,8 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                 rec.pop("gitpol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
+            if not cur["devtest"]:
+                rec.pop("devtest", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
