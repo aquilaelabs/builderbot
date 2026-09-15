@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.63"
+AGENT_VERSION = "0.5.64"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -340,7 +340,10 @@ RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Gitea's runner: one static binary, fetched from gitea.com's releases, or a
 # prebuilt one named here for the suite.
 ACT_RUNNER_BIN = os.environ.get("BUILDERBOT_ACT_RUNNER_BIN", "")
-ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/act_runner/releases/latest"
+# gitea/act_runner became gitea/runner upstream (the old address answers
+# 301, the assets are gitea-runner-<ver>-<os>-<arch>); the binary keeps the
+# act_runner command set, and keeps its name here.
+ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/runner/releases/latest"
 
 def runner_slot(url):
     """The slot a runner's address maps to: its host and path, lowercase,
@@ -4500,7 +4503,7 @@ class Agent:
                     with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
-                                 if re.fullmatch(rf"act_runner-[0-9.]+-linux-{arch}", a.get("name", "")))
+                                 if re.fullmatch(rf"(gitea-runner|act_runner)-[0-9.]+-linux-{arch}", a.get("name", "")))
                 except (OSError, ValueError, StopIteration, KeyError) as e:
                     job.say(f"could not find the act_runner release: {e}\n")
                     return "failed", 69

@@ -1657,7 +1657,7 @@ over ssh.)
 
 **CI runners per node, one per git host.** The same fold lists the node's
 runners and adds one with its host, address and token (kept root-only on
-the controller): GitHub's runner and Gitea's `act_runner` side by side,
+the controller): GitHub's runner and Gitea's `act_runner` (published as gitea-runner since it moved to gitea/runner) side by side,
 each registered with labels `builderbot, self-hosted, linux, <arch>, <node
 name>` plus any extra, so a workflow's `runs-on` names the node it should
 land on whichever host its repository is on. Each row says whether its
