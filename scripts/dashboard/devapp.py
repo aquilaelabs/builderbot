@@ -1658,6 +1658,18 @@ def _pairs():
     return [(k, v) for k, v in got.items()]
 
 
+def _node_mounts_at(path):
+    """Whether the node being addressed reports a mount at exactly this
+    path, from its census (nodes._census keeps `mounts`)."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    for m in ((n or {}).get("reported") or {}).get("mounts") or []:
+        if isinstance(m, dict) and str(m.get("path") or "").rstrip("/") == path \
+                and m.get("mounted", True):
+            return True
+    return False
+
+
 def host_map():
     """(container path -> host path, complaints about the pairs given).
 
@@ -1672,7 +1684,16 @@ def host_map():
     """
     roots, out, bad = _mount_roots(), {}, []
     root = None
-    for here, there in _pairs():
+    pairs = _pairs()
+    # The projects share at the same path on both machines is the ordinary
+    # arrangement (a sandbox VM mounts it at /workspace, as this container
+    # does), so where nobody has written a pair for it and the node reports
+    # the share mounted there, /workspace maps to itself. A written pair
+    # still wins, for the node whose owner put the share somewhere else.
+    ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
+    if ws and not any(h.strip().rstrip("/") == ws for h, _ in pairs) and _node_mounts_at(ws):
+        pairs.append((ws, ws))
+    for here, there in pairs:
         pair = f"{here}:{there}"
         here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
         if not here.startswith("/") or not there.startswith("/"):
@@ -2084,15 +2105,53 @@ def write_env(project, text, instance=MAIN):
     return {"ok": True}
 
 
+_VAR_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def required_vars(compose_text):
+    """The variables a compose file cannot do without: referenced as ${X}
+    or $X with no default, or ${X:?...}."""
+    out = set()
+    for m in _VAR_REF.finditer(compose_text or ""):
+        if m.group(3):
+            out.add(m.group(3))
+            continue
+        name, rest = m.group(1), m.group(2) or ""
+        if not rest or rest.startswith(("?", ":?")):
+            out.add(name)
+    return out
+
+
+def defaulted_vars(compose_text):
+    """The variables a compose file answers for itself (${X:-99}, ${X-99})
+    and never also needs bare: the only kind the env gate may leave unset."""
+    out = set()
+    for m in _VAR_REF.finditer(compose_text or ""):
+        if m.group(1) and (m.group(2) or "").startswith((":-", "-")):
+            out.add(m.group(1))
+    return out - required_vars(compose_text)
+
+
 def missing_env(project, instance=MAIN):
-    """Keys the repo's example declares that the dev env does not set."""
+    """Keys the repo's example declares that the dev env does not set,
+    except the ones the compose file answers for itself (${PUID:-99}): the
+    example lists those so they CAN be set, and asking for nine of them
+    before a first Up was the operator's report (15 Sep). A key the file
+    never names stays required: the example says it matters, and this side
+    cannot tell what reads it.""" 
     try:
         example = (WORKSPACE / project / ".env.example").read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return []
     have = set(_keys(read_env(project, instance)))
-    return [k for k in _keys(example) if k not in have]
+    cf = compose_file(project, instance)
+    try:
+        text = cf.read_text(encoding="utf-8", errors="replace") if cf else ""
+    except OSError:
+        text = ""
+    optional = defaulted_vars(text)
+    return [k for k in _keys(example) if k not in have and k not in optional]
 
 
 def _gate_env(project, instance=MAIN):
@@ -2202,6 +2261,10 @@ def _overview_here(picked):
             same_daemon = rec.get("daemon") == daemon_id()
             out.append({
                 "project": project, "instance": inst, "name": pn,
+                # The project whose notebook lists it, when it is not this
+                # one's own (a container written here, or a second project's
+                # helper): "" otherwise.
+                "for": str(rec.get("for") or ""),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2291,7 +2354,7 @@ def _overview_here(picked):
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
 
 
-def create_container(name, compose_text, env_text="", node=""):
+def create_container(name, compose_text, env_text="", node="", for_project=""):
     """A container from a compose file written here, with no project behind it.
 
     The shape every other Docker front end uses: a stack is a name, a compose
@@ -2332,6 +2395,12 @@ def create_container(name, compose_text, env_text="", node=""):
         rec["source"] = "file"
         if node:
             rec["node"] = str(node)
+        # Which project's notebook lists this container (roadmap: the
+        # operator's ask, 15 Sep): a dev radarr for a media project shows
+        # under that project, not only in the manager. Kept only when
+        # given; the creator's own project needs no note.
+        if for_project:
+            rec["for"] = str(for_project)[:100]
         write_json(FILE, d2)
     if (env_text or "").strip():
         write_env(slug, env_text, MAIN)
@@ -2443,7 +2512,7 @@ def forget_container(name):
     return gone
 
 
-def create_instance(project, name, node=""):
+def create_instance(project, name, node="", for_project=""):
     """Register a new instance of a project. Nothing is built or started.
 
     `node` is which docker-host the instance is bound to — the daemon every
@@ -2476,6 +2545,12 @@ def create_instance(project, name, node=""):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
+        # Which project's notebook lists this container (roadmap: the
+        # operator's ask, 15 Sep): a dev radarr for a media project shows
+        # under that project, not only in the manager. Kept only when
+        # given; the creator's own project needs no note.
+        if for_project:
+            rec["for"] = str(for_project)[:100]
         write_json(FILE, d)
     _bump()
     return {"ok": True, "project": project, "instance": slug,

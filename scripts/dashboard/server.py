@@ -5838,8 +5838,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"that is the project {clash} — a "
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
+        # Shown under a project's notebook as well as here, when asked:
+        # only a project this account can see, or nothing.
+        under = field(req, "for")
+        if under and under not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": f"not a project: {under}"}, 400)
         r = devapp.create_container(name, req.get("compose") or "",
-                                    req.get("env") or "", field(req, "node"))
+                                    req.get("env") or "", field(req, "node"), under)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _logs(self, req):
@@ -5967,7 +5972,11 @@ class Handler(BaseHTTPRequestHandler):
             # nothing of the instance, which is the point: there is none.
             return self._json({"text": devapp.starter(name)})
         if act == "new":
-            r = devapp.create_instance(name, inst, field(req, "node"))
+            under = field(req, "for")
+            if under and under not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": f"not a project: {under}"}, 400)
+            r = devapp.create_instance(name, inst, field(req, "node"),
+                                       "" if under == name else under)
             if not r.get("error") and field(req, "ref"):
                 # Pinned before the build the dialog starts, or the first one
                 # comes from the project's checkout and the row says otherwise.

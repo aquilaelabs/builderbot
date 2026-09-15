@@ -4,8 +4,7 @@
 // Everything here drives the stub docker the harness provides — the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll,
-         refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -103,6 +102,10 @@ async function showRow(){
 async function dmRefresh(){
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
   await openManager();
+  // The rows come back at once from the last answer, marked stale while the
+  // new one is on its way (B125); a refresh is done when the mark is gone.
+  await page.waitForFunction(() => document.querySelector('.dmtab') && !document.querySelector('.dmtab.dmstale'),
+                             null, { timeout: 30000 });
 }
 // The manager lists what has been SENT to it — a project with a compose file
 // no longer gets a phantom row there — so the fixture's instance has to exist
@@ -2511,6 +2514,96 @@ ok(await page.$('#devSend'),
   ok(down.status === 400 && /is not running: Up on the Docker tab/.test(down.error || ''),
      `a container that is down is said so and never started behind the operator's back (${down.error})`);
   await setTest('');
+}
+
+// ---- two rules the env gate and the path mapping live by ----------------
+// Driven at the module: both are pure reads of a compose file and a node
+// record, and the dashboard's rows only carry their answers.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile, types
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+out = {}
+# A key with a default in the compose file is not missing; one the file
+# never names still is; one it needs with no default is.
+d = Path(tempfile.mkdtemp())
+(d / 'proj').mkdir(); (d / 'env').mkdir()
+m.configure(workspace=str(d), state=str(d), write_json=lambda p, o: None, queue=None)
+(d / 'proj' / '.env.example').write_text('NEEDED=\\nDEFAULTED=99\\nUNUSED=\\nBARE=\\nASKED=\\n')
+(d / 'proj' / 'docker-compose.yml').write_text(
+    'services:\\n  app:\\n    image: x\\n    environment:\\n      A: \${NEEDED}\\n      B: \${DEFAULTED:-99}\\n      C: $BARE\\n      D: \${ASKED:?say}\\n')
+m.WORKSPACE = d; m.ENVDIR = d / 'env'
+out['required'] = sorted(m.required_vars((d / 'proj' / 'docker-compose.yml').read_text()))
+out['missing'] = m.missing_env('proj')
+# /workspace maps to itself when the node reports the share mounted there,
+# and nowhere without either a pair or the mount.
+m.WORKSPACE = Path('/workspace')
+m.node_paths = lambda nid: {}
+m._default_node = lambda: 'n1'
+m._mount_roots = lambda: {'/workspace': 'projects'}
+class Q:
+    mounts = []
+    def node(self, nid): return {'id': nid, 'reported': {'mounts': self.mounts}}
+q = Q(); m.queue = q
+out['bare'] = m.host_map()[0]
+q.mounts = [{'path': '/workspace', 'mounted': True}]
+out['mounted'] = m.host_map()[0]
+m.node_paths = lambda nid: {'/workspace': '/mnt/user/projects'}
+out['written'] = m.host_map()[0]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+  const r = JSON.parse(out);
+  ok(r.required.join(',') === 'ASKED,BARE,NEEDED',
+     `a compose file needs the variables it names with no default, bare or with :?, and nothing else (${r.required})`);
+  ok(r.missing.join(',') === 'NEEDED,UNUSED,BARE,ASKED',
+     `...and the env gate leaves only a key with a default unasked; one the file never names is still the example's to require (${r.missing})`);
+  ok(JSON.stringify(r.bare) === '{}' && JSON.stringify(r.mounted) === '{"/workspace":"/workspace"}',
+     `/workspace maps to itself on a node that reports the share mounted there, and to nothing on one that does not (${JSON.stringify(r.mounted)})`);
+  ok(JSON.stringify(r.written) === '{"/workspace":"/mnt/user/projects"}',
+     `...and a written pair still wins (${JSON.stringify(r.written)})`);
+}
+
+// ---- a container shown under a project -------------------------------------
+// A dev radarr for a media project belongs in that project's notebook, not
+// only in the manager: New container takes a project to show it under, the
+// record keeps it, the manager's row says so, and the project's Docker view
+// lists it beside the project's own instances with the same controls.
+{
+  const made = await page.evaluate(async () => (await (await fetch('/api/container', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', name: 'helper-for-eps', for: 'ep.silon',
+                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
+  ok(made.ok && made.project === 'helper-for-eps', `a container written here can name the project it belongs with (${JSON.stringify(made).slice(0, 80)})`);
+  const bad = await page.evaluate(async () => (await (await fetch('/api/container', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', name: 'helper-for-nobody', for: 'no-such-project',
+                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
+  ok(/not a project: no-such-project/.test(bad.error || ''), 'a project nobody can see is refused');
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => (dockerList?.instances || []).some(d => d.project === 'helper-for-eps' && d.for === 'ep.silon'),
+                             null, { timeout: 20000 });
+  ok(true, 'the manager\'s answer carries which project it is shown under');
+  await page.evaluate(() => openNotebook('ep.silon'));
+  await nbShown(page);
+  await nbTab(page, 'docker');
+  await page.waitForFunction(() => document.querySelector('.pane .nb #dkList .row[data-inst="helper-for-eps|main"]'),
+                             null, { timeout: 20000 });
+  const view = await page.$eval('.pane .nb [data-view="docker"]', v => ({
+    hint: v.querySelector('#dkHint').textContent,
+    rows: [...v.querySelectorAll('#dkList .row[data-inst]')].map(r => r.dataset.inst),
+    forLine: v.querySelector('#dkList .row[data-inst="helper-for-eps|main"] .sub')?.textContent || '',
+    buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm) }));
+  ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main'),
+     `the project's Docker view lists its own instance and the container shown under it (${view.rows.join(' ')})`);
+  ok(/for ep\.silon/.test(view.forLine) && view.buttons.includes('up') && view.buttons.includes('rebuild'),
+     `...with the manager's own row, saying whose it is, and its controls (${view.buttons.join(' ')})`);
+  ok(/2 containers of ep\.silon's on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'helper-for-eps', instance: 'main', action: 'remove' }) })).json()));
 }
 
 // The fixture goes back the way artifacts.mjs leaves alpha.

@@ -1830,7 +1830,10 @@ CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
-**New container** on that tab runs something with no project behind it: a
+**New container** on that tab runs something with no project behind it, and
+takes a project to **show under**, so it is listed on that project's notebook
+Docker view as well as here (Send to Docker manager takes the same, with the
+project it is built from picked by default): a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box, in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
@@ -1951,12 +1954,16 @@ a placeholder, and **+** starts over.
 Every project has one, reachable from the **Notebook** button on its row: a tab
 of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
-another, and the button lights green while that project's is open. Four views
-under its tab strip: **Memory** (what Claude remembers here), the **Roadmap**
-(the shared list of design work and ordered plans), **Bugs**, and **Analysis**
-(the scanner's findings for this project alone).
+another, and the button lights green while that project's is open. Its tab
+strip: **Briefing** (the rules, and what Claude remembers here), the
+**Roadmap** (the shared list of design work and ordered plans), **Bugs**,
+**Git**, **Artifacts**, **Docker** (this project's containers: its own dev
+instances and any container made with *show under* naming it, with the
+manager's rows and controls, so a dev radarr for a media project is found
+beside that project rather than among every project's on the Docker tab),
+**Tests**, and **Analysis** (the scanner's findings for this project alone).
 
-**Unsaved work does not cross those four.** Leaving a view asks, and answering
+**Unsaved work does not cross those views.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
 
 **A History, and the changelog, open over the panel rather than in place of

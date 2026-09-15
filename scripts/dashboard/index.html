@@ -2935,6 +2935,7 @@ body.booting .pane>.loading{margin:auto}
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
       <button type="button" data-v="artifacts">Artifacts</button>
+      <button type="button" data-v="docker">Docker</button>
       <button type="button" data-v="tests">Tests</button>
       <button type="button" data-v="analysis">Analysis</button>
     </div>
@@ -3124,6 +3125,15 @@ body.booting .pane>.loading{margin:auto}
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+    </div>
+    <!-- This project's containers: its own dev instances and anything made
+         with "show under" naming it, with the manager's rows and controls,
+         so nobody has to find them among every project's on the Docker
+         tab. Read from the project's node, which is where its work runs. -->
+    <div class="nbview" data-view="docker" hidden>
+      <div class="field nbhead vbar"><span id="dkHint">reading…</span><span class="sp"></span>
+        <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
+      <div class="dmtab" id="dkList"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
       <!-- The repository, read out (roadmap R36): what is changed and not
@@ -3408,6 +3418,12 @@ body.booting .pane>.loading{margin:auto}
       <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
     </div>
+    <!-- Which project's notebook lists it as well: a dev radarr for a media
+         project belongs under that project's Docker view, not only here. -->
+    <div class="field">
+      <label for="cUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container beside its own; the manager lists it either way" tabindex="0">?</span></label>
+      <select id="cUnder"></select>
+    </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
       <div class="pseg" role="group" aria-labelledby="cSegLabel">
@@ -3447,6 +3463,10 @@ body.booting .pane>.loading{margin:auto}
              placeholder="e.g. staging">
       <div class="hint" id="dnHint"></div>
       <div class="hint" id="dnPreview" hidden></div>
+    </div>
+    <div class="field">
+      <label for="dnUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container; its own by default" tabindex="0">?</span></label>
+      <select id="dnUnder"></select>
     </div>
     <div class="field" id="dnNodeField" hidden>
       <label for="dnNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
@@ -8289,9 +8309,11 @@ function dockerNodeKeep(){
 
 let dockerAsk = 0;                       // which ask is newest, so an older
                                          // answer landing late cannot win
+let dockerFetching = false;        // an answer is on its way: the tab says so
 async function loadDocker(){
   const asked = dockerNode;
   const ask = ++dockerAsk;
+  dockerFetching = true;
   let got;
   try{
     got = await (await fetch("/api/docker"
@@ -8301,6 +8323,7 @@ async function loadDocker(){
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
+  if (ask === dockerAsk) dockerFetching = false;
   if (asked !== dockerNode) return;
   // A newer ask is in flight or has landed: Refresh under a revision reload,
   // or a reload under Refresh. This answer is about an earlier moment, and a
@@ -8336,6 +8359,7 @@ function openSendToDocker(project){
     + "a project's name, as long as no other container has it.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
+  fillUnderSelect($("dnUnder"), project);
   fillNodeSelect($("dnNode"), $("dnNodeField"),
                  state?.projects?.find(p => p.name === project)
                    ?.prefs?.node || dockerNode);
@@ -8417,6 +8441,7 @@ async function dnSubmit(){
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project, action:"new", instance:name,
+                            for: $("dnUnder").value,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
@@ -8795,10 +8820,18 @@ async function openEditContainer(name){
              $("cErrWrap").hidden = false; }
 }
 
+// The "show under" picker: every project this account sees, none first.
+function fillUnderSelect(sel, picked){
+  const names = (state?.projects || []).map(p => p.name).sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">none</option>` + names.map(n =>
+    `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(n)}</option>`).join("");
+}
+
 function openNewContainer(){
   cEditing = null;
   $("cName").disabled = false;
   $("cName").value = "";
+  fillUnderSelect($("cUnder"), "");
   // Left EMPTY, both of them. The shape each wants is on the field as a
   // placeholder, which shows the same thing and cannot be submitted: seeded
   // as values, an example compose for a radarr nobody asked for was one
@@ -8854,6 +8887,7 @@ async function cSubmit(){
                             name: editing || $("cName").value,
                             node: editing ? "" : ($("cNodeField").hidden
                               ? "" : $("cNode").value),
+                            for: editing ? "" : $("cUnder").value,
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
@@ -8940,36 +8974,11 @@ function dmState(d, job, mine, busy, blind){
   return "never built";
 }
 
-function renderDockerInto(i){
-  const el = $("doc" + i);
-  if (!el) return;
-  el.classList.add("flush");
-  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
-  // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
-  // is not running. This used to end here, in one error line with no rows: the
-  // page threw away everything it could still honestly say, which is most of
-  // it. What an instance IS lives on this side (its name, its project, what it
-  // was built from, what its env still wants); only whether it is RUNNING is
-  // the daemon's to know. So the rows are drawn from the store, greyed, and
-  // say nothing about their state: an unreachable daemon is not evidence that
-  // anything stopped.
-  // Three ways to be blind, and the poll's is the one that outlives a fetch:
-  // a list read while the daemon was up is stale the moment the poll says it
-  // is down, and going on showing "running" from it would be the page's own
-  // memory presented as the daemon's answer.
-  // The poll's verdict is about the DEFAULT node, so it speaks for this view
-  // only while this view IS the default one. Computed once, because `blind`
-  // and the gate below both used to ask and only one of them narrowed it.
-  const pollSays = dmPollSays();
-  const blind = dmBlind();
-  const ins = dockerList.instances || [];
-  const cs = dockerList.containers || [];
-  const job = dockerJob();
-  // The dashboard's own first, each with the controls that used to live on the
-  // artifact row; this is where they went, and the row now only sends you
-  // here. Grouped by nothing: the project is on every line, and a heading per
-  // project would put a lot of chrome around lists that are usually one long.
-  const rows = ins.map(d => {
+// One instance row: the same markup wherever the row is drawn, the Docker
+// tab and a project's notebook (its Docker view). `job` is the compose job
+// the answer carried and `blind` whether the daemon answered at all.
+function dmRowsHtml(ins, job, blind){
+  return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
     // row can say how it ended, and "busy" must not follow it there: a
     // stopped build would otherwise keep its Abort and its ghosted buttons
@@ -8987,7 +8996,8 @@ function renderDockerInto(i){
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
-          : `${esc(d.project)} · ${esc(d.instance)}`}</div>
+          : `${esc(d.project)} · ${esc(d.instance)}`}${
+          d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
@@ -9065,143 +9075,13 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
                    "Ports and mounts", "",
                    `<div class="wire">reading…</div>`, {open: false})}
     </div>`;
-  }).join("") + cs.map(c => `
-    <div class="row stack2 off">
-      <div class="grow">
-        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
-        <div class="sub">${esc(c.image)}</div>
-        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
-          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
-        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
-      </div>
-    </div>`).join("");
-  // Its own class rather than the projects tab's: the two look alike and a
-  // selector that matched both would be a test passing on the wrong tab.
-  // Said in words at the top, not only in the tooltips below: a tooltip is
-  // not reachable on a phone, and "why is everything greyed out" should be
-  // answered by looking rather than by hovering.
-  // Why everything is greyed, in words at the top. The poll's sentence when it
-  // has one; otherwise the daemon's own words from the call this page just
-  // made, which is the case the poll cannot see: a VM that went away inside
-  // the availability memo.
-  // The poll's verdict is about the DEFAULT node; a picked node answers for
-  // itself through its own overview. Mixing them gated node B behind node
-  // A's absence, which is the one wrong answer a picker can give.
-  // WHAT SWITCHES THE BUTTONS OFF is whether this node can be ACTED on, which
-  // is not whether this controller can see what is running there. On an agent
-  // node compose goes to the agent and runs against that machine's own
-  // socket, so a controller that cannot ssh in changes nothing about whether
-  // Up works, and gating on the listing ghosted Up, Down, Rebuild and Send
-  // on a node where all four would have worked (B111). A listing that failed
-  // still greys the ROWS, because what they would claim about running and
-  // stopped is exactly what nobody asked.
-  const off = pollSays
-    || (dockerList.on === false ? (dockerList.why || "the daemon did not answer") : "");
-  // Said, not switched off: a listing that failed is worth a line, and the
-  // line has to say that the buttons under it still work.
-  const note = off || (dockerList.error
-    ? `the daemon did not answer: ${dockerList.error}: the rows cannot say `
-      + `what is running, though the controls still work through the agent`
-    : "");
-  // Which daemon this is, stated rather than inferred: the node picked
-  // above names it, and saying which machine the buttons below act on is
-  // worth a line whatever the arrangement.
-  // The PICKED node's own answer, not the poll's: the poll is about the
-  // default node, so on any other one this line named a machine the tab was
-  // not talking to, in an address, which reads as proof.
-  const src = dockerList?.src || state?.docker || {};
-  const srcLine = !note && src.kind
-    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
-        // A mapped path this container does not have. Not a fault: it can be a
-        // share the daemon mounts and BuilderBot has no business reading. It is
-        // said because nothing else here will ever act on it, and a line of
-        // configuration that does nothing should not look like it does.
-        (src.strays || []).length
-          ? `<br><span class="dim">${esc((src.strays || []).join(", "))} ${
-              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here:
-              the daemon's own, and nothing on this side checks ${
-              src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
-    : "";
-  // The picker: every node, online or not: an offline node's view is its
-  // last-known list in the ghosted state the blind path draws.
-  // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
-  const dnodes = (nodesList || []).filter(n => n.kind !== "local");
-  if (nodesList === null) loadNodes();
-  const picker = dnodes.length > 1 || (dnodes.length === 1 && dockerNode
-                                       && dnodes[0].id !== dockerNode)
-    ? `<div class="field histbar dmpick"><label for="dmNode">Node</label>
-        <select id="dmNode" aria-label="node">${dnodes.map(n =>
-          `<option value="${esc(n.id)}"${n.id === dockerNode ? " selected" : ""}>${
-            esc(n.name)}: ${esc(n.state)}</option>`).join("")}</select></div>`
-    : "";
-  // What a session is waiting on, above everything else: somebody is blocked
-  // on these, and this is the tab whose dial sent them here. The bell carries
-  // them too, the way root asks sit on the Nodes tab and in the bell.
-  const asks = (typeof ph !== "undefined" && ph?.asks || [])
-    .filter(a => a.kind === "rebuild");
-  const askRows = asks.map(a => `<div class="row dmask">
-      <div class="grow"><div class="name">rebuild: ${esc(a.why)}</div>
-        <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
-                                       : a.project || "a session")} asks to rebuild it · ${
-          a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
-                      : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-rdeny="${a.id}">Deny</button>
-        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
-      </span></div>`).join("");
-  el.innerHTML = `<div class="dmtab">${picker}${askRows}${note
-      ? `<div class="empty">${esc(note)}</div>` : srcLine}${
-    // Blind, the list is what is on record here rather than what is on the
-    // daemon, and "nothing on this daemon yet" would be a claim about a
-    // machine nobody just asked.
-    rows || `<div class="empty">${blind
-      ? "nothing on record here: an instance appears once it has been sent"
-      : "nothing on this daemon yet"}</div>`}
-    <div class="actbar macros">${mayDocker()
-        ? `<button id="bDockerNew">New container</button>` : ""
-      }<button id="bDockerRe">Refresh</button></div></div>`;
-  gateDocker(el, off);
-  // Every tail sits at its own bottom after a draw. The list repaints only
-  // when the job moved, so between draws the reader keeps whatever scroll
-  // they chose; what this stops is a redraw putting them back at the top of
-  // output whose point is at the end.
-  el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
-    t.scrollTop = t.scrollHeight;
-  });
-  // The asks answer through the phone's endpoint, which holds the one list of
-  // them; phFetch redraws this tab when the answer comes back.
-  el.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
-    b.disabled = true; b.textContent = "starting";
-    phFetch({action: "allow", id: Number(b.dataset.rallow)});
-  });
-  el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
-    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
-  const b = el.querySelector("#bDockerRe");
-  if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
-  const pk = el.querySelector("#dmNode");
-  if (pk) pk.onchange = () => {
-    dockerNode = pk.value;
-    dockerNodeKeep();
-    // The last-known answer first: instant, honestly stale (the blind path
-    // says so), and a fresh ask behind it.
-    dockerList = dockerSeen[dockerNode] || null;
-    dockerRev++; drawPanes(); loadDocker();
-  };
-  const nb = el.querySelector("#bDockerNew");
-  if (nb) nb.onclick = openNewContainer;
-  // The wiring, fetched when the fold is opened and not before. It needs the
-  // compose file parsed, which is the one thing overview() refuses to do for
-  // every instance at once, and it is the thing you want occasionally, which
-  // is what a fold is for. Rendered the same way the artifact row renders it:
-  // the container's side on the left, the daemon's on the right, and an arrow
-  // saying which way a mount goes.
-  tipify(el);
-  // The summary's own click, not the toggle: <details> opens instantly by
-  // construction, so the flag has to be driven by slideDetails: the same
-  // helper the notebook's folds already use, rather than watched afterwards.
-  // wireSections first, for the remembered open state; then the click is
-  // rebound, because this fold also has to fetch what it is about to show.
+  }).join("");
+}
+
+// ...and the handlers those rows need, wired onto whichever element holds
+// them. `list` is the answer the rows were drawn from, for the saved values
+// a pick is compared against.
+function dmWireRows(el, list = dockerList){
   wireSections(el);
   el.querySelectorAll("details.sect").forEach(d => {
     const sum = d.querySelector(":scope > summary");
@@ -9225,7 +9105,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   el.querySelectorAll("[data-dmref]").forEach(sel => sel.onchange = () => {
     const key = sel.dataset.dmref;
     const row = sel.closest("[data-inst]");
-    const saved = (dockerList?.instances || []).find(
+    const saved = (list?.instances || []).find(
       x => `${x.project}|${x.instance}` === key)?.ref || "";
     if (sel.value === saved) delete dmRefDraft[key];
     else dmRefDraft[key] = sel.value;
@@ -9312,6 +9192,184 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
     }catch(e){ notify("route: " + e, true); }
     dockerList = null; dockerRev++; loadDocker();
   });
+}
+
+function renderDockerInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  el.classList.add("flush");
+  // An answer on its way is not a blank page: a build makes the daemon's
+  // ps slow, and the operator watched the whole tab turn to "loading" for
+  // the length of a build. The last answer for this node stays on screen
+  // with a note, and the new one repaints when it lands (B125).
+  if (!dockerList && dockerSeen[dockerNode || ""]) dockerList = dockerSeen[dockerNode || ""];
+  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
+  // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
+  // is not running. This used to end here, in one error line with no rows: the
+  // page threw away everything it could still honestly say, which is most of
+  // it. What an instance IS lives on this side (its name, its project, what it
+  // was built from, what its env still wants); only whether it is RUNNING is
+  // the daemon's to know. So the rows are drawn from the store, greyed, and
+  // say nothing about their state: an unreachable daemon is not evidence that
+  // anything stopped.
+  // Three ways to be blind, and the poll's is the one that outlives a fetch:
+  // a list read while the daemon was up is stale the moment the poll says it
+  // is down, and going on showing "running" from it would be the page's own
+  // memory presented as the daemon's answer.
+  // The poll's verdict is about the DEFAULT node, so it speaks for this view
+  // only while this view IS the default one. Computed once, because `blind`
+  // and the gate below both used to ask and only one of them narrowed it.
+  const pollSays = dmPollSays();
+  const blind = dmBlind();
+  const ins = dockerList.instances || [];
+  const cs = dockerList.containers || [];
+  const job = dockerJob();
+  // The dashboard's own first, each with the controls that used to live on the
+  // artifact row; this is where they went, and the row now only sends you
+  // here. Grouped by nothing: the project is on every line, and a heading per
+  // project would put a lot of chrome around lists that are usually one long.
+  const rows = dmRowsHtml(ins, job, blind) + cs.map(c => `
+    <div class="row stack2 off">
+      <div class="grow">
+        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
+        <div class="sub">${esc(c.image)}</div>
+        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
+          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
+        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+      </div>
+    </div>`).join("");
+  // Its own class rather than the projects tab's: the two look alike and a
+  // selector that matched both would be a test passing on the wrong tab.
+  // Said in words at the top, not only in the tooltips below: a tooltip is
+  // not reachable on a phone, and "why is everything greyed out" should be
+  // answered by looking rather than by hovering.
+  // Why everything is greyed, in words at the top. The poll's sentence when it
+  // has one; otherwise the daemon's own words from the call this page just
+  // made, which is the case the poll cannot see: a VM that went away inside
+  // the availability memo.
+  // The poll's verdict is about the DEFAULT node; a picked node answers for
+  // itself through its own overview. Mixing them gated node B behind node
+  // A's absence, which is the one wrong answer a picker can give.
+  // WHAT SWITCHES THE BUTTONS OFF is whether this node can be ACTED on, which
+  // is not whether this controller can see what is running there. On an agent
+  // node compose goes to the agent and runs against that machine's own
+  // socket, so a controller that cannot ssh in changes nothing about whether
+  // Up works, and gating on the listing ghosted Up, Down, Rebuild and Send
+  // on a node where all four would have worked (B111). A listing that failed
+  // still greys the ROWS, because what they would claim about running and
+  // stopped is exactly what nobody asked.
+  const off = pollSays
+    || (dockerList.on === false ? (dockerList.why || "the daemon did not answer") : "");
+  // Said, not switched off: a listing that failed is worth a line, and the
+  // line has to say that the buttons under it still work.
+  const note = off || (dockerList.error
+    ? `the daemon did not answer: ${dockerList.error}: the rows cannot say `
+      + `what is running, though the controls still work through the agent`
+    : "");
+  // Which daemon this is, stated rather than inferred: the node picked
+  // above names it, and saying which machine the buttons below act on is
+  // worth a line whatever the arrangement.
+  // The PICKED node's own answer, not the poll's: the poll is about the
+  // default node, so on any other one this line named a machine the tab was
+  // not talking to, in an address, which reads as proof.
+  const src = dockerList?.src || state?.docker || {};
+  const srcLine = !note && src.kind
+    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
+        // A mapped path this container does not have. Not a fault: it can be a
+        // share the daemon mounts and BuilderBot has no business reading. It is
+        // said because nothing else here will ever act on it, and a line of
+        // configuration that does nothing should not look like it does.
+        (src.strays || []).length
+          ? `<br><span class="dim">${esc((src.strays || []).join(", "))} ${
+              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here:
+              the daemon's own, and nothing on this side checks ${
+              src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
+    : "";
+  // The picker: every node, online or not: an offline node's view is its
+  // last-known list in the ghosted state the blind path draws.
+  // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
+  const dnodes = (nodesList || []).filter(n => n.kind !== "local");
+  if (nodesList === null) loadNodes();
+  const picker = dnodes.length > 1 || (dnodes.length === 1 && dockerNode
+                                       && dnodes[0].id !== dockerNode)
+    ? `<div class="field histbar dmpick"><label for="dmNode">Node</label>
+        <select id="dmNode" aria-label="node">${dnodes.map(n =>
+          `<option value="${esc(n.id)}"${n.id === dockerNode ? " selected" : ""}>${
+            esc(n.name)}: ${esc(n.state)}</option>`).join("")}</select></div>`
+    : "";
+  // What a session is waiting on, above everything else: somebody is blocked
+  // on these, and this is the tab whose dial sent them here. The bell carries
+  // them too, the way root asks sit on the Nodes tab and in the bell.
+  const asks = (typeof ph !== "undefined" && ph?.asks || [])
+    .filter(a => a.kind === "rebuild");
+  const askRows = asks.map(a => `<div class="row dmask">
+      <div class="grow"><div class="name">rebuild: ${esc(a.why)}</div>
+        <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
+                                       : a.project || "a session")} asks to rebuild it · ${
+          a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
+                      : `${a.left}s left to answer`}</div></div>
+      <span class="acts">
+        <button type="button" data-rdeny="${a.id}">Deny</button>
+        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
+      </span></div>`).join("");
+  // `dmstale` while the rows are the last answer and a new one is on its
+  // way: what a reader waiting on a refresh looks at, and what the note
+  // below says in words.
+  el.innerHTML = `<div class="dmtab${dockerFetching ? " dmstale" : ""}">${picker}${askRows}${note
+      ? `<div class="empty">${esc(note)}</div>` : srcLine}${
+    // Blind, the list is what is on record here rather than what is on the
+    // daemon, and "nothing on this daemon yet" would be a claim about a
+    // machine nobody just asked.
+    rows || `<div class="empty">${blind
+      ? "nothing on record here: an instance appears once it has been sent"
+      : "nothing on this daemon yet"}</div>`}
+    <div class="actbar macros">${mayDocker()
+        ? `<button id="bDockerNew">New container</button>` : ""
+      }<button id="bDockerRe">Refresh</button>${
+      dockerFetching ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
+  gateDocker(el, off);
+  // Every tail sits at its own bottom after a draw. The list repaints only
+  // when the job moved, so between draws the reader keeps whatever scroll
+  // they chose; what this stops is a redraw putting them back at the top of
+  // output whose point is at the end.
+  el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
+    t.scrollTop = t.scrollHeight;
+  });
+  // The asks answer through the phone's endpoint, which holds the one list of
+  // them; phFetch redraws this tab when the answer comes back.
+  el.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "starting";
+    phFetch({action: "allow", id: Number(b.dataset.rallow)});
+  });
+  el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
+  const b = el.querySelector("#bDockerRe");
+  if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  const pk = el.querySelector("#dmNode");
+  if (pk) pk.onchange = () => {
+    dockerNode = pk.value;
+    dockerNodeKeep();
+    // The last-known answer first: instant, honestly stale (the blind path
+    // says so), and a fresh ask behind it.
+    dockerList = dockerSeen[dockerNode] || null;
+    dockerRev++; drawPanes(); loadDocker();
+  };
+  const nb = el.querySelector("#bDockerNew");
+  if (nb) nb.onclick = openNewContainer;
+  // The wiring, fetched when the fold is opened and not before. It needs the
+  // compose file parsed, which is the one thing overview() refuses to do for
+  // every instance at once, and it is the thing you want occasionally, which
+  // is what a fold is for. Rendered the same way the artifact row renders it:
+  // the container's side on the left, the daemon's on the right, and an arrow
+  // saying which way a mount goes.
+  tipify(el);
+  // The summary's own click, not the toggle: <details> opens instantly by
+  // construction, so the flag has to be driven by slideDetails: the same
+  // helper the notebook's folds already use, rather than watched afterwards.
+  // wireSections first, for the remembered open state; then the click is
+  // rebound, because this fold also has to fetch what it is about to show.
+  dmWireRows(el, dockerList);
 }
 
 function renderPackagesInto(i){
@@ -11844,8 +11902,9 @@ $("todoRevert").onclick = revertNotebook;
     // Save and Revert belong to the views that stage: roadmap, briefing and
     // the version on Artifacts. Bugs, tests and findings write through, and
     // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git"].includes(v);
+    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker"].includes(v);
     if (v === "git") loadGit();
+    if (v === "docker") loadNbDocker();
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
@@ -14449,6 +14508,37 @@ become that version's section when it is created">Changelog${
                  ? was : root.querySelector(".nbtabs button").dataset.v));
   }
 
+  // The project's containers, from the manager's own answer for the
+  // project's node: its instances and anything shown under it. Drawn with
+  // the Docker tab's rows and wired with its handlers, so Up, Down, Env and
+  // Rebuild here are the same controls. Re-read while a job runs, on the
+  // poll, since the row's tail and state move then.
+  let dkSeen = "";
+  async function loadNbDocker(){
+    const p = (state?.projects || []).find(x => x.name === project);
+    const node = p?.prefs?.node || dockerNode || "";
+    let got;
+    try{
+      got = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
+    }catch(e){ $("dkHint").textContent = "could not read the manager: " + e; return; }
+    dockerSeen[got.node || node || ""] = got;
+    const mine = (got.instances || []).filter(d => d.project === project || d.for === project);
+    const job = got.job && (got.job.running || got.job.error) ? got.job : null;
+    const blind = !!(got.blind || got.error || got.on === false);
+    const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
+    $("dkHint").textContent = mine.length
+      ? `${mine.length} container${mine.length === 1 ? "" : "s"} of ${project}'s on ${where}${
+          blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
+      : `nothing of ${project}'s on ${where} yet: send it from the Artifacts tab, or New container on the Docker tab with this project picked under "show under"`;
+    const key = JSON.stringify([mine, job && job.step, job && job.running, job && (job.log || "").length]);
+    if (key === dkSeen) return;
+    dkSeen = key;
+    $("dkList").innerHTML = dmRowsHtml(mine, job, blind);
+    tipify($("dkList"));
+    dmWireRows($("dkList"), got);
+  }
+  $("dkOpen").onclick = () => openDocker();
+
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
@@ -14481,6 +14571,8 @@ become that version's section when it is created">Changelog${
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== todoSession){ todoSession = now; redrawTodo(); }
+      // The Docker view follows a running job the way the tab does.
+      if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
       // What this notebook re-reads and when is declared once, up where the
       // watches are taken; nothing here decides it. All six halves are on
       // the revisions poll; this poll carries only what /api/status alone
