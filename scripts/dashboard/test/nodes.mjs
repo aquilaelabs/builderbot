@@ -796,6 +796,43 @@ print(json.dumps(out))
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
      'an installed package on a node reads "installed", not "installed at" with nothing after it');
+  // ---- system packages a held recipe needs (roadmap R51) ------------------
+  // The store is a share, so a recipe installed from one node is on every
+  // node, while the libraries it needs are each machine's own. The census
+  // says which are missing, the tab says so with one press that installs
+  // them without reinstalling the recipe, and the row says so too.
+  {
+    const pj = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }
+      : {})).json()), [path, body]);
+    const sysCensus = sd => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd },
+                             version: shipped.version, digest: shipped.digest }) });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+    await page.evaluate(() => loadPackages());
+    await page.waitForSelector('.pkgtab .pkgsys', { timeout: 15000 });
+    const line = await page.$eval('.pkgtab .pkgsys', e => e.textContent.replace(/\s+/g, ' '));
+    ok(/lacks for what its store holds \(dnf\): dotnet: libicu/.test(line),
+       `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
+    ok(await page.$('.pkgtab #pkgSysdeps') !== null,
+       '...with one press to install them on a node the agent administers');
+    const sj = await pj('/api/packages', { action: 'sysdeps', names: [], node: minted.id });
+    ok(sj.ok && /^j_/.test(sj.job), `pressing it queues a package job of the sysdeps kind (${sj.job || sj.error})`);
+    const sjob = await pj(`/api/v1/jobs?id=${sj.job}`);
+    ok(sjob.type === 'package' && sjob.spec?.action === 'sysdeps',
+       '...carrying the action and no recipe names: every held one');
+    await pj('/api/v1/jobs', { action: 'cancel', id: sj.job });
+    await page.evaluate(() => openNodesTab());
+    await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
+      .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
+    ok(true, 'the node\'s row says the same before a build fails on it');
+    await sysCensus({ family: 'dnf', unmet: {} });
+    await page.evaluate(() => openPackages());
+    await page.evaluate(() => loadPackages());
+    await page.waitForFunction(() => !document.querySelector('.pkgtab .pkgsys'), null, { timeout: 15000 });
+    ok(true, '...and both go quiet once the census says nothing is missing');
+  }
   // ---- one store, two machines (roadmap #18) ------------------------------
   // The controller reaches the package store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be

@@ -1048,6 +1048,15 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # Which held recipes need system packages the machine lacks (roadmap
+    # R51): the family and, per recipe, the package names, both bounded.
+    sd = c.get("sysdeps") if isinstance(c.get("sysdeps"), dict) else {}
+    unmet = sd.get("unmet") if isinstance(sd.get("unmet"), dict) else {}
+    out["sysdeps"] = {
+        "family": re.sub(r"[^a-z]", "", str(sd.get("family") or ""))[:12],
+        "unmet": {re.sub(r"[^A-Za-z0-9:._-]", "", str(k))[:40]:
+                  [re.sub(r"[^A-Za-z0-9:._+/-]", "", str(x))[:60] for x in v if str(x)][:64]
+                  for k, v in list(unmet.items())[:32] if isinstance(v, list) and v}}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
         if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):

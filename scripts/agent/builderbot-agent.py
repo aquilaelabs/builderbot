@@ -94,7 +94,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.58"
+AGENT_VERSION = "0.5.59"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -954,6 +954,80 @@ def _clean_version(text):
     return line[:40]
 
 
+def read_catalog(into):
+    """The catalog the bundle carries, or {} when it cannot be read."""
+    try:
+        with open(os.path.join(into, "config", "packages.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def sysdeps_missing(cat, name, fam, query):
+    """(the recipe's system packages missing on this machine, and (family,
+    names) when its recipe lists them for another family only). Asked by
+    exit code, never by output: dpkg -s and pacman -Q both print a sentence
+    on stderr for a missing package, which read as "installed" when the
+    text was the test, and rpm -q prints "not installed" on stdout."""
+    pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
+    system = pkg.get("system") or {}
+    want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
+    if not want:
+        other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
+                      if k != fam and system.get(k)), "")
+        return [], ((other, [str(x) for x in system[other][:64]]) if other else None)
+    missing = []
+    for x in want:
+        if not query:
+            missing.append(x)          # emerge: no query, --noreplace skips the installed
+            continue
+        try:
+            p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
+            if p.returncode != 0:
+                missing.append(x)
+        except (OSError, subprocess.SubprocessError):
+            missing.append(x)
+    return missing, None
+
+
+def held_recipes(state, cat):
+    """The catalog recipes with system packages whose directory the store
+    holds, complete or not: browsers from before the module still need the
+    libraries."""
+    store = pkg_root(state)
+    if not store:
+        return []
+    dirs = {e["name"]: e.get("dir") for e in store_layout(state) if e.get("name")}
+    out = []
+    for p in cat.get("packages") or []:
+        name = p.get("name")
+        if not name or not p.get("system"):
+            continue
+        d = dirs.get(name) or name
+        if os.path.isdir(os.path.join(store, d)):
+            out.append(name)
+    return out
+
+
+def sysdeps_now(state):
+    """The census's answer (roadmap R51): {family, unmet: {recipe: [pkg]}},
+    from the bundle the store already holds; nothing until one is there."""
+    store = pkg_root(state)
+    into = os.path.join(store, ".bb", "current") if store else ""
+    if not into or not os.path.isdir(into):
+        return {}
+    cat = read_catalog(into)
+    fam, query, _ = pkg_backend()
+    if not fam or not cat:
+        return {}
+    unmet = {}
+    for name in held_recipes(state, cat):
+        missing, _ = sysdeps_missing(cat, name, fam, query)
+        if missing:
+            unmet[name] = missing
+    return {"family": fam, "unmet": unmet}
+
+
 def store_dirs(state):
     """What is actually IN the packages store, as directory names.
 
@@ -1189,6 +1263,10 @@ def census(state):
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),
+        # Which held recipes need system packages this machine lacks
+        # (roadmap R51): read here, so the Tools tab and the row can say so
+        # before a build fails on a missing library.
+        "sysdeps": sysdeps_now(state),
         # The android system images the store holds, and the AVDs built on
         # them (roadmap #20). Not part of store_dirs: it reaches three levels
         # down and reads the data store's AVD configs as well.
@@ -3647,13 +3725,16 @@ class Agent:
             return "failed", 78
         action = spec.get("action")
         names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
-        if action not in ("install", "remove") or not names:
-            job.say("refused: a package job installs or removes named packages\n")
+        if action not in ("install", "remove", "sysdeps") or (not names and action != "sysdeps"):
+            job.say("refused: a package job installs or removes named packages, "
+                    "or installs the system packages the held ones need\n")
             return "failed", 64
         who = self.drop_privileges({})
         into = self.bundle(job, who)
         if not into:
             return "failed", 69
+        if action == "sysdeps":
+            return self.sysdeps(job, names, into)
         bad = 0
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
@@ -3692,50 +3773,80 @@ class Agent:
         node this cannot administer is a warning, not a refusal — the
         download is still worth having, and the tool names what is missing
         when it is used."""
-        try:
-            with open(os.path.join(into, "config", "packages.json")) as f:
-                cat = json.load(f)
-            pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
-        except (OSError, ValueError):
-            return True
-        system = pkg.get("system") or {}
+        cat = read_catalog(into)
+        fam, query, install = pkg_backend()
+        missing, other = sysdeps_missing(cat, name, fam, query)
         # Which family this machine is decides which list applies. A recipe
         # that names packages for the other family only is not wrong, it is
         # incomplete for this node: say so with the names it does have, so
         # the owner can find their equivalents, and carry on to the recipe.
-        fam, query, install = pkg_backend()
-        want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
-        if not want:
-            other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
-                          if k != fam and system.get(k)), "")
-            if other:
-                job.say(f"{name} needs system packages its recipe names for {other} only; "
-                        f"this node's are its owner's to install — the {other} names: "
-                        f"{' '.join(str(x) for x in system[other][:64])}\n")
-            return True
-        missing = []
-        for x in want:
-            if not query:
-                missing.append(x)          # emerge: no query, --noreplace skips the installed
-                continue
-            # By exit code, never by output: dpkg -s and pacman -Q both print
-            # a sentence on stderr for a missing package, which read as
-            # "installed" when the text was the test, and rpm -q prints
-            # "not installed" on stdout — one rule covers all of them.
-            try:
-                p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
-                if p.returncode != 0:
-                    missing.append(x)
-            except (OSError, subprocess.SubprocessError):
-                missing.append(x)
+        if other:
+            job.say(f"{name} needs system packages its recipe names for {other[0]} only; "
+                    f"this node's are its owner's to install; the {other[0]} names: "
+                    f"{' '.join(other[1])}\n")
         if not missing:
             return True
-        if os.geteuid() != 0 or not os.access(SANDBOX_BIN, os.X_OK):
+        if not self.administers():
             job.say(f"{name} needs system packages this node's owner installs — "
                     f"not this agent, which does not administer the machine: "
                     f"{' '.join(missing)}\n")
             return True
         job.say(f"== system packages for {name}: {' '.join(missing)}\n")
+        return self._install_system(job, name, fam, install, missing)
+
+    def administers(self):
+        """Whether this agent may install system packages here: root, on a
+        node provisioned as a sandbox (the stamp; roadmap R23 refines it to
+        a class). Anywhere else the machine is its owner's."""
+        return os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK)
+
+    def sysdeps(self, job, names, into):
+        """Install the system packages the recipes already on the store need
+        here, without touching the recipes (roadmap R51). The store is a
+        share, so a package installed from one node is on every node that
+        mounts it, while the libraries it needs are each machine's own: a
+        node enrolled afterwards has dotnet and not libicu, and the only
+        gesture that installed libicu was reinstalling dotnet onto the share
+        for everybody. Named recipes, or every held one when none are."""
+        cat = read_catalog(into)
+        fam, query, install = pkg_backend()
+        if not fam:
+            job.say("refused: no package manager this agent knows is on this machine\n")
+            return "failed", 78
+        held = held_recipes(self.state, cat)
+        want = [n for n in names if n in held] if names else held
+        if names and not want:
+            job.say(f"none of {' '.join(names)} is on this node's store, so nothing here needs anything\n")
+            return "succeeded", 0
+        todo = {}
+        for name in want:
+            missing, other = sysdeps_missing(cat, name, fam, query)
+            if other:
+                job.say(f"{name}: its recipe names packages for {other[0]} only, not {fam}; "
+                        f"the {other[0]} names: {' '.join(other[1])}\n")
+            if missing:
+                todo[name] = missing
+        if not todo:
+            job.say(f"every system package the held recipes need is installed here ({fam})\n")
+            return "succeeded", 0
+        if not self.administers():
+            job.say("refused: this agent does not administer the machine, so its owner "
+                    "installs these: "
+                    + "; ".join(f"{n}: {' '.join(m)}" for n, m in todo.items()) + "\n")
+            return "failed", 77
+        bad = 0
+        for name, missing in todo.items():
+            job.step(name)
+            job.say(f"== system packages for {name}: {' '.join(missing)}\n")
+            if not self._install_system(job, name, fam, install, missing):
+                bad += 1
+        self.hello()
+        if bad:
+            job.say(f"{bad} of {len(todo)} did not install\n")
+            return "failed", 1
+        return "succeeded", 0
+
+    def _install_system(self, job, name, fam, install, missing):
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
         try:
             # emerge builds from source: fifteen minutes is a package

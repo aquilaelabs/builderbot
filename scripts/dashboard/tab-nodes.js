@@ -95,9 +95,17 @@ function nodeTools(n){
   if (!names.length)
     return `<div class="sub ndtools dim">no toolchains yet: the Tools tab installs them
       onto this node, and what is here is what a project bound to it can build</div>`;
+  // Held recipes whose system libraries this machine lacks (roadmap R51),
+  // said here rather than left for a build to fail on: the store is shared,
+  // the libraries are each machine's own, and the Tools tab installs them.
+  const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
+  const sys = unmet.length
+    ? `<div class="sub ndsys warn">system packages missing here for ${unmet.map(([r, ps]) =>
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: the Tools tab installs them on this
+        node without reinstalling the package</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
-      esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>`;
+      esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
 }
 
 function nodeStatePill(n){

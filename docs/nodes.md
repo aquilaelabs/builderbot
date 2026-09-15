@@ -1099,7 +1099,13 @@ backend refuses the job and says so. The same detection picks the package
 manager (apt, dnf, zypper, pacman, apk, xbps or emerge) for a recipe's
 system packages (named per family under `system` in the catalog), and the
 census reports both with the init system (`distro`), so the row says what
-a change would go through.
+a change would go through. The store is shared and those libraries are
+not, so the census also reports `sysdeps`: for every recipe the store
+holds, the system packages this machine still lacks for its family. The
+Tools tab shows them with one press, a package job of action `sysdeps`,
+which installs the libraries and leaves the recipes alone (roadmap R51);
+a node the agent does not administer refuses it and names them for the
+owner, as an install there does.
 Another distribution is another backend in the agent, not another job
 spec. A fourth system job, `apply: root` (roadmap R38), runs ONE command as
 root that an administrator allowed: a session asks with `bb root run --why

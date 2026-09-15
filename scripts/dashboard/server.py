@@ -6799,12 +6799,19 @@ class Handler(BaseHTTPRequestHandler):
             # headroom before a byte is downloaded.
             if NODES_OK:
                 return self._json({"error": "the node store did not open"}, 500)
-            if action not in ("install", "remove"):
-                return self._json({"error": "a node takes install or remove"}, 400)
+            if action not in ("install", "remove", "sysdeps"):
+                return self._json({"error": "a node takes install, remove or sysdeps"}, 400)
             node = nodes.node(nid)
             if not node:
                 return self._json({"error": "no such node"}, 400)
             known = {p["name"] for p in packages.PACKAGES}
+            if action == "sysdeps":
+                # The system packages the held recipes need, installed
+                # without the recipes (roadmap R51): named ones, or every
+                # held one when none are named.
+                names = [n for n in (req.get("names") or []) if n in known][:8]
+                r = packages.node_job(self._principal(), nid, action, names)
+                return self._json(r, 400 if r.get("error") else 200)
             # ...or an android system image. Same rule as the local endpoint:
             # what reaches a command line is a string this server handed out —
             # for an install, one of the ids the picker was drawn from; for a

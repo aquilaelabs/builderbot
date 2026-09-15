@@ -1599,6 +1599,29 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /libatk1\.0-0t64/.test(sfin.log) && /libnss3/.test(sfin.log),
        `a recipe's system packages are named for the owner on a node the agent does not administer (${
          (sfin?.log || '').match(/needs system packages[^\n]*/)?.[0]?.slice(0, 90)})`);
+    // ...and the same libraries reported by the census as unmet for the
+    // recipe the store holds (roadmap R51), without a build having to fail
+    // on them, and installable on their own by a sysdeps job. This agent
+    // does not administer the machine, so the job refuses and names them.
+    const unmet = await until(async () => {
+      const n = await nodeById(minted.id);
+      return n?.reported?.sysdeps?.unmet?.playwright ? n.reported.sysdeps : null;
+    }, 30000, 500);
+    ok(unmet && unmet.family === 'apt' && unmet.unmet.playwright.includes('libnss3'),
+       `the census names the system packages a held recipe lacks here, per family (${JSON.stringify(unmet).slice(0, 100)})`);
+    // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
+    // agent is not root, so the controller queues the job and the agent is
+    // the one to refuse: exit 77, naming the owner and the packages.
+    const dj = await api('/api/packages', { action: 'sysdeps', names: ['playwright'], node: minted.id });
+    ok(dj.ok && /^j_/.test(dj.job), `a sysdeps job is queued for the held recipe (${dj.job || dj.error})`);
+    const dfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${dj.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(dfin && dfin.state === 'failed' && dfin.exit_code === 77
+       && /does not administer the machine, so its owner installs these: playwright: /.test(dfin.log)
+       && /libnss3/.test(dfin.log) && !/bb packages install/.test(dfin.log),
+       `...and refused on the node with the names, without reinstalling the recipe (${dfin?.state} ${dfin?.exit_code}: ${(dfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
     ok(sfin && sfin.state === 'failed' && /npm: stub/.test(sfin.log)
        && !existsSync(`${PK}/playwright/node_modules`),
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');

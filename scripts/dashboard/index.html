@@ -9406,6 +9406,21 @@ function renderPackagesInto(i){
       : "The package store root could not be determined; this image may predate <code>bb packages</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${(() => {
+      // Held recipes whose system libraries this machine lacks (roadmap
+      // R51): the store is shared, so a package installed from one node is
+      // on every node, while the libraries it needs are each machine's own.
+      // One press installs the libraries and leaves the recipes alone.
+      const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
+      if (!unmet.length) return "";
+      const what = unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ");
+      return `<div class="pkghead warn pkgsys">System packages ${esc(d.name || "this node")} lacks
+          for what its store holds (${esc(d.sysdeps.family || "")}): ${what}.
+          ${d.sandbox
+            ? `<button type="button" id="pkgSysdeps"${busy || pstale ? " disabled" : ""}
+                 title="install these on ${esc(d.name || "the node")} without reinstalling the packages">Install system packages</button>`
+            : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
+    })()}
     <div class="pkgs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
     ${(() => {
@@ -9471,6 +9486,8 @@ function renderPackagesInto(i){
                                     pkgRev++; drawPanes(); loadPackages(); };
   const pre = el.querySelector("#pkgRefresh");
   if (pre) pre.onclick = () => loadPackages();
+  const sd = el.querySelector("#pkgSysdeps");
+  if (sd) sd.onclick = () => pkgAct("sysdeps");
   const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
   if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
   if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
@@ -9542,7 +9559,7 @@ async function pkgAct(action, only){
         headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
     return loadPackages();
   }
-  if (pkgNode !== "local" && !["install", "remove"].includes(action))
+  if (pkgNode !== "local" && !["install", "remove", "sysdeps"].includes(action))
     return notify("a node reports what it has installed, but checking upstream for newer "
                   + "versions is not something it does yet; that is a network round trip "
                   + "per toolchain and would have to be a job", true);
@@ -9550,8 +9567,9 @@ async function pkgAct(action, only){
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for
   // that one package and leave the others showing yesterday's answer.
-  const names = only || (action === "check" ? [] : [...pkgTicked]);
-  if (!names.length && action !== "check") return notify("tick something first", true);
+  const names = only || (action === "check" || action === "sysdeps" ? [] : [...pkgTicked]);
+  if (!names.length && action !== "check" && action !== "sysdeps")
+    return notify("tick something first", true);
   // The ticks stay: a package being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
@@ -9569,6 +9587,8 @@ async function pkgAct(action, only){
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
       ? "checking versions: each one asks its own upstream"
+      : action === "sysdeps"
+      ? "installing the system packages the held recipes need; the packages themselves are left alone"
       : `${action}: ${names.length} package(s); this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }

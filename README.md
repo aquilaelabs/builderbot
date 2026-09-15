@@ -1247,7 +1247,12 @@ lives in its body. The cards:
   every toolchain on the [package store](#the-package-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
+  is a bin on the row. A recipe's system libraries are each machine's own
+  while the store is shared, so when a node lacks some for a package the
+  store already holds (a node enrolled after dotnet went in, with no
+  libicu), the tab says which and **Install system packages** puts them on
+  that node without reinstalling the package; the node's row says the same,
+  before a build fails on it. Beside it, **Docker manager…**, **Static analysis**
   and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the

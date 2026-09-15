@@ -917,6 +917,9 @@ def payload_for_node(nid):
     choices = image_choices()
     here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
+            # Held recipes whose system packages this machine lacks, and
+            # whether the agent may install them there (roadmap R51).
+            "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
             # The node's own scope under the store (roadmap R19), where its
             # packages actually are. The share itself where the node has not
             # reported one yet.
@@ -1145,6 +1148,9 @@ def node_job(principal, nid, action, names):
         return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
     added = []
+    if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
+        return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so its "
+                         "system packages are its owner's to install; the row names them"}
     if action == "install":
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
