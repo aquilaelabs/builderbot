@@ -2492,7 +2492,10 @@ file, which is where a compose written with `${PORT}` takes its ports from. A
 compose that hard-codes them has no answer but a sentence. A compose that
 references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
 convention, in a per-instance directory the VM makes itself, so that share is
-mounted over there and needs no mount here at all. BuilderBot itself gets the
+mounted over there and needs no mount here at all. By the same convention a
+build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`: the commit
+it is from, when, and the project's version in file form, for a compose whose
+build args want a stamp (BuilderBot's own passes them to its Dockerfile). BuilderBot itself gets the
 row too, as a second container on another machine, never the one you are
 using; expect
 `up` to refuse while the real one holds the same host ports, which is the env

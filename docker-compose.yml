@@ -16,6 +16,15 @@ services:
     # on a fresh install is unchanged.
     build:
       context: .
+      # The stamp the header and `bb status` read, and the agents compare
+      # their version against. CI passes these three; a dev instance gets
+      # them from BuilderBot, which sets BB_BUILD_REV, BB_BUILD_AT and
+      # BB_BUILD_VERSION for any compose it builds (the same convention as
+      # BB_DEV_DATA). A hand-run `docker compose build` leaves them blank.
+      args:
+        IMAGE_REV: ${BB_BUILD_REV:-}
+        IMAGE_BUILT: ${BB_BUILD_AT:-}
+        IMAGE_VERSION: ${BB_BUILD_VERSION:-}
     pull_policy: ${BUILDERBOT_PULL:-missing}
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.

@@ -408,7 +408,7 @@ def _plan(project, instance, action, extra=None):
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
-    env = _dev_data_env(project, instance)
+    env = _dev_data_env(project, instance) | _build_env(project, instance)
     up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800,
           "env": env | _CLASSIC_BUILD}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
@@ -2070,6 +2070,33 @@ def rename_project_data(old, new):
     return moved, failed
 
 
+def _build_env(project, instance=MAIN):
+    """BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION for a compose whose
+    build args opt in with them: the commit the build is from (the tree's
+    HEAD, or the pinned ref's tip), when, and the project's version in its
+    file form. The same convention as BB_DEV_DATA, and the same reason: a
+    compose file cannot know what it is being built from, and an image that
+    cannot say which commit it runs is one nobody can reason about. Found
+    when builderbot-dev came up with an empty stamp (15 Sep): CI passes the
+    three as build args, a dev build passed nothing.
+    """
+    ref = (str(_read_rec(project, instance).get("ref") or "").strip()
+           if instance else "")
+    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"],
+             timeout=10)
+    out = {"BB_BUILD_AT": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())}
+    if r["code"] == 0 and r["out"].strip():
+        out["BB_BUILD_REV"] = r["out"].strip()
+    # No version is a blank stamp, never a failed build: the module is
+    # beside this one on the dashboard and absent in a module-level test.
+    with contextlib.suppress(Exception):
+        import version                                 # noqa: PLC0415
+        f = ((version.render(project) or {}).get("forms") or {}).get("file")
+        if f:
+            out["BB_BUILD_VERSION"] = str(f)
+    return out
+
+
 def _dev_data_env(project, instance=MAIN):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
     cache-backed volumes by convention, nothing forced on a compose that never
@@ -3564,8 +3591,8 @@ def _job_up(project, instance, run):
     # the explicit build uses it — see _CLASSIC_BUILD. Streamed, because that
     # implicit build can pull for half an hour.
     r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
-             sink=run.line, hold=run.hold)
+             env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
+             | _CLASSIC_BUILD, sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped"}
     if r["code"] != 0:
@@ -3740,7 +3767,8 @@ def _job_rebuild(project, instance, run):
     try:
         run.step("building")
         r = _run(_compose(project, instance, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
+                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
+                 | _CLASSIC_BUILD,
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",

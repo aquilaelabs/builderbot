@@ -645,6 +645,7 @@ case "$1" in
         exit 0 ;;
       build)
         echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
+        echo "BB_BUILD_REV=${BB_BUILD_REV:-unset} BB_BUILD_AT=${BB_BUILD_AT:-unset}" >> "$ST/docker.log"
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
         # A build that takes its time and says so, for the two properties a
         # fast one cannot show: that its output arrives WHILE it runs, and

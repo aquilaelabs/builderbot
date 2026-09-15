@@ -227,6 +227,15 @@ ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
 // build asks for exactly the POST /build permission the setup docs grant.
 ok(/BUILDKIT=0/.test(log),
    '...and builds with the classic builder, which needs no helper container');
+// The stamp: a compose whose build args want the commit and the time gets
+// them from the environment, the way BB_DEV_DATA arrives. Full sha, since
+// the header shortens it itself; the time in the form CI stamps.
+{
+  const head = execFileSync('git', ['-C', `${DIR}/ws/ep.silon`, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  ok(new RegExp(`BB_BUILD_REV=${head} BB_BUILD_AT=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\dZ`).test(log),
+     `...with the commit it builds from and the time in the environment, for a compose that stamps its image (${
+       (log.match(/BB_BUILD_REV=[^\n]*/) || ['none'])[0].slice(0, 70)})`);
+}
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
