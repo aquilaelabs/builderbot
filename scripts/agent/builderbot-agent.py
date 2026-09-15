@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.64"
+AGENT_VERSION = "0.5.65"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -411,7 +411,10 @@ def _runner_state(d, rec):
     url = str(rec.get("gitHubUrl") or rec.get("address") or "")[:200]
     # GitHub's .runner says agentName and gitHubUrl; act_runner's says name
     # and address, which is also how the two are told apart.
-    return {"installed": True, "slot": runner_slot(url),
+    # The slot is the directory's name, which the controller chose from
+    # the address the token was stored for; act_runner's own .runner holds
+    # only the forge's root, which would name a different slot.
+    return {"installed": True, "slot": os.path.basename(d.rstrip("/")) or runner_slot(url),
             "name": str(rec.get("agentName") or rec.get("name") or "")[:80],
             "url": url, "forge": "gitea" if "address" in rec else "github",
             "unit": unit, "labels": labels[:16], "active": bool(pg),
@@ -4531,8 +4534,14 @@ class Agent:
                                            "runner_id": str(installed.get("id") or "")}, timeout=60)
             with contextlib.suppress(OSError):
                 os.remove(os.path.join(d, ".runner"))
-        job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
-        code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", url,
+        # act_runner's --instance is the forge's ROOT: the scope (an
+        # organisation or a repository) is what the registration token
+        # carries. Given the organisation's URL it pings /lab/api/... and
+        # retries a 404 forever (measured against a real Gitea, 15 Sep).
+        u = urllib.parse.urlsplit(url)
+        instance = f"{u.scheme}://{u.netloc}"
+        job.say(f"registering {name} with {url} (instance {instance}) [{','.join(labels)}]\n")
+        code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", instance,
                                           "--token", r["token"], "--name", name,
                                           "--labels", ",".join(f"{x}:host" for x in labels)])
         if code != 0:

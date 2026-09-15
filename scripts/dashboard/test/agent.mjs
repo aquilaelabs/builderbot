@@ -1753,7 +1753,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const gfin = await ended(gi.job);
     const acts = existsSync(`${DIR}/runner/${GT}/act-calls.log`) ? readFileSync(`${DIR}/runner/${GT}/act-calls.log`, 'utf8') : '';
     ok(gfin?.state === 'succeeded' && /registering agentbox with https:\/\/git\.example\.test:3000\/example-org/.test(gfin.log)
-       && /act register --no-interactive --instance https:\/\/git\.example\.test:3000\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
+       && /act register --no-interactive --instance https:\/\/git\.example\.test:3000 --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
        && /act daemon/.test(acts) && !/AAAREGTOKEN/.test(gfin.log),
        `act_runner registers with the host from its own directory, every label as :host, and runs as a daemon under the agent (${gfin?.state}: ${(gfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
     const gn = await until(async () => { const n = await nodeById(minted.id);
