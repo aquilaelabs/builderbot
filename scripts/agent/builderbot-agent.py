@@ -409,12 +409,19 @@ def _runner_state(d, rec):
             with open(os.path.join(d, ".service")) as f:
                 unit = f.read().strip()[:120]
     url = str(rec.get("gitHubUrl") or rec.get("address") or "")[:200]
+    with contextlib.suppress(OSError):
+        with open(os.path.join(d, ".builderbot-url")) as f:
+            url = f.read().strip()[:200] or url
     # GitHub's .runner says agentName and gitHubUrl; act_runner's says name
     # and address, which is also how the two are told apart.
     # The slot is the directory's name, which the controller chose from
     # the address the token was stored for; act_runner's own .runner holds
-    # only the forge's root, which would name a different slot.
-    return {"installed": True, "slot": os.path.basename(d.rstrip("/")) or runner_slot(url),
+    # only the forge's root, which would name a different slot. A runner
+    # registered in RUNNER_DIR itself, from before a node held several,
+    # has no such directory and keeps the address-derived slot.
+    return {"installed": True,
+            "slot": (os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR)
+                     else runner_slot(url)),
             "name": str(rec.get("agentName") or rec.get("name") or "")[:80],
             "url": url, "forge": "gitea" if "address" in rec else "github",
             "unit": unit, "labels": labels[:16], "active": bool(pg),
@@ -4548,6 +4555,11 @@ class Agent:
             return "failed", code
         with open(os.path.join(d, ".builderbot-labels"), "w") as f:
             f.write(",".join(labels))
+        # The address the token was stored for, beside the labels: .runner
+        # records only the root it registered with, and the row says the
+        # organisation or repository, which is what a person typed.
+        with open(os.path.join(d, ".builderbot-url"), "w") as f:
+            f.write(url)
         logs = ci_log_dir(self.state)
         self.own_dir(logs, who)
         with contextlib.suppress(OSError):
