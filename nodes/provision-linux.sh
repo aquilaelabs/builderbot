@@ -1960,6 +1960,12 @@ node lives on this machine. It needs the projects share mounted at /workspace
 to Claude once, from a shell here:
 
   su - ${SESSION_NAME}              then: claude login
+
+bb itself is not on this account's PATH: it is the controller's, fetched
+into the packages store by the agent (<store>/<scope>/.bb/current/scripts/bb)
+and put on PATH for ${USER_NAME} and ${SESSION_NAME} by
+/etc/profile.d/builderbot-session.sh. A shell as either account has it;
+this one does not, and needs none.
 EOF
     fi
 fi
