@@ -134,6 +134,7 @@
 - The Docker tab keeps its rows on screen, marked refreshing, while a build makes the daemon slow to answer, instead of showing only loading (94fea1a)
 - bb devapp answers for a project's only dev instance whatever it is called, and takes --instance for a project with several (18c206b)
 - A dev instance whose data directory cannot be made on the node (a stale mount, a file in the way) is refused with that reason before docker is asked (18c206b)
+- A node's row says when a mounted share answers Stale file handle, in red, with the fix on the host; before, it read as mounted and every use of it failed (67da994)
 
 ## 0.5.0: 2026-09-10
 
