@@ -141,6 +141,7 @@
 - The sandbox VM XML the Nodes tab generates accepts any vCPU count: its CPU topology used to stay at six, which libvirt refused for anything else (c9da64c)
 - The Docker tab's node picker keeps its size on a phone instead of shouting beside its label (e38d20e)
 - BuilderBot's own suite gives the same verdict inside its dev container as on a node: the harness no longer leans on the machine's git config or its sshd (e38d20e)
+- A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
 
 ## 0.5.0: 2026-09-10
 
