@@ -534,6 +534,8 @@ bb devapp              what it was built from, whether it is running, and
                        whether its daemon answers
 bb devapp rebuild      build it and bring it up
 bb devapp rebuild --why "..."     ...on `ask`: the sentence goes to a person
+bb devapp test         its test command inside the running instance; `bb test`
+                       goes this way by itself whenever the instance is up
 ```
 
 That is the loop for a project whose work IS the container: change it,

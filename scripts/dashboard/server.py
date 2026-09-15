@@ -5896,7 +5896,7 @@ class Handler(BaseHTTPRequestHandler):
         #
         # Everything else — new, remove, env, route — is configuration rather
         # than a run of the code, and stays an administrator's.
-        if act not in ("starter", "state", "rebuild", "abort") \
+        if act not in ("starter", "state", "rebuild", "abort", "test") \
                 and self._refused("docker-write"):
             return None
         # A SESSION is a further question, and the answer is a per-project
@@ -5911,7 +5911,10 @@ class Handler(BaseHTTPRequestHandler):
         # ever reaches here from a session: new, remove, env and route are
         # docker-write above, which a session's principal never has. So the
         # dial is about running the code, never about creating a container.
-        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+        # A test run is not on the rebuild dial: it runs the project's own
+        # test command inside a container that is already up, which a
+        # session could run on the node anyway (roadmap R48).
+        if act not in ("starter", "state", "test") and (self._who() or {}).get("session"):
             mode = prefs.get(name)["devbuild"]
             if mode == "deny":
                 return self._json({"error": "rebuilding this project's dev instance is the "
@@ -6004,6 +6007,11 @@ class Handler(BaseHTTPRequestHandler):
             r = devapp.up(name, inst, field(req, "ack"))
         elif act == "down":
             r = devapp.down(name, inst)
+        elif act == "test":
+            # The command is the project's own, from its settings, with the
+            # same fallback bb test uses when nothing is set.
+            cmd = prefs.get(name)["test"] or prefs.test_default(name, WORKSPACE)
+            r = devapp.test(name, inst, cmd, [str(a) for a in (req.get("args") or [])][:32])
         elif act == "rebuild":
             r = devapp.rebuild(name, inst, field(req, "ack"))
         elif act == "env-get":

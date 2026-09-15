@@ -478,6 +478,10 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
+bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
+                   its node: the whole log, and the job's exit code. `bb test` takes this path on its own
+                   whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
+                   BuilderBot it runs on (roadmap R48)
 bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
                    BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
                    from the Docker tab like any project's stack. Each skips in one line without one,

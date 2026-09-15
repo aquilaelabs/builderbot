@@ -584,10 +584,22 @@ case "$1" in
       [ "${args[$i]}" = "--project-name" ] && proj="${args[$((i+1))]}"
     done
     verb=""
-    for a in ps build up down config; do
+    for a in ps build up down config exec; do
       for x in "$@"; do [ "$x" = "$a" ] && verb="$a"; done
     done
     case "$verb" in
+      exec)
+        # `compose exec [-T] [-e K=V]... SERVICE CMD...`: the command runs
+        # right here, which is what proves the wiring of a test inside a
+        # dev instance (roadmap R48) without a container.
+        [ -f "$ST/$proj.up" ] || { echo "service \"app\" is not running"; exit 1; }
+        echo "exec $*" >> "$ST/docker.log"
+        while [ $# -gt 0 ] && [ "$1" != exec ]; do shift; done; shift
+        while [ $# -gt 0 ]; do
+          case "$1" in -T) shift ;; -e) shift 2 ;; -*) shift ;; *) break ;; esac
+        done
+        shift   # the service
+        exec "$@" ;;
       config)
         # -q is the validation the container-create path runs: no output, just
         # a verdict. A file lets a test ask for a compose that will not parse.

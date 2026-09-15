@@ -8,6 +8,7 @@ import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll,
          refreshUntil, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
@@ -2451,6 +2452,66 @@ ok(await page.$('#devSend'),
 }
 
 
+
+// ---- the tests inside the dev instance (roadmap R48, step 1) --------------
+// The container is the boundary: a suite that tests BuilderBot must not
+// disturb the BuilderBot it runs on. The project's recorded test command,
+// and nothing else, runs through `compose exec` in the service the project
+// builds, as a compose job; the stub docker runs the command right here,
+// which proves the wiring, the log and the exit code without a container.
+// Open to a session with the rebuild dial on deny: a test run is not a
+// rebuild. A container that is down is said so, never started.
+{
+  const REPO = fileURLToPath(new globalThis.URL('../../../', import.meta.url));
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`,
+                               WORKSPACE: `${DIR}/ws` } }).trim();
+  const api = (body) => page.evaluate(async b => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json()), body);
+  const asSession = async (body) => {
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/devapp',
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify(body) });
+    return { status: r.status, ...(await r.json()) };
+  };
+  const setTest = (cmd) => page.evaluate(async (c) => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', test: c }) });
+  }, cmd);
+  const finished = async (jid) => {
+    for (let i = 0; i < 120; i++){
+      const j = await page.evaluate(async id => (await (await fetch(`/api/v1/jobs?id=${id}`)).json()), jid);
+      if (['succeeded', 'failed', 'canceled'].includes(j.state)) return j;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return { state: 'still running' };
+  };
+  await api({ project: 'ep.silon', instance: 'main', action: 'up' });
+  await refreshUntil(page, () => true, { timeout: 5000 });
+  await setTest('printf "TEST-RAN-%s\\n"');
+  const nocmd = await asSession({ project: 'ep.silon', action: 'test', args: ['one', 'two'] });
+  ok(nocmd.status === 200 && nocmd.started && /^j_/.test(nocmd.job || ''),
+     `a session runs the project's tests inside its instance with the dial on deny (${JSON.stringify(nocmd).slice(0, 80)})`);
+  const j1 = await finished(nocmd.job);
+  ok(j1.state === 'succeeded' && /TEST-RAN-one\n.*TEST-RAN-two/s.test(j1.log || ''),
+     `...the recorded command runs there with the arguments as positional parameters (${j1.state}: ${(j1.log || '').replace(/\n/g, ' / ').slice(-160)})`);
+  ok(/exec -T -e BB_TEST_TIMING=1 app sh -c printf/.test(j1.log || ''),
+     '...through compose exec into the service the project builds, with timing on for the registry');
+  await setTest('false');
+  const j2 = await finished((await asSession({ project: 'ep.silon', action: 'test' })).job);
+  ok(j2.state === 'failed' && j2.exit_code === 1,
+     `a failing test command is a failed job carrying its exit code (${j2.state} ${j2.exit_code})`);
+  const bad = await asSession({ project: 'ep.silon', action: 'test', args: ['$(rm -rf /)'] });
+  ok(bad.status === 400 && /argument the test command cannot take/.test(bad.error || ''),
+     'an argument that is not a plain word is refused before anything runs');
+  await api({ project: 'ep.silon', instance: 'main', action: 'down' });
+  await refreshUntil(page, () => true, { timeout: 5000 });
+  const down = await asSession({ project: 'ep.silon', action: 'test' });
+  ok(down.status === 400 && /is not running: Up on the Docker tab/.test(down.error || ''),
+     `a container that is down is said so and never started behind the operator's back (${down.error})`);
+  await setTest('');
+}
 
 // The fixture goes back the way artifacts.mjs leaves alpha.
 rmSync(`${D}/docker-compose.yml`, { force: true });

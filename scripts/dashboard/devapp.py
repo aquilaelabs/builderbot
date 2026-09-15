@@ -397,7 +397,7 @@ def sync_work_tree(project, instance):
     return ""
 
 
-def _plan(project, instance, action):
+def _plan(project, instance, action, extra=None):
     pname = _pname(project, instance)
     at = work_tree(project, instance)
     pdir = (str(at) if at is not None
@@ -426,11 +426,22 @@ def _plan(project, instance, action):
     # instance env. What it must NOT do is send `up` anyway and gate
     # afterwards: that is the broken start the gate exists to prevent.
     rebuild = [build, down] if missing_env(project, instance) else [build, down, up]
+    # The project's own test command, inside its running instance (roadmap
+    # R48): `exec` into the service the project builds, with the command the
+    # settings dialog recorded and nothing else, and the caller's arguments
+    # as positional parameters, never spliced into the command. -T because
+    # there is no terminal on a job; BB_TEST_TIMING so the registry can read
+    # the run.
+    test = []
+    if action == "test" and extra:
+        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", extra["service"],
+                       "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
+        test = [{"name": "testing", "argv": argv, "timeout": 3600}]
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": rebuild}.get(action) or []
+            "rebuild": rebuild, "test": test}.get(action) or []
 
 
-def _plan_spec(project, instance, action):
+def _plan_spec(project, instance, action, extra=None):
     """The whole of what an agent node needs for one action."""
     cf = compose_file(project, instance)
     files = {"docker-compose.yml": cf.read_text() if cf and cf.is_file() else ""}
@@ -445,7 +456,7 @@ def _plan_spec(project, instance, action):
             # Said in the spec as well as implied by the shorter plan, so the
             # bookkeeping does not have to infer intent from a step count.
             "gate": bool(action == "rebuild" and missing_env(project, instance)),
-            "plan": _plan(project, instance, action)}
+            "plan": _plan(project, instance, action, extra)}
 
 
 def compose_done(job, state):
@@ -500,6 +511,7 @@ def _compose_done(job, state):
         return {"building": "build failed — the tail of its output is below",
                 "stopping": "stopping it failed — the tail of its output is below",
                 "starting": "up failed — the tail of its output is below",
+                "testing": "the tests failed: their output is the job's log",
                 }.get(step, "")
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
@@ -549,7 +561,7 @@ def _record_build(project, instance):
         write_json(FILE, d)
 
 
-def _submit(project, instance, action):
+def _submit(project, instance, action, extra=None):
     """Queue a compose action for the node this instance is bound to.
 
     On an agent node the spec carries the whole plan and the agent runs it
@@ -563,7 +575,7 @@ def _submit(project, instance, action):
         return dict(BUSY)
     nid = _instance_node(project, instance)
     n = queue.node(nid) if nid else None
-    spec = (_plan_spec(project, instance, action)
+    spec = (_plan_spec(project, instance, action, extra)
             if n and n["kind"] == "agent"
             else {"project": project, "instance": instance, "action": action})
     r = queue.job_add("operator", {"node": nid}, "compose", spec, project)
@@ -3456,6 +3468,51 @@ def _job_up(project, instance, run):
 @_on_instance
 def down(project, instance=MAIN):
     return _submit(project, instance, "down")
+
+
+_ARG = re.compile(r"[A-Za-z0-9._/:=@%+,-]{1,200}")
+
+
+@_on_instance
+def test(project, instance=MAIN, cmd="", args=()):
+    """Run the project's recorded test command inside its dev instance
+    (roadmap R48, step 1): the container is the boundary, so a suite that
+    tests BuilderBot cannot disturb the BuilderBot it is running on.
+
+    The command is the settings dialog's, handed in by the server, never an
+    argument the caller names; the arguments a runner takes (file names) go
+    as positional parameters. `exec` needs the instance UP: a container that
+    is down is said so, not started behind the operator's back. Only an
+    agent node runs it, since every plan runs on the agent now.
+    """
+    if compose_file(project) is None:
+        return {"error": "no compose file here, so there is no container to test in"}
+    cmd = str(cmd or "").strip()
+    if not cmd:
+        return {"error": f"no test command is set for {project}: the operator sets it "
+                         "in the project's settings dialog (Build and test)"}
+    bad = [a for a in args if not _ARG.fullmatch(str(a))]
+    if bad:
+        return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
+    st = state(project, instance)
+    if not st.get("available"):
+        return {"error": st.get("why") or "the instance's daemon is not reachable"}
+    if not st.get("running"):
+        return {"error": f"{_pname(project, instance)} is not running: Up on the Docker tab "
+                         "(or a rebuild) starts it, and the tests run inside it"}
+    cfg = _config(project, instance)
+    services = _services(cfg)
+    if not services:
+        return {"error": "the compose file names no service to run the tests in"}
+    # The service the project builds, else the first one: the project's own
+    # code is what the tests are about.
+    service = next((n for n, sv in services.items() if sv.get("build")), next(iter(services)))
+    nid = _instance_node(project, instance)
+    n = queue.node(nid) if (queue and nid) else None
+    if not n or n["kind"] != "agent":
+        return {"error": "tests run inside an instance on an agent node, and this one is not on one"}
+    return _submit(project, instance, "test",
+                   {"service": service, "cmd": cmd, "args": [str(a) for a in args][:32]})
 
 
 def _job_down(project, instance, run):

@@ -99,6 +99,7 @@ bb — BuilderBot helper
                          names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
   bb tests lab           the lab suites, against the Gitea of BuilderBot's dev stack (lab profile)
+  bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
   bb rules               the house rules for this project — the operator's and yours
   bb rules show NAME     one of them in full — what a conditional rule says
   bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
@@ -3934,7 +3935,41 @@ while waited < 3600:
 sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — its row on the Docker tab has it")
 PY
             ;;
-        *) die "usage: bb devapp [status|rebuild [--why \"what it is for\"]]" ;;
+        test)
+            # The project's test command inside its running dev instance
+            # (roadmap R48): the whole log to stdout, so `bb tests run` can
+            # read it, and the job's exit code as this one's.
+            shift || true
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - "$@" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj = os.environ["BB_DEV_PROJECT"]
+auth = os.environ["BB_DEV_AUTH"]
+r = bbapi.call("/api/devapp", {"project": proj, "action": "test", "args": sys.argv[1:]}, auth=auth)
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+jid = r.get("job") or ""
+print(f"[builderbot] testing {proj} inside its dev instance ({jid})", file=sys.stderr)
+shown = 0
+for _ in range(3600):
+    time.sleep(1)
+    j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
+    if j.get("error"):
+        sys.exit(f"[builderbot] ERROR: {j['error']}")
+    log = j.get("log") or ""
+    if len(log) > shown:
+        sys.stdout.write(log[shown:]); sys.stdout.flush(); shown = len(log)
+    if j.get("state") in ("succeeded", "failed", "canceled"):
+        code = j.get("exit_code")
+        if j["state"] == "succeeded":
+            sys.exit(0)
+        sys.exit(code if isinstance(code, int) and code else 1)
+sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
+PY
+            ;;
+        *) die "usage: bb devapp [status|rebuild [--why \"what it is for\"]|test [ARGS]]" ;;
     esac
 }
 
@@ -4784,6 +4819,14 @@ for g in rec.get("outputs") or []:
 ')
     local cmd="${rec[0]:-}" from="${rec[1]:-none}"
     [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
+    # A test runs inside the project's dev instance when it has one that is
+    # UP (roadmap R48): the container is the boundary. Otherwise on the node
+    # as before; the refusal that makes the container the only way is step 3.
+    if [ "$role" = test ] && [ "$(BB_PROJECT="$proj" "$0" devapp status 2>/dev/null \
+            | awk '$1 == "running" {print $2}')" = yes ]; then
+        echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
+        BB_PROJECT="$proj" exec "$0" devapp test "$@"
+    fi
     # Said before it runs: a command nobody typed should not look like one
     # somebody did.
     [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
