@@ -1313,10 +1313,13 @@ lives in its body. The cards:
   everything under `/workspace` with the same buttons on each row. Pins live in
   `/config/pinned-projects.json`; no file at all means everything is pinned,
   which is what a fresh install sees
-- a **bin**, on the **All projects** tab only, which moves a project to
-  `/workspace/.trash/<name>` with every file kept: a second delete of the same
-  name is numbered rather than overwriting the first, and `/config` is not
-  touched, so putting one back is a `mv`. Deliberately not on the sidebar card
+- a **bin**, which moves a project to `/workspace/.trash/<name>` with every
+  file kept: a second delete of the same name is numbered rather than
+  overwriting the first, and `/config` is not touched, so putting one back is
+  a `mv`. It is on the **All projects** tab's rows (behind the row's fold on a
+  phone) and as **Delete project…** at the foot of every project's settings
+  dialog, the gear, on the card and the tab alike. Deliberately not a bare
+  button on the sidebar card
 - a **gear** per project, which is that project's own settings: its name, its
   node and the build and test commands that run there, what Claude starts on,
   what a session may enter into the notebook, and how much of the tree it may

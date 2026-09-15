@@ -1353,6 +1353,7 @@ await page.fill('#rnToken', '');
 // must not be typed over blind, so the field is closed and this is the way in.
 await page.click('#rnCancel');
 await page.evaluate(() => renameProject('alpha', 'git'));
+ok(await page.$eval('#rnDelete', e => e.hidden), 'the chain\'s door has no Delete: it is about the remote, not the project');
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
 ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
@@ -1427,6 +1428,24 @@ ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
 ok(await page.$eval('#rnGo', e => e.textContent.trim()) === 'Save',
    '...so its button saves rather than renames');
+// The bin is here too, at the foot of the gear's door: on the All projects
+// tab it sits behind the row's fold on a phone, which is where it was not
+// being found. It asks first, and a declined ask moves nothing.
+ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await page.$eval('#rnDelete', e => e.textContent)),
+   'the settings dialog offers Delete project at its foot');
+{
+  const auto = page.listeners('dialog')[0];
+  page.off('dialog', auto);
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  await page.click('#rnDelete');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  page.on('dialog', auto);
+  ok(/moves to \/workspace\/\.trash\/alpha/.test(asked) && existsSync(`${DIR}/ws/alpha/.git`),
+     '...which asks, names the bin, and moves nothing when declined');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+}
 await page.selectOption('#rnModel', 'sonnet');
 ok(!await page.$eval('#rnModel', e => e.disabled)
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),

@@ -3376,6 +3376,12 @@ body.booting .pane>.loading{margin:auto}
            undone. Only on the chain's door: it is about the remote, and the
            gear is about the project. -->
       <span class="sp"></span>
+      <!-- ...and the gear's own: the bin. It is also on the All projects
+           tab's rows, behind the fold on a phone, which is where it was
+           not being found (the operator, 15 Sep). Same confirm, same
+           /api/trash: every file kept under /workspace/.trash. -->
+      <button id="rnDelete" class="danger" hidden
+        title="move this project to /workspace/.trash, every file kept; its roadmap, bugs and memories stay">Delete project…</button>
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
   </div>
@@ -14647,6 +14653,7 @@ async function unlinkProject(name){
 }
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
+$("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 $("rnCancel").onclick = closeRename;
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
@@ -15045,6 +15052,8 @@ function renameProject(name, mode = "all"){
   // refuses a repo that already has one.
   $("rnUnlink").hidden = !(git && p?.linked);
   $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
+  // The bin, on the gear's door only: the chain's is about the remote.
+  $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
   rnFillPrefs(p);
   $("rnGo").disabled = false;
