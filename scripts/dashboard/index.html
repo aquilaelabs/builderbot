@@ -1915,12 +1915,15 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
+/* The notebook's Docker view draws the manager's rows under its own class:
+   the suites address the manager as .dmtab, and a second element wearing
+   that name, parked and hidden, was the first one they found. */
 /* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
    is right (340px of column wants tight rows), but in a pane it left these
    tabs visibly narrower than the notebook next to them, which is the sort of
    difference you only see once and then cannot stop seeing. The notebook's
    bands are 11px/14px; so are these. */
-.projtab .row,.dmtab .row,.doctab .row,
+.projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
@@ -2080,13 +2083,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      log tail on some states, and a positional rule would put those in a
      column the day one appears. Everything unnamed spans, which is what those
      are: full-width things that happen to live in the same box. */
-  .dmtab .row.stack2 .grow{
+  .dmtab .row.stack2 .grow,.dkrows .row.stack2 .grow{
     display:grid;
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
-  .dmtab .row.stack2 .grow > *{grid-column:1 / -1}
-  .dmtab .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .grow > *,.dkrows .row.stack2 .grow > *{grid-column:1 / -1}
+  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmports,.dkrows .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
@@ -3137,7 +3140,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="nbview" data-view="docker" hidden>
       <div class="field nbhead vbar"><span id="dkHint">reading…</span><span class="sp"></span>
         <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
-      <div class="dmtab" id="dkList"></div>
+      <div class="dkrows" id="dkList"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
       <!-- The repository, read out (roadmap R36): what is changed and not

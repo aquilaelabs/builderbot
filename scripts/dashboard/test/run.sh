@@ -22,6 +22,17 @@
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Never as root. The suite's premise is an unprivileged runner: the agent it
+# starts drops to the account sessions run as, which as root means an
+# account the machine may not have (inside BuilderBot's own dev container,
+# where tests run as root through compose exec, that was `bb`, and the
+# session half never came up). The image's account is builder; the suite
+# re-runs itself as that account when it starts as root and builder exists.
+if [ "$(id -u)" = 0 ] && id builder >/dev/null 2>&1 && command -v runuser >/dev/null; then
+    echo "[dashboard-test] started as root: running as builder instead" >&2
+    exec runuser -u builder -- env HOME="$(getent passwd builder | cut -d: -f6)" \
+        USER=builder bash "$0" "$@"
+fi
 DASH="$(dirname "$HERE")"
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
