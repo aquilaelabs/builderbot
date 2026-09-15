@@ -71,14 +71,21 @@ FORGES = (
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Gitea access token",
+     # Measured on Gitea 1.24: creating under an organisation needs
+     # write:organization, and under the account itself write:user, which
+     # is not implied by the repository scope.
      "about": "Your own server. Give it the address you reach Gitea on, and "
-              "a token with repository scope."},
+              "a token with the repository scope, plus organization to create "
+              "a repository under an organisation and user to create one under "
+              "your own account."},
     {"id": "forgejo", "name": "Forgejo", "host": "", "fixed": False,
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Forgejo access token",
      "about": "Your own server. Forgejo answers Gitea's API, so this is the "
-              "same conversation with a different name on it."},
+              "same conversation with a different name on it: a token with the "
+              "repository scope, plus organization or user to create a "
+              "repository under either."},
     {"id": "codeberg", "name": "Codeberg", "host": "codeberg.org", "fixed": True,
      "user": "oauth2",
      "kind": "gitea", "nested": False,

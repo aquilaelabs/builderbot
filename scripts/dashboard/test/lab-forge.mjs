@@ -45,7 +45,10 @@ const forge = async (method, path, body, auth = null) => {
   const v = await forge('GET', '/version');
   ok(v.status === 200 && v.body?.version, `the lab's Gitea answers at ${GITEA} (${v.body?.version})`);
   const t = await forge('POST', `/users/${USER}/tokens`,
-    { name: `bb-lab-${stamp}`, scopes: ['write:repository', 'write:organization', 'read:user'] });
+    // write:user as well: creating a repository under the ACCOUNT goes
+    // through POST /user/repos, which Gitea gates on that scope (measured
+    // on 1.24: "required=[write:user]"). The link dialog's hint says so.
+    { name: `bb-lab-${stamp}`, scopes: ['write:repository', 'write:organization', 'write:user'] });
   ok(t.status === 201 && t.body?.sha1, `a token is minted for the run by signing in as ${USER} (${t.status})`);
   token = t.body?.sha1 || ''; tokenId = t.body?.id || 0;
   const org = await forge('GET', '/orgs/lab');
@@ -94,9 +97,17 @@ const made = [];   // owner/repo pairs to delete at the end
   made.push(repo);
   const got = await forge('GET', `/repos/${repo}`);
   ok(got.status === 200 && got.body?.private === true, 'the forge has it, and it is private');
-  const head = await forge('GET', `/repos/${repo}/commits?limit=1`);
-  ok(head.status === 200 && head.body?.[0]?.sha === sha, `...with the commit that was pushed (${head.body?.[0]?.sha?.slice(0, 7)})`);
-  const line = existsSync(`${DIR}/state/gitcreds/beta`) ? readFileSync(`${DIR}/state/gitcreds/beta`, 'utf8').trim() : '';
+  // Asked of git, not of the database: Gitea syncs branches into its
+  // database after a push on a queue, so for a few seconds /branches answers
+  // nothing and /commits says the repository is empty (measured on 1.24).
+  const c = await forge('GET', `/repos/${repo}/git/commits/${sha}`);
+  ok(c.status === 200 && c.body?.sha === sha,
+     `...with the commit that was pushed (${c.status}: ${c.body?.sha?.slice(0, 7) || JSON.stringify(c.body)?.slice(0, 80)})`);
+  // git's own credential store rewrites the file after a push that
+  // authenticated, in its own spelling (lowercase percent-encoding of the
+  // host's colon), so the line is compared decoded.
+  const line = existsSync(`${DIR}/state/gitcreds/beta`)
+    ? decodeURIComponent(readFileSync(`${DIR}/state/gitcreds/beta`, 'utf8').trim().split('\n')[0]) : '';
   ok(line === `${SCHEME}://${USER}:${token}@${HOST}`,
      `the credential line names the account the forge reported, the scheme and the host with its port (${line.replace(/:[^@]*@/, ':…@')})`);
   const cfg = readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8');
