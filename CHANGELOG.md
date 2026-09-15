@@ -137,6 +137,7 @@
 - A dev instance whose data directory cannot be made on the node (a stale mount, a file in the way) is refused with that reason before docker is asked (18c206b)
 - A node's row says when a mounted share answers Stale file handle, in red, with the fix on the host; before, it read as mounted and every use of it failed (67da994)
 - Tests run inside a dev instance start in the project's directory there when the compose file mounts it (c7a722d)
+- The sandbox VM XML the Nodes tab generates accepts any vCPU count: its CPU topology used to stay at six, which libvirt refused for anything else (c9da64c)
 
 ## 0.5.0: 2026-09-10
 
