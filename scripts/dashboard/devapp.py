@@ -245,8 +245,8 @@ def adopt(uid):
     with _lock:
         d = _load()
         moved = False
-        for project, insts in d.items():
-            for inst, rec in insts.items():
+        for insts in d.values():
+            for rec in insts.values():
                 if not isinstance(rec, dict) or not rec.get("rev"):
                     continue
                 # Only records about THIS address are this verification's
@@ -397,7 +397,7 @@ def sync_work_tree(project, instance):
     return ""
 
 
-def _plan(project, instance, action):
+def _plan(project, instance, action, extra=None):
     pname = _pname(project, instance)
     at = work_tree(project, instance)
     pdir = (str(at) if at is not None
@@ -408,7 +408,7 @@ def _plan(project, instance, action):
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
-    env = _dev_data_env(project, instance)
+    env = _dev_data_env(project, instance) | _build_env(project, instance)
     up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800,
           "env": env | _CLASSIC_BUILD}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
@@ -426,11 +426,27 @@ def _plan(project, instance, action):
     # instance env. What it must NOT do is send `up` anyway and gate
     # afterwards: that is the broken start the gate exists to prevent.
     rebuild = [build, down] if missing_env(project, instance) else [build, down, up]
+    # The project's own test command, inside its running instance (roadmap
+    # R48): `exec` into the service the project builds, with the command the
+    # settings dialog recorded and nothing else, and the caller's arguments
+    # as positional parameters, never spliced into the command. -T because
+    # there is no terminal on a job; BB_TEST_TIMING so the registry can read
+    # the run.
+    test = []
+    if action == "test" and extra:
+        # In the project's own directory inside the container when the
+        # compose file mounts it there; the image's working directory
+        # otherwise. The first run of BuilderBot's suite inside its own
+        # instance ran at / and found no scripts/ (15 Sep).
+        wd = ["-w", extra["workdir"]] if extra.get("workdir") else []
+        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", *wd, extra["service"],
+                       "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
+        test = [{"name": "testing", "argv": argv, "timeout": 3600}]
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": rebuild}.get(action) or []
+            "rebuild": rebuild, "test": test}.get(action) or []
 
 
-def _plan_spec(project, instance, action):
+def _plan_spec(project, instance, action, extra=None):
     """The whole of what an agent node needs for one action."""
     cf = compose_file(project, instance)
     files = {"docker-compose.yml": cf.read_text() if cf and cf.is_file() else ""}
@@ -445,7 +461,7 @@ def _plan_spec(project, instance, action):
             # Said in the spec as well as implied by the shorter plan, so the
             # bookkeeping does not have to infer intent from a step count.
             "gate": bool(action == "rebuild" and missing_env(project, instance)),
-            "plan": _plan(project, instance, action)}
+            "plan": _plan(project, instance, action, extra)}
 
 
 def compose_done(job, state):
@@ -500,6 +516,8 @@ def _compose_done(job, state):
         return {"building": "build failed — the tail of its output is below",
                 "stopping": "stopping it failed — the tail of its output is below",
                 "starting": "up failed — the tail of its output is below",
+                "testing": "the tests failed: their output is the job's log",
+                "preparing": "a bind directory could not be made on the node: its line is below",
                 }.get(step, "")
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
@@ -549,7 +567,7 @@ def _record_build(project, instance):
         write_json(FILE, d)
 
 
-def _submit(project, instance, action):
+def _submit(project, instance, action, extra=None):
     """Queue a compose action for the node this instance is bound to.
 
     On an agent node the spec carries the whole plan and the agent runs it
@@ -563,7 +581,7 @@ def _submit(project, instance, action):
         return dict(BUSY)
     nid = _instance_node(project, instance)
     n = queue.node(nid) if nid else None
-    spec = (_plan_spec(project, instance, action)
+    spec = (_plan_spec(project, instance, action, extra)
             if n and n["kind"] == "agent"
             else {"project": project, "instance": instance, "action": action})
     r = queue.job_add("operator", {"node": nid}, "compose", spec, project)
@@ -603,7 +621,7 @@ def _published(ports):
     return sorted(set(out))
 
 
-def route_view(project, instance, ports):
+def route_view(project, instance, ports, prefer=None):
     """The instance's route as the row draws it: the mode and port on the
     record (lan on the first published port when nothing was chosen), the
     URL that follows from the node, and whether a funnel is actually up."""
@@ -611,7 +629,9 @@ def route_view(project, instance, ports):
     r = rec.get("route") if isinstance(rec.get("route"), dict) else {}
     mode = r.get("mode") if r.get("mode") in ROUTE_MODES else "lan"
     pub = _published(ports)
-    port = r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0 else (pub[0] if pub else None)
+    liked = _published(prefer or [])
+    port = (r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0
+            else liked[0] if liked else pub[0] if pub else None)
     nid = _instance_node(project, instance)
     n = queue.node(nid) if queue is not None and nid else None
     out = {"mode": mode, "port": port, "ports": pub, "url": "", "ready": False, "why": "",
@@ -1646,6 +1666,18 @@ def _pairs():
     return [(k, v) for k, v in got.items()]
 
 
+def _node_mounts_at(path):
+    """Whether the node being addressed reports a mount at exactly this
+    path, from its census (nodes._census keeps `mounts`)."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    for m in ((n or {}).get("reported") or {}).get("mounts") or []:
+        if isinstance(m, dict) and str(m.get("path") or "").rstrip("/") == path \
+                and m.get("mounted", True) and not m.get("stale"):
+            return True
+    return False
+
+
 def host_map():
     """(container path -> host path, complaints about the pairs given).
 
@@ -1660,7 +1692,16 @@ def host_map():
     """
     roots, out, bad = _mount_roots(), {}, []
     root = None
-    for here, there in _pairs():
+    pairs = _pairs()
+    # The projects share at the same path on both machines is the ordinary
+    # arrangement (a sandbox VM mounts it at /workspace, as this container
+    # does), so where nobody has written a pair for it and the node reports
+    # the share mounted there, /workspace maps to itself. A written pair
+    # still wins, for the node whose owner put the share somewhere else.
+    ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
+    if ws and not any(h.strip().rstrip("/") == ws for h, _ in pairs) and _node_mounts_at(ws):
+        pairs.append((ws, ws))
+    for here, there in pairs:
         pair = f"{here}:{there}"
         here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
         if not here.startswith("/") or not there.startswith("/"):
@@ -1842,13 +1883,32 @@ def dev_data_dir(project, instance=MAIN, make=True):
     None when the mkdir failed. The caller then leaves BB_DEV_DATA unset and
     the compose fails loudly, which beats mounting an empty directory and
     calling it the cache drive.
+
+    On an agent node the directory is the AGENT's to make: it travels in the
+    plan's `dirs` and the agent makes it before the first step, so the path
+    is answered whether or not the node has an ssh address. An agent that
+    reports docker but no sshd (a node that is itself a container) has no
+    address and used to get no data directory at all, so its up ran with the
+    bind unplanned (found running this suite inside builderbot-dev, 15 Sep).
     """
     name = _pname(project, instance)
     if not sandbox_daemon():
-        return None
+        if not _agent_docker():
+            return None
+        return posixpath.join(DEVDATA, name)
     if make and not _devdata_run("mkdir", name):
         return None
     return posixpath.join(DEVDATA, name)
+
+
+def _agent_docker():
+    """Is the node being addressed an agent node whose census reports
+    docker? That node runs compose as a job and makes bind directories
+    itself, so it needs no ssh address for a data directory to exist."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    return bool(n and n.get("kind") == "agent"
+                and ((n.get("reported") or {}).get("docker")))
 
 
 def check_paths(node_id=None):
@@ -2010,6 +2070,33 @@ def rename_project_data(old, new):
     return moved, failed
 
 
+def _build_env(project, instance=MAIN):
+    """BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION for a compose whose
+    build args opt in with them: the commit the build is from (the tree's
+    HEAD, or the pinned ref's tip), when, and the project's version in its
+    file form. The same convention as BB_DEV_DATA, and the same reason: a
+    compose file cannot know what it is being built from, and an image that
+    cannot say which commit it runs is one nobody can reason about. Found
+    when builderbot-dev came up with an empty stamp (15 Sep): CI passes the
+    three as build args, a dev build passed nothing.
+    """
+    ref = (str(_read_rec(project, instance).get("ref") or "").strip()
+           if instance else "")
+    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"],
+             timeout=10)
+    out = {"BB_BUILD_AT": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())}
+    if r["code"] == 0 and r["out"].strip():
+        out["BB_BUILD_REV"] = r["out"].strip()
+    # No version is a blank stamp, never a failed build: the module is
+    # beside this one on the dashboard and absent in a module-level test.
+    with contextlib.suppress(Exception):
+        import version                                 # noqa: PLC0415
+        f = ((version.render(project) or {}).get("forms") or {}).get("file")
+        if f:
+            out["BB_BUILD_VERSION"] = str(f)
+    return out
+
+
 def _dev_data_env(project, instance=MAIN):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
     cache-backed volumes by convention, nothing forced on a compose that never
@@ -2072,15 +2159,53 @@ def write_env(project, text, instance=MAIN):
     return {"ok": True}
 
 
+_VAR_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def required_vars(compose_text):
+    """The variables a compose file cannot do without: referenced as ${X}
+    or $X with no default, or ${X:?...}."""
+    out = set()
+    for m in _VAR_REF.finditer(compose_text or ""):
+        if m.group(3):
+            out.add(m.group(3))
+            continue
+        name, rest = m.group(1), m.group(2) or ""
+        if not rest or rest.startswith(("?", ":?")):
+            out.add(name)
+    return out
+
+
+def defaulted_vars(compose_text):
+    """The variables a compose file answers for itself (${X:-99}, ${X-99})
+    and never also needs bare: the only kind the env gate may leave unset."""
+    out = set()
+    for m in _VAR_REF.finditer(compose_text or ""):
+        if m.group(1) and (m.group(2) or "").startswith((":-", "-")):
+            out.add(m.group(1))
+    return out - required_vars(compose_text)
+
+
 def missing_env(project, instance=MAIN):
-    """Keys the repo's example declares that the dev env does not set."""
+    """Keys the repo's example declares that the dev env does not set,
+    except the ones the compose file answers for itself (${PUID:-99}): the
+    example lists those so they CAN be set, and asking for nine of them
+    before a first Up was the operator's report (15 Sep). A key the file
+    never names stays required: the example says it matters, and this side
+    cannot tell what reads it.""" 
     try:
         example = (WORKSPACE / project / ".env.example").read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return []
     have = set(_keys(read_env(project, instance)))
-    return [k for k in _keys(example) if k not in have]
+    cf = compose_file(project, instance)
+    try:
+        text = cf.read_text(encoding="utf-8", errors="replace") if cf else ""
+    except OSError:
+        text = ""
+    optional = defaulted_vars(text)
+    return [k for k in _keys(example) if k not in have and k not in optional]
 
 
 def _gate_env(project, instance=MAIN):
@@ -2190,6 +2315,10 @@ def _overview_here(picked):
             same_daemon = rec.get("daemon") == daemon_id()
             out.append({
                 "project": project, "instance": inst, "name": pn,
+                # The project whose notebook lists it, when it is not this
+                # one's own (a container written here, or a second project's
+                # helper): "" otherwise.
+                "for": str(rec.get("for") or ""),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2234,8 +2363,21 @@ def _overview_here(picked):
                 # as part of starting now, so nothing on this page asks about
                 # them and no row costs a `compose config` to draw.
                 "stale_name": stale_name(project, inst),
+                # Each container of the instance, so the row can list them:
+                # an instance is one thing to Up and Down and three things
+                # to look at (the operator, 15 Sep).
+                "services": [{"service": c.get("service", ""), "name": c.get("name", ""),
+                              "state": c.get("state", ""), "status": c.get("status", ""),
+                              "ports": c.get("ports", []), "image": c.get("image", "")}
+                             for c in sorted(mine, key=lambda c: (c.get("service", ""), c.get("name", "")))],
                 "route": route_view(project, inst,
-                                    sorted({p for c in mine for p in c["ports"]})),
+                                    sorted({p for c in mine for p in c["ports"]}),
+                                    # The project's own service first: the
+                                    # lowest published port was the lab's
+                                    # Gitea's ssh, which no browser reads.
+                                    prefer=sorted({p for c in mine
+                                                   if c.get("service") in (_slug(project), _slug(inst))
+                                                   for p in c["ports"]})),
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -2279,7 +2421,7 @@ def _overview_here(picked):
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
 
 
-def create_container(name, compose_text, env_text="", node=""):
+def create_container(name, compose_text, env_text="", node="", for_project=""):
     """A container from a compose file written here, with no project behind it.
 
     The shape every other Docker front end uses: a stack is a name, a compose
@@ -2320,6 +2462,12 @@ def create_container(name, compose_text, env_text="", node=""):
         rec["source"] = "file"
         if node:
             rec["node"] = str(node)
+        # Which project's notebook lists this container (roadmap: the
+        # operator's ask, 15 Sep): a dev radarr for a media project shows
+        # under that project, not only in the manager. Kept only when
+        # given; the creator's own project needs no note.
+        if for_project:
+            rec["for"] = str(for_project)[:100]
         write_json(FILE, d2)
     if (env_text or "").strip():
         write_env(slug, env_text, MAIN)
@@ -2431,7 +2579,7 @@ def forget_container(name):
     return gone
 
 
-def create_instance(project, name, node=""):
+def create_instance(project, name, node="", for_project=""):
     """Register a new instance of a project. Nothing is built or started.
 
     `node` is which docker-host the instance is bound to — the daemon every
@@ -2464,6 +2612,12 @@ def create_instance(project, name, node=""):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
+        # Which project's notebook lists this container (roadmap: the
+        # operator's ask, 15 Sep): a dev radarr for a media project shows
+        # under that project, not only in the manager. Kept only when
+        # given; the creator's own project needs no note.
+        if for_project:
+            rec["for"] = str(for_project)[:100]
         write_json(FILE, d)
     _bump()
     return {"ok": True, "project": project, "instance": slug,
@@ -2592,6 +2746,13 @@ def instances(project):
     """
     have = list((_load().get(project) or {}).keys())
     return have or [MAIN]
+
+
+def only_instance(project):
+    """The instance a request means when it names none: the project's only
+    recorded one, else `main`."""
+    have = list((_load().get(project) or {}).keys())
+    return have[0] if len(have) == 1 else MAIN
 
 
 def states(project):
@@ -3094,8 +3255,9 @@ def problems(project, cfg):
                 f"{name} mounts {src}, which is this container's path — "
                 + (f"the daemon calls that {there}" if there else
                    f"and the node's path mapping does not say what the daemon calls "
-                   f"it. Add a pair for it; {_root_of(src)}:{_root_of(src)} if "
-                   f"the daemon mounts the same share at the same path"))
+                   f"it. Add a pair for it on the node's row (Nodes tab, Advanced, "
+                   f"Path mapping): {_root_of(src)}:{_root_of(src)} if the daemon "
+                   f"mounts the same share at the same path"))
     return out
 
 
@@ -3429,8 +3591,8 @@ def _job_up(project, instance, run):
     # the explicit build uses it — see _CLASSIC_BUILD. Streamed, because that
     # implicit build can pull for half an hour.
     r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
-             sink=run.line, hold=run.hold)
+             env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
+             | _CLASSIC_BUILD, sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped"}
     if r["code"] != 0:
@@ -3456,6 +3618,80 @@ def _job_up(project, instance, run):
 @_on_instance
 def down(project, instance=MAIN):
     return _submit(project, instance, "down")
+
+
+_ARG = re.compile(r"[A-Za-z0-9._/:=@%+,-]{1,200}")
+
+
+@_on_instance
+def test(project, instance=MAIN, cmd="", args=()):
+    """Run the project's recorded test command inside its dev instance
+    (roadmap R48, step 1): the container is the boundary, so a suite that
+    tests BuilderBot cannot disturb the BuilderBot it is running on.
+
+    The command is the settings dialog's, handed in by the server, never an
+    argument the caller names; the arguments a runner takes (file names) go
+    as positional parameters. `exec` needs the instance UP: a container that
+    is down is said so, not started behind the operator's back. Only an
+    agent node runs it, since every plan runs on the agent now.
+    """
+    if compose_file(project) is None:
+        return {"error": "no compose file here, so there is no container to test in"}
+    cmd = str(cmd or "").strip()
+    if not cmd:
+        return {"error": f"no test command is set for {project}: the operator sets it "
+                         "in the project's settings dialog (Build and test)"}
+    bad = [a for a in args if not _ARG.fullmatch(str(a))]
+    if bad:
+        return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
+    st = state(project, instance)
+    if not st.get("available"):
+        return {"error": st.get("why") or "the instance's daemon is not reachable"}
+    if not st.get("running"):
+        return {"error": f"{_pname(project, instance)} is not running: Up on the Docker tab "
+                         "(or a rebuild) starts it, and the tests run inside it"}
+    cfg = _config(project, instance)
+    services = _services(cfg)
+    if not services:
+        return {"error": "the compose file names no service to run the tests in"}
+    # The service the project builds, else the first one: the project's own
+    # code is what the tests are about.
+    service = next((n for n, sv in services.items() if sv.get("build")), next(iter(services)))
+    workdir = project_dir_inside(services[service], project)
+    nid = _instance_node(project, instance)
+    n = queue.node(nid) if (queue and nid) else None
+    if not n or n["kind"] != "agent":
+        return {"error": "tests run inside an instance on an agent node, and this one is not on one"}
+    return _submit(project, instance, "test",
+                   {"service": service, "cmd": cmd, "args": [str(a) for a in args][:32],
+                    "workdir": workdir})
+
+
+def project_dir_inside(sv, project):
+    """Where a service sees the project's directory: the target of the bind
+    that carries it (the directory itself, or a parent such as the whole
+    projects share), with the rest of the path appended. "" when nothing
+    mounts it, which is an image that copied the code at build time and
+    whose own working directory is the right place."""
+    try:
+        pdir = str((WORKSPACE / project).resolve())
+    except OSError:
+        pdir = str(WORKSPACE / project)
+    for v in sv.get("volumes") or []:
+        if not isinstance(v, dict) or (v.get("type") or "") != "bind":
+            continue
+        src, tgt = str(v.get("source") or "").rstrip("/"), str(v.get("target") or "").rstrip("/")
+        if not src or not tgt:
+            continue
+        try:
+            src = str(Path(src).resolve())
+        except OSError:
+            pass
+        if pdir == src:
+            return tgt
+        if pdir.startswith(src + "/"):
+            return tgt + pdir[len(src):]
+    return ""
 
 
 def _job_down(project, instance, run):
@@ -3531,7 +3767,8 @@ def _job_rebuild(project, instance, run):
     try:
         run.step("building")
         r = _run(_compose(project, instance, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
+                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
+                 | _CLASSIC_BUILD,
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",

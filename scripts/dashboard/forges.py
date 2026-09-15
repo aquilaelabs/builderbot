@@ -59,8 +59,17 @@ def configure(*, run, state=None, write_json=None):      # noqa: A002 - injected
 # asked for the real one — git's credential store is a URL, so a token has to
 # go in beside SOME name, and each of these publishes the one it wants.
 
+# Whether unvetted hosts may be offered, from the controller's settings
+# (server.py sets it); None reads as no.
+unvetted_ok = None
+
+# `vetted` is the evidence an entry has been proven against the real thing,
+# the date and what did it, or "" for one written to its documented API and
+# never run. With the setting off, only vetted hosts are offered and a link
+# or clone naming another is refused; on, the rest are offered tagged dev.
 FORGES = (
     {"id": "github", "name": "GitHub", "host": "github.com", "fixed": True,
+     "vetted": "in daily use: every project here that pushes, and create.mjs against the harness",
      "user": "x-access-token",
      "kind": "github", "nested": False,
      "token": re.compile(r"[A-Za-z0-9_]{20,255}"),
@@ -68,35 +77,53 @@ FORGES = (
      "about": "Repositories are created for you when the address names one "
               "that does not exist yet."},
     {"id": "gitea", "name": "Gitea", "host": "", "fixed": False,
+     "vetted": "2026-09-15: lab-forge.mjs against Gitea 1.24.7, and a runner registered from bb-dev-sandbox",
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Gitea access token",
+     # Measured on Gitea 1.24: creating under an organisation needs
+     # write:organization, and under the account itself write:user, which
+     # is not implied by the repository scope.
      "about": "Your own server. Give it the address you reach Gitea on, and "
-              "a token with repository scope."},
+              "a token with the repository scope, plus organization to create "
+              "a repository under an organisation and user to create one under "
+              "your own account."},
     {"id": "forgejo", "name": "Forgejo", "host": "", "fixed": False,
+     "vetted": "",
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Forgejo access token",
      "about": "Your own server. Forgejo answers Gitea's API, so this is the "
-              "same conversation with a different name on it."},
+              "same conversation with a different name on it: a token with the "
+              "repository scope, plus organization or user to create a "
+              "repository under either."},
     {"id": "codeberg", "name": "Codeberg", "host": "codeberg.org", "fixed": True,
+     "vetted": "",
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Codeberg access token",
      "about": "Codeberg runs Forgejo, so it answers the same API."},
     {"id": "gitlab", "name": "GitLab", "host": "gitlab.com", "fixed": False,
+     "vetted": "",
      "user": "oauth2",
      "kind": "gitlab", "nested": True,
      "token": None, "hint": "glpat-…",
      "about": "gitlab.com, or your own — replace the host. Subgroups are "
               "allowed in the path, which no other host here permits."},
     {"id": "bitbucket", "name": "Bitbucket", "host": "bitbucket.org", "fixed": True,
+     "vetted": "",
+     # The username Bitbucket pairs a repository or workspace ACCESS TOKEN
+     # with. An app password is paired with the account's own username
+     # instead, which nothing here asks for, so the hint names the token.
      "user": "x-token-auth",
      "kind": "", "nested": False,
-     "token": None, "hint": "an app password",
+     "token": None, "hint": "a repository access token",
      "about": "Reached with git alone, so the repository has to exist "
-              "already — create it empty on Bitbucket first."},
+              "already: create it empty on Bitbucket first, and give it a "
+              "repository access token rather than an app password, which "
+              "would need your username beside it."},
     {"id": "git", "name": "Another git host", "host": "", "fixed": False,
+     "vetted": "plain git, no host API: the same clone and push the vetted hosts use",
      "user": "oauth2",
      "kind": "", "nested": True,
      "token": None, "hint": "an access token, if the host wants one",
@@ -114,7 +141,8 @@ def get(fid):
 
 
 def catalog():
-    """What the link dialog draws: everything but the compiled regex.
+    """What the link dialog draws: everything but the compiled regex, and
+    only what may be offered; an unvetted host that may be carries `dev`.
 
     ALPHABETICAL, because a list of choices with no order anybody can name is
     a list you read twice. `git` is the one exception and is last: it is not a
@@ -123,9 +151,23 @@ def catalog():
     """
     rows = [{"id": f["id"], "name": f["name"], "host": f["host"],
              "fixed": f["fixed"], "hint": f["hint"], "about": f["about"],
-             "nested": f["nested"], "creates": bool(f["kind"])}
-            for f in FORGES]
+             "nested": f["nested"], "creates": bool(f["kind"]),
+             "dev": not f.get("vetted")}
+            for f in FORGES if allowed(f)]
     return sorted(rows, key=lambda f: (f["id"] == "git", f["name"].lower()))
+
+
+def allowed(f):
+    """May this host be offered and linked: vetted, or unvetted with the
+    setting on. A project already linked to an unvetted host keeps
+    working either way: this gates what is offered, not what exists."""
+    return bool(f.get("vetted")) or bool(unvetted_ok and unvetted_ok())
+
+
+def not_offered(f):
+    """The sentence a refusal carries for an unvetted host."""
+    return (f"{f['name']} is dev, not yet vetted, so it is not offered here: "
+            "Settings, 'Offer dev features' puts it back, tagged dev")
 
 
 def slug(host):
@@ -192,7 +234,13 @@ def forge_of(host):
     for f in FORGES:
         if f["host"] and f["host"].lower() == h.split(":")[0]:
             return f
+    # With the port, then without it: a Gitea linked over https carries its
+    # port in the host and is remembered that way, and the same server
+    # reached over ssh afterwards names the host alone.
     told = known().get(h)
+    if not told:
+        bare = h.split(":")[0]
+        told = next((v for k, v in known().items() if k.split(":")[0] == bare), "")
     if told and told in BY_ID:
         return BY_ID[told]
     # Nobody has said what this one runs. `git` is the honest answer: git, and
@@ -389,11 +437,13 @@ def cred_user(entry, host, token, scheme="https"):
     return whoami(entry, host, token, scheme) or entry["user"]
 
 
-def create_repo(entry, host, token, path, scheme="https"):
+def create_repo(entry, host, token, path, scheme="https", user=""):
     """Make an empty private repository. "" on success, else why not.
 
     Reached only when the host has already answered "not found" for it, which
-    is the one answer that proves there is nothing there to harm.
+    is the one answer that proves there is nothing there to harm. `user` is
+    the account the token belongs to, when the host said: a repository can
+    be made under an organisation or under that account, and nowhere else.
     """
     base = api_base(entry, host, scheme)
     if not base:
@@ -413,6 +463,14 @@ def create_repo(entry, host, token, path, scheme="https"):
     if j is not None:
         return ""
     first = why
+    # The account's own path is only right when the owner IS the account:
+    # falling back to it for anybody else made owner/repo under the token's
+    # user, and the push to the address that was asked for then failed on
+    # a repository that was never there.
+    if user and owner.lower() != user.lower():
+        return (f"{entry['name']} would not create {path}: {owner} is not an "
+                f"organisation this token can create in ({first}), and the "
+                f"token is {user}'s, so it cannot make one under {owner}")
     j, why = _ask(f"{base}/user/repos", entry["kind"], token, body)
     if j is not None:
         return ""

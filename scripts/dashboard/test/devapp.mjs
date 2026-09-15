@@ -4,10 +4,10 @@
 // Everything here drives the stub docker the harness provides — the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll,
-         refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
@@ -102,6 +102,10 @@ async function showRow(){
 async function dmRefresh(){
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
   await openManager();
+  // The rows come back at once from the last answer, marked stale while the
+  // new one is on its way (B125); a refresh is done when the mark is gone.
+  await page.waitForFunction(() => document.querySelector('.dmtab') && !document.querySelector('.dmtab.dmstale'),
+                             null, { timeout: 30000 });
 }
 // The manager lists what has been SENT to it — a project with a compose file
 // no longer gets a phantom row there — so the fixture's instance has to exist
@@ -223,6 +227,15 @@ ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
 // build asks for exactly the POST /build permission the setup docs grant.
 ok(/BUILDKIT=0/.test(log),
    '...and builds with the classic builder, which needs no helper container');
+// The stamp: a compose whose build args want the commit and the time gets
+// them from the environment, the way BB_DEV_DATA arrives. Full sha, since
+// the header shortens it itself; the time in the form CI stamps.
+{
+  const head = execFileSync('git', ['-C', `${DIR}/ws/ep.silon`, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  ok(new RegExp(`BB_BUILD_REV=${head} BB_BUILD_AT=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\dZ`).test(log),
+     `...with the commit it builds from and the time in the environment, for a compose that stamps its image (${
+       (log.match(/BB_BUILD_REV=[^\n]*/) || ['none'])[0].slice(0, 70)})`);
+}
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
@@ -2448,9 +2461,227 @@ ok(await page.$('#devSend'),
     { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
+  // ---- where the tests run (roadmap R48, step 3) -------------------------
+  // Beside the dial, the same draft-then-Apply shape: `either` by default,
+  // `only` makes the container the one place bb test runs. Stored as a
+  // boolean, and absent when off, so a project left alone leaves no trace.
+  const TW = '.dmtab [data-dmtest="ep.silon"]';
+  ok(await page.$eval(TW, e => e.value === 'either' && !e.disabled
+                              && [...e.options].map(o => o.value).join() === 'either,only'),
+     'the row carries where the tests run, on either by default, with both settings');
+  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => b.disabled),
+     '...with its Apply asleep until something is picked');
+  await page.selectOption(TW, 'only');
+  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => !b.disabled),
+     '...which wakes on a pick that differs from what is saved');
+  await page.click('.dmtab [data-dmtestapply="ep.silon"]');
+  await refreshUntil(page, () => ((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+     'Apply stores it on the project, as the one boolean it is');
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devtest: false }) });
+  });
+  await refreshUntil(page, () => !((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest, { timeout: 20000 });
+  ok(!('devtest' in (JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'] || {})),
+     '...and off is absent from the record rather than stored as false');
 }
 
 
+
+// ---- the tests inside the dev instance (roadmap R48, step 1) --------------
+// The container is the boundary: a suite that tests BuilderBot must not
+// disturb the BuilderBot it runs on. The project's recorded test command,
+// and nothing else, runs through `compose exec` in the service the project
+// builds, as a compose job; the stub docker runs the command right here,
+// which proves the wiring, the log and the exit code without a container.
+// Open to a session with the rebuild dial on deny: a test run is not a
+// rebuild. A container that is down is said so, never started.
+{
+  const REPO = fileURLToPath(new globalThis.URL('../../../', import.meta.url));
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`,
+                               WORKSPACE: `${DIR}/ws` } }).trim();
+  const api = (body) => page.evaluate(async b => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json()), body);
+  const asSession = async (body) => {
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/devapp',
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify(body) });
+    return { status: r.status, ...(await r.json()) };
+  };
+  const setTest = (cmd) => page.evaluate(async (c) => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', test: c }) });
+  }, cmd);
+  const finished = async (jid) => {
+    for (let i = 0; i < 120; i++){
+      const j = await page.evaluate(async id => (await (await fetch(`/api/v1/jobs?id=${id}`)).json()), jid);
+      if (['succeeded', 'failed', 'canceled'].includes(j.state)) return j;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return { state: 'still running' };
+  };
+  await api({ project: 'ep.silon', instance: 'main', action: 'up' });
+  await refreshUntil(page, () => true, { timeout: 5000 });
+  await setTest('printf "TEST-RAN-%s\\n"');
+  const nocmd = await asSession({ project: 'ep.silon', action: 'test', args: ['one', 'two'] });
+  ok(nocmd.status === 200 && nocmd.started && /^j_/.test(nocmd.job || ''),
+     `a session runs the project's tests inside its instance with the dial on deny (${JSON.stringify(nocmd).slice(0, 80)})`);
+  const j1 = await finished(nocmd.job);
+  ok(j1.state === 'succeeded' && /TEST-RAN-one\n.*TEST-RAN-two/s.test(j1.log || ''),
+     `...the recorded command runs there with the arguments as positional parameters (${j1.state}: ${(j1.log || '').replace(/\n/g, ' / ').slice(-160)})`);
+  ok(/exec -T -e BB_TEST_TIMING=1 app sh -c printf/.test(j1.log || ''),
+     '...through compose exec into the service the project builds, with timing on for the registry, and no working directory when nothing mounts the project');
+  // A compose that mounts the project (or the whole share it sits in) puts
+  // the tests in the project's directory inside the container: the first
+  // run of BuilderBot's own suite inside its instance ran at / instead.
+  writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+    volumes: [{ type: 'bind', source: `${DIR}/ws`, target: '/workspace' }] } } }));
+  const j1b = await finished((await asSession({ project: 'ep.silon', action: 'test', args: ['wd'] })).job);
+  ok(/exec -T -e BB_TEST_TIMING=1 -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
+     `...and in the project's directory inside the container when the compose mounts it (${(j1b.log || '').match(/exec [^\n]*/)?.[0]?.slice(0, 90)})`);
+  rmSync(stubCfg, { force: true });
+  await setTest('false');
+  const j2 = await finished((await asSession({ project: 'ep.silon', action: 'test' })).job);
+  ok(j2.state === 'failed' && j2.exit_code === 1,
+     `a failing test command is a failed job carrying its exit code (${j2.state} ${j2.exit_code})`);
+  // A request naming no instance means the project's only one, whatever it
+  // is called: BuilderBot's own is builderbot-dev, and a session's bb devapp
+  // answered for a `main` that did not exist.
+  const only = await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'state' }) })).json()));
+  ok((only.state || only).name === 'ep-silon' || (only.state || only).instance === 'main',
+     `a request naming no instance is answered for the project's only one (${JSON.stringify(only.state || only).slice(0, 60)})`);
+  const bad = await asSession({ project: 'ep.silon', action: 'test', args: ['$(rm -rf /)'] });
+  ok(bad.status === 400 && /argument the test command cannot take/.test(bad.error || ''),
+     'an argument that is not a plain word is refused before anything runs');
+  await api({ project: 'ep.silon', instance: 'main', action: 'down' });
+  await refreshUntil(page, () => true, { timeout: 5000 });
+  const down = await asSession({ project: 'ep.silon', action: 'test' });
+  ok(down.status === 400 && /is not running: Up on the Docker tab/.test(down.error || ''),
+     `a container that is down is said so and never started behind the operator's back (${down.error})`);
+  // The refusal that makes the container the only way (step 3): from a
+  // session on a node, with the row set to `only` and the instance down,
+  // bb test names the instance and runs nothing on the node. With the row
+  // on `either` the same call would queue a job on the node, which the
+  // fixture has none of, so that half is the routing step 1 already proves.
+  {
+    const setWhere = (only) => page.evaluate(async (v) => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devtest: v }) });
+    }, only);
+    await setWhere(true);
+    const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                      BB_TOKEN: tok, BB_NODE: 'agentbox', BB_PROJECT: 'ep.silon',
+                      BB_TREE: '/workspace/ep.silon' };
+    let out = '', code = 0;
+    try {
+      out = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/ep.silon`, env: nodeEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { code = e.status; out = String(e.stderr || '') + String(e.stdout || ''); }
+    ok(code !== 0 && /tests run only inside its dev instance \(ep-silon\), which is not running: Up on the Docker tab/.test(out)
+       && /Nothing runs on the node/.test(out),
+       `with the row on only and the instance down, bb test from a session refuses, naming the instance (${
+         code}: ${out.replace(/\s+/g, ' ').slice(0, 120)})`);
+    await setWhere(false);
+  }
+  await setTest('');
+}
+
+// ---- two rules the env gate and the path mapping live by ----------------
+// Driven at the module: both are pure reads of a compose file and a node
+// record, and the dashboard's rows only carry their answers.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile, types
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+out = {}
+# A key with a default in the compose file is not missing; one the file
+# never names still is; one it needs with no default is.
+d = Path(tempfile.mkdtemp())
+(d / 'proj').mkdir(); (d / 'env').mkdir()
+m.configure(workspace=str(d), state=str(d), write_json=lambda p, o: None, queue=None)
+(d / 'proj' / '.env.example').write_text('NEEDED=\\nDEFAULTED=99\\nUNUSED=\\nBARE=\\nASKED=\\n')
+(d / 'proj' / 'docker-compose.yml').write_text(
+    'services:\\n  app:\\n    image: x\\n    environment:\\n      A: \${NEEDED}\\n      B: \${DEFAULTED:-99}\\n      C: $BARE\\n      D: \${ASKED:?say}\\n')
+m.WORKSPACE = d; m.ENVDIR = d / 'env'
+out['required'] = sorted(m.required_vars((d / 'proj' / 'docker-compose.yml').read_text()))
+out['missing'] = m.missing_env('proj')
+# /workspace maps to itself when the node reports the share mounted there,
+# and nowhere without either a pair or the mount.
+m.WORKSPACE = Path('/workspace')
+m.node_paths = lambda nid: {}
+m._default_node = lambda: 'n1'
+m._mount_roots = lambda: {'/workspace': 'projects'}
+class Q:
+    mounts = []
+    def node(self, nid): return {'id': nid, 'reported': {'mounts': self.mounts}}
+q = Q(); m.queue = q
+out['bare'] = m.host_map()[0]
+q.mounts = [{'path': '/workspace', 'mounted': True}]
+out['mounted'] = m.host_map()[0]
+m.node_paths = lambda nid: {'/workspace': '/mnt/user/projects'}
+out['written'] = m.host_map()[0]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+  const r = JSON.parse(out);
+  ok(r.required.join(',') === 'ASKED,BARE,NEEDED',
+     `a compose file needs the variables it names with no default, bare or with :?, and nothing else (${r.required})`);
+  ok(r.missing.join(',') === 'NEEDED,UNUSED,BARE,ASKED',
+     `...and the env gate leaves only a key with a default unasked; one the file never names is still the example's to require (${r.missing})`);
+  ok(JSON.stringify(r.bare) === '{}' && JSON.stringify(r.mounted) === '{"/workspace":"/workspace"}',
+     `/workspace maps to itself on a node that reports the share mounted there, and to nothing on one that does not (${JSON.stringify(r.mounted)})`);
+  ok(JSON.stringify(r.written) === '{"/workspace":"/mnt/user/projects"}',
+     `...and a written pair still wins (${JSON.stringify(r.written)})`);
+}
+
+// ---- a container shown under a project -------------------------------------
+// A dev radarr for a media project belongs in that project's notebook, not
+// only in the manager: New container takes a project to show it under, the
+// record keeps it, the manager's row says so, and the project's Docker view
+// lists it beside the project's own instances with the same controls.
+{
+  const made = await page.evaluate(async () => (await (await fetch('/api/container', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', name: 'helper-for-eps', for: 'ep.silon',
+                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
+  ok(made.ok && made.project === 'helper-for-eps', `a container written here can name the project it belongs with (${JSON.stringify(made).slice(0, 80)})`);
+  const bad = await page.evaluate(async () => (await (await fetch('/api/container', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', name: 'helper-for-nobody', for: 'no-such-project',
+                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
+  ok(/not a project: no-such-project/.test(bad.error || ''), 'a project nobody can see is refused');
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => (dockerList?.instances || []).some(d => d.project === 'helper-for-eps' && d.for === 'ep.silon'),
+                             null, { timeout: 20000 });
+  ok(true, 'the manager\'s answer carries which project it is shown under');
+  await page.evaluate(() => openNotebook('ep.silon'));
+  await nbShown(page);
+  await nbTab(page, 'docker');
+  await page.waitForFunction(() => document.querySelector('.pane .nb #dkList .row[data-inst="helper-for-eps|main"]'),
+                             null, { timeout: 20000 });
+  const view = await page.$eval('.pane .nb [data-view="docker"]', v => ({
+    hint: v.querySelector('#dkHint').textContent,
+    rows: [...v.querySelectorAll('#dkList .row[data-inst]')].map(r => r.dataset.inst),
+    forLine: v.querySelector('#dkList .row[data-inst="helper-for-eps|main"] .sub')?.textContent || '',
+    buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm) }));
+  ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main'),
+     `the project's Docker view lists its own instance and the container shown under it (${view.rows.join(' ')})`);
+  ok(/for ep\.silon/.test(view.forLine) && view.buttons.includes('up') && view.buttons.includes('rebuild'),
+     `...with the manager's own row, saying whose it is, and its controls (${view.buttons.join(' ')})`);
+  ok(/2 containers of ep\.silon's on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'helper-for-eps', instance: 'main', action: 'remove' }) })).json()));
+}
 
 // The fixture goes back the way artifacts.mjs leaves alpha.
 rmSync(`${D}/docker-compose.yml`, { force: true });

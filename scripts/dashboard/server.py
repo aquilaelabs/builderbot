@@ -18,14 +18,13 @@ import hmac
 import ipaddress
 import json
 import os
+import sys
 import posixpath
 import re
 import selectors
 import shlex
 import socket
 import subprocess
-import sys
-import tempfile
 import threading
 import time
 
@@ -1593,8 +1592,11 @@ def project_list(who):
     project_prefs = prefs.all_projects(WORKSPACE)
     # One answer per node about its agent, for every project row on it.
     node_gaps = {}
+    # ...and its name, for the row to wear beside the project's.
+    node_names = {}
     if not NODES_OK:
         for n in nodes.node_list():
+            node_names[n["id"]] = n["name"]
             if n["kind"] == "agent" and n.get("live"):
                 why = nodes.agent_stale(n)
                 if why:
@@ -1814,6 +1816,9 @@ def project_list(who):
                     # the Artifacts tab and the bell say so before a job is
                     # refused. "" is the ordinary state.
                     "node_gap": node_gaps.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # Which node this project's work runs on, by name, or ""
+                    # for none: the row says "(node: X)" beside the name.
+                    "node_name": node_names.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     # Why no Claude session may run here right now, or "":
                     # its CLAUDE.md block from another compatibility window,
                     # else its own node's agent from one. The button ghosts
@@ -1997,8 +2002,7 @@ def session_target(project, claude=False):
                # at the first sentence end to put the fact on the row and
                # leave the instruction to the tooltip, and the dash it used
                # to cut at is gone from the page's vocabulary.
-               "why": f"{project or 'this project'} has no node, and a Claude session "
-                      "runs on one. Pick one in the project's settings, or enroll "
+               "why": "no node: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
@@ -2322,6 +2326,32 @@ def last_claude(project_dir):
         return None
     newest = max(files, key=lambda f: f.stat().st_mtime)
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+
+
+MODEL_FAMILY = re.compile(r'"model"\s*:\s*"claude-(opus|sonnet|haiku|fable)')
+
+
+def claude_model_now(project_dir):
+    """The model family the newest transcript here last answered on, or "".
+
+    Read from the tail of the file when a project's settings dialog opens,
+    so with no model set the dialog can say what Claude's default actually
+    is rather than "leave as is". The tail, because a transcript runs to
+    megabytes and the answer is in its last line.
+    """
+    t = last_claude(project_dir)
+    if not t:
+        return ""
+    f = CLAUDE_PROJECTS / str(project_dir).replace("/", "-") / f"{t['id']}.jsonl"
+    try:
+        with open(f, "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 131072))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    found = MODEL_FAMILY.findall(tail)
+    return found[-1] if found else ""
 
 
 def _ver(v):
@@ -2743,6 +2773,9 @@ pending.configure(write_json=write_json, state=STATE)
 # The Settings tab's own store (roadmap R29): what used to be fourteen
 # environment variables. The builder home is where the commit identity lands.
 settings.configure(write_json=write_json, state=STATE)
+# What may be offered: the catalogues gate their unvetted entries on this
+# one switch (roadmap R54, step 6), read live so a save takes at once.
+forges.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -2931,6 +2964,7 @@ import changelog                                                 # noqa: E402
 import claudegrant                                              # noqa: E402
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
+vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
@@ -4508,6 +4542,12 @@ class Handler(BaseHTTPRequestHandler):
             if self._refused("trash"):
                 return None
             return self._trash_list()
+        if self.path.startswith("/api/claude-now"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json({"model": claude_model_now(WORKSPACE / name)})
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -4696,6 +4736,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
             return self._claude_md(req)
+        if path == "/api/reset":
+            # Start over at onboarding: the controller's own state moved
+            # aside (accounts, nodes, project settings, git tokens, the
+            # notebook, memories, logs), project files untouched, and the
+            # dashboard re-executes itself so the next page is Create the
+            # owner. The confirm word is the whole of the safety: this is
+            # an administrator typing "reset" into a red box.
+            if self._refused("admin"):
+                return None
+            if str(req.get("confirm") or "") != "reset":
+                return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
+            try:
+                moved = settings.reset_state(STATE)
+            except OSError as e:
+                return self._json({"error": f"could not move the state aside: {e}"}, 500)
+            # The runner tokens are root's, behind the helper: forgotten
+            # there, since the nodes they were for are being forgotten here.
+            tok = run(["sudo", "-n", RUNNER_HELPER, "--reset"], timeout=20)
+            kept = [k for k in moved["kept"] if not (k == "runner-tokens" and tok["code"] == 0)]
+            print(f"dashboard: {self._principal()} reset this controller; the old state is in "
+                  f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
+            threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+            return self._json({"ok": True, "moved_to": str(moved["dest"]), "kept": kept})
         if path.startswith("/api/create"):
             return self._create(req)
         if path.startswith("/api/profile"):
@@ -4758,8 +4821,8 @@ class Handler(BaseHTTPRequestHandler):
                                 build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"),
                                 gate=req.get("gate"), gitpol=req.get("gitpol"),
-                                edits=field(req, "edits") or None,
                                 devbuild=req.get("devbuild"),
+                                devtest=req.get("devtest"),
                                 color=req.get("color"),
                                 workspace=WORKSPACE)
             # The restart is asked for by the dialog, which is where the
@@ -4830,6 +4893,8 @@ class Handler(BaseHTTPRequestHandler):
                                field(req, "pool") or "default")
         elif act == "update":
             r = nodes.node_update(self._principal(), nid, req.get("fields") or {})
+        elif act == "uninstall":
+            r = nodes.node_uninstall(self._principal(), nid)
         elif act in ("drain", "online", "retire"):
             r = nodes.node_state(self._principal(), nid,
                                  {"drain": "draining", "online": "online",
@@ -4872,10 +4937,14 @@ class Handler(BaseHTTPRequestHandler):
             # Not forges.parse: that wants owner/repo, and a runner's address
             # is as often an organization, one segment deep.
             url = field(req, "url").strip()
-            at = re.fullmatch(r"https://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
+            # http as well as https: a Gitea on the LAN, the docker-compose
+            # shape, serves plain http, and the enrollment already makes the
+            # same trade with a note. GitHub is https whatever is typed.
+            at = re.fullmatch(r"https?://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
             if not at:
                 r = {"error": "the URL is the https address of the repository or "
-                              "organization the runner registers with"}
+                              "organization the runner registers with (http is "
+                              "accepted for a forge on your own network)"}
             elif not nodes.node(nid):
                 r = {"error": "no such node"}
             else:
@@ -5559,7 +5628,7 @@ class Handler(BaseHTTPRequestHandler):
         # hands it out sets the authorize URL flush against it, so Copy takes
         # both. A code is base64url and a `#` — no colon, no slash — so the
         # cut cannot land inside a real one.
-        code = re.split(r"https?://", code, 1)[0]
+        code = re.split(r"https?://", code, maxsplit=1)[0]
         code = CODE_JUNK.sub("", code)
         if not code:
             return self._json({"error": "no code in that paste — copy the "
@@ -5804,8 +5873,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"that is the project {clash} — a "
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
+        # Shown under a project's notebook as well as here, when asked:
+        # only a project this account can see, or nothing.
+        under = field(req, "for")
+        if under and under not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": f"not a project: {under}"}, 400)
         r = devapp.create_container(name, req.get("compose") or "",
-                                    req.get("env") or "", field(req, "node"))
+                                    req.get("env") or "", field(req, "node"), under)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _logs(self, req):
@@ -5862,7 +5936,7 @@ class Handler(BaseHTTPRequestHandler):
         #
         # Everything else — new, remove, env, route — is configuration rather
         # than a run of the code, and stays an administrator's.
-        if act not in ("starter", "state", "rebuild", "abort") \
+        if act not in ("starter", "state", "rebuild", "abort", "test") \
                 and self._refused("docker-write"):
             return None
         # A SESSION is a further question, and the answer is a per-project
@@ -5877,7 +5951,10 @@ class Handler(BaseHTTPRequestHandler):
         # ever reaches here from a session: new, remove, env and route are
         # docker-write above, which a session's principal never has. So the
         # dial is about running the code, never about creating a container.
-        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+        # A test run is not on the rebuild dial: it runs the project's own
+        # test command inside a container that is already up, which a
+        # session could run on the node anyway (roadmap R48).
+        if act not in ("starter", "state", "test") and (self._who() or {}).get("session"):
             mode = prefs.get(name)["devbuild"]
             if mode == "deny":
                 return self._json({"error": "rebuilding this project's dev instance is the "
@@ -5904,7 +5981,12 @@ class Handler(BaseHTTPRequestHandler):
         # a request that names a strange one is answered rather than obeyed:
         # the name decides a compose project and a data directory, and those
         # are not places to let an arbitrary string reach.
-        inst = field(req, "instance") or devapp.MAIN
+        # A request naming no instance means the project's only one, when
+        # it has exactly one: BuilderBot's own is called builderbot-dev, and
+        # bb devapp from a session was answering for a `main` that did not
+        # exist (15 Sep). With several, `main` as before; bb takes
+        # --instance for that.
+        inst = field(req, "instance") or devapp.only_instance(name)
         # What the others sharing this project would want to know before they
         # press the same button. After `inst` is resolved, because the line
         # names it — the first version read it above and took every compose
@@ -5930,7 +6012,11 @@ class Handler(BaseHTTPRequestHandler):
             # nothing of the instance, which is the point: there is none.
             return self._json({"text": devapp.starter(name)})
         if act == "new":
-            r = devapp.create_instance(name, inst, field(req, "node"))
+            under = field(req, "for")
+            if under and under not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": f"not a project: {under}"}, 400)
+            r = devapp.create_instance(name, inst, field(req, "node"),
+                                       "" if under == name else under)
             if not r.get("error") and field(req, "ref"):
                 # Pinned before the build the dialog starts, or the first one
                 # comes from the project's checkout and the row says otherwise.
@@ -5970,6 +6056,11 @@ class Handler(BaseHTTPRequestHandler):
             r = devapp.up(name, inst, field(req, "ack"))
         elif act == "down":
             r = devapp.down(name, inst)
+        elif act == "test":
+            # The command is the project's own, from its settings, with the
+            # same fallback bb test uses when nothing is set.
+            cmd = prefs.get(name)["test"] or prefs.test_default(name, WORKSPACE)
+            r = devapp.test(name, inst, cmd, [str(a) for a in (req.get("args") or [])][:32])
         elif act == "rebuild":
             r = devapp.rebuild(name, inst, field(req, "ack"))
         elif act == "env-get":
@@ -6767,12 +6858,19 @@ class Handler(BaseHTTPRequestHandler):
             # headroom before a byte is downloaded.
             if NODES_OK:
                 return self._json({"error": "the node store did not open"}, 500)
-            if action not in ("install", "remove"):
-                return self._json({"error": "a node takes install or remove"}, 400)
+            if action not in ("install", "remove", "sysdeps"):
+                return self._json({"error": "a node takes install, remove or sysdeps"}, 400)
             node = nodes.node(nid)
             if not node:
                 return self._json({"error": "no such node"}, 400)
             known = {p["name"] for p in packages.PACKAGES}
+            if action == "sysdeps":
+                # The system packages the held recipes need, installed
+                # without the recipes (roadmap R51): named ones, or every
+                # held one when none are named.
+                names = [n for n in (req.get("names") or []) if n in known][:8]
+                r = packages.node_job(self._principal(), nid, action, names)
+                return self._json(r, 400 if r.get("error") else 200)
             # ...or an android system image. Same rule as the local endpoint:
             # what reaches a command line is a string this server handed out —
             # for an install, one of the ids the picker was drawn from; for a
@@ -7112,13 +7210,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        try:
+        # No daemon, or no compose file: nothing to protect, said by the
+        # suppress rather than by a bare pass.
+        with contextlib.suppress(Exception):
             if devapp.state(name).get("exists"):
                 return self._json({"error": "its dev instance still has "
                                             "containers — press Down on the "
                                             "Artifacts tab first"}, 409)
-        except Exception:
-            pass
         body, code = projects.trash(req)
         return self._json(body, code)
 
@@ -7163,13 +7261,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        try:
+        with contextlib.suppress(Exception):    # no daemon, or no compose file
             if devapp.state(name).get("exists"):
                 return self._json({"error": "its dev instance still has "
                                             "containers — press Down on the "
                                             "Artifacts tab first"}, 409)
-        except Exception:
-            pass          # no daemon, or no compose file: nothing to protect
         body, code = projects.rename(req)
         return self._json(body, code)
 

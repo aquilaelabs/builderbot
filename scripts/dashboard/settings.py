@@ -24,7 +24,9 @@ node, because a session can write this file, and the organization a runner
 token is minted for should not be a session's to change.
 """
 import os
+import shutil
 import sys
+import time
 from pathlib import Path
 
 _here = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +47,14 @@ KEYS = {
     # accounts with the one Claude login they have. The refusal is kept,
     # not removed, because the setting is for that test and nothing else.
     "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
+    # Off, the pickers offer only what has been proven: the git hosts, the
+    # hypervisors and the provisioner's OS families that carry a vetting
+    # note (the date and what proved them) in their catalogue: the alpha
+    # tier. On, every entry is offered, the unproven ones tagged dev, and
+    # the header says dev. One tree behaves as two products: production
+    # leaves this off, a dev instance turns it on, and an entry crosses
+    # over when a lab suite or a real run proves it (roadmap R54, step 6).
+    "offer_unvetted": {"default": False, "kind": "bool", "applied": "now"},
     # Off, a session on a node reads only logs belonging to the work it is
     # doing: the CI runs for its project, and what its own test runs left.
     # The machine's own logs — the agent's journal, the runner's, the
@@ -151,3 +161,37 @@ def payload():
     return {"settings": effective(),
             "meta": {k: {"applied": s["applied"], "choices": list(s.get("choices") or [])}
                      for k, s in KEYS.items()}}
+
+
+def reset_state(state):
+    """Start over: everything in the state directory moved into a dated
+    directory beside it, never deleted. `.reset-<stamp>` holds what was
+    there (accounts, nodes, project settings, git tokens, the notebook,
+    memories, logs), so a reset pressed by mistake is a move back rather
+    than a loss; earlier resets' directories are left where they are.
+    Project files are not in here at all. Returns {dest, kept}: where it
+    went, and the names that stayed because they could not be moved (the
+    runner tokens' root-only store, a volume's mountpoint, anything the
+    filesystem refused), which the caller says rather than hides. A refusal
+    on one entry never stops the rest: a half-moved state that also stopped
+    is the worst of both."""
+    state = Path(state)
+    dest = state / time.strftime(".reset-%Y%m%d-%H%M%S")
+    dest.mkdir()
+    kept = []
+    for p in sorted(state.iterdir()):
+        if p.name.startswith(".reset-"):
+            continue
+        if p.name in RESET_KEEPS:
+            kept.append(p.name)
+            continue
+        try:
+            shutil.move(str(p), str(dest / p.name))
+        except OSError:
+            kept.append(p.name)
+    return {"dest": dest, "kept": kept}
+
+
+# Left where they are by a reset: the runner tokens' store is root's and the
+# mountpoint of a volume, and mint-runner-token --reset empties it instead.
+RESET_KEEPS = ("runner-tokens",)

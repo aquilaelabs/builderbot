@@ -47,6 +47,8 @@ STORE_DATA=/var/lib/builderbot/data
 STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
+# --remove and its --yes, off unless asked; read before the checks run.
+REMOVE=0; YES=""
 declare -a SHARES=() NFS=()
 CHECK_ONLY=0
 
@@ -78,11 +80,20 @@ it, which is a paste rather than a questionnaire.
                        agent runs ttyd for it and the dashboard's terminals
                        reach it; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
+  --remove             take BuilderBot off this machine: the agent, the
+                       accounts, the mounts it used, its stores on this disk,
+                       the firewall rule, bb-sandbox itself. Docker and the
+                       packages stay, so does everything on the shares. It
+                       says what will go and asks; --remove --yes does not.
   --check              only the pre-flight: say whether this machine is one
                        the script can provision — its family, its tools, its
                        init, a writable root — and change nothing. Exit 0 when
                        it is, 1 when it is not. The same checks run first on
                        every real run, before anything is installed.
+  --dev                go ahead on a family this script has never been run
+                       on for real (Arch, SUSE, Alpine, Void, Gentoo). Debian's
+                       and RHEL's need no flag. Say how it went: a run that
+                       works is what makes the next one need no flag.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
                        Nothing here needs one: an enrolled node dials OUT and
@@ -133,6 +144,27 @@ fails silently — docker creates the missing directory and mounts it empty.
 EOF
 }
 
+# --remove: the machine's own copy of bb-sandbox does the work, since it
+# holds what was put here; a machine that never had one has nothing to take.
+remove_if_asked() {
+    [ "$REMOVE" = 1 ] || return 0
+    [ "$(id -u)" -eq 0 ] || { echo "run this as root: sudo bash $0 --remove" >&2; exit 1; }
+    if [ -x /usr/local/sbin/bb-sandbox ]; then
+        # The copy this script carries goes in first: the machine's may
+        # predate the uninstall verb (it did on the first node this was
+        # tried on), and this script is the newer of the two by definition.
+        tmp="$(mktemp)"
+        sed -n "/^cat > \"\$BBSANDBOX_TMP\" <<'BBSANDBOX'\$/,/^BBSANDBOX\$/p" "$0" | sed '1d;$d' > "$tmp"
+        if [ -s "$tmp" ] && head -1 "$tmp" | grep -q '^#!'; then
+            install -m 0750 -o root -g root "$tmp" /usr/local/sbin/bb-sandbox
+        fi
+        rm -f "$tmp"
+        exec /usr/local/sbin/bb-sandbox uninstall "$@"
+    fi
+    echo "nothing of BuilderBot's is installed here (no /usr/local/sbin/bb-sandbox)"
+    exit 0
+}
+
 # No arguments: the help, and nothing changed. Provisioning a machine is
 # what the options ask for, not what a bare invocation should do.
 if [ $# -eq 0 ]; then
@@ -155,10 +187,14 @@ while [ $# -gt 0 ]; do
         --cache) STORE_CACHE="$2"; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
         --check) CHECK_ONLY=1; shift ;;
+        --remove) REMOVE=1; shift ;;
+        --yes)   YES=1; shift ;;
+        --dev)   DEV=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
+remove_if_asked ${YES:+--yes}
 # One without the other is a typo, and the enrollment would fail an hour of
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
@@ -225,6 +261,13 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # Nothing here exits. A machine the script cannot take is reported by the
 # pre-flight below, beside everything else it found, so one run says the
 # whole of what is wrong rather than the first thing.
+# The families this script has been run on for real: Debian's (Ubuntu
+# 24.04 and 26.04 sandboxes) and RHEL's (a Rocky sandbox). The others are
+# written to each family's tools and never run (dev, in the dashboard's
+# word), so they need --dev to proceed, and a run that works is what moves
+# one onto this list.
+VETTED_FAMILIES=" deb rhel "
+DEV="${DEV:-0}"
 FAMILY=""; FAMILY_WHY=""
 _ids=" ${ID:-} ${ID_LIKE:-} "
 case "$_ids" in
@@ -272,7 +315,11 @@ pkg_refresh() {
 # nfs-utils against nfs-client), given by the caller.
 pkg() {
     case "$FAMILY" in
-        deb)    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" ;;
+        # No pty for dpkg and no needrestart dialog: run under a pseudo-
+        # terminal with its output on a pipe (ssh -t ... | tee), apt-get
+        # stopped on SIGTTOU and sat for eleven minutes (measured 15 Sep).
+        deb)    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+                apt-get -o Dpkg::Use-Pty=0 install -y -qq "$@" ;;
         rhel)   dnf -y -q install "$@" ;;
         arch)   pacman -S --noconfirm --needed --quiet "$@" >/dev/null ;;
         suse)   zypper -n -q install -y "$@" >/dev/null ;;
@@ -545,6 +592,16 @@ if [ "$CHECK_FAILED" = 1 ]; then
     warn "this machine is not one this script can provision — nothing was changed"
     exit 1
 fi
+case "$VETTED_FAMILIES" in
+    *" $FAMILY "*) ;;
+    *)  if [ "$DEV" = 1 ]; then
+            chk warn "the $FAMILY family has not been provisioned for real before: --dev given, so trying it"
+        else
+            printf '\n'
+            warn "the $FAMILY family has not been provisioned for real before; run again with --dev to try it, and say how it went; nothing was changed"
+            exit 1
+        fi ;;
+esac
 if [ "$CHECK_ONLY" = 1 ]; then
     printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
     [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"
@@ -1455,8 +1512,117 @@ EOF
     done
 }
 
+
+# uninstall: take BuilderBot's software off this machine and leave the rest.
+# What goes is what provision-linux.sh put here for BuilderBot alone: the
+# agent and its unit, the session-ports rule, the two accounts and their
+# homes (Claude Code, the runners' directories, caches), the mounts
+# BuilderBot used (/workspace and whatever a store sits on), the stores on
+# this disk, this tool. What stays is shared with the rest of the machine:
+# docker and the packages the provisioner installed (nfs-common, python3,
+# tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories,
+# and everything on the shares, which other nodes may be using. Runners are
+# not deregistered on their forge here: the Nodes tab's Uninstall does that
+# first, while the agent can still ask the controller for the tokens.
+cmd_uninstall() {
+    local yes=0 a p u f mounts="" session_user=""
+    [ "${1-}" = "--yes" ] && yes=1
+    session_user="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
+    [ -n "$session_user" ] || session_user=builder
+    for p in $(ours); do
+        case "$p" in
+            /workspace) mounts="$mounts $p" ;;
+            *) [ -n "$(stores_under "$p")" ] && mounts="$mounts $p" ;;
+        esac
+    done
+    say "uninstall BuilderBot from this machine"
+    printf '   goes:  the agent and its unit, the session-ports firewall rule,\n'
+    printf '          the accounts %s and %s with their homes,\n' "$DOCKER_USER" "$session_user"
+    printf '          the mounts BuilderBot used (%s),\n' "${mounts:- none}"
+    printf '          /var/lib/builderbot on this disk, /etc/builderbot, and this tool\n'
+    printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
+    printf '          and everything on the shares (other nodes may use them)\n'
+    printf '   note:  a runner registered from here stays listed on its forge;\n'
+    printf '          the Nodes tab'"'"'s Uninstall deregisters it first, this cannot\n'
+    if [ "$yes" != 1 ]; then
+        printf '\nType uninstall to go on: '
+        read -r a
+        [ "$a" = uninstall ] || die "left as it was"
+    fi
+    say "stopping the agent and the session ports rule"
+    for u in builderbot-agent builderbot-session-ports; do
+        if have systemctl; then
+            systemctl disable --now "$u" >/dev/null 2>&1 || true
+            rm -f "/etc/systemd/system/$u.service"
+        fi
+        if have rc-update; then rc-service "$u" stop >/dev/null 2>&1 || true; rc-update del "$u" default >/dev/null 2>&1 || true; rm -f "/etc/init.d/$u"; fi
+        [ -d "/etc/sv/$u" ] && { rm -f "/var/service/$u"; rm -rf "/etc/sv/$u"; }
+    done
+    for f in /var/lib/builderbot/runner/*/.service /var/lib/builderbot/runner/.service; do
+        [ -f "$f" ] || continue
+        u="$(cat "$f")"
+        have systemctl && { systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u"; }
+    done
+    have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    have nft && nft delete table inet builderbot_session >/dev/null 2>&1 || true
+    if have firewall-cmd && systemctl is-active --quiet firewalld 2>/dev/null; then
+        for a in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
+            firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$a" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
+        done
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+    say "ending the accounts' processes"
+    for u in "$session_user" "$DOCKER_USER"; do
+        id -u "$u" >/dev/null 2>&1 || continue
+        pkill -TERM -u "$u" 2>/dev/null || true
+    done
+    sleep 2
+    for u in "$session_user" "$DOCKER_USER"; do
+        id -u "$u" >/dev/null 2>&1 && pkill -KILL -u "$u" 2>/dev/null || true
+    done
+    for p in $mounts; do
+        say "$p is no longer mounted"
+        umount -l "$p" 2>/dev/null || true
+        f="$(mktemp)"
+        awk -v p="$p" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$f" || true
+        cat "$f" > /etc/fstab
+        rm -f "$f"
+    done
+    have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    if [ -f /etc/docker/daemon.json ] && have jq && grep -q 'builderbot.sandbox' /etc/docker/daemon.json; then
+        f="$(mktemp)"
+        if jq 'if .labels then .labels |= map(select(. != "builderbot.sandbox=1")) else . end' /etc/docker/daemon.json > "$f" 2>/dev/null; then
+            cat "$f" > /etc/docker/daemon.json
+            say "the sandbox label is out of /etc/docker/daemon.json (docker keeps running; it takes at its next restart)"
+        fi
+        rm -f "$f"
+    fi
+    say "removing the accounts and their homes"
+    for u in "$session_user" "$DOCKER_USER"; do
+        id -u "$u" >/dev/null 2>&1 || continue
+        [ "$(id -u "$u")" != 0 ] || continue
+        case "$(getent passwd "$u" | cut -d: -f6)" in
+            /home/*) userdel -r "$u" >/dev/null 2>&1 || userdel "$u" >/dev/null 2>&1 || true ;;
+            *) userdel "$u" >/dev/null 2>&1 || true ;;
+        esac
+    done
+    say "removing BuilderBot's files"
+    rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
+    # ttyd only when the provisioner fetched it: a package's copy is the distribution's
+    if [ -x /usr/local/bin/ttyd ]; then
+        if ! { have dpkg && dpkg -S /usr/local/bin/ttyd >/dev/null 2>&1; } \
+           && ! { have rpm && rpm -qf /usr/local/bin/ttyd >/dev/null 2>&1; }; then
+            rm -f /usr/local/bin/ttyd
+        fi
+    fi
+    say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were"
+    rm -f /usr/local/sbin/bb-sandbox
+    exit 0
+}
+
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
+    uninstall)   shift; cmd_uninstall "${1-}" ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;

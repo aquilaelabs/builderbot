@@ -796,6 +796,43 @@ print(json.dumps(out))
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
      'an installed package on a node reads "installed", not "installed at" with nothing after it');
+  // ---- system packages a held recipe needs (roadmap R51) ------------------
+  // The store is a share, so a recipe installed from one node is on every
+  // node, while the libraries it needs are each machine's own. The census
+  // says which are missing, the tab says so with one press that installs
+  // them without reinstalling the recipe, and the row says so too.
+  {
+    const pj = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }
+      : {})).json()), [path, body]);
+    const sysCensus = sd => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd },
+                             version: shipped.version, digest: shipped.digest }) });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+    await page.evaluate(() => loadPackages());
+    await page.waitForSelector('.pkgtab .pkgsys', { timeout: 15000 });
+    const line = await page.$eval('.pkgtab .pkgsys', e => e.textContent.replace(/\s+/g, ' '));
+    ok(/lacks for what its store holds \(dnf\): dotnet: libicu/.test(line),
+       `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
+    ok(await page.$('.pkgtab #pkgSysdeps') !== null,
+       '...with one press to install them on a node the agent administers');
+    const sj = await pj('/api/packages', { action: 'sysdeps', names: [], node: minted.id });
+    ok(sj.ok && /^j_/.test(sj.job), `pressing it queues a package job of the sysdeps kind (${sj.job || sj.error})`);
+    const sjob = await pj(`/api/v1/jobs?id=${sj.job}`);
+    ok(sjob.type === 'package' && sjob.spec?.action === 'sysdeps',
+       '...carrying the action and no recipe names: every held one');
+    await pj('/api/v1/jobs', { action: 'cancel', id: sj.job });
+    await page.evaluate(() => openNodesTab());
+    await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
+      .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
+    ok(true, 'the node\'s row says the same before a build fails on it');
+    await sysCensus({ family: 'dnf', unmet: {} });
+    await page.evaluate(() => openPackages());
+    await page.evaluate(() => loadPackages());
+    await page.waitForFunction(() => !document.querySelector('.pkgtab .pkgsys'), null, { timeout: 15000 });
+    ok(true, '...and both go quiet once the census says nothing is missing');
+  }
   // ---- one store, two machines (roadmap #18) ------------------------------
   // The controller reaches the package store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be
@@ -1222,6 +1259,28 @@ print(json.dumps(out))
   const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
   ok(row?.session_at === 'shed' && row?.session_why === '',
      'and once the share is mounted the button is live there');
+  // A mount that is there and answers Stale file handle (roadmap R41): every
+  // list of mounts calls it fine and every read fails, and remounting on the
+  // node does not help when the export was re-created under it on the host.
+  // The census says so, the row says so in red with the host-side fix, and
+  // nothing treats the path as present.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, session: SE, mounts: [...CENSUS.mounts,
+      { path: '/devdata', source: 'nas:/mnt/user/bb-sandbox/devdata', type: 'nfs', ro: false, mounted: true,
+        real: 'nas:/mnt/user/bb-sandbox/devdata', stale: true,
+        error: 'mounted, but the handle is stale: the export was re-created under it on the host; re-export it there, then Apply storage here' }] },
+      version: shipped.version, digest: shipped.digest }) });
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForFunction(id => (nodesList || []).find(n => n.id === id)?.reported?.mounts?.some(m => m.path === '/devdata' && m.stale),
+                             minted.id, { timeout: 15000 });
+  ok(true, 'the census carries that a mounted share answers stale');
+  await pickNode(page, minted.id);
+  await page.waitForFunction(id => /handle is stale/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
+                             minted.id, { timeout: 15000 });
+  ok(await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`, r =>
+       /\/devdata: mounted, but the handle is stale/.test(r.textContent) && /re-export it there/.test(r.textContent)),
+     'the row says which mount is stale and that the fix is on the host, whether or not the desired list names it');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
@@ -1255,6 +1314,25 @@ print(json.dumps(out))
      '...and the node\'s row shows it, editable');
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
      '...while the controller, whose paths are its own, is not a row here at all');
+
+  // ---- renaming a node (the operator's ask, 15 Sep) ------------------------
+  // The name is what a node is called everywhere: the pickers, the project
+  // rows, the label a runner installed from now on registers with. One word,
+  // and not one another node already wears.
+  {
+    const was = (await papi({ action: 'update', id: sb.id, fields: { name: 'two words' } }));
+    ok(/letters, digits/.test(was.error || ''), `a name with a space is refused with the rule (${was.error})`);
+    const dup = await papi({ action: 'update', id: sb.id, fields: { name: 'shed' } });
+    ok(/already called shed/.test(dup.error || ''), 'a name another live node wears is refused');
+    const loc = await papi({ action: 'update', id: 'local', fields: { name: 'box' } });
+    ok(/not a node to rename/.test(loc.error || ''), 'the controller\'s own row is not renamed');
+    await page.fill(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, 'sandbox-two');
+    await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="rename"]`);
+    await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox-two', sb.id, { timeout: 15000 });
+    ok(true, 'Rename on the row renames the node');
+    await papi({ action: 'update', id: sb.id, fields: { name: 'sandbox' } });
+    await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox', sb.id, { timeout: 15000 });
+  }
 
   // ---- Check: the pair nothing else verifies (roadmap #13) ------------------
   // A marker made under the share here, looked for through the node's
@@ -1331,6 +1409,20 @@ await page.evaluate(async () => {
   if (n) await nodeAct({ action: 'retire', id: n.id });
 });
 
+// What is offered (roadmap R54, step 6): with unvetted features off the
+// generator knows one hypervisor, the one every sandbox here was made on,
+// and refuses the rest with the sentence that names the switch. The rest
+// of this section runs with the switch on, as a dev instance does.
+{
+  const probe = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe' }));
+  ok((probe.catalog || []).map(h => h.id).join() === 'unraid' && !probe.catalog[0].dev,
+     `with unvetted features off the generator offers Unraid alone (${(probe.catalog || []).map(h => h.id).join(', ')})`);
+  const no = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe', hv: 'proxmox' }));
+  ok(/Proxmox VE is dev, not yet vetted/.test(no.error || '') && /Offer dev features/.test(no.error || ''),
+     `...and refuses another, naming the switch (${no.error})`);
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: true } }) }); });
+}
 await page.click('.nodestab #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
@@ -1342,6 +1434,9 @@ await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv opti
 const kinds = await page.$$eval('#ndBody #vm_hv option', os => os.map(o => o.value));
 ok(kinds.includes('unraid') && kinds.includes('proxmox') && kinds.length >= 5,
    `the picker offers every hypervisor a template ships for (${kinds.join(', ')})`);
+ok(await page.$$eval('#ndBody #vm_hv option', os => os.filter(o => o.value !== 'unraid').every(o => / \(dev\)$/.test(o.textContent))
+                                                     && !/dev/.test(os.find(o => o.value === 'unraid').textContent)),
+   '...the unproven ones tagged dev and Unraid not');
 await page.fill('#ndBody #vm_name', 'bb-sandbox-2');
 await page.fill('#ndBody #vm_memory_gb', '24');
 await page.click('#ndBody #vmGo');
@@ -1368,6 +1463,16 @@ ok(u2 !== u1 && m2 !== m1,
 ok((await page.$$eval('#ndBody .vmsteps li', ls => ls.length)) >= 5
    && await page.$eval('#ndBody .vmsteps', ol => /NFS Security Settings/.test(ol.textContent)),
    '...and the steps say how to get from here to an enrolled node, exports first');
+// The CPU topology moves with the count: libvirt refuses a machine whose
+// sockets x cores x threads is not its vcpu count, which every count but
+// the shipped six tripped (Unraid, 4 vCPUs, 15 Sep).
+{
+  const four = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'bb-four', cores: 4 }));
+  const topo = /<topology sockets="(\d+)" cores="(\d+)" threads="(\d+)"\/>/.exec(four.text || '');
+  ok(/<vcpu placement="static">4<\/vcpu>/.test(four.text || '') && topo
+     && Number(topo[1]) * Number(topo[2]) * Number(topo[3]) === 4,
+     `4 vCPUs gives a topology whose product is 4 (${topo ? topo[0] : four.error || 'no topology'})`);
+}
 const bad = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: '../evil' }));
 ok(!!bad.error && !bad.xml, 'a name that is not a name is refused rather than escaped into the file');
 // ...and Unraid's own pair goes back in, which is what a VM that already
@@ -1420,6 +1525,8 @@ for (const [hv, want, mark] of [['vmware', /^00:50:56:/, /ethernet0\.address/],
 }
 ok(!!(await page.evaluate(() => nodeAct({ action: 'vm-xml', hv: 'bhyve' }))).error,
    'a hypervisor with no template here says so rather than guessing');
+await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: false } }) }); });
 page.errors = [];
 await page.click('#ndBody #vmCancel');
 
@@ -1508,4 +1615,45 @@ ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+// ---- Uninstall from the row --------------------------------------------------
+// Last, because it retires the node it makes. A sandbox node queues the
+// system job; a node that was not provisioned as one is refused with the
+// command to run on the machine; and the row is retired when the job
+// lands, which the fake agent reports the way a real one does.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
+    ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const shipped = (await napi('/api/v1/nodes')).agent || {};
+  const mint = async (name, census) => {
+    const m = await napi('/api/v1/nodes', { action: 'enroll', name });
+    const en = await napi('/api/v1/agent/enroll', { census, version: shipped.version, digest: shipped.digest, user: 'bb' },
+                          { Authorization: 'Bearer ' + m.token, 'Content-Type': 'application/json' });
+    return { id: m.id, token: en.token };
+  };
+  const plain = await mint('laptop', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true });
+  const shed = await mint('shed2', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true });
+  const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
+  ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
+     `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
+  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  ok(r.ok && /^j_/.test(r.job || ''), `a sandbox node queues the uninstall as a system job (${r.error || r.job})`);
+  const j = await napi(`/api/v1/jobs?id=${r.job}`);
+  ok(j.spec?.apply === 'uninstall' && j.node === shed.id, 'the job asks the agent for the uninstall');
+  const again = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  ok(/one at a time/.test(again.error || ''), '...and a second press waits for the first');
+  // The fake agent takes the job and reports it done, the way the real one does.
+  const work = await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ running: 0, wait: 0 }) });
+  const got = work.status === 200 ? await work.json() : {};
+  ok((got.job?.id || got.id) === r.job, `the agent is handed the job (${work.status})`);
+  await napi('/api/v1/agent/result', { job: r.job, state: 'succeeded', exit: 0 },
+             { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' });
+  const listed = (await napi('/api/v1/nodes')).nodes.some(n => n.id === shed.id);
+  ok(!listed, 'and the node is retired when the job succeeds, so it leaves the list');
+  await napi('/api/v1/nodes', { action: 'retire', id: plain.id });
+}
+
 await done(browser);

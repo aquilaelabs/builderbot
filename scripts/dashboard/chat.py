@@ -26,6 +26,7 @@ No websockets: the page polls, faster while the panel is open. That matches the
 rest of this dashboard, where ttyd's socket is the one exception and everything
 else is a fifteen-second poll.
 """
+import contextlib
 import json
 import threading
 import time
@@ -131,10 +132,9 @@ def event(project, actor_uid, text):
     action it is describing. Every caller is a handler that has just done
     something real, and a full disk here must not undo it.
     """
-    try:
+    # Swallowed on purpose, and said so: see the docstring.
+    with contextlib.suppress(Exception):
         post(project, actor_uid, text, kind="did")
-    except Exception:                    # noqa: BLE001 — see the docstring
-        pass
 
 
 def direct(a, b, since=0):

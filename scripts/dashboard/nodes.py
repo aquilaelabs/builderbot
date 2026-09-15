@@ -648,7 +648,21 @@ def node_update(principal, node_id, fields):
         return {"error": "no such node"}
     sets, args = [], []
     if "name" in fields:
-        sets.append("name = ?"); args.append(str(fields["name"]).strip()[:60])
+        # The name is what a node is called everywhere here: the pickers,
+        # the project rows, and the label a runner registers with. One
+        # word, the charset a label and a hostname both take, and not one
+        # another live node already wears. The controller's own row is not
+        # a node anybody names.
+        name = str(fields["name"]).strip()[:60]
+        if n["kind"] == "local":
+            return {"error": "this container is not a node to rename"}
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+            return {"error": "a node name is letters, digits, dots, dashes and underscores, "
+                             "starting with a letter or digit"}
+        if any(o["id"] != node_id and o["state"] != "retired"
+               and o["name"].lower() == name.lower() for o in node_list()):
+            return {"error": f"another node is already called {name}"}
+        sets.append("name = ?"); args.append(name)
     if "pool" in fields:
         sets.append("pool = ?")
         args.append(str(fields["pool"]).strip()[:60] or "default")
@@ -1048,6 +1062,15 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # Which held recipes need system packages the machine lacks (roadmap
+    # R51): the family and, per recipe, the package names, both bounded.
+    sd = c.get("sysdeps") if isinstance(c.get("sysdeps"), dict) else {}
+    unmet = sd.get("unmet") if isinstance(sd.get("unmet"), dict) else {}
+    out["sysdeps"] = {
+        "family": re.sub(r"[^a-z]", "", str(sd.get("family") or ""))[:12],
+        "unmet": {re.sub(r"[^A-Za-z0-9:._-]", "", str(k))[:40]:
+                  [re.sub(r"[^A-Za-z0-9:._+/-]", "", str(x))[:60] for x in v if str(x)][:64]
+                  for k, v in list(unmet.items())[:32] if isinstance(v, list) and v}}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
         if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
@@ -1055,6 +1078,7 @@ def _census(c):
                 "path": str(m["path"])[:200], "source": str(m.get("source") or "")[:200],
                 "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
                 "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200],
+                "stale": bool(m.get("stale")),
                 # What mount said when it failed — the server's own reason.
                 "error": str(m.get("error") or "")[:200]})
     sv = c.get("services") if isinstance(c.get("services"), dict) else {}
@@ -1487,8 +1511,12 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
     if want and forge not in ("github", "gitea"):
         return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
                          "beside the address"}
-    if want and (not url.startswith("https://") or (forge == "github" and not url.startswith("https://github.com/"))):
-        return {"error": "the address is the https repository or organization the runner registers with"}
+    # http as well as https for a Gitea on the LAN (the token store and
+    # the helper accept it too); GitHub is https://github.com/ whatever.
+    if want and (not url.startswith(("https://", "http://"))
+                 or (forge == "github" and not url.startswith("https://github.com/"))):
+        return {"error": "the address is the https repository or organization the runner "
+                         "registers with (http is accepted for a forge on your own network)"}
     # The runner's own labels unless new ones are typed with this press.
     labs = runner_labels_for(n, labels if isinstance(labels, list) else ar.get("labels")) if want else []
     services = dict(n.get("services") or {})
@@ -1729,6 +1757,30 @@ def runner_labels_known():
             if r.get("want"):
                 out.update(r.get("labels") or [])
     return sorted(out)
+
+
+def node_uninstall(principal, node_id):
+    """Take BuilderBot off a node from its row: a system job the agent
+    answers by deregistering its runners and starting bb-sandbox uninstall
+    detached, after which nothing of BuilderBot's is left on the machine
+    but docker, the packages and the shares' contents. The node is retired
+    when the job succeeds (job_result), so the row leaves every list the
+    way Remove's does."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node can be uninstalled from here"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox can be uninstalled "
+                         "from here: on the machine, sudo bb-sandbox uninstall"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "uninstall", "config": {}, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "node-uninstall", node_id, {"job": r["job"]})
+    return r
 
 
 def system_job_for(node_id):
@@ -2522,6 +2574,12 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         keep = [o for o in outputs[:64] if isinstance(o, dict)]
         _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    # An uninstall that ran retires the node: the agent is gone with it, so
+    # the row leaves every list now rather than after a stale timeout.
+    if got[0]["type"] == "system" and state == "succeeded":
+        spec = (job(job_id, with_log=False) or {}).get("spec") or {}
+        if spec.get("apply") == "uninstall":
+            node_state(f"node:{node_id}", node_id, "retired")
     # The module that queued this kind of job gets to finish it. A compose
     # action run by the agent still has records to write here — what was
     # built, from which commit, on which daemon — and this is where they

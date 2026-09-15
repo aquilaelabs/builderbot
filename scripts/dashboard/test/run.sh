@@ -22,6 +22,17 @@
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Never as root. The suite's premise is an unprivileged runner: the agent it
+# starts drops to the account sessions run as, which as root means an
+# account the machine may not have (inside BuilderBot's own dev container,
+# where tests run as root through compose exec, that was `bb`, and the
+# session half never came up). The image's account is builder; the suite
+# re-runs itself as that account when it starts as root and builder exists.
+if [ "$(id -u)" = 0 ] && id builder >/dev/null 2>&1 && command -v runuser >/dev/null; then
+    echo "[dashboard-test] started as root: running as builder instead" >&2
+    exec runuser -u builder -- env HOME="$(getent passwd builder | cut -d: -f6)" \
+        USER=builder bash "$0" "$@"
+fi
 DASH="$(dirname "$HERE")"
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
@@ -159,6 +170,15 @@ unset BUILDERBOT_ROLE BB_CONTROLLER BB_CONTROLLER_PIN BB_NODE BUILDERBOT_NODE \
       BB_NODE_PACKAGES BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
+# git's global and system config are the suite's own, not the machine's. The
+# fixtures are `git init` with no branch named, so the branch they start on
+# is whatever init.defaultBranch says: nothing on a node, so master; `main`
+# in BuilderBot's own image, whose ~/.gitconfig sets it. The relayed-push
+# refusals in agent.mjs read the policy on that branch, and went green on the
+# node and red inside builderbot-dev with nothing in the diff to explain it
+# (15 Sep). Pinned here, so a run says the same thing on every machine.
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$S/gitconfig"
+printf '[init]\n\tdefaultBranch = master\n' > "$GIT_CONFIG_GLOBAL"
 tmux new-session -d -s probe -c /tmp
 sock="$(tmux display-message -t probe -p '#{socket_path}' 2>/dev/null || true)"
 case "$sock" in
@@ -584,10 +604,22 @@ case "$1" in
       [ "${args[$i]}" = "--project-name" ] && proj="${args[$((i+1))]}"
     done
     verb=""
-    for a in ps build up down config; do
+    for a in ps build up down config exec; do
       for x in "$@"; do [ "$x" = "$a" ] && verb="$a"; done
     done
     case "$verb" in
+      exec)
+        # `compose exec [-T] [-e K=V]... SERVICE CMD...`: the command runs
+        # right here, which is what proves the wiring of a test inside a
+        # dev instance (roadmap R48) without a container.
+        [ -f "$ST/$proj.up" ] || { echo "service \"app\" is not running"; exit 1; }
+        echo "exec $*" >> "$ST/docker.log"
+        while [ $# -gt 0 ] && [ "$1" != exec ]; do shift; done; shift
+        while [ $# -gt 0 ]; do
+          case "$1" in -T) shift ;; -e|-w|--workdir) shift 2 ;; -*) shift ;; *) break ;; esac
+        done
+        shift   # the service
+        exec "$@" ;;
       config)
         # -q is the validation the container-create path runs: no output, just
         # a verdict. A file lets a test ask for a compose that will not parse.
@@ -613,6 +645,7 @@ case "$1" in
         exit 0 ;;
       build)
         echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
+        echo "BB_BUILD_REV=${BB_BUILD_REV:-unset} BB_BUILD_AT=${BB_BUILD_AT:-unset}" >> "$ST/docker.log"
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
         # A build that takes its time and says so, for the two properties a
         # fast one cannot show: that its output arrives WHILE it runs, and
@@ -891,8 +924,12 @@ if [ $# -gt 0 ]; then
     tests=()
     for t in "$@"; do tests+=("$HERE/${t%.mjs}.mjs"); done
 else
+    # Every suite but the library and the lab's: a lab-*.mjs runs against a
+    # real service (roadmap R54) and is asked for by name, `bb tests lab`.
     tests=()
-    for t in "$HERE"/*.mjs; do [ "$(basename "$t")" = lib.mjs ] || tests+=("$t"); done
+    for t in "$HERE"/*.mjs; do
+        case "$(basename "$t")" in lib.mjs|lab-*.mjs) ;; *) tests+=("$t") ;; esac
+    done
 fi
 rc=0
 for t in "${tests[@]}"; do

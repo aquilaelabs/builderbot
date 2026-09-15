@@ -176,7 +176,7 @@ walls_around() {
 # the wrong tree by mistake, not a sandbox: Bash still reaches the filesystem,
 # and the only hard boundary is not mounting the other projects at all.
 claude_scope() {
-    local proj="$1" here="${2:-}" dir out tmp mode hooks bundle
+    local proj="$1" here="${2:-}" dir out tmp hooks bundle
     # One file per project, rewritten each time rather than a fresh temp file:
     # ttyd runs this script on every browser connection, including a reattach,
     # so mktemp here would drop a file per page load. Under the cache dir
@@ -251,21 +251,6 @@ claude_scope() {
     # while one fails (roadmap R31). All three swallow every failure of their
     # own: a note is never worth an edit and a line is never worth a turn.
     # Their headers have the arguments.
-    # How much this project's sessions may change without asking, from the
-    # settings dialog (prefs.edits). `default` is Claude Code's own — every
-    # edit is confirmed — and `acceptEdits` lets the file tools write inside
-    # the tree while everything else still asks: a shell command, a push,
-    # anything outside the project. The deny list below is unaffected either
-    # way, so a sibling project, VERSION and the rules file stay refused
-    # whichever it is.
-    mode=default
-    if [ -r "$PREFS_FILE" ]; then
-        [ "$(jq -r --arg n "$proj" '.projects[$n].edits // empty' "$PREFS_FILE" 2>/dev/null)" \
-          = accept ] && mode=acceptEdits
-    else
-        [ "$(BB_PROJECT="$proj" bb settings --json 2>/dev/null \
-             | jq -r '.edits // empty' 2>/dev/null)" = accept ] && mode=acceptEdits
-    fi
     # The hooks by a name that outlives this bundle (B120). On a node bb-tty
     # runs from .bb/<digest>, and the settings file is read once, when claude
     # starts, so a path resolved there kept a session on the hooks it began
@@ -281,7 +266,7 @@ claude_scope() {
                 && hooks="${bundle%/*}/current/scripts/dashboard" ;;
     esac
     if walls_around "$proj" "$here" | jq -R . \
-         | jq -s --arg ws "$WORKSPACE" --arg here "$here" --arg mode "$mode" \
+         | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --arg gate "$hooks/bb-gate" \
                --arg note "$hooks/bb-work-note" \
@@ -290,7 +275,6 @@ claude_scope() {
                --arg keep "$hooks/bb-keep-login" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
-              defaultMode: $mode,
               additionalDirectories: [],
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",

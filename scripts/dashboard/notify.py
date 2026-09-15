@@ -55,6 +55,22 @@ def _capture(session):
     return r["out"] if r["code"] == 0 else ""
 
 
+# A long line arrives in claude's input box folded into "[Pasted text #1]":
+# the TUI reads a burst of typed characters as a paste and shows a
+# placeholder instead of the words, so a roadmap step of a few hundred
+# characters echoed nothing that matched and was reported as typed but not
+# sent while sitting in the box whole (measured 14 Sep, a phone-width
+# pane). The placeholder is the echo in that case. The text is compared
+# with its whitespace collapsed, since the box wraps a long line at word
+# boundaries with an indent.
+PASTED = "[Pasted text"
+
+
+def _arrived(capture, mark):
+    flat = " ".join(capture.split())
+    return flat.count(" ".join(mark.split())) + flat.count(PASTED)
+
+
 def live(session, sessions):
     return session in set(sessions)
 
@@ -105,7 +121,7 @@ def tell(session, text, sessions=()):
     # says yes to that. What means the input box took it is that there is now
     # one *more* of it than there was.
     mark = text[:FINGERPRINT]
-    was = _capture(session).count(mark)
+    was = _arrived(_capture(session), mark)
     r = run(["tmux", "send-keys", "-t", session, "-l", "--", text], timeout=10)
     if r["code"] != 0:
         return r
@@ -117,7 +133,7 @@ def tell(session, text, sessions=()):
     looks = LOOKS + len(text) // 120
     for _ in range(looks):
         time.sleep(SETTLE)
-        if _capture(session).count(mark) > was:
+        if _arrived(_capture(session), mark) > was:
             e = run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)
             if e["code"] != 0:
                 return e

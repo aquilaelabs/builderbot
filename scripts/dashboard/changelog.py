@@ -315,8 +315,8 @@ def _pick(rows, ns):
     for n in ns:
         try:
             i = int(n)
-        except (TypeError, ValueError):
-            raise _Refused("which entry? `bb changelog unreleased` numbers them")
+        except (TypeError, ValueError) as e:
+            raise _Refused("which entry? `bb changelog unreleased` numbers them") from e
         if not 1 <= i <= len(rows):
             raise _Refused(f"no unreleased entry {i} — `bb changelog unreleased` "
                            f"lists {len(rows)}; a dated section is history, and "

@@ -451,13 +451,23 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button — a tap on a phone, since these rows are tipified');
-  // A no-node project is the same answer: it was silent before, which left
-  // the operator looking at a ghosted button with nothing anywhere saying why.
-  await plant({ session_at: '', locked: false,
-                session_why: 'alpha has no node, and a Claude session runs on one. Pick one '
-                           + "in the project's settings, or enroll one on the Nodes tab" });
-  ok(/has no node/.test(await line()) && !/pick one/.test(await line()),
-     `a project with no node says so too, without the instruction (${await line()})`);
+  // A no-node project says nothing on the line: "(node: none)" beside the
+  // name is the whole fact, and a sentence about sessions under every such
+  // row was noise (the operator's call, 15 Sep). The ghosted button still
+  // carries the short reason.
+  await plant({ session_at: '', locked: false, node_name: '',
+                session_why: "no node: pick one in the project's settings, or enroll one on the Nodes tab" });
+  ok(await line() === ''
+     && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
+     'a project with no node says "(node: none)" beside its name and nothing under it');
+  // The button itself is live here: the fixture has a session open on
+  // alpha and who is here wins. Its words are the short reason either way.
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
+       b => /^no node: pick one/.test(b.dataset.tip || b.title || '')),
+     '...while the button says where to pick one');
+  await plant({ node_name: 'shed' });
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
+     '...and a project with a node wears its name');
   // ...and LOCKED is the one case where no session is the point rather than a
   // fault, so it stays quiet.
   await plant({ locked: true });
@@ -1343,6 +1353,7 @@ await page.fill('#rnToken', '');
 // must not be typed over blind, so the field is closed and this is the way in.
 await page.click('#rnCancel');
 await page.evaluate(() => renameProject('alpha', 'git'));
+ok(await page.$eval('#rnDelete', e => e.hidden), 'the chain\'s door has no Delete: it is about the remote, not the project');
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
 ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
@@ -1417,6 +1428,24 @@ ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
 ok(await page.$eval('#rnGo', e => e.textContent.trim()) === 'Save',
    '...so its button saves rather than renames');
+// The bin is here too, at the foot of the gear's door: on the All projects
+// tab it sits behind the row's fold on a phone, which is where it was not
+// being found. It asks first, and a declined ask moves nothing.
+ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await page.$eval('#rnDelete', e => e.textContent)),
+   'the settings dialog offers Delete project at its foot');
+{
+  const auto = page.listeners('dialog')[0];
+  page.off('dialog', auto);
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  await page.click('#rnDelete');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  page.on('dialog', auto);
+  ok(/moves to \/workspace\/\.trash\/alpha/.test(asked) && existsSync(`${DIR}/ws/alpha/.git`),
+     '...which asks, names the bin, and moves nothing when declined');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+}
 await page.selectOption('#rnModel', 'sonnet');
 ok(!await page.$eval('#rnModel', e => e.disabled)
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
@@ -1465,9 +1494,33 @@ await page.click('#rnCancel');
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
+  // With no model set, the dialog shows what Claude's default here actually
+  // is, read from the last transcript, and picking that model is picking the
+  // default: no change, so nothing is asked and nothing restarts. "Leave as
+  // is" said nothing, and choosing the model the session was already on
+  // used to count as a change (the operator's report, 14 Sep).
+  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+  const tdir = `${DIR}/home/.claude/projects/${slug}`;
+  mkdirSync(tdir, { recursive: true });
+  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
+    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
+    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnEdits', 'accept');
+  await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
+  ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+     'with nothing set, the picker shows the model the last session ran on and the hint says it is the default');
+  const askedBefore = page.dialogs.length;
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  ok(page.dialogs.length === askedBefore, 'saving with that model left where it was asks nothing');
+  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
+       && !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.model),
+     '...restarts nothing, and stores nothing: the default is still the default');
+  rmSync(tdir, { recursive: true, force: true });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.selectOption('#rnModel', 'sonnet');
   // The harness accepts every dialog; this one has to be refused, which is
   // the whole case. Put the standing handler back afterwards.
   const auto = page.listeners('dialog')[0];
@@ -1481,7 +1534,7 @@ await page.click('#rnCancel');
   ok(/Cancel saves the setting/.test(asked),
      'a running session is asked about, and the question says Cancel still saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.edits === 'accept', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.prefs?.model === 'sonnet', { timeout: 20000 });
   ok(true, '...and declining the restart still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -1494,15 +1547,15 @@ await page.click('#rnCancel');
                      { timeout: 20000 });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnEdits', 'ask');
+  await page.selectOption('#rnModel', '');
   await page.click('#rnGo');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
                              { timeout: 15000 });
-  // `|| 'ask'` because a record back at every default is REMOVED rather than
-  // stored — the file says only what somebody chose — so the row carries no
-  // edits key at all, which every reader of it defaults the same way.
+  // `|| ''` because a record back at every default is REMOVED rather than
+  // stored (the file says only what somebody chose), so the row carries no
+  // model key at all, which every reader of it defaults the same way.
   await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.edits || 'ask') === 'ask',
+    .find(p => p.name === 'alpha')?.prefs?.model || '') === '',
     { timeout: 20000 });
 }
 

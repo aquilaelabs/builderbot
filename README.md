@@ -270,6 +270,9 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `NPM_TOKEN` | *(none)* | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
+| `BUILDERBOT_PULL` | `missing` | compose's pull policy for the image: `missing` pulls (an install); `build` builds this checkout, which is what BuilderBot's own dev instance sets, with `BUILDERBOT_TAG=dev` |
+| `COMPOSE_PROFILES` | empty | compose's own switch: `lab` in a dev instance's env file starts the lab's Gitea beside it (the `gitea` service), for `bb tests lab` |
+| `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
@@ -284,8 +287,10 @@ three optional ones: `/secrets` (ro, shielded credentials), `/logs`
 - **No Docker socket by default**, with it absent, reaching the host
   requires a kernel exploit.
 - **Secrets shielding**: PAT scrubbed from session env + root-only sudo
-  helper for runner tokens; SSH keys usable via root-owned agent but not
-  readable; logs redacted (patterns + literal values).
+  helper for runner tokens, whose store is a named volume of the daemon's
+  rather than a directory under `/config`, so it stays root-owned even
+  when appdata is a squashed NFS share; SSH keys usable via root-owned
+  agent but not readable; logs redacted (patterns + literal values).
 - **No passwords, no general sudo**: `root` and `builder` are locked
   accounts; brute-forcing has no target. Builder may sudo exactly one
   command (`mint-runner-token`), which only emits 1-hour tokens.
@@ -430,7 +435,10 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
 bb build           the project's build command on its node, with the outputs
                    it lists: all set in the project's settings dialog
 bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
-                   suite that takes file names runs only those
+                   suite that takes file names runs only those. Inside the project's
+                   dev instance whenever that is up; and where its Docker row says
+                   the tests are the container's only, a container that is down is
+                   a refusal naming it, and nothing runs on the node
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
 bb devapp rebuild [--why "..."]
@@ -475,6 +483,17 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
+bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
+                   its node: the whole log, and the job's exit code. `bb test` takes this path on its own
+                   whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
+                   BuilderBot it runs on (roadmap R48). The row's second picker, "Claude tests",
+                   makes the container the only place: on `only`, a container that is down
+                   refuses rather than falling back to the node. The rebuild dial then governs
+                   testing too, since a stale container tests stale code
+bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
+                   BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
+                   from the Docker tab like any project's stack. Each skips in one line without one,
+                   and nothing records them: a lab run is a proof, not a timing
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -1247,7 +1266,12 @@ lives in its body. The cards:
   every toolchain on the [package store](#the-package-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
+  is a bin on the row. A recipe's system libraries are each machine's own
+  while the store is shared, so when a node lacks some for a package the
+  store already holds (a node enrolled after dotnet went in, with no
+  libicu), the tab says which and **Install system packages** puts them on
+  that node without reinstalling the package; the node's row says the same,
+  before a build fails on it. Beside it, **Docker manager…**, **Static analysis**
   and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the
@@ -1286,6 +1310,9 @@ lives in its body. The cards:
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then, which is what Save tells it, in the one line it spends
+- **(node: name)** after every project's name, on the card and on the
+  Projects tab: the node its work runs on, or *none*. A project with none
+  says nothing more; its Claude button is ghosted with where to pick one
 - a **padlock** per project, which locks it: no Claude session starts there
   and its notebook goes read-only; see below. A locked row keeps every
   control, with its Claude button ghosted rather than removed and a closed
@@ -1298,10 +1325,13 @@ lives in its body. The cards:
   everything under `/workspace` with the same buttons on each row. Pins live in
   `/config/pinned-projects.json`; no file at all means everything is pinned,
   which is what a fresh install sees
-- a **bin**, on the **All projects** tab only, which moves a project to
-  `/workspace/.trash/<name>` with every file kept: a second delete of the same
-  name is numbered rather than overwriting the first, and `/config` is not
-  touched, so putting one back is a `mv`. Deliberately not on the sidebar card
+- a **bin**, which moves a project to `/workspace/.trash/<name>` with every
+  file kept: a second delete of the same name is numbered rather than
+  overwriting the first, and `/config` is not touched, so putting one back is
+  a `mv`. It is on the **All projects** tab's rows (behind the row's fold on a
+  phone) and as **Delete project…** at the foot of every project's settings
+  dialog, the gear, on the card and the tab alike. Deliberately not a bare
+  button on the sidebar card
 - a **gear** per project, which is that project's own settings: its name, its
   node and the build and test commands that run there, what Claude starts on,
   what a session may enter into the notebook, and how much of the tree it may
@@ -1407,11 +1437,24 @@ comes back on it), then **sections**, each a fold with its status on the
 heading so a phone reads the headings and opens one: Health (the meters,
 the toolchains its census found, which is what a project bound to it can
 build), Sessions (whether it runs them, and which are open), CI runner,
-Storage (mounts and stores), Network, and Advanced, which holds the path
+Storage (mounts and stores), Network, and Advanced, which holds the node's
+**name** (Rename changes what it is called everywhere here: the pickers,
+the project rows and the label a runner installed from then on registers
+with; a runner already installed keeps the label it registered with until
+it is reinstalled), the path
 mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
 **Revoke** and **Remove** (retire: off every list, row kept as history, and an
-id is never reused). **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
+id is never reused), and on a node provisioned as a sandbox **Uninstall**:
+its runners deregistered on their forges, then the agent and its unit, the
+`bb` and `builder` accounts with their homes, the mounts BuilderBot used, its
+stores on that disk, the firewall rule and bb-sandbox itself taken off the
+machine, and the row retired when it is done. Docker, the packages the
+provisioner installed, the empty mountpoints and everything on the shares
+stay, since the machine may be used for other things. The same removal is
+`sudo bb-sandbox uninstall` on the machine, or `provision-linux.sh --remove`;
+both say what will go and ask, and neither deregisters a runner, which only
+the row can do while the agent can still ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
 runs `nodes/provision-linux.sh --controller URL --token bbe_…` and dials in. That is
 the only way in; there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of
@@ -1623,7 +1666,7 @@ over ssh.)
 
 **CI runners per node, one per git host.** The same fold lists the node's
 runners and adds one with its host, address and token (kept root-only on
-the controller): GitHub's runner and Gitea's `act_runner` side by side,
+the controller): GitHub's runner and Gitea's `act_runner` (published as gitea-runner since it moved to gitea/runner) side by side,
 each registered with labels `builderbot, self-hosted, linux, <arch>, <node
 name>` plus any extra, so a workflow's `runs-on` names the node it should
 land on whichever host its repository is on. Each row says whether its
@@ -1776,7 +1819,23 @@ and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
 so the rule holds while this container is down, and the tab says
 plainly what still comes from the environment and why (the placement rule and
-the unhardwiring are docs/nodes.md §13 and §11). Its **Debugging** group is
+the unhardwiring are docs/nodes.md §13 and §11). Its **What is offered**
+group is one switch, *Offer dev features*: alpha is what has been run for
+real (GitHub and Gitea among git hosts, Unraid among the VM sandbox
+methods, Debian's and RHEL's families for the provisioner), dev is the rest,
+written to each product's documented shape and never run. Off, only alpha
+is in the pickers and a dev entry asked for by name is refused with the
+sentence that names the switch; on, dev appears tagged *(dev)* and the
+header says *dev*, so the two dashboards are never confused. Each catalogue
+entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
+the provisioner's family list), and an entry crosses over when a lab suite
+or a real run proves it. At its foot, **Reset BuilderBot** starts the
+controller over at *Create the owner*: accounts, node enrolments, project
+settings, git tokens, the notebook, memories and logs are moved into a dated
+`.reset-…` directory under `/config`, never deleted, and project files are
+not touched; it asks for the word `reset` typed, and the dashboard
+re-executes itself. Projects are trashed from the Projects tab, one at a
+time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
 a developer of BuilderBot reaches for and nobody else should meet (letting
@@ -1804,7 +1863,10 @@ CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
-**New container** on that tab runs something with no project behind it: a
+**New container** on that tab runs something with no project behind it, and
+takes a project to **show under**, so it is listed on that project's notebook
+Docker view as well as here (Send to Docker manager takes the same, with the
+project it is built from picked by default): a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box, in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
@@ -1925,12 +1987,16 @@ a placeholder, and **+** starts over.
 Every project has one, reachable from the **Notebook** button on its row: a tab
 of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
-another, and the button lights green while that project's is open. Four views
-under its tab strip: **Memory** (what Claude remembers here), the **Roadmap**
-(the shared list of design work and ordered plans), **Bugs**, and **Analysis**
-(the scanner's findings for this project alone).
+another, and the button lights green while that project's is open. Its tab
+strip: **Briefing** (the rules, and what Claude remembers here), the
+**Roadmap** (the shared list of design work and ordered plans), **Bugs**,
+**Git**, **Artifacts**, **Docker** (this project's containers: its own dev
+instances and any container made with *show under* naming it, with the
+manager's rows and controls, so a dev radarr for a media project is found
+beside that project rather than among every project's on the Docker tab),
+**Tests**, and **Analysis** (the scanner's findings for this project alone).
 
-**Unsaved work does not cross those four.** Leaving a view asks, and answering
+**Unsaved work does not cross those views.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
 
 **A History, and the changelog, open over the panel rather than in place of
@@ -2250,17 +2316,6 @@ exactly what "the pane has stopped changing" looks like, and it saves the
 switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
-**How much a session may change without asking** is a per-project pick in
-the same dialog, *Without asking*: **nothing, confirm everything**, which is
-what Claude Code does out of the box, or **this project's files**. It becomes
-the session's own permission mode, so it covers the file tools inside this
-project and nothing else: a shell command, a push and anything outside the
-tree still ask, and the deny list is untouched either way, so a sibling
-project, `VERSION` and the house rules stay refused under both. It is read
-when a session starts, so changing it restarts the session the way changing
-the model does. The case it exists for: a codebase somebody has just
-uploaded, where confirming every file is all the first session gets done.
-
 **How much of what a session adds lands on its own** is the last row of the
 same dialog: *Claude may* add to the roadmap, file bugs and add rules, each
 **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
@@ -2464,7 +2519,10 @@ file, which is where a compose written with `${PORT}` takes its ports from. A
 compose that hard-codes them has no answer but a sentence. A compose that
 references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
 convention, in a per-instance directory the VM makes itself, so that share is
-mounted over there and needs no mount here at all. BuilderBot itself gets the
+mounted over there and needs no mount here at all. By the same convention a
+build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`: the commit
+it is from, when, and the project's version in file form, for a compose whose
+build args want a stamp (BuilderBot's own passes them to its Dockerfile). BuilderBot itself gets the
 row too, as a second container on another machine, never the one you are
 using; expect
 `up` to refuse while the real one holds the same host ports, which is the env

@@ -534,7 +534,18 @@ bb devapp              what it was built from, whether it is running, and
                        whether its daemon answers
 bb devapp rebuild      build it and bring it up
 bb devapp rebuild --why "..."     ...on `ask`: the sentence goes to a person
+bb devapp test         its test command inside the running instance; `bb test`
+                       goes this way by itself whenever the instance is up
 ```
+
+**Where the tests run is the row's second picker, "Claude tests".** By
+default `bb test` runs inside the instance when it is up and on the node
+when it is not. On `only` the container is the one place: a container that
+is down is a refusal naming it, and nothing runs on the node. That is the
+setting for a project whose suite would otherwise run beside the thing it
+tests, and the refusal is a sentence to quote, not to route around: the
+operator brings the instance up, or a rebuild does where the dial allows
+one. A stale container tests stale code, so the dial governs testing too.
 
 That is the loop for a project whose work IS the container: change it,
 rebuild it, look at what it did. On **deny** the verb is refused with a

@@ -1,0 +1,5 @@
+# The agent runs on whatever python a node carries, and Rocky 9 carries
+# 3.9: nothing newer than that may appear in this file, whatever the
+# controller's image has. Everything else is the root's rules.
+extend = "../../ruff.toml"
+target-version = "py39"

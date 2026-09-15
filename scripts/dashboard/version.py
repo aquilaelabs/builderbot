@@ -1014,7 +1014,7 @@ def unbump(project, by="claude", comp="", env=None):
     # The policy question is the same one the bump asked: undoing a minor
     # moves the minor, and a session allowed to move it forward is allowed to
     # move it back.
-    part = next((n for n, a, b in zip(PARTS, tgt.split("."), prev.split("."))
+    part = next((n for n, a, b in zip(PARTS, tgt.split("."), prev.split("."), strict=False)
                  if a != b), "patch")
     why = may(project, part, by)
     if why:
@@ -1102,8 +1102,6 @@ def ask(project, sessions=(), comp=""):
         return {"error": f"no such component here: {comp}"}
     tgt, _err = target(project, comp)
     what = f"the `{comp}` component of {project}" if comp else project
-    forflag = f" --for {comp}" if comp else ""
-    pol = policy(project)
     # Short on purpose. This is TYPED into a terminal a character at a time,
     # and the echo has to be seen before Enter can follow: the first cut ran
     # to 704 characters, which a TUI does not finish rendering inside the

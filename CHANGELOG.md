@@ -5,8 +5,21 @@
 - The companion app has a Tools screen: what each node's packages store holds, with Install and Remove on a package, so a missing toolchain can be fixed from a phone (87ad70b)
 - The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
 - The buttons on the Tools card carry icons, and the tab each opens wears the same one (47c9aa3)
-- A project can be given a colour in its settings dialog, worn by its row and its notebook tab (47c9aa3)
+- A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
 - Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
+- A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
+- The Tools tab says when a node lacks the system libraries a package on the shared store needs, and one press installs them there without reinstalling the package; the node's row says the same (bf01db5)
+- The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
+- The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
+- A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
+- Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
+- bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
+- A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
+- A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
+- Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
+- A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
+- Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
+- A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
 
 ### Upgrading
 
@@ -29,6 +42,10 @@
 - A second instance of a project can run beside the first on another branch, and a port the other one already has is named on the row before you press rather than by compose after (133fab3)
 - A node's runner can register with a Gitea or Forgejo as well as GitHub: pick the host beside the address, and the node runs Gitea's act_runner with every job on its own toolchain (77505dc)
 - A node holds one CI runner per git host: GitHub's and Gitea's side by side, listed on the node's row with their own Install and Remove, the same labels on each, so a project's workflow lands on the node whichever host its repository is on (05e67c4)
+- bb test can be kept inside a project's dev container: the Docker row's second picker, Claude tests, on only makes a container that is down a refusal instead of a run on the node (e38d20e)
+- Settings gains Offer dev features: off, the pickers offer only the git hosts, hypervisors and node OS families that have been run for real; on, the rest appear tagged dev and the header says dev (287fdfc)
+- A node can be uninstalled: from its row (runners deregistered first), with sudo bb-sandbox uninstall on the machine, or provision-linux.sh --remove; docker, the packages and the shares' contents stay (971e9db)
+- Reset BuilderBot at the foot of Settings starts the controller over at Create the owner, moving its state aside and leaving project files alone (971e9db)
 
 ### Changed
 
@@ -113,6 +130,23 @@
 - On a phone the sidebar cards you opened stay open across a reload, and Reset from the gear opens every card there as it does at a desk (2ea5bd5)
 - Send to Claude from the roadmap and the bug tracker reaches a session running on a node, and says whether the line went or was left in the box unsent (47c9aa3)
 - The Tests view no longer loses a test's description when tests are inserted above one whose name carries a run-specific value (47c9aa3)
+- Sending a roadmap step or a bug to a session no longer reports it as typed but not sent when Claude folds the long line into a paste (bf593da)
+- Renaming a project and giving it a new access token in the same save works, and the token is stored for the remote's own host and scheme (924ee49)
+- Bitbucket asks for a repository access token rather than an app password, which is the credential its username pairs with (924ee49)
+- Linking to a self-hosted Gitea, Forgejo or GitLab: a token with unusual characters is stored the way git reads it, switching a remote to its token keeps the server's http scheme and port, and a missing repository is never created under the wrong owner (924ee49)
+- A node that mounts the projects share at /workspace needs no path-mapping pair for it: the share maps to itself unless a pair says otherwise (94fea1a)
+- The env gate asks only for settings the compose file needs: a key the file gives a default is not missing (94fea1a)
+- The Docker tab keeps its rows on screen, marked refreshing, while a build makes the daemon slow to answer, instead of showing only loading (94fea1a)
+- bb devapp answers for a project's only dev instance whatever it is called, and takes --instance for a project with several (18c206b)
+- A dev instance whose data directory cannot be made on the node (a stale mount, a file in the way) is refused with that reason before docker is asked (18c206b)
+- A node's row says when a mounted share answers Stale file handle, in red, with the fix on the host; before, it read as mounted and every use of it failed (67da994)
+- Tests run inside a dev instance start in the project's directory there when the compose file mounts it (c7a722d)
+- The sandbox VM XML the Nodes tab generates accepts any vCPU count: its CPU topology used to stay at six, which libvirt refused for anything else (c9da64c)
+- The Docker tab's node picker keeps its size on a phone instead of shouting beside its label (e38d20e)
+- BuilderBot's own suite gives the same verdict inside its dev container as on a node: the harness no longer leans on the machine's git config or its sshd (e38d20e)
+- A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
+- Installing Playwright on a fresh Ubuntu node no longer ends with its missing-dependencies warning: the recipe carries the five libraries it asked for (c08e8cc)
+- A build whose output already sits in dist/ no longer prints cp's same-file complaint (413953b)
 
 ## 0.5.0: 2026-09-10
 

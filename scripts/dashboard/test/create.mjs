@@ -7,6 +7,8 @@ import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tm
          refreshUntil } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -28,6 +30,27 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }, [body, api]);
+
+// ---- what is offered (roadmap R54, step 6) --------------------------------
+// Off, the dialog's host list is the vetted hosts and the catch-all, and a
+// clone naming another is refused with the sentence that names the switch;
+// on, every host is listed and the unvetted ones carry `dev`.
+{
+  const hosts = async () => (await page.evaluate(async () => (await (await fetch('/api/pubkeys')).json()))).forges || [];
+  const off = await hosts();
+  ok(off.map(f => f.name).join(', ') === 'Gitea, GitHub, Another git host' && off.every(f => !f.dev),
+     `with unvetted features off, the hosts offered are the proven ones and the catch-all (${off.map(f => f.name).join(', ')})`);
+  const refused = await postJson({ mode: 'clone', url: 'https://gitlab.com/group/thing', forge: 'gitlab', name: 'thing' });
+  ok(refused.status === 400 && /GitLab is dev, not yet vetted/.test(refused.body.error || '')
+     && /Offer dev features/.test(refused.body.error || ''),
+     `a clone naming an unvetted host is refused, and the sentence names the switch (${refused.body.error})`);
+  await postJson({ set: { offer_unvetted: true } }, '/api/settings');
+  const on = await hosts();
+  ok(on.length === 7 && on.filter(f => f.dev).map(f => f.name).join(', ') === 'Bitbucket, Codeberg, Forgejo, GitLab'
+     && on[on.length - 1].name === 'Another git host',
+     `on, every host is offered, the unproven four tagged dev, the catch-all still last (${on.map(f => f.name + (f.dev ? '*' : '')).join(', ')})`);
+  await postJson({ set: { offer_unvetted: false } }, '/api/settings');
+}
 
 // ---- the dialog --------------------------------------------------------
 ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New project')),
@@ -1057,6 +1080,81 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
      'an unlinked project is offered to another host — and asked for a credential');
   execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'remote', 'add', 'origin',
                        'git@github.com:owner/alpha.git']);
+}
+
+// ---- linking to another host: what can be checked without one ----------
+// The Gitea, GitLab and Bitbucket paths cannot be exercised against a live
+// server here (roadmap R43 is that proof), so what is checked is the part
+// of them that is this code's rather than the host's: the credential line
+// git will read, which owner a repository is created under, and a host
+// remembered with its port.
+{
+  const out = execFileSync('python3', ['-c', `
+import json, os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, ${JSON.stringify(join(dirname(fileURLToPath(import.meta.url)), '..'))})
+import forges, projects
+tmp = tempfile.mkdtemp()
+forges.configure(run=lambda *a, **k: {"code": 1, "out": ""}, state=tmp,
+                 write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
+projects.STATE = Path(tmp)
+out = {}
+# a token with the characters git's store has to see percent-encoded
+projects.write_token("p", "ab/cd+ef=@gh", "git.home.lan:3000", "http", "bob")
+out["line"] = (Path(tmp) / "gitcreds" / "p").read_text().strip()
+out["target"] = projects.token_target("p")
+# where a repository is created: an org, or the token's own account, never
+# somebody else's
+calls = []
+def ask(url, kind, token, data=None):
+    calls.append(url)
+    return (None, "not an org") if "/orgs/" in url else ({"ok": True}, "")
+forges._ask = ask
+gitea = forges.get("gitea")
+out["own"] = forges.create_repo(gitea, "git.home.lan:3000", "t", "bob/app", "http", "bob")
+out["own_calls"] = list(calls); calls.clear()
+out["other"] = forges.create_repo(gitea, "git.home.lan:3000", "t", "alice/app", "http", "bob")
+out["other_calls"] = list(calls)
+# a host remembered with its port answers for the same host without one
+forges.remember("git.home.lan:3000", "gitea")
+out["forge"] = [forges.forge_of("git.home.lan:3000")["id"], forges.forge_of("git.home.lan")["id"]]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+  const r = JSON.parse(out);
+  ok(r.line === 'http://bob:ab%2Fcd%2Bef%3D%40gh@git.home.lan:3000',
+     `a stored token is percent-encoded the way git's credential store reads it, under the remote's scheme, host and port (${r.line})`);
+  ok(r.target?.scheme === 'http' && r.target?.host === 'git.home.lan:3000',
+     '...and the scheme and host it was stored for can be read back, so switching a remote to it spells the URL the same way');
+  ok(r.own === '' && r.own_calls.length === 2 && /\/user\/repos$/.test(r.own_calls[1]),
+     'a repository under the token\'s own account is created there when the owner is not an organisation');
+  ok(/alice is not an organisation/.test(r.other) && r.other_calls.length === 1,
+     `...and one under somebody else is refused with the reason, never created under the wrong owner (${r.other})`);
+  ok(r.forge[0] === 'gitea' && r.forge[1] === 'gitea',
+     'a self-hosted forge remembered with its port is still Gitea when the same host is named without one');
+}
+
+// A rename that carries a new token in the same save: the token used to be
+// written with no host at all, which was a 500 on every such save. It is
+// stored for the remote's host and scheme, as a settings-only save does.
+{
+  const made = await postJson({ name: 'tokrn', mode: 'init' });
+  ok(made.status === 200, `a project to rename (${made.status})`);
+  execFileSync('git', ['-C', `${DIR}/ws/tokrn`, 'remote', 'add', 'origin',
+                       'http://git.home.lan:3000/owner/tokrn.git']);
+  const r = await page.evaluate(async () => {
+    const x = await fetch('/api/rename', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'tokrn', to: 'tokrn2', token: 'gitea0123456789abcdef0123456789abcdef' }) });
+    return { status: x.status, body: await x.json().catch(() => ({})) };
+  });
+  const line = existsSync(`${DIR}/state/gitcreds/tokrn2`)
+    ? readFileSync(`${DIR}/state/gitcreds/tokrn2`, 'utf8').trim() : '';
+  ok(r.status === 200 && /a new access token/.test((r.body.moved || []).join(' ')),
+     `renaming with a new token in the same save works (${r.status}: ${JSON.stringify(r.body).slice(0, 120)})`);
+  ok(/^http:\/\/oauth2:gitea0123456789abcdef0123456789abcdef@git\.home\.lan:3000$/.test(line),
+     `...and the token is stored for the remote's host, port and scheme (${line.replace(/:[^@]*@/, ':…@')})`);
+  rmSync(`${DIR}/ws/tokrn2`, { recursive: true, force: true });
+  rmSync(`${DIR}/state/gitcreds/tokrn2`, { force: true });
 }
 
 // The refusals above are answered with 400s on purpose — and the deploy-key

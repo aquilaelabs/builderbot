@@ -40,12 +40,24 @@ case "$kind" in
     store|forget|--check|--validate|registration|remove)
         [[ "$node" =~ ^n_[0-9a-f]{8}$ ]] && [[ "$slot" =~ ^[a-z0-9.-]{1,64}$ ]] \
             || die "usage: mint-runner-token $kind NODE_ID SLOT" ;;
-    --list) ;;
-    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID SLOT, or --list" ;;
+    --list|--reset) ;;
+    *) die "usage: mint-runner-token [store|forget|--check|--validate|registration|remove] NODE_ID SLOT, or --list, or --reset" ;;
 esac
 file="$STORE/$node.$slot.env"
 
 case "$kind" in
+    --reset)
+        # Every stored token, for the controller's Reset: the nodes they
+        # belonged to are being forgotten, and a token for a node id that
+        # will never be minted again is a file nobody can reach or use.
+        [ -d "$STORE" ] || { echo "reset: nothing stored"; exit 0; }
+        n=0
+        for f in "$STORE"/n_*.*.env; do
+            [ -f "$f" ] || continue
+            rm -f "$f"; n=$((n + 1))
+        done
+        echo "reset: $n token(s) forgotten"
+        exit 0 ;;
     --list)
         [ -d "$STORE" ] || exit 0
         for f in "$STORE"/n_*.*.env; do
@@ -63,8 +75,10 @@ case "$kind" in
                 RUNNER_FORGE=*) forge="${line#RUNNER_FORGE=}" ;;
             esac
         done
-        [[ "$url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._/-]+$ ]] \
-            || die "the URL is the https address of the repository or organization the runner registers with"
+        # http as well as https: a Gitea on the LAN serves plain http, and
+        # the token then travels the way the node's own enrollment did.
+        [[ "$url" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._/-]+$ ]] \
+            || die "the URL is the https address of the repository or organization the runner registers with (http is accepted for a forge on your own network)"
         [[ "$token" =~ ^[A-Za-z0-9._-]{8,}$ ]] || die "the token is one line of letters, digits, . _ and -"
         [[ "$forge" =~ ^[a-z]{1,16}$ ]] || die "not a forge kind"
         install -d -m 0700 -o root -g root "$STORE"
@@ -92,7 +106,8 @@ fi
 # Gitea and Forgejo: act_runner takes a registration token from the host's
 # API, and a runner is deleted there by id rather than by a removal token.
 if [ "${RUNNER_FORGE:-github}" = gitea ]; then
-    rest="${RUNNER_URL#https://}"
+    scheme="${RUNNER_URL%%://*}"
+    rest="${RUNNER_URL#*://}"
     host="${rest%%/*}"
     path="${rest#*/}"; path="${path%/}"; path="${path%.git}"
     case "$path" in
@@ -104,7 +119,7 @@ if [ "${RUNNER_FORGE:-github}" = gitea ]; then
         local method="$1" path="$2" resp code
         resp="$(curl -sS -w $'\n%{http_code}' -X "$method" \
             -H "Authorization: token ${RUNNER_TOKEN}" -H "Accept: application/json" \
-            "https://${host}/api/v1${path}" 2>&1)" \
+            "${scheme}://${host}/api/v1${path}" 2>&1)" \
             || die "could not reach ${host} for ${path} (network/DNS?)"
         code="${resp##*$'\n'}"
         case "$code" in

@@ -57,6 +57,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent status         # what this node is, and does it answer
 """
 import contextlib
+import errno
 import glob
 import hashlib
 import http.client
@@ -94,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.57"
+AGENT_VERSION = "0.5.68"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -339,7 +340,10 @@ RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Gitea's runner: one static binary, fetched from gitea.com's releases, or a
 # prebuilt one named here for the suite.
 ACT_RUNNER_BIN = os.environ.get("BUILDERBOT_ACT_RUNNER_BIN", "")
-ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/act_runner/releases/latest"
+# gitea/act_runner became gitea/runner upstream (the old address answers
+# 301, the assets are gitea-runner-<ver>-<os>-<arch>); the binary keeps the
+# act_runner command set, and keeps its name here.
+ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/runner/releases/latest"
 
 def runner_slot(url):
     """The slot a runner's address maps to: its host and path, lowercase,
@@ -405,9 +409,19 @@ def _runner_state(d, rec):
             with open(os.path.join(d, ".service")) as f:
                 unit = f.read().strip()[:120]
     url = str(rec.get("gitHubUrl") or rec.get("address") or "")[:200]
+    with contextlib.suppress(OSError):
+        with open(os.path.join(d, ".builderbot-url")) as f:
+            url = f.read().strip()[:200] or url
     # GitHub's .runner says agentName and gitHubUrl; act_runner's says name
     # and address, which is also how the two are told apart.
-    return {"installed": True, "slot": runner_slot(url),
+    # The slot is the directory's name, which the controller chose from
+    # the address the token was stored for; act_runner's own .runner holds
+    # only the forge's root, which would name a different slot. A runner
+    # registered in RUNNER_DIR itself, from before a node held several,
+    # has no such directory and keeps the address-derived slot.
+    return {"installed": True,
+            "slot": (os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR)
+                     else runner_slot(url)),
             "name": str(rec.get("agentName") or rec.get("name") or "")[:80],
             "url": url, "forge": "gitea" if "address" in rec else "github",
             "unit": unit, "labels": labels[:16], "active": bool(pg),
@@ -954,6 +968,87 @@ def _clean_version(text):
     return line[:40]
 
 
+def extract_sandbox_tool(text):
+    """The bb-sandbox script embedded in provision-linux.sh: the body of its
+    BBSANDBOX heredoc, or "" when the marker pair is not there."""
+    m = re.search(r"<<'BBSANDBOX'\n(.*?)\nBBSANDBOX\n", text, re.S)
+    return (m.group(1) + "\n") if m else ""
+
+
+def read_catalog(into):
+    """The catalog the bundle carries, or {} when it cannot be read."""
+    try:
+        with open(os.path.join(into, "config", "packages.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def sysdeps_missing(cat, name, fam, query):
+    """(the recipe's system packages missing on this machine, and (family,
+    names) when its recipe lists them for another family only). Asked by
+    exit code, never by output: dpkg -s and pacman -Q both print a sentence
+    on stderr for a missing package, which read as "installed" when the
+    text was the test, and rpm -q prints "not installed" on stdout."""
+    pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
+    system = pkg.get("system") or {}
+    want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
+    if not want:
+        other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
+                      if k != fam and system.get(k)), "")
+        return [], ((other, [str(x) for x in system[other][:64]]) if other else None)
+    missing = []
+    for x in want:
+        if not query:
+            missing.append(x)          # emerge: no query, --noreplace skips the installed
+            continue
+        try:
+            p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
+            if p.returncode != 0:
+                missing.append(x)
+        except (OSError, subprocess.SubprocessError):
+            missing.append(x)
+    return missing, None
+
+
+def held_recipes(state, cat):
+    """The catalog recipes with system packages whose directory the store
+    holds, complete or not: browsers from before the module still need the
+    libraries."""
+    store = pkg_root(state)
+    if not store:
+        return []
+    dirs = {e["name"]: e.get("dir") for e in store_layout(state) if e.get("name")}
+    out = []
+    for p in cat.get("packages") or []:
+        name = p.get("name")
+        if not name or not p.get("system"):
+            continue
+        d = dirs.get(name) or name
+        if os.path.isdir(os.path.join(store, d)):
+            out.append(name)
+    return out
+
+
+def sysdeps_now(state):
+    """The census's answer (roadmap R51): {family, unmet: {recipe: [pkg]}},
+    from the bundle the store already holds; nothing until one is there."""
+    store = pkg_root(state)
+    into = os.path.join(store, ".bb", "current") if store else ""
+    if not into or not os.path.isdir(into):
+        return {}
+    cat = read_catalog(into)
+    fam, query, _ = pkg_backend()
+    if not fam or not cat:
+        return {}
+    unmet = {}
+    for name in held_recipes(state, cat):
+        missing, _ = sysdeps_missing(cat, name, fam, query)
+        if missing:
+            unmet[name] = missing
+    return {"family": fam, "unmet": unmet}
+
+
 def store_dirs(state):
     """What is actually IN the packages store, as directory names.
 
@@ -1189,6 +1284,10 @@ def census(state):
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),
+        # Which held recipes need system packages this machine lacks
+        # (roadmap R51): read here, so the Tools tab and the row can say so
+        # before a build fails on a missing library.
+        "sysdeps": sysdeps_now(state),
         # The android system images the store holds, and the AVDs built on
         # them (roadmap #20). Not part of store_dirs: it reaches three levels
         # down and reads the data store's AVD configs as well.
@@ -1349,6 +1448,22 @@ def mounts_now():
             else:
                 m["mounted"] = True
                 m["real"] = m.get("source") or ""
+    # A mount that is there and answers Stale file handle is worse than one
+    # that is missing: every list of mounts calls it fine and every read
+    # fails (roadmap R41; builderbot-dev's up failed on exactly this, 15
+    # Sep). Remounting on this side does not help when the export was
+    # re-created under it on the host, so the fix is named as the host's.
+    for m in got:
+        if m.get("mounted") and str(m.get("path") or "").startswith("/"):
+            try:
+                os.statvfs(m["path"])
+            except OSError as e:
+                if e.errno == errno.ESTALE:
+                    m["stale"] = True
+                    m["error"] = ("mounted, but the handle is stale: the export was re-created "
+                                  "under it on the host; re-export it there (Unraid: the share's "
+                                  "NFS setting off and on, or a pool the mover leaves alone), "
+                                  "then Apply storage here")
     return got
 
 
@@ -2013,11 +2128,11 @@ def load_state():
     try:
         with open(NODE_JSON) as f:
             return json.load(f)
-    except OSError:
+    except OSError as e:
         raise SystemExit(f"{NODE_JSON} is missing — enroll this node first: "
-                         "builderbot-agent enroll --controller URL --token …")
+                         "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
-        raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again")
+        raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
 
 
 def save_state(state):
@@ -2466,8 +2581,8 @@ class Agent:
         import pwd
         try:
             pw = pwd.getpwnam(user)
-        except KeyError:
-            raise RuntimeError(f"enrolled account {user!r} does not exist here")
+        except KeyError as e:
+            raise RuntimeError(f"enrolled account {user!r} does not exist here") from e
         env.update({"HOME": pw.pw_dir, "USER": user, "LOGNAME": user})
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
@@ -2799,7 +2914,7 @@ class Agent:
                         raise RuntimeError(f"snapshot member escapes the workspace: {m.name}")
                 tar.extractall(ws)
         if who:
-            for d, dirs, files in os.walk(os.path.dirname(ws)):
+            for d, _dirs, files in os.walk(os.path.dirname(ws)):
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
@@ -2901,7 +3016,7 @@ class Agent:
             os.symlink(os.path.basename(into), tmp)
             os.replace(tmp, os.path.join(bbdir, "current"))
         if who:
-            for d, dirs, files in os.walk(into):
+            for d, _dirs, files in os.walk(into):
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
@@ -3069,7 +3184,7 @@ class Agent:
                 return self.session_start(into, retry=True)
         if died:
             held = "; ".join(f"port {pt}: " + (f"pid {pid} ({cmd[:40]})" if pid else "taken")
-                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))
+                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))  # noqa: B905 (3.9 on Rocky)
             self.session_stop()
             SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
                            why=f"ttyd could not bind — {held}"[:160])
@@ -3279,9 +3394,15 @@ class Agent:
         if sess not in names:
             job.say(f"no session called {sess} is running here\n")
             return "failed", 2
-        cap = lambda: self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or ""  # noqa: E731
-        mark = text[:40]
-        was = cap().count(mark)
+        # A long line lands in claude's box folded into "[Pasted text #1]"
+        # (the TUI reads a burst of typed characters as a paste), so the
+        # placeholder counts as the echo; whitespace is collapsed because
+        # the box wraps a long line at word boundaries with an indent.
+        mark = " ".join(text[:40].split())
+        def seen():
+            flat = " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+            return flat.count(mark) + flat.count("[Pasted text")
+        was = seen()
         if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
             job.say("tmux would not take the line\n")
             return "failed", 1
@@ -3290,7 +3411,7 @@ class Agent:
         # takes input and a long line is not on screen inside a short one.
         for _ in range(2 + len(text) // 120):
             time.sleep(0.25)
-            if cap().count(mark) > was:
+            if seen() > was:
                 if self._tmux(["send-keys", "-t", sess, "Enter"]) is None:
                     job.say("the line is in the box but Enter did not go\n")
                     return "failed", 1
@@ -3572,7 +3693,26 @@ class Agent:
                         os.chown(d, who["user"], who["group"])
                 job.say(f"bind directory {d}\n")
             except OSError as e:
-                job.say(f"could not make {d}: {e.strerror}\n")
+                # A bind source this machine cannot make. Whether that ends
+                # the job depends on whether docker could do better: it runs
+                # as root, so an agent that is root and failed has proved
+                # docker will fail too, and a stale NFS handle or a file in
+                # the way defeats any privilege. Then the up cannot work and
+                # is not tried: docker would report the same mkdir in worse
+                # words ("mkdir /devdata: file exists" over a stale handle,
+                # measured 15 Sep). An unprivileged agent (a guest node)
+                # names it and carries on, since docker may still make it.
+                why = e.strerror or str(e)
+                hopeless = (os.geteuid() == 0 or e.errno == errno.ESTALE
+                            or isinstance(e, (NotADirectoryError, FileExistsError)))
+                hint = (": the mount under it is stale; remount it on this node"
+                        if e.errno == errno.ESTALE or "stale" in why.lower() else "")
+                if not hopeless:
+                    job.say(f"could not make {d}: {why}; this agent is not root, so docker may still\n")
+                    continue
+                job.say(f"could not make {d}: {why}{hint}\n")
+                job.outputs.append({"kind": "compose", "steps_done": 0, "failed_at": "preparing"})
+                return "failed", 73
         done = 0
         for stp in (spec.get("plan") or [])[:8]:
             if job.canceled:
@@ -3634,20 +3774,22 @@ class Agent:
         catalog) is fetched by digest into the store and run from there as
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
         per-node state — the census reports what landed."""
-        stores = self.state.get("stores") or {}
         store = pkg_root(self.state)
         if not store:
             job.say("refused: this node has no packages store\n")
             return "failed", 78
         action = spec.get("action")
         names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
-        if action not in ("install", "remove") or not names:
-            job.say("refused: a package job installs or removes named packages\n")
+        if action not in ("install", "remove", "sysdeps") or (not names and action != "sysdeps"):
+            job.say("refused: a package job installs or removes named packages, "
+                    "or installs the system packages the held ones need\n")
             return "failed", 64
         who = self.drop_privileges({})
         into = self.bundle(job, who)
         if not into:
             return "failed", 69
+        if action == "sysdeps":
+            return self.sysdeps(job, names, into)
         bad = 0
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
@@ -3686,50 +3828,80 @@ class Agent:
         node this cannot administer is a warning, not a refusal — the
         download is still worth having, and the tool names what is missing
         when it is used."""
-        try:
-            with open(os.path.join(into, "config", "packages.json")) as f:
-                cat = json.load(f)
-            pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
-        except (OSError, ValueError):
-            return True
-        system = pkg.get("system") or {}
+        cat = read_catalog(into)
+        fam, query, install = pkg_backend()
+        missing, other = sysdeps_missing(cat, name, fam, query)
         # Which family this machine is decides which list applies. A recipe
         # that names packages for the other family only is not wrong, it is
         # incomplete for this node: say so with the names it does have, so
         # the owner can find their equivalents, and carry on to the recipe.
-        fam, query, install = pkg_backend()
-        want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
-        if not want:
-            other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
-                          if k != fam and system.get(k)), "")
-            if other:
-                job.say(f"{name} needs system packages its recipe names for {other} only; "
-                        f"this node's are its owner's to install — the {other} names: "
-                        f"{' '.join(str(x) for x in system[other][:64])}\n")
-            return True
-        missing = []
-        for x in want:
-            if not query:
-                missing.append(x)          # emerge: no query, --noreplace skips the installed
-                continue
-            # By exit code, never by output: dpkg -s and pacman -Q both print
-            # a sentence on stderr for a missing package, which read as
-            # "installed" when the text was the test, and rpm -q prints
-            # "not installed" on stdout — one rule covers all of them.
-            try:
-                p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
-                if p.returncode != 0:
-                    missing.append(x)
-            except (OSError, subprocess.SubprocessError):
-                missing.append(x)
+        if other:
+            job.say(f"{name} needs system packages its recipe names for {other[0]} only; "
+                    f"this node's are its owner's to install; the {other[0]} names: "
+                    f"{' '.join(other[1])}\n")
         if not missing:
             return True
-        if os.geteuid() != 0 or not os.access(SANDBOX_BIN, os.X_OK):
+        if not self.administers():
             job.say(f"{name} needs system packages this node's owner installs — "
                     f"not this agent, which does not administer the machine: "
                     f"{' '.join(missing)}\n")
             return True
         job.say(f"== system packages for {name}: {' '.join(missing)}\n")
+        return self._install_system(job, name, fam, install, missing)
+
+    def administers(self):
+        """Whether this agent may install system packages here: root, on a
+        node provisioned as a sandbox (the stamp; roadmap R23 refines it to
+        a class). Anywhere else the machine is its owner's."""
+        return os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK)
+
+    def sysdeps(self, job, names, into):
+        """Install the system packages the recipes already on the store need
+        here, without touching the recipes (roadmap R51). The store is a
+        share, so a package installed from one node is on every node that
+        mounts it, while the libraries it needs are each machine's own: a
+        node enrolled afterwards has dotnet and not libicu, and the only
+        gesture that installed libicu was reinstalling dotnet onto the share
+        for everybody. Named recipes, or every held one when none are."""
+        cat = read_catalog(into)
+        fam, query, install = pkg_backend()
+        if not fam:
+            job.say("refused: no package manager this agent knows is on this machine\n")
+            return "failed", 78
+        held = held_recipes(self.state, cat)
+        want = [n for n in names if n in held] if names else held
+        if names and not want:
+            job.say(f"none of {' '.join(names)} is on this node's store, so nothing here needs anything\n")
+            return "succeeded", 0
+        todo = {}
+        for name in want:
+            missing, other = sysdeps_missing(cat, name, fam, query)
+            if other:
+                job.say(f"{name}: its recipe names packages for {other[0]} only, not {fam}; "
+                        f"the {other[0]} names: {' '.join(other[1])}\n")
+            if missing:
+                todo[name] = missing
+        if not todo:
+            job.say(f"every system package the held recipes need is installed here ({fam})\n")
+            return "succeeded", 0
+        if not self.administers():
+            job.say("refused: this agent does not administer the machine, so its owner "
+                    "installs these: "
+                    + "; ".join(f"{n}: {' '.join(m)}" for n, m in todo.items()) + "\n")
+            return "failed", 77
+        bad = 0
+        for name, missing in todo.items():
+            job.step(name)
+            job.say(f"== system packages for {name}: {' '.join(missing)}\n")
+            if not self._install_system(job, name, fam, install, missing):
+                bad += 1
+        self.hello()
+        if bad:
+            job.say(f"{bad} of {len(todo)} did not install\n")
+            return "failed", 1
+        return "succeeded", 0
+
+    def _install_system(self, job, name, fam, install, missing):
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
         try:
             # emerge builds from source: fifteen minutes is a package
@@ -3753,6 +3925,7 @@ class Agent:
         root's; offered by the controller only to nodes that enrolled as a
         sandbox, and refused here without bb-sandbox, which is the stamp."""
         what = spec.get("apply")
+        self.refresh_sandbox_tool(job)
         # Per verb, not one stamp for all of them (roadmap #23): storage and
         # network edit fstab and netplan, which only a machine provisioned
         # as a sandbox — a MANAGED node — hands over. A runner needs only its
@@ -3774,8 +3947,87 @@ class Agent:
             return self._apply_runner(job, cfg)
         if what == "funnel":
             return self._apply_funnel(job, cfg)
+        if what == "uninstall":
+            return self._apply_uninstall(job)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def refresh_sandbox_tool(self, job):
+        """The machine's bb-sandbox brought up to the bundle's copy before a
+        system job runs, when this agent is root and a copy is there to
+        compare: the provisioner wrote it once, a verb the controller now
+        asks for (uninstall, 15 Sep) may be newer than that write, and the
+        bundle carries the provisioner it is embedded in. Said when it
+        changes, silent otherwise; a machine that was never a sandbox has no
+        copy and gets none."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
+            return
+        store = pkg_root(self.state)
+        src = os.path.join(store, ".bb", "current", "nodes", "provision-linux.sh") if store else ""
+        if not src or not os.path.isfile(src):
+            return
+        try:
+            with open(src, encoding="utf-8") as f:
+                want = extract_sandbox_tool(f.read())
+            with open(SANDBOX_BIN, encoding="utf-8") as f:
+                have = f.read()
+        except OSError:
+            return
+        if not want or want == have:
+            return
+        tmp = SANDBOX_BIN + ".new"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(want)
+            os.chmod(tmp, 0o750)
+            os.replace(tmp, SANDBOX_BIN)
+        except OSError as e:
+            job.say(f"could not refresh {SANDBOX_BIN} from the bundle: {e}\n")
+            return
+        job.say(f"{SANDBOX_BIN} refreshed from the bundle\n")
+
+    def _apply_uninstall(self, job):
+        """Take BuilderBot off this machine, from the Nodes tab. The runners
+        first, deregistered on their forges with the tokens the controller
+        mints while this agent can still ask; then `bb-sandbox uninstall`,
+        started detached from this process because it removes this process
+        (the unit, the accounts, the files). The controller retires the
+        node when this job succeeds; the agent's last hello is its last."""
+        if not os.access(SANDBOX_BIN, os.X_OK):
+            job.say(f"refused: {SANDBOX_BIN} is not here, so this node was not provisioned as a sandbox\n")
+            return "failed", 77
+        for d, rec in runner_dirs():
+            url = str(rec.get("gitHubUrl") or rec.get("address") or "")
+            with contextlib.suppress(OSError):
+                with open(os.path.join(d, ".builderbot-url")) as f:
+                    url = f.read().strip() or url
+            slot = os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR) else runner_slot(url)
+            job.say(f"deregistering the runner {slot} on its forge\n")
+            st, code = self._apply_runner(job, {"want": False, "slot": slot, "url": url,
+                                                "forge": "gitea" if "address" in rec else "github"})
+            if st != "succeeded":
+                job.say(f"the runner {slot} could not be deregistered (exit {code}); it stays listed on its forge\n")
+        argv = [SANDBOX_BIN, "uninstall", "--yes"]
+        # Under a transient unit of its own where this agent is root on a
+        # systemd machine, so the uninstall outlives the unit it removes;
+        # anywhere else (the harness, a machine without systemd) a detached
+        # process, which the removal of this one does not take with it.
+        started = False
+        if os.geteuid() == 0 and shutil.which("systemd-run"):
+            r = subprocess.run(["systemd-run", "--unit", "builderbot-uninstall", "--collect",
+                                "--quiet", *argv], capture_output=True, text=True, check=False)
+            started = r.returncode == 0
+            if not started:
+                job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
+        if not started:
+            try:
+                subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+            except OSError as e:
+                job.say(f"could not start the uninstall: {e}\n")
+                return "failed", 69
+        job.say("the uninstall is running on this machine; this agent goes with it, so this is its last word\n")
+        return "succeeded", 0
 
     def _sh(self, job, argv, cwd=None, timeout=300):
         """One command, its output into the job's log, its exit code back.
@@ -3869,7 +4121,7 @@ class Agent:
         want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
         have = {m.get("path"): m for m in mounts_now()}
         bad = 0
-        for path, m in have.items():
+        for path in have:
             if not any(w.get("path") == path for w in want):
                 if self._sh(job, [SANDBOX_BIN, "remove", path]) != 0:
                     bad += 1
@@ -4025,7 +4277,17 @@ class Agent:
             job.say(f"{new} squashes ownership (an all_squash export, most likely), so "
                     f"the copy keeps times, modes and links and the export decides the "
                     f"owner — which is the arrangement, not a loss.\n")
-        if self._sh(job, argv + [os.path.join(old, "."), new + "/"], timeout=21600) != 0:
+        # The store's ENTRIES, not `old/.`: given the directory itself cp
+        # ends by setting the destination's own times, which a squashed
+        # export refuses for a root it does not let this account own, and
+        # an otherwise complete copy (of an empty store, the first time)
+        # came back as a failure. An empty store has nothing to copy.
+        try:
+            entries = sorted(os.path.join(old, e) for e in os.listdir(old))
+        except OSError as e:
+            job.say(f"refused: could not read {old}: {e}\n")
+            return False
+        if entries and self._sh(job, argv + entries + [new + "/"], timeout=21600) != 0:
             job.say(f"refused: the copy failed. {role} still points at {old}, "
                     f"which is untouched.\n")
             return False
@@ -4054,8 +4316,8 @@ class Agent:
                     f"and empty now\n")
         for path, why in kept:
             job.say(f"{role}: {path} stays ({why})"
-                    + (f" — the old copy is in there; remove it yourself when you are "
-                       f"satisfied the move worked\n" if "empty" in (why or "").lower()
+                    + (": the old copy is in there; remove it yourself when you are "
+                       "satisfied the move worked\n" if "empty" in (why or "").lower()
                        else "\n"))
 
     def _apply_network(self, job, cfg):
@@ -4212,7 +4474,7 @@ class Agent:
             os.remove(tar_path)
         self.own_dir(d, who)
         if who:
-            for dd, dirs, files in os.walk(d):
+            for dd, _dirs, files in os.walk(d):
                 for x in [dd] + [os.path.join(dd, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
@@ -4328,8 +4590,10 @@ class Agent:
             job.say("runner removed\n")
             return "succeeded", 0
         url = str(cfg.get("url") or "")
-        if not url.startswith("https://"):
-            job.say(f"refused: the runner registers with an https address, not {url!r}\n")
+        # http as well as https: a Gitea on the LAN, and the controller
+        # accepted the address the same way when the token was stored.
+        if not url.startswith(("https://", "http://")):
+            job.say(f"refused: the runner registers with an https address (or http on your own network), not {url!r}\n")
             return "failed", 65
         labels = [re.sub(r"[^A-Za-z0-9._-]", "", str(x)) for x in (cfg.get("labels") or [])]
         labels = [x for x in labels if x][:16] or ["builderbot", "self-hosted"]
@@ -4346,7 +4610,7 @@ class Agent:
                     with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
-                                 if re.fullmatch(rf"act_runner-[0-9.]+-linux-{arch}", a.get("name", "")))
+                                 if re.fullmatch(rf"(gitea-runner|act_runner)-[0-9.]+-linux-{arch}", a.get("name", "")))
                 except (OSError, ValueError, StopIteration, KeyError) as e:
                     job.say(f"could not find the act_runner release: {e}\n")
                     return "failed", 69
@@ -4374,14 +4638,25 @@ class Agent:
                                            "runner_id": str(installed.get("id") or "")}, timeout=60)
             with contextlib.suppress(OSError):
                 os.remove(os.path.join(d, ".runner"))
-        job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
-        code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", url,
+        # act_runner's --instance is the forge's ROOT: the scope (an
+        # organisation or a repository) is what the registration token
+        # carries. Given the organisation's URL it pings /lab/api/... and
+        # retries a 404 forever (measured against a real Gitea, 15 Sep).
+        u = urllib.parse.urlsplit(url)
+        instance = f"{u.scheme}://{u.netloc}"
+        job.say(f"registering {name} with {url} (instance {instance}) [{','.join(labels)}]\n")
+        code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", instance,
                                           "--token", r["token"], "--name", name,
                                           "--labels", ",".join(f"{x}:host" for x in labels)])
         if code != 0:
             return "failed", code
         with open(os.path.join(d, ".builderbot-labels"), "w") as f:
             f.write(",".join(labels))
+        # The address the token was stored for, beside the labels: .runner
+        # records only the root it registered with, and the row says the
+        # organisation or repository, which is what a person typed.
+        with open(os.path.join(d, ".builderbot-url"), "w") as f:
+            f.write(url)
         logs = ci_log_dir(self.state)
         self.own_dir(logs, who)
         with contextlib.suppress(OSError):

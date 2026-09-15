@@ -35,6 +35,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import urllib.parse
 import zipfile
 from pathlib import Path
 
@@ -83,10 +84,26 @@ def write_token(project, token, host, scheme="https", user=""):
     # host. link() is where the plaintext hop is said out loud.
     if scheme not in ("https", "http"):
         scheme = "https"
+    # Percent-encoded, the way git's own credential-store writes a line: it
+    # decodes on the way back, and a token carrying a / or an @ written raw
+    # would be read as part of the host, matching nothing.
+    q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
     fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
-        fh.write(f"{scheme}://{user or 'oauth2'}:{token}@{host}\n")
+        fh.write(f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}\n")
     return f"store --file={f}"
+
+
+def token_target(project):
+    """The scheme and host a project's stored token was written for, or
+    None: what an https remote has to be spelled with to use it."""
+    f = STATE / "gitcreds" / project
+    try:
+        line = f.read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    m = re.match(r"(https?)://[^@/]*@([A-Za-z0-9.:-]+)$", line)
+    return {"scheme": m.group(1), "host": m.group(2)} if m else None
 
 
 def token_helper(project):
@@ -478,11 +495,22 @@ def rename(req):
             moved.append("its push rights")
         except OSError as e:
             failed.append(f"push-rights.json: {e}")
-    # A new token replaces whatever moved, and is written under the NEW name —
-    # so the order matters: the move first, this second.
+    # A new token replaces whatever moved, and is written under the NEW name,
+    # so the order matters: the move first, this second. For the remote's
+    # host and scheme, the same as a settings-only save: a line written for
+    # no host is one git reads and ignores (this called write_token with the
+    # token alone, which was a 500 on every rename that carried one).
     if token:
-        write_token(new, token)
-        moved.append("a new access token")
+        addr = forges.parse(origin_url(dest))
+        if addr:
+            host = forges.host_of(origin_url(dest)) or addr["host"]
+            forge = forges.forge_of(host)
+            scheme = "http" if addr["scheme"] == "http" else "https"
+            write_token(new, token, host, scheme,
+                        forges.cred_user(forge, host, token, scheme))
+            moved.append("a new access token")
+        else:
+            failed.append("the access token: the project has no remote to store one for")
     elif clear:
         forget_token(new)
         moved.append("its access token, removed")
@@ -780,7 +808,11 @@ def set_auth(project, dest, mode):
         # Remembered BEFORE the rewrite, or switching back has nothing to go on.
         if now == "ssh":
             _remember_ssh(project, origin_url(dest))
-        url = f"https://{host}/{repo}.git"
+        # Spelled the way the token was stored: git matches a credential on
+        # scheme and host, port included, so a Gitea on plain http or on
+        # :3000 written here as https://host would authenticate with nothing.
+        stored = token_target(project) or {}
+        url = f"{stored.get('scheme') or 'https'}://{stored.get('host') or host}/{repo}.git"
     r = run(["git", "-C", str(dest), "remote", "set-url", "origin", url],
             timeout=15)
     if r["code"] != 0:
@@ -1173,6 +1205,8 @@ def create(req):
         named = forges.forge_of(addr["host"])
         forge = (named if named["id"] != forges.OTHER["id"]
                  else (forges.get(_field(req, "forge")) or named))
+        if not forges.allowed(forge):
+            return {"error": forges.not_offered(forge)}, 400
         if forge["fixed"] and forge["host"] and forge["host"] != addr["host"].split(":")[0].lower():
             return {"error": f"{forge['name']} is {forge['host']}, and that "
                              f"address is on {addr['host']}"}, 400
@@ -1682,6 +1716,8 @@ def link(req):
     # wrong one for it is a contradiction rather than an override.
     forge = forges.get(_field(req, "forge")) or forges.forge_of(host)
     named = forges.forge_of(host)
+    if not forges.allowed(forge):
+        return {"error": forges.not_offered(forge)}, 400
     if named["id"] != forges.OTHER["id"] and named["id"] != forge["id"]:
         return {"error": f"{host} is {named['name']}, so it cannot be linked "
                          f"as {forge['name']}"}, 400
@@ -1694,6 +1730,7 @@ def link(req):
     pat = gh_authed() and forge["id"] == "github"
     token = _field(req, "token").strip()
     helper = ""
+    user = ""
     if token:
         # A token for this project alone, the way the clone dialog takes one:
         # checked with the host first where there is an API to ask, then
@@ -1730,7 +1767,7 @@ def link(req):
     if not _start("link", name,
                   lambda: _link(dest, name, forge, host, path, remote,
                                 bool(keyname), pat, helper=helper, token=token,
-                                scheme=addr["scheme"])):
+                                scheme=addr["scheme"], user=user)):
         return {"error": "another project job is already running"}, 409
     return {"ok": True, "name": name, "started": True}, 200
 
@@ -1802,7 +1839,7 @@ def _missing(blame):
 
 
 def _link(dest, name, forge, host, path, remote, keyed, pat,
-          helper="", token="", scheme="https"):
+          helper="", token="", scheme="https", user=""):
     """The worker half: prove the remote is empty, then set it and push.
 
     There is no lock around check-then-add: two racing links resolve at
@@ -1839,7 +1876,7 @@ def _link(dest, name, forge, host, path, remote, keyed, pat,
                         f"cannot create one there — make it empty on "
                         f"{host} and link again."), ""
             _step(f"creating it on {where}")
-            why = forges.create_repo(forge, host, token, path, scheme)
+            why = forges.create_repo(forge, host, token, path, scheme, user)
             if why:
                 return why, ""
             created = f"created {path} on {where} (private); "

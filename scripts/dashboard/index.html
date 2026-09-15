@@ -1242,7 +1242,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* A `font:` shorthand carries the SIZE with it, and this selector outranks
    the shared phone rule, so this field alone stayed 12px on a phone and iOS
    zoomed into a layout that cannot zoom back. Every other control that sets
-   its own font says so again here (`.dmpick select`, the sidebar's selects);
+   its own font says so again here (the chat bar, the code box);
    this one had been forgotten, and uniform.mjs caught it. */
 @media(max-width:900px){ .verinit .vstart{font-size:16px} }
 .verinit .vdir{flex:0 1 auto;min-width:0}
@@ -1325,7 +1325,15 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .tab.pc{border-left:3px solid var(--pc)}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
-.row[data-row].pc{box-shadow:inset 3px 0 var(--pc)}
+.row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
+/* The containers under a dev instance's row: one line each, the running
+   ones in the ok colour, the rest dim. */
+.dmsvcs{line-height:1.5}
+.dmsvc.ok{color:var(--accent)}
+/* The project's node beside its name: a sibling of .name, so the name
+   element stays the name and nothing else. */
+.namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
+.namerow .pnode{font:var(--f-ui);white-space:nowrap}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -1907,12 +1915,15 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
+/* The notebook's Docker view draws the manager's rows under its own class:
+   the suites address the manager as .dmtab, and a second element wearing
+   that name, parked and hidden, was the first one they found. */
 /* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
    is right (340px of column wants tight rows), but in a pane it left these
    tabs visibly narrower than the notebook next to them, which is the sort of
    difference you only see once and then cannot stop seeing. The notebook's
    bands are 11px/14px; so are these. */
-.projtab .row,.dmtab .row,.doctab .row,
+.projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
@@ -2072,13 +2083,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      log tail on some states, and a positional rule would put those in a
      column the day one appears. Everything unnamed spans, which is what those
      are: full-width things that happen to live in the same box. */
-  .dmtab .row.stack2 .grow{
+  .dmtab .row.stack2 .grow,.dkrows .row.stack2 .grow{
     display:grid;
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
-  .dmtab .row.stack2 .grow > *{grid-column:1 / -1}
-  .dmtab .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .grow > *,.dkrows .row.stack2 .grow > *{grid-column:1 / -1}
+  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmports,.dkrows .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
@@ -2246,7 +2257,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
@@ -2279,7 +2290,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
+  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2365,7 +2376,7 @@ button[aria-busy="true"]{opacity:.75}
 .ndconfstate.note{color:var(--note)}
 /* The mapping's row is an action bar (its field, then Save and Check), so
    it lays out like every other bar; the input takes the room before them. */
-.ndpaths input{flex:1 1 auto;min-width:0}
+.ndpaths input,.ndname input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
 /* The two settings a container row carries, as one block rather than two
@@ -2407,9 +2418,11 @@ button[aria-busy="true"]{opacity:.75}
 .jbfilter input{width:15px;height:15px;flex:0 0 auto}
 .jberr.warn{color:var(--warn)}
 /* The manager's node picker select keeps the house control font wherever it
-   renders: .dmtab predates the scaffold's groups. */
+   renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
+   select never zooms iOS, so it keeps the size of the text beside it and
+   takes the finger height instead (uniform.mjs measures both ways). */
 .dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
-@media(max-width:900px){ .dmpick select{font-size:16px} }
+@media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */
@@ -2931,6 +2944,7 @@ body.booting .pane>.loading{margin:auto}
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
       <button type="button" data-v="artifacts">Artifacts</button>
+      <button type="button" data-v="docker">Docker</button>
       <button type="button" data-v="tests">Tests</button>
       <button type="button" data-v="analysis">Analysis</button>
     </div>
@@ -3120,6 +3134,15 @@ body.booting .pane>.loading{margin:auto}
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+    </div>
+    <!-- This project's containers: its own dev instances and anything made
+         with "show under" naming it, with the manager's rows and controls,
+         so nobody has to find them among every project's on the Docker
+         tab. Read from the project's node, which is where its work runs. -->
+    <div class="nbview" data-view="docker" hidden>
+      <div class="field nbhead vbar"><span id="dkHint">reading…</span><span class="sp"></span>
+        <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
+      <div class="dkrows" id="dkList"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
       <!-- The repository, read out (roadmap R36): what is changed and not
@@ -3364,17 +3387,6 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
     </div>
-    <!-- What a session may do here without stopping to ask. Per project,
-         because trust is: a codebase somebody has just uploaded is a project
-         where confirming every file is all the first session does. -->
-    <div class="field" id="rnEditsField">
-      <div class="setrow col">
-        <label class="lbl" for="rnEdits">Without asking<span class="help"
-          data-tip="The file tools, inside this project only. A shell command, a push and anything outside the tree still ask, and a sibling project, VERSION and the house rules stay refused whatever this says."
-          tabindex="0">?</span></label>
-        <select id="rnEdits" aria-label="what a session may do without asking"></select>
-      </div>
-    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -3383,6 +3395,12 @@ body.booting .pane>.loading{margin:auto}
            undone. Only on the chain's door: it is about the remote, and the
            gear is about the project. -->
       <span class="sp"></span>
+      <!-- ...and the gear's own: the bin. It is also on the All projects
+           tab's rows, behind the fold on a phone, which is where it was
+           not being found (the operator, 15 Sep). Same confirm, same
+           /api/trash: every file kept under /workspace/.trash. -->
+      <button id="rnDelete" class="danger" hidden
+        title="move this project to /workspace/.trash, every file kept; its roadmap, bugs and memories stay">Delete project…</button>
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
   </div>
@@ -3408,6 +3426,12 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="cNodeField" hidden>
       <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
+    </div>
+    <!-- Which project's notebook lists it as well: a dev radarr for a media
+         project belongs under that project's Docker view, not only here. -->
+    <div class="field">
+      <label for="cUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container beside its own; the manager lists it either way" tabindex="0">?</span></label>
+      <select id="cUnder"></select>
     </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
@@ -3448,6 +3472,10 @@ body.booting .pane>.loading{margin:auto}
              placeholder="e.g. staging">
       <div class="hint" id="dnHint"></div>
       <div class="hint" id="dnPreview" hidden></div>
+    </div>
+    <div class="field">
+      <label for="dnUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container; its own by default" tabindex="0">?</span></label>
+      <select id="dnUnder"></select>
     </div>
     <div class="field" id="dnNodeField" hidden>
       <label for="dnNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
@@ -3682,6 +3710,7 @@ body.booting .pane>.loading{margin:auto}
   </svg>
   <h1>BuilderBot</h1>
   <span class="meta host" id="host"></span>
+  <span class="pill" id="devtag" title="dev features, the ones not yet vetted, are offered on this dashboard (Settings)" hidden>dev</span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <!-- The build stamp, as a control. It used to be a bare span whose detail
@@ -4915,7 +4944,7 @@ function drawTabs(){
     const held = drag?.moved && drag.id === t.id ? " held" : "";
     // A notebook wears its project's colour; a tool tab wears the icon its
     // button on the Tools card carries.
-    const pc = t.kind === "todo" ? colorAttrs(projectColor(t.arg)) : {cls: "", style: ""};
+    const pc = colorAttrs(projectColor(tabProject(t)));
     const icon = TABKINDS[t.kind]?.icon || "";
     return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style}>
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
@@ -5114,6 +5143,10 @@ function paintBar(pane, t, i){
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
+  // The project's colour on the strip too, so a split pane says whose it is.
+  const tone = colorTone(projectColor(tabProject(t)));
+  bar.classList.toggle("pc", !!tone);
+  bar.style.setProperty("--pc", tone || "");
   bar.querySelectorAll("[data-cp]").forEach(b =>
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
@@ -5489,7 +5522,7 @@ window.addEventListener("focus", nudgeTerminals);
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.
 // The Claude card: the standing model/effort every send applies. Options are
-// the same tables the send box used to carry; "leave as is" is the empty
+// the same tables the send box used to carry; "Claude's default" is the empty
 // value, which sends no switch at all.
 // What each policy MEANS, since the stored word is a permission level and
 // the question the operator is answering is "how much of this may Claude
@@ -5504,17 +5537,41 @@ const POLICY_LABEL = {
   minor: "patch and minor",
   open: "anything, including major",
 };
-const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
+const MODELS = [["", "Claude's default"], ["opus", "Opus"], ["sonnet", "Sonnet"],
                 ["haiku", "Haiku"], ["fable", "Fable"]];
-const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
+const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
                  ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
+// What Claude's default here actually IS, read from the last transcript
+// when the dialog opens: with nothing set the picker used to read "leave
+// as is", which says nothing, and choosing the model the session was
+// already on counted as a change and asked to restart it. The picker now
+// shows that model, and picking it is picking the default.
+let rnModelNow = "";
+const rnModelPick = () => {
+  const v = $("rnModel").value;
+  return rnPrefWas.model === "" && v === rnModelNow ? "" : v;
+};
+function rnLoadModelNow(name){
+  rnModelNow = "";
+  fetch(`/api/claude-now?project=${encodeURIComponent(name)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (rnFor !== name || !j.model) return;
+      rnModelNow = j.model;
+      if (rnPrefWas.model === "" && MODELS.some(([v]) => v === j.model)){
+        $("rnModel").value = j.model;
+        rnDrawPrefs();
+      }
+    })
+    .catch(() => {});
+}
 
 // What the dialog was opened showing, so Save can tell a real change from a
 // dialog that was merely looked at: the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
-                 gate: "", edits: "ask", color: ""};
+                 gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -5530,6 +5587,10 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+// The project a tab is about, for its colour: a notebook's, or the project
+// whose Claude session a terminal tab holds. A plain shell has none.
+const tabProject = t => t.kind === "todo" ? t.arg
+  : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
 const rnColorNow = () =>
   $("rnColor").querySelector('[aria-checked="true"]')?.dataset.color || "";
 function rnFillColor(cur){
@@ -5540,13 +5601,6 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-// What a session may change without asking (prefs.edits), which the launcher
-// turns into Claude Code's own permission mode in the session's settings
-// file. It covers the FILE TOOLS and nothing else, so a project set to the
-// second one still asks about every shell command. The deny list is untouched
-// by either.
-const EDIT_MODES = [["ask", "nothing, confirm everything"],
-                    ["accept", "this project's files"]];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
@@ -5558,11 +5612,11 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
-               edits: p?.prefs?.edits || "ask",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   rnFillNode();
   rnFillPrefsRest(p);
+  rnLoadModelNow(rnFor);
 }
 
 // The project's node: every node but this container, because local can
@@ -5615,8 +5669,7 @@ function rnFillPrefsRest(p){
     el.value = p?.prefs?.gate?.[k] || "auto";
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
-                                  ["rnEffort", EFFORTS, rnPrefWas.effort],
-                                  ["rnEdits", EDIT_MODES, rnPrefWas.edits]]){
+                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       el.innerHTML = table.map(([v, l]) =>
@@ -5637,9 +5690,11 @@ function rnDrawPrefs(){
   const shut = !!p?.locked;
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(myClaude(rnFor));
-  const changed = $("rnModel").value !== rnPrefWas.model
-               || $("rnEffort").value !== rnPrefWas.effort
-               || $("rnEdits").value !== rnPrefWas.edits;
+  const changed = rnModelPick() !== rnPrefWas.model
+               || $("rnEffort").value !== rnPrefWas.effort;
+  const dflt = rnPrefWas.model === "" && rnModelNow
+    ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
+      + `own default here, so leaving it is not a change.` : "";
   $("rnPrefHint").textContent = shut
     ? "Locked; this project is yours to run, so no session starts here."
     : running
@@ -5647,8 +5702,8 @@ function rnDrawPrefs(){
           ? "A session is running here. Saving restarts it onto this: the "
             + "conversation is resumed, but anything mid-turn is lost."
           : "Applied when a session starts. One is running here, so changing "
-            + "this restarts it onto the same conversation.")
-      : "Applied the next time Claude starts here, and kept until you change it.";
+            + "this restarts it onto the same conversation." + dflt)
+      : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
 }
 
@@ -7053,7 +7108,7 @@ function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
       <div class="grow">
-        <div class="name">${esc(p.name)}${p.locked
+        <div class="namerow"><div class="name">${esc(p.name)}${p.locked
           // After the name, because it is a fact about the project rather
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
@@ -7065,7 +7120,7 @@ function projectRow(p, live, cls, inTab){
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
-          : ""}</div>
+          : ""}</div><span class="dim pnode">(node: ${esc(p.node_name || "none")})</span></div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
 
@@ -7175,13 +7230,16 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // session here, and a row that said it had a line spent on something
         // nobody was asking.
         //
-        // A project that cannot start one says so in red whenever it is not
-        // LOCKED, which is the one case where no session is the point rather
-        // than a fault. Short: what is wrong and not what to do about it,
-        // because the fix runs to a paragraph on some of these and the
-        // ghosted button's tooltip is where a paragraph is free (the rows are
-        // tipified, so that is a tap on a phone as well as a hover).
-        : p.session_why && !p.locked
+        // A project whose NODE cannot start one says so in red whenever it
+        // is not LOCKED, which is the one case where no session is the point
+        // rather than a fault. Short: what is wrong and not what to do about
+        // it, because the fix runs to a paragraph on some of these and the
+        // ghosted button's tooltip is where a paragraph is free (the rows
+        // are tipified, so that is a tap on a phone as well as a hover). A
+        // project with no node says nothing here: "(node: none)" beside the
+        // name is the whole fact, and a sentence about sessions under every
+        // such row was noise (the operator's call, 15 Sep).
+        : p.session_why && p.session_at && !p.locked
           ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why))}</div>` : ""}
     </div>
 `;
@@ -8261,9 +8319,11 @@ function dockerNodeKeep(){
 
 let dockerAsk = 0;                       // which ask is newest, so an older
                                          // answer landing late cannot win
+let dockerFetching = false;        // an answer is on its way: the tab says so
 async function loadDocker(){
   const asked = dockerNode;
   const ask = ++dockerAsk;
+  dockerFetching = true;
   let got;
   try{
     got = await (await fetch("/api/docker"
@@ -8273,6 +8333,7 @@ async function loadDocker(){
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
+  if (ask === dockerAsk) dockerFetching = false;
   if (asked !== dockerNode) return;
   // A newer ask is in flight or has landed: Refresh under a revision reload,
   // or a reload under Refresh. This answer is about an earlier moment, and a
@@ -8308,6 +8369,7 @@ function openSendToDocker(project){
     + "a project's name, as long as no other container has it.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
+  fillUnderSelect($("dnUnder"), project);
   fillNodeSelect($("dnNode"), $("dnNodeField"),
                  state?.projects?.find(p => p.name === project)
                    ?.prefs?.node || dockerNode);
@@ -8389,6 +8451,7 @@ async function dnSubmit(){
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project, action:"new", instance:name,
+                            for: $("dnUnder").value,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
@@ -8460,6 +8523,15 @@ const dmRouteDraft = {};
 // pick when it was a switch, which is a control that cannot be reconsidered
 // and reads differently from every other setting on the page.
 const dmGrantDraft = {};
+// Where a session's tests run, per project (roadmap R48, step 3): the same
+// draft-then-Apply shape as the dial above it. `either` is the default; on
+// `only`, bb test refuses when the container is down rather than running on
+// the node, which is the whole point for a project that IS the container.
+const DEVTEST_MODES = [["either", "in it when it is up, else on the node"],
+                       ["only", "only in it, never on the node"]];
+const dmTestDraft = {};
+const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
+                             ? "only" : "either");
 
 function dmRouteLine(d){
   const r = d.route;
@@ -8547,6 +8619,28 @@ function dmGrantLine(d){
     <button type="button" data-dmclaudeapply="${esc(d.project)}"${
       pick === saved ? " disabled" : ""} title="save who may rebuild ${
       esc(d.project)}'s containers">Apply</button></div>`;
+}
+
+function dmTestLine(d){
+  if (d.source === "file" || !mayDocker()) return "";
+  const saved = devTestMode(d.project);
+  const pick = dmTestDraft[d.project] ?? saved;
+  return `<div class="sub dmgrant"><label for="${
+      esc(`dmt-${d.project}`)}">Claude tests${
+    helpIcon(`Where bb test runs for ${d.project}. Inside this container `
+      + `whenever it is up either way; on "only" a container that is down is `
+      + `a refusal naming it, and nothing runs on the node, so a suite that `
+      + `tests ${d.project} cannot disturb the ${d.project} it runs beside. `
+      + `A stale container then tests stale code: the rebuild dial governs `
+      + `testing too.`)}</label>
+    <select id="${esc(`dmt-${d.project}`)}" data-dmtest="${esc(d.project)}"
+            data-was="${esc(saved)}"
+            aria-label="where a session runs ${esc(d.project)}'s tests">${
+      DEVTEST_MODES.map(([v, l]) => `<option value="${v}"${
+        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+    <button type="button" data-dmtestapply="${esc(d.project)}"${
+      pick === saved ? " disabled" : ""} title="save where ${
+      esc(d.project)}'s tests run">Apply</button></div>`;
 }
 
 function dockerJob(){
@@ -8767,10 +8861,18 @@ async function openEditContainer(name){
              $("cErrWrap").hidden = false; }
 }
 
+// The "show under" picker: every project this account sees, none first.
+function fillUnderSelect(sel, picked){
+  const names = (state?.projects || []).map(p => p.name).sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">none</option>` + names.map(n =>
+    `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(n)}</option>`).join("");
+}
+
 function openNewContainer(){
   cEditing = null;
   $("cName").disabled = false;
   $("cName").value = "";
+  fillUnderSelect($("cUnder"), "");
   // Left EMPTY, both of them. The shape each wants is on the field as a
   // placeholder, which shows the same thing and cannot be submitted: seeded
   // as values, an example compose for a radarr nobody asked for was one
@@ -8826,6 +8928,7 @@ async function cSubmit(){
                             name: editing || $("cName").value,
                             node: editing ? "" : ($("cNodeField").hidden
                               ? "" : $("cNode").value),
+                            for: editing ? "" : $("cUnder").value,
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
@@ -8912,36 +9015,11 @@ function dmState(d, job, mine, busy, blind){
   return "never built";
 }
 
-function renderDockerInto(i){
-  const el = $("doc" + i);
-  if (!el) return;
-  el.classList.add("flush");
-  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
-  // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
-  // is not running. This used to end here, in one error line with no rows: the
-  // page threw away everything it could still honestly say, which is most of
-  // it. What an instance IS lives on this side (its name, its project, what it
-  // was built from, what its env still wants); only whether it is RUNNING is
-  // the daemon's to know. So the rows are drawn from the store, greyed, and
-  // say nothing about their state: an unreachable daemon is not evidence that
-  // anything stopped.
-  // Three ways to be blind, and the poll's is the one that outlives a fetch:
-  // a list read while the daemon was up is stale the moment the poll says it
-  // is down, and going on showing "running" from it would be the page's own
-  // memory presented as the daemon's answer.
-  // The poll's verdict is about the DEFAULT node, so it speaks for this view
-  // only while this view IS the default one. Computed once, because `blind`
-  // and the gate below both used to ask and only one of them narrowed it.
-  const pollSays = dmPollSays();
-  const blind = dmBlind();
-  const ins = dockerList.instances || [];
-  const cs = dockerList.containers || [];
-  const job = dockerJob();
-  // The dashboard's own first, each with the controls that used to live on the
-  // artifact row; this is where they went, and the row now only sends you
-  // here. Grouped by nothing: the project is on every line, and a heading per
-  // project would put a lot of chrome around lists that are usually one long.
-  const rows = ins.map(d => {
+// One instance row: the same markup wherever the row is drawn, the Docker
+// tab and a project's notebook (its Docker view). `job` is the compose job
+// the answer carried and `blind` whether the daemon answered at all.
+function dmRowsHtml(ins, job, blind){
+  return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
     // row can say how it ended, and "busy" must not follow it there: a
     // stopped build would otherwise keep its Abort and its ghosted buttons
@@ -8959,13 +9037,19 @@ function renderDockerInto(i){
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
-          : `${esc(d.project)} · ${esc(d.instance)}`}</div>
+          : `${esc(d.project)} · ${esc(d.instance)}`}${
+          d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
+          `<span class="dmsvc ${c.state === "running" ? "ok" : "dim"}" title="${esc(c.image || "")}">${
+            esc(c.service || c.name)}: ${esc(c.status || c.state)}${
+            (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
         ${dmRefLine(d)}
         ${dmGrantLine(d)}
+        ${dmTestLine(d)}
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -9037,7 +9121,186 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
                    "Ports and mounts", "",
                    `<div class="wire">reading…</div>`, {open: false})}
     </div>`;
-  }).join("") + cs.map(c => `
+  }).join("");
+}
+
+// ...and the handlers those rows need, wired onto whichever element holds
+// them. `list` is the answer the rows were drawn from, for the saved values
+// a pick is compared against.
+function dmWireRows(el, list = dockerList){
+  wireSections(el);
+  el.querySelectorAll("details.sect").forEach(d => {
+    const sum = d.querySelector(":scope > summary");
+    if (!sum) return;
+    sum.onclick = (e) => {
+      e.preventDefault();
+      const willOpen = !d.open;
+      slideDetails(d, willOpen);
+      if (willOpen && !d.dataset.done) loadWire(d);
+    };
+  });
+  el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
+    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
+    dmAction(project, instance, btn.dataset.dm, btn);
+  });
+  // Whose Rebuild it is. Written at once, like the row's other controls, and
+  // the answer redraws every row of that project; it is the project's
+  // setting, not the instance's.
+  // Staged on the pick, written by Apply: the same shape as the route line
+  // above it, and as every other setting on the page.
+  el.querySelectorAll("[data-dmref]").forEach(sel => sel.onchange = () => {
+    const key = sel.dataset.dmref;
+    const row = sel.closest("[data-inst]");
+    const saved = (list?.instances || []).find(
+      x => `${x.project}|${x.instance}` === key)?.ref || "";
+    if (sel.value === saved) delete dmRefDraft[key];
+    else dmRefDraft[key] = sel.value;
+    const b = row?.querySelector("[data-dmrefapply]");
+    if (b) b.disabled = sel.value === saved;
+  });
+  el.querySelectorAll("[data-dmrefapply]").forEach(btn => btn.onclick = async () => {
+    const key = btn.dataset.dmrefapply;
+    const [project, instance] = key.split("|");
+    const ref = dmRefDraft[key];
+    if (ref === undefined) return;
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "ref", ref})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmRefDraft[key];
+      notify(ref ? `${project}/${instance} builds from ${ref} now`
+                 : `${project}/${instance} builds from the project's own checkout again`);
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("the branch: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
+  el.querySelectorAll("[data-dmtest]").forEach(sel => sel.onchange = () => {
+    const project = sel.dataset.dmtest;
+    if (sel.value === sel.dataset.was) delete dmTestDraft[project];
+    else dmTestDraft[project] = sel.value;
+    const b = el.querySelector(`[data-dmtestapply="${CSS.escape(project)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-dmtestapply]").forEach(btn => btn.onclick = async () => {
+    const project = btn.dataset.dmtestapply;
+    const mode = dmTestDraft[project];
+    if (!mode) return;
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devtest: mode === "only"})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmTestDraft[project];
+      notify(mode === "only" ? `${project}'s tests run only inside its container now`
+             : `${project}'s tests run on the node again when its container is down`);
+      refresh();
+      dockerRev++; drawPanes();
+    }catch(e){ notify("where the tests run: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
+  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
+    const project = sel.dataset.dmclaude;
+    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
+    else dmGrantDraft[project] = sel.value;
+    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
+    if (b) b.disabled = sel.value === sel.dataset.was;
+  });
+  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
+    const project = btn.dataset.dmclaudeapply;
+    const mode = dmGrantDraft[project];
+    if (!mode) return;
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, devbuild: mode})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmGrantDraft[project];
+      notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
+             : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
+             : `rebuilding ${project}'s containers is yours again`);
+      refresh();
+      dockerRev++; drawPanes();
+    }catch(e){ notify("the dial: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
+  // The route is saved on Apply, not on the pick (docs/design-language.md,
+  // Settings): a pick wakes the button when it differs from what is saved.
+  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = () => {
+    const row = sel.closest("[data-inst]");
+    const d = dmRouteDraft[row.dataset.inst] || (dmRouteDraft[row.dataset.inst] = {});
+    d[sel.dataset.route] = sel.value;
+    const dirty = [...row.querySelectorAll("[data-route]")].some(x => x.value !== x.dataset.was);
+    if (!dirty) delete dmRouteDraft[row.dataset.inst];
+    const b = row.querySelector("[data-routeapply]");
+    if (b) b.disabled = !dirty;
+  });
+  el.querySelectorAll("[data-routeapply]").forEach(btn => btn.onclick = async () => {
+    const row = btn.closest("[data-inst]");
+    const [project, instance] = row.dataset.inst.split("|");
+    const sel = row.querySelector('[data-route="mode"]');
+    const mode = sel?.value || "lan";
+    const port = row.querySelector('[data-route="port"]')?.value || "";
+    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
+        `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
+        + `https URL on the node: anyone with the link can reach the port. Turning the `
+        + `route back to lan closes it.`)){
+          row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
+          btn.disabled = true; delete dmRouteDraft[row.dataset.inst]; return; }
+    delete dmRouteDraft[row.dataset.inst];
+    busy(btn, "Applying");
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"route", mode, port})});
+      const j = await r.json();
+      if (j.error) notify(j.error, true);
+    }catch(e){ notify("route: " + e, true); }
+    dockerList = null; dockerRev++; loadDocker();
+  });
+}
+
+function renderDockerInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  el.classList.add("flush");
+  // An answer on its way is not a blank page: a build makes the daemon's
+  // ps slow, and the operator watched the whole tab turn to "loading" for
+  // the length of a build. The last answer for this node stays on screen
+  // with a note, and the new one repaints when it lands (B125).
+  if (!dockerList && dockerSeen[dockerNode || ""]) dockerList = dockerSeen[dockerNode || ""];
+  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
+  // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
+  // is not running. This used to end here, in one error line with no rows: the
+  // page threw away everything it could still honestly say, which is most of
+  // it. What an instance IS lives on this side (its name, its project, what it
+  // was built from, what its env still wants); only whether it is RUNNING is
+  // the daemon's to know. So the rows are drawn from the store, greyed, and
+  // say nothing about their state: an unreachable daemon is not evidence that
+  // anything stopped.
+  // Three ways to be blind, and the poll's is the one that outlives a fetch:
+  // a list read while the daemon was up is stale the moment the poll says it
+  // is down, and going on showing "running" from it would be the page's own
+  // memory presented as the daemon's answer.
+  // The poll's verdict is about the DEFAULT node, so it speaks for this view
+  // only while this view IS the default one. Computed once, because `blind`
+  // and the gate below both used to ask and only one of them narrowed it.
+  const pollSays = dmPollSays();
+  const blind = dmBlind();
+  const ins = dockerList.instances || [];
+  const cs = dockerList.containers || [];
+  const job = dockerJob();
+  // The dashboard's own first, each with the controls that used to live on the
+  // artifact row; this is where they went, and the row now only sends you
+  // here. Grouped by nothing: the project is on every line, and a heading per
+  // project would put a lot of chrome around lists that are usually one long.
+  const rows = dmRowsHtml(ins, job, blind) + cs.map(c => `
     <div class="row stack2 off">
       <div class="grow">
         <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
@@ -9122,7 +9385,10 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
         <button type="button" data-rdeny="${a.id}">Deny</button>
         <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
       </span></div>`).join("");
-  el.innerHTML = `<div class="dmtab">${picker}${askRows}${note
+  // `dmstale` while the rows are the last answer and a new one is on its
+  // way: what a reader waiting on a refresh looks at, and what the note
+  // below says in words.
+  el.innerHTML = `<div class="dmtab${dockerFetching ? " dmstale" : ""}">${picker}${askRows}${note
       ? `<div class="empty">${esc(note)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -9132,7 +9398,8 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
       : "nothing on this daemon yet"}</div>`}
     <div class="actbar macros">${mayDocker()
         ? `<button id="bDockerNew">New container</button>` : ""
-      }<button id="bDockerRe">Refresh</button></div></div>`;
+      }<button id="bDockerRe">Refresh</button>${
+      dockerFetching ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
   gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
   // when the job moved, so between draws the reader keeps whatever scroll
@@ -9174,116 +9441,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>`}
   // helper the notebook's folds already use, rather than watched afterwards.
   // wireSections first, for the remembered open state; then the click is
   // rebound, because this fold also has to fetch what it is about to show.
-  wireSections(el);
-  el.querySelectorAll("details.sect").forEach(d => {
-    const sum = d.querySelector(":scope > summary");
-    if (!sum) return;
-    sum.onclick = (e) => {
-      e.preventDefault();
-      const willOpen = !d.open;
-      slideDetails(d, willOpen);
-      if (willOpen && !d.dataset.done) loadWire(d);
-    };
-  });
-  el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
-    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
-    dmAction(project, instance, btn.dataset.dm, btn);
-  });
-  // Whose Rebuild it is. Written at once, like the row's other controls, and
-  // the answer redraws every row of that project; it is the project's
-  // setting, not the instance's.
-  // Staged on the pick, written by Apply: the same shape as the route line
-  // above it, and as every other setting on the page.
-  el.querySelectorAll("[data-dmref]").forEach(sel => sel.onchange = () => {
-    const key = sel.dataset.dmref;
-    const row = sel.closest("[data-inst]");
-    const saved = (dockerList?.instances || []).find(
-      x => `${x.project}|${x.instance}` === key)?.ref || "";
-    if (sel.value === saved) delete dmRefDraft[key];
-    else dmRefDraft[key] = sel.value;
-    const b = row?.querySelector("[data-dmrefapply]");
-    if (b) b.disabled = sel.value === saved;
-  });
-  el.querySelectorAll("[data-dmrefapply]").forEach(btn => btn.onclick = async () => {
-    const key = btn.dataset.dmrefapply;
-    const [project, instance] = key.split("|");
-    const ref = dmRefDraft[key];
-    if (ref === undefined) return;
-    busy(btn, "Applying");
-    try{
-      const r = await fetch("/api/devapp", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, instance, action: "ref", ref})});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); return; }
-      delete dmRefDraft[key];
-      notify(ref ? `${project}/${instance} builds from ${ref} now`
-                 : `${project}/${instance} builds from the project's own checkout again`);
-      dockerList = null; dockerRev++; loadDocker();
-    }catch(e){ notify("the branch: " + e, true); }
-    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
-  });
-  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
-    const project = sel.dataset.dmclaude;
-    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
-    else dmGrantDraft[project] = sel.value;
-    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
-    if (b) b.disabled = sel.value === sel.dataset.was;
-  });
-  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
-    const project = btn.dataset.dmclaudeapply;
-    const mode = dmGrantDraft[project];
-    if (!mode) return;
-    busy(btn, "Applying");
-    try{
-      const r = await fetch("/api/prefs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devbuild: mode})});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); return; }
-      delete dmGrantDraft[project];
-      notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
-             : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
-             : `rebuilding ${project}'s containers is yours again`);
-      refresh();
-      dockerRev++; drawPanes();
-    }catch(e){ notify("the dial: " + e, true); }
-    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
-  });
-  // The route is saved on Apply, not on the pick (docs/design-language.md,
-  // Settings): a pick wakes the button when it differs from what is saved.
-  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = () => {
-    const row = sel.closest("[data-inst]");
-    const d = dmRouteDraft[row.dataset.inst] || (dmRouteDraft[row.dataset.inst] = {});
-    d[sel.dataset.route] = sel.value;
-    const dirty = [...row.querySelectorAll("[data-route]")].some(x => x.value !== x.dataset.was);
-    if (!dirty) delete dmRouteDraft[row.dataset.inst];
-    const b = row.querySelector("[data-routeapply]");
-    if (b) b.disabled = !dirty;
-  });
-  el.querySelectorAll("[data-routeapply]").forEach(btn => btn.onclick = async () => {
-    const row = btn.closest("[data-inst]");
-    const [project, instance] = row.dataset.inst.split("|");
-    const sel = row.querySelector('[data-route="mode"]');
-    const mode = sel?.value || "lan";
-    const port = row.querySelector('[data-route="port"]')?.value || "";
-    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
-        `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
-        + `https URL on the node: anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){
-          row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
-          btn.disabled = true; delete dmRouteDraft[row.dataset.inst]; return; }
-    delete dmRouteDraft[row.dataset.inst];
-    busy(btn, "Applying");
-    try{
-      const r = await fetch("/api/devapp", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project, instance, action:"route", mode, port})});
-      const j = await r.json();
-      if (j.error) notify(j.error, true);
-    }catch(e){ notify("route: " + e, true); }
-    dockerList = null; dockerRev++; loadDocker();
-  });
+  dmWireRows(el, dockerList);
 }
 
 function renderPackagesInto(i){
@@ -9370,6 +9528,21 @@ function renderPackagesInto(i){
       : "The package store root could not be determined; this image may predate <code>bb packages</code>."}</div>
     ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
       pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${(() => {
+      // Held recipes whose system libraries this machine lacks (roadmap
+      // R51): the store is shared, so a package installed from one node is
+      // on every node, while the libraries it needs are each machine's own.
+      // One press installs the libraries and leaves the recipes alone.
+      const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
+      if (!unmet.length) return "";
+      const what = unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ");
+      return `<div class="pkghead warn pkgsys">System packages ${esc(d.name || "this node")} lacks
+          for what its store holds (${esc(d.sysdeps.family || "")}): ${what}.
+          ${d.sandbox
+            ? `<button type="button" id="pkgSysdeps"${busy || pstale ? " disabled" : ""}
+                 title="install these on ${esc(d.name || "the node")} without reinstalling the packages">Install system packages</button>`
+            : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
+    })()}
     <div class="pkgs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
     ${(() => {
@@ -9435,6 +9608,8 @@ function renderPackagesInto(i){
                                     pkgRev++; drawPanes(); loadPackages(); };
   const pre = el.querySelector("#pkgRefresh");
   if (pre) pre.onclick = () => loadPackages();
+  const sd = el.querySelector("#pkgSysdeps");
+  if (sd) sd.onclick = () => pkgAct("sysdeps");
   const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
   if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
   if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
@@ -9506,7 +9681,7 @@ async function pkgAct(action, only){
         headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
     return loadPackages();
   }
-  if (pkgNode !== "local" && !["install", "remove"].includes(action))
+  if (pkgNode !== "local" && !["install", "remove", "sysdeps"].includes(action))
     return notify("a node reports what it has installed, but checking upstream for newer "
                   + "versions is not something it does yet; that is a network round trip "
                   + "per toolchain and would have to be a job", true);
@@ -9514,8 +9689,9 @@ async function pkgAct(action, only){
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for
   // that one package and leave the others showing yesterday's answer.
-  const names = only || (action === "check" ? [] : [...pkgTicked]);
-  if (!names.length && action !== "check") return notify("tick something first", true);
+  const names = only || (action === "check" || action === "sysdeps" ? [] : [...pkgTicked]);
+  if (!names.length && action !== "check" && action !== "sysdeps")
+    return notify("tick something first", true);
   // The ticks stay: a package being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
@@ -9533,6 +9709,8 @@ async function pkgAct(action, only){
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
       ? "checking versions: each one asks its own upstream"
+      : action === "sysdeps"
+      ? "installing the system packages the held recipes need; the packages themselves are left alone"
       : `${action}: ${names.length} package(s); this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
@@ -9671,7 +9849,7 @@ function pDrawForge(){
   const sel = $("pForge");
   if (sel.dataset.built !== String(pForges.length)){
     sel.innerHTML = pForges.map(f =>
-      `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
+      `<option value="${esc(f.id)}">${esc(f.name)}${f.dev ? " (dev)" : ""}</option>`).join("");
     sel.dataset.built = String(pForges.length);
   }
   // Cloning: the URL is the subject and the host is in it, so this is not a
@@ -11796,8 +11974,9 @@ $("todoRevert").onclick = revertNotebook;
     // Save and Revert belong to the views that stage: roadmap, briefing and
     // the version on Artifacts. Bugs, tests and findings write through, and
     // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git"].includes(v);
+    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker"].includes(v);
     if (v === "git") loadGit();
+    if (v === "docker") loadNbDocker();
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
@@ -14401,6 +14580,37 @@ become that version's section when it is created">Changelog${
                  ? was : root.querySelector(".nbtabs button").dataset.v));
   }
 
+  // The project's containers, from the manager's own answer for the
+  // project's node: its instances and anything shown under it. Drawn with
+  // the Docker tab's rows and wired with its handlers, so Up, Down, Env and
+  // Rebuild here are the same controls. Re-read while a job runs, on the
+  // poll, since the row's tail and state move then.
+  let dkSeen = "";
+  async function loadNbDocker(){
+    const p = (state?.projects || []).find(x => x.name === project);
+    const node = p?.prefs?.node || dockerNode || "";
+    let got;
+    try{
+      got = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
+    }catch(e){ $("dkHint").textContent = "could not read the manager: " + e; return; }
+    dockerSeen[got.node || node || ""] = got;
+    const mine = (got.instances || []).filter(d => d.project === project || d.for === project);
+    const job = got.job && (got.job.running || got.job.error) ? got.job : null;
+    const blind = !!(got.blind || got.error || got.on === false);
+    const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
+    $("dkHint").textContent = mine.length
+      ? `${mine.length} container${mine.length === 1 ? "" : "s"} of ${project}'s on ${where}${
+          blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
+      : `nothing of ${project}'s on ${where} yet: send it from the Artifacts tab, or New container on the Docker tab with this project picked under "show under"`;
+    const key = JSON.stringify([mine, job && job.step, job && job.running, job && (job.log || "").length]);
+    if (key === dkSeen) return;
+    dkSeen = key;
+    $("dkList").innerHTML = dmRowsHtml(mine, job, blind);
+    tipify($("dkList"));
+    dmWireRows($("dkList"), got);
+  }
+  $("dkOpen").onclick = () => openDocker();
+
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
@@ -14433,6 +14643,8 @@ become that version's section when it is created">Changelog${
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== todoSession){ todoSession = now; redrawTodo(); }
+      // The Docker view follows a running job the way the tab does.
+      if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
       // What this notebook re-reads and when is declared once, up where the
       // watches are taken; nothing here decides it. All six halves are on
       // the revisions poll; this poll carries only what /api/status alone
@@ -14605,6 +14817,7 @@ async function unlinkProject(name){
 }
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
+$("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 $("rnCancel").onclick = closeRename;
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
@@ -14613,7 +14826,8 @@ $("pCreate").onclick = async () => {
   // to another mode while this request runs, and everything below must keep
   // talking about the flow the operator actually submitted.
   const mode = pMode, linkName = pLink, gen = pGen;
-  const name = $("pName").value.trim(), url = $("pUrl").value.trim();
+  const name = $("pName").value.trim();
+  let url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
   const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
@@ -14635,6 +14849,11 @@ $("pCreate").onclick = async () => {
     const fg = pForge();
     if (mode === "link" && !fg.fixed && !pHost())
       return fail(`the address you reach ${fg.name} on, e.g. git.example.com`);
+    // owner/repo alone, with the host already named beside it, is an address
+    // on that host: the placeholder shows the long form, and typing only the
+    // half the host box does not already know is the natural thing to do.
+    if (mode === "link" && /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)+$/.test(url) && pHost())
+      url = `https://${pHost()}/${url}`;
     if (mode === "link" && pLinkAuth === "token" && !linkToken)
       return fail("an access token for this project: a push has to authenticate somehow");
     if (mode === "link" && pLinkAuth === "key" && !key){
@@ -14945,7 +15164,7 @@ function renameProject(name, mode = "all"){
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
-  for (const id of ["rnNameField", "rnPrefField", "rnEditsField",
+  for (const id of ["rnNameField", "rnColorField", "rnPrefField",
                     "rnGateField", "rnBuildField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
@@ -14997,6 +15216,8 @@ function renameProject(name, mode = "all"){
   // refuses a repo that already has one.
   $("rnUnlink").hidden = !(git && p?.linked);
   $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
+  // The bin, on the gear's door only: the chain's is about the remote.
+  $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
   rnFillPrefs(p);
   $("rnGo").disabled = false;
@@ -15143,10 +15364,7 @@ async function rnSubmit(){
   // A typed token replaces rather than clears, so the two never both go: the
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
-  const model = $("rnModel").value, effort = $("rnEffort").value;
-  // Read by the launcher when a session starts, like the model, so a change
-  // costs a restart, and is asked about the same way.
-  const edits = $("rnEdits").value;
+  const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
@@ -15156,8 +15374,7 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color;
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
-    || edits !== rnPrefWas.edits;
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -15198,7 +15415,7 @@ async function rnSubmit(){
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort, edits,
+        body: JSON.stringify({project: name, model, effort,
                               node, build, test, gate, color,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
@@ -16095,6 +16312,9 @@ async function refresh(){
     const host = state.host || "";
     $("host").textContent =
       host.toLowerCase() === "builderbot" ? "" : host;
+    // The word that tells two dashboards apart: on when dev features, the
+    // ones not yet vetted, are offered here, which production never has.
+    $("devtag").hidden = !state.settings?.settings?.offer_unvetted?.value;
     $("uptime").textContent = "up " + shortUptime(state.uptime);
     drawBuild(state.image);
     adoptLayout(state.layout);

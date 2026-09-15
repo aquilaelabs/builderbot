@@ -8,10 +8,24 @@
 services:
   builderbot:
     image: ghcr.io/stencil-projects/builderbot:${BUILDERBOT_TAG:-latest}
-    # Building locally instead of pulling? Comment out `image:` above and
-    # uncomment this block (or keep both to build and tag in one step).
-    # build:
-    #   context: .
+    # An install pulls the image; BuilderBot's own dev instance on a node
+    # builds this checkout instead, the way any project's dev instance is
+    # built from its tree: its env file sets BUILDERBOT_PULL=build and a tag
+    # of its own (BUILDERBOT_TAG=dev). With the default policy compose pulls
+    # what is missing and never builds unless asked, so `docker compose up`
+    # on a fresh install is unchanged.
+    build:
+      context: .
+      # The stamp the header and `bb status` read, and the agents compare
+      # their version against. CI passes these three; a dev instance gets
+      # them from BuilderBot, which sets BB_BUILD_REV, BB_BUILD_AT and
+      # BB_BUILD_VERSION for any compose it builds (the same convention as
+      # BB_DEV_DATA). A hand-run `docker compose build` leaves them blank.
+      args:
+        IMAGE_REV: ${BB_BUILD_REV:-}
+        IMAGE_BUILT: ${BB_BUILD_AT:-}
+        IMAGE_VERSION: ${BB_BUILD_VERSION:-}
+    pull_policy: ${BUILDERBOT_PULL:-missing}
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
@@ -87,6 +101,16 @@ services:
       # dashboard rather than silently not showing up.
       - ${WORKSPACE_PATH:-/mnt/user/projects}:/workspace
 
+      # --- this checkout, for the container's own tests ---------------------
+      # The tree the image was built from, where a `bb devapp test` on the
+      # BuilderBot project runs its suite: the exec starts in the directory
+      # that carries the project, and this is it once /workspace is a share
+      # that does not hold this checkout (a dev instance on its own share,
+      # 15 Sep). Outside /workspace on purpose, so it is not a project of
+      # this instance's; the image's own copy at /opt/builderbot is laid out
+      # for running, not for the suite.
+      - .:/opt/builderbot/src
+
       # --- the package store ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
       # system images, plus any toolchain `bb packages install` adds. Outside the
@@ -99,6 +123,13 @@ services:
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/home:/home/builder
       # Drop your own *.sh startup hooks in here.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
+      # The runners' registration tokens, root-only (0700) by design so a
+      # session can never read one. A named volume rather than a directory
+      # under /config: on an appdata path that is a squashed NFS share
+      # (all_squash, the shape a dev instance of BuilderBot lands on) root
+      # cannot own anything, and the store cannot be made at all. Local to
+      # the daemon, it survives an update like the rest of /config.
+      - runner-tokens:/config/runner-tokens
 
       # Static-analysis reports, READ-ONLY. The scanner stays on the host by
       # design: mounting only its output means nothing in this container can
@@ -133,9 +164,13 @@ services:
       # - ${DEVDATA_PATH:-/mnt/user/builderbot/devdata}:/devdata
 
     # Web dashboard + browser terminals, one port: terminals are proxied
-    # through it under /term, behind the same sign-in.
-    # ports:
-    #   - "7680:7680"
+    # through it under /term, behind the same sign-in. Published on the same
+    # number it listens on, so DASHBOARD_PORT moves both, and a dev instance
+    # of BuilderBot on a node is reachable the way any project's is. The
+    # terminal port stays inside the container: nothing on the node's own
+    # 7681 is touched.
+    ports:
+      - "${DASHBOARD_PORT:-7680}:${DASHBOARD_PORT:-7680}"
 
     # Tells the Unraid Compose Manager plugin to adopt this container.
     labels:
@@ -147,3 +182,64 @@ services:
       timeout: 10s
       start_period: 120s
       retries: 3
+
+  # ---- the lab (roadmap R54): a real Gitea beside a DEV instance ----------
+  # Under the `lab` profile, so an ordinary `docker compose up` never starts
+  # it: a dev instance of BuilderBot switches it on with COMPOSE_PROFILES=lab
+  # in its env file, from the Docker tab like any project's stack, and
+  # `bb tests lab` proves the link, unlink and runner paths against it.
+  # Nothing here is a secret: it exists to be tested against, and its volume
+  # can be thrown away. Actions are on so the runner half can be proved too.
+  gitea:
+    image: docker.gitea.com/gitea:1.24
+    profiles: ["lab"]
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__ROOT_URL: "http://${BB_LAB_HOST:-127.0.0.1}:3000/"
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_DOMAIN: "${BB_LAB_HOST:-127.0.0.1}"
+      GITEA__server__SSH_PORT: "2222"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__actions__ENABLED: "true"
+      GITEA__log__LEVEL: "Warn"
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - lab-gitea:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  # One-shot, idempotent: the administrator the lab suites sign in as to
+  # mint their own tokens (labadmin / labpassword).
+  gitea-seed:
+    image: docker.gitea.com/gitea:1.24
+    profiles: ["lab"]
+    depends_on:
+      gitea:
+        condition: service_healthy
+    user: "1000:1000"
+    environment:
+      GITEA_WORK_DIR: /data/gitea
+      GITEA_CUSTOM: /data/gitea
+      HOME: /data/git
+    volumes:
+      - lab-gitea:/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        gitea --config /data/gitea/conf/app.ini admin user create
+        --admin --username labadmin --password labpassword
+        --email lab@example.invalid --must-change-password=false
+        2>&1 | grep -v 'already exists' || true;
+        echo 'lab seeded: labadmin/labpassword'
+
+volumes:
+  runner-tokens:
+  lab-gitea:

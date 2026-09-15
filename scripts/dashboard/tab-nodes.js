@@ -95,9 +95,17 @@ function nodeTools(n){
   if (!names.length)
     return `<div class="sub ndtools dim">no toolchains yet: the Tools tab installs them
       onto this node, and what is here is what a project bound to it can build</div>`;
+  // Held recipes whose system libraries this machine lacks (roadmap R51),
+  // said here rather than left for a build to fail on: the store is shared,
+  // the libraries are each machine's own, and the Tools tab installs them.
+  const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
+  const sys = unmet.length
+    ? `<div class="sub ndsys warn">system packages missing here for ${unmet.map(([r, ps]) =>
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: the Tools tab installs them on this
+        node without reinstalling the package</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
-      esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>`;
+      esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
 }
 
 function nodeStatePill(n){
@@ -141,6 +149,9 @@ function mountState(m, reported){
   if (!r.mounted) return [r.error
     ? `not mounted: ${r.error}${/access denied/i.test(r.error) ? ": the host's export rule names another address" : ""}`
     : `not mounted${r.source ? `: fstab has ${r.source}` : ""}`, "bad"];
+  // Mounted and answering Stale file handle: the worst of the states, since
+  // every list of mounts calls it fine and every read fails.
+  if (r.stale) return [r.error || "mounted, but the handle is stale: re-export it on the host", "bad"];
   const from = r.real && r.real !== r.source ? `mounted from ${r.real} (fstab says ${r.source})`
                                              : `mounted${r.ro ? ", read-only" : ""}`;
   return [diff ? `${from}: applying will change it` : from, diff ? "warn" : ""];
@@ -221,7 +232,7 @@ function nodeRunnerSection(n, c){
   // they have, one per line on a phone, and its own action bar.
   const addbar = c.addRunner ? `<div class="addbar ndrunadd" data-add="runner"><div class="grow">
         <div class="uadd">
-          <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with; an organization serves every repository in it")}
+          <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with, or http for a forge on your own network; an organization serves every repository in it")}
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
           <div class="setrow col">${lbl("", "Host", "which runner registers there: github.com is GitHub; a Gitea, Forgejo or Codeberg address takes act_runner")}
@@ -307,7 +318,16 @@ function nodeAdvancedSection(n, stale, inflight){
   if (c.draft.pathsText === undefined || c.draft.pathsFrom !== text){
     c.draft.pathsText = text; c.draft.pathsFrom = text;
   }
+  if (c.draft.nameText === undefined || c.draft.nameFrom !== n.name){
+    c.draft.nameText = n.name; c.draft.nameFrom = n.name;
+  }
   const body = `
+    <div class="ndname actbar">
+      <div class="setrow col grow">${lbl("", "Name", "what this node is called everywhere here: the pickers, the project rows, and the label a runner installed from now on registers with")}
+      <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
+        maxlength="60" aria-label="node name"></div>
+      <button type="button" data-nd="rename" title="rename this node; a runner already installed keeps the label it registered with until it is reinstalled">Rename</button>
+    </div>
     <div class="sub">What this container's paths are called on the node, for its daemon's
       bind mounts. With the projects share at <code>/workspace</code> on both, leave it blank.</div>
     <div class="ndpaths actbar">
@@ -353,6 +373,10 @@ function nodeAdvancedSection(n, stale, inflight){
         title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
       <button type="button" class="danger" data-nd="retire"
         title="take it off every list. Its row and its history stay: an id is never reused">Remove</button>
+      ${n.reported?.sandbox && !n.agent?.revoked ? `<button type="button" class="danger" data-nd="uninstall"
+        ${inflight("uninstall") ? "disabled" : ""}
+        title="take BuilderBot off the machine: its runners deregistered, the agent, its accounts, the mounts it used and its files gone; docker, the packages and the shares' contents stay. The row is retired when it is done">${
+        inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>`;
   return docSection("nodes", "advanced", "Advanced",
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
@@ -416,6 +440,12 @@ function nodeDrift(n){
   for (const m of d.mounts || []){
     const [st, cls] = mountState(m, rep.mounts);
     if (cls) storage.push(`${m.path || m.source || "a mount"}: ${st}`);
+  }
+  // A stale mount is drift whether or not the desired list names it: it
+  // reads as mounted to every list and fails every read (roadmap R41).
+  for (const r of rep.mounts || []){
+    if (r.stale && !(d.mounts || []).some(m => m.path === r.path))
+      storage.push(`${r.path}: ${r.error || "mounted, but the handle is stale: re-export it on the host"}`);
   }
   for (const [role, path] of Object.entries(d.stores || {})){
     if (!path) continue;
@@ -993,7 +1023,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         <div class="setrow col">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
             `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${
-              esc(k.label)}</option>`).join("")}</select></div>
+              esc(k.label)}${k.dev ? " (dev)" : ""}</option>`).join("")}</select></div>
         <div class="prefrow">
           ${f("name", "Name", "the machine's name, and the folder its disk goes in")}
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
@@ -1101,6 +1131,14 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
+      if (act === "uninstall"
+          && !confirm("Uninstall BuilderBot from this machine?\n\nGoes: its runners "
+                      + "(deregistered on their forges), the agent and its unit, the bb "
+                      + "and builder accounts with their homes, the mounts it used, its "
+                      + "stores on that disk, the firewall rule, bb-sandbox itself.\n\n"
+                      + "Stays: docker, the packages the provisioner installed, the empty "
+                      + "mountpoints, and everything on the shares.\n\nThe row is retired "
+                      + "when it is done. Enrolling it again is a fresh provisioner run.")) return;
       if (act === "revoke"
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
@@ -1131,13 +1169,25 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", paths: "Saving", "check-paths": "Checking"}[act] || "Working");
+               retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
+               rename: "Renaming"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
         else if (j.ok) notify("update queued: the row follows the agent's next hello");
         else delete nodesUpdating[id];
+        return;
+      }
+      if (act === "rename"){
+        const inp = box.querySelector('.ndname [data-k="name"]');
+        const name = (inp ? inp.value : "").trim();
+        const was = (nodesList || []).find(x => x.id === id)?.name || "";
+        if (!name || name === was) return notify("type the new name first", true);
+        const j = await nodeAct({action: "update", id, fields: {name}});
+        if (j.error) return notify(j.error, true);
+        const c = nodesConf[id]; if (c && c.draft) c.draft.nameText = undefined;
+        notify(`${was} is now ${name}. A runner already installed there keeps the label ${was} until it is reinstalled.`);
         return;
       }
       if (act === "paths"){

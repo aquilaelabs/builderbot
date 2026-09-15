@@ -92,6 +92,8 @@ if a[0] in ("add-nfs", "add-share"):
     save(); print(f"fstab: {path} now comes from {src}"); sys.exit(0)
 if a[0] == "remove":
     ms = [m for m in ms if m["path"] != a[1]]; save(); print(f"{a[1]} is no longer mounted at boot"); sys.exit(0)
+if a[0] == "uninstall":
+    open(f + ".uninstall", "w").write(" ".join(a)); sys.exit(0)
 print("unknown", a, file=sys.stderr); sys.exit(2)
 `, { mode: 0o755 });
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
@@ -407,6 +409,22 @@ try {
     ok(existsSync(`${store}/.bb/current/scripts/dashboard/bb-work-note`)
        && existsSync(`${store}/.bb/current/scripts/lib/bbapi.py`),
        '...and the bundle carries the hooks bb-tty writes into a session and bb\'s API client');
+    // ...and the provisioner, which embeds bb-sandbox: the agent refreshes the
+    // machine's copy from it before a system job, so a verb the controller
+    // asks for (uninstall) is there on a node provisioned before the verb was.
+    ok(existsSync(`${store}/.bb/current/nodes/provision-linux.sh`),
+       '...and the provisioner, so the machine\'s bb-sandbox can be refreshed from the bundle');
+    {
+      const tool = execFileSync('python3', ['-c', `
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+t = m.extract_sandbox_tool(open(${JSON.stringify(`${REPO}/nodes/provision-linux.sh`)}).read())
+print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
+`], { encoding: 'utf8' }).trim().split('\n');
+      ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
+         `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
+    }
     // ...and the ones before it do not pile up forever. One directory per
     // delivery, one delivery per commit that touches bb: 33 of them in four
     // days on the first node anybody looked at. Driven directly rather than
@@ -718,7 +736,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const conf = bbOnNode(['git', 'fetch', '-c', 'core.sshCommand=id']);
       const other = bbOnNode(['git', 'status']);
       ok(/not accepted/.test(exec) && /not accepted/.test(conf) && /takes push, fetch/.test(other),
-         '...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it');
+         `...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it (${
+           [exec, conf, other].map(x => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')})`);
       // The identity a node session adopts is the controller's, through the
       // same settings answer bb-tty reads.
       const st = JSON.parse(bbOnNode(['settings', '--json']));
@@ -1237,7 +1256,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // refused, with the sentence saying what to do rather than opening a
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 503 && /has no node/.test(nonode.body)
+      ok(nonode.status === 503 && /no node: pick one/.test(nonode.body)
          && /enroll one on the Nodes tab/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
@@ -1599,6 +1618,29 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /libatk1\.0-0t64/.test(sfin.log) && /libnss3/.test(sfin.log),
        `a recipe's system packages are named for the owner on a node the agent does not administer (${
          (sfin?.log || '').match(/needs system packages[^\n]*/)?.[0]?.slice(0, 90)})`);
+    // ...and the same libraries reported by the census as unmet for the
+    // recipe the store holds (roadmap R51), without a build having to fail
+    // on them, and installable on their own by a sysdeps job. This agent
+    // does not administer the machine, so the job refuses and names them.
+    const unmet = await until(async () => {
+      const n = await nodeById(minted.id);
+      return n?.reported?.sysdeps?.unmet?.playwright ? n.reported.sysdeps : null;
+    }, 30000, 500);
+    ok(unmet && unmet.family === 'apt' && unmet.unmet.playwright.includes('libnss3'),
+       `the census names the system packages a held recipe lacks here, per family (${JSON.stringify(unmet).slice(0, 100)})`);
+    // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
+    // agent is not root, so the controller queues the job and the agent is
+    // the one to refuse: exit 77, naming the owner and the packages.
+    const dj = await api('/api/packages', { action: 'sysdeps', names: ['playwright'], node: minted.id });
+    ok(dj.ok && /^j_/.test(dj.job), `a sysdeps job is queued for the held recipe (${dj.job || dj.error})`);
+    const dfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${dj.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(dfin && dfin.state === 'failed' && dfin.exit_code === 77
+       && /does not administer the machine, so its owner installs these: playwright: /.test(dfin.log)
+       && /libnss3/.test(dfin.log) && !/bb packages install/.test(dfin.log),
+       `...and refused on the node with the names, without reinstalling the recipe (${dfin?.state} ${dfin?.exit_code}: ${(dfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
     ok(sfin && sfin.state === 'failed' && /npm: stub/.test(sfin.log)
        && !existsSync(`${PK}/playwright/node_modules`),
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
@@ -1729,7 +1771,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const gfin = await ended(gi.job);
     const acts = existsSync(`${DIR}/runner/${GT}/act-calls.log`) ? readFileSync(`${DIR}/runner/${GT}/act-calls.log`, 'utf8') : '';
     ok(gfin?.state === 'succeeded' && /registering agentbox with https:\/\/git\.example\.test:3000\/example-org/.test(gfin.log)
-       && /act register --no-interactive --instance https:\/\/git\.example\.test:3000\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
+       && /act register --no-interactive --instance https:\/\/git\.example\.test:3000 --token AAAREGTOKEN --name agentbox --labels builderbot:host,self-hosted:host,linux:host,x64:host,agentbox:host,gpu:host/.test(acts)
        && /act daemon/.test(acts) && !/AAAREGTOKEN/.test(gfin.log),
        `act_runner registers with the host from its own directory, every label as :host, and runs as a daemon under the agent (${gfin?.state}: ${(gfin?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
     const gn = await until(async () => { const n = await nodeById(minted.id);
@@ -1969,6 +2011,31 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        '...in a directory of its own under the node\'s data store');
     ok(j && (j.outputs || []).some(o => o.kind === 'compose' && o.steps_done === 1),
        '...and reports how far the plan got, which is what the controller records from');
+    // A bind directory the node cannot make is an up that cannot work, and
+    // the agent says so and runs nothing, rather than letting docker fail on
+    // the same mkdir in worse words ("file exists" over a stale NFS handle,
+    // 15 Sep). A file where the instance's data directory would go is the
+    // cheapest way to make one unmakeable.
+    {
+      const made = await api('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'blocked', node: minted.id });
+      ok(made.ok && made.instance === 'blocked', `a second instance to block (${made.error || made.instance})`);
+      writeFileSync(`${DIR}/devdata/blocked`, 'not a directory\n');
+      const up2 = await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'up' });
+      ok(up2.ok || up2.started, `Up on it is queued (${up2.error || 'ok'})`);
+      const jb = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        return api(`/api/v1/jobs?id=${one.id}`);
+      }, 60000);
+      ok(jb && jb.state === 'failed' && jb.exit_code === 73 && /could not make .*blocked: (Not a directory|File exists)/.test(jb.log || '')
+         && !/\$ .*compose/.test(jb.log || ''),
+         `a bind directory the node cannot make fails the job with the machine's reason before the plan runs (${jb?.state} ${jb?.exit_code}; dirs=${JSON.stringify(jb?.spec?.dirs)}: ${(jb?.log || '').replace(/\s+/g, ' ').slice(-300)})`);
+      ok(jb && (jb.outputs || []).some(o => o.kind === 'compose' && o.failed_at === 'preparing'),
+         '...and names the step, so the row says a directory could not be made rather than that up failed');
+      rmSync(`${DIR}/devdata/blocked`, { force: true });
+      await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
+    }
     await api('/api/prefs', { project: 'ep.silon', node: '' });
   }
 
@@ -2038,6 +2105,31 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       opt[0], { timeout: 10000 });
     ok(true, 'the pending row says it is waiting for enrollment');
   }
+
+  // ---- uninstall, from the Nodes tab ------------------------------------------
+  // Last, because it retires the node: the agent answers the system job by
+  // starting `bb-sandbox uninstall --yes` detached (the stub records the
+  // call; a real one removes the agent under itself) and the controller
+  // retires the row when the job succeeds. Runner deregistration was
+  // exercised above; none is left here to deregister.
+  {
+    const r = await api('/api/v1/nodes', { action: 'uninstall', id: minted.id });
+    ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
+    const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(j.state) ? j : null; }, 30000);
+    ok(fin?.state === 'succeeded' && /uninstall is running on this machine; this agent goes with it/.test(fin.log || ''),
+       `the agent starts the uninstall on the machine and says it is its last word (${fin?.state}: ${(fin?.log || '').slice(-120).replace(/\n/g, ' / ')})`);
+    ok(existsSync(SANDBOX_STATE + '.uninstall') && readFileSync(SANDBOX_STATE + '.uninstall', 'utf8') === 'uninstall --yes',
+       '...through bb-sandbox uninstall --yes, detached from the agent');
+    const gone = await until(async () => (await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id) ? null : true, 20000);
+    ok(!!gone, 'and the controller retires the node when the job lands, so the row leaves every list');
+    // Back to online for the revoke below: the stub uninstall took nothing
+    // off this machine, so the agent is still here to be revoked.
+    await api('/api/v1/nodes', { action: 'online', id: minted.id });
+    ok((await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id), '...and Undrain brings a retired row back, for what follows');
+  }
+  
+  
 
   // revoke: the credential stops working, the agent says so, the row goes quiet
   {
