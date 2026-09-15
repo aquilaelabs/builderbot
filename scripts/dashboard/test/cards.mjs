@@ -451,13 +451,23 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button — a tap on a phone, since these rows are tipified');
-  // A no-node project is the same answer: it was silent before, which left
-  // the operator looking at a ghosted button with nothing anywhere saying why.
-  await plant({ session_at: '', locked: false,
-                session_why: 'alpha has no node, and a Claude session runs on one. Pick one '
-                           + "in the project's settings, or enroll one on the Nodes tab" });
-  ok(/has no node/.test(await line()) && !/pick one/.test(await line()),
-     `a project with no node says so too, without the instruction (${await line()})`);
+  // A no-node project says nothing on the line: "(node: none)" beside the
+  // name is the whole fact, and a sentence about sessions under every such
+  // row was noise (the operator's call, 15 Sep). The ghosted button still
+  // carries the short reason.
+  await plant({ session_at: '', locked: false, node_name: '',
+                session_why: "no node: pick one in the project's settings, or enroll one on the Nodes tab" });
+  ok(await line() === ''
+     && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
+     'a project with no node says "(node: none)" beside its name and nothing under it');
+  // The button itself is live here: the fixture has a session open on
+  // alpha and who is here wins. Its words are the short reason either way.
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
+       b => /^no node: pick one/.test(b.dataset.tip || b.title || '')),
+     '...while the button says where to pick one');
+  await plant({ node_name: 'shed' });
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
+     '...and a project with a node wears its name');
   // ...and LOCKED is the one case where no session is the point rather than a
   // fault, so it stays quiet.
   await plant({ locked: true });

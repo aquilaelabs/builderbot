@@ -1291,6 +1291,9 @@ lives in its body. The cards:
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then, which is what Save tells it, in the one line it spends
+- **(node: name)** after every project's name, on the card and on the
+  Projects tab: the node its work runs on, or *none*. A project with none
+  says nothing more; its Claude button is ghosted with where to pick one
 - a **padlock** per project, which locks it: no Claude session starts there
   and its notebook goes read-only; see below. A locked row keeps every
   control, with its Claude button ghosted rather than removed and a closed
@@ -1412,7 +1415,11 @@ comes back on it), then **sections**, each a fold with its status on the
 heading so a phone reads the headings and opens one: Health (the meters,
 the toolchains its census found, which is what a project bound to it can
 build), Sessions (whether it runs them, and which are open), CI runner,
-Storage (mounts and stores), Network, and Advanced, which holds the path
+Storage (mounts and stores), Network, and Advanced, which holds the node's
+**name** (Rename changes what it is called everywhere here: the pickers,
+the project rows and the label a runner installed from then on registers
+with; a runner already installed keeps the label it registered with until
+it is reinstalled), the path
 mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
 **Revoke** and **Remove** (retire: off every list, row kept as history, and an

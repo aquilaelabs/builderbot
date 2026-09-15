@@ -315,7 +315,16 @@ function nodeAdvancedSection(n, stale, inflight){
   if (c.draft.pathsText === undefined || c.draft.pathsFrom !== text){
     c.draft.pathsText = text; c.draft.pathsFrom = text;
   }
+  if (c.draft.nameText === undefined || c.draft.nameFrom !== n.name){
+    c.draft.nameText = n.name; c.draft.nameFrom = n.name;
+  }
   const body = `
+    <div class="ndname actbar">
+      <div class="setrow col grow">${lbl("", "Name", "what this node is called everywhere here: the pickers, the project rows, and the label a runner installed from now on registers with")}
+      <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
+        maxlength="60" aria-label="node name"></div>
+      <button type="button" data-nd="rename" title="rename this node; a runner already installed keeps the label it registered with until it is reinstalled">Rename</button>
+    </div>
     <div class="sub">What this container's paths are called on the node, for its daemon's
       bind mounts. With the projects share at <code>/workspace</code> on both, leave it blank.</div>
     <div class="ndpaths actbar">
@@ -1139,13 +1148,25 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", paths: "Saving", "check-paths": "Checking"}[act] || "Working");
+               retire: "Removing", paths: "Saving", "check-paths": "Checking",
+               rename: "Renaming"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
         else if (j.ok) notify("update queued: the row follows the agent's next hello");
         else delete nodesUpdating[id];
+        return;
+      }
+      if (act === "rename"){
+        const inp = box.querySelector('.ndname [data-k="name"]');
+        const name = (inp ? inp.value : "").trim();
+        const was = (nodesList || []).find(x => x.id === id)?.name || "";
+        if (!name || name === was) return notify("type the new name first", true);
+        const j = await nodeAct({action: "update", id, fields: {name}});
+        if (j.error) return notify(j.error, true);
+        const c = nodesConf[id]; if (c && c.draft) c.draft.nameText = undefined;
+        notify(`${was} is now ${name}. A runner already installed there keeps the label ${was} until it is reinstalled.`);
         return;
       }
       if (act === "paths"){

@@ -1326,6 +1326,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
 .row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
+/* The project's node beside its name: a sibling of .name, so the name
+   element stays the name and nothing else. */
+.namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
+.namerow .pnode{font:var(--f-ui);white-space:nowrap}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -2246,7 +2250,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
@@ -2279,7 +2283,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,
+  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2365,7 +2369,7 @@ button[aria-busy="true"]{opacity:.75}
 .ndconfstate.note{color:var(--note)}
 /* The mapping's row is an action bar (its field, then Save and Check), so
    it lays out like every other bar; the input takes the room before them. */
-.ndpaths input{flex:1 1 auto;min-width:0}
+.ndpaths input,.ndname input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
 /* The two settings a container row carries, as one block rather than two
@@ -7068,7 +7072,7 @@ function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
       <div class="grow">
-        <div class="name">${esc(p.name)}${p.locked
+        <div class="namerow"><div class="name">${esc(p.name)}${p.locked
           // After the name, because it is a fact about the project rather
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
@@ -7080,7 +7084,7 @@ function projectRow(p, live, cls, inTab){
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
-          : ""}</div>
+          : ""}</div><span class="dim pnode">(node: ${esc(p.node_name || "none")})</span></div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
 
@@ -7190,13 +7194,16 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // session here, and a row that said it had a line spent on something
         // nobody was asking.
         //
-        // A project that cannot start one says so in red whenever it is not
-        // LOCKED, which is the one case where no session is the point rather
-        // than a fault. Short: what is wrong and not what to do about it,
-        // because the fix runs to a paragraph on some of these and the
-        // ghosted button's tooltip is where a paragraph is free (the rows are
-        // tipified, so that is a tap on a phone as well as a hover).
-        : p.session_why && !p.locked
+        // A project whose NODE cannot start one says so in red whenever it
+        // is not LOCKED, which is the one case where no session is the point
+        // rather than a fault. Short: what is wrong and not what to do about
+        // it, because the fix runs to a paragraph on some of these and the
+        // ghosted button's tooltip is where a paragraph is free (the rows
+        // are tipified, so that is a tap on a phone as well as a hover). A
+        // project with no node says nothing here: "(node: none)" beside the
+        // name is the whole fact, and a sentence about sessions under every
+        // such row was noise (the operator's call, 15 Sep).
+        : p.session_why && p.session_at && !p.locked
           ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why))}</div>` : ""}
     </div>
 `;

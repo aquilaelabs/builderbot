@@ -1293,6 +1293,25 @@ print(json.dumps(out))
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
      '...while the controller, whose paths are its own, is not a row here at all');
 
+  // ---- renaming a node (the operator's ask, 15 Sep) ------------------------
+  // The name is what a node is called everywhere: the pickers, the project
+  // rows, the label a runner installed from now on registers with. One word,
+  // and not one another node already wears.
+  {
+    const was = (await papi({ action: 'update', id: sb.id, fields: { name: 'two words' } }));
+    ok(/letters, digits/.test(was.error || ''), `a name with a space is refused with the rule (${was.error})`);
+    const dup = await papi({ action: 'update', id: sb.id, fields: { name: 'shed' } });
+    ok(/already called shed/.test(dup.error || ''), 'a name another live node wears is refused');
+    const loc = await papi({ action: 'update', id: 'local', fields: { name: 'box' } });
+    ok(/not a node to rename/.test(loc.error || ''), 'the controller\'s own row is not renamed');
+    await page.fill(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, 'sandbox-two');
+    await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="rename"]`);
+    await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox-two', sb.id, { timeout: 15000 });
+    ok(true, 'Rename on the row renames the node');
+    await papi({ action: 'update', id: sb.id, fields: { name: 'sandbox' } });
+    await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox', sb.id, { timeout: 15000 });
+  }
+
   // ---- Check: the pair nothing else verifies (roadmap #13) ------------------
   // A marker made under the share here, looked for through the node's
   // daemon by the same guarded one-shot container that makes the dev-data

@@ -648,7 +648,21 @@ def node_update(principal, node_id, fields):
         return {"error": "no such node"}
     sets, args = [], []
     if "name" in fields:
-        sets.append("name = ?"); args.append(str(fields["name"]).strip()[:60])
+        # The name is what a node is called everywhere here: the pickers,
+        # the project rows, and the label a runner registers with. One
+        # word, the charset a label and a hostname both take, and not one
+        # another live node already wears. The controller's own row is not
+        # a node anybody names.
+        name = str(fields["name"]).strip()[:60]
+        if n["kind"] == "local":
+            return {"error": "this container is not a node to rename"}
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+            return {"error": "a node name is letters, digits, dots, dashes and underscores, "
+                             "starting with a letter or digit"}
+        if any(o["id"] != node_id and o["state"] != "retired"
+               and o["name"].lower() == name.lower() for o in node_list()):
+            return {"error": f"another node is already called {name}"}
+        sets.append("name = ?"); args.append(name)
     if "pool" in fields:
         sets.append("pool = ?")
         args.append(str(fields["pool"]).strip()[:60] or "default")

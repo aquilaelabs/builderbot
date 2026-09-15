@@ -1593,8 +1593,11 @@ def project_list(who):
     project_prefs = prefs.all_projects(WORKSPACE)
     # One answer per node about its agent, for every project row on it.
     node_gaps = {}
+    # ...and its name, for the row to wear beside the project's.
+    node_names = {}
     if not NODES_OK:
         for n in nodes.node_list():
+            node_names[n["id"]] = n["name"]
             if n["kind"] == "agent" and n.get("live"):
                 why = nodes.agent_stale(n)
                 if why:
@@ -1814,6 +1817,9 @@ def project_list(who):
                     # the Artifacts tab and the bell say so before a job is
                     # refused. "" is the ordinary state.
                     "node_gap": node_gaps.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # Which node this project's work runs on, by name, or ""
+                    # for none: the row says "(node: X)" beside the name.
+                    "node_name": node_names.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     # Why no Claude session may run here right now, or "":
                     # its CLAUDE.md block from another compatibility window,
                     # else its own node's agent from one. The button ghosts
@@ -1997,8 +2003,7 @@ def session_target(project, claude=False):
                # at the first sentence end to put the fact on the row and
                # leave the instruction to the tooltip, and the dash it used
                # to cut at is gone from the page's vocabulary.
-               "why": f"{project or 'this project'} has no node, and a Claude session "
-                      "runs on one. Pick one in the project's settings, or enroll "
+               "why": "no node: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
