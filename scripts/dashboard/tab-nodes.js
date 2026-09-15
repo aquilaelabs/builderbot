@@ -232,7 +232,7 @@ function nodeRunnerSection(n, c){
   // they have, one per line on a phone, and its own action bar.
   const addbar = c.addRunner ? `<div class="addbar ndrunadd" data-add="runner"><div class="grow">
         <div class="uadd">
-          <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with; an organization serves every repository in it")}
+          <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with, or http for a forge on your own network; an organization serves every repository in it")}
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
           <div class="setrow col">${lbl("", "Host", "which runner registers there: github.com is GitHub; a Gitea, Forgejo or Codeberg address takes act_runner")}

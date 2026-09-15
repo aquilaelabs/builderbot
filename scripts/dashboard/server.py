@@ -4907,10 +4907,14 @@ class Handler(BaseHTTPRequestHandler):
             # Not forges.parse: that wants owner/repo, and a runner's address
             # is as often an organization, one segment deep.
             url = field(req, "url").strip()
-            at = re.fullmatch(r"https://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
+            # http as well as https: a Gitea on the LAN, the docker-compose
+            # shape, serves plain http, and the enrollment already makes the
+            # same trade with a note. GitHub is https whatever is typed.
+            at = re.fullmatch(r"https?://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
             if not at:
                 r = {"error": "the URL is the https address of the repository or "
-                              "organization the runner registers with"}
+                              "organization the runner registers with (http is "
+                              "accepted for a forge on your own network)"}
             elif not nodes.node(nid):
                 r = {"error": "no such node"}
             else:
