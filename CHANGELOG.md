@@ -18,6 +18,7 @@
 - A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
 - Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
 - A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
+- Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
 
 ### Upgrading
 
@@ -128,6 +129,9 @@
 - Renaming a project and giving it a new access token in the same save works, and the token is stored for the remote's own host and scheme (924ee49)
 - Bitbucket asks for a repository access token rather than an app password, which is the credential its username pairs with (924ee49)
 - Linking to a self-hosted Gitea, Forgejo or GitLab: a token with unusual characters is stored the way git reads it, switching a remote to its token keeps the server's http scheme and port, and a missing repository is never created under the wrong owner (924ee49)
+- A node that mounts the projects share at /workspace needs no path-mapping pair for it: the share maps to itself unless a pair says otherwise (94fea1a)
+- The env gate asks only for settings the compose file needs: a key the file gives a default is not missing (94fea1a)
+- The Docker tab keeps its rows on screen, marked refreshing, while a build makes the daemon slow to answer, instead of showing only loading (94fea1a)
 
 ## 0.5.0: 2026-09-10
 
