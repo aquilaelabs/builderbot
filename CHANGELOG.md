@@ -147,6 +147,9 @@
 - A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
 - Installing Playwright on a fresh Ubuntu node no longer ends with its missing-dependencies warning: the recipe carries the five libraries it asked for (c08e8cc)
 - A build whose output already sits in dist/ no longer prints cp's same-file complaint (413953b)
+- The Enroll node dialog now starts with the line that fetches the provisioner from your controller (be8ab56)
+- bb git policy and ls-remote answer before a commit identity is set; only push, fetch and pull need one (be8ab56)
+- bb packages lists node and the JDK; a runner install's log shows where it is; an uninstall that fails on the machine fails the job instead of retiring the node; a catalog change reaches the Nodes tab at once (be8ab56)
 
 ## 0.5.0: 2026-09-10
 
