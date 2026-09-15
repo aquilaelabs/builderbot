@@ -1511,8 +1511,12 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
     if want and forge not in ("github", "gitea"):
         return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
                          "beside the address"}
-    if want and (not url.startswith("https://") or (forge == "github" and not url.startswith("https://github.com/"))):
-        return {"error": "the address is the https repository or organization the runner registers with"}
+    # http as well as https for a Gitea on the LAN (the token store and
+    # the helper accept it too); GitHub is https://github.com/ whatever.
+    if want and (not url.startswith(("https://", "http://"))
+                 or (forge == "github" and not url.startswith("https://github.com/"))):
+        return {"error": "the address is the https repository or organization the runner "
+                         "registers with (http is accepted for a forge on your own network)"}
     # The runner's own labels unless new ones are typed with this press.
     labs = runner_labels_for(n, labels if isinstance(labels, list) else ar.get("labels")) if want else []
     services = dict(n.get("services") or {})
