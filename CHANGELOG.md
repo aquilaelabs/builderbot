@@ -43,6 +43,7 @@
 - A node's runner can register with a Gitea or Forgejo as well as GitHub: pick the host beside the address, and the node runs Gitea's act_runner with every job on its own toolchain (77505dc)
 - A node holds one CI runner per git host: GitHub's and Gitea's side by side, listed on the node's row with their own Install and Remove, the same labels on each, so a project's workflow lands on the node whichever host its repository is on (05e67c4)
 - bb test can be kept inside a project's dev container: the Docker row's second picker, Claude tests, on only makes a container that is down a refusal instead of a run on the node (e38d20e)
+- Settings gains Offer dev features: off, the pickers offer only the git hosts, hypervisors and node OS families that have been run for real; on, the rest appear tagged dev and the header says dev (287fdfc)
 
 ### Changed
 
