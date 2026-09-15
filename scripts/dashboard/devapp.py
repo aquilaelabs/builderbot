@@ -3106,8 +3106,9 @@ def problems(project, cfg):
                 f"{name} mounts {src}, which is this container's path — "
                 + (f"the daemon calls that {there}" if there else
                    f"and the node's path mapping does not say what the daemon calls "
-                   f"it. Add a pair for it; {_root_of(src)}:{_root_of(src)} if "
-                   f"the daemon mounts the same share at the same path"))
+                   f"it. Add a pair for it on the node's row (Nodes tab, Advanced, "
+                   f"Path mapping): {_root_of(src)}:{_root_of(src)} if the daemon "
+                   f"mounts the same share at the same path"))
     return out
 
 
