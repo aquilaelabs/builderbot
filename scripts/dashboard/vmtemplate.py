@@ -353,6 +353,12 @@ def _unraid(text, f, kib):
          f'<currentMemory unit="KiB">{kib}</currentMemory>'),
         (r'<vcpu placement="static">\d+</vcpu>',
          f'<vcpu placement="static">{f["cores"]}</vcpu>'),
+        # libvirt refuses a machine whose sockets x cores x threads is not
+        # its vcpu count ("CPU topology doesn't match maximum vcpu count",
+        # measured on Unraid with 4 vCPUs, 15 Sep): the topology moves with
+        # the count, one socket, no threads, so the product is the count.
+        (r'<topology sockets="\d+" cores="\d+" threads="\d+"/>',
+         f'<topology sockets="1" cores="{f["cores"]}" threads="1"/>'),
     ]
     for pat, to in subs:
         text, n = re.subn(pat, to, text, count=1)

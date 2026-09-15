@@ -1446,6 +1446,16 @@ ok(u2 !== u1 && m2 !== m1,
 ok((await page.$$eval('#ndBody .vmsteps li', ls => ls.length)) >= 5
    && await page.$eval('#ndBody .vmsteps', ol => /NFS Security Settings/.test(ol.textContent)),
    '...and the steps say how to get from here to an enrolled node, exports first');
+// The CPU topology moves with the count: libvirt refuses a machine whose
+// sockets x cores x threads is not its vcpu count, which every count but
+// the shipped six tripped (Unraid, 4 vCPUs, 15 Sep).
+{
+  const four = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'bb-four', cores: 4 }));
+  const topo = /<topology sockets="(\d+)" cores="(\d+)" threads="(\d+)"\/>/.exec(four.text || '');
+  ok(/<vcpu placement="static">4<\/vcpu>/.test(four.text || '') && topo
+     && Number(topo[1]) * Number(topo[2]) * Number(topo[3]) === 4,
+     `4 vCPUs gives a topology whose product is 4 (${topo ? topo[0] : four.error || 'no topology'})`);
+}
 const bad = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: '../evil' }));
 ok(!!bad.error && !bad.xml, 'a name that is not a name is refused rather than escaped into the file');
 // ...and Unraid's own pair goes back in, which is what a VM that already
