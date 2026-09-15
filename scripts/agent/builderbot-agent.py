@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.62"
+AGENT_VERSION = "0.5.63"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -4480,8 +4480,10 @@ class Agent:
             job.say("runner removed\n")
             return "succeeded", 0
         url = str(cfg.get("url") or "")
-        if not url.startswith("https://"):
-            job.say(f"refused: the runner registers with an https address, not {url!r}\n")
+        # http as well as https: a Gitea on the LAN, and the controller
+        # accepted the address the same way when the token was stored.
+        if not url.startswith(("https://", "http://")):
+            job.say(f"refused: the runner registers with an https address (or http on your own network), not {url!r}\n")
             return "failed", 65
         labels = [re.sub(r"[^A-Za-z0-9._-]", "", str(x)) for x in (cfg.get("labels") or [])]
         labels = [x for x in labels if x][:16] or ["builderbot", "self-hosted"]
