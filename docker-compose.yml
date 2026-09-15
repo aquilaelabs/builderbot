@@ -113,6 +113,13 @@ services:
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/home:/home/builder
       # Drop your own *.sh startup hooks in here.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
+      # The runners' registration tokens, root-only (0700) by design so a
+      # session can never read one. A named volume rather than a directory
+      # under /config: on an appdata path that is a squashed NFS share
+      # (all_squash, the shape a dev instance of BuilderBot lands on) root
+      # cannot own anything, and the store cannot be made at all. Local to
+      # the daemon, it survives an update like the rest of /config.
+      - runner-tokens:/config/runner-tokens
 
       # Static-analysis reports, READ-ONLY. The scanner stays on the host by
       # design: mounting only its output means nothing in this container can
@@ -224,4 +231,5 @@ services:
         echo 'lab seeded: labadmin/labpassword'
 
 volumes:
+  runner-tokens:
   lab-gitea:

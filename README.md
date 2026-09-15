@@ -287,8 +287,10 @@ three optional ones: `/secrets` (ro, shielded credentials), `/logs`
 - **No Docker socket by default**, with it absent, reaching the host
   requires a kernel exploit.
 - **Secrets shielding**: PAT scrubbed from session env + root-only sudo
-  helper for runner tokens; SSH keys usable via root-owned agent but not
-  readable; logs redacted (patterns + literal values).
+  helper for runner tokens, whose store is a named volume of the daemon's
+  rather than a directory under `/config`, so it stays root-owned even
+  when appdata is a squashed NFS share; SSH keys usable via root-owned
+  agent but not readable; logs redacted (patterns + literal values).
 - **No passwords, no general sudo**: `root` and `builder` are locked
   accounts; brute-forcing has no target. Builder may sudo exactly one
   command (`mint-runner-token`), which only emits 1-hour tokens.
