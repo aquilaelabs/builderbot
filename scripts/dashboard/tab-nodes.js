@@ -972,8 +972,9 @@ function wireNodesTab(root){
     body.innerHTML = `<div class="field ndtoken">
         <div class="hint">shown once; the controller keeps only a hash. On a
           fresh machine, the provisioner installs docker and the agent
-          together:</div>
-        <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
+          together: fetch it from here with the token, then run it.</div>
+        <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner' -o provision-linux.sh
+sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
         <div class="hint">on a Mac, as yourself: one directory and a launchd agent, no root:</div>
         <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>

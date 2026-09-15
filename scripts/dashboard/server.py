@@ -5493,6 +5493,21 @@ class Handler(BaseHTTPRequestHandler):
             # the operator's own login, for reading it in a browser.
             if auth.get("error") and not self._authed():
                 return self._json({"error": auth["error"]}, 401)
+            if q.get("what", [""])[0] == "provisioner":
+                # The provisioner too, from the copy this image carries: the
+                # Enroll dialog's command names it, and a machine with an
+                # enroll token is what has to get it (B133).
+                p = workspace.REPO / "nodes" / "provision-linux.sh"
+                body = p.read_bytes() if p.is_file() else b""
+                if not body:
+                    return self._json({"error": "this controller ships no provisioner"}, 404)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/x-shellscript; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return None
             f = nodes.agent_file()
             if not f["body"]:
                 return self._json({"error": "this controller ships no agent"}, 404)
