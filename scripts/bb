@@ -4269,6 +4269,10 @@ run_here() {
         for g in "${outs[@]}"; do
             for f in $g; do
                 [ -f "$f" ] || continue
+                # A glob that names a file already in dist/ (a build that
+                # writes there itself) is left where it is: cp onto itself
+                # prints "are the same file" and calls the build noisy.
+                [ "$f" -ef "dist/$(basename "$f")" ] && continue
                 cp -f "$f" "dist/$(basename "$f")" && log "into dist/: $(basename "$f")"
             done
         done
