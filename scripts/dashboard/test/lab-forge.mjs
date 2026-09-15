@@ -1,5 +1,6 @@
 // The link path against a REAL forge (roadmap R54, step 3): the lab's Gitea,
-// which tools/lab/docker-compose.yml brings up. Everything the harness's
+// the `gitea` service of BuilderBot's own dev stack under its compose file's
+// `lab` profile, brought up from the Docker tab like any project's stack. Everything the harness's
 // create.mjs cannot prove with stand-ins is proved here: the token check on
 // GET /api/v1/user, a repository created under an organisation and under the
 // account, a push authenticating on a stored credential line with a port and
@@ -7,8 +8,8 @@
 // refusal to create under somebody else's name.
 //
 // Skipped in one line without BB_LAB_GITEA: a lab suite never runs in CI and
-// never fails for the service being absent. `bb lab status` prints the
-// environment; `bb tests lab` runs this.
+// never fails for the service being absent. `bb tests lab` sets it and
+// runs this.
 //
 // What it makes on the forge it removes again (the repositories and the
 // token it minted), so it can run twice. The fixture project it links is
@@ -20,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 
 const GITEA = (process.env.BB_LAB_GITEA || '').replace(/\/$/, '');
 if (!GITEA){
-  console.log('SKIP  lab-forge: BB_LAB_GITEA is not set (bb lab up, then bb lab status)');
+  console.log('SKIP  lab-forge: BB_LAB_GITEA is not set (bb tests lab sets it)');
   process.exit(0);
 }
 const USER = process.env.BB_LAB_USER || 'labadmin';

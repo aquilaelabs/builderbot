@@ -98,8 +98,7 @@ bb — BuilderBot helper
                          ARGS go to the command, so a suite that takes file
                          names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
-  bb tests lab           the lab suites against the real Gitea (BB_LAB_GITEA), skipped without one
-  bb lab up|down|status  the lab's own Gitea (tools/lab), for the suites the harness cannot prove
+  bb tests lab           the lab suites, against the Gitea of BuilderBot's dev stack (lab profile)
   bb rules               the house rules for this project — the operator's and yours
   bb rules show NAME     one of them in full — what a conditional rule says
   bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
@@ -2867,47 +2866,6 @@ sys.exit(1)
 VERDICT
 }
 
-# bb lab: the lab's Gitea (roadmap R54), a real forge to prove the link,
-# unlink and runner paths against, brought up from tools/lab on a machine
-# whose docker this account can reach. A session on a node has no socket
-# of its own, so `up` there says which way to ask for it.
-cmd_lab() {
-    local here; here="$(dirname "$(readlink -f "$0")")/../tools/lab"
-    local url="${BB_LAB_GITEA:-http://127.0.0.1:3000}"
-    case "${1:-status}" in
-        up|down)
-            [ -f "$here/docker-compose.yml" ] || die "tools/lab/docker-compose.yml is not beside this bb"
-            if ! docker info >/dev/null 2>&1; then
-                die "docker is not reachable from this account. On the sandbox VM as bb: " \
-                    "docker compose -f $here/docker-compose.yml $1 -d; from a session: " \
-                    "bb root run --why \"bring the lab's Gitea up\" -- docker compose -f $here/docker-compose.yml $1 -d"
-            fi
-            if [ "$1" = up ]; then
-                docker compose -f "$here/docker-compose.yml" up -d
-                echo "waiting for it to answer"
-                for _ in $(seq 1 60); do
-                    curl -fs "$url/api/healthz" >/dev/null 2>&1 && break
-                    sleep 2
-                done
-                cmd_lab status
-            else
-                docker compose -f "$here/docker-compose.yml" down
-            fi
-            ;;
-        status)
-            local v
-            if v="$(curl -fs "$url/api/v1/version" 2>/dev/null)"; then
-                echo "lab gitea at $url answers: $v"
-                echo "export BB_LAB_GITEA=$url    # then: bb tests lab"
-                echo "sign-in for the suites: labadmin / labpassword (BB_LAB_USER, BB_LAB_PASS to override)"
-            else
-                die "no gitea answers at $url: bb lab up brings one up, or set BB_LAB_GITEA to where it is"
-            fi
-            ;;
-        *) die "usage: bb lab up|down|status" ;;
-    esac
-}
-
 cmd_tests() {
     # The test registry's CLI half — the side a session drives, and the only
     # side that can ingest, because ingesting means reading what a runner
@@ -2926,9 +2884,16 @@ cmd_tests() {
     # The lab suites (roadmap R54): the ones that need a real service, run
     # against the lab's Gitea and skipped in one line without it. Not
     # recorded in the registry: a lab run is a proof, not a timing.
+    # The Gitea is the `gitea` service of BuilderBot's own dev stack, under
+    # its compose file's `lab` profile: brought up from the Docker tab like
+    # any project's stack, never by a verb of this script's, so testing
+    # BuilderBot takes the paths every project takes. Reached on the node
+    # the stack runs on, which is where a suite runs too.
     if [ "${1:-}" = lab ]; then
-        [ -n "${BB_LAB_GITEA:-}" ] \
-            || die "BB_LAB_GITEA is not set: export the lab's address (bb lab status prints it) first"
+        export BB_LAB_GITEA="${BB_LAB_GITEA:-http://127.0.0.1:3000}"
+        curl -fs "$BB_LAB_GITEA/api/healthz" >/dev/null 2>&1 \
+            || die "no Gitea answers at $BB_LAB_GITEA: bring BuilderBot's dev stack up with COMPOSE_PROFILES=lab in its env file (the Docker tab), or set BB_LAB_GITEA to where one is"
+        echo "lab: $BB_LAB_GITEA"
         local tdir; tdir="$(dirname "$(readlink -f "$0")")/dashboard/test"
         local -a labs=()
         local f
@@ -6380,7 +6345,6 @@ case "${1:-help}" in
     roadmap)  shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
-    lab)      shift; cmd_lab "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;

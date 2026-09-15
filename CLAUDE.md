@@ -53,7 +53,7 @@ by hand cost four commands and still could not see the failed builds.
   ```bash
   bb lint                       # shellcheck / hadolint / ruff / actionlint / compose / XML, the same set as CI
   bb tests run                  # the Playwright suite, timed and recorded; bb dashboard test [cards] for one file
-  bb tests lab                  # the lab suites, against the real Gitea bb lab up brings up (tools/lab)
+  bb tests lab                  # the lab suites, against the Gitea of BuilderBot's own dev stack (lab profile)
   python3 -m py_compile scripts/dashboard/server.py
   ```
 

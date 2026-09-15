@@ -270,6 +270,8 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `NPM_TOKEN` | *(none)* | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
+| `COMPOSE_PROFILES` | empty | compose's own switch: `lab` in a dev instance's env file starts the lab's Gitea beside it (the `gitea` service), for `bb tests lab` |
+| `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
@@ -475,10 +477,10 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
-bb tests lab       the lab suites (test/lab-*.mjs) against the real Gitea BB_LAB_GITEA names; each skips
-                   in one line without one, and nothing records them: a lab run is a proof, not a timing
-bb lab up|down|status  the lab's own Gitea from tools/lab/docker-compose.yml, on a machine whose docker
-                   you can reach; status prints the environment the suites want
+bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
+                   BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
+                   from the Docker tab like any project's stack. Each skips in one line without one,
+                   and nothing records them: a lab run is a proof, not a timing
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
