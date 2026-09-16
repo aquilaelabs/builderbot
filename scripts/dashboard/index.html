@@ -1308,10 +1308,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   .clog .clsha{max-width:8em;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
 }
-/* A card body that is prose-and-controls rather than rows: the same inner
-   air .macros and .docbar give their cards. The Claude card ran its content
-   to the card edge for want of exactly this. */
-.card .pad{padding:9px 12px}
 /* A project's colour: eight fixed tones, picked to read on every one of the
    dark schemes above, worn as a bar down the left of the notebook tab and
    the project row and as a tint on the tab while it is the one in front.
@@ -1340,11 +1336,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
 .prefrow{display:flex;gap:10px;flex-wrap:wrap}
-/* The fact, above the explanation: what claude is running now, and whether
-   this card is about to change it. */
-.prefnow{color:var(--dim);font:var(--f-note);margin:8px 0 0}
-.prefnow.differs{color:var(--warn)}
-.prefnow:empty{display:none}
 .prefrow .pick{display:flex;gap:6px;align-items:center;
   font:var(--f-note);color:var(--dim)}
 .veradd{margin-top:10px}
@@ -1364,7 +1355,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
 .verln.off code{color:var(--dim)}
 .vermark{font:var(--f-note);color:var(--warn)}
-.verwhy,.prefwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
+.verwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{gap:6px;margin-top:8px}
 /* Claude access: a labelled control on its own line rather than a stray
    caption with a naked select under it. The label sits in the same 118px
@@ -1407,8 +1398,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-row)}
 .grow .gsub .pill{margin-right:4px}
 .grow .gmeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-note);color:var(--dim)}
-.gl0{stroke:var(--accent)} .gl1{stroke:var(--note)} .gl2{stroke:var(--warn)}
-.gl3{stroke:var(--bad)} .gl4{stroke:var(--dim)}
 .glines path{fill:none;stroke-width:2;opacity:.8}
 .glines .gn{fill:var(--panel);stroke-width:2}
 .glines .gn.on{fill:var(--ink)}
@@ -2136,8 +2125,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* Vertical only: the shorthand wiped the band's horizontal inset, which is
    the one rule uniform.mjs measures across every tab. */
 .nodestab .ndrow{padding-top:10px;padding-bottom:10px}
-.nodestab .ndsec{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
-.nodestab .ndsec:first-of-type{border-top:0}
 .nodestab .ndconfbody{gap:10px}
 /* Resource meters. A number in a sentence cannot be glanced at; a bar can,
    and pressure picks the colour so a filling disk is what the eye finds. */
@@ -2160,7 +2147,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndmeter .val{color:var(--ink);font:var(--f-note);white-space:nowrap;text-align:right}
 .ndlabels{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ndcaps{display:flex;gap:14px;flex-wrap:wrap}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
@@ -2170,7 +2156,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    about what runs, with the page's pre skin, inset like a field. */
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
-.ndnums{font:var(--f-note);color:var(--dim)}
 /* The generated domain XML. `pre` wraps by default, which is right for a
    shell line and wrong for a file somebody is about to paste into a
    hypervisor: a wrapped element reads as two, and the eye cannot tell which.
@@ -2363,7 +2348,6 @@ button[aria-busy="true"]{opacity:.75}
 .ndrow>.ndsections{margin:8px calc(-1 * var(--row-x)) calc(-1 * var(--row-y))}
 .ndrow .actbar.ndagent{margin-top:4px}
 .ndrow .ndsections .sub{margin:0}
-.ndsec{font:var(--f-note);color:var(--dim);margin-top:4px}
 .ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
   gap:6px;align-items:center}
 .ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
@@ -2525,15 +2509,9 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .pill.bad{color:var(--bad);border-color:#94423d}
 .pill.warn{color:var(--warn);border-color:#705820}
 .pill.note{color:var(--note);border-color:#305d8f}
-/* A job can run for many minutes; a still badge reads as a stale page. */
-.spin{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
-  border:2px solid #305d8f;border-top-color:var(--note);
-  animation:spin 900ms linear infinite}
-.spin.bad{border-color:#94423d;border-top-color:var(--bad)}
 .row code{font:11px/1.5 var(--mono);background:var(--btn);padding:1px 5px;
   border-radius:4px;white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){ .spin{animation:none} }
 
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
@@ -2869,7 +2847,6 @@ body.booting .pane>.loading{margin:auto}
 
 /* Findings view ------------------------------------------------------ */
 .fx h3{margin:0 0 8px;font-size:15px}
-.fx .stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 /* Not in the notebook. A pane's document carries `fx` whatever it holds, so
    the findings card (bordered, rounded, floating on its own background)
    landed on every row of the to-do list and made it read as a wall of
@@ -2879,7 +2856,6 @@ body.booting .pane>.loading{margin:auto}
   margin-bottom:10px;background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:var(--row-y) var(--row-x);font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
-.fx .bust{padding:var(--row-y) var(--row-x);color:var(--bad);font-weight:600}
 .fx .rule{border-top:1px solid var(--line);padding:var(--row-y) var(--row-x)}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
