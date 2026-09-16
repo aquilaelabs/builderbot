@@ -59,6 +59,10 @@ function userRow(u){
             p => `<span class="pill">${esc(p)}</span>`).join(" ")
         : `<span class="sub dim">sees nothing yet; it can sign in, and every
              project is hidden until one is given</span>`)
+    : u.role === "admin"
+    ? `<span class="sub">sees every project${u.projects.length
+        ? `, works on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
+        : `; works on none yet: Edit ticks the ones to take on</span>`}`
     : `<span class="sub">sees every project</span>`;
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
     <div class="grow">
@@ -199,8 +203,10 @@ function usersEditOpen(name){
     ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}
     ${f("ueGitEmail", "Git email", pf.git_email, "email", "", "on their commits. Blank means their email")}
     ${f("uePw", "New password", "", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
-    <div class="field" id="ueProjField"${u.role === "user" ? "" : " hidden"}>
-      ${lbl("", "Projects this account sees", "a project not on the list does not appear for them at all")}
+    <div class="field" id="ueProjField"${u.role === "owner" ? " hidden" : ""}>
+      ${u.role === "admin"
+        ? lbl("", "Projects this account works on", "an admin sees every project and works on the ones ticked here; the rest are read-only for them")
+        : lbl("", "Projects this account sees", "a project not on the list does not appear for them at all")}
       <div class="upick">${usersMeta.projects.length
         ? usersMeta.projects.map(p => `<label class="pkg"><input type="checkbox"
             data-ueproj="${esc(p)}"${(u.projects || []).includes(p) ? " checked" : ""}>
@@ -223,7 +229,10 @@ function usersEditOpen(name){
     });
   }
   const role = m.querySelector("#ueRole");
-  if (role) role.onchange = () => { m.querySelector("#ueProjField").hidden = role.value !== "user"; };
+  // The list is every role's but the owner's, who has every project: an
+  // admin works on the ones ticked (users.may_work), so hiding it for them
+  // left no way to take a project on from the page (B142).
+  if (role) role.onchange = () => { m.querySelector("#ueProjField").hidden = role.value === "owner"; };
   m.querySelector("#ueCancel").onclick = () => { m.hidden = true; };
   m.querySelector("#ueSave").onclick = () => usersEditSave(u.name, m);
   m.querySelector("#ueName").focus();
@@ -236,7 +245,7 @@ async function usersEditSave(name, m){
                 profile: {full_name: v("ueFull"), email: v("ueEmail"),
                           git_name: v("ueGitName"), git_email: v("ueGitEmail")},
                 password: v("uePw")};
-  if ((m.querySelector("#ueRole")?.value || "user") === "user" && !m.querySelector("#ueProjField").hidden)
+  if ((m.querySelector("#ueRole")?.value || "user") !== "owner" && !m.querySelector("#ueProjField").hidden)
     body.projects = [...m.querySelectorAll("[data-ueproj]")].filter(c => c.checked).map(c => c.dataset.ueproj);
   // An email that is not one is caught here, before a request: the field
   // knows (type=email), and the server checks the same shape again.
