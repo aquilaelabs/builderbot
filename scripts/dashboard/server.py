@@ -4647,6 +4647,16 @@ class Handler(BaseHTTPRequestHandler):
         the credential cannot prove (bug #16) but is worth writing down."""
         if NODES_OK:
             return {"error": "the node store did not open: " + NODES_OK}, 500
+        # Never from a session (R35). A session is on its project's node and
+        # runs these verbs where it is, inside its view; a job runs as the
+        # node's enrolled account, outside every view and in the docker
+        # group, so a session token that could queue one would read every
+        # project on the machine and be root on it. Measured on
+        # bb-dev-sandbox, 16 Sep, before this refusal.
+        if (self._who() or {}).get("session"):
+            return {"error": "a session runs bb run, build, test and emu where it is, on its "
+                             "project's node; a job would run outside the session's view, "
+                             "so a session cannot queue one"}, 403
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return {"error": "not a project"}, 400
@@ -4660,13 +4670,6 @@ class Handler(BaseHTTPRequestHandler):
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
-        # A session runs on its project's node and no other: naming one in
-        # the request is how a token for one project would reach a machine
-        # it was never bound to.
-        if (self._who() or {}).get("session") and field(req, "node") \
-                and field(req, "node") != pf["node"]:
-            return {"error": "a session's jobs run on its project's node — "
-                             "which node that is, is the operator's to change"}, 403
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400

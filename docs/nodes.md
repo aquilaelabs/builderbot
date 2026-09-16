@@ -372,8 +372,10 @@ queue wakes it when a job ends on the node, so the next one starts at once.
 **What a job runs as.** The unit runs the agent as root; that is what lets
 phase 5's system jobs (mounts, network) exist, but an `exec` job drops to
 the account the provisioner enrolled, the same `bb` that docker runs as,
-before it runs anything. A session reaching a node through a job has the
-reach it already had over ssh, and no more.
+before it runs anything. That account is outside every session's view and in
+the docker group, so a session token cannot queue a job at all: a session runs
+`bb run`, `bb build`, `bb test` and `bb emu` where it is, on its project's node,
+inside the view that keeps it to its own project (R35).
 
 **Ship long-poll first.** It gives sub-second job pickup, crosses every proxy
 and NAT, and needs no new protocol machinery in a stdlib-only server. Each

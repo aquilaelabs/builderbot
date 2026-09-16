@@ -948,9 +948,15 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   // was never bound to.
   ok((await post('/api/prefs', { project: 'alpha', gate: { roadmap: 'auto' } })).status === 403,
      'a session cannot change its project\'s settings');
-  const far = await post('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'n_elsewhere', argv: ['true'] });
-  ok(far.status === 403 && /project's node/.test((await far.json()).error || ''),
-     '...nor send a job to a node other than its project\'s');
+  // Nor queue a job at all (R35): a job runs as the node's enrolled account,
+  // outside the session's view, so its own node is no better than another.
+  for (const [what, body] of [['on its own node', { action: 'run', project: 'alpha', argv: ['true'] }],
+                              ['on another node', { action: 'run', project: 'alpha', node: 'n_elsewhere', argv: ['true'] }],
+                              ['for the emulator', { action: 'emu', project: 'alpha', argv: ['emu', 'list'] }]]) {
+    const r = await post('/api/v1/jobs', body);
+    ok(r.status === 403 && /outside the session's view/.test((await r.json()).error || ''),
+       `...nor queue a job ${what}, since a job runs outside the session's view (${r.status})`);
+  }
   const jl = await (await as('/api/v1/jobs?n=50')).json();
   ok(Array.isArray(jl.jobs) && jl.jobs.every(j => j.project === 'alpha'),
      `the job list a session reads holds its project's jobs and no other (${jl.jobs?.length ?? '?'})`);
