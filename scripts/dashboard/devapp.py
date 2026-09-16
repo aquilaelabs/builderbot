@@ -476,6 +476,9 @@ def compose_done(job, state):
     state() read it as belonging to another machine and the row went back to
     saying nothing — the build happened, and the tab forgot it.
     """
+    # Whatever the node's listing said before this action is no longer
+    # true of it, and the row is read the moment the job ends.
+    _forget_reads((job or {}).get("node") or "")
     with on_node((job or {}).get("node") or ""):
         return _compose_done(job, state)
 
@@ -971,6 +974,89 @@ def _agent_here():
     return n if n and n.get("kind") == "agent" else None
 
 
+# What each agent node last answered to a bare docker read, kept until an
+# action on that node ends. It stands in while the node is on a job: a
+# probe queued behind a build would wait the build out, and the row asking
+# would hang with it.
+_last_reads = {}
+_reads_lock = threading.Lock()
+# One answer per question per REQUEST, never per time: state() asks about
+# running and existing per instance and the manager asks once for the page,
+# and each ask is a job on the node, so a fetch that opened a scope costs
+# one probe. A memo that outlived the request made an explicit Refresh
+# return what the read before it saw.
+_scope = threading.local()
+
+
+@contextlib.contextmanager
+def read_scope():
+    """Share every bare docker read made inside the block. Opened by the
+    entry points that answer one fetch (overview, the Artifacts payload)
+    and by nothing that acts."""
+    fresh = getattr(_scope, "reads", None) is None
+    if fresh:
+        _scope.reads = {}
+    try:
+        yield
+    finally:
+        if fresh:
+            _scope.reads = None
+
+
+def _forget_reads(node_id):
+    """Drop what a node last answered: an action just changed it."""
+    with _reads_lock:
+        for k in [k for k in _last_reads if k[0] == node_id]:
+            del _last_reads[k]
+
+
+def _agent_read(n, argv, timeout):
+    """One bare docker read, run on the agent node as a probe job the Jobs
+    tab never keeps, in _run's own {"code", "out"} shape."""
+    key = (n["id"], tuple(argv))
+    memo = getattr(_scope, "reads", None)
+    if memo is not None and key in memo:
+        return dict(memo[key])
+    if queue.job_running(n["id"]) > 0:
+        with _reads_lock:
+            hit = _last_reads.get(key)
+        out = dict(hit) if hit else {
+            "code": 1, "out": f"{n['name']} is on a job; what is running "
+                              "there is read again when it ends"}
+        if memo is not None:
+            memo[key] = out
+        return out
+    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+                       forget=True)
+    if r.get("error"):
+        out = {"code": 1, "out": r["error"]}
+    else:
+        out = {"code": int(r.get("code") or 0), "out": r.get("out") or ""}
+    _docker_result(argv, out["code"], out["out"])
+    with _reads_lock:
+        _last_reads[key] = out
+    if memo is not None:
+        memo[key] = out
+    return out
+
+
+def _agent_instance_containers(n, project, instance, running_only):
+    """The containers of one instance on an agent node, from the node's own
+    listing: `compose ps` names the compose file by a path on THIS side,
+    and on an agent node the daemon is on the other, so the answer comes
+    from `docker ps` filtered by the compose project label, which is how
+    the manager's overview already tells instances apart."""
+    got = containers()
+    if got.get("error"):
+        return None
+    pn = _pname(project, instance)
+    mine = [c for c in got["containers"] if c["project"] == pn]
+    if running_only:
+        mine = [c for c in mine if c["state"] == "running"]
+    return mine
+
+
 def _available_agent(n):
     """Whether an agent node can run compose, from what it says about itself.
 
@@ -1292,6 +1378,17 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
         msg = "refused by BuilderBot, and this is a bug in it: " + bad
         print("[devapp] " + msg, file=sys.stderr, flush=True)
         return {"code": 126, "out": msg}
+    # A bare docker READ addressed at an agent node runs ON that node, as
+    # the compose actions already do (roadmap #18): the controller holds no
+    # ssh into a node its agent dials out of, so `docker ps` over
+    # DOCKER_HOST=ssh:// was the one call left dialing it and the one that
+    # failed on every fresh deploy (B134). Streamed calls are builds and
+    # never reach here on an agent node; _submit ships those whole.
+    if sink is None and hold is None and argv[:1] == [DOCKER] \
+            and len(argv) > 1 and argv[1] in _BARE_OK:
+        n = _agent_here()
+        if n:
+            return _agent_read(n, argv, timeout)
     _docker_log("$ " + " ".join(argv))
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI — it does
@@ -2262,6 +2359,7 @@ def overview(node_id=None):
     # whether they are running, and that stays unknown rather than guessed.
     picked = node_id or (node_for() if node_for else "")
     with contextlib.ExitStack() as ctx:
+        ctx.enter_context(read_scope())
         if picked:
             ctx.enter_context(on_node(picked))
         return _overview_here(picked)
@@ -2757,7 +2855,8 @@ def only_instance(project):
 
 def states(project):
     """Every instance of a project, in one call, for the manager."""
-    return [state(project, i) for i in instances(project)]
+    with read_scope():
+        return [state(project, i) for i in instances(project)]
 
 
 def _rec(d, project, instance):
@@ -3370,6 +3469,9 @@ def _risk_gate(project, instance=MAIN, ack=""):
 
 
 def _running(project, instance=MAIN):
+    n = _agent_here()
+    if n:
+        return bool(_agent_instance_containers(n, project, instance, True))
     r = _run(_compose(project, instance, "ps", "--status", "running", "-q"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
 
@@ -3383,6 +3485,9 @@ def _exists(project, instance=MAIN):
     left a crashed instance with a greyed-out Down and no way out of the
     dashboard at all.
     """
+    n = _agent_here()
+    if n:
+        return bool(_agent_instance_containers(n, project, instance, False))
     r = _run(_compose(project, instance, "ps", "-aq"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
 

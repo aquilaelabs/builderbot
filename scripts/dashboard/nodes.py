@@ -2158,12 +2158,18 @@ def job_add(principal, placement, type, spec, project="", source=None):
 
 
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
-             sizes=None, project=""):
+             sizes=None, project="", forget=False):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
     and exit code handed back — the Nodes tab's Test, generalised. For the
     phone: adb on the node that holds the handset, where the controller has
-    no adb and no phone. {"code", "out"} or {"error"}."""
+    no adb and no phone. {"code", "out"} or {"error"}.
+
+    `forget` is for a READ nobody asked to see: the Docker manager's
+    `docker ps` on an agent node runs this way each time a listing is
+    drawn, and a row per draw on the Jobs tab would bury the jobs somebody
+    queued on purpose. The record is dropped once its answer is in hand;
+    the audit line from job_add stays."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
     if env:
         spec["env"] = {str(k): str(v) for k, v in env.items()}
@@ -2178,6 +2184,8 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     while time.time() < deadline:
         j = job(r["job"])
         if j and j["state"] in JOB_END:
+            if forget:
+                job_forget(r["job"])
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
                     "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
@@ -2471,6 +2479,16 @@ def job(job_id, with_log=True):
             "SELECT chunk FROM job_logs WHERE job_id = ? ORDER BY seq",
             (job_id,)))
     return j
+
+
+def job_forget(job_id):
+    """Drop a finished job and its log: only for a probe whose answer was
+    read by the caller that queued it (run_wait's `forget`). A job somebody
+    queued is a record and is never dropped here."""
+    _exec("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
+    _exec("DELETE FROM jobs WHERE id = ? AND state IN "
+          "('succeeded', 'failed', 'canceled')", (job_id,))
+    _jstate_bump()
 
 
 def job_tail(job_id, n=4000):

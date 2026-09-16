@@ -4307,12 +4307,14 @@ class Handler(BaseHTTPRequestHandler):
             # `devapp` is the main instance, which is what the row shows;
             # `devapps` is every instance, which the manager reads. Both, so
             # the row keeps working while the manager grows around it.
+            # One read scope for the row and the manager's list: on an
+            # agent node each is a probe job, and both ask the same daemon.
+            with devapp.read_scope():
+                dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
             return self._json({"artifacts": artifacts_of(name),
                                # What this project can and cannot do off this
                                # box, said on the tab that lists what it built.
-                               "build": build_state(name),
-                               "devapp": devapp.state(name),
-                               "devapps": devapp.states(name)}
+                               "build": build_state(name)} | dev
                               | phone.summary(prefs.get(name)["node"], users.uid_of(self._who()),
                                               nodes.node(prefs.get(name)["node"])
                                               if prefs.get(name)["node"] and not NODES_OK else None))
