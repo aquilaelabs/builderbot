@@ -53,6 +53,7 @@ ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 FROM_PANE = ("TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES")
 
 MS_RDONLY, MS_NOSUID, MS_NODEV, MS_NOEXEC = 1, 2, 4, 8
+MS_REMOUNT = 32
 MS_BIND, MS_REC, MS_PRIVATE = 4096, 16384, 1 << 18
 MNT_DETACH = 2
 CLONE_NEWNS, CLONE_NEWIPC, CLONE_NEWPID = 0x00020000, 0x08000000, 0x20000000
@@ -68,7 +69,12 @@ def conf():
     the defaults a provisioned node has."""
     c = {"SESSION_USER": "builder", "WORKSPACE": "/workspace", "HOME_ROOT": "",
          "DATA_STORE": "/var/lib/builderbot/data", "ARTIFACTS_STORE": "/var/lib/builderbot/artifacts",
-         "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata"}
+         "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata",
+         # The scoped packages store, whose .bb bundle is the bb and bb-tty a
+         # session and the agent run. Empty until the agent writes it, and then
+         # the bundle is read-only in the view (B157); empty here just leaves
+         # it as it was, which an older agent's conf does.
+         "PACKAGES_STORE": ""}
     # Another layout file only for somebody who is not root, which is `plan`
     # run by the suite: `enter` is root through sudo, which resets the
     # environment, and root reads the machine's own file whatever it says.
@@ -223,6 +229,16 @@ def plan(c, a, uid):
         steps.append(("tmpfs", art, "mode=0755"))
         if _real_dir(f"{art}/{project}"):
             steps.append(("bind", f"{STAGE}/artifacts/{project}", f"{art}/{project}"))
+    # The packages store's bundle is the bb and bb-tty a session runs and the
+    # agent runs for a job (as the enrolled account, in the docker group), on
+    # the shared store the squash makes writable by the session account. So a
+    # session could rewrite what another account's session, or a job, then
+    # executes. Read-only in the view (B157): the session still reads and runs
+    # it, and cannot change it. Only the bundle; the toolchains beside it stay
+    # writable, since a build legitimately writes under some of them.
+    bundle = f"{c['PACKAGES_STORE'].rstrip('/')}/.bb" if c.get("PACKAGES_STORE") else ""
+    if bundle and _real_dir(bundle):
+        steps.append(("bindro", bundle, bundle))
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")):
             steps.append(("hide", hidden.rstrip("/")))
@@ -265,7 +281,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind",) else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -281,6 +297,14 @@ def apply(steps, uid, gid):
             if not os.path.isdir(target):
                 _mkdirs(target, uid, gid)
             _mount(src, target, None, MS_BIND | MS_REC)
+        elif kind == "bindro":
+            # A read-only bind of a directory onto itself: bind first, then
+            # remount read-only, which is the only way the flag takes on a bind.
+            # The view's root is private, so this is read-only here and nowhere
+            # else, and the agent still writes the bundle from outside the view.
+            src = step[1]
+            _mount(src, target, None, MS_BIND | MS_REC)
+            _mount(src, target, None, MS_BIND | MS_REMOUNT | MS_RDONLY)
         elif kind == "hide":
             _mount("tmpfs", target, "tmpfs", MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0500")
         elif kind == "hidefile":

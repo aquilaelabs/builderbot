@@ -448,7 +448,8 @@ def respawn(start):
     return seen[-1]
 print(json.dumps({
   'sudoers': m.session_sudoers('builder'),
-  'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a'}}, 'builder'),
+  'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a', 'packages': '/p'}}, 'builder'),
+  'pkgroot': m.pkg_root({'stores': {'packages': '/p'}}),
   'good': [ok(f'sudo -n ${bin} enter --project alpha --account u_0000abcd --home /home/builder/users/u_0000abcd --cwd /workspace/alpha --env {home}/alpha/session.env -- {home}/alpha/claude-run.sh'),
            ok(f'{home}/alpha/claude-run.sh'), ok('/home/builder/.cache/builderbot/claude-run-alpha.sh')],
   'bad': [ok(f'{home}/alpha/claude-run.sh; id'), ok(f'sudo -n /tmp/other enter -- {home}/alpha/claude-run.sh'),
@@ -461,7 +462,8 @@ print(json.dumps({
          && out.sudoers.includes(`Defaults!${bin} !use_pty, !lecture`)
          && out.sudoers.includes(`builder ALL=(root) NOPASSWD: ${bin}`)
          && (out.sudoers.match(/NOPASSWD/g) || []).length === 1
-         && /SESSION_USER=builder\nWORKSPACE=\/workspace\nDATA_STORE=\/d\nARTIFACTS_STORE=\/a\n/.test(out.conf),
+         && /SESSION_USER=builder\nWORKSPACE=\/workspace\nDATA_STORE=\/d\nARTIFACTS_STORE=\/a\n/.test(out.conf)
+         && out.conf.includes(`PACKAGES_STORE=${out.pkgroot}\n`) && out.pkgroot.startsWith('/p/'),
          `the bundle carries bb-session, and the agent's sudo rule names that one command for the session account alone (${out.sudoers.split('\n')[3]})`);
       ok(out.good.every(Boolean) && !out.bad.some(Boolean),
          `a respawn runs again a launcher inside the view, a plain one, or one from before the view, and nothing else (${JSON.stringify(out.good)} ${JSON.stringify(out.bad)})`);

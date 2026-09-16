@@ -16,6 +16,9 @@ const STAGE = '/run/bb-session';
 const L = join(DIR, 'viewlayout');
 const ws = join(L, 'workspace'), homeRoot = join(L, 'home'), users = join(homeRoot, 'users');
 const data = join(L, 'data'), art = join(L, 'artifacts'), runner = join(L, 'runner'), devdata = join(L, 'devdata');
+// The scoped packages store: the .bb bundle a session and the agent run, and a
+// toolchain beside it a build writes to (B157).
+const pkg = join(L, 'packages', 'linux-x86_64');
 const me = 'u_0000abcd', other = 'u_1111abcd';
 const myHome = join(users, me);
 // Claude Code's transcript folder for a path: every other character a dash.
@@ -37,13 +40,15 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(homeRoot, '.claude'),
                  join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
+                 join(pkg, '.bb', 'current'), join(pkg, 'jdk'),
                  runner, devdata])
   mkdirSync(d, { recursive: true });
 writeFileSync(join(homeRoot, '.claude.json'), '{}');
 symlinkSync(join(ws, 'beta'), join(ws, 'linked'));
 const conf = join(L, 'bb-session.conf');
 writeFileSync(conf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
-  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n',
+  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `PACKAGES_STORE=${pkg}`,
+  `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n',
   { mode: 0o644 });
 
 const run = (...args) => {
@@ -84,6 +89,23 @@ ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(dat
    && !bound(join(data, 'ci-logs', 'beta')) && !bound(join(data, 'jobs')) && !bound(join(data, 'compose'))
    && bound(join(art, 'alpha')) && !bound(join(art, 'beta')) && hidden(runner) && hidden(devdata),
    'the agent\'s stores keep the emulator, its own CI logs and artifacts; jobs, compose files, the runner and dev data are gone');
+ok(has('bindro', join(pkg, '.bb'), join(pkg, '.bb'))
+   && !steps.some(x => x[0] === 'bindro' && x[1] === join(pkg, 'jdk'))
+   && !bound(join(pkg, '.bb')),
+   'the packages bundle is read-only in the view so a session cannot rewrite the bb the agent and other sessions run, while the toolchains beside it stay writable for a build (B157)');
+{
+  // No PACKAGES_STORE (an older agent's conf, before B157): no bundle bind at
+  // all, which leaves the store as it was rather than failing the view.
+  const noStore = join(L, 'bb-session-nostore.conf');
+  writeFileSync(noStore, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
+    `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
+  const g = (() => { try { return { code: 0, out: execFileSync(HELPER,
+    ['plan', '--project', 'alpha', '--account', me, '--home', myHome, '--cwd', join(ws, '.worktrees', 'alpha', me)],
+    { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: noStore } }) };
+  } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } })();
+  ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro'),
+     '...and a conf without PACKAGES_STORE (an agent from before B157) plans no bundle bind rather than failing');
+}
 ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0] === 'proc'
    && steps[steps.length - 1][0] === 'detach',
    'the view starts private with its own /proc, gets its own /tmp, and lets the staging copy of the machine go last');
