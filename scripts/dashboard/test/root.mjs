@@ -210,7 +210,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
       installed: true, active: true, unit } } }));
     for (let i = 0; i < 120; i++){
       const n = ((await api('/api/v1/nodes')).body.nodes || []).find(x => x.id === sandbox.id);
-      if ((n?.reported?.services?.['actions-runner']?.unit || '') === (unit || '')) return true;
+      if (((n?.reported?.services?.runners || [])[0]?.unit || '') === (unit || '')) return true;
       await new Promise(r => setTimeout(r, 250));
     }
     return false;

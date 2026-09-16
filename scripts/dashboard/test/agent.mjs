@@ -1734,8 +1734,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       return runnerOf(n, GH)?.installed ? n : null; });
     ok(rn && runnerOf(rn, GH).name === 'agentbox' && runnerOf(rn, GH).labels.includes('agentbox')
        && rn.services.runners[GH].want === true
-       && rn.reported.services['actions-runner']?.slot === GH,
-       'the census reports the runner under its slot, with its name and labels, and as the single key too; the record keeps the ask');
+       && (rn.reported.services?.runners || []).some(r => r.slot === GH),
+       'the census reports the runner under its slot, with its name and labels; the record keeps the ask');
     ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
     // A reinstall whose registration token cannot be minted (a token
     // lacking the org permission) leaves the runner standing: it used to
@@ -1794,8 +1794,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(grfin?.state === 'succeeded' && !existsSync(`${DIR}/runner/${GT}`) && new RegExp(`^remove \\S+ ${GT} 7$`, 'm').test(scalls),
        `Remove runner deletes the Gitea runner on its host by id and takes its directory away (${grfin?.state}; ${scalls.trim().split('\n').pop() || 'no deletion'})`);
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
-      return (n.reported.services?.runners || []).length === 0 && n.reported.services?.['actions-runner']?.installed === false ? n : null; });
-    ok(rn2 !== null, '...and the census says so, under the list and the single key alike');
+      return (n.reported.services?.runners || []).length === 0 ? n : null; });
+    ok(rn2 !== null, '...and the census says so: the list is empty');
   }
 
   // ---- emulation as a job (phase 9) --------------------------------------------
