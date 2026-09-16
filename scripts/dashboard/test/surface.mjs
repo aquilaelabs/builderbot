@@ -187,6 +187,45 @@ ok(scripts.length > 2 && known.size > 500 && stray.length === 0,
    `every name the page's ${scripts.length} scripts use is declared by one of them or is the browser's${
      stray.length ? `; declared nowhere: ${stray.join(', ')}` : ''}`);
 
+// The other half of that seam. A view reaches the notebook's helpers and the
+// other views through the state object (nb.syncSave(), nb.shutSendBoxes), so
+// a name one view stops handing back, or a helper the closure stops putting
+// there, is a TypeError on some later click rather than a ReferenceError
+// anybody can see by name. Every nb.NAME read must be put on nb by an
+// assignment, by Object.assign's literal, or by the return of a view factory
+// that is assigned to it.
+const isState = p => {
+  const fn = p.scope.getBinding('nb')?.scope.path.node;
+  return fn?.type === 'FunctionDeclaration' && /^(makeNotebook|nb\w+View)$/.test(fn.id?.name || '');
+};
+const put = new Set(), reads = [], hands = {}, assignedFrom = [];
+for (const s of scripts)
+  traverse(babelParse(s.code, s.file.replace(/\.html$/, '.js'), false), {
+    FunctionDeclaration(p){
+      if (!/^nb\w+View$/.test(p.node.id.name)) return;
+      const ret = p.node.body.body.findLast(st => st.type === 'ReturnStatement');
+      hands[p.node.id.name] = (ret?.argument?.properties || []).map(q => q.key.name);
+    },
+    CallExpression(p){
+      const c = p.node.callee, [target, from] = p.node.arguments;
+      if (c.type !== 'MemberExpression' || c.object.name !== 'Object' || c.property.name !== 'assign'
+          || target?.type !== 'Identifier' || target.name !== 'nb' || !isState(p)) return;
+      if (from?.type === 'ObjectExpression') from.properties.forEach(q => put.add(q.key.name));
+      if (from?.type === 'CallExpression' && from.callee.type === 'Identifier') assignedFrom.push(from.callee.name);
+    },
+    MemberExpression(p){
+      const n = p.node;
+      if (n.computed || n.object.type !== 'Identifier' || n.object.name !== 'nb' || !isState(p)) return;
+      if (p.parentPath.isAssignmentExpression() && p.parent.left === n) put.add(n.property.name);
+      else reads.push({n: n.property.name, at: `${s.file}:${s.base + n.loc.start.line}`});
+    },
+  });
+assignedFrom.forEach(f => (hands[f] || []).forEach(n => put.add(n)));
+const unput = [...new Set(reads.filter(r => !put.has(r.n)).map(r => `nb.${r.n} (${r.at})`))];
+ok(reads.length > 100 && assignedFrom.length > 5 && unput.length === 0,
+   `every one of the ${reads.length} reads of the notebook's state finds a name something puts there${
+     unput.length ? `; put nowhere: ${unput.join(', ')}` : ''}`);
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);
