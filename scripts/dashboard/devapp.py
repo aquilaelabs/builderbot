@@ -771,70 +771,6 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
         runner.register("compose", run_compose_job)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
-    _migrate_paths()
-
-
-def _migrate_paths():
-    """Move what the old one-instance-per-project layout named after a project.
-
-    _load() migrates the JSON on read, which costs nothing and needs no write.
-    These two cannot be done that way — they are a file and a directory whose
-    NAMES were the project's, and the code that reads them now asks for the
-    instance's name instead. Left alone, a dev instance would come up with an
-    empty env and an empty data directory and look like a fresh one: the
-    silent-empty-directory failure this module already warns about twice.
-
-    Idempotent, and quiet when there is nothing to move — which is every run
-    after the first, and every install that never had a dev instance.
-    """
-    try:
-        for f in sorted(ENVDIR.glob("*.env")):
-            if f.stem.startswith("bbdev-"):
-                continue                       # already an instance's
-            dst = env_path(f.stem, MAIN)
-            if not dst.exists():
-                f.rename(dst)
-                print(f"[devapp] moved {f.name} to {dst.name} for the "
-                      f"{MAIN} instance", flush=True)
-    except OSError:
-        pass
-    # The project used to be spelled into every name — bbdev-<project>-<inst>
-    # — and is not any more. Driven off the store, which is the only thing that
-    # says which project and instance a file on disk belonged to; a pattern
-    # match on the names themselves cannot tell bbdev-a-b apart as (a, b) or
-    # (a-b, main). Anything the store does not describe is already an orphan
-    # and stays one.
-    try:
-        for proj, insts in _load().items():
-            for inst in insts:
-                was = f"bbdev-{_slug(proj)}-{_slug(inst) or MAIN}"
-                now = _pname(proj, inst)
-                if was == now:
-                    continue
-                a, b = ENVDIR / f"{was}.env", ENVDIR / f"{now}.env"
-                if a.is_file() and not b.exists():
-                    a.rename(b)
-                    print(f"[devapp] env {a.name} -> {b.name}", flush=True)
-                a, b = Path(DEVDATA) / was, Path(DEVDATA) / now
-                if a.is_dir() and not b.exists():
-                    a.rename(b)
-                    print(f"[devapp] data {was} -> {now}", flush=True)
-    except OSError:
-        pass
-    # A third block used to sit here, renaming /devdata/bbdev-<project> to
-    # whatever main's name is now. It was a no-op for as long as that WAS
-    # main's name, and dropping the prefix woke it up as a silent rename of
-    # every dev-data directory, at boot, on whichever side of the mapping this
-    # container can see.
-    #
-    # Which is the one thing this must not do. A data directory is the half
-    # with a running container attached — and dev instances live on the VM, so
-    # they outlive a dashboard restart and are quite likely up while this runs.
-    # Renaming a bind source under one leaves it writing to the old inode and
-    # says nothing. That is why Migrate exists: it names the old directory on
-    # the row, refuses while anything is up under either name, and moves both
-    # halves when the operator says so. stale_name() finds exactly what this
-    # was catching, by tail, so nothing is lost by leaving it to the button.
 
 
 def job_rev():
@@ -2466,13 +2402,6 @@ def _overview_here(picked):
                 # something: the Ref line's own value, and what the row warns
                 # about when it differs from what is already built.
                 "ref": pin,
-                # Migrate is drawn from this, and only ever rendered on this
-                # page — it was fed by a field this function did not set, so it
-                # had never appeared at all. A directory listing, which this
-                # can afford. The bind directories are NOT here: they are made
-                # as part of starting now, so nothing on this page asks about
-                # them and no row costs a `compose config` to draw.
-                "stale_name": stale_name(project, inst),
                 # Each container of the instance, so the row can list them:
                 # an instance is one thing to Up and Down and three things
                 # to look at (the operator, 15 Sep).
@@ -2657,13 +2586,6 @@ def forget_container(name):
     removed container in /config/devenv with nothing that would ever read it
     again.
 
-    Stale-named siblings go with it, found by the tail the way stale_name()
-    finds them: a container written under an older naming scheme leaves
-    `bbdev-<name>.env` and `bbdev-none-<name>.env` beside the current one,
-    and those were accumulating too. The `live` check is what makes the
-    loose tail match safe — `my-sonarr` also ends in `-sonarr` while being
-    an instance of its own.
-
     Returns the env files it removed, for the log.
     """
     with _lock:
@@ -2675,17 +2597,12 @@ def forget_container(name):
         shutil.rmtree(containers_dir(name), ignore_errors=True)
     except OSError:
         pass
-    tail = _pname(name, MAIN)
     gone = []
-    if tail and ENVDIR.is_dir():
-        live = {_pname(p, i) for p, insts in _load().items() for i in insts}
-        for f in sorted(ENVDIR.glob(f"*{tail}.env")):
-            stem = f.stem
-            if stem in live or not (stem == tail or stem.endswith("-" + tail)):
-                continue
-            with contextlib.suppress(OSError):
-                f.unlink()
-                gone.append(f.name)
+    f = env_path(name, MAIN)
+    if f.is_file():
+        with contextlib.suppress(OSError):
+            f.unlink()
+            gone.append(f.name)
     return gone
 
 
@@ -2886,15 +2803,7 @@ def _read_rec(project, instance):
 
 
 def _load():
-    """The store, always in its two-level shape: {project: {instance: record}}.
-
-    Migrated on read rather than by a one-off script: the old shape is one
-    record per project, and a record is recognisable — it has a rev, or a
-    daemon, or an ack. Anything whose values are not dicts of dicts is the old
-    layout and becomes the `main` instance, which is the name every call that
-    does not ask for one uses. Nothing is written back here; the next save
-    writes the new shape, and until then reading is enough.
-    """
+    """The store: {project: {instance: record}}."""
     try:
         with open(FILE) as f:
             d = json.load(f)
@@ -2902,16 +2811,8 @@ def _load():
         return {}
     if not isinstance(d, dict):
         return {}
-    out = {}
-    for proj, val in d.items():
-        if not isinstance(val, dict):
-            continue
-        # A dict of dicts is already instances; anything else is one record.
-        if val and all(isinstance(v, dict) for v in val.values()):
-            out[proj] = val
-        else:
-            out[proj] = {MAIN: val}
-    return out
+    return {proj: val for proj, val in d.items()
+            if isinstance(val, dict) and all(isinstance(v, dict) for v in val.values())}
 
 
 def _config(project, instance=MAIN):
@@ -2988,110 +2889,6 @@ def _binds(sv, project):
             except OSError:
                 out.append(str(p))
     return out
-
-
-def stale_name(project, instance=MAIN):
-    """A compose project name this instance used to have, if its things are
-    still under it. Empty when there is nothing to migrate.
-
-    An instance is its name: the containers, the env file and the data
-    directory are all keyed by it. So an instance made under a different name —
-    by a version of this that put a prefix in front of everything — is invisible
-    to a row that looks under the current one, while the old files sit there
-    holding everything.
-
-    Found by the tail rather than by remembering, which needs nothing to have
-    been recorded: `<anything>-binhex-sonarr` and `binhex-sonarr` are the same
-    instance under two names.
-
-    That match is loose, and on its own it is dangerous in two ways.
-
-    `my-sonarr` also ends in `-sonarr` while being a live instance of its own,
-    and offering to migrate it renames somebody's env file and data directory
-    onto this row. So an old name has to be a name nothing currently uses —
-    which it is, by definition — and the store says which those are.
-
-    And an instance that already has its own env file is not one whose things
-    are still under an older name: it has been set up under this one. A
-    container REMOVED from the manager deliberately leaves its env and its data
-    behind, so `bbdev-binhex-sonarr.env` outlives the container it belonged to
-    — and without this a newly created `binhex-sonarr` was offered a migration
-    from a leftover, which would then half-fail on the env file it already had.
-    """
-    tail = now = _pname(project, instance)
-    if not tail or env_path(project, instance).exists():
-        return ""
-    live = {_pname(p, i) for p, insts in _load().items() for i in insts}
-    seen = []
-    try:
-        seen += [f.stem for f in ENVDIR.glob(f"*{tail}.env")]
-    except OSError:
-        pass
-    root = Path(DEVDATA)
-    if root.is_dir():
-        try:
-            seen += [d.name for d in root.iterdir() if d.is_dir()]
-        except OSError:
-            pass
-    for name in seen:
-        if name in live:
-            continue
-        if name != now and (name == tail or name.endswith("-" + tail)):
-            return name
-    return ""
-
-
-@_on_instance
-def migrate_name(project, instance=MAIN):
-    """Move an instance's things from the name it had to the one it has now.
-
-    Refused while anything is up under either name. A compose project is its
-    containers as much as its files, and renaming the directory out from under
-    a running one leaves it writing to a path nobody will look at again — so
-    this is a decision the operator makes with the thing stopped, not something
-    that happens to them on the next poll.
-    """
-    was = stale_name(project, instance)
-    now = _pname(project, instance)
-    if not was:
-        return {"error": "nothing to migrate — it is already under its current name"}
-    live = containers()
-    if live.get("error"):
-        return {"error": "cannot tell what is running: " + live["error"]}
-    busy = [c for c in live["containers"] if c["project"] in (was, now)]
-    if busy:
-        return {"error": f"{len(busy)} container(s) still exist under "
-                         f"{busy[0]['project']} — take it down first"}
-    moved, failed = [], []
-    # The data directory first, and through rename_dev_data, because it is
-    # normally on the VM and not on this side at all: a plain rename() here
-    # found nothing, skipped it, and reported ok — so the env file moved to
-    # the new name while the data stayed under the old one, and the instance
-    # came back up on an empty directory. rename_dev_data owns the split
-    # (mounted here: not mine, say so and let the loop below do it; on the
-    # sandbox: move it there), so there is one implementation of it rather
-    # than a second copy that can drift.
-    did, err = rename_dev_data(was, now)
-    if err:
-        failed.append(f"the data directory: {err}")
-    elif did:
-        moved.append("the data directory")
-    for a, b, what in ((ENVDIR / f"{was}.env", ENVDIR / f"{now}.env", "the env file"),
-                       (Path(DEVDATA) / was, Path(DEVDATA) / now, "the data directory")):
-        if what in moved or any(w.startswith(what) for w in failed):
-            continue                     # the sandbox already answered for it
-        if not a.exists():
-            continue
-        if b.exists():
-            failed.append(f"{what}: {b.name} is already there")
-            continue
-        try:
-            a.rename(b)
-            moved.append(what)
-        except OSError as e:
-            failed.append(f"{what}: {e}")
-    _bump()
-    return {"ok": True, "was": was, "now": now, "moved": moved, "failed": failed}
 
 
 def missing_dirs(project, cfg, instance=MAIN):
@@ -3634,8 +3431,6 @@ def state(project, instance=MAIN):
             out["problems"] = out["problems"] + [
                 "port " + ", ".join(clash) + " — two instances of one project "
                 "publish the same ports, so the second needs its own in its env"]
-        # A name it used to have, whose things are still under it.
-        out["stale_name"] = stale_name(project, instance)
         out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for

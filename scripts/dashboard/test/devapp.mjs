@@ -581,36 +581,6 @@ const probs = await devLines("bad");
 ok(probs.length === 1 && /this container's path/.test(probs[0]),
    'a bind the host cannot resolve is named on its own line, before anything starts');
 
-// Migrate renders at all. It is drawn on THIS page from a field overview()
-// did not set, so it had never appeared: the row asked for d.stale_name, got
-// undefined, and drew nothing. A button that existed only in the source.
-// Its own env moved aside first: an instance that has one is set up under
-// its current name, and offering it a "migration" from a leftover — which
-// Remove deliberately leaves behind — was how a freshly created container got
-// a Migrate button pointing at a dead file.
-const ownEnv = `${DIR}/state/devenv/ep-silon.env`;
-const keptEnv = readFileSync(ownEnv, 'utf8');
-rmSync(ownEnv);
-writeFileSync(`${DIR}/state/devenv/bbdev-ep-silon.env`, 'PORT=7475\n');
-writeFileSync(stubCfg, JSON.stringify({ services: { app: {
-  image: 'x', volumes: ['/nowhere-builderbot-has/data:/data'] } } }));
-await nudge();
-await openManager();
-await page.waitForFunction((sel) => document.querySelector(
-  sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
-ok(await page.$(`${DM} [data-dm="migrate-name"]`) !== null,
-   'an instance with things under an old name gets the Migrate button, on the page that has the buttons');
-writeFileSync(ownEnv, keptEnv);
-rmSync(`${DIR}/state/devenv/bbdev-ep-silon.env`);
-await nudge();
-await openManager();
-await page.waitForFunction((sel) => !document.querySelector(
-  sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
-ok(await page.$(`${DM} [data-dm="migrate-name"]`) === null,
-   '...and Migrate is gone once the instance has an env of its own — a leftover '
-   + "is not this instance's past");
-
-
 risky(['/:/host']);
 await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(
@@ -1318,57 +1288,6 @@ ok(MK.exists && MK.made.made.length === 2 && !MK.made.failed.length
    + 'the VM\'s — with nothing declared to make that allowed');
 
 
-// Changing the prefix renames what every dev container is CALLED — the name is
-// the prefix plus what the thing is called and nothing else, and the
-// containers, env file and data directory are all keyed by it. So the row says
-// the old name is still holding everything, and offers to move it. Never
-// automatically, and never while anything is up: renaming a directory out from
-// under a running container leaves it writing somewhere nothing will look
-// again.
-const mig = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
-
-spec = importlib.util.spec_from_file_location('d', ${
-  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-
-d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
-m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
-# DOCKER_HOST is not read any more (roadmap #18): the address comes from the
-# node the call is addressed at, which on_node() puts on _node_ctx.
-HOST = ['']
-m.node_addr = lambda nid: HOST[0]
-m.node_for = lambda cap=None: 'n1'
-def sethost(a):
-    HOST[0] = a
-    m._node_ctx.addr = a
-sethost('ssh://bb@vm')
-
-m.DEVDATA = d + '/devdata'; os.makedirs(m.DEVDATA)
-open(d + '/devenv/bbdev-sonarr.env', 'w').write('PORT=1')
-os.makedirs(m.DEVDATA + '/bbdev-sonarr/config')
-out = {'now': m._pname('sonarr'), 'stale': m.stale_name('sonarr')}
-m.containers = lambda: {'error': '', 'containers': [{'project': 'bbdev-sonarr'}]}
-out['while_up'] = m.migrate_name('sonarr')
-m.containers = lambda: {'error': '', 'containers': []}
-out['moved'] = m.migrate_name('sonarr')
-out['after'] = [sorted(os.listdir(d + '/devenv')), sorted(os.listdir(m.DEVDATA)),
-                sorted(os.listdir(m.DEVDATA + '/sonarr'))]
-out['again'] = m.migrate_name('sonarr')
-print(json.dumps(out))
-`], { encoding: 'utf8' });
-const MG = JSON.parse(mig.trim().split('\n').pop());
-ok(MG.now === 'sonarr' && MG.stale === 'bbdev-sonarr',
-   'a prefix change is noticed: the old name is found by its tail, not by memory');
-ok(/take it down first/.test(MG.while_up.error || ''),
-   '...and refused while a container still exists under either name');
-ok(MG.moved.moved.length === 2 && !MG.moved.failed.length
-   && JSON.stringify(MG.after) === JSON.stringify(
-        [['sonarr.env'], ['sonarr'], ['config']]),
-   '...then moves the env file and the data directory, contents and all');
-ok(/nothing to migrate/.test(MG.again.error || ''),
-   '...and has nothing left to say the second time');
-
 // ...and it happens as part of starting, not as a button somebody remembers.
 // A control you must press before another control is not a step, it is a
 // trap: Up failed, and the reason was a second button sitting unpressed.
@@ -1447,9 +1366,8 @@ ok(!PRE.refused.length, '...and every call it makes passes the guard');
 
 
 
-// An instance is (project, name) now, and the old layout is one record per
-// project. Driven at the module: the migration happens on read, so it is the
-// read that has to be asserted, and a stub docker cannot show a rename.
+// An instance is (project, name). Driven at the module: the store's shape
+// and the names derived from it, where a stub docker cannot show them.
 const inst = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
@@ -1457,15 +1375,13 @@ spec = importlib.util.spec_from_file_location('d', ${
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
 os.makedirs(os.path.join(d, 'devenv'))
-# The OLD shape: one record per project, no instance level at all.
 open(os.path.join(d, 'devapps.json'), 'w').write(json.dumps(
-    {'alpha': {'rev': 'abc1234', 'daemon': 'tcp://x', 'risks_ack': 'deadbeef'}}))
+    {'alpha': {'main': {'rev': 'abc1234', 'daemon': 'tcp://x', 'risks_ack': 'deadbeef'}}}))
 open(os.path.join(d, 'devenv', 'alpha.env'), 'w').write('PORT=1')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
 out['loaded'] = m._load()
 out['instances'] = m.instances('alpha')
-out['envmoved'] = [os.path.basename(f) for f in sorted(os.listdir(os.path.join(d, 'devenv')))]
 out['pnames'] = [m._pname('alpha'), m._pname('alpha', 'staging'), m._pname('My Proj', 'Two Words')]
 out['envpaths'] = [os.path.basename(str(m.env_path('alpha'))),
                    os.path.basename(str(m.env_path('alpha', 'staging')))]
@@ -1474,11 +1390,9 @@ print(json.dumps(out))
 const ij = JSON.parse(inst.trim().split('\n').pop());
 ok(JSON.stringify(ij.loaded) === JSON.stringify(
      { alpha: { main: { rev: 'abc1234', daemon: 'tcp://x', risks_ack: 'deadbeef' } } }),
-   'a store written before instances reads back as the project\'s main instance');
+   'the store reads back as {project: {instance: record}}');
 ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
-   '...and that is the instance the project has');
-ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'alpha.env',
-   '...with its env file moved to the name the instance is read by');
+   '...and main is the instance the project has');
 // The project is no longer spelled into the name. A default instance is
 // named for its project because nobody typed a name for it; a named one is
 // called what it was called, which is the whole of the change — the old
@@ -2700,9 +2614,8 @@ git('init', '-q', '.');
 // A project's instance keeps its env on Remove, deliberately: the promise is
 // that sending it again finds it. A written container has nowhere to come
 // back from, so keeping its env left one file per removal in /config/devenv
-// with nothing that would ever read it. The stale-named siblings an older
-// scheme left go too — found by the tail, which is a loose match, so the
-// live-instance guard is the half worth testing.
+// with nothing that would ever read it. Its own env and no other: a live
+// instance whose name merely ends the same way is somebody else's.
 {
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
@@ -2711,18 +2624,16 @@ spec = importlib.util.spec_from_file_location('d', ${
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
-for n in ('sonarr', 'bbdev-sonarr', 'bbdev-none-sonarr', 'my-sonarr', 'notsonarr'):
+for n in ('sonarr', 'my-sonarr', 'notsonarr'):
     open(d + '/devenv/' + n + '.env', 'w').write('PORT=1')
-# my-sonarr is somebody else's live instance and ends in -sonarr as well.
 m._load = lambda: {'my-sonarr': {'main': {}}}
 gone = m.forget_container('sonarr')
 print(json.dumps({'gone': sorted(gone),
                   'left': sorted(x for x in os.listdir(d + '/devenv'))}))
 `], { encoding: 'utf8' });
   const FC = JSON.parse(out.trim().split('\n').pop());
-  ok(JSON.stringify(FC.gone) === JSON.stringify(
-       ['bbdev-none-sonarr.env', 'bbdev-sonarr.env', 'sonarr.env']),
-     `removing a written container takes its env and the stale-named ones (${FC.gone.join(', ')})`);
+  ok(JSON.stringify(FC.gone) === JSON.stringify(['sonarr.env']),
+     `removing a written container takes its env (${FC.gone.join(', ')})`);
   ok(FC.left.includes('my-sonarr.env') && FC.left.includes('notsonarr.env'),
      `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
 }

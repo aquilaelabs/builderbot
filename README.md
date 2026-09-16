@@ -2572,20 +2572,6 @@ there is nothing to keep a container out of the way of, and a name that is
 three words of ceremony in front of the one you typed is only harder to find in
 `docker ps`.
 
-**Migrate** appears on a row whose things are still under a name it used to
-have: an instance made when names carried a `bbdev-` prefix, which they no
-longer do. The containers, the env file and the data directory are all keyed by
-that name, so the row says which old name is still holding everything and
-offers to move it.
-
-Never automatically, and never while anything is up: renaming a directory out
-from under a running container leaves it writing to a path nothing will look at
-again, so the button is dead until you take it down. Nothing is copied and
-nothing is deleted: the env file and the data directory are renamed, and the
-old names are what to rename back to if it goes wrong. The old name is found by
-its tail rather than by remembering, so nothing has to have been recorded for
-an old instance to be found.
-
 **Bind directories are made before anything starts**, as a step of Up and
 Rebuild rather than a button somebody has to remember. A compose file names
 directories that have to exist, and docker creates a missing bind source
@@ -2959,13 +2945,10 @@ screen and the browser terminal only turns wheel events into something tmux
 can see, in either kind of tab.
 
 The launcher sets this on the session as it starts one, not only in the config
-file, because `~/.tmux.conf` lives on the persistent home: an install upgraded
-from an image that wrote its settings straight into that file would otherwise
-keep `mouse on` forever and nothing would explain why. That old copy is
-recognized and replaced on the next start, with the original kept as
-`~/.tmux.conf.builderbot-old`. Because the setting is applied per session, a
-`set -g mouse on` in your own config no longer overrides it: turn it back on
-where you want it with `Ctrl-b : set mouse on`.
+file, because `~/.tmux.conf` lives on the persistent home and is yours.
+Because the setting is applied per session, a `set -g mouse on` in your own
+config does not override it: turn it back on where you want it with
+`Ctrl-b : set mouse on`.
 
 **Right-click gives you one menu, the browser's.** tmux draws its own context
 menu inside the terminal, and the browser's lands on top of it: two menus for

@@ -49,8 +49,8 @@ def _wire_nodes(m, path):
     m.node_addr = nodes.ssh_addr_of
     m.node_paths = getattr(nodes, "node_paths", None)
     # The store paths configure() would set, without configure(): that one
-    # migrates files on its way in, and this is a look, not the boot. A
-    # verified daemon is adopted on the answer, which is a write of the
+    # registers the compose job runner too, and this is a look, not the boot.
+    # A verified daemon is adopted on the answer, which is a write of the
     # instance records; the dashboard does it on its own poll, so here the
     # writer is a no-op and the answer is the same.
     m.WORKSPACE = Path(os.environ.get("WORKSPACE") or "/workspace")

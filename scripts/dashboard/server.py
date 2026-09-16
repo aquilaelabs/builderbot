@@ -6106,8 +6106,6 @@ class Handler(BaseHTTPRequestHandler):
             # every other thing that changes what a container IS.
             r = devapp.set_ref(name, inst, field(req, "ref"))
             return self._json(r, 400 if r.get("error") else 200)
-        if act == "migrate-name":
-            return self._json(devapp.migrate_name(name, inst))
         if act == "state":
             # The full picture for one instance — risks, problems, the parsed
             # compose — which overview() deliberately does not compute for
