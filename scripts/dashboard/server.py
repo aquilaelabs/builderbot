@@ -4850,11 +4850,14 @@ class Handler(BaseHTTPRequestHandler):
             # the operator's own login, for reading it in a browser.
             if auth.get("error") and not self._authed():
                 return self._json({"error": auth["error"]}, 401)
-            if q.get("what", [""])[0] == "provisioner":
+            what = q.get("what", [""])[0]
+            if what in ("provisioner", "provisioner-macos"):
                 # The provisioner too, from the copy this image carries: the
                 # Enroll dialog's command names it, and a machine with an
-                # enroll token is what has to get it (B133).
-                p = workspace.REPO / "nodes" / "provision-linux.sh"
+                # enroll token is what has to get it (B133), a Mac's as well
+                # as a Linux machine's (B150).
+                p = workspace.REPO / "nodes" / ("provision-macos.sh" if what == "provisioner-macos"
+                                                else "provision-linux.sh")
                 body = p.read_bytes() if p.is_file() else b""
                 if not body:
                     return self._json({"error": "this controller ships no provisioner"}, 404)

@@ -1412,6 +1412,13 @@ ok(await page.$eval('#ndBody .ndtoken', el => /curl -fsSL -H 'Authorization: Bea
      `...and the route hands the enroll token the provisioner itself (${r.status}, ${body.length} bytes)`);
   const no = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner');
   ok(no.status === 401, '...and nobody else');
+  // A Mac is told to run provision-macos.sh, so it gets a line that fetches
+  // that one, and the route serves it (B150).
+  const mac = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner-macos', { headers: { Authorization: 'Bearer ' + tok } });
+  const macBody = await mac.text();
+  ok(await page.$eval('#ndBody .ndtoken', el => /download\?what=provisioner-macos' -o provision-macos\.sh\s+bash provision-macos\.sh/.test(el.textContent))
+     && mac.status === 200 && /launchd|LaunchAgents/.test(macBody) && !/BBSANDBOX/.test(macBody),
+     `...and a Mac's line fetches the macOS provisioner, which the same route serves (${mac.status}, ${macBody.length} bytes)`);
 }
 ok(await page.evaluate(async () => { await loadNodes();
      return (nodesList.find(n => n.name === 'joesbox')?.config || {}).user; }) === 'joe',
