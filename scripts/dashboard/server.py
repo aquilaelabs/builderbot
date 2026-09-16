@@ -497,8 +497,8 @@ def save_cards(v):
 # Every kind of tab the saved layout may carry. A kind missing from here is
 # dropped on read without a word — which is how the notebook came back from a
 # refresh as no tab at all: it was written to the file and filtered out of it.
-# "findings" left the set when the report became the notebook's Analysis
-# view — a stored layout that still carries one sheds it on read.
+# "findings" is the Analysis tab the Static analysis button opens, the
+# report as a document tab beside the notebook's own view of it.
 TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users", "phone", "profile"}
 
@@ -507,15 +507,9 @@ def _layouts():
     """The whole file: {"boot": ..., "users": {uid: layout}}.
 
     One strip per ACCOUNT, keyed by the minted id rather than the name so a
-    rename keeps it (users.mint_uid says why). It was one layout for the whole
-    box until roadmap #25 — written by whoever last saved and handed to
-    everybody else, which is fine for one operator and wrong the moment there
-    are two.
-
-    A file from before that has the layout at the top level. It is moved to
-    the owner, once, on the first read: the owner is who was using it, and
-    dropping it instead would cost somebody their tab strip on an upgrade for
-    no reason.
+    rename keeps it (users.mint_uid says why): a layout written by whoever
+    last saved and handed to everybody else is fine for one operator and
+    wrong the moment there are two.
     """
     try:
         v = json.loads(TABS_FILE.read_text())
@@ -524,12 +518,7 @@ def _layouts():
     if not isinstance(v, dict):
         v = {}
     if not isinstance(v.get("users"), dict):
-        moved = {k: v[k] for k in ("rev", "tabs", "panes", "active") if k in v}
         v = {"boot": v.get("boot"), "users": {}}
-        if moved:
-            owner = users.get(users.owner_name() or "")
-            if owner and owner.get("uid"):
-                v["users"][owner["uid"]] = moved
     return v
 
 
@@ -2353,15 +2342,6 @@ def claude_model_now(project_dir):
         return ""
     found = MODEL_FAMILY.findall(tail)
     return found[-1] if found else ""
-
-
-def _ver(v):
-    """A version as a tuple of ints, for comparing one agent against another.
-    Anything unparseable sorts first, which reads as "too old"."""
-    try:
-        return tuple(int(x) for x in str(v or "").split("."))
-    except ValueError:
-        return ()
 
 
 def end_claude(project):
