@@ -145,15 +145,7 @@ def _clean(rec):
 
 
 def _devbuild(v):
-    """One of DEVBUILD_MODES, and what the switch before it meant.
-
-    It was a boolean, so True is the grant and reads as `auto`; anything
-    else is `deny`. Migrated on READ rather than by rewriting the file: a
-    record written by an older BuilderBot has to keep working, and this is
-    then the only line that decides what the field means.
-    """
-    if v is True:
-        return "auto"
+    """One of DEVBUILD_MODES; anything else reads as `deny`."""
     return v if v in DEVBUILD_MODES else "deny"
 
 
@@ -291,10 +283,7 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
                     return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
                 cur["gate"][k] = v
         if devbuild is not None:
-            # The bool is still accepted: it is what the page sent before
-            # this became three words, and refusing it would break a client
-            # that is merely older rather than wrong.
-            mode = _devbuild(devbuild) if isinstance(devbuild, bool) else devbuild
+            mode = devbuild
             if mode not in DEVBUILD_MODES:
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}

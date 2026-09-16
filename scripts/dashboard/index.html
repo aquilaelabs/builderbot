@@ -8218,9 +8218,8 @@ function renderProjectsInto(i){
 // you. `deny` leads, as the default and as the safe end of the dial.
 const DEVBUILD_MODES = [["deny", "deny"], ["ask", "ask me"], ["auto", "auto"]];
 
-// What a project's dial says. An older record holds the boolean this replaced
-// and the server migrates it on read, so `true` never reaches here; a project
-// with no record at all has no prefs to read and is `deny`.
+// What a project's dial says: one of the three words, deny unless a
+// record says otherwise.
 const devClaudeMode = name => {
   const v = (state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
   return DEVBUILD_MODES.some(([m]) => m === v) ? v : "deny";
