@@ -525,8 +525,13 @@ LISTPY
         local uid="${BB_ACCOUNT_UID:-}"
         [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
         mkdir -p "$HOME/.claude" 2>/dev/null || true
+        # The agent runs this with its own PATH, and the native installer
+        # the provisioner uses puts claude in the account's ~/.local/bin,
+        # which only a login shell adds. Every provisioned node said "not
+        # installed" here while a session on it ran claude fine (16 Sep).
+        PATH="$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed for this account on this machine"
+            || die "Claude Code is not installed for this account on this machine (looked on PATH and in $HOME/.local/bin)"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
