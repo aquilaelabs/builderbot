@@ -855,7 +855,13 @@ else
             printf '   will be owned by that uid rather than the controller'"'"'s %s\n' "$SESSION_UID"
             useradd -m -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         else
-            useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
+            # Below the distribution's range for people on purpose: the uid
+            # is the controller's, so a file this account saves on the share
+            # is owned as one saved from the controller is. useradd says so
+            # in a warning that reads as a fault; the reason goes first.
+            printf '   %s takes uid %s, the controller'"'"'s, so files on the shares match\n' "$SESSION_NAME" "$SESSION_UID"
+            useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME" 2>/dev/null \
+                || useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         fi
     fi
     getent group kvm >/dev/null 2>&1 && usermod -aG kvm "$SESSION_NAME"
@@ -879,6 +885,13 @@ else
     ttyd_pkg="$(pkg_names ttyd)"
     if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
         pkg "$ttyd_pkg" >/dev/null 2>&1 || true
+        # Debian's package enables a unit of its own: ttyd as root on
+        # lo:7681 serving a login prompt, which nothing here asked for. The
+        # binary is what was wanted; the agent runs its own ttyd as the
+        # session account (B136).
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable --now ttyd.service >/dev/null 2>&1 || true
+        fi
     fi
     if ! command -v ttyd >/dev/null 2>&1; then
         case "$(uname -m)" in
@@ -1036,7 +1049,7 @@ import json, sys
 try:
     stores = json.load(open(sys.argv[1])).get("stores") or {}
 except Exception:
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 under = sys.argv[2].rstrip("/")
 for role, where in sorted(stores.items()):
     w = str(where or "").rstrip("/")
@@ -1113,10 +1126,16 @@ mount_one() {
     # This path only. `mount -a` mounted every entry in fstab, so one export
     # the server refuses printed its refusal on every check of every OTHER
     # mount — three copies of one unrelated failure, above the answers.
-    n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+    # findmnt exits 1 for a path that is not mounted, and under pipefail
+    # that ended this function on its first line for every FIRST mount,
+    # silently, before mount ran: a fresh node's Storage apply always
+    # "failed" and the mounts came up later through fstab (found on the
+    # second onboarding walk, 16 Sep). Its exit is not an answer here; its
+    # line count is.
+    n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
     if [ "$n" -eq 0 ]; then
         mount "$path" 2>/dev/null || true
-        n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+        n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
     fi
     # One line PER mount at this path. The last is the one on top, and the
     # only one anything opening a file there actually reaches.
@@ -1954,6 +1973,12 @@ node lives on this machine. It needs the projects share mounted at /workspace
 to Claude once, from a shell here:
 
   su - ${SESSION_NAME}              then: claude login
+
+bb itself is not on this account's PATH: it is the controller's, fetched
+into the packages store by the agent (<store>/<scope>/.bb/current/scripts/bb)
+and put on PATH for ${USER_NAME} and ${SESSION_NAME} by
+/etc/profile.d/builderbot-session.sh. A shell as either account has it;
+this one does not, and needs none.
 EOF
     fi
 fi

@@ -525,8 +525,13 @@ LISTPY
         local uid="${BB_ACCOUNT_UID:-}"
         [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
         mkdir -p "$HOME/.claude" 2>/dev/null || true
+        # The agent runs this with its own PATH, and the native installer
+        # the provisioner uses puts claude in the account's ~/.local/bin,
+        # which only a login shell adds. Every provisioned node said "not
+        # installed" here while a session on it ran claude fine (16 Sep).
+        PATH="$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed for this account on this machine"
+            || die "Claude Code is not installed for this account on this machine (looked on PATH and in $HOME/.local/bin)"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -2460,7 +2465,7 @@ cmd_preamble() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     python3 - "$dir" "$proj" "${1:-}" <<'PREPY'
-import importlib.util, json, os, sys
+import json, os, sys
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, d)
 import statefile, rules, todo, bugs, preamble
@@ -2781,7 +2786,7 @@ try:
 except OSError as e:
     sys.exit(f"[builderbot] ERROR: no run log to read: {e}")
 
-BANNER = re.compile(r"^\[dashboard-test\] == (\S+) ==")
+BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==")
 # ` in Xs` only when the run was timed: `bb dashboard test FILE` prints the
 # bare form, and a verdict that required the seconds read a passing file as a
 # crash — which is the one thing this tool must never do.
@@ -4002,7 +4007,7 @@ cmd_findings_history() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
-import importlib.util, json, os, sys, time
+import importlib.util, os, sys, time
 
 spec = importlib.util.spec_from_file_location("findings", sys.argv[1])
 fx = importlib.util.module_from_spec(spec)
@@ -4197,7 +4202,9 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb packages` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap bug bugs tests rules preamble history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+# One list, lib/relay-verbs, read here and by the server: a verb added to
+# one side only was either refused on arrival or never sent.
+BB_RELAY_VERBS=" $(tr -s '[:space:]' ' ' < "$(dirname "$(readlink -f "$0")")/lib/relay-verbs") "
 
 # revalidate_tree — open the files a relayed verb may have written, so this
 # machine sees them.
@@ -4396,7 +4403,7 @@ def _identity(uid):
             store = json.load(f).get("users") or {}
     except (OSError, ValueError):
         return "", "", False
-    for name, u in store.items():
+    for u in store.values():
         if not isinstance(u, dict):
             continue
         if (uid and u.get("uid") == uid) or (not uid and u.get("role") == "owner"):
@@ -4435,7 +4442,7 @@ cmd_work() {
     [ -f "$py" ] || die "overlap.py is missing from this image"
     proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     python3 - "$py" "$proj" "${DASHBOARD_STATE:-/config}" "${WORKSPACE:-/workspace}" <<'PY'
-import importlib.util, json, sys
+import contextlib, importlib.util, json, sys
 mod, proj, state, ws = sys.argv[1:5]
 spec = importlib.util.spec_from_file_location("overlap", mod)
 o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
@@ -4444,11 +4451,8 @@ o.configure(state=state, workspace=ws,
 # The account each worktree belongs to, so the answer names people rather than
 # ids. Missing users.json is not fatal — the ids are still an answer.
 names = {}
-try:
-    with open(f"{state}/users.json") as f:
-        names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
-except Exception:
-    pass
+with contextlib.suppress(Exception), open(f"{state}/users.json") as f:
+    names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
 wt = f"{ws}/.worktrees"
 trees = o.trees(proj, wt)
 if len(trees) < 2:
@@ -4598,7 +4602,7 @@ cmd_nodes() {
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
     [ -f "$py" ] || die "nodes.py is missing from this image"
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY'
-import importlib.util, os, sys, time
+import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
@@ -4607,7 +4611,7 @@ try:
     rows = nodes.node_list()
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 # Enrolled machines only. The controller's own record is registry plumbing —
 # it is how a share it mounts is recognized as a node's store — and never a
 # machine anybody lists: it runs no work and takes no packages.
@@ -4667,7 +4671,7 @@ try:
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 if jid and not rows[0]:
     print(f"no such job: {jid}")
     raise SystemExit(1)
@@ -4887,14 +4891,12 @@ cmd_ci_labels() {
     local l
     while IFS= read -r l; do [ -n "$l" ] && labels+=("$l"); done < <(
         { [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
-import importlib.util, os, sys
+import contextlib, importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
-try:
+with contextlib.suppress(Exception):
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     print("\n".join(nodes.runner_labels_known()))
-except Exception:
-    pass
 PY
         } | awk 'NF && !seen[$0]++')
     if [ "$write" = 1 ]; then
@@ -5066,8 +5068,8 @@ cmd_lint() {
             tmpd="$(mktemp -d)"
             while IFS= read -r f; do
                 [ -n "$f" ] && shells+=("$f")
-            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded-shell.py" \
-                             "$tmpd" "${shells[@]}" 2>/dev/null)
+            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded.py" \
+                             shell "$tmpd" "${shells[@]}" 2>/dev/null)
         fi
         if [ "${#shells[@]}" -eq 0 ]; then
             echo "  none found"
@@ -5099,20 +5101,69 @@ cmd_lint() {
     # The python, by extension and by shebang: the dashboard, the agent, the
     # library, and the two hook scripts with no extension. ruff.toml at the
     # repo root says which rules; a project without one gets ruff's defaults.
+    #
+    # And the python a shell script feeds to python3 from a quoted heredoc,
+    # which scripts/bb does dozens of times: extracted with the blank lines
+    # above it kept, so a finding's line is the line in the script. Checked
+    # in a run of its own because the copies sit outside the repo, where
+    # ruff would look for a config and find none; the root's is named.
     section "python (ruff)"
     if need ruff; then
-        local -a pys=()
+        local -a pys=() others=() embedded=()
         while IFS= read -r -d '' f; do
             case "$f" in *.py) pys+=("$f"); continue ;; esac
-            head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\bpython3?\b' \
-                && pys+=("$f")
+            if head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\bpython3?\b'; then
+                pys+=("$f")
+            else
+                others+=("$f")
+            fi
         done < <(files '*')
-        if [ "${#pys[@]}" -eq 0 ]; then
+        local pyd=""
+        if [ "${#others[@]}" -gt 0 ]; then
+            pyd="$(mktemp -d)"
+            while IFS= read -r f; do
+                [ -n "$f" ] && embedded+=("$f")
+            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded.py" \
+                             python "$pyd" "${others[@]}" 2>/dev/null)
+        fi
+        local -a conf=()
+        [ -f ruff.toml ] && conf=(--config ruff.toml)
+        if [ "${#pys[@]}" -eq 0 ] && [ "${#embedded[@]}" -eq 0 ]; then
             echo "  none found"
-        elif ruff check --quiet "${pys[@]}"; then
-            printf '  [ok]   %s python file(s) clean\n' "${#pys[@]}"
+        elif { [ "${#pys[@]}" -eq 0 ] || ruff check --quiet "${pys[@]}"; } \
+             && { [ "${#embedded[@]}" -eq 0 ] || ruff check --quiet "${conf[@]}" "${embedded[@]}"; }; then
+            printf '  [ok]   %s python file(s) and %s embedded block(s) clean\n' "${#pys[@]}" "${#embedded[@]}"
         else
             printf '  [FAIL] ruff findings above\n'
+            rc=1
+        fi
+        [ -n "$pyd" ] && rm -rf "$pyd"
+    fi
+
+    # The JavaScript: the dashboard's tab scripts and the page's inline
+    # scripts, parsed by node. Not a linter's rules, a parse: a script that
+    # does not parse takes the whole dashboard down, and nothing checked
+    # 15,000 lines of it before this (R60).
+    section "javascript (node --check)"
+    if need node; then
+        local -a jss=() jsbad=()
+        while IFS= read -r -d '' f; do
+            case "$f" in *.js|*.mjs) jss+=("$f") ;; esac
+        done < <(files '*.js' '*.mjs')
+        for f in "${jss[@]}"; do
+            node --check "$f" >/dev/null 2>&1 || jsbad+=("$f")
+        done
+        while IFS= read -r -d '' f; do
+            node -e '
+const fs = require("fs"); const s = fs.readFileSync(process.argv[1], "utf8");
+const m = [...s.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)];
+let bad = 0; m.forEach((x, i) => { try { new Function(x[1]); } catch (e) { bad++; console.error(`  ${process.argv[1]} inline script ${i + 1}: ${e.message}`); } });
+process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
+        done < <(files '*.html')
+        if [ "${#jsbad[@]}" -eq 0 ]; then
+            printf '  [ok]   %s script file(s) parse\n' "${#jss[@]}"
+        else
+            printf '  [FAIL] does not parse: %s\n' "${jsbad[*]}"
             rc=1
         fi
     fi
@@ -5723,7 +5774,38 @@ cmd_doctor() {
     if on_node; then check "claude on PATH" command -v claude; fi
     check "workspace writable"        test -w "$WORKSPACE"
     check "home writable"             test -w "$HOME"
-    check "git identity configured"   git config --get user.email
+    # A commit identity is an ACCOUNT's (its Profile tab), handed to a
+    # session as git's environment. On a node that is what to look for; on
+    # the controller, where nobody commits, the question is whether the
+    # accounts have one, and a bare `git config` there failed on every fresh
+    # deploy for a thing no setting could fix.
+    if on_node; then
+        check "git identity configured" \
+            sh -c '[ -n "${GIT_AUTHOR_EMAIL:-}" ] || git config --get user.email'
+    else
+        DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'IDPY'
+import json, os
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "users.json")))
+    us = d.get("users") or {}
+except Exception:                                                # noqa: BLE001
+    us = {}
+def has(u):
+    p = u.get("prefs") or {}                # users.profile() reads the same keys
+    return bool((p.get("git_email") or p.get("email")) and (p.get("git_name") or p.get("full_name")))
+n, m = sum(1 for u in us.values() if has(u)), len(us)
+if not m:
+    print("  [skip] no accounts yet")
+elif n == m:
+    print(f"  [ok]   every account has a commit identity ({m})")
+elif n:
+    print(f"  [warn] {m - n} of {m} accounts have no commit identity yet: a session"
+          " refuses to open for them until it is set on their Profile")
+else:
+    print("  [warn] no account has a commit identity yet: set one on the Profile tab"
+          " (the gear in the header) before opening a session")
+IDPY
+    fi
     # No -f here: we only care that the connection and TLS handshake work.
     # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
     #
@@ -5751,7 +5833,7 @@ try:
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception:                                                # noqa: BLE001
-    print("  [skip] no node store yet — the dashboard creates it on boot")
+    print("  [skip] no node store yet: the dashboard creates it on boot")
     raise SystemExit(0)
 # The same test the sign-in and the terminal proxy make, in the same words:
 # an agent node, online, still dialing in, reporting a session half that is
@@ -5763,7 +5845,7 @@ if live:
     print(f"  [ok]   {len(live)} node{'' if len(live) == 1 else 's'} can run a session "
           f"({', '.join(live[:4])})")
 else:
-    print("  [warn] no node can run a session — Claude runs on one and this")
+    print("  [warn] no node can run a session: Claude runs on one and this")
     print("         container carries none. Enroll one on the Nodes tab, or")
     print("         wait for one to come back")
 NODEPY
@@ -5778,9 +5860,12 @@ NODEPY
     # whether the thing is up.
     local docker_line dst dmsg lib note
     lib="$(dirname "$(readlink -f "$0")")/lib/docker-probe.py"
+    # `|| true`: a probe that dies is a skip line, not the end of the
+    # doctor. Under set -e a failing substitution here ended the function
+    # after the session line, and every check below it went unprinted.
     docker_line="$(python3 "$lib" \
         "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null \
-        | head -1)"
+        | head -1 || true)"
     read -r dst dmsg <<<"$docker_line"
     case "$dst" in
         ok)   printf '  [ok]   %s\n' "$dmsg" ;;
@@ -5802,7 +5887,7 @@ NODEPY
         # The vendor ICD only lands when capabilities include graphics, so test
         # for the file rather than trusting the variable.
         if [ ! -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
-            printf '  [FAIL] nvidia gpu present but no EGL — set NVIDIA_DRIVER_CAPABILITIES=all\n'
+            printf '  [FAIL] nvidia gpu present but no EGL: set NVIDIA_DRIVER_CAPABILITIES=all\n'
             printf '         (currently %s; compute works, -gpu host does not)\n' \
                 "${NVIDIA_DRIVER_CAPABILITIES:-unset, so the default compute,utility applies}"
             ok=1
@@ -5814,20 +5899,20 @@ NODEPY
             printf '  [ok]   nvidia graphics stack usable (EGL vendor: %s)\n' "$vendor"
         elif x_display_up; then
             printf '  [warn] nvidia EGL is installed but gave no vendor driver on the X display\n'
-            printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
+            printf '         (Mesa answering means llvmpipe; the emulator will use software)\n'
         else
             printf '  [warn] nvidia EGL is installed but has no display to render on\n'
             note="$(gpu_display_note)"
             [ -n "${note:-}" ] && printf '         the startup hook says: %s\n' "$note"
-            printf '         — %s; the emulator will use software (bb emu gpu)\n' \
+            printf '         %s; the emulator will use software (bb emu gpu)\n' \
                 "$(command -v Xorg >/dev/null 2>&1 \
                    && { [ -S /tmp/.X11-unix/X0 ] \
-                        && echo "the X server started and has gone — a stale socket is all that is left, see /var/log/xorg-builderbot.log" \
+                        && echo "the X server started and has gone: a stale socket is all that is left, see /var/log/xorg-builderbot.log" \
                         || echo "the X server did not start, see /var/log/xorg-builderbot.log"; } \
                    || echo "this image has no X server")"
         fi
     elif command -v nvidia-smi >/dev/null 2>&1; then
-        printf '  [FAIL] nvidia-smi present but no GPU visible — check --runtime=nvidia --gpus all\n'
+        printf '  [FAIL] nvidia-smi present but no GPU visible: check --runtime=nvidia --gpus all\n'
         ok=1
     else
         printf '  [skip] no nvidia gpu passed through\n'
@@ -5857,12 +5942,11 @@ NODEPY
     # exactly that. What gh being logged out actually costs is the API — no
     # `gh pr create`, no `gh release create` — and reporting that as broken git
     # sends somebody to fix a credential that is already working.
-    if gh auth status >/dev/null 2>&1; then
+    # Nothing here signs gh in, so it being signed out is the ordinary state
+    # and not a line: a skip nobody can act on is noise on every deploy.
+    # Signed in by hand on a node, it is worth a word.
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         printf '  [ok]   gh (the GitHub API) is authenticated\n'
-    else
-        printf '  [skip] gh (the GitHub API) is not authenticated — no gh pr/release.\n'
-        printf '         Git itself is unaffected: it uses an ssh key, or a\n'
-        printf '         per-project token from the clone dialog.\n'
     fi
     # And whether THIS repo can actually reach its remote, which is the
     # question the line above was being read as. Per-project tokens made the
@@ -5875,12 +5959,12 @@ NODEPY
             cred_project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo .)")"
             if on_node; then
                 printf '  [ok]   pushes go through the controller: bb git push|fetch|pull\n'
-                printf '         (no credential lives on a node — plain git push fails here by design)\n'
+                printf '         (no credential lives on a node: plain git push fails here by design)\n'
             elif [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
                 printf '  [ok]   this repo pushes over https with its own stored token\n'
             else
                 printf '  [FAIL] this repo has an https remote and no credential for it\n'
-                printf '         — add one in the dashboard, or switch it to ssh\n'
+                printf '         add one in the dashboard, or switch it to ssh\n'
                 ok=1
             fi ;;
     esac
@@ -5893,7 +5977,7 @@ NODEPY
     # Distinguish "no key" from "key loaded but the agent is unreachable from
     # this uid", which is otherwise indistinguishable and very confusing.
     if [ -z "$ssh_src" ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
-        printf '  [FAIL] an agent socket exists but this user cannot use it — see: bb logs | grep ssh\n'
+        printf '  [FAIL] an agent socket exists but this user cannot use it; see: bb logs | grep ssh\n'
         ok=1
     fi
     if [ -n "$ssh_src" ]; then
@@ -5918,9 +6002,9 @@ NODEPY
         # By design, and said so rather than left reading as a gap: no
         # credential of any kind lives on a node, which is why pushing there
         # goes through the controller.
-        printf '  [skip] no ssh key here, which is the design — a node holds no credential\n'
+        printf '  [skip] no ssh key here, which is the design: a node holds no credential\n'
     else
-        printf '  [skip] no ssh key (agent empty, nothing in ~/.ssh)\n'
+        printf '  [skip] no ssh key on the controller: a project pushes with the token or key given when it was cloned or linked\n'
     fi
     # The login, on the machine that holds one. This used to pass on the mere
     # EXISTENCE of ~/.claude, which since R47 is where the controller keeps
@@ -5928,9 +6012,11 @@ NODEPY
     # container carrying no Claude Code at all reported "Claude Code
     # credentials present in /home/builder", which was three kinds of wrong.
     # The credential is one file, and it lives on a node.
+    # On the controller: not a line. The card above the pills already says
+    # which account this login is, from the node that reported it, and a
+    # pill saying "no login here" beside it read as a contradiction.
     if ! on_node; then
-        printf '  [skip] no Claude login here — a session runs on a node, which keeps\n'
-        printf '         its own. The card names the account they report being signed in as\n'
+        :
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         printf '  [ok]   ANTHROPIC_API_KEY set\n'
     elif [ -f "$HOME/.claude/.credentials.json" ]; then
@@ -5942,7 +6028,7 @@ except Exception:
     e = ""
 sys.stdout.write(f" ({e})" if e else "")' 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine — the dashboard\n'
+        printf '  [warn] not signed in to Claude on this machine: the dashboard\n'
         printf '         Sign in runs the flow here, or `bb login` in this shell\n'
     fi
     return $ok
@@ -6406,7 +6492,7 @@ case "${1:-help}" in
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
-    claude-md|claudemd) shift; cmd_claude_md "$@" ;;
+    claude-md) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
@@ -6420,7 +6506,7 @@ case "${1:-help}" in
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;
     roadmap)  shift; cmd_roadmap "$@" ;;
-    bug|bugs) shift; cmd_bug "$@" ;;
+    bug) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
     rules)    shift; cmd_rules "$@" ;;

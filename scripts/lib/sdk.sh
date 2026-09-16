@@ -26,7 +26,7 @@
 # Each recipe unpacks into its own directory under the root and is undone by
 # deleting that directory — no system packages, nothing outside the root, so
 # `bb packages remove` is a plain rm and a container rebuild changes nothing.
-SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig"
+SDK_TOOLCHAINS="android node jdk playwright flutter dotnet swift go rust zig"
 
 # What `bb packages check` and `bb packages versions` answer for when asked for nothing
 # in particular: the same catalog the dashboard renders, read from the file
@@ -131,7 +131,7 @@ import json, os, sys
 try:
     rows = json.load(open(sys.argv[1]))["packages"]
 except (OSError, ValueError, KeyError):
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 root = sys.argv[2]
 
 
@@ -246,7 +246,7 @@ try:
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     n = nodes.node(sys.argv[2])
 except Exception:
-    raise SystemExit(1)
+    raise SystemExit(1) from None
 rep = (n or {}).get("reported") or {}
 store = (rep.get("stores") or {}).get("packages") or {}
 if not n or not store.get("path"):
@@ -337,9 +337,6 @@ sdk_status_local() {
                     printf 'sdkmanager ready — packages in %s' "$d"
                 elif [ -x "$d/cmdline-tools/latest/bin/sdkmanager" ]; then
                     printf 'cmdline-tools are in the store but not on PATH — packages in %s' "$d"
-                elif [ -L "$d/cmdline-tools/latest" ]; then
-                    printf 'cmdline-tools are installed and their link is broken (%s) — a node repairs it on its next start' \
-                        "$(readlink "$d/cmdline-tools/latest")"
                 else
                     echo 'no cmdline-tools'
                 fi)"

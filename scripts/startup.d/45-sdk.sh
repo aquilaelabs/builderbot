@@ -63,11 +63,6 @@ if [ -f "$BASHRC" ]; then
     fi
     log "sdk: shells will source ${ENV_FILE}"
 fi
-# The copy that used to live in the shared store, taken back out of it — it
-# is wrong for every machine but the last one to write it, and nothing reads
-# it now.
-[ -f "$ROOT/env.sh" ] && rm -f "$ROOT/env.sh" && log "sdk: removed env.sh from the shared store"
-
 if [ -s "$ENV_FILE" ] && [ "$(grep -c '^export' "$ENV_FILE" || true)" -gt 0 ]; then
     log "sdk: $(grep -c '^export' "$ENV_FILE") toolchain path(s) from ${ROOT}"
 fi

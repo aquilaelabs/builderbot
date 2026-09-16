@@ -117,19 +117,8 @@ EOF
 if [ ! -e "$HOME/.tmux.conf" ]; then
     printf 'source-file ~/.tmux.builderbot.conf\n' > "$HOME/.tmux.conf"
 elif ! grep -qF 'tmux.builderbot.conf' "$HOME/.tmux.conf"; then
-    # An image before this one wrote its settings straight into ~/.tmux.conf.
-    # On a persistent home that copy is still there, still saying `mouse on`,
-    # and it never sources the file we own now — so an upgraded install would
-    # keep the old behavior forever and no message about it would explain why.
-    # Recognize our own leftovers by their status line and replace them, keeping
-    # a copy. Anything we do not recognize is the operator's and is left alone.
-    if grep -qF "status-right ' builderbot '" "$HOME/.tmux.conf"; then
-        mv -f "$HOME/.tmux.conf" "$HOME/.tmux.conf.builderbot-old"
-        printf 'source-file ~/.tmux.builderbot.conf\n' > "$HOME/.tmux.conf"
-        log "dashboard: replaced an older BuilderBot ~/.tmux.conf with a source-file line (old copy kept as ~/.tmux.conf.builderbot-old)"
-    else
-        log "dashboard: keeping your ~/.tmux.conf — add 'source-file ~/.tmux.builderbot.conf' to it for the defaults"
-    fi
+    # The operator's own file is left alone.
+    log "dashboard: keeping your ~/.tmux.conf: add 'source-file ~/.tmux.builderbot.conf' to it for the defaults"
 fi
 
 # One port to publish: terminals are proxied under /term on this one.

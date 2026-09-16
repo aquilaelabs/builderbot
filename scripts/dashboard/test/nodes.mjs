@@ -1400,6 +1400,19 @@ await page.click('#ndBody #ndEnGo');
 await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
 ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),
    '...and the provision command it prints carries a account that is not the default');
+// Where the provisioner comes from (B133): the dialog's first line fetches
+// it from this controller with the same token, and that route serves it.
+ok(await page.$eval('#ndBody .ndtoken', el => /curl -fsSL -H 'Authorization: Bearer bbe_[^']+' '[^']*\/api\/v1\/agent\/download\?what=provisioner' -o provision-linux\.sh/.test(el.textContent)),
+   '...after a curl that fetches the provisioner from this controller with the token');
+{
+  const tok = (await page.$eval('#ndBody .ndtoken', el => el.textContent)).match(/Bearer (bbe_[A-Za-z0-9_-]+)/)?.[1];
+  const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner', { headers: { Authorization: 'Bearer ' + tok } });
+  const body = await r.text();
+  ok(r.status === 200 && /^#!\/usr\/bin\/env bash/.test(body) && /BBSANDBOX/.test(body) && /x-shellscript/.test(r.headers.get('content-type') || ''),
+     `...and the route hands the enroll token the provisioner itself (${r.status}, ${body.length} bytes)`);
+  const no = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner');
+  ok(no.status === 401, '...and nobody else');
+}
 ok(await page.evaluate(async () => { await loadNodes();
      return (nodesList.find(n => n.name === 'joesbox')?.config || {}).user; }) === 'joe',
    '...with the pending row already saying which account, before the machine exists');

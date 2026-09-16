@@ -486,23 +486,20 @@ await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
 // sent 267 findings about downloaded toolchains to the label meant for a path
 // that is genuinely wrong. The rule asks the mount table instead.
 //
-// Sliced out of server.py rather than imported: server.py is written to be
-// run, not imported — it configures modules and seeds state at import — and
-// the case that must not regress cannot be produced by mounting something on
-// this box.
+// Driven at findings.py, which is importable, with a mount table written
+// here: the case that must not regress cannot be produced by mounting
+// something on this box.
 const sibOut = execFileSync('python3', ['-c', `
-import posixpath, re, json
-src = open(${JSON.stringify(new globalThis.URL('../server.py', import.meta.url).pathname)}).read()
-i = src.index('def siblings_of('); j = src.index('def nonproject_dirs(')
-ns = {'posixpath': posixpath}
-exec(src[i:j], ns)
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('findings', ${JSON.stringify(new globalThis.URL('../findings.py', import.meta.url).pathname)})
+ns = importlib.util.module_from_spec(spec); spec.loader.exec_module(ns)
 mi = """
 26 25 0:24 /development/projects /workspace rw - fuse.shfs x rw
 27 25 0:24 /development/SDK /sdk rw - fuse.shfs x rw
 28 25 0:25 /appdata/BuilderBot /config rw - xfs x rw
 29 25 0:26 / /reports ro - xfs x ro
 """
-print(json.dumps(sorted(ns['siblings_of'](mi, '/workspace'))))
+print(json.dumps(sorted(ns.siblings_of(mi, '/workspace'))))
 `], { encoding: 'utf8' });
 const sib = JSON.parse(sibOut.trim().split('\n').pop());
 ok(sib.includes('SDK'),
@@ -925,6 +922,8 @@ claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
     (await (await fetch('/api/v1/jobs?id=' + id)).json()), nodeSignin.job);
   ok((queued.job || queued).type === 'claude-login',
      '...as a claude-login job, which is the one job that opens a pty');
+  ok(/^bbs_/.test(((queued.job || queued).spec || {}).token || ''),
+     '...carrying a token minted for the account and scoped to the node, so the flow can report what it signed in as');
   await page.evaluate(async () => { await fetch('/api/signin', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'cancel' }) }); });
@@ -1276,6 +1275,11 @@ await page.waitForFunction(() =>
 // shows the daemon's own containers.
 await page.click('#bDocker');
 await page.waitForSelector('.dmtab', { timeout: 15000 });
+// Waited for, not read off the first draw: on an agent node the listing is
+// a probe job, so the rows can land a draw after the tab does.
+await page.waitForFunction(() => [...document.querySelectorAll('.dmtab .row')]
+  .some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off')),
+  null, { timeout: 15000 }).catch(() => {});
 ok(await page.$$eval('.dmtab .row', rs =>
      rs.some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off'))),
    'the manager shows a container this dashboard did not start, marked not ours');

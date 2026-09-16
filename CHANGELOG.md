@@ -46,6 +46,7 @@
 - Settings gains Offer dev features: off, the pickers offer only the git hosts, hypervisors and node OS families that have been run for real; on, the rest appear tagged dev and the header says dev (287fdfc)
 - A node can be uninstalled: from its row (runners deregistered first), with sudo bb-sandbox uninstall on the machine, or provision-linux.sh --remove; docker, the packages and the shares' contents stay (971e9db)
 - Reset BuilderBot at the foot of Settings starts the controller over at Create the owner, moving its state aside and leaving project files alone (971e9db)
+- bb lint parses every JavaScript file and the page's inline scripts with node, beside the shell, Dockerfile, workflow and python checks (b7f29ff)
 
 ### Changed
 
@@ -70,6 +71,9 @@
 - The Git view groups branches by what to do with them, opens work not yet in main to its commits and diff, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session (2ffee1e, cebd312)
 - A runner's token is the node's: paste it with the repository or organization address in the runner section of the node's row, and it is kept root-only on the controller. GITHUB_URL, GITHUB_PAT and SHIELD_SECRETS are gone from the container's settings (1aa17f3)
 - Dialogs close with the same tween they open with, and on a phone a project row's controls unfold with a slide instead of appearing at once (2ea5bd5)
+- The Doctor card drops five lines a controller could not act on (a red git identity, 'no Claude login here', gh, an empty ssh agent, 'no node with a daemon') and says which accounts lack a commit identity instead (e61b013)
+- New project asks which node the project runs on when nodes exist; the About panel leads with the guide; a plain user's Doctor card shows only what is theirs; the changelog sheet can write the first line; the memory form says the hook is required; the Uninstall button says Uninstalling while it runs (3386d1d)
+- The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
 
 ### Fixed
 
@@ -147,6 +151,24 @@
 - A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
 - Installing Playwright on a fresh Ubuntu node no longer ends with its missing-dependencies warning: the recipe carries the five libraries it asked for (c08e8cc)
 - A build whose output already sits in dist/ no longer prints cp's same-file complaint (413953b)
+- The Enroll node dialog now starts with the line that fetches the provisioner from your controller (be8ab56)
+- bb git policy and ls-remote answer before a commit identity is set; only push, fetch and pull need one (be8ab56)
+- bb packages lists node and the JDK; a runner install's log shows where it is; an uninstall that fails on the machine fails the job instead of retiring the node; a catalog change reaches the Nodes tab at once (be8ab56)
+- The Docker manager shows what is running on a node it reaches through its agent; it used to say the daemon did not answer and every row 'state unknown' on a fresh deploy (e61b013)
+- Pressing Claude to get back to your own running session is never refused by the one-Anthropic-account rule, and a refused terminal shows a sentence in the tab instead of raw JSON (e61b013)
+- An admin can take a project on from the Users tab: the editor shows the project list for admins and the row says which projects they work on (e61b013)
+- Provisioning a Debian or Ubuntu node no longer leaves apt's own ttyd running as root on the loopback: the unit is switched off, and only the agent's ttyd serves sessions (d140829)
+- A user without a shell who is not yet signed in to Claude is told to sign in from the Doctor card instead of being shown a code prompt in a console they cannot type into (3386d1d)
+- A console shell on a node keeps bb on its PATH after the packages store is moved from the Nodes tab (3386d1d)
+- The Tools tab no longer asks to install the emulator's libraries on a node that only has the Android command-line tools (3386d1d)
+- A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
+- A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
+- The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running (bddf3bd)
+- A browser tab that was closed or reloaded no longer shows in the notebook as 'your other window' for up to a minute (5ccfc23)
+
+### Removed
+
+- The Docker manager's Migrate button is gone: an instance made by this version is never under an older name (b36e689)
 
 ## 0.5.0: 2026-09-10
 

@@ -58,7 +58,7 @@ private tmux server and photographs it with `bb shot`: the pattern the
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
 | **Build** | build-essential, cmake, pkg-config |
-| **Lint** | shellcheck, hadolint, actionlint, ruff: `bb lint` runs the right ones over a repo |
+| **Lint** | shellcheck, hadolint, actionlint, ruff, node --check: `bb lint` runs the right ones over a repo |
 | **Media** | ffmpeg, imagemagick |
 | **Runner** | latest `actions/runner`, ephemeral by default |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust, on demand) |
@@ -1191,7 +1191,11 @@ lives in its body. The cards:
   At the foot of the card, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes its `CLAUDE.md`, with the environment block rendered from the
-  image's template into `CLAUDE.local.md` beside it. It can
+  image's template into `CLAUDE.local.md` beside it. When nodes are
+  enrolled it also asks which node the project runs on (the only one is
+  picked for you; *none* is an option), the same setting the project's
+  settings dialog changes later, so a new project can build and start a
+  session without a second dialog. It can
   also start from an archive you already have: zip, or tar with gzip, bzip2
   or xz, unpacked into the new directory before `git init`. A single
   top-level folder inside is dropped (the project directory *is* that
@@ -1932,7 +1936,9 @@ container.
   own output in the tooltip, and passing checks collapsed into green chips.
   A verdict getting worse unfolds that detail by itself; healing folds it
   back. Only the detail: collapsing the whole card is your setting, and the
-  verdict never overrides it
+  verdict never overrides it. A plain user's card carries only the lines
+  that are theirs to act on (whether a node can run their session); the
+  runner tokens, ssh keys and the docker daemon are an administrator's
 
 ### Tabs and panes
 
@@ -2566,20 +2572,6 @@ there is nothing to keep a container out of the way of, and a name that is
 three words of ceremony in front of the one you typed is only harder to find in
 `docker ps`.
 
-**Migrate** appears on a row whose things are still under a name it used to
-have: an instance made when names carried a `bbdev-` prefix, which they no
-longer do. The containers, the env file and the data directory are all keyed by
-that name, so the row says which old name is still holding everything and
-offers to move it.
-
-Never automatically, and never while anything is up: renaming a directory out
-from under a running container leaves it writing to a path nothing will look at
-again, so the button is dead until you take it down. Nothing is copied and
-nothing is deleted: the env file and the data directory are renamed, and the
-old names are what to rename back to if it goes wrong. The old name is found by
-its tail rather than by remembering, so nothing has to have been recorded for
-an old instance to be found.
-
 **Bind directories are made before anything starts**, as a step of Up and
 Rebuild rather than a button somebody has to remember. A compose file names
 directories that have to exist, and docker creates a missing bind source
@@ -2953,13 +2945,10 @@ screen and the browser terminal only turns wheel events into something tmux
 can see, in either kind of tab.
 
 The launcher sets this on the session as it starts one, not only in the config
-file, because `~/.tmux.conf` lives on the persistent home: an install upgraded
-from an image that wrote its settings straight into that file would otherwise
-keep `mouse on` forever and nothing would explain why. That old copy is
-recognized and replaced on the next start, with the original kept as
-`~/.tmux.conf.builderbot-old`. Because the setting is applied per session, a
-`set -g mouse on` in your own config no longer overrides it: turn it back on
-where you want it with `Ctrl-b : set mouse on`.
+file, because `~/.tmux.conf` lives on the persistent home and is yours.
+Because the setting is applied per session, a `set -g mouse on` in your own
+config does not override it: turn it back on where you want it with
+`Ctrl-b : set mouse on`.
 
 **Right-click gives you one menu, the browser's.** tmux draws its own context
 menu inside the terminal, and the browser's lands on top of it: two menus for
@@ -3875,14 +3864,15 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
   lib/sdk.sh                     the package manager: `bb packages`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
-  lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
+  lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab
+  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-keep-login                keeps a node session's Claude login in step, once per prompt
@@ -3896,6 +3886,8 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
+    claudemd.py                  a project's environment block: where it lives, what it should say, its window
+    names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     git.py                       the notebook's Git view: the repository read out, and its writes
@@ -3919,7 +3911,9 @@ scripts/
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
-    findings.py                  what the scanner used to say, so a finding that goes away leaves a trace
+    doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
+    runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
+    findings.py                  the scanner's reports read and attributed, and what they used to say
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing

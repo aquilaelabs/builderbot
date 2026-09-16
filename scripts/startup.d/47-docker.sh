@@ -28,7 +28,7 @@ DEVAPP=/opt/builderbot/scripts/dashboard/devapp.py
 while read -r state rest; do
     [ -n "$state" ] || continue
     case "$state" in
-        ok)   log "docker: ${rest#docker daemon: } — ready" ;;
+        ok)   log "docker: ${rest#docker daemon: }: ready" ;;
         FAIL) warn "docker: ${rest#docker daemon: }" ;;
         warn) warn "docker: $rest" ;;
         # Configured off. Said plainly rather than warned about: it is the

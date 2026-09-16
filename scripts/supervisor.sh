@@ -52,10 +52,6 @@ save_sessions() {
         printf '['
         while read -r name dir; do
             [ -n "$name" ] || continue
-            # Neither a Claude conversation nor a sign-in flow is a workspace
-            # to put back, and neither runs here any longer — the filter stays
-            # because a name from an older boot may still be in this tmux.
-            case "$name" in claude-*|login) continue ;; esac
             # The names bb-tty makes are all of this shape; anything else is not
             # ours to write into a filename.
             case "$name" in *[!A-Za-z0-9._-]*) continue ;; esac

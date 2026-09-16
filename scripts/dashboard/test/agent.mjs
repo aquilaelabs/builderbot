@@ -15,8 +15,7 @@ const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
 // The packages store is scoped by platform (roadmap R19): a machine's
 // packages live under <store>/<os>-<arch>, so every fixture written INTO a
 // store goes there, while the store's own path — the setting — stays the
-// share. The agent moves a flat store into the scope once; these fixtures
-// are written after it starts, so they are written scoped from the start.
+// share.
 const SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
 const PK = `${DIR}/agentpackages/${SCOPE}`;
 const NODE_JSON = `${DIR}/node.json`;
@@ -888,17 +887,13 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),
        'a cwd outside the project\'s trees is ignored: the verb runs in the project directory');
-    // The two lists — the verbs bb relays and the verbs the server accepts —
-    // are one contract kept in two files, and this is what keeps them one.
-    const bbList = (readFileSync(`${REPO}/scripts/bb`, 'utf8').match(/^BB_RELAY_VERBS=" (.*) "$/m) || [])[1]
-      ?.split(' ').filter(Boolean).sort();
-    const srvList = execFileSync('python3', ['-c', `
-import ast, re
-src = open(${JSON.stringify(REPO + '/scripts/dashboard/server.py')}).read()
-m = re.search(r'RELAY_VERBS = frozenset\\(\\((.*?)\\)\\)', src, re.S)
-print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding: 'utf8' }).trim().split(' ');
-    ok(bbList && bbList.join(' ') === srvList.join(' '),
-       `bb's BB_RELAY_VERBS and the server's RELAY_VERBS are the same list (${bbList?.length} verbs)`);
+    // The verbs bb relays and the verbs the server accepts are one contract
+    // in one file, lib/relay-verbs, and this is what keeps both reading it.
+    const verbs = readFileSync(`${REPO}/scripts/lib/relay-verbs`, 'utf8').split(/\s+/).filter(Boolean);
+    ok(verbs.includes('roadmap') && verbs.includes('git')
+       && /lib\/relay-verbs/.test(readFileSync(`${REPO}/scripts/bb`, 'utf8'))
+       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/server.py`, 'utf8')),
+       `bb and the server read the relay verbs from one file (${verbs.length} verbs)`);
     await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added R(\d+)/) || [])[1]), 'test'] });
   }
 
@@ -1734,8 +1729,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       return runnerOf(n, GH)?.installed ? n : null; });
     ok(rn && runnerOf(rn, GH).name === 'agentbox' && runnerOf(rn, GH).labels.includes('agentbox')
        && rn.services.runners[GH].want === true
-       && rn.reported.services['actions-runner']?.slot === GH,
-       'the census reports the runner under its slot, with its name and labels, and as the single key too; the record keeps the ask');
+       && (rn.reported.services?.runners || []).some(r => r.slot === GH),
+       'the census reports the runner under its slot, with its name and labels; the record keeps the ask');
     ok(rn && !rn.runner_failed, '...and the install that worked clears the failure before it');
     // A reinstall whose registration token cannot be minted (a token
     // lacking the org permission) leaves the runner standing: it used to
@@ -1794,8 +1789,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(grfin?.state === 'succeeded' && !existsSync(`${DIR}/runner/${GT}`) && new RegExp(`^remove \\S+ ${GT} 7$`, 'm').test(scalls),
        `Remove runner deletes the Gitea runner on its host by id and takes its directory away (${grfin?.state}; ${scalls.trim().split('\n').pop() || 'no deletion'})`);
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
-      return (n.reported.services?.runners || []).length === 0 && n.reported.services?.['actions-runner']?.installed === false ? n : null; });
-    ok(rn2 !== null, '...and the census says so, under the list and the single key alike');
+      return (n.reported.services?.runners || []).length === 0 ? n : null; });
+    ok(rn2 !== null, '...and the census says so: the list is empty');
   }
 
   // ---- emulation as a job (phase 9) --------------------------------------------
@@ -1882,7 +1877,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
   {
     const SBDIR = `${DIR}/sandbox-src`;
     mkdirSync(SBDIR, { recursive: true });
-    execFileSync('python3', [`${REPO}/scripts/lib/embedded-shell.py`, SBDIR,
+    execFileSync('python3', [`${REPO}/scripts/lib/embedded.py`, 'shell', SBDIR,
                              `${REPO}/nodes/provision-linux.sh`], { stdio: 'pipe' });
     const SB = `${SBDIR}/provision-linux.sh-BBSANDBOX`;
     const NJ = `${DIR}/contract-node.json`;
@@ -2117,7 +2112,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
     const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(j.state) ? j : null; }, 30000);
-    ok(fin?.state === 'succeeded' && /uninstall is running on this machine; this agent goes with it/.test(fin.log || ''),
+    ok(fin?.state === 'succeeded' && /the uninstall is running on this machine[\s\S]*it is still running; this agent goes with it/.test(fin.log || ''),
        `the agent starts the uninstall on the machine and says it is its last word (${fin?.state}: ${(fin?.log || '').slice(-120).replace(/\n/g, ' / ')})`);
     ok(existsSync(SANDBOX_STATE + '.uninstall') && readFileSync(SANDBOX_STATE + '.uninstall', 'utf8') === 'uninstall --yes',
        '...through bb-sandbox uninstall --yes, detached from the agent');
@@ -2394,39 +2389,17 @@ r1 = {'link': os.path.islink(img), 'target': os.path.realpath(img),
 said2 = []
 m.share_images(store, said2.append)
 r2 = {'said': said2, 'link': os.path.islink(img)}
-# A link left pointing at the FLAT store the scope was moved out of, and one
-# broken link that is nobody's business but its owner's.
-os.makedirs(os.path.join(store, scope, 'android-tools', 'cmdline-tools', 'bin'))
-os.makedirs(os.path.join(store, scope, 'android', 'cmdline-tools'), exist_ok=True)
-flat = os.path.join(store, scope, 'android', 'cmdline-tools', 'latest')
-os.symlink(os.path.join(store, 'android-tools', 'cmdline-tools'), flat)
-odd = os.path.join(store, scope, 'android', 'somewhere-else')
-os.symlink('/nowhere/at/all', odd)
-said3 = []
-m.fix_flat_links(store, said3.append)
-r3 = {'fixed': os.path.realpath(flat) == os.path.join(store, scope, 'android-tools', 'cmdline-tools'),
-      'bin': os.path.isdir(os.path.join(flat, 'bin')),
-      'odd': os.readlink(odd), 'said': said3}
 m.platform.system = lambda: 'Darwin'
 m.platform.machine = lambda: 'arm64'
 m._run = lambda argv, timeout=5: '15.1' if argv[:1] == ['sw_vers'] else ''
 mac = m.distro_now()
-print(json.dumps({'r1': r1, 'r2': r2, 'r3': r3, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
+print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
   ok(R.r1.link && R.r1.shared && /shared\/android\/system-images$/.test(R.r1.target),
      'a scope\'s android system images are moved once under shared/, with the scope\'s directory a link to them');
   ok(R.r1.said.some(t => /shared across platforms/.test(t)) && R.r2.said.length === 0 && R.r2.link,
      `...it says so once, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
-  // The move into <store>/<os>-<arch> left links inside the trees naming
-  // where they used to be, and nothing said so: the PATH entry was dropped
-  // for being a directory that is not there and sdkmanager was simply not
-  // found (B105).
-  ok(R.r3.fixed && R.r3.bin && R.r3.said.some(t => /pointed at the flat store/.test(t)),
-     `a link left pointing at the flat store is repointed into this scope (${
-       (R.r3.said[0] || '').slice(-60)})`);
-  ok(R.r3.odd === '/nowhere/at/all',
-     '...and a broken link that is not that shape is left exactly as it is');
   ok(R.mac.family === 'macos' && R.mac.init === 'launchd' && /macOS 15\.1/.test(R.mac.pretty) && R.mac.network === '' && R.mac.pkg === '',
      `a Mac is its own family: macos, launchd, no network backend, and no package manager until Homebrew is there (${JSON.stringify(R.mac)})`);
   ok(R.scope === 'darwin-arm64' && R.root === '/Volumes/SDK/darwin-arm64',

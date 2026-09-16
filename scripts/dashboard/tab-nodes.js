@@ -567,6 +567,9 @@ function nodeConfSections(n){
     : drift.network === "unknown"
       ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
       : ["the node matches what is saved here", "ok"];
+  // The dhcp caveat is Network's; under Storage it read as a storage fault.
+  const [storStatus, storStatusCls] = drift?.network === "unknown" && status.startsWith("the node matches")
+    ? ["the node matches what is saved here", "ok"] : [status, statusCls];
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
       title="keep this on the node's record: Apply is what makes the node match it">Save</button>`;
   const storage = `
@@ -579,8 +582,8 @@ function nodeConfSections(n){
         Each is its own directory; a system path is refused.</div>
       ${stores}
       <div class="actbar">
-        <span class="state ndconfstate${(failedFor("storage") || [0, statusCls])[1] ? " " + (failedFor("storage") || [0, statusCls])[1] : ""}">${
-          esc((failedFor("storage") || [status])[0])}</span>
+        <span class="state ndconfstate${(failedFor("storage") || [0, storStatusCls])[1] ? " " + (failedFor("storage") || [0, storStatusCls])[1] : ""}">${
+          esc((failedFor("storage") || [storStatus])[0])}</span>
         ${saveBtn}
         <button type="button" data-napply="storage" ${
           busyNow || c.dirty || stale || locked || !drift?.storage.length ? "disabled" : ""}
@@ -769,7 +772,7 @@ function renderNodesInto(i){
     // A job of this type queued or running on this node. pressing() greys a
     // button for the round trip; this is what keeps it grey afterwards,
     // through the repaint that replaces the element.
-    const inflight = t => (n.jobs || []).some(j => j.type === t);
+    const inflight = t => (n.jobs || []).some(j => j.type === t || j.apply === t);
     // What a session is waiting on, as root, on THIS machine (roadmap R38):
     // above everything else on the row, because somebody is blocked on it
     // and it is the one thing here that runs as root. From the phone's
@@ -972,8 +975,9 @@ function wireNodesTab(root){
     body.innerHTML = `<div class="field ndtoken">
         <div class="hint">shown once; the controller keeps only a hash. On a
           fresh machine, the provisioner installs docker and the agent
-          together:</div>
-        <pre class="ndcmd">sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
+          together: fetch it from here with the token, then run it.</div>
+        <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner' -o provision-linux.sh
+sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
         <div class="hint">on a Mac, as yourself: one directory and a launchd agent, no root:</div>
         <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>

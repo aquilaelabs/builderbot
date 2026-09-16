@@ -14,6 +14,7 @@ own poll, so nothing here can drift into disagreeing with the tab about
 whether the thing is up.
 """
 import importlib.util
+from pathlib import Path
 import os
 import sys
 
@@ -22,7 +23,41 @@ def load(path):
     spec = importlib.util.spec_from_file_location("devapp", path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
+    _wire_nodes(m, path)
     return m
+
+
+def _wire_nodes(m, path):
+    """Give the module the node store, read-only, the way the dashboard
+    does at boot. Without it there is no default node and every deploy
+    read "no node with a daemon" on the Doctor while the Docker tab was
+    building on one: the daemon is a node's, and the probe has to know
+    which node the manager would open on."""
+    state = os.environ.get("DASHBOARD_STATE") or "/config"
+    npath = os.path.join(os.path.dirname(path), "nodes.py")
+    if not os.path.isfile(npath) or not os.path.isdir(state):
+        return
+    try:
+        spec = importlib.util.spec_from_file_location("nodes", npath)
+        nodes = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(nodes)
+        nodes.open_readonly(state)
+    except Exception:                             # noqa: BLE001 - the probe still answers
+        return
+    m.queue = nodes
+    m.node_for = nodes.node_for
+    m.node_addr = nodes.ssh_addr_of
+    m.node_paths = getattr(nodes, "node_paths", None)
+    # The store paths configure() would set, without configure(): that one
+    # registers the compose job runner too, and this is a look, not the boot.
+    # A verified daemon is adopted on the answer, which is a write of the
+    # instance records; the dashboard does it on its own poll, so here the
+    # writer is a no-op and the answer is the same.
+    m.WORKSPACE = Path(os.environ.get("WORKSPACE") or "/workspace")
+    m.STATE = Path(state)
+    m.FILE = Path(state) / "devapps.json"
+    m.ENVDIR = Path(state) / "devenv"
+    m.write_json = lambda *a, **k: None
 
 
 def verdict(m):
@@ -35,10 +70,16 @@ def verdict(m):
     a = m.available_default()
     why = " ".join((a["why"] or "").split())      # one line, whatever it said
     if a["on"]:
+        # An agent node's daemon is reached through its agent, never over
+        # the address the record carries, so name the node rather than an
+        # ssh:// nothing dials.
+        n = m.queue.node(a.get("node")) if getattr(m, "queue", None) and a.get("node") else None
+        if n and n.get("kind") == "agent":
+            return "ok", f"docker daemon: {n['name']}'s, through its agent"
         return "ok", f"docker daemon: {a['kind']} at {a['where']}"
     if why.startswith("no node with a daemon"):
-        return "skip", "no node with a daemon — dev instances run on a node's docker (Nodes tab)"
-    return "FAIL", f"docker daemon: {a.get('kind') or 'node'} at {a.get('where') or '?'} — {why}"
+        return "skip", "no node with a daemon: dev instances run on a node's docker (Nodes tab)"
+    return "FAIL", f"docker daemon: {a.get('kind') or 'node'} at {a.get('where') or '?'}: {why}"
 
 
 def mapping_faults(m):

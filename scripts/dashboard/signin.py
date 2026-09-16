@@ -104,7 +104,7 @@ class NodeFlow:
                 "on": self.node_name, "job": self.job, "error": why}
 
 
-def start_on_node(nodes, node_id, uid, name=""):
+def start_on_node(nodes, node_id, uid, name="", token=""):
     """Begin a flow on a node. Same contract as start(): it replaces whatever
     was running and waits a moment for the URL, so the button that is already
     waiting gets the link in its own answer."""
@@ -113,8 +113,13 @@ def start_on_node(nodes, node_id, uid, name=""):
         old = _flow
     if old:
         old.cancel()
+    # The token is what lets the flow REPORT what it signed in as: minted
+    # for the account and scoped to this node, it is the credential
+    # bb login --flow speaks to the controller with. Without one the flow
+    # ended and nobody was told, and the next check signed the node out
+    # again as stale (16 Sep).
     r = nodes.job_add("user:signin", {"node": node_id}, "claude-login",
-                      {"uid": str(uid), "timeout": 900})
+                      {"uid": str(uid), "timeout": 900, "token": str(token or "")})
     if r.get("error"):
         return r
     f = NodeFlow(nodes, node_id, r["job"], name)

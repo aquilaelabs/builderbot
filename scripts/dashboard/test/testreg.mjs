@@ -403,12 +403,12 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
   const st = JSON.parse(readFileSync(FILE, 'utf8'));
   const p = st.projects.alpha;
   while (p.runs.length < 20) p.runs.push({ ...p.runs[0] });
-  delete p.rev;                                   // as a registry written before it
+  const revWas = p.rev;
   writeFileSync(FILE, JSON.stringify(st));
   writeFileSync(`${DIR}/run-again.log`, runlog([['fast.mjs', 'the picker opens', 9.9]]));
   bb('ingest', `${DIR}/run-again.log`);
   const now = read();
-  ok(now.runs.length === 20 && now.rev > 20,
+  ok(now.runs.length === 20 && now.rev === revWas + 1,
      'the tab\'s re-read token keeps counting past the run history that caps it');
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => /9\.9/.test(document.querySelector(

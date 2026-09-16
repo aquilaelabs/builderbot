@@ -144,11 +144,21 @@ ok(read().find(b => b.id === 1).status_note === 'this time with the resize liste
 }
 
 // ---- the version it was seen in, and closed in (roadmap #6) ---------------
-// alpha has no commits, so nothing honest can be said about it and nothing
-// is: a blank, never a made-up number. A project with a commit gets the same
-// identity `bb version` prints, on filing and again on closing.
-ok(!('seen_in' in read().find(b => b.id === 1)),
-   'a report on a tree with no commits carries no version — a blank rather than a guess');
+// A tree with no commits has nothing honest to say about its version, and
+// nothing is said: a blank, never a made-up number. Its own project rather
+// than alpha, which another file commits in (B144). A project with a commit
+// gets the same identity `bb version` prints, on filing and again on closing.
+{
+  const N = `${DIR}/ws/eta`;
+  execFileSync('git', ['init', '-q', N]);
+  execFileSync(BB, ['bug', 'add', 'filed before any commit', '--sev', 'low'],
+    { env: { ...process.env, BB_BUG_PROJECT: 'eta', DASHBOARD_STATE: `${DIR}/state`,
+             WORKSPACE: `${DIR}/ws` } });
+  const e = (JSON.parse(readFileSync(FILE, 'utf8')).projects.eta || [])[0];
+  ok(e && !('seen_in' in e),
+     'a report on a tree with no commits carries no version: a blank rather than a guess');
+  execFileSync('rm', ['-rf', N]);
+}
 {
   const Z = `${DIR}/ws/zeta`;
   const genv = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x',

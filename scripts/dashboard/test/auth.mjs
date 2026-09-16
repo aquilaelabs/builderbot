@@ -6,6 +6,7 @@
 import { launch, newPage, ok, done, URL, DIR } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 // Plain fetches first — no credentials at all, straight from node.
 const bare = async (path, opts = {}) =>
@@ -1057,11 +1058,26 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     const sh = await bare('/term/ws?arg=sh:1:beta', { headers: noauthor });
     ok(sh.status === 409 && /no name and email/.test((await sh.json()).error || ''),
        'an account with no author is refused a shell at the door, and told where to set one');
+    // fetch writes with git and wants an author; a policy read and an
+    // ls-remote do not, and answer for the same account (B128).
     const git = await bare('/api/v1/bb', { method: 'POST',
       headers: { ...noauthor, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ argv: ['git', 'ls-remote'], cwd: `${DIR}/ws/beta` }) });
+      body: JSON.stringify({ argv: ['git', 'fetch'], cwd: `${DIR}/ws/beta` }) });
     ok(git.status === 403 && /no name and email/.test((await git.json()).error || ''),
-       '...and bb git for it is refused on the relay');
+       '...and bb git fetch for it is refused on the relay');
+    const pol = await bare('/api/v1/bb', { method: 'POST',
+      headers: { ...noauthor, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ argv: ['git', 'policy'], cwd: `${DIR}/ws/beta` }) });
+    ok(pol.status !== 403, `...while bb git policy, a read, answers it (${pol.status})`);
+    // The status payload says whether the account administers this
+    // controller, which is what words an empty Projects card for a user
+    // with nothing granted rather than telling them the share is missing.
+    const plain = await bare('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+      body: JSON.stringify({ action: 'add', name: 'plainone', password: 'plainonepw1', role: 'user' }) });
+    const asUser = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') } })).json();
+    const asOwner = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+    ok(plain.status === 200 && asUser.admin === false && asOwner.admin === true,
+       `the status payload carries admin: ${asUser.admin} for a user, ${asOwner.admin} for the owner`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
@@ -1077,4 +1093,33 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+// ---- the route tables ------------------------------------------------------
+// Routes are matched in order and a prefix route takes every path it
+// prefixes, so one listed after a shorter prefix of itself is never reached:
+// /api/pin and /api/project-pin were that once, found only because the two
+// handlers also shared a name. Read from both tables (R60), with each method
+// they name checked to exist, since a typo there is a 500 on first use.
+{
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import ast, json, re
+src = open(${JSON.stringify(new globalThis.URL('../server.py', import.meta.url).pathname)}).read()
+out = {}
+for table in ("GET_ROUTES", "POST_ROUTES"):
+    m = re.search(r'^' + table + r' = (\\(.*?^\\))', src, re.S | re.M)
+    routes = ast.literal_eval(m.group(1))
+    out[table] = {"routes": routes,
+                  "missing": [n for _, _, n in routes if not re.search(r"^    def " + n + r"\\(self", src, re.M)]}
+print(json.dumps(out))`], { encoding: 'utf8' }));
+  for (const [table, t] of Object.entries(got)){
+    const shadowed = [];
+    t.routes.forEach(([how, path], i) => t.routes.slice(i + 1).forEach(([, later]) => {
+      if (how === 'prefix' && later.startsWith(path)) shadowed.push(`${later} after ${path}`);
+    }));
+    ok(t.routes.length > 30 && shadowed.length === 0,
+       `no ${table} route is taken by an earlier prefix (${t.routes.length} routes${shadowed.length ? ': ' + shadowed.join(', ') : ''})`);
+    ok(t.missing.length === 0,
+       `...and every method ${table} names is one the handler has (${t.missing.join(', ') || 'all there'})`);
+  }
+}
+
 await done(browser);

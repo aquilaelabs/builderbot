@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.68"
+AGENT_VERSION = "0.5.73"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -741,51 +741,6 @@ def share_images(store, say=None):
             os.symlink(os.path.relpath(shared, os.path.dirname(mine)), mine)
 
 
-def fix_flat_links(store, say=None):
-    """The other standing rule, and it is a repair: a symlink inside this
-    scope that still points at the FLAT store it was made in.
-
-    Before R19 a store was one directory; now everything lives under
-    <store>/<os>-<arch>. The move brought the trees across, and the links
-    inside them kept naming where they used to be — so this scope's
-    android/cmdline-tools/latest still pointed at <store>/android-tools,
-    which no longer exists. Nothing said so: the PATH entry for it was
-    silently dropped for being a directory that is not there, `bb packages`
-    reported "no cmdline-tools" beside a store that has them, and every
-    sdkmanager call on the node failed to be found (B105).
-
-    Narrow on purpose: only a link that is broken AND whose target is the
-    same path one level up from the scope, which is the one thing the move
-    could have produced. Anything else is somebody's own arrangement.
-    """
-    say = say or (lambda t: log(t))
-    scoped = os.path.join(store or "", pkg_scope())
-    if not store or not os.path.isdir(scoped):
-        return
-    for root, dirs, names in os.walk(scoped):
-        # The link may be a directory entry, so both lists are walked; three
-        # levels is as deep as any of these go, and a store holds gigabytes
-        # of SDK below that nothing here should be reading.
-        if root[len(scoped):].count(os.sep) >= 3:
-            dirs[:] = []
-        for name in list(dirs) + names:
-            path = os.path.join(root, name)
-            if not os.path.islink(path) or os.path.exists(path):
-                continue
-            target = os.readlink(path)
-            if not target.startswith(store + os.sep):
-                continue
-            rest = target[len(store) + 1:]
-            fixed = os.path.join(scoped, rest)
-            if not os.path.exists(fixed):
-                continue
-            with contextlib.suppress(OSError):
-                os.remove(path)
-                os.symlink(fixed, path)
-                say(f"packages store: {path} pointed at the flat store; "
-                    f"repointed at {fixed}")
-
-
 def store_id(path):
     """A stable id for a store, from a marker inside it — the same file the
     controller reads for its own (nodes.store_id).
@@ -1018,14 +973,24 @@ def held_recipes(state, cat):
     store = pkg_root(state)
     if not store:
         return []
-    dirs = {e["name"]: e.get("dir") for e in store_layout(state) if e.get("name")}
+    lay = {e["name"]: e for e in store_layout(state) if e.get("name")}
     out = []
     for p in cat.get("packages") or []:
         name = p.get("name")
         if not name or not p.get("system"):
             continue
-        d = dirs.get(name) or name
-        if os.path.isdir(os.path.join(store, d)):
+        e = lay.get(name) or {}
+        # By the recipe's own tool where the layout names one: every
+        # android:* recipe shares the directory `android`, so the directory
+        # existing said the emulator was held on a node that had installed
+        # only the command-line tools, and the Tools tab asked for the
+        # emulator's libraries on every such node (B139).
+        tool = e.get("tool")
+        if tool:
+            held = os.path.exists(_lay_path(store, e, tool))
+        else:
+            held = os.path.isdir(os.path.join(store, e.get("dir") or name))
+        if held:
             out.append(name)
     return out
 
@@ -1067,11 +1032,9 @@ def store_dirs(state):
         out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
     with contextlib.suppress(OSError):
         out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
-    # A directory is not a package. The playwright recipe used to be its
-    # browsers alone, and a store from then has the directory without the
-    # module the recipe now carries — so the row said installed and offered
-    # nothing, while bb shot on the node could not find the module. A layout
-    # that names the file which completes it (`needs`) is checked here, and
+    # A directory is not a package: an install that stopped part-way leaves
+    # one without the file that completes it (playwright's module beside its
+    # browsers). A layout that names that file (`needs`) is checked here, and
     # the controller reads a name in this list as not installed.
     for entry in store_layout(state):
         need = entry.get("needs")
@@ -2202,10 +2165,15 @@ class Job(threading.Thread):
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
 
-    def flush(self):
+    def flush(self, keepalive=False):
         """Post what is pending, in bodies the controller will accept. A job
         that ran on while the controller was down can have megabytes waiting;
-        they go in order, a slice at a time, and stop at the first refusal."""
+        they go in order, a slice at a time, and stop at the first refusal.
+
+        `keepalive` posts even with nothing pending: the reply to a log post
+        is the one channel the controller has INTO a running job (its
+        cancel, a sign-in's code), and a flow waiting silently at a prompt
+        would otherwise never hear it (16 Sep)."""
         while True:
             with self.lock:
                 batch, size = [], 0
@@ -2215,9 +2183,13 @@ class Job(threading.Thread):
             if not batch:
                 with self.lock:
                     step, self.pending_step = self.pending_step, ""
-                if step:
-                    self.agent.ctl.call("log", {"job": self.job["id"], "chunks": [],
-                                                "step": step}, timeout=20)
+                if step or keepalive:
+                    body = {"job": self.job["id"], "chunks": []}
+                    if step:
+                        body["step"] = step
+                    st, r = self.agent.ctl.call("log", body, timeout=20)
+                    if st == 200:
+                        self._answered(r)
                 return True
             with self.lock:
                 step, self.pending_step = self.pending_step, ""
@@ -2229,16 +2201,19 @@ class Job(threading.Thread):
                 with self.lock:
                     self.pending = batch + self.pending
                 return False
-            if r.get("cancel") and not self.canceled:
-                self.cancel()
-            # ...and anything the controller wants typed INTO this job. The
-            # only downward channel a running job has is this reply, which is
-            # why `cancel` has always ridden it; a sign-in's code rides it the
-            # same way. One line, and only a job that opened a pty has
-            # anywhere to put it.
-            if r.get("input") and self.tty is not None:
-                with contextlib.suppress(OSError):
-                    os.write(self.tty, (str(r["input"]) + "\n").encode())
+            self._answered(r)
+
+    def _answered(self, r):
+        """What the controller sent down with its acknowledgement: a cancel,
+        and anything it wants typed INTO this job. The only downward channel
+        a running job has is this reply, which is why `cancel` has always
+        ridden it; a sign-in's code rides it the same way. One line, and only
+        a job that opened a pty has anywhere to put it."""
+        if r.get("cancel") and not self.canceled:
+            self.cancel()
+        if r.get("input") and self.tty is not None:
+            with contextlib.suppress(OSError):
+                os.write(self.tty, (str(r["input"]) + "\n").encode())
 
     def run(self):
         spec = self.job.get("spec") or {}
@@ -2337,6 +2312,14 @@ class Job(threading.Thread):
         # live on this machine", and it is that one.
         env["BUILDER_HOME"] = env.get("HOME", "")
         env["BB_ACCOUNT_UID"] = str(spec.get("uid") or "")
+        # What the flow reports with, and where: the token the controller
+        # minted for this sign-in, the controller's address, and the node
+        # shape bb's own checks look for.
+        if spec.get("token"):
+            env["BB_TOKEN"] = str(spec["token"])
+        env.setdefault("BB_CONTROLLER", str(self.agent.state.get("controller") or ""))
+        env.setdefault("BUILDERBOT_ROLE", "node")
+        env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
         argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"]
         master, slave = pty.openpty()
         self.say("signing in to Claude on this machine — the URL follows\n")
@@ -2351,6 +2334,7 @@ class Job(threading.Thread):
         os.close(slave)
         self.tty = master
         deadline = time.time() + int(spec.get("timeout") or 900)
+        last_beat = time.time()
         try:
             while True:
                 if time.time() > deadline:
@@ -2361,6 +2345,12 @@ class Job(threading.Thread):
                     r, _, _ = select.select([master], [], [], 0.5)
                 except (OSError, ValueError):
                     break
+                if not r:
+                    # Quiet: the flow is waiting at its prompt. A heartbeat
+                    # post is how the code the person pasted gets here.
+                    if time.time() - last_beat >= 1.0:
+                        self.flush(keepalive=True)
+                        last_beat = time.time()
                 if r:
                     try:
                         chunk = os.read(master, 65536)
@@ -2369,6 +2359,12 @@ class Job(threading.Thread):
                     if not chunk:
                         break
                     self.say(chunk.decode("utf-8", "replace"))
+                    # Posted now, not at the end: the controller reads the
+                    # sign-in URL out of this log and hands the code back,
+                    # and the flow does not end until it has the code. Held
+                    # until the end, the card said "starting the sign-in"
+                    # until the timeout, on every node (16 Sep).
+                    self.flush()
                 if self.proc.poll() is not None:
                     break
         finally:
@@ -2597,7 +2593,6 @@ class Agent:
         # by `enroll`, which may run with a store it cannot write yet).
         try:
             share_images((self.state.get("stores") or {}).get("packages") or "")
-            fix_flat_links((self.state.get("stores") or {}).get("packages") or "")
         except OSError as e:
             log(f"packages store: could not share the images ({e})")
         c = census(self.state)
@@ -2653,8 +2648,20 @@ class Agent:
             # half must not take the job half down with it — a packages
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
+            before = self.session_bundle
             self.session_try(r.get("bundle") or "")
             self.runner_env_sync()
+            # A bundle that moved carries a catalog that may have moved with
+            # it, and the census read that catalog before the fetch: one more
+            # hello now, so the row does not show the old answer until the
+            # next ten-minute one (R57). Once: the second sees no move.
+            if before and self.session_bundle != before and not getattr(self, "_rehello", False):
+                self._rehello = True
+                try:
+                    log("bundle moved: a fresh census follows")
+                    return self.hello()
+                finally:
+                    self._rehello = False
         return st, r
 
     def runner_env_sync(self):
@@ -3149,11 +3156,15 @@ class Agent:
         self.session_stale = ""
         try:
             out = open(logf, "ab")
-            for port, extra in ((SESSION_PORT, ["--writable"]), (SESSION_PORT + 1, [])):
+            # The twin is told it is read-only: bb-tty then says where the
+            # sign-in happens instead of prompting for a code nobody can
+            # type into it (B137).
+            for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
+                                      (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
                 self.ttyd.append(subprocess.Popen(
                     base[:1] + ["--port", str(port)] + base[1:] + extra + [bbtty],
                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
-                    env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
+                    env=dict(env, **more), stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
             out.close()
         except (OSError, RuntimeError) as e:
             self.session_stop()
@@ -4003,6 +4014,7 @@ class Agent:
                     url = f.read().strip() or url
             slot = os.path.basename(d.rstrip("/")) if os.path.realpath(d) != os.path.realpath(RUNNER_DIR) else runner_slot(url)
             job.say(f"deregistering the runner {slot} on its forge\n")
+            job.flush()
             st, code = self._apply_runner(job, {"want": False, "slot": slot, "url": url,
                                                 "forge": "gitea" if "address" in rec else "github"})
             if st != "succeeded":
@@ -4012,7 +4024,12 @@ class Agent:
         # systemd machine, so the uninstall outlives the unit it removes;
         # anywhere else (the harness, a machine without systemd) a detached
         # process, which the removal of this one does not take with it.
+        # Started, then WATCHED for a few seconds before this job reports
+        # (B132): an uninstall that fails at once (a bb-sandbox without the
+        # verb, a refusal) must fail this job, or the controller retires a
+        # node whose machine is untouched and whose credential is then dead.
         started = False
+        proc = None
         if os.geteuid() == 0 and shutil.which("systemd-run"):
             r = subprocess.run(["systemd-run", "--unit", "builderbot-uninstall", "--collect",
                                 "--quiet", *argv], capture_output=True, text=True, check=False)
@@ -4021,12 +4038,30 @@ class Agent:
                 job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
         if not started:
             try:
-                subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True)
+                proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        start_new_session=True)
             except OSError as e:
                 job.say(f"could not start the uninstall: {e}\n")
                 return "failed", 69
-        job.say("the uninstall is running on this machine; this agent goes with it, so this is its last word\n")
+        job.say("the uninstall is running on this machine\n")
+        job.flush()
+        time.sleep(4)
+        if proc is not None:
+            code = proc.poll()
+            if code not in (None, 0):
+                job.say(f"the uninstall ended at once with exit {code}; nothing of this node was retired\n")
+                return "failed", code
+        elif started:
+            r = subprocess.run(["systemctl", "show", "-p", "ActiveState,Result", "builderbot-uninstall"],
+                               capture_output=True, text=True, check=False)
+            state = dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+            if state.get("ActiveState") in ("failed",) or state.get("Result") not in ("", "success", None):
+                tail = subprocess.run(["journalctl", "-u", "builderbot-uninstall", "--no-pager", "-n", "5", "-o", "cat"],
+                                      capture_output=True, text=True, check=False).stdout.strip()
+                job.say(f"the uninstall failed at once ({state.get('Result')}): {tail[-300:]}\n"
+                        "nothing of this node was retired\n")
+                return "failed", 70
+        job.say("it is still running; this agent goes with it, so this is its last word\n")
         return "succeeded", 0
 
     def _sh(self, job, argv, cwd=None, timeout=300):
@@ -4111,6 +4146,43 @@ class Agent:
         if killed:
             return "failed", 124
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
+
+    SESSION_PROFILE = "/etc/profile.d/builderbot-session.sh"
+
+    def write_session_profile(self, job=None):
+        """The console shell's PATH line, from where the packages store IS.
+        The provisioner writes this file once, naming the store it was
+        given; a Storage apply that moves the store left it naming the old
+        one, so a shell as the session account had no bb (B135). Rewritten
+        from the agent's own record after every apply, root only, and left
+        alone where the file was never written (a guest node)."""
+        if os.geteuid() != 0 or not os.path.isfile(self.SESSION_PROFILE):
+            return
+        who = self.session_account()
+        root = pkg_root(self.state)
+        ctl = (self.ctl.url or "").rstrip("/")
+        text = (
+            "# Written by BuilderBot's agent. A session on this node, at a console.\n"
+            'case "$(id -un)" in\n'
+            f"    {who})\n"
+            "        export BUILDERBOT_ROLE=node WORKSPACE=/workspace\n"
+            '        export BB_NODE="$(hostname)"\n'
+            + (f'        export BB_CONTROLLER="{ctl}"\n' if ctl else "")
+            + (f'        [ -d "{root}/.bb/current/scripts" ] \\\n'
+               f'            && PATH="{root}/.bb/current/scripts:$PATH"\n' if root else "")
+            + '        PATH="$HOME/.local/bin:$PATH"\n'
+            "        ;;\n"
+            "esac\n")
+        try:
+            tmp = self.SESSION_PROFILE + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(text)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, self.SESSION_PROFILE)
+            if job:
+                job.say(f"console PATH: {self.SESSION_PROFILE} names {root or 'no store'}\n")
+        except OSError as e:
+            log(f"could not write {self.SESSION_PROFILE}: {e}")
 
     def _apply_storage(self, job, cfg):
         """Mounts as a diff against what bb-sandbox has — remove what is no
@@ -4199,6 +4271,7 @@ class Agent:
                 mine[role] = str(path)
                 job.say(f"{role} store: {path}\n")
             self.state["stores"] = mine
+            self.write_session_profile(job)
             self.state["store_made"] = marks
             save_state(self.state)
         self.hello()
@@ -4606,13 +4679,23 @@ class Agent:
             else:
                 arch = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64", "armv7l": "arm-7"}.get(platform.machine(), "amd64")
                 job.say("asking gitea.com for the latest act_runner release…\n")
+                rel = {}
                 try:
                     with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
                                  if re.fullmatch(rf"(gitea-runner|act_runner)-[0-9.]+-linux-{arch}", a.get("name", "")))
-                except (OSError, ValueError, StopIteration, KeyError) as e:
-                    job.say(f"could not find the act_runner release: {e}\n")
+                except (OSError, ValueError, KeyError) as e:
+                    job.say(f"could not fetch the act_runner release from {ACT_RUNNER_RELEASES}: {e}\n")
+                    return "failed", 69
+                except StopIteration:
+                    # The reason that was missing when the assets were renamed
+                    # under us (B130): what the release holds, so the next
+                    # rename is a one-line fix rather than a round trip.
+                    names = [str(a.get("name") or "") for a in rel.get("assets", [])]
+                    job.say(f"could not find the act_runner release: {rel.get('tag_name') or 'the latest release'} "
+                            f"has no asset named gitea-runner-<version>-linux-{arch} or "
+                            f"act_runner-<version>-linux-{arch}; it has {', '.join(names[:12]) or 'no assets'}\n")
                     return "failed", 69
                 job.say(f"downloading {asset}\n")
                 job.flush()
@@ -4645,6 +4728,7 @@ class Agent:
         u = urllib.parse.urlsplit(url)
         instance = f"{u.scheme}://{u.netloc}"
         job.say(f"registering {name} with {url} (instance {instance}) [{','.join(labels)}]\n")
+        job.flush()          # a register can hang; the log says where it is (B129)
         code = self._run_as(job, who, d, [exe, "register", "--no-interactive", "--instance", instance,
                                           "--token", r["token"], "--name", name,
                                           "--labels", ",".join(f"{x}:host" for x in labels)])

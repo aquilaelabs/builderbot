@@ -45,6 +45,11 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+import sys
+# Beside this file, whichever way it was loaded: bb's own Python and the
+# doctor's probe load this module by path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import names   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 MIGRATIONS = HERE / "migrations"
@@ -164,26 +169,6 @@ def migrate():
             except sqlite3.Error:
                 _db.rollback()
                 raise
-    _migrate_runners()
-
-
-def _migrate_runners():
-    """A record's single runner ask becomes an entry under its slot, once:
-    the records written before a node could hold several."""
-    for r in _rows("SELECT id, services FROM nodes"):
-        try:
-            sv = json.loads(r["services"] or "{}")
-        except (ValueError, TypeError):
-            continue
-        ar = sv.get("actions-runner") if isinstance(sv, dict) else None
-        if not isinstance(ar, dict):
-            continue
-        runners = sv.get("runners") if isinstance(sv.get("runners"), dict) else {}
-        if ar.get("url") and runner_slot(ar["url"]) not in runners:
-            runners[runner_slot(ar["url"])] = {k: ar[k] for k in ("url", "forge", "want", "labels") if k in ar}
-        sv["runners"] = runners
-        sv.pop("actions-runner", None)
-        _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(sv), r["id"]))
 
 
 def _statements(text):
@@ -245,11 +230,16 @@ def node_list(all=False):
     # exactly that, which is what the operator kept seeing.
     for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
                    "state IN ('queued', 'assigned', 'running')"):
-        inflight.setdefault(j["node"], []).append({"id": j["id"], "type": j["type"]})
+        entry = {"id": j["id"], "type": j["type"]}
+        inflight.setdefault(j["node"], []).append(entry)
         if j["type"] != "system":
             continue
         try:
             sp = json.loads(j["spec"])
+            # The apply's name beside the type: a system job is one type
+            # for six things, and the Uninstall button was reading "is an
+            # uninstall in flight" off the type alone and never greying.
+            entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
                                "slot": str((sp.get("config") or {}).get("slot") or "")}
         except (ValueError, AttributeError):
@@ -656,7 +646,7 @@ def node_update(principal, node_id, fields):
         name = str(fields["name"]).strip()[:60]
         if n["kind"] == "local":
             return {"error": "this container is not a node to rename"}
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        if not names.PROJECT_NAME.fullmatch(name):
             return {"error": "a node name is letters, digits, dots, dashes and underscores, "
                              "starting with a letter or digit"}
         if any(o["id"] != node_id and o["state"] != "retired"
@@ -1106,8 +1096,7 @@ def _census(c):
     ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
     runners = ([one_runner(x) for x in listed[:16] if isinstance(x, dict)] if listed is not None
                else ([one_runner(ar)] if ar.get("installed") else []))
-    out["services"] = {"runners": runners,
-                       "actions-runner": runners[0] if runners else {"installed": False}}
+    out["services"] = {"runners": runners}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
     fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
     out["services"]["tailscale"] = {
@@ -1997,6 +1986,17 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear
              # pane is): the roadmap's and the tracker's Send to Claude.
              "tell")
 JOB_END = ("succeeded", "failed", "canceled")
+
+# Probe jobs (run_wait's `forget`): a read the page makes to draw itself,
+# such as the Docker manager's `docker ps` on an agent node. They move no
+# revision at any point of their life, because a page that refetches on the
+# jobs revision would otherwise probe, see the revision move, and refetch
+# again without end; they are dropped once read and never listed.
+_probe_ids = set()
+
+
+def _quiet(job_id):
+    return job_id in _probe_ids
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
 SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
@@ -2142,6 +2142,9 @@ def job_add(principal, placement, type, spec, project="", source=None):
         want = ", ".join(f"{k}={v}" for k, v in pl["select"].items())
         return {"error": f"no node fits {want}"}
     jid = mint("j")
+    probe = bool(isinstance(spec, dict) and spec.get("probe"))
+    if probe:
+        _probe_ids.add(jid)
     _exec("INSERT INTO jobs (id, type, project, requested_by, placement, "
           "source, spec, outputs, state, node, exit_code, queued, started, "
           "ended, step, error, cancel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
@@ -2150,21 +2153,30 @@ def job_add(principal, placement, type, spec, project="", source=None):
            json.dumps(pl), json.dumps(source if isinstance(source, dict) else {}),
            json.dumps(spec if isinstance(spec, dict) else {}),
            json.dumps([]), pl.get("node") or "", int(time.time())))
-    audit(principal, "job-add", jid, {"placement": pl, "type": type})
-    _jstate_bump()
+    if not probe:
+        audit(principal, "job-add", jid, {"placement": pl, "type": type})
+        _jstate_bump()
     with _wake:
         _wake.notify_all()
     return {"ok": True, "job": jid}
 
 
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
-             sizes=None, project=""):
+             sizes=None, project="", forget=False):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
     and exit code handed back — the Nodes tab's Test, generalised. For the
     phone: adb on the node that holds the handset, where the controller has
-    no adb and no phone. {"code", "out"} or {"error"}."""
+    no adb and no phone. {"code", "out"} or {"error"}.
+
+    `forget` is for a READ nobody asked to see: the Docker manager's
+    `docker ps` on an agent node runs this way each time a listing is
+    drawn, and a row per draw on the Jobs tab would bury the jobs somebody
+    queued on purpose. The record is dropped once its answer is in hand;
+    the audit line from job_add stays."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
+    if forget:
+        spec["probe"] = True
     if env:
         spec["env"] = {str(k): str(v) for k, v in env.items()}
     if files:
@@ -2178,6 +2190,8 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     while time.time() < deadline:
         j = job(r["job"])
         if j and j["state"] in JOB_END:
+            if forget:
+                job_forget(r["job"])
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
                     "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
@@ -2419,7 +2433,8 @@ def job_next(node_id, wait, runner="node", alive=None):
                     _exec("UPDATE jobs SET state = ?, node = ?, "
                           "started = ? WHERE id = ?",
                           (st, node_id, int(time.time()), j["id"]))
-                    _jstate_bump()
+                    if not _quiet(j["id"]):
+                        _jstate_bump()
                     return j | {"state": st, "node": node_id}
             if runner == "node":
                 asked = [r["id"] for r in _rows(
@@ -2473,6 +2488,16 @@ def job(job_id, with_log=True):
     return j
 
 
+def job_forget(job_id):
+    """Drop a finished job and its log: only for a probe whose answer was
+    read by the caller that queued it (run_wait's `forget`). A job somebody
+    queued is a record and is never dropped here."""
+    _exec("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
+    _exec("DELETE FROM jobs WHERE id = ? AND state IN "
+          "('succeeded', 'failed', 'canceled')", (job_id,))
+    _probe_ids.discard(job_id)
+
+
 def job_tail(job_id, n=4000):
     """The end of a job's log, for a row that shows where it got to."""
     text = "".join(r["chunk"] for r in _rows(
@@ -2488,7 +2513,8 @@ def job_set(job_id, **fields):
     if sets:
         _exec("UPDATE jobs SET " + ", ".join(f"{k} = ?" for k in sets)
               + " WHERE id = ?", (*sets.values(), job_id))
-        _jbump()
+        if not _quiet(job_id):
+            _jbump()
 
 
 def job_log(node_id, job_id, chunks, step=None):
@@ -2522,7 +2548,7 @@ def job_log(node_id, job_id, chunks, step=None):
         # The word the row shows, when the agent sent one with this post.
         if step is not None:
             _exec("UPDATE jobs SET step = ? WHERE id = ?", (str(step)[:60], job_id))
-    if n or step is not None:
+    if (n or step is not None) and not _quiet(job_id):
         _jbump()
     # ...and anything waiting to go DOWN to the job. The agent posts output
     # every half second, so this reply is the only channel the controller has
@@ -2597,7 +2623,8 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
-    _jstate_bump()
+    if not _quiet(job_id):
+        _jstate_bump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next
     return {"ok": True}
@@ -2619,8 +2646,9 @@ def job_cancel(principal, job_id):
               "before it started' WHERE id = ?", (int(time.time()), job_id))
     elif not got[0]["cancel"]:
         _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
-    audit(principal, "job-cancel", job_id, {})
-    _jstate_bump()
+    if not _quiet(job_id):
+        audit(principal, "job-cancel", job_id, {})
+        _jstate_bump()
     with _wake:
         _wake.notify_all()
     return {"ok": True}
@@ -2628,7 +2656,9 @@ def job_cancel(principal, job_id):
 
 def jobs_for(node_id=None, n=50, project=None, type=None, active=False):
     q, args = "SELECT * FROM jobs", []
-    where = []
+    # Never a probe: they are dropped once read, and one mid-flight is not
+    # a row anybody queued.
+    where = ["spec NOT LIKE '%\"probe\": true%'"]
     if node_id:
         where.append("node = ?"), args.append(node_id)
     if project:

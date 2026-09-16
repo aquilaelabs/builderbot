@@ -143,27 +143,15 @@ function settingsSections(){
   if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   return SETTING_GROUPS.map(g => {
-    const boot = [...g.fields, ...(g.debug || [])].some(f => s.meta[f.key]?.applied === "boot");
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
-            // A checkbox sits inside its label, the way the Tests bar's do;
-            // a choice is a select over the store's own list.
-            // A checkbox keeps its sentence beside it; a field or a select
-            // has its label above, and what the label cannot say rides the ?
-            // (docs/design-language.md, Controls).
-            if (f.type === "bool")
-              return `<div class="logdays setrow"><label class="ndcap">
+            // Every setting is a switch: a checkbox inside its label, the
+            // way the Tests bar's are, with what the label cannot say on
+            // the ? (docs/design-language.md, Controls).
+            return `<div class="logdays setrow"><label class="ndcap">
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
-            const choices = s.meta[f.key]?.choices || [];
-            const ctl = f.type === "choice"
-              ? `<select id="${id}" data-set="${f.key}">${choices.map(c =>
-                  `<option value="${esc(c)}"${c === sdVal(id, v) ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`
-              : `<input id="${id}" type="text" data-set="${f.key}" value="${esc(String(sdVal(id, v) ?? ""))}" spellcheck="false" autocomplete="off">`;
-            return `<div class="logdays setrow col">
-              ${lbl(id, f.label, f.hint)}${ctl}${src(f.key)}
-            </div>`;
     };
     // The fold's button is a real control only while debug mode is SAVED
     // on: what is behind it is debug's, and a draft tick that has not been
@@ -184,7 +172,7 @@ function settingsSections(){
         <div class="logset">
           ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
-            <span class="state">${boot ? "takes at the next start" : "takes now"}</span>
+            <span class="state">takes now</span>
             <button type="button" class="setApply" title="save">Apply</button>
           </div>
         </div>
@@ -215,8 +203,7 @@ function wireSettingsSections(el){
         const j = await r.json();
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
-        const boot = Object.keys(set).some(k => j.meta?.[k]?.applied === "boot");
-        notify(boot ? "saved; it takes at the next start" : "saved");
+        notify("saved");
         refresh();
       }catch(e){ notify("settings: " + e, true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }

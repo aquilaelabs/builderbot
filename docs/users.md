@@ -62,16 +62,15 @@ dashboard has no dependencies and is not acquiring one for this. Per-user
 salt, and the iteration count stored *in the record* so it can be raised later
 without invalidating everybody.
 
-## Getting there from one env var
+## No env var
 
-There is no env var any more. The first page a container with no accounts
-serves is the **first-run screen**, and it asks for the owner's name and
-password; until that is done nothing else is reachable, and after it the
-store is the truth. `DASHBOARD_AUTH` is read by nothing at boot: a
-credential in the environment stays readable forever, which is a back door
-rather than a migration, and the one place it survives is `bb`, which
-honours a `DASHBOARD_AUTH=name:password` passed for a single command from a
-plain `docker exec` shell that has no session token.
+The first page a container with no accounts serves is the **first-run
+screen**, and it asks for the owner's name and password; until that is done
+nothing else is reachable, and after it the store is the truth. Nothing at
+boot reads a credential from the environment: one there stays readable
+forever. The one place `DASHBOARD_AUTH=name:password` is honoured is `bb`,
+for a single command from a plain `docker exec` shell that has no session
+token.
 
 Which leaves the obvious question: what happens when the owner forgets the
 password. The answer is the one every system gives; you need the machine.

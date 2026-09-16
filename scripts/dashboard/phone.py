@@ -177,6 +177,17 @@ _dev_fail = {}           # nodes whose last probe did not run, by id
 DEV_TTL = 60.0
 
 
+def no_adb(nid):
+    """True when the node's census says it carries no adb, so there is
+    nothing to probe. An agent too old to report toolchains is asked, as
+    it always was."""
+    n = nodes.node(nid) if nodes is not None and nid else None
+    tc = ((n or {}).get("reported") or {}).get("toolchains")
+    if not isinstance(tc, dict):
+        return False
+    return not (tc.get("adb") or tc.get("android-sdk"))
+
+
 def devices(nid, force=False):
     """Everything attached to the node's phone server, split by what it is.
     An emulator is emulator-NNNN; anything else reached it over TCP and is a
@@ -184,6 +195,13 @@ def devices(nid, force=False):
     c = _dev_cache.get(nid)
     if c and not force and time.monotonic() - c["at"] < DEV_TTL:
         return list(c["devs"])
+    # Not asked of a node that has no adb: the census says what the node
+    # carries, and a probe there is a job that fails on every poll, which
+    # filled a fresh node's Jobs tab with 'could not start adb' rows (B138).
+    # The tab says what is missing instead (no_adb).
+    if no_adb(nid):
+        _dev_fail[nid] = True
+        return list(c["devs"]) if c else []
     r = _adb(nid, "devices", "-l", timeout=20)
     if r["code"] != 0:
         # A probe that did not run — the node's one slot taken by a push, an

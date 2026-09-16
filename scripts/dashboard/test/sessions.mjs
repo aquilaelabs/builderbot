@@ -3,8 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled,
-         refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -376,9 +375,32 @@ await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
                workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
   { Authorization: 'Bearer ' + deskbox.token });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
-await refreshUntil(phone, () => (state?.projects || [])
-  .find(p => p.name === 'alpha')?.session_at === 'deskbox');
+// Under a full run this wait has crashed the file more than once (B124): a
+// node is live for LIVE_S after its hello, and a slow box can spend that
+// before the poll reads deskbox back. So the hello is repeated between
+// shorter waits rather than one long wait on a liveness that lapses.
+const deskboxCensus = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
+  session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
+             workspace: true, writable: true, boot: '9.9', up_s: 5000 } };
+for (let tries = 0; ; tries++){
+  try {
+    await refreshUntil(phone, () => (state?.projects || [])
+      .find(p => p.name === 'alpha')?.session_at === 'deskbox', { timeout: 30000 });
+    break;
+  } catch (e) {
+    if (tries >= 3) throw e;
+    await bapi('/api/v1/agent/hello', { census: deskboxCensus, version: 'harness', running: [] },
+               { Authorization: 'Bearer ' + deskbox.token });
+  }
+}
 await phone.click('#projects [data-c="alpha"]');
+// The press can land on a row the poll is replacing under load, and then
+// opens nothing; a press that opened nothing is pressed again, and one
+// that did is left alone, since a second press would close the chooser.
+await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => {
+  await phone.click('#projects [data-c="alpha"]');
+  await phone.waitForSelector('.resumemenu', { timeout: 10000 });
+});
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
@@ -526,7 +548,7 @@ await phone.goto(URL + '?view=dash');
 await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
 ok(true, '?view= overrides the remembered side');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
-await phone.close();
+await closePage(phone);
 
 // A phone held sideways: a flyout must not push the bottom bar off the
 // screen — it gives way, and the terminal keeps a strip.
@@ -541,7 +563,7 @@ await land.evaluate(() => mobPanel('keys'));
 await land.waitForFunction(() => document.getElementById('keys').classList.contains('show') && !document.getElementById('keys').classList.contains('sliding'));
 const fit2 = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit2.bar <= 390 && fit2.panes >= 90, `landscape: same with the keys (bar bottom ${Math.round(fit2.bar)}px, terminal ${fit2.panes}px)`);
-await land.close();
+await closePage(land);
 
 // ---- a tab that outlived its container ---------------------------------
 // A browser left open across a restart still holds its Claude tabs, and a

@@ -38,12 +38,32 @@ export const ok = (cond, name) => {
 // exercises a module through the CLI that shares it, and still wants the
 // same pass/fail tally and exit code as the browser files.
 export const done = async browser => {
+  for (const ctx of browser?.contexts() || [])
+    for (const p of ctx.pages()) await leaveNotebooks(p);
   await browser?.close();
   console.log(`\n${pass} passed, ${fail} failed`
               + (TIMING ? ` in ${((Date.now() - startedAt) / 1000).toFixed(1)}s` : ''));
   process.exit(fail ? 1 : 0);
 };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// A window says it has left its notebooks before it goes (B144). A person's
+// browser does this itself, on pagehide, with its session cookie; a harness
+// page authenticates with an injected header, which a request sent during
+// unload does not carry, and Playwright's close runs no pagehide at all. So
+// the same call is made here, while the page can still authenticate it:
+// without it the next file met this one's windows as "your other window"
+// for the seat's fifty seconds.
+export async function leaveNotebooks(p){
+  await p.evaluate(() => typeof notebooks === 'undefined' ? null
+    : Promise.all([...notebooks.values()].map(n => n.leave?.())))
+    .catch(() => {});
+}
+
+export async function closePage(p){
+  await leaveNotebooks(p);
+  await p.close();
+}
 
 export const launch = () => chromium.launch({ executablePath: CHROME });
 

@@ -37,8 +37,8 @@ import statefile  # noqa: E402
 write_json = None
 FILE = None
 
-# key -> its default, its shape, and when a change takes: "live" (applied by
-# set_many) or "boot" (read by a startup hook through bb_setting).
+# key -> its default, its shape, and when a change takes: "now", applied by
+# set_many. Every key is a switch.
 KEYS = {
     # Off, the server refuses a second Claude session on one project when
     # another account's session there is signed in to the same Claude
@@ -67,7 +67,6 @@ KEYS = {
     # level as any other machine's.
     "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
 }
-MAX_TEXT = 200
 
 
 def configure(*, write_json, state):
@@ -88,30 +87,17 @@ def load():
 
 
 def _parse(key, raw):
-    """A value of the key's kind out of a string or a JSON value, or None
-    when it cannot be read as one — an unreadable value is treated as unset
-    rather than as an error on every read."""
-    spec = KEYS[key]
-    kind = spec["kind"]
-    if kind == "bool":
-        if isinstance(raw, bool):
-            return raw
-        s = str(raw).strip().lower()
-        if s in ("1", "true", "yes", "on"):
-            return True
-        if s in ("0", "false", "no", "off", ""):
-            return False
-        return None
-    if kind == "int":
-        try:
-            n = int(str(raw).strip())
-        except (TypeError, ValueError):
-            return None
-        return n if spec.get("min", n) <= n <= spec.get("max", n) else None
-    if kind == "choice":
-        v = str(raw or "").strip()
-        return v if v in spec["choices"] else None
-    return " ".join(str(raw or "").split())[:MAX_TEXT]
+    """A switch's value out of a string or a JSON value, or None when it
+    cannot be read as one: an unreadable value is treated as unset rather
+    than as an error on every read."""
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("1", "true", "yes", "on"):
+        return True
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    return None
 
 
 def effective():
@@ -143,12 +129,7 @@ def set_many(changes):
             return {"error": f"not a setting: {key}"}
         v = _parse(key, raw)
         if v is None:
-            spec = KEYS[key]
-            hint = (f"a whole number from {spec['min']} to {spec['max']}" if spec["kind"] == "int"
-                    else "true or false" if spec["kind"] == "bool"
-                    else "one of " + ", ".join(spec["choices"]) if spec["kind"] == "choice"
-                    else "text")
-            return {"error": f"{key} takes {hint}"}
+            return {"error": f"{key} takes true or false"}
         parsed[key] = v
     with _lock:
         d = load()
@@ -159,8 +140,7 @@ def set_many(changes):
 
 def payload():
     return {"settings": effective(),
-            "meta": {k: {"applied": s["applied"], "choices": list(s.get("choices") or [])}
-                     for k, s in KEYS.items()}}
+            "meta": {k: {"applied": s["applied"]} for k, s in KEYS.items()}}
 
 
 def reset_state(state):
