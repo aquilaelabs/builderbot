@@ -885,13 +885,16 @@ else
     ttyd_pkg="$(pkg_names ttyd)"
     if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
         pkg "$ttyd_pkg" >/dev/null 2>&1 || true
-        # Debian's package enables a unit of its own: ttyd as root on
-        # lo:7681 serving a login prompt, which nothing here asked for. The
-        # binary is what was wanted; the agent runs its own ttyd as the
-        # session account (B136).
-        if command -v systemctl >/dev/null 2>&1; then
-            systemctl disable --now ttyd.service >/dev/null 2>&1 || true
-        fi
+    fi
+    # Debian's package enables a unit of its own: ttyd as root on lo:7681
+    # serving a login prompt, which nothing here asked for. The binary is what
+    # was wanted; the agent runs its own ttyd as the session account (B136).
+    # Outside the install branch on purpose: a re-provision, or a base image
+    # that already carries the package, still has the unit to switch off, so
+    # disabling it only when we install the binary leaves it running on every
+    # run but the first.
+    if [ -n "$ttyd_pkg" ] && command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now ttyd.service >/dev/null 2>&1 || true
     fi
     if ! command -v ttyd >/dev/null 2>&1; then
         case "$(uname -m)" in
