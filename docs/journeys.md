@@ -77,3 +77,87 @@ What this walk moved or confirmed:
 What a new user would still stumble on, in order of when they meet it: where
 to get the provisioner (filed), the `useradd` warning during provisioning
 (B131), and a git read refusing for want of a commit identity (B128).
+
+## A Docker project, an Android app, and three people on one project (16 September 2026)
+
+The second walk, page-driven at desktop and phone widths, on the pair the
+first walk left behind: the owner `stencil`, the node `bb-dev-sandbox`, the
+project `hello`. Three things the mandate asked for, in the order they were
+done, with what snagged and what was moved.
+
+**A compose project through the Docker manager.** A one-file nginx project
+(`web`) was made from the New project dialog, bound to the node in its
+settings, and sent to Docker from its Artifacts view. The dialog asked for
+the instance name and a confirm, the build ran as a job on the node, Up
+brought it up, and the site answered on the node's address. *Snag, fixed
+(B134):* the manager's rows said "the daemon did not answer: Connection
+closed by ... port 22" and "state unknown" throughout, because the one read
+the rows are drawn from, `docker ps`, still went over ssh from the
+controller while every action ran through the agent. A bare docker read
+addressed at an agent node now runs there as a probe job the Jobs tab never
+keeps, and a node that is on a job is not probed (a probe queued behind a
+build would wait the build out): the last answer stands until the job ends.
+
+**An Android app, built on the node.** JDK, the Android command-line tools
+and the platform tools were installed from the Tools tab with the node
+picked (a job each; the tab shows the running one). A new empty project
+(`droid`) took a one-screen Java app with Gradle 8.14 and AGP 8.10, its
+settings took the node, `./gradlew assembleDebug` and the APK glob, and
+`bb build` was run on the node under the exact environment a session gets
+there (read off a live session's process). Gradle downloaded, AGP fetched
+Build-Tools 35 and platform 35 into the store against the licences the
+recipe had accepted, and the build succeeded in under two minutes with the
+APK copied into `dist/`, where the Artifacts view listed it with Download
+live and Install ghosted for want of a phone. Setting the first version from
+that view wrote `VERSION` and the block read `0.1.0-dev.2+…` at once. No
+snag in the product. *Two snags beside it:* a console login shell on the
+node had no `bb` on PATH because the provisioner's profile line named the
+store the node was born with, not the one Storage had moved it to (B135,
+fixed: the agent rewrites the line after every apply); and the Tools tab
+asked to install the emulator's libraries on a node that had never
+installed the emulator, because every android recipe shares one directory
+(B139, fixed: a recipe is held when its own tool exists).
+
+**Three people on one project.** The owner added `dev2` (a user, granted
+`hello` only) and `dev3` (an admin). As dev2: the Projects card listed
+`hello` and nothing else; the API refused everything not hers (artifacts
+"not a project", roadmap and settings "not found", users "that is an
+administrator's"); the Claude button opened a session on the node in a
+worktree of her own (`.worktrees/hello/<uid>`) on the read-only console
+with the "message Claude, then Enter" bar, while the owner's session on the
+same project ran beside it in the project directory: three tmux sessions on
+the node at once, each named for its account. *Snag, fixed (B141):* with
+both accounts carrying one Claude login, pressing Claude again to get back
+to your own running session was refused with the one-account sentence
+naming the other person, and the refusal arrived as the browser's JSON
+viewer inside the tab. *Snag, fixed (B142):* dev3, an admin, was told to
+take the project on from the Users tab, whose editor hid the project list
+for anyone but a user. *Filed:* the sign-out button of a user whose login
+is shared names a session that is not theirs (see the notes in B137's
+area), and a plain user's Doctor card carried the controller's whole pill
+list, now cut to the lines that are theirs.
+
+**The Doctor, read as a new owner.** Five lines were stale since sessions
+moved to nodes and are gone or reworded: a red "git identity configured" on
+a box where nobody commits, "no Claude login here" beside the card naming
+the login, "gh is not authenticated" for a thing nothing signs in, "no ssh
+key (agent empty)" and "no node with a daemon" while the Docker tab was
+building on one. The probe behind the last one now opens the node store and
+answers for the node the manager would open on.
+
+What this walk moved or confirmed:
+
+- Alpha, new evidence: the Docker manager against an agent node end to end
+  (Send, build, Up, the route); the Android toolchain from the Tools tab and
+  a Gradle build on a node with the store's JDK and SDK; several accounts
+  with sessions on one project at once, each in its own tree; the users
+  editor and the API's per-account refusals.
+- Still dev: nothing this walk touched; the unwalked hosts and hypervisors
+  stay where they are.
+
+What a new user would still stumble on, in order of when they meet it: the
+New project dialog has no node picker, so every project is born with
+"node: none" and needs its settings before Claude can start; a project's
+settings dialog leads with rename; the Docker row stacks three settings
+pickers above its buttons; and the notebook foot's Save and Revert sit
+ghosted on views with nothing to save.
