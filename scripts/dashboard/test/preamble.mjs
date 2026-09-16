@@ -13,6 +13,7 @@
 import { URL, DIR, launch, newPage, ok, done, ready, sleep, patience } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
@@ -151,6 +152,30 @@ ok(page.errors.length === 0,
      `preamble.py looks for the briefing where the image puts it (${dest})`);
   ok(existsSync(join(root, 'config', 'templates', 'briefing.md')),
      '...and the file it ships is in the tree');
+}
+
+// ---- bb status tells a refusal from a silence (R62) --------------------------
+// The first version reported an expired token as "the controller did not
+// answer", which is the mistake bbapi.request exists to prevent and that
+// bb-gate had already made once. A session sent chasing a network problem
+// when the answer is "open this session's tab" is the cost.
+{
+  const root = join(import.meta.dirname, '..', '..', '..');
+  const run = (env) => {
+    try {
+      return execFileSync('bash', [join(root, 'scripts', 'bb'), 'status'],
+        { encoding: 'utf8', cwd: root, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}` || `THREW ${e}`; }
+  };
+  const line = out => (out.split('\n').find(l => /^\s*controller /.test(l)) || out.split('\n').slice(0, 2).join(' | ')).trim();
+  const refused = line(run({ BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                             BB_TOKEN: 'bbs_nonsense', BB_PROJECT: 'alpha' }));
+  ok(/refused this session/.test(refused) && !/did not answer/.test(refused),
+     `a credential the controller rejects reads as a refusal, not as silence (${refused})`);
+  const away = line(run({ BUILDERBOT_ROLE: 'node', BB_CONTROLLER: 'https://127.0.0.1:59999',
+                          BB_TOKEN: 'bbs_nonsense', BB_PROJECT: 'alpha' }));
+  ok(/did not answer/.test(away),
+     `...and a controller that is really not there reads as silence (${away})`);
 }
 
 await done(browser);

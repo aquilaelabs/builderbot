@@ -4220,14 +4220,23 @@ bb_controller_stamp() {
 import os, sys
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
-# Short: bb status is run often, and a controller that is down should cost a
-# line, not a 30-second wait on the default.
+# request() rather than call(), because the two failures want different
+# answers and call() cannot tell them apart: a refusal the server worded and a
+# refused connection both come back as {"error": sentence}. Reporting an
+# expired token as "the controller is down" is the mistake bb-gate already
+# made once, and the first version of this line made it again.
+# Short timeout: bb status is run often, and a controller that is down should
+# cost a line rather than a 30-second wait.
 try:
-    m = bbapi.call("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
+    st, m = bbapi.request("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
 except Exception:
-    m = {"error": "no answer"}
-if not isinstance(m, dict) or m.get("error"):
+    st, m = None, {}
+if st is None:
     print("unreachable: the controller did not answer", end="")
+    raise SystemExit(0)
+if st >= 400 or not isinstance(m, dict) or m.get("error"):
+    why = (m or {}).get("error") or f"HTTP {st}"
+    print(f"the controller refused this session: {why}", end="")
     raise SystemExit(0)
 ver = (m.get("version") or "").strip()
 rev = (m.get("image") or "").strip()
