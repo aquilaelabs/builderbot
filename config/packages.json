@@ -99,12 +99,12 @@
     "flavors": {
       "google_apis": {
         "label": "Google APIs",
-        "about": "Google Play services — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what bb emu create fetches.",
+        "about": "Google Play services (Maps, sign-in, push) but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what bb emu create fetches.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
       },
       "google_apis_playstore": {
         "label": "Google APIs + Play Store",
-        "about": "The same, plus the Play Store app itself — for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
+        "about": "The same, plus the Play Store app itself, for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
       },
       "android-tv": {
@@ -182,7 +182,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager: the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -426,7 +426,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH: no extra toolchain, no target to install.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -483,7 +483,7 @@
       "platforms": [
         "linux/*"
       ],
-      "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
+      "about": "The .NET SDK plus the maui-android workload: Android apps from C#.",
       "source": {
         "kind": "script",
         "url": "https://dot.net/v1/dotnet-install.sh",
@@ -543,7 +543,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "The JavaScript runtime and npm. Not needed to BE a node — the agent is Python and the provisioner installs that — but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
+      "about": "The JavaScript runtime and npm. Not needed to BE a node (the agent is Python and the provisioner installs that), but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -627,7 +627,7 @@
       "requires": [
         "node"
       ],
-      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it — what bb shot and the dashboard's own tests require().",
+      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it: what bb shot and the dashboard's own tests require().",
       "source": {
         "kind": "command",
         "requires": "npm",
