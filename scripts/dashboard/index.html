@@ -10006,6 +10006,12 @@ const nbViewMemo = {
   },
 };
 
+// A tab closed, reloaded or navigated away says so on its way out, so the
+// other windows stop naming it at once rather than for its seat's fifty
+// seconds: "your other window" about a window that is gone is the one line
+// presence exists to avoid (roadmap #26, B144).
+addEventListener("pagehide", () => notebooks.forEach(n => n.leave()));
+
 function getNotebook(project){
   let nb = notebooks.get(project);
   if (!nb){ nb = makeNotebook(project); notebooks.set(project, nb); }
@@ -10900,11 +10906,14 @@ async function postTodoDo(body, quiet){
 // the least important thing on this page, and nothing else waits for it.
 nb.nbWhere = "briefing"; nb.nbHere = []; nb.nbRead = 0;
 
-async function beat(leave){
+async function beat(leave, keepalive){
   if (!nb.memProj) return;
   try{
     const r = await fetch("/api/presence", {method: "POST",
       headers: {"Content-Type": "application/json"},
+      // A leave sent as the page goes away (pagehide) has to outlive the
+      // page: keepalive is what lets it arrive after the page has gone.
+      keepalive: !!keepalive,
       body: JSON.stringify({project: nb.memProj, client: nbClient,
                             where: nb.nbWhere, ...(leave ? {leave: 1} : {})})});
     const j = await r.json();
@@ -12293,6 +12302,9 @@ $("todoRevert").onclick = revertNotebook;
 
     },
     escape(){ if (nb.todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
+    // Says this tab has left the notebook without taking the notebook down:
+    // the page is going (see the pagehide listener by getNotebook).
+    leave(){ return beat(true, true); },
     destroy(){
       beat(true);
       unwatch.forEach(off => off());
