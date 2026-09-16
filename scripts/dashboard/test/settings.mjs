@@ -181,9 +181,22 @@ await page.click('#rnCancel');
   await page.$eval('#grBody .rulerow[data-own="1"] .grText',
     e => { e.value = 'Never write credentials into a repository.'; });
   await page.click('#grSave');
+  // The dialog must come back showing what was saved. It did not: postJSON
+  // returns the Response and reading `.rules` off it emptied the list on every
+  // save, which only a look at the redrawn dialog catches.
   await page.waitForFunction(
-    () => !!document.querySelector('#grBody .rulerow[data-own="1"] .grName')?.value,
+    () => document.querySelector('#grBody .rulerow[data-own="1"] .grName')?.value === 'no-secrets',
     null, { timeout: 15000 });
+  ok(await page.$eval('#grBody .rulerow[data-own="1"] .grText', e => /credentials/.test(e.value)),
+     '...and the dialog redraws with the rule it saved, not an empty list');
+
+  // The count on the tab behind must move too: saving one rule and being told
+  // "0 rules" is the sort of thing a person notices and nothing else catches.
+  await page.click('#grClose');
+  const count = await page.waitForFunction(
+    () => document.querySelector('#setGlobalRules')?.closest('.actbar')?.querySelector('.state')?.textContent?.trim(),
+    null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
+  ok(/^1 rule$/.test(count || ''), `the Settings section counts what was saved (${count})`);
 
   const saved = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
     { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();

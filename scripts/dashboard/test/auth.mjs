@@ -716,6 +716,20 @@ ${code}`], { encoding: 'utf8' }).trim();
   const post = (path, body) => as(path, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  // Controller settings, and the global rules on it, are an administrator's
+  // (R63): a global rule reaches every project, including ones this account
+  // cannot see. The card carrying the button is not drawn for them either,
+  // which `can.admin` is what decides.
+  const asUser = await (await as('/api/status')).json();
+  ok(asUser.can?.admin === false,
+     'an ordinary account is told it is not an administrator, so the page draws no Administration card');
+  const wrote = await post('/api/global-rules',
+    { action: 'save', rules: [{ name: 'sneak', text: 'every project, please' }] });
+  ok(wrote.status === 403, `...and cannot write a rule for every project (${wrote.status})`);
+  const stillNone = await (await bare('/api/global-rules', { headers: {
+    Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(!(stillNone.rules || []).some(r => r.name === 'sneak'), '...and nothing was written');
+
   const mine = await (await as('/api/status')).json();
   const names = (mine.projects || []).map(p => p.name);
   ok(names.includes('alpha') && !names.includes('ep.silon') && names.length === 1,

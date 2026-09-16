@@ -72,10 +72,7 @@ function renderSettingsInto(i){
   if (gr) gr.onclick = openGlobalRules;
   // The count on the section's line, fetched once: it is the only thing here
   // that is not already in the poll.
-  if (globalRules === null) loadGlobalRules().then(() => {
-    const st = d.el.querySelector("#setGlobalRules")?.closest(".actbar")?.querySelector(".state");
-    if (st && globalRules) st.textContent = `${globalRules.length} rule${globalRules.length === 1 ? "" : "s"}`;
-  });
+  if (globalRules === null) loadGlobalRules().then(paintGlobalRulesCount);
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
   if (nd) nd.onclick = openNodesTab;
@@ -301,6 +298,14 @@ function globalRulesSection(){
     </div>`;
 }
 
+// The count on the section's line. Painted rather than left to the next
+// repaint: saving one rule and still reading "0 rules" is the sort of thing a
+// person notices, and the tab does not re-render on its own for this.
+function paintGlobalRulesCount(){
+  const st = document.querySelector("#setGlobalRules")?.closest(".actbar")?.querySelector(".state");
+  if (st && globalRules) st.textContent = `${globalRules.length} rule${globalRules.length === 1 ? "" : "s"}`;
+}
+
 async function loadGlobalRules(){
   try{
     const r = await (await fetch("/api/global-rules")).json();
@@ -377,12 +382,14 @@ function wireGlobalRules(){
       .map(row => row.dataset.builtin);
     busy(save, "Saving");
     try{
-      const r = await postJSON("/api/global-rules", {action: "save", rules, disabled});
+      // postJSON hands back the Response, not the body: read it, or an error
+      // is never seen and the redraw below empties the list it just saved.
+      const r = await (await postJSON("/api/global-rules", {action: "save", rules, disabled})).json();
       if (r.error) return notify(r.error, true);
       globalRules = r.rules || [];
       notify("global rules saved: every project's next session is handed them");
       drawGlobalRules();
-      refresh();
+      paintGlobalRulesCount();
     }catch(e){ notify("global rules: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
   };
