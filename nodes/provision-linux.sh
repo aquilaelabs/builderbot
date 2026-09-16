@@ -1119,10 +1119,16 @@ mount_one() {
     # This path only. `mount -a` mounted every entry in fstab, so one export
     # the server refuses printed its refusal on every check of every OTHER
     # mount — three copies of one unrelated failure, above the answers.
-    n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+    # findmnt exits 1 for a path that is not mounted, and under pipefail
+    # that ended this function on its first line for every FIRST mount,
+    # silently, before mount ran: a fresh node's Storage apply always
+    # "failed" and the mounts came up later through fstab (found on the
+    # second onboarding walk, 16 Sep). Its exit is not an answer here; its
+    # line count is.
+    n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
     if [ "$n" -eq 0 ]; then
         mount "$path" 2>/dev/null || true
-        n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+        n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
     fi
     # One line PER mount at this path. The last is the one on top, and the
     # only one anything opening a file there actually reaches.
