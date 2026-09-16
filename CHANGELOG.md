@@ -168,6 +168,7 @@
 - A browser tab that was closed or reloaded no longer shows in the notebook as 'your other window' for up to a minute (5ccfc23)
 - A session on a node can no longer make the controller run commands: its bb git push, fetch and pull no longer run the repository's hooks or config there, a house rule's check runs on the node, and a project cloned without push rights is refused a push (0a0de59, e2cc37e, 8aad305)
 - A git command in a project no longer fails now and then with index.lock: File exists because the dashboard was reading the tree's status at the same moment (2fae947)
+- A Claude session on a node now sees only the project it was started for, even with other projects on the machine: another project's files, logs, saved tokens and Claude transcripts, and other accounts' homes, are out of its view, and it cannot reach one by queueing a build there (ca78635)
 
 ### Removed
 
