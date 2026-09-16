@@ -1049,7 +1049,7 @@ import json, sys
 try:
     stores = json.load(open(sys.argv[1])).get("stores") or {}
 except Exception:
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 under = sys.argv[2].rstrip("/")
 for role, where in sorted(stores.items()):
     w = str(where or "").rstrip("/")

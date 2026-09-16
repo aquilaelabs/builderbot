@@ -131,7 +131,7 @@ import json, os, sys
 try:
     rows = json.load(open(sys.argv[1]))["packages"]
 except (OSError, ValueError, KeyError):
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 root = sys.argv[2]
 
 
@@ -246,7 +246,7 @@ try:
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     n = nodes.node(sys.argv[2])
 except Exception:
-    raise SystemExit(1)
+    raise SystemExit(1) from None
 rep = (n or {}).get("reported") or {}
 store = (rep.get("stores") or {}).get("packages") or {}
 if not n or not store.get("path"):

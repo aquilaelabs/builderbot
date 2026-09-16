@@ -1877,7 +1877,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
   {
     const SBDIR = `${DIR}/sandbox-src`;
     mkdirSync(SBDIR, { recursive: true });
-    execFileSync('python3', [`${REPO}/scripts/lib/embedded-shell.py`, SBDIR,
+    execFileSync('python3', [`${REPO}/scripts/lib/embedded.py`, 'shell', SBDIR,
                              `${REPO}/nodes/provision-linux.sh`], { stdio: 'pipe' });
     const SB = `${SBDIR}/provision-linux.sh-BBSANDBOX`;
     const NJ = `${DIR}/contract-node.json`;

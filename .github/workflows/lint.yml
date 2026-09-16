@@ -144,10 +144,19 @@ jobs:
         # extension and by shebang, the same selection bb lint makes. The
         # rules are ruff.toml's at the root; the agent's own pins it to the
         # python a Rocky node carries.
+        # And the python a shell script feeds to python3 from a quoted heredoc
+        # (scripts/bb does it dozens of times), extracted with its line numbers
+        # kept. Its own run, with the root's config named: the copies sit
+        # outside the checkout, where ruff would find no config of its own.
         run: |
           mapfile -t files < <({ find scripts -type f -name '*.py'; find scripts -type f -exec grep -lE '^#!.*\bpython3?\b' {} +; } | sort -u)
           printf 'checking %s\n' "${files[@]}"
           ruff check "${files[@]}" 2>&1 | tee -a "$CI_LOG"
+          mapfile -t tracked < <(git ls-files)
+          mkdir -p "$RUNNER_TEMP/embedded"
+          mapfile -t embedded < <(python3 scripts/lib/embedded.py python "$RUNNER_TEMP/embedded" "${tracked[@]}")
+          printf 'checking %s\n' "${embedded[@]}"
+          ruff check --config ruff.toml "${embedded[@]}" 2>&1 | tee -a "$CI_LOG"
 
       - name: Workflows
         # The runner labels a runs-on may target live in .github/actionlint.yaml,

@@ -2465,7 +2465,7 @@ cmd_preamble() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     python3 - "$dir" "$proj" "${1:-}" <<'PREPY'
-import importlib.util, json, os, sys
+import json, os, sys
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, d)
 import statefile, rules, todo, bugs, preamble
@@ -4007,7 +4007,7 @@ cmd_findings_history() {
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
-import importlib.util, json, os, sys, time
+import importlib.util, os, sys, time
 
 spec = importlib.util.spec_from_file_location("findings", sys.argv[1])
 fx = importlib.util.module_from_spec(spec)
@@ -4403,7 +4403,7 @@ def _identity(uid):
             store = json.load(f).get("users") or {}
     except (OSError, ValueError):
         return "", "", False
-    for name, u in store.items():
+    for u in store.values():
         if not isinstance(u, dict):
             continue
         if (uid and u.get("uid") == uid) or (not uid and u.get("role") == "owner"):
@@ -4442,7 +4442,7 @@ cmd_work() {
     [ -f "$py" ] || die "overlap.py is missing from this image"
     proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     python3 - "$py" "$proj" "${DASHBOARD_STATE:-/config}" "${WORKSPACE:-/workspace}" <<'PY'
-import importlib.util, json, sys
+import contextlib, importlib.util, json, sys
 mod, proj, state, ws = sys.argv[1:5]
 spec = importlib.util.spec_from_file_location("overlap", mod)
 o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
@@ -4451,11 +4451,8 @@ o.configure(state=state, workspace=ws,
 # The account each worktree belongs to, so the answer names people rather than
 # ids. Missing users.json is not fatal — the ids are still an answer.
 names = {}
-try:
-    with open(f"{state}/users.json") as f:
-        names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
-except Exception:
-    pass
+with contextlib.suppress(Exception), open(f"{state}/users.json") as f:
+    names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
 wt = f"{ws}/.worktrees"
 trees = o.trees(proj, wt)
 if len(trees) < 2:
@@ -4605,7 +4602,7 @@ cmd_nodes() {
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
     [ -f "$py" ] || die "nodes.py is missing from this image"
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY'
-import importlib.util, os, sys, time
+import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
@@ -4614,7 +4611,7 @@ try:
     rows = nodes.node_list()
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 # Enrolled machines only. The controller's own record is registry plumbing —
 # it is how a share it mounts is recognized as a node's store — and never a
 # machine anybody lists: it runs no work and takes no packages.
@@ -4674,7 +4671,7 @@ try:
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 if jid and not rows[0]:
     print(f"no such job: {jid}")
     raise SystemExit(1)
@@ -4894,14 +4891,12 @@ cmd_ci_labels() {
     local l
     while IFS= read -r l; do [ -n "$l" ] && labels+=("$l"); done < <(
         { [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
-import importlib.util, os, sys
+import contextlib, importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
-try:
+with contextlib.suppress(Exception):
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     print("\n".join(nodes.runner_labels_known()))
-except Exception:
-    pass
 PY
         } | awk 'NF && !seen[$0]++')
     if [ "$write" = 1 ]; then
@@ -5073,8 +5068,8 @@ cmd_lint() {
             tmpd="$(mktemp -d)"
             while IFS= read -r f; do
                 [ -n "$f" ] && shells+=("$f")
-            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded-shell.py" \
-                             "$tmpd" "${shells[@]}" 2>/dev/null)
+            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded.py" \
+                             shell "$tmpd" "${shells[@]}" 2>/dev/null)
         fi
         if [ "${#shells[@]}" -eq 0 ]; then
             echo "  none found"
@@ -5106,22 +5101,43 @@ cmd_lint() {
     # The python, by extension and by shebang: the dashboard, the agent, the
     # library, and the two hook scripts with no extension. ruff.toml at the
     # repo root says which rules; a project without one gets ruff's defaults.
+    #
+    # And the python a shell script feeds to python3 from a quoted heredoc,
+    # which scripts/bb does dozens of times: extracted with the blank lines
+    # above it kept, so a finding's line is the line in the script. Checked
+    # in a run of its own because the copies sit outside the repo, where
+    # ruff would look for a config and find none; the root's is named.
     section "python (ruff)"
     if need ruff; then
-        local -a pys=()
+        local -a pys=() others=() embedded=()
         while IFS= read -r -d '' f; do
             case "$f" in *.py) pys+=("$f"); continue ;; esac
-            head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\bpython3?\b' \
-                && pys+=("$f")
+            if head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\bpython3?\b'; then
+                pys+=("$f")
+            else
+                others+=("$f")
+            fi
         done < <(files '*')
-        if [ "${#pys[@]}" -eq 0 ]; then
+        local pyd=""
+        if [ "${#others[@]}" -gt 0 ]; then
+            pyd="$(mktemp -d)"
+            while IFS= read -r f; do
+                [ -n "$f" ] && embedded+=("$f")
+            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded.py" \
+                             python "$pyd" "${others[@]}" 2>/dev/null)
+        fi
+        local -a conf=()
+        [ -f ruff.toml ] && conf=(--config ruff.toml)
+        if [ "${#pys[@]}" -eq 0 ] && [ "${#embedded[@]}" -eq 0 ]; then
             echo "  none found"
-        elif ruff check --quiet "${pys[@]}"; then
-            printf '  [ok]   %s python file(s) clean\n' "${#pys[@]}"
+        elif { [ "${#pys[@]}" -eq 0 ] || ruff check --quiet "${pys[@]}"; } \
+             && { [ "${#embedded[@]}" -eq 0 ] || ruff check --quiet "${conf[@]}" "${embedded[@]}"; }; then
+            printf '  [ok]   %s python file(s) and %s embedded block(s) clean\n' "${#pys[@]}" "${#embedded[@]}"
         else
             printf '  [FAIL] ruff findings above\n'
             rc=1
         fi
+        [ -n "$pyd" ] && rm -rf "$pyd"
     fi
 
     # The JavaScript: the dashboard's tab scripts and the page's inline

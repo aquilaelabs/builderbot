@@ -3870,7 +3870,7 @@ scripts/
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
-  lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
+  lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
