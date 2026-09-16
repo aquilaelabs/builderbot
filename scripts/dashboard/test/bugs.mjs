@@ -156,7 +156,7 @@ ok(read().find(b => b.id === 1).status_note === 'this time with the resize liste
              WORKSPACE: `${DIR}/ws` } });
   const e = (JSON.parse(readFileSync(FILE, 'utf8')).projects.eta || [])[0];
   ok(e && !('seen_in' in e),
-     'a report on a tree with no commits carries no version — a blank rather than a guess');
+     'a report on a tree with no commits carries no version: a blank rather than a guess');
   execFileSync('rm', ['-rf', N]);
 }
 {

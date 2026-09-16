@@ -20,7 +20,6 @@ import ipaddress
 import json
 import os
 import sys
-import posixpath
 import re
 import selectors
 import shlex
@@ -376,8 +375,6 @@ def field_list(req, key):
     v = req.get(key)
     return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
 
-CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
-REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
 # Locked projects live on the /config volume so the list survives the image
 # updates this container is built to expect. bb-tty reads the same file — a
@@ -732,203 +729,6 @@ def save_project_pins(names):
     write_json(PROJECT_PINS_FILE, sorted(set(names)))
 
 
-def _project_of(uri, known, nonproject=frozenset()):
-    """Which mounted project a scanner-recorded path belongs to.
-
-    The scanner records where *it* saw the code, which is never where this
-    container mounts it, so the only reliable anchor is a path component that
-    matches a directory in the workspace.
-
-    A component that matches a directory in the share that is NOT a project —
-    the package store, the runner's tree, anything else living in there —
-    attributes to IGNORED rather than to nothing. The host scanner sweeps the
-    whole share, so the flutter checkout alone lands thousands of findings,
-    and filing those as "unattributed" buried the handful of genuinely
-    unplaceable paths under them: 9,000 rows of vendored toolchain wearing the
-    label that was meant to say "look at this one, its path is wrong".
-
-    `nonproject` is everything in the share minus the projects, so this needs
-    no list of what to skip and nothing has to be excluded on the scanner.
-    """
-    parts = [p for p in uri.replace("\\", "/").split("/") if p]
-    for i, part in enumerate(parts):
-        if part in known:
-            return part, "/".join(parts[i + 1:]) or part
-        if part in nonproject:
-            return IGNORED, "/".join(parts[i:])
-    return None, "/".join(parts)
-
-
-# The sentinel a finding attributes to when its path resolves into a directory
-# the dashboard knows and deliberately does not treat as a project. Impossible
-# as a real project name (a slash never survives a directory name).
-IGNORED = "not/a/project"
-
-
-def share_siblings():
-    """Shares mounted beside the projects folder, by the name the host calls them.
-
-    The subtraction below derives "not a project" from what sits INSIDE
-    /workspace, which worked while /workspace was the whole development share:
-    the package store was a directory in it, so it fell out for free. Pointing
-    /workspace at the projects folder — a better arrangement, and the one that
-    cut most of this noise — took the package store outside it, and 267 findings
-    about downloaded Flutter, Go and Android toolchains went straight to
-    "unattributed", which is the label meant for a path that is genuinely
-    wrong. Improving the layout regressed the classifier.
-
-    So the wider question is asked instead: what does this container mount from
-    beside its own projects folder? /proc/self/mountinfo answers it —
-
-        /development/projects -> /workspace
-        /development/SDK      -> /sdk
-
-    — so `SDK` is a sibling of the projects folder, and a scanner sweeping the
-    share reports its paths as SDK/flutter/... . Derived, so it keeps working
-    wherever the shares are moved to next, and no list of what to skip.
-
-    Two things it deliberately will not do. A mount whose source is a whole
-    filesystem (root "/") says nothing about a directory name and is skipped.
-    And a name that IS a valid project never enters the set, whatever it is
-    mounted from — /mnt/user/appdata/BuilderBot would otherwise teach this to
-    ignore the BuilderBot project's own findings, which is the one mistake
-    here that would hide real work rather than noise.
-    """
-    try:
-        with open("/proc/self/mountinfo") as f:
-            return siblings_of(f.read(), str(WORKSPACE))
-    except OSError:
-        return set()
-
-
-def siblings_of(mountinfo, workspace):
-    """The parsing half of share_siblings, given the file's text.
-
-    Split out to be driven with a real mount table rather than this one: the
-    case that must not regress — a mount whose basename happens to be a
-    project's name — cannot be produced by mounting something here."""
-    src = {}
-    for line in mountinfo.splitlines():
-        bits = line.split()
-        if len(bits) > 4:
-            src[bits[4]] = bits[3]              # mount point -> path in source fs
-    ws = src.get(workspace)
-    if not ws or ws == "/":
-        return set()
-    parent = posixpath.dirname(ws)
-    out = set()
-    for point, path in src.items():
-        if point == workspace or path == "/":
-            continue
-        if posixpath.dirname(path) == parent:
-            name = posixpath.basename(path)
-            if name:
-                out.add(name)
-    return out
-
-
-def nonproject_dirs(valid):
-    """Top-level workspace directories that are not projects.
-
-    Derived by subtraction rather than by recognising each kind: everything in
-    the share that is not a project worth reading findings for is one of these.
-    That set is the one the card already computes — listed, not excluded, no
-    error-level issue — so asking for it and taking the remainder needs no
-    maintenance when a new sort of directory turns up in the share.
-
-    Subtracting the *valid* projects rather than merely the listed ones is what
-    makes it cover the case that started this. A share mapped inside the
-    projects folder with nothing to mark it is still a directory, so the card
-    lists it — as a project with an error, because it is not a repository. Take
-    away only the listed names and its thousands of findings stay in play; take
-    away the valid ones and it falls out with the rest.
-
-    That width is the point. The package store is the case that made it matter: on
-    this box it lives *inside* the development share, so the host's scanner
-    walks it like anything else and a report grew nine thousand findings
-    attributed to a "project" that is a pile of downloaded toolchains. Those
-    now attribute to IGNORED and are counted aside, rather than burying the
-    handful of genuinely unplaceable paths that the "unattributed" label is
-    for. Nothing had to be excluded on the scanner to get there.
-
-    Listed fresh per parse; it is one readdir and one small file."""
-    out = set()
-    try:
-        for d in WORKSPACE.iterdir():
-            if d.is_dir() and d.name not in valid:
-                out.add(d.name)
-    except OSError:
-        pass
-    # ...plus the shares mounted beside the projects folder, which the
-    # subtraction above cannot see now that it is not the whole share.
-    out |= share_siblings()
-    out -= set(valid)               # never a project, whatever it is mounted from
-    return out
-
-
-def _parse_run(runinfo, known, nonproject=frozenset()):
-    """One SARIF run -> (tool name, rows)."""
-    driver = (runinfo.get("tool") or {}).get("driver") or {}
-    rules = {}
-    for r in driver.get("rules") or []:
-        rules[r.get("id")] = {
-            "desc": ((r.get("shortDescription") or {}).get("text")
-                     or (r.get("fullDescription") or {}).get("text") or ""),
-            "help": ((r.get("help") or {}).get("text") or ""),
-            "uri": r.get("helpUri") or "",
-            "level": ((r.get("defaultConfiguration") or {}).get("level") or "warning"),
-        }
-    rows = []
-    for res in runinfo.get("results") or []:
-        rid = res.get("ruleId") or "unknown"
-        meta = rules.get(rid, {})
-        msg = ((res.get("message") or {}).get("text") or "")
-        loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
-        uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
-        line = ((loc.get("region") or {}).get("startLine") or 0)
-        proj, rel = _project_of(uri, known, nonproject)
-        # CVEs turn up in the rule id (Trivy) or the prose (most others).
-        cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
-                                                   meta.get("help", "")]))))
-        rows.append({
-            "rule": rid,
-            "level": res.get("level") or meta.get("level") or "warning",
-            "desc": meta.get("desc") or msg.split("\n")[0],
-            "message": msg.strip(),
-            "uri": meta.get("uri", ""),
-            "project": proj,
-            "path": rel,
-            "line": line,
-            "cves": cves,
-        })
-    return driver.get("name") or "", rows
-
-
-def parse_sarif(path, known, nonproject=frozenset()):
-    """SARIF 2.1.0 -> flat findings. Tolerant: a malformed run is skipped, not
-    fatal, because one bad report should not blank the whole page."""
-    try:
-        doc = json.loads(path.read_text())
-    except (OSError, ValueError) as e:
-        return {"file": path.name, "tool": "?", "error": str(e), "findings": []}
-
-    tools, rows = [], []
-    for runinfo in doc.get("runs") or []:
-        # "Tolerant" has to mean it: SARIF in the wild has arrays where objects
-        # belong, and one such run used to take the whole endpoint down with an
-        # AttributeError rather than being skipped as documented.
-        try:
-            name, got = _parse_run(runinfo, known, nonproject)
-        except (AttributeError, TypeError, IndexError, KeyError):
-            continue
-        if name and name not in tools:
-            tools.append(name)
-        rows.extend(got)
-    # A file can hold runs from several tools; naming it after the last one seen
-    # was arbitrary.
-    return {"file": path.name, "tool": " + ".join(tools) or "?", "findings": rows}
-
-
 # What a locked project refuses, in one place.
 #
 # The button being hidden is not the rule; this is. The dashboard's own URLs
@@ -951,62 +751,6 @@ def locked_out(name):
     if name and name in set(load_locks()):
         return {"error": LOCKED_REFUSAL.format(name=name)}
     return None
-
-
-def _valid_projects(ps):
-    """The projects whose findings are worth surfacing: no error-level issue.
-
-    A repo that is broken gets triaged in the Projects card first — its
-    findings would only pad the numbers for code nobody can currently work on.
-    A LOCKED one is not in that category and never was: locking says who runs
-    it, not whether its code is worth reading about, and the operator asked
-    for the analysis to keep working on a locked project."""
-    return {p["name"] for p in ps
-            if not any(i["level"] == "error" for i in p["issues"])}
-
-
-def findings_payload(who):
-    ps = project_list(who)
-    known = {p["name"] for p in ps}
-    if not REPORTS.is_dir():
-        return {"available": False, "reports": [], "projects": sorted(known)}
-    files = sorted(f for f in REPORTS.glob("*.sarif")) + \
-            sorted(f for f in REPORTS.glob("*.sarif.json"))
-    # The same rule the counts apply: a report a whole cycle behind its
-    # siblings is not read. Its scanner has probably died and left its last
-    # good output in place, and this payload feeding the Analysis tab while
-    # the counts refused the same file meant the tab could show findings the
-    # rest of the page said did not exist — a stale COPY of a live report
-    # doubled every rule it contained.
-    dropped = stale_reports()
-    files = [f for f in files if f.name not in dropped]
-    # Only the projects worth reading findings for get attributed to: listed,
-    # no error-level issue. Everything else under the share —
-    # a project shut out, one that is broken, the package store, a directory
-    # nobody has explained — attributes to IGNORED and is counted aside.
-    #
-    # Counted rather than silently dropped: a report that quietly shrinks
-    # reads as "covered everything" when it did not.
-    valid = _valid_projects(ps)
-    nonproject = nonproject_dirs(valid)
-    reports, aside = [], 0
-    for f in files:
-        rep = parse_sarif(f, valid, nonproject)
-        keep = []
-        for r in rep["findings"]:
-            if r["project"] == IGNORED:
-                aside += 1
-            else:
-                keep.append(r)
-        rep["findings"] = keep
-        reports.append(rep)
-    # One number rather than the two this used to keep. They were never shown
-    # anywhere, and the distinction they drew — shut out on purpose vs. not a
-    # project — stopped being one this code could make once attribution became
-    # "valid projects only": a broken project and a vendored toolchain now
-    # leave by the same door, which is the point.
-    return {"available": True, "projects": sorted(known),
-            "aside": aside, "reports": reports}
 
 
 # `bb packages install|update|remove` refuses when CLAUDECODE is set, and the
@@ -2760,7 +2504,7 @@ bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # the report against the last.
 import findings                                                  # noqa: E402
 
-findings.configure(write_json=write_json, state=STATE)
+findings.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 
 # A phone on the end of wireless adb, and pushing an extension to it. Its own
 # file for the usual reason; handed the workspace because what it can push is
@@ -3021,180 +2765,6 @@ def _doctor_loop():
         time.sleep(DOCTOR_EVERY)
 
 
-# How far behind the newest report a report may be and still be believed.
-#
-# A scanner that dies leaves its PREVIOUS report in place — a host script worth
-# having does not overwrite a good report with nothing — so a dead scanner and
-# a live one are the same file to everything downstream. On 28 Aug a trivy that
-# had been crashing for four days was still supplying most of this box's
-# findings, against a directory layout that had been changed in between: the
-# operator fixed the scanner's volume, the numbers did not move, and the fix
-# looked broken.
-#
-# A day, and the size is the argument. One scan run writes every report within
-# minutes of itself, so anything measured in hours is the same run. Re-running
-# ONE scanner by hand — the obvious thing to do after fixing one — leaves its
-# siblings a few hours behind, and they must not vanish for it. A report left
-# behind by a scanner that failed is behind by a whole cycle, which for any
-# cadence anybody runs is more than this.
-STALE_AFTER = 86400
-
-
-def reports_ages():
-    """Each report, when it was written, and whether it is too far behind."""
-    out = []
-    try:
-        for f in sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json")):
-            try:
-                out.append({"name": f.name, "when": int(f.stat().st_mtime)})
-            except OSError:
-                pass
-    except OSError:
-        return []
-    out.sort(key=lambda r: -r["when"])
-    newest = out[0]["when"] if out else 0
-    for r in out:
-        r["behind"] = newest - r["when"]
-        r["stale"] = r["behind"] >= STALE_AFTER
-    return out
-
-
-def stale_reports():
-    """The names of the reports being left out, as a set."""
-    return {r["name"] for r in reports_ages() if r["stale"]}
-
-
-def reports_mtime():
-    """Newest mtime among the scanner reports, so a client showing the
-    findings tab can notice a re-run scan without anyone pressing reload."""
-    try:
-        files = list(REPORTS.glob("*.sarif")) + list(REPORTS.glob("*.sarif.json"))
-        return max((int(f.stat().st_mtime) for f in files), default=0)
-    except OSError:
-        return 0
-
-
-# The sidebar card wants per-project headline numbers without every client
-# fetching and parsing the full reports, so the totals ride the status poll —
-# cached on report mtime, because the SARIF can run to megabytes and the poll
-# arrives every 15 seconds.
-_findings_counts = {"mtime": -1, "projects": {}, "heads": [], "ok": False}
-
-
-def findings_counts(ps):
-    """{project: {level: count}} across every report, valid projects only —
-    same rule as findings_payload. An unattributed path (the scanner saw a
-    directory this workspace does not mount) counts under "", which the
-    client labels rather than hiding — a finding with a bad path is still a
-    finding. The cache holds the unfiltered counts: validity can change
-    (a project locked, a permission fixed) without any report changing,
-    so the filter runs per call and only the parse is cached."""
-    # Keyed on the valid project names too: attribution matches path components
-    # against them, so a project that appears — or stops being valid — between
-    # scans would otherwise keep being counted the old way here while the
-    # notebook's view, which parses fresh, files it correctly.
-    known = {p["name"] for p in ps}
-    valid = _valid_projects(ps)
-    files = []
-    if REPORTS.is_dir():
-        files = sorted(REPORTS.glob("*.sarif")) + \
-            sorted(REPORTS.glob("*.sarif.json"))
-    # A report a whole cycle behind its siblings is not read. Its scanner
-    # failed and the host left the previous file in place, so what it contains
-    # describes a tree that has since moved — counting it does not make the
-    # picture more complete, it makes it wrong, and quietly. Said on the card
-    # rather than merely done: see reports_ages.
-    dropped = stale_reports()
-    files = [f for f in files if f.name not in dropped]
-    # Nanosecond mtime plus size, per file: a report parsed mid-write and
-    # finished within the same second must not stay cached as "no findings"
-    # until the next scan.
-    try:
-        stamp = tuple((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in files)
-    except OSError:
-        stamp = ()
-    nonproject = nonproject_dirs(valid)
-    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)),
-           tuple(sorted(dropped)))
-    if _findings_counts["mtime"] != key:
-        per, rows_by, broken, good = {}, {}, False, 0
-        # Where the unplaceable ones came from, counted by the head of their
-        # path. A bare number on that row says something is wrong and nothing
-        # about what: the honest answer for the nine left here is "mobsfscan
-        # reports file:/src, its own container path", which is a fact about a
-        # scanner's configuration and not about any project. Two components,
-        # because one is usually a scheme and three is usually a filename.
-        heads = {}
-        for f in files:
-            rep = parse_sarif(f, valid, nonproject)
-            broken = broken or bool(rep.get("error"))
-            good += 0 if rep.get("error") else 1
-            for row in rep["findings"]:
-                if row["project"] == IGNORED:
-                    continue        # the package store et al: see _project_of
-                lv = per.setdefault(row["project"] or "", {})
-                lv[row["level"]] = lv.get(row["level"], 0) + 1
-                rows_by.setdefault(row["project"] or "", []).append(row)
-                if not row["project"]:
-                    bits = [b for b in (row.get("path") or "").split("/") if b][:2]
-                    head = "/".join(bits) or "(no path)"
-                    heads[head] = heads.get(head, 0) + 1
-        _findings_counts["heads"] = sorted(
-            ({"head": k, "n": v} for k, v in heads.items()),
-            key=lambda h: -h["n"])[:4]
-        # Whether anything here is readable at all, counted while the parse is
-        # in hand rather than paid for again: the Analysis surfaces ghost on
-        # this, and re-reading every report to answer "is there a report" would
-        # be the expensive half of the poll run for a disabled button. A report
-        # that parses and holds no findings is readable — a clean scan is a
-        # result, not an absence.
-        _findings_counts["ok"] = good > 0
-        # A report that failed to parse is not cached: half-written is the
-        # usual reason, and the next poll should read it whole.
-        _findings_counts.update(mtime=None if broken else key, projects=per)
-        # The findings log, written here because here is where the report is
-        # known to have *changed* — this block runs on a new mtime and not on
-        # the reads in between.
-        #
-        # Not on a broken or missing report, which is the whole point of the
-        # guard: a half-written file, or a reports directory that is not there
-        # this minute, has nothing to say about what was fixed, and logging
-        # every finding as gone off one would be the SARIF mistake this
-        # project is careful about everywhere else.
-        #
-        # Coverage is assumed for every known project when a report does parse,
-        # and that assumption is specific to this setup rather than general:
-        # the scanners are pointed at the whole development share, so a project
-        # in it was in scope of the run whether or not it produced a row. Point
-        # them at one project and this would need to learn better.
-        if files and not broken:
-            for name in known:
-                findings.seen(name, rows_by.get(name, []), covered=True)
-    # No filter on the way out any more: nothing but a valid project (or the
-    # empty key, which is an unattributed path) can be in there at all, and
-    # the cache is keyed on the valid set so a change to it re-parses.
-    return dict(_findings_counts["projects"])
-
-
-def reports_ok():
-    """Whether the Analysis surfaces have anything they can actually read.
-
-    Three ways to have nothing: no /reports mount, nothing in it, or nothing in
-    it that parses — and a control that is off wants one answer, not three. Read
-    after findings_counts, which is what fills it.
-    """
-    return bool(REPORTS.is_dir() and _findings_counts["ok"])
-
-
-def findings_heads():
-    """Where the unplaceable findings came from, commonest first.
-
-    Read after findings_counts, which is what fills it: the parse is cached and
-    doing it twice to answer a subtitle would be the expensive half of the poll
-    run for a line of text."""
-    return list(_findings_counts["heads"])
-
-
 # ---- revisions -------------------------------------------------------------
 # One token per thing a view can depend on. A view says what it watches and is
 # told when that moves; it never writes its own "should I re-read?" rule.
@@ -3271,7 +2841,7 @@ def revisions(who=None, projects=None):
         # One file each, so any write through any path moves the token — the
         # CLI's included, which no in-process counter would catch.
         "findings": _mtime(STATE / "findings-log.json"),
-        "reports": reports_mtime(),
+        "reports": findings.reports_mtime(),
         # In memory, free to read.
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
@@ -3397,18 +2967,18 @@ def snapshot(who):
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
         "node_runners": node_runners(),
-        "reports": REPORTS.is_dir(),
-        "reports_mtime": reports_mtime(),
-        "findings_counts": findings_counts(ps),
+        "reports": findings.REPORTS.is_dir(),
+        "reports_mtime": findings.reports_mtime(),
+        "findings_counts": findings.counts(ps),
         # ...and, for the row they land on, what those paths actually look
         # like. Order matters: this reads what the call above computed.
-        "findings_heads": findings_heads(),
+        "findings_heads": findings.heads(),
         # ...and whether there is a readable report at all, which is what the
         # Static analysis button and the Analysis tab ghost on.
-        "reports_ok": reports_ok(),
+        "reports_ok": findings.reports_ok(),
         # ...and when each report was written, so one left behind by a failed
         # scanner is visible rather than silently counted as current.
-        "reports_ages": reports_ages(),
+        "reports_ages": findings.reports_ages(),
         "doctor": doctor_payload(),
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
@@ -4253,7 +3823,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/status"):
             return self._json(snapshot(self._who()))
         if self.path.startswith("/api/findings"):
-            return self._json(findings_payload(self._who()))
+            return self._json(findings.payload(project_list(self._who())))
         if self.path.startswith("/api/profile"):
             return self._profile()
         if self.path.startswith("/api/git"):
@@ -6343,7 +5913,7 @@ class Handler(BaseHTTPRequestHandler):
     def _findings_log(self, req):
         """The Analysis view's log. Read-only by nature: the scan runs on the
         host and nothing here can write a finding, so `history` is the only
-        action there is — the entries are made by findings_counts noticing the
+        action there is: the entries are made by findings.counts noticing the
         report changed."""
         name = field(req, "project")
         if self._not_project(name):
