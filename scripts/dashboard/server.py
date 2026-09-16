@@ -3513,6 +3513,10 @@ def snapshot(who):
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
+        # ...and whether it administers this controller, so the page can word
+        # an empty Projects card for a user with nothing granted rather than
+        # telling them the share is not mounted (16 Sep).
+        "admin": bool(who) and users.is_admin(who),
         # Whether this account's commits would carry an author: the Claude
         # button ghosts on this, naming the Profile, before bb-tty refuses.
         "git_ready": users.git_ready(who) if users.uid_of(who) else True,

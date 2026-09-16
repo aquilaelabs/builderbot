@@ -7311,7 +7311,8 @@ function drawProjects(all){
     // state.projects at click time, not the `ps` this draw was given: the
     // handler outlives the draw now that unchanged markup is kept.
     if (paint(el, jobHtml + `<div class="empty">${
-      !all.length ? "nothing mounted under /workspace"
+      !all.length ? (state.admin ? "nothing under /workspace yet: New project starts one"
+                     : "no projects are yours yet: an administrator grants them on the Users tab")
       : !ps.length ? "nothing pinned: open the Projects tab to pin what you want here"
                  : `nothing to show; everything here is folded away under Show ${hidden}`
     }</div>` + togHtml)){
@@ -8157,7 +8158,8 @@ function renderProjectsInto(i){
   if (!ps.length){
     el.innerHTML = `<div class="projtab"><div class="macros"><button
         id="bNewProjTab">New project</button></div>
-      <div class="empty">nothing mounted under /workspace</div></div>`;
+      <div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
+                                       : "no projects are yours yet: an administrator grants them on the Users tab"}</div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     return;
   }

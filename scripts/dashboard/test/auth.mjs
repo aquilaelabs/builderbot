@@ -1068,6 +1068,15 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
       headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ argv: ['git', 'policy'], cwd: `${DIR}/ws/beta` }) });
     ok(pol.status !== 403, `...while bb git policy, a read, answers it (${pol.status})`);
+    // The status payload says whether the account administers this
+    // controller, which is what words an empty Projects card for a user
+    // with nothing granted rather than telling them the share is missing.
+    const plain = await bare('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+      body: JSON.stringify({ action: 'add', name: 'plainone', password: 'plainonepw1', role: 'user' }) });
+    const asUser = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') } })).json();
+    const asOwner = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+    ok(plain.status === 200 && asUser.admin === false && asOwner.admin === true,
+       `the status payload carries admin: ${asUser.admin} for a user, ${asOwner.admin} for the owner`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
