@@ -439,6 +439,13 @@ spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
+def respawn(start):
+    # tmux_ops against a tmux that records what it was asked and answers the
+    # pane's start command, which is all a respawn reads.
+    a, seen = object.__new__(m.Agent), []
+    a._tmux = lambda argv, timeout=10: seen.append(argv) or (start if argv[0] == 'display-message' else '')
+    a.tmux_ops([{'session': 'u_0000abcd~claude-alpha', 'respawn': True}])
+    return seen[-1]
 print(json.dumps({
   'sudoers': m.session_sudoers('builder'),
   'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a'}}, 'builder'),
@@ -446,7 +453,9 @@ print(json.dumps({
            ok(f'{home}/alpha/claude-run.sh'), ok('/home/builder/.cache/builderbot/claude-run-alpha.sh')],
   'bad': [ok(f'{home}/alpha/claude-run.sh; id'), ok(f'sudo -n /tmp/other enter -- {home}/alpha/claude-run.sh'),
           ok(f'sudo -n ${bin} enter --project a;id -- {home}/alpha/claude-run.sh'), ok("bash -c 'id' /x/builderbot/project/a/claude-run.sh")],
-  'iso': m.isolation_now()}))
+  'iso': m.isolation_now(),
+  'respawn': respawn(f'sudo -n ${bin} enter --project alpha --account u_0000abcd --cwd /workspace/alpha -- {home}/alpha/claude-run.sh'),
+  'flat': respawn('/home/builder/.cache/builderbot/claude-run-alpha.sh')}))
 `], { encoding: 'utf8', env: { ...process.env, BUILDERBOT_SESSION_BIN: bin } }).trim());
       ok(existsSync(`${store}/.bb/current/nodes/bb-session`)
          && out.sudoers.includes(`Defaults!${bin} !use_pty, !lecture`)
@@ -456,6 +465,11 @@ print(json.dumps({
          `the bundle carries bb-session, and the agent's sudo rule names that one command for the session account alone (${out.sudoers.split('\n')[3]})`);
       ok(out.good.every(Boolean) && !out.bad.some(Boolean),
          `a respawn runs again a launcher inside the view, a plain one, or one from before the view, and nothing else (${JSON.stringify(out.good)} ${JSON.stringify(out.bad)})`);
+      ok(JSON.stringify(out.respawn) === JSON.stringify(['respawn-pane', '-k', '-t', 'u_0000abcd~claude-alpha', 'sudo', '-n', bin, 'enter',
+           '--project', 'alpha', '--account', 'u_0000abcd', '--cwd', '/workspace/alpha', '--',
+           '/home/builder/users/u_0000abcd/.cache/builderbot/project/alpha/claude-run.sh', '--respawn'])
+         && JSON.stringify(out.flat.slice(4)) === JSON.stringify(['/home/builder/.cache/builderbot/claude-run-alpha.sh', '--respawn']),
+         `a respawn hands tmux the view's launcher line word by word, since one string with spaces is a program nobody has (${out.respawn.slice(4, 6).join(' ')})`);
       ok(out.iso.sessions === false && /root/.test(out.iso.why),
          `an agent that is not root says its sessions are not kept to their project, and why (${out.iso.why})`);
     }
