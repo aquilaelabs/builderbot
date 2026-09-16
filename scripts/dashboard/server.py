@@ -2862,6 +2862,49 @@ def snapshot(who):
     }
 
 
+# The JSON API's GET routes, in the order they are matched, against the raw
+# path: "/api/artifact?" is a different route from "/api/artifacts" because
+# the query mark is part of what it matches. A prefix route takes every path
+# it prefixes; auth.mjs fails on one an earlier route takes. The doors before
+# these (setup, login, the agent, health, the terminal proxy, the page and
+# its scripts) stay in _get, in front of the credential check (R60).
+GET_ROUTES = (
+    ("prefix", "/api/revs", "_get_revs"),
+    ("prefix", "/api/status", "_get_status"),
+    ("prefix", "/api/findings", "_get_findings"),
+    ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/git", "_get_git"),
+    ("prefix", "/api/changelog", "_get_changelog"),
+    ("prefix", "/api/version", "_get_version"),
+    ("prefix", "/api/artifacts", "_get_artifacts"),
+    ("prefix", "/api/artifact?", "_get_artifact"),
+    ("prefix", "/api/meta", "_get_meta"),
+    ("prefix", "/api/welcome", "_get_welcome"),
+    ("prefix", "/api/source?", "_get_source"),
+    ("prefix", "/logs/download", "_get_logs_download"),
+    ("prefix", "/api/phone", "_get_phone"),
+    ("prefix", "/api/packages", "_get_packages"),
+    ("prefix", "/api/users", "_get_users"),
+    ("exact", "/api/v1/claude-login", "_claude_login"),
+    ("prefix", "/api/v1/nodes", "_get_nodes"),
+    ("prefix", "/api/v1/jobs", "_get_jobs"),
+    ("prefix", "/api/docker", "_get_docker"),
+    ("prefix", "/api/containers", "_get_containers"),
+    ("prefix", "/api/project-job", "_get_project_job"),
+    ("prefix", "/api/trash", "_get_trash"),
+    ("prefix", "/api/claude-now", "_get_claude_now"),
+    ("prefix", "/api/todo", "_get_todo"),
+    ("prefix", "/api/rules", "_get_rules"),
+    ("prefix", "/api/preamble", "_get_preamble"),
+    ("prefix", "/api/codebase", "_get_codebase"),
+    ("prefix", "/api/pending", "_get_pending"),
+    ("prefix", "/api/memory", "_get_memory"),
+    ("prefix", "/api/tests", "_get_tests"),
+    ("prefix", "/api/bugs", "_get_bugs"),
+    ("prefix", "/api/pubkeys", "_get_pubkeys"),
+)
+
+
 # The JSON API's POST routes, in the order they are matched. A prefix route
 # takes every path it prefixes, so a longer path sits before a shorter one
 # that would take it; auth.mjs fails on one that does not. Each names the
@@ -3664,413 +3707,474 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=86400")
             self.end_headers()
             return self.wfile.write(body)
-        if self.path.startswith("/api/revs"):
-            # Deliberately tiny and deliberately cheap: this is polled every
-            # second or two, where /api/status is polled every fifteen because
-            # it runs git for every project. `p` is the projects the page has
-            # notebooks open on, so the per-project half is one project's work
-            # rather than the whole share's.
-            # Absent and empty are different answers: a page with no notebook
-            # open sends `p=` and wants none of the per-project tokens, where
-            # `bb` and the tests send no `p` at all and want them all.
-            # keep_blank_values, or `p=` parses to nothing at all and reads
-            # as the absent case — which is the opposite answer.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2],
-                                      keep_blank_values=True)
-            raw = q.get("p")
-            ps = None if raw is None else [x for x in (raw[0] or "").split(",") if x]
-            return self._json(revisions(self._who(), ps))
-        if self.path.startswith("/api/status"):
-            return self._json(snapshot(self._who()))
-        if self.path.startswith("/api/findings"):
-            return self._json(findings.payload(project_list(self._who())))
-        if self.path.startswith("/api/profile"):
-            return self._profile()
-        if self.path.startswith("/api/git"):
-            # The notebook's Git view (roadmap R36): plumbing reads on the
-            # project's tree, for a project this account may see. A sha
-            # and a path are checked in git.py against what the repository
-            # itself reports; nothing from the query reaches a command line
-            # as anything else.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            what = q.get("what", [""])[0]
-            try:
-                n = int(q.get("n", ["0"])[0])
-            except ValueError:
-                n = 0
-            r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
-                                path=q.get("path", [""])[0], n=n,
-                                branch=q.get("branch", [""])[0])
-            if what in ("", "all") and not r.get("error"):
-                # What the network bar may offer: a remote to talk to, and
-                # the project's push rights, granted once in the clone dialog.
-                r["remote"] = gitview.has_remote(WORKSPACE / name)
-                r["push"] = projects.may_push(name)
-                # The host by its name (GitHub, Gitea, or the machine's own),
-                # so the view can say "in step with GitHub" and not "origin".
-                url = gitview.remote_url(WORKSPACE / name)
-                at = forges.parse(url) if url else None
-                f = forges.forge_of(at["host"]) if at else None
-                r["host"] = {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
-                             "kind": (f or {}).get("kind", "")}
-            return self._result(r)
-        if self.path.startswith("/api/changelog"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            d = version._sub(name, q.get("component", [""])[0])
-            if d is None:
-                return self._json({"error": "no such component"}, 400)
-            # The text for reading and the same section as structure for
-            # editing: one fetch, because the editor shows both and a second
-            # round trip would let them disagree about what is in the file.
-            return self._json({"text": changelog.read(d),
-                               "groups": changelog.groups(d)})
-        if self.path.startswith("/api/version"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(version_payload(name))
-        if self.path.startswith("/api/artifacts"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            # `devapp` is the main instance, which is what the row shows;
-            # `devapps` is every instance, which the manager reads. Both, so
-            # the row keeps working while the manager grows around it.
-            # One read scope for the row and the manager's list: on an
-            # agent node each is a probe job, and both ask the same daemon.
-            with devapp.read_scope():
-                dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
-            return self._json({"artifacts": artifacts_of(name),
-                               # What this project can and cannot do off this
-                               # box, said on the tab that lists what it built.
-                               "build": build_state(name)} | dev
-                              | phone.summary(prefs.get(name)["node"], users.uid_of(self._who()),
-                                              nodes.node(prefs.get(name)["node"])
-                                              if prefs.get(name)["node"] and not NODES_OK else None))
-        if self.path.startswith("/api/artifact?"):
-            # The download. Resolved and prefix-checked in artifacts.resolve —
-            # a symlink inside dist/ must not turn this into a file server for
-            # the whole box.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            rel = q.get("path", [""])[0]
-            if self._not_project(name):
-                return
-            f = artifacts.resolve(name, rel)
-            if f is None:
-                return self._json({"error": "no such artifact"}, 404)
-            try:
-                data = f.read_bytes()
-            except OSError as e:
-                return self._json({"error": str(e)}, 500)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition",
-                             f'attachment; filename="{f.name}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return None
-        if self.path.startswith("/api/meta"):
-            # What the companion app asks first: the surface number this
-            # dashboard serves, the image it is, and where a newer app is.
-            return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
-                               "image": image_stamp().get("rev") or "", "apk": app_apk()})
-        if self.path.startswith("/api/welcome"):
-            # BuilderBot's own changelog, for the welcome panel: the file
-            # beside this checkout (CHANGELOG.md two levels up, which is
-            # /opt/builderbot/CHANGELOG.md in the image and the repository's
-            # under bb dashboard dev), and where this account last looked —
-            # the image commit it acknowledged — so the panel can draw a
-            # line under what is new since.
-            text = changelog.read(Path(__file__).resolve().parents[2])
-            seen = str(users.prefs(self._who()).get("image_seen") or "")
-            # Trimmed to what is unreleased plus the newest minor's releases:
-            # this panel answers "what changed in the build in front of me",
-            # and the file behind it grows for the life of the project. What
-            # it left out is counted, not hidden.
-            kept, held, series = changelog.since_minor(
-                changelog.sections(text) if text else [])
-            return self._json({"sections": kept, "held": held, "series": series,
-                               "present": text is not None, "seen": seen})
-        if self.path.startswith("/api/source?"):
-            # The code base as a zip, from the Artifacts tab: what git
-            # tracks and would track, never .git, dist/ or what .gitignore
-            # hides. A person's download, so a session's token is refused —
-            # a session has the tree already.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if (self._who() or {}).get("session"):
-                return self._json({"error": "a session has the tree already"}, 403)
-            if self._not_project(name):
-                return
-            try:
-                got = artifacts.source_zip(name)
-            except (OSError, subprocess.SubprocessError) as e:
-                return self._json({"error": str(e)}, 500)
-            if got is None:
-                return self._json({"error": "no such project"}, 404)
-            if isinstance(got, dict):
-                return self._json(got, 413)
-            fname, data = got
-            self.send_response(200)
-            self.send_header("Content-Type", "application/zip")
-            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return None
-        if self.path.startswith("/logs/download"):
-            # The container's own log, every project's traffic in it.
-            if self._refused("admin"):
-                return None
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            what = (q.get("what") or [""])[0]
-            if what == "archive":
-                data, err = logs.archive_bytes()
-                if data is None:
-                    return self._json({"error": err}, 500)
-                fname, ctype = "builderbot-logs.tar.gz", "application/gzip"
-            else:
-                data = logs.session_bytes()
-                fname, ctype = "builderbot-session.log", "text/plain; charset=utf-8"
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Disposition",
-                             f'attachment; filename="{fname}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return None
-        if self.path.startswith("/api/phone"):
-            # Not on the status poll: a probe is a job on a node, so the tab
-            # asks when it is opened or pressed, and reads the cache between.
-            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            # A probe is a job on the named node, and a session's token is
-            # bound to one project's node and no other (the same rule the
-            # jobs endpoint keeps): a session reads the cache, an account
-            # may ask the node.
-            return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
-                                                  probe=bool(q.get("probe")) and not (self._who() or {}).get("session")))
-        if self.path.startswith("/api/packages"):
-            # ?node= asks about another node's packages store: what its
-            # census says it has, and the package job in flight there. The
-            # catalog is the same; the state is the node's (docs/nodes.md §6).
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            nid, why = self._node_asked(q.get("node", [""])[0])
-            if why:
-                return self._json({"error": why, "packages": []})
-            if nid and nid != "local" and not NODES_OK:
-                return self._json(packages.payload_for_node(nid))
-            return self._json(packages.payload())
-        if self.path.startswith("/api/users"):
-            # The listing never carries a hash; all_users() drops it. Projects
-            # come from the same filtered list everything else reads, so an
-            # admin cannot hand out what they cannot see themselves.
-            if self._refused("admin"):
-                return None
-            return self._json({
-                "users": claude_logins(users.all_users()), "owner": users.owner_name(),
-                "me": (self._who() or {}).get("name", ""),
-                "roles": list(users.ROLES),
-                "projects": [p["name"] for p in project_list(self._who())]})
-        if self.path == "/api/v1/claude-login":
-            return self._claude_login()
-        if self.path.startswith("/api/v1/nodes"):
-            # The versioned surface starts here (docs/nodes.md §3): new
-            # endpoints land under /api/v1 with their shapes written down;
-            # the legacy paths above migrate later, never both at once.
-            if NODES_OK:
-                return self._json({"error": "the node store did not open: "
-                                            + NODES_OK}, 500)
-            # The agent this controller ships rides beside the rows, once,
-            # so a row can say when its node's agent is behind.
-            #
-            # Scoped for an account that may not change a node: it sees the
-            # ones its own projects build on and no others, because the list
-            # is otherwise a way to learn what machines exist and what they
-            # are called (roadmap #27). An administrator sees the registry.
-            return self._json({"nodes": self._nodes_for(nodes.node_list()),
-                               "agent": nodes.agent_shipped()})
-        if self.path.startswith("/api/v1/jobs"):
-            # One job with its log so far (?id=), or the recent ones —
-            # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
-            # The Jobs tab's whole read surface, and a test's.
-            if NODES_OK:
-                return self._json({"error": "the node store did not open: "
-                                            + NODES_OK}, 500)
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            jid = q.get("id", [""])[0]
-            # A job and its log are the project's: an account reads the ones
-            # on projects it may see, and a job with no project (a node's
-            # own — an update, a store move) is an administrator's. Same
-            # answer as a typo, so the listing says nothing about what else
-            # is queued on the box.
-            me = self._who()
-            mine = None if users.may(me, "admin") == "" \
-                else {p["name"] for p in project_list(me)}
-            if jid:
-                j = nodes.job(jid)
-                if j and mine is not None and j.get("project") not in mine:
-                    j = None
-                return self._json(j if j else {"error": "no such job"},
-                                  200 if j else 404)
-            try:
-                n = min(500, max(1, int(q.get("n", ["100"])[0])))
-            except ValueError:
-                n = 100
-            rows = nodes.jobs_for(
-                q.get("node", [""])[0] or None, n=n,
-                project=q.get("project", [""])[0] or None,
-                type=q.get("type", [""])[0] or None,
-                active=q.get("active", [""])[0] == "1")
-            if mine is not None:
-                rows = [j for j in rows if j.get("project") in mine]
-            return self._json({"jobs": rows,
-                "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
-        if self.path.startswith("/api/docker"):
-            # Refresh is the retry: drop the memoised availability first, so a
-            # daemon wired up thirty seconds ago is noticed by pressing the
-            # button rather than by waiting for the memo to lapse.
-            devapp.forget_available()
-            # The manager's whole page in one answer: every instance bound to
-            # the picked node, and every container on that node's daemon that
-            # is not one of them. No node named means the default, which is
-            # the arrangement that predates the picker.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            nid, why = self._node_asked(q.get("node", [""])[0])
-            if why:
-                return self._json({"error": why, "blind": True,
-                                   "instances": [], "containers": []})
-            got = devapp.overview(nid or None)
-            # The branches each listed project could be built from. Here
-            # rather than per row: they come from one `for-each-ref` per
-            # project, and the picker needs them before anybody presses.
-            got["refs"] = {p: devapp.refs_of(p)
-                           for p in {i["project"] for i in got.get("instances") or []}
-                           if not devapp.is_file_source(p)}
-            # An instance of a project this account was not given is one of
-            # the projects hidden from it, wearing a different hat — and a
-            # node is shared, so a restricted account asking about its own
-            # node would otherwise read every other project's name off this
-            # answer. The unowned containers go with them: they are somebody's
-            # work too, and nothing here says whose.
-            if self._node_scope() is not None:
-                seen = {p["name"] for p in project_list(self._who())}
-                got["instances"] = [i for i in got.get("instances") or []
-                                    if i.get("project") in seen]
-                got["containers"] = []
-            return self._json(got)
-        if self.path.startswith("/api/containers"):
-            # A read, and the only one this dashboard makes of the daemon
-            # beyond `docker version` — see the guard in devapp.py, which
-            # allows it and still refuses anything that would change something.
-            # Everything on the daemon, every project's: an administrator's.
-            if self._refused("admin"):
-                return None
-            return self._json(devapp.containers())
-        if self.path.startswith("/api/project-job"):
-            if self._refused("create"):
-                return None
-            return self._json(projects.job())
-        if self.path.startswith("/api/trash"):
-            if self._refused("trash"):
-                return None
-            return self._trash_list()
-        if self.path.startswith("/api/claude-now"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json({"model": claude_model_now(WORKSPACE / name)})
-        if self.path.startswith("/api/todo"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            live = sessions_anywhere()
-            return self._json({"project": name} | self._todo_state(name, live))
-        if self.path.startswith("/api/rules"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(rules.payload(name))
-        if self.path.startswith("/api/preamble"):
-            # What a session started here is handed, exactly: the Briefing tab
-            # shows it so the block is a thing a person can read rather than
-            # something that only exists inside a launcher. Readable by anyone
-            # who can see the project — it is their own rules, roadmap and
-            # bugs, already on the three tabs beside it.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(preamble.payload(name))
-        if self.path.startswith("/api/codebase"):
-            # What git tracks in the project, by language: the Briefing
-            # tab's first section. Tracked files only, cached by commit.
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(codebase.payload(name))
-        if self.path.startswith("/api/pending"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(pending.payload(name))
-        if self.path.startswith("/api/memory"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            # Against what this account may see, like every read above it —
-            # this one passed the name straight through (bug #68).
-            if self._not_project(q.get("project", [""])[0]):
-                return
-            got = memory.payload(q.get("project", [""])[0], sessions_anywhere(),
-                                 home=home_for(users.uid_of(self._who())))
-            return self._json(got if got is not None
-                              else {"error": "not a project"}, 400 if got is None else 200)
-        if self.path.startswith("/api/tests"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(testreg.payload(name))
-        if self.path.startswith("/api/bugs"):
-            q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            name = q.get("project", [""])[0]
-            if self._not_project(name):
-                return
-            return self._json(bugs.payload(name))
-        if self.path.startswith("/api/pubkeys"):
-            # The shielded agent's public halves, for the New project dialog:
-            # picking one selects it for the clone, and showing it is how the
-            # operator gets it onto GitHub's deploy-key page in the first
-            # place. Public keys are the shareable part — nothing here can
-            # reach the private material, by construction. `pat` rides along
-            # so the dialogs can say whether a deploy key is optional (a PAT
-            # covers https) or the only way a push can authenticate. The
-            # dialog is an administrator's, and so is this.
-            if self._refused("create"):
-                return None
-            # The forge catalog rides along rather than costing a fetch of its
-            # own: the dialog that wants the keys is the dialog that wants the
-            # list of hosts, and it is drawn once from one answer. `hosts` is
-            # what the operator has already said their own servers run, so the
-            # clone form knows not to ask a question it has the answer to.
-            return self._json({"keys": agent_keys(), "pat": gh_authed(),
-                               "forges": forges.catalog(),
-                               "hosts": forges.known()})
+        for how, route, name in GET_ROUTES:
+            if (self.path == route) if how == "exact" else self.path.startswith(route):
+                return getattr(self, name)()
         self._json({"error": "not found"}, 404)
+
+    def _get_revs(self):
+        """GET /api/revs."""
+        # Deliberately tiny and deliberately cheap: this is polled every
+        # second or two, where /api/status is polled every fifteen because
+        # it runs git for every project. `p` is the projects the page has
+        # notebooks open on, so the per-project half is one project's work
+        # rather than the whole share's.
+        # Absent and empty are different answers: a page with no notebook
+        # open sends `p=` and wants none of the per-project tokens, where
+        # `bb` and the tests send no `p` at all and want them all.
+        # keep_blank_values, or `p=` parses to nothing at all and reads
+        # as the absent case, which is the opposite answer.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2],
+                                  keep_blank_values=True)
+        raw = q.get("p")
+        ps = None if raw is None else [x for x in (raw[0] or "").split(",") if x]
+        return self._json(revisions(self._who(), ps))
+
+    def _get_status(self):
+        """GET /api/status."""
+        return self._json(snapshot(self._who()))
+
+    def _get_findings(self):
+        """GET /api/findings."""
+        return self._json(findings.payload(project_list(self._who())))
+
+    def _get_git(self):
+        """GET /api/git."""
+        # The notebook's Git view (roadmap R36): plumbing reads on the
+        # project's tree, for a project this account may see. A sha
+        # and a path are checked in git.py against what the repository
+        # itself reports; nothing from the query reaches a command line
+        # as anything else.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        what = q.get("what", [""])[0]
+        try:
+            n = int(q.get("n", ["0"])[0])
+        except ValueError:
+            n = 0
+        r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
+                            path=q.get("path", [""])[0], n=n,
+                            branch=q.get("branch", [""])[0])
+        if what in ("", "all") and not r.get("error"):
+            # What the network bar may offer: a remote to talk to, and
+            # the project's push rights, granted once in the clone dialog.
+            r["remote"] = gitview.has_remote(WORKSPACE / name)
+            r["push"] = projects.may_push(name)
+            # The host by its name (GitHub, Gitea, or the machine's own),
+            # so the view can say "in step with GitHub" and not "origin".
+            url = gitview.remote_url(WORKSPACE / name)
+            at = forges.parse(url) if url else None
+            f = forges.forge_of(at["host"]) if at else None
+            r["host"] = {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
+                         "kind": (f or {}).get("kind", "")}
+        return self._result(r)
+
+    def _get_changelog(self):
+        """GET /api/changelog."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        d = version._sub(name, q.get("component", [""])[0])
+        if d is None:
+            return self._json({"error": "no such component"}, 400)
+        # The text for reading and the same section as structure for
+        # editing: one fetch, because the editor shows both and a second
+        # round trip would let them disagree about what is in the file.
+        return self._json({"text": changelog.read(d),
+                           "groups": changelog.groups(d)})
+
+    def _get_version(self):
+        """GET /api/version."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(version_payload(name))
+
+    def _get_artifacts(self):
+        """GET /api/artifacts."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        # `devapp` is the main instance, which is what the row shows;
+        # `devapps` is every instance, which the manager reads. Both, so
+        # the row keeps working while the manager grows around it.
+        # One read scope for the row and the manager's list: on an
+        # agent node each is a probe job, and both ask the same daemon.
+        with devapp.read_scope():
+            dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
+        return self._json({"artifacts": artifacts_of(name),
+                           # What this project can and cannot do off this
+                           # box, said on the tab that lists what it built.
+                           "build": build_state(name)} | dev
+                          | phone.summary(prefs.get(name)["node"], users.uid_of(self._who()),
+                                          nodes.node(prefs.get(name)["node"])
+                                          if prefs.get(name)["node"] and not NODES_OK else None))
+
+    def _get_artifact(self):
+        """GET /api/artifact."""
+        # The download. Resolved and prefix-checked in artifacts.resolve:
+        # a symlink inside dist/ must not turn this into a file server for
+        # the whole box.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        rel = q.get("path", [""])[0]
+        if self._not_project(name):
+            return
+        f = artifacts.resolve(name, rel)
+        if f is None:
+            return self._json({"error": "no such artifact"}, 404)
+        try:
+            data = f.read_bytes()
+        except OSError as e:
+            return self._json({"error": str(e)}, 500)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition",
+                         f'attachment; filename="{f.name}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        return None
+
+    def _get_meta(self):
+        """GET /api/meta."""
+        # What the companion app asks first: the surface number this
+        # dashboard serves, the image it is, and where a newer app is.
+        return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
+                           "image": image_stamp().get("rev") or "", "apk": app_apk()})
+
+    def _get_welcome(self):
+        """GET /api/welcome."""
+        # BuilderBot's own changelog, for the welcome panel: the file
+        # beside this checkout (CHANGELOG.md two levels up, which is
+        # /opt/builderbot/CHANGELOG.md in the image and the repository's
+        # under bb dashboard dev), and where this account last looked
+        # (the image commit it acknowledged), so the panel can draw a
+        # line under what is new since.
+        text = changelog.read(Path(__file__).resolve().parents[2])
+        seen = str(users.prefs(self._who()).get("image_seen") or "")
+        # Trimmed to what is unreleased plus the newest minor's releases:
+        # this panel answers "what changed in the build in front of me",
+        # and the file behind it grows for the life of the project. What
+        # it left out is counted, not hidden.
+        kept, held, series = changelog.since_minor(
+            changelog.sections(text) if text else [])
+        return self._json({"sections": kept, "held": held, "series": series,
+                           "present": text is not None, "seen": seen})
+
+    def _get_source(self):
+        """GET /api/source."""
+        # The code base as a zip, from the Artifacts tab: what git
+        # tracks and would track, never .git, dist/ or what .gitignore
+        # hides. A person's download, so a session's token is refused:
+        # a session has the tree already.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a session has the tree already"}, 403)
+        if self._not_project(name):
+            return
+        try:
+            got = artifacts.source_zip(name)
+        except (OSError, subprocess.SubprocessError) as e:
+            return self._json({"error": str(e)}, 500)
+        if got is None:
+            return self._json({"error": "no such project"}, 404)
+        if isinstance(got, dict):
+            return self._json(got, 413)
+        fname, data = got
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        return None
+
+    def _get_logs_download(self):
+        """GET /logs/download."""
+        # The container's own log, every project's traffic in it.
+        if self._refused("admin"):
+            return None
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        what = (q.get("what") or [""])[0]
+        if what == "archive":
+            data, err = logs.archive_bytes()
+            if data is None:
+                return self._json({"error": err}, 500)
+            fname, ctype = "builderbot-logs.tar.gz", "application/gzip"
+        else:
+            data = logs.session_bytes()
+            fname, ctype = "builderbot-session.log", "text/plain; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Disposition",
+                         f'attachment; filename="{fname}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        return None
+
+    def _get_phone(self):
+        """GET /api/phone."""
+        # Not on the status poll: a probe is a job on a node, so the tab
+        # asks when it is opened or pressed, and reads the cache between.
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        # A probe is a job on the named node, and a session's token is
+        # bound to one project's node and no other (the same rule the
+        # jobs endpoint keeps): a session reads the cache, an account
+        # may ask the node.
+        return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
+                                              probe=bool(q.get("probe")) and not (self._who() or {}).get("session")))
+
+    def _get_packages(self):
+        """GET /api/packages."""
+        # ?node= asks about another node's packages store: what its
+        # census says it has, and the package job in flight there. The
+        # catalog is the same; the state is the node's (docs/nodes.md §6).
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why:
+            return self._json({"error": why, "packages": []})
+        if nid and nid != "local" and not NODES_OK:
+            return self._json(packages.payload_for_node(nid))
+        return self._json(packages.payload())
+
+    def _get_users(self):
+        """GET /api/users."""
+        # The listing never carries a hash; all_users() drops it. Projects
+        # come from the same filtered list everything else reads, so an
+        # admin cannot hand out what they cannot see themselves.
+        if self._refused("admin"):
+            return None
+        return self._json({
+            "users": claude_logins(users.all_users()), "owner": users.owner_name(),
+            "me": (self._who() or {}).get("name", ""),
+            "roles": list(users.ROLES),
+            "projects": [p["name"] for p in project_list(self._who())]})
+
+    def _get_nodes(self):
+        """GET /api/v1/nodes."""
+        # The versioned surface starts here (docs/nodes.md §3): new
+        # endpoints land under /api/v1 with their shapes written down;
+        # the legacy paths above migrate later, never both at once.
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        # The agent this controller ships rides beside the rows, once,
+        # so a row can say when its node's agent is behind.
+        #
+        # Scoped for an account that may not change a node: it sees the
+        # ones its own projects build on and no others, because the list
+        # is otherwise a way to learn what machines exist and what they
+        # are called (roadmap #27). An administrator sees the registry.
+        return self._json({"nodes": self._nodes_for(nodes.node_list()),
+                           "agent": nodes.agent_shipped()})
+
+    def _get_jobs(self):
+        """GET /api/v1/jobs."""
+        # One job with its log so far (?id=), or the recent ones,
+        # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
+        # The Jobs tab's whole read surface, and a test's.
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        jid = q.get("id", [""])[0]
+        # A job and its log are the project's: an account reads the ones
+        # on projects it may see, and a job with no project (a node's
+        # own: an update, a store move) is an administrator's. Same
+        # answer as a typo, so the listing says nothing about what else
+        # is queued on the box.
+        me = self._who()
+        mine = None if users.may(me, "admin") == "" \
+            else {p["name"] for p in project_list(me)}
+        if jid:
+            j = nodes.job(jid)
+            if j and mine is not None and j.get("project") not in mine:
+                j = None
+            return self._json(j if j else {"error": "no such job"},
+                              200 if j else 404)
+        try:
+            n = min(500, max(1, int(q.get("n", ["100"])[0])))
+        except ValueError:
+            n = 100
+        rows = nodes.jobs_for(
+            q.get("node", [""])[0] or None, n=n,
+            project=q.get("project", [""])[0] or None,
+            type=q.get("type", [""])[0] or None,
+            active=q.get("active", [""])[0] == "1")
+        if mine is not None:
+            rows = [j for j in rows if j.get("project") in mine]
+        return self._json({"jobs": rows,
+            "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
+
+    def _get_docker(self):
+        """GET /api/docker."""
+        # Refresh is the retry: drop the memoised availability first, so a
+        # daemon wired up thirty seconds ago is noticed by pressing the
+        # button rather than by waiting for the memo to lapse.
+        devapp.forget_available()
+        # The manager's whole page in one answer: every instance bound to
+        # the picked node, and every container on that node's daemon that
+        # is not one of them. No node named means the default, which is
+        # the arrangement that predates the picker.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why:
+            return self._json({"error": why, "blind": True,
+                               "instances": [], "containers": []})
+        got = devapp.overview(nid or None)
+        # The branches each listed project could be built from. Here
+        # rather than per row: they come from one `for-each-ref` per
+        # project, and the picker needs them before anybody presses.
+        got["refs"] = {p: devapp.refs_of(p)
+                       for p in {i["project"] for i in got.get("instances") or []}
+                       if not devapp.is_file_source(p)}
+        # An instance of a project this account was not given is one of
+        # the projects hidden from it, wearing a different hat; and a
+        # node is shared, so a restricted account asking about its own
+        # node would otherwise read every other project's name off this
+        # answer. The unowned containers go with them: they are somebody's
+        # work too, and nothing here says whose.
+        if self._node_scope() is not None:
+            seen = {p["name"] for p in project_list(self._who())}
+            got["instances"] = [i for i in got.get("instances") or []
+                                if i.get("project") in seen]
+            got["containers"] = []
+        return self._json(got)
+
+    def _get_containers(self):
+        """GET /api/containers."""
+        # A read, and the only one this dashboard makes of the daemon
+        # beyond `docker version` (see the guard in devapp.py, which
+        # allows it and still refuses anything that would change something).
+        # Everything on the daemon, every project's: an administrator's.
+        if self._refused("admin"):
+            return None
+        return self._json(devapp.containers())
+
+    def _get_project_job(self):
+        """GET /api/project-job."""
+        if self._refused("create"):
+            return None
+        return self._json(projects.job())
+
+    def _get_trash(self):
+        """GET /api/trash."""
+        if self._refused("trash"):
+            return None
+        return self._trash_list()
+
+    def _get_claude_now(self):
+        """GET /api/claude-now."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json({"model": claude_model_now(WORKSPACE / name)})
+
+    def _get_todo(self):
+        """GET /api/todo."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        live = sessions_anywhere()
+        return self._json({"project": name} | self._todo_state(name, live))
+
+    def _get_rules(self):
+        """GET /api/rules."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(rules.payload(name))
+
+    def _get_preamble(self):
+        """GET /api/preamble."""
+        # What a session started here is handed, exactly: the Briefing tab
+        # shows it so the block is a thing a person can read rather than
+        # something that only exists inside a launcher. Readable by anyone
+        # who can see the project: it is their own rules, roadmap and
+        # bugs, already on the three tabs beside it.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(preamble.payload(name))
+
+    def _get_codebase(self):
+        """GET /api/codebase."""
+        # What git tracks in the project, by language: the Briefing
+        # tab's first section. Tracked files only, cached by commit.
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(codebase.payload(name))
+
+    def _get_pending(self):
+        """GET /api/pending."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(pending.payload(name))
+
+    def _get_memory(self):
+        """GET /api/memory."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # Against what this account may see, like every read above it:
+        # this one passed the name straight through (bug #68).
+        if self._not_project(q.get("project", [""])[0]):
+            return
+        got = memory.payload(q.get("project", [""])[0], sessions_anywhere(),
+                             home=home_for(users.uid_of(self._who())))
+        return self._json(got if got is not None
+                          else {"error": "not a project"}, 400 if got is None else 200)
+
+    def _get_tests(self):
+        """GET /api/tests."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(testreg.payload(name))
+
+    def _get_bugs(self):
+        """GET /api/bugs."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(bugs.payload(name))
+
+    def _get_pubkeys(self):
+        """GET /api/pubkeys."""
+        # The shielded agent's public halves, for the New project dialog:
+        # picking one selects it for the clone, and showing it is how the
+        # operator gets it onto GitHub's deploy-key page in the first
+        # place. Public keys are the shareable part: nothing here can
+        # reach the private material, by construction. `pat` rides along
+        # so the dialogs can say whether a deploy key is optional (a PAT
+        # covers https) or the only way a push can authenticate. The
+        # dialog is an administrator's, and so is this.
+        if self._refused("create"):
+            return None
+        # The forge catalog rides along rather than costing a fetch of its
+        # own: the dialog that wants the keys is the dialog that wants the
+        # list of hosts, and it is drawn once from one answer. `hosts` is
+        # what the operator has already said their own servers run, so the
+        # clone form knows not to ask a question it has the answer to.
+        return self._json({"keys": agent_keys(), "pat": gh_authed(),
+                           "forges": forges.catalog(),
+                           "hosts": forges.known()})
 
     def _read_json(self):
         """The body, once. Read here rather than in each handler: doing it

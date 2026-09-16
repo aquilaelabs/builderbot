@@ -1093,29 +1093,33 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
-// ---- the POST route table --------------------------------------------------
+// ---- the route tables ------------------------------------------------------
 // Routes are matched in order and a prefix route takes every path it
 // prefixes, so one listed after a shorter prefix of itself is never reached:
 // /api/pin and /api/project-pin were that once, found only because the two
-// handlers also shared a name. Read from the table (R60), with each method
-// it names checked to exist, since a typo there is a 500 on first use.
+// handlers also shared a name. Read from both tables (R60), with each method
+// they name checked to exist, since a typo there is a 500 on first use.
 {
   const got = JSON.parse(execFileSync('python3', ['-c', `
 import ast, json, re
 src = open(${JSON.stringify(new globalThis.URL('../server.py', import.meta.url).pathname)}).read()
-m = re.search(r'^POST_ROUTES = (\\(.*?^\\))', src, re.S | re.M)
-routes = ast.literal_eval(m.group(1))
-print(json.dumps({"routes": routes,
-                  "missing": [n for _, _, n in routes if not re.search(r"^    def " + n + r"\\(self", src, re.M)]}))`],
-    { encoding: 'utf8' }));
-  const shadowed = [];
-  got.routes.forEach(([how, path], i) => got.routes.slice(i + 1).forEach(([, later]) => {
-    if (how === 'prefix' && later.startsWith(path)) shadowed.push(`${later} after ${path}`);
-  }));
-  ok(got.routes.length > 40 && shadowed.length === 0,
-     `no POST route is taken by an earlier prefix (${got.routes.length} routes${shadowed.length ? ': ' + shadowed.join(', ') : ''})`);
-  ok(got.missing.length === 0,
-     `...and every method the table names is one the handler has (${got.missing.join(', ') || 'all there'})`);
+out = {}
+for table in ("GET_ROUTES", "POST_ROUTES"):
+    m = re.search(r'^' + table + r' = (\\(.*?^\\))', src, re.S | re.M)
+    routes = ast.literal_eval(m.group(1))
+    out[table] = {"routes": routes,
+                  "missing": [n for _, _, n in routes if not re.search(r"^    def " + n + r"\\(self", src, re.M)]}
+print(json.dumps(out))`], { encoding: 'utf8' }));
+  for (const [table, t] of Object.entries(got)){
+    const shadowed = [];
+    t.routes.forEach(([how, path], i) => t.routes.slice(i + 1).forEach(([, later]) => {
+      if (how === 'prefix' && later.startsWith(path)) shadowed.push(`${later} after ${path}`);
+    }));
+    ok(t.routes.length > 30 && shadowed.length === 0,
+       `no ${table} route is taken by an earlier prefix (${t.routes.length} routes${shadowed.length ? ': ' + shadowed.join(', ') : ''})`);
+    ok(t.missing.length === 0,
+       `...and every method ${table} names is one the handler has (${t.missing.join(', ') || 'all there'})`);
+  }
 }
 
 await done(browser);
