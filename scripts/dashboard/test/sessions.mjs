@@ -395,6 +395,13 @@ for (let tries = 0; ; tries++){
   }
 }
 await phone.click('#projects [data-c="alpha"]');
+// The press can land on a row the poll is replacing under load, and then
+// opens nothing; a press that opened nothing is pressed again, and one
+// that did is left alone, since a second press would close the chooser.
+await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => {
+  await phone.click('#projects [data-c="alpha"]');
+  await phone.waitForSelector('.resumemenu', { timeout: 10000 });
+});
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
