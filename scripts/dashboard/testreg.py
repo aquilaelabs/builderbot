@@ -106,7 +106,7 @@ def _project(d, project):
 # wall time wherever they exist and the registry has to be able to say so; a
 # parser that only knows the two statuses one runner happens to print is a
 # parser that has to be rewritten the day a test is skipped.
-BANNER = re.compile(r"^\[dashboard-test\] == (\S+) ==\s*$")
+BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==\s*$")
 RESULT = re.compile(r"^(PASS|FAIL|SKIP|TODO)\s+(?:\[\+([0-9.]+)s\]\s+)?(.+?)\s*$")
 FILETOT = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([0-9.]+)s)?\s*$")
 STATUS = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "TODO": "todo"}

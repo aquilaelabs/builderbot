@@ -2786,7 +2786,7 @@ try:
 except OSError as e:
     sys.exit(f"[builderbot] ERROR: no run log to read: {e}")
 
-BANNER = re.compile(r"^\[dashboard-test\] == (\S+) ==")
+BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==")
 # ` in Xs` only when the run was timed: `bb dashboard test FILE` prints the
 # bare form, and a verdict that required the seconds read a passing file as a
 # crash — which is the one thing this tool must never do.
