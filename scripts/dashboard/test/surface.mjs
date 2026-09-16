@@ -30,6 +30,10 @@
 // suite actually reach them. Worth knowing rather than discovering: a feature
 // written entirely as `const fn = () => …` is not covered by the inventory.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // Sorted, and one entry per name. Regenerate by failing the test and reading
 // what it prints — do not hand-edit it into agreement without looking at why
@@ -145,6 +149,43 @@ const notFn = kinds.filter(([, t]) => t !== 'function').map(([n]) => n);
 ok(notFn.length === 0,
    `the names the markup and the suite call are callable at the top level${
      notFn.length ? ` — not: ${notFn.join(', ')}` : ''}`);
+
+// Every name a script reads or writes is declared at the top level of some
+// script the page loads, or is the browser's. Code moved into a view file
+// keeps calling what it called before, and a name that stayed behind in the
+// closure it came from is a ReferenceError the first time that path runs;
+// a bare WRITE to one is worse, a stray global and no error at all. Four
+// did exactly that on 16 Sep, on paths no suite happened to press. This is a
+// read of the source rather than a run of it: Babel's scope tracker, which
+// Playwright carries, resolves every reference to its binding.
+const DASH = join(dirname(fileURLToPath(import.meta.url)), '..');
+const { babelParse, traverse } = createRequire(import.meta.url)('playwright/lib/transform/babelBundle');
+const html = readFileSync(join(DASH, 'index.html'), 'utf8');
+const scripts = [...html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)].map(m => m[1]
+  ? {file: m[1], code: readFileSync(join(DASH, m[1]), 'utf8'), base: 0}
+  : {file: 'index.html', code: m[2], base: html.slice(0, m.index).split('\n').length - 1});
+const browserNames = await page.evaluate(() => {
+  const f = document.createElement('iframe');
+  f.style.display = 'none';
+  document.body.appendChild(f);
+  const names = new Set();
+  for (let o = f.contentWindow; o; o = Object.getPrototypeOf(o))
+    Object.getOwnPropertyNames(o).forEach(k => names.add(k));
+  f.remove();
+  return [...names];
+});
+const known = new Set(browserNames), uses = [];
+for (const s of scripts)
+  traverse(babelParse(s.code, s.file.replace(/\.html$/, '.js'), false), {Program(p){
+    Object.keys(p.scope.bindings).forEach(n => known.add(n));
+    for (const [n, node] of Object.entries(p.scope.globals))
+      uses.push({n, at: `${s.file}:${s.base + (node.loc?.start.line || 0)}`});
+    p.stop();
+  }});
+const stray = uses.filter(u => !known.has(u.n)).map(u => `${u.n} (${u.at})`);
+ok(scripts.length > 2 && known.size > 500 && stray.length === 0,
+   `every name the page's ${scripts.length} scripts use is declared by one of them or is the browser's${
+     stray.length ? `; declared nowhere: ${stray.join(', ')}` : ''}`);
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
