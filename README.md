@@ -961,14 +961,15 @@ NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
 card and lands on llvmpipe: software by a slower road than the emulator's own
 SwiftShader.
 
-So a node starts a real `Xorg` on the injected `nvidia_drv.so` at boot
-(`nodes/provision-linux.sh` sets that up; this container starts none and
-claims no card). It has to happen
-at boot because a session runs unprivileged with no capabilities and cannot
-become DRM master. `bb emu start` then **tests** the result rather than
-trusting it: EGL has to answer with a vendor driver, and Mesa answering counts
-as failure for exactly the reason above, and falls back to software if it does
-not. `bb emu gpu` says which you have and why, in one line.
+So the card needs a real `Xorg` on the injected `nvidia_drv.so`, started at
+boot, because a session runs unprivileged with no capabilities and cannot
+become DRM master. **Nothing starts one on a node yet**: provisioning the
+display half is roadmap R20, and the controller starts none and claims no
+card, so an emulator renders in software today. `bb emu start` **tests** for
+the hardware path rather than trusting it: EGL has to answer on an X server
+with a vendor driver, and Mesa answering counts as failure for exactly the
+reason above, and it falls back to software when it does not. `bb emu gpu`
+says which you have and why, in one line.
 
 **That server is watched, three times over.** It has died hours into a boot
 with nothing in its log: no error, no signal, a clean startup and then
