@@ -940,11 +940,6 @@ def source():
     # sentence, is how a status line stops being read.
     kind = ("the sandbox VM" if addr.startswith("ssh://")
             else "an unsupported daemon" if addr else "")
-    # An agent node's daemon is reached through its agent and never over
-    # the address, so "at ssh://..." named a path nothing takes.
-    n = _agent_here()
-    if n:
-        addr = f"{n['name']} (through its agent)"
     return {"kind": kind, "where": addr,
             # WHICH node this answer is about, because the page cannot tell.
             # The status poll carries ONE daemon's verdict (the default
