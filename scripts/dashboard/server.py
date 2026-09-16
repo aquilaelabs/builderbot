@@ -2862,6 +2862,73 @@ def snapshot(who):
     }
 
 
+# The JSON API's POST routes, in the order they are matched. A prefix route
+# takes every path it prefixes, so a longer path sits before a shorter one
+# that would take it; auth.mjs fails on one that does not. Each names the
+# method that answers, and the method carries its own refusals (R60).
+POST_ROUTES = (
+    ("prefix", "/api/v1/nodes", "_nodes"),
+    ("prefix", "/api/v1/jobs", "_jobs"),
+    ("exact", "/api/v1/bb", "_bb_relay"),
+    ("exact", "/api/v1/claude-login", "_claude_login"),
+    ("exact", "/api/v1/hook", "_hook"),
+    ("prefix", "/api/lock", "_lock"),
+    # NOT /api/pin, which is the command pin and has been since long before
+    # this: startswith() means a route added above it silently takes every
+    # path it prefixes, and both handlers were called _pin, so the later
+    # definition quietly replaced the earlier one in the class body too.
+    ("prefix", "/api/project-pin", "_project_pin"),
+    ("prefix", "/api/project-auth", "_project_auth"),
+    ("prefix", "/api/container", "_container"),
+    ("prefix", "/api/rename", "_rename"),
+    # These two before the bare prefix, or startswith swallows them.
+    ("prefix", "/api/trash-restore", "_trash_restore"),
+    ("prefix", "/api/trash-purge", "_trash_purge"),
+    ("prefix", "/api/trash", "_trash"),
+    ("prefix", "/api/session", "_session"),
+    ("prefix", "/api/keys", "_keys"),
+    ("prefix", "/api/send", "_send"),
+    ("prefix", "/api/say", "_say"),
+    ("prefix", "/api/chat", "_chat"),
+    ("prefix", "/api/layout", "_layout"),
+    ("prefix", "/api/cards", "_cards"),
+    ("prefix", "/api/pin", "_pin"),
+    ("prefix", "/api/claude-md", "_claude_md"),
+    ("exact", "/api/reset", "_reset"),
+    ("prefix", "/api/create", "_create"),
+    ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/git", "_git_act"),
+    ("prefix", "/api/unlink", "_unlink"),
+    ("prefix", "/api/link", "_link"),
+    ("prefix", "/api/project-job", "_project_job"),
+    ("prefix", "/api/todo", "_todo"),
+    ("prefix", "/api/users", "_users"),
+    ("prefix", "/api/packages", "_packages"),
+    ("prefix", "/api/logs", "_logs"),
+    ("prefix", "/api/idle", "_idle"),
+    ("prefix", "/api/settings", "_settings_post"),
+    ("prefix", "/api/rules", "_rules"),
+    ("prefix", "/api/pending", "_pending"),
+    ("prefix", "/api/memory", "_memory"),
+    ("prefix", "/api/prefs", "_prefs_post"),
+    ("prefix", "/api/devapp", "_devapp"),
+    ("prefix", "/api/changelog", "_changelog"),
+    ("prefix", "/api/version", "_version"),
+    ("prefix", "/api/artifacts", "_artifacts"),
+    ("prefix", "/api/nodelog", "_nodelog"),
+    ("prefix", "/api/phone", "_phone"),
+    ("prefix", "/api/findings", "_findings_log"),
+    ("prefix", "/api/tests", "_tests"),
+    ("prefix", "/api/presence", "_presence"),
+    ("prefix", "/api/bugs", "_bugs"),
+    ("prefix", "/api/custom", "_custom"),
+    ("prefix", "/api/doctor", "_doctor"),
+    ("prefix", "/api/signout", "_signout"),
+    ("prefix", "/api/login-code", "_login_code"),
+    ("prefix", "/api/signin", "_signin"),
+)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "builderbot-dashboard"
 
@@ -4063,182 +4130,83 @@ class Handler(BaseHTTPRequestHandler):
             nodes.audit(self._principal(), act,
                         str(req.get("project") or req.get("name")
                             or req.get("id") or "")[:120], req)
-        if path.startswith("/api/v1/nodes"):
-            return self._nodes(req)
-        if path.startswith("/api/v1/jobs"):
-            return self._jobs(req)
-        if path == "/api/v1/bb":
-            return self._bb_relay(req)
-        if path == "/api/v1/claude-login":
-            return self._claude_login(req)
-        if path == "/api/v1/hook":
-            return self._hook(req)
-        if path.startswith("/api/lock"):
-            return self._lock(req)
-        # NOT /api/pin, which is the command pin and has been since long before
-        # this: startswith() means a route added above it silently takes every
-        # path it prefixes, and both handlers were called _pin, so the later
-        # definition quietly replaced the earlier one in the class body too.
-        if path.startswith("/api/project-pin"):
-            return self._project_pin(req)
-        if path.startswith("/api/project-auth"):
-            return self._project_auth(req)
-        if path.startswith("/api/container"):
-            return self._container(req)
-        if path.startswith("/api/rename"):
-            return self._rename(req)
-        # These two before the bare prefix, or startswith swallows them.
-        if path.startswith("/api/trash-restore"):
-            return self._trash_restore(req)
-        if path.startswith("/api/trash-purge"):
-            return self._trash_purge(req)
-        if path.startswith("/api/trash"):
-            return self._trash(req)
-        if path.startswith("/api/session"):
-            return self._session(req)
-        if path.startswith("/api/keys"):
-            return self._keys(req)
-        if path.startswith("/api/send"):
-            return self._send(req)
-        if path.startswith("/api/say"):
-            return self._say(req)
-        if path.startswith("/api/chat"):
-            return self._chat(req)
-        if path.startswith("/api/layout"):
-            return self._layout(req)
-        if path.startswith("/api/cards"):
-            return self._cards(req)
-        if path.startswith("/api/pin"):
-            return self._pin(req)
-        if path.startswith("/api/claude-md"):
-            return self._claude_md(req)
-        if path == "/api/reset":
-            # Start over at onboarding: the controller's own state moved
-            # aside (accounts, nodes, project settings, git tokens, the
-            # notebook, memories, logs), project files untouched, and the
-            # dashboard re-executes itself so the next page is Create the
-            # owner. The confirm word is the whole of the safety: this is
-            # an administrator typing "reset" into a red box.
-            if self._refused("admin"):
-                return None
-            if str(req.get("confirm") or "") != "reset":
-                return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
-            try:
-                moved = settings.reset_state(STATE)
-            except OSError as e:
-                return self._json({"error": f"could not move the state aside: {e}"}, 500)
-            # The runner tokens are root's, behind the helper: forgotten
-            # there, since the nodes they were for are being forgotten here.
-            tok = run(["sudo", "-n", RUNNER_HELPER, "--reset"], timeout=20)
-            kept = [k for k in moved["kept"] if not (k == "runner-tokens" and tok["code"] == 0)]
-            print(f"dashboard: {self._principal()} reset this controller; the old state is in "
-                  f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
-            threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
-            return self._json({"ok": True, "moved_to": str(moved["dest"]), "kept": kept})
-        if path.startswith("/api/create"):
-            return self._create(req)
-        if path.startswith("/api/profile"):
-            return self._profile(req)
-        if path.startswith("/api/git"):
-            return self._git_act(req)
-        # Before the bare prefix, or startswith swallows it.
-        if path.startswith("/api/unlink"):
-            return self._unlink(req)
-        if path.startswith("/api/link"):
-            return self._link(req)
-        if path.startswith("/api/project-job"):
-            return self._project_job(req)
-        if path.startswith("/api/todo"):
-            return self._todo(req)
-        if path.startswith("/api/users"):
-            return self._users(req)
-        if path.startswith("/api/packages"):
-            return self._packages(req)
-        if path.startswith("/api/logs"):
-            return self._logs(req)
-        if path.startswith("/api/idle"):
-            return self._idle(req)
-        if path.startswith("/api/settings"):
-            # The Settings tab's fields (R29): an administrator's, validated
-            # and applied by the store; the answer is the tab's next drawing.
-            if self._refused("admin"):
-                return
-            r = settings.set_many(req.get("set") or {})
-            if r.get("error"):
-                return self._json(r, 400)
-            return self._json(r | settings.payload())
-        if path.startswith("/api/rules"):
-            return self._rules(req)
-        if path.startswith("/api/pending"):
-            return self._pending(req)
-        if path.startswith("/api/memory"):
-            return self._memory(req)
-        if path.startswith("/api/prefs"):
-            name = req.get("project", "")
-            # A session may not change the settings of the project it runs
-            # in — the gate that holds its own additions, the commands a
-            # build runs, the identity its commits carry — and nobody may
-            # change a project they cannot see or have not taken on.
-            if (self._who() or {}).get("session"):
-                return self._json({"error": "a project's settings are the operator's — "
-                                            "say what should change in your reply"}, 403)
-            if self._not_project(name):
-                return
-            if self._readonly(name):
-                return None
-            # Everything else in this dialog is the project's own; the node is
-            # not, because a node is shared and moving a project onto one
-            # reaches every other project there.
-            if "node" in req and self._refused("node", name):
-                return
-            r = prefs.set_prefs(name, model=req.get("model"),
-                                effort=req.get("effort"),
-                                node=req.get("node"),
-                                build=req.get("build"),
-                                test=req.get("test"), outputs=req.get("outputs"),
-                                gate=req.get("gate"), gitpol=req.get("gitpol"),
-                                devbuild=req.get("devbuild"),
-                                devtest=req.get("devtest"),
-                                color=req.get("color"),
-                                workspace=WORKSPACE)
-            # The restart is asked for by the dialog, which is where the
-            # operator was told what it costs — never inferred here from the
-            # change alone, because the same write happens when nothing is
-            # running and there is nothing to interrupt.
-            if not r.get("error") and req.get("restart"):
-                r |= end_claude(name)
-            return self._result(r)
-        if path.startswith("/api/devapp"):
-            return self._devapp(req)
-        if path.startswith("/api/changelog"):
-            return self._changelog(req)
-        if path.startswith("/api/version"):
-            return self._version(req)
-        if path.startswith("/api/artifacts"):
-            return self._artifacts(req)
-        if path.startswith("/api/nodelog"):
-            return self._nodelog(req)
-        if path.startswith("/api/phone"):
-            return self._phone(req)
-        if path.startswith("/api/findings"):
-            return self._findings_log(req)
-        if path.startswith("/api/tests"):
-            return self._tests(req)
-        if path.startswith("/api/presence"):
-            return self._presence(req)
-        if path.startswith("/api/bugs"):
-            return self._bugs(req)
-        if path.startswith("/api/custom"):
-            return self._custom(req)
-        if path.startswith("/api/doctor"):
-            return self._doctor(req)
-        if path.startswith("/api/signout"):
-            return self._signout(req)
-        if path.startswith("/api/login-code"):
-            return self._login_code(req)
-        if path.startswith("/api/signin"):
-            return self._signin(req)
+        for how, route, name in POST_ROUTES:
+            if (path == route) if how == "exact" else path.startswith(route):
+                return getattr(self, name)(req)
         self._json({"error": "not found"}, 404)
+
+    def _reset(self, req):
+        """POST /api/reset."""
+        # Start over at onboarding: the controller's own state moved
+        # aside (accounts, nodes, project settings, git tokens, the
+        # notebook, memories, logs), project files untouched, and the
+        # dashboard re-executes itself so the next page is Create the
+        # owner. The confirm word is the whole of the safety: this is
+        # an administrator typing "reset" into a red box.
+        if self._refused("admin"):
+            return None
+        if str(req.get("confirm") or "") != "reset":
+            return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
+        try:
+            moved = settings.reset_state(STATE)
+        except OSError as e:
+            return self._json({"error": f"could not move the state aside: {e}"}, 500)
+        # The runner tokens are root's, behind the helper: forgotten
+        # there, since the nodes they were for are being forgotten here.
+        tok = run(["sudo", "-n", RUNNER_HELPER, "--reset"], timeout=20)
+        kept = [k for k in moved["kept"] if not (k == "runner-tokens" and tok["code"] == 0)]
+        print(f"dashboard: {self._principal()} reset this controller; the old state is in "
+              f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
+        threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+        return self._json({"ok": True, "moved_to": str(moved["dest"]), "kept": kept})
+
+    def _settings_post(self, req):
+        """POST /api/settings."""
+        # The Settings tab's fields (R29): an administrator's, validated
+        # and applied by the store; the answer is the tab's next drawing.
+        if self._refused("admin"):
+            return
+        r = settings.set_many(req.get("set") or {})
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | settings.payload())
+
+    def _prefs_post(self, req):
+        """POST /api/prefs: a project's settings dialog."""
+        name = req.get("project", "")
+        # A session may not change the settings of the project it runs
+        # in (the gate that holds its own additions, the commands a
+        # build runs, the identity its commits carry), and nobody may
+        # change a project they cannot see or have not taken on.
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a project's settings are the operator's: "
+                                        "say what should change in your reply"}, 403)
+        if self._not_project(name):
+            return
+        if self._readonly(name):
+            return None
+        # Everything else in this dialog is the project's own; the node is
+        # not, because a node is shared and moving a project onto one
+        # reaches every other project there.
+        if "node" in req and self._refused("node", name):
+            return
+        r = prefs.set_prefs(name, model=req.get("model"),
+                            effort=req.get("effort"),
+                            node=req.get("node"),
+                            build=req.get("build"),
+                            test=req.get("test"), outputs=req.get("outputs"),
+                            gate=req.get("gate"), gitpol=req.get("gitpol"),
+                            devbuild=req.get("devbuild"),
+                            devtest=req.get("devtest"),
+                            color=req.get("color"),
+                            workspace=WORKSPACE)
+        # The restart is asked for by the dialog, which is where the
+        # operator was told what it costs, and never inferred here from the
+        # change alone, because the same write happens when nothing is
+        # running and there is nothing to interrupt.
+        if not r.get("error") and req.get("restart"):
+            r |= end_claude(name)
+        return self._result(r)
 
     def _nodes(self, req):
         """The Nodes tab's verbs. Thin on purpose: nodes.py owns the rules
