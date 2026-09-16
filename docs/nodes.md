@@ -94,16 +94,15 @@ somewhere-elses.
 {
   "id": "n_7f3a91",            // generated at enrollment, never reused
   "name": "sandbox",           // display only, renameable
-  "kind": "local | agent | ssh",
+  "kind": "local | agent",
   "created": 1756700000,
   "pool": "default",           // grouping; homelab never touches it
   "agent": {                   // kind=agent
-    "version": "0.4.0",
+    "version": "0.5.73",
     "token_id": "t_12",        // which credential it authenticates with
     "last_seen": 1756700123,
     "addr": "10.0.0.9"         // as seen by the controller, informational
   },
-  "ssh": { "addr": "ssh://bb@10.0.0.9" },   // kind=ssh, bootstrap or legacy
   "capabilities": ["docker-host", "package-build"],
   "services": { "runners": { "github.com-your-org": { "url": "https://github.com/your-org", "forge": "github", "want": true, "labels": ["builderbot", "linux", "x64"] } } },
   "labels": { "arch": "amd64", "os": "debian12", "gpu": "none",
@@ -298,8 +297,7 @@ which is where most of the Docker manager's sharp edges came from; streaming
 logs, artifact upload and liveness are three more invocations with three
 failure modes; and the controller holds a key that is root-equivalent on every
 node: a model that fails every enterprise review on arrival. ssh remains for
-bootstrap only, and `kind: ssh` nodes keep the current arrangement working
-through the migration.
+bootstrap only: the provisioner is run over it, and nothing after that is.
 
 ### The protocol: semantics first, transport negotiated
 
