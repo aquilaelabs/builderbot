@@ -138,8 +138,10 @@ ok(genv('GIT_AUTHOR_NAME') === 'GIT_AUTHOR_NAME=Pat Tester'
 const cmd = paneCmd();
 ok(cmd.length < 200 && /project\/alpha\/claude-run\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');
-ok(launcher().length > 40000,
-   '...and the launcher carries the prompt tmux could not');
+const PREF = join(DIR, 'home', '.cache', 'builderbot', 'project', 'alpha', 'preamble.txt');
+const prefFile = () => existsSync(PREF) ? readFileSync(PREF, 'utf8') : '';
+ok(launcher().length < 40000 && prefFile().length > 40000,
+   `...and the block tmux could not carry is beside it in a file the launcher names (${prefFile().length} bytes)`);
 // ...and the token beside it, where a session that has ALREADY STARTED can
 // pick it up. A session outlives its twelve-hour token; the launcher is
 // rewritten on every connection but a running claude keeps the environment
@@ -168,25 +170,29 @@ ok(launcher().includes(tokWritten),
      '...and leaves a live one alone');
 }
 const argv = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
-ok(argv.includes('--append-system-prompt') && argv.length > 40000,
-   '...which reaches claude whole, roadmap and all');
+// In a FILE now, not in the argument: --append-system-prompt-file has no
+// MAX_ARG_STRLEN to run into, so what a project keeps is what its sessions
+// read. The argument is the path; the block is what that path holds.
+const prefPath = (argv.split('\0').find(a => /preamble\.txt$/.test(a)) || '');
+const pref = prefPath && existsSync(prefPath) ? readFileSync(prefPath, 'utf8') : '';
+ok(argv.includes('--append-system-prompt-file') && prefPath && pref.length > 40000,
+   `...which reaches claude whole, roadmap and all, in a file (${pref.length} bytes)`);
 // The operator's rules go in front of the list: how they want this worked on
-// before what there is to work on. Asserted by ORDER, not presence — the two
-// blocks are one argument and either would be "in" it.
-ok(argv.indexOf('THE HOUSE RULES') >= 0
-   && argv.indexOf('THE HOUSE RULES') < argv.indexOf('the bugs block'),
+// before what there is to work on. Asserted by ORDER, not presence, since
+// either would be "in" the block.
+ok(pref.indexOf('THE HOUSE RULES') >= 0
+   && pref.indexOf('THE HOUSE RULES') < pref.indexOf('the bugs block'),
    '...with the house rules ahead of the roadmap and the bugs');
 
-// The next ceiling up is the kernel's: one argument cannot pass 131072 bytes,
-// and exec answers "Argument list too long" — a pane that dies without saying
-// why, which is the failure this file exists to keep out. Cut to fit, said out
-// loud, and the session still starts.
-out = connect(150000);
+// The cap is preamble.py's own now rather than the kernel's: every session
+// pays for the whole block, so a list past it is cut to fit, said out loud,
+// and the session still starts.
+out = connect(250000);
 await sleep(400);
-ok(alive('claude-alpha'), 'a roadmap past the kernel\'s argument limit still starts');
+ok(alive('claude-alpha'), 'a roadmap past what a session should be asked to read still starts');
 ok(/too long to fit/.test(out) && /bb roadmap/.test(out),
    '...saying so, and where to trim it');
-ok(launcher().includes('did not fit in the prompt'),
+ok(prefFile().includes('did not fit in the prompt'),
    '...and the prompt itself says it was cut, rather than ending mid-item');
 
 // The ordinary case still goes through the same path, so it is the one that

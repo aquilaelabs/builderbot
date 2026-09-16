@@ -883,13 +883,13 @@ case "$target" in
         # block rather than no session.
         pre="$(BB_PROJECT="$proj" bb preamble --json 2>/dev/null || true)"
         todo_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
-        # One ceiling up from tmux's there is the kernel's: a single argument
-        # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured — and past it
-        # exec answers "Argument list too long" and the pane dies without
-        # saying why. preamble.py cuts it at a line boundary and says so in
-        # the text; this says so to whoever opened the terminal, because a
-        # list nobody can afford is worth hearing about once rather than
-        # meeting as a session that has read half of it.
+        # The block goes in a file now, so the kernel's argv ceiling is not
+        # the limit any more; what is left is what a session should be asked
+        # to read, since every conversation pays for all of it. preamble.py
+        # cuts it at a line boundary and says so in the text; this says so to
+        # whoever opened the terminal, because a list nobody can afford is
+        # worth hearing about once rather than meeting as a session that has
+        # read half of it.
         if [ "$(printf '%s' "$pre" | jq -r '.capped // false' 2>/dev/null)" = true ]; then
             echo "WARNING: this project's rules, roadmap and bugs are" >&2
             echo "too long to fit in a session's prompt; only the first" >&2
@@ -900,8 +900,24 @@ case "$target" in
         fi
         # Kept beside the command rather than in it: the fallback below starts
         # the session without this block, and cannot if the two are one array.
+        #
+        # In a FILE, not in the argument. A single argv entry cannot exceed
+        # MAX_ARG_STRLEN (131072 bytes on Linux), which is why preamble.py used
+        # to cut the block and why a project with a long roadmap was told its
+        # own list did not fit. `--append-system-prompt-file` has no such
+        # ceiling, so the list a project keeps is the list its sessions get.
+        # Beside session.env in this project's cache folder, which is the one
+        # place a session's view keeps (R35), written 0600 like the token.
         prompt=()
-        [ -z "$todo_block" ] || prompt=(--append-system-prompt "$todo_block")
+        if [ -n "$todo_block" ]; then
+            pref="$(cache_project_dir "$proj")/preamble.txt"
+            if ( umask 077; printf '%s\n' "$todo_block" > "$pref.new" ) && mv -f "$pref.new" "$pref"; then
+                prompt=(--append-system-prompt-file "$pref")
+            else
+                echo "WARNING: could not write this session's briefing to ${pref};" >&2
+                echo "it starts without the rules, roadmap and bugs." >&2
+            fi
+        fi
         # Where this session works (roadmap #24). The owner gets the project
         # directory; anybody else gets a worktree of their own on a branch of
         # their own, so two people on one project cannot overwrite each other,

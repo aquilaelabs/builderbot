@@ -14,12 +14,15 @@ So it is here, the launcher asks for it through `bb preamble`, and the tab
 renders exactly the string that goes in front of a session rather than an
 approximation of it.
 
-The cap is part of the answer, not a caller's business. A single argv entry
-cannot exceed MAX_ARG_STRLEN — 131072 bytes on Linux — and past it `exec`
-answers "Argument list too long" and the pane dies without saying why. 100000
-leaves room for the rest of the command line. When the block is cut, the cut
-is made at a line boundary and says so in the text, so a session is told that
-it is reading part of a list rather than all of one.
+The cap is part of the answer, not a caller's business. It used to be the
+kernel's: a single argv entry cannot exceed MAX_ARG_STRLEN, 131072 bytes on
+Linux, and past it `exec` answers "Argument list too long" and the pane dies
+without saying why. bb-tty writes this to a file now and passes
+--append-system-prompt-file, so that ceiling is gone and the number here is
+about what a session should be asked to read: every conversation pays for all
+of it, so a list that runs past this is one nobody has pruned. When the block
+is cut, the cut is made at a line boundary and says so in the text, so a
+session is told that it is reading part of a list rather than all of one.
 """
 
 # The three stores, set by configure(). Named here so the module reads as
@@ -27,7 +30,7 @@ it is reading part of a list rather than all of one.
 # NameError on somebody's first session of the day.
 rules_mod = todo_mod = bugs_mod = None
 
-MAX = 100000
+MAX = 200000
 
 CUT = ("[the rest of this list did not fit in the prompt — `bb roadmap`"
        " and `bb bug` show all of it]")
