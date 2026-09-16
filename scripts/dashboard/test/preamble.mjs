@@ -12,6 +12,7 @@
 // the endpoint returns, byte for byte, rather than its own idea of it.
 import { URL, DIR, launch, newPage, ok, done, ready, sleep, patience } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
@@ -133,4 +134,23 @@ put('bugs.json', { projects: {} });
 
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+// ---- the briefing has to be where the IMAGE puts it -------------------------
+// The suite runs server.py from the checkout, so a path that is only right in a
+// checkout passes every test here and still ships a controller whose sessions
+// get no briefing at all. That is exactly what happened: the Dockerfile copies
+// config/templates/ to /opt/builderbot/templates/ and the first version of
+// preamble.py looked in /opt/builderbot/config/templates/. This asserts the two
+// agree by reading the Dockerfile, rather than trusting either.
+{
+  const root = join(import.meta.dirname, '..', '..', '..');
+  const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8');
+  const py = readFileSync(join(root, 'scripts', 'dashboard', 'preamble.py'), 'utf8');
+  const copy = (dockerfile.match(/^COPY config\/templates\/ (\S+)/m) || [])[1] || '';
+  const dest = copy.replace(/\/$/, '') + '/briefing.md';
+  ok(!!copy && py.includes(`Path("${dest}")`),
+     `preamble.py looks for the briefing where the image puts it (${dest})`);
+  ok(existsSync(join(root, 'config', 'templates', 'briefing.md')),
+     '...and the file it ships is in the tree');
+}
+
 await done(browser);

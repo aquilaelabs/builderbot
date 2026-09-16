@@ -54,10 +54,16 @@ def configure(*, rules_mod, todo_mod, bugs_mod):
     globals().update(rules_mod=rules_mod, todo_mod=todo_mod, bugs_mod=bugs_mod)
 
 
-# Where the environment briefing is written, and where a project's tree is, so
-# the parts of it that only apply to some projects can be left out. WORKSPACE
-# is set by configure(); the file is beside the CLAUDE.md template it replaces.
-BRIEFING = Path(__file__).resolve().parents[2] / "config" / "templates" / "briefing.md"
+# Where the environment briefing is written. The image puts config/templates/
+# at /opt/builderbot/templates/ (see the Dockerfile), which is NOT where it
+# sits in a checkout, and the first version of this looked only at the checkout
+# layout: every session on a real controller got no briefing at all and nothing
+# said so. So: the override first, then the installed path, then the checkout
+# beside this module, and a miss is said out loud rather than swallowed.
+BRIEFING_PATHS = [Path(os.environ["BRIEFING_MD"])] if os.environ.get("BRIEFING_MD") else [
+    Path("/opt/builderbot/templates/briefing.md"),
+    Path(__file__).resolve().parents[2] / "config" / "templates" / "briefing.md",
+]
 _IF = re.compile(r"<!-- BUILDERBOT:IF ([^>]*?) *-->")
 _END = "<!-- BUILDERBOT:END -->"
 
@@ -80,10 +86,18 @@ def briefing(project):
     and the evidence is a glob against the project's tree because the tree is
     what the controller and every node agree about.
     """
-    try:
-        text = BRIEFING.read_text()
-    except OSError:
-        return ""
+    text = None
+    for cand in BRIEFING_PATHS:
+        try:
+            text = cand.read_text()
+            break
+        except OSError:
+            continue
+    if text is None:
+        # Loud, and in the prompt: a session that is not told how this machine
+        # works should know that, and so should whoever reads the Briefing tab.
+        return ("[the environment briefing is missing from this image, so what "
+                "follows is the rules and the lists only. Say so in your reply.]")
     tree = Path(WORKSPACE or "/workspace") / project
     out, skip = [], False
     for line in text.split("\n"):
