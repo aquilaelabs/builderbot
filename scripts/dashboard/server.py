@@ -4540,6 +4540,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._refused("bb", project):
             return None
+        # Push rights first, for everybody: a project cloned without them
+        # does not push, whatever its tree says. The refusing pre-push hook
+        # in a read-only clone is a file a session can change, so this is
+        # the check that holds (B149), the same one the Git view makes.
+        if argv[:2] == ["git", "push"] and not projects.may_push(project):
+            return self._json({"error": "this project has no push rights: they are granted "
+                                        "in the clone dialog, once"}, 403)
         # ...and under the project's git policy (the Git view, roadmap R36):
         # a session may push its own branch unless told not to, and may not
         # push to main unless told it may. Judged here because here is

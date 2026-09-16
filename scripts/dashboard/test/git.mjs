@@ -420,6 +420,13 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
   await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'allow' } });
   ok((await relay(['git', 'push', 'origin', main])).code === 0, `...and ${main} too once allowed`);
+  // Push rights hold on the relay itself: a read-only clone's refusing hook
+  // is a file in the tree a session can remove (B149).
+  writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({}));
+  const noRights = await relay(['git', 'push', 'origin', 'topic']);
+  writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
+  ok(noRights.status === 403 && /no push rights/.test(noRights.error || ''),
+     `a project without push rights is refused on the relay, not left to a hook in its tree (${noRights.error})`);
   await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'deny' } });
 
   // Send to Claude lands in the project's session as one line naming the
