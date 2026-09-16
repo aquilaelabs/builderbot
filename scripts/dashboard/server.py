@@ -12,6 +12,7 @@ code that looks fine until it deadlocks.
 """
 import base64
 import contextlib
+from html import escape as html_escape
 import gzip
 import hashlib
 import hmac
@@ -3888,19 +3889,47 @@ class Handler(BaseHTTPRequestHandler):
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         owner = users.owner_name()
         want = tmux_name(f"claude-{project}")
-        for sess in node_tmux_sessions():
-            if sess.get("node_id") != t["id"] or tmux_base(sess["name"]) != want:
+        here = [s for s in node_tmux_sessions()
+                if s.get("node_id") == t["id"] and tmux_base(s["name"]) == want]
+        whose = {s["name"]: tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
+                 for s in here}
+        # Our own session, already running: this is a reattach, and a rule
+        # about starting a SECOND session has nothing to say about it. Asked
+        # first, because the loop below used to meet another account's
+        # session before reaching ours and refuse us our own tab (B141).
+        if uid in whose.values():
+            return ""
+        for sess in here:
+            other = whose[sess["name"]]
+            if not other:
                 continue
-            other = tmux_owner(sess["name"]) or users.uid_of(users.get(owner or ""))
-            if not other or other == uid:
-                continue                  # our own session: this is a reattach
             if (claude_auth(home=home_for(other)).get("email") or "") == mine:  # noqa: E501
                 return (f"{by_uid.get(other, 'another account')} already has a "
                         f"Claude session on {project} signed in to {mine}. Two "
                         "sessions on one Anthropic account share its limits, "
                         "and nothing afterwards can say which of them did "
-                        "what — so this one waits for that to end.")
+                        "what, so this one waits for that to end.")
         return ""
+
+    def _term_notice(self, sentence, code):
+        """A refused terminal, in the shape the asker can read. The tab is
+        an iframe navigating to /term, so a JSON answer landed in it as the
+        browser's JSON viewer (B141): a navigation gets a page saying the
+        sentence, and a fetch still gets the JSON the tests and the page's
+        own checks read."""
+        if "text/html" not in (self.headers.get("Accept") or ""):
+            return self._json({"error": sentence}, code)
+        body = ("<!doctype html><meta charset=utf-8><title>BuilderBot</title>"
+                "<style>body{margin:0;padding:20px 24px;background:#0d1117;"
+                "color:#c9d1d9;font:14px/1.5 system-ui,sans-serif}"
+                "p{max-width:64ch;margin:0}</style>"
+                f"<p>{html_escape(sentence)}</p>").encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _ttyd_port(self):
         """Which ttyd this request is relayed to: the writable one, or the
@@ -3979,13 +4008,13 @@ class Handler(BaseHTTPRequestHandler):
         """
         refused = self._term_refused(self.path[len("/term"):])
         if refused:
-            return self._json({"error": refused}, 403)
+            return self._term_notice(refused, 403)
         held = self._claude_held(self.path[len("/term"):])
         if held:
             # 409, not 403: nothing is wrong with the credential, the thing
             # asked for is taken. The name is the whole value of the record —
             # "somebody else has it" tells you nothing you can act on.
-            return self._json({"error": held}, 409)
+            return self._term_notice(held, 409)
         # Where this terminal lives (roadmap #24, phase 10b): a project bound
         # to a node whose session half is up is relayed to THAT machine's
         # ttyd — the same two ports, the same bb-tty, with the account and
