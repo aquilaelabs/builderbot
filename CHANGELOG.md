@@ -160,6 +160,7 @@
 - A console shell on a node keeps bb on its PATH after the packages store is moved from the Nodes tab (3386d1d)
 - The Tools tab no longer asks to install the emulator's libraries on a node that only has the Android command-line tools (3386d1d)
 - A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
+- A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
 
 ## 0.5.0: 2026-09-10
 
