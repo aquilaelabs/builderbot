@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.72"
+AGENT_VERSION = "0.5.73"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1018,14 +1018,24 @@ def held_recipes(state, cat):
     store = pkg_root(state)
     if not store:
         return []
-    dirs = {e["name"]: e.get("dir") for e in store_layout(state) if e.get("name")}
+    lay = {e["name"]: e for e in store_layout(state) if e.get("name")}
     out = []
     for p in cat.get("packages") or []:
         name = p.get("name")
         if not name or not p.get("system"):
             continue
-        d = dirs.get(name) or name
-        if os.path.isdir(os.path.join(store, d)):
+        e = lay.get(name) or {}
+        # By the recipe's own tool where the layout names one: every
+        # android:* recipe shares the directory `android`, so the directory
+        # existing said the emulator was held on a node that had installed
+        # only the command-line tools, and the Tools tab asked for the
+        # emulator's libraries on every such node (B139).
+        tool = e.get("tool")
+        if tool:
+            held = os.path.exists(_lay_path(store, e, tool))
+        else:
+            held = os.path.isdir(os.path.join(store, e.get("dir") or name))
+        if held:
             out.append(name)
     return out
 
@@ -3194,11 +3204,15 @@ class Agent:
         self.session_stale = ""
         try:
             out = open(logf, "ab")
-            for port, extra in ((SESSION_PORT, ["--writable"]), (SESSION_PORT + 1, [])):
+            # The twin is told it is read-only: bb-tty then says where the
+            # sign-in happens instead of prompting for a code nobody can
+            # type into it (B137).
+            for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
+                                      (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
                 self.ttyd.append(subprocess.Popen(
                     base[:1] + ["--port", str(port)] + base[1:] + extra + [bbtty],
                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
-                    env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
+                    env=dict(env, **more), stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
             out.close()
         except (OSError, RuntimeError) as e:
             self.session_stop()
@@ -4181,6 +4195,43 @@ class Agent:
             return "failed", 124
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 
+    SESSION_PROFILE = "/etc/profile.d/builderbot-session.sh"
+
+    def write_session_profile(self, job=None):
+        """The console shell's PATH line, from where the packages store IS.
+        The provisioner writes this file once, naming the store it was
+        given; a Storage apply that moves the store left it naming the old
+        one, so a shell as the session account had no bb (B135). Rewritten
+        from the agent's own record after every apply, root only, and left
+        alone where the file was never written (a guest node)."""
+        if os.geteuid() != 0 or not os.path.isfile(self.SESSION_PROFILE):
+            return
+        who = self.session_account()
+        root = pkg_root(self.state)
+        ctl = (self.ctl.url or "").rstrip("/")
+        text = (
+            "# Written by BuilderBot's agent. A session on this node, at a console.\n"
+            'case "$(id -un)" in\n'
+            f"    {who})\n"
+            "        export BUILDERBOT_ROLE=node WORKSPACE=/workspace\n"
+            '        export BB_NODE="$(hostname)"\n'
+            + (f'        export BB_CONTROLLER="{ctl}"\n' if ctl else "")
+            + (f'        [ -d "{root}/.bb/current/scripts" ] \\\n'
+               f'            && PATH="{root}/.bb/current/scripts:$PATH"\n' if root else "")
+            + '        PATH="$HOME/.local/bin:$PATH"\n'
+            "        ;;\n"
+            "esac\n")
+        try:
+            tmp = self.SESSION_PROFILE + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(text)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, self.SESSION_PROFILE)
+            if job:
+                job.say(f"console PATH: {self.SESSION_PROFILE} names {root or 'no store'}\n")
+        except OSError as e:
+            log(f"could not write {self.SESSION_PROFILE}: {e}")
+
     def _apply_storage(self, job, cfg):
         """Mounts as a diff against what bb-sandbox has — remove what is no
         longer wanted, add or rewrite what is (add-nfs/add-share rewrite an
@@ -4268,6 +4319,7 @@ class Agent:
                 mine[role] = str(path)
                 job.say(f"{role} store: {path}\n")
             self.state["stores"] = mine
+            self.write_session_profile(job)
             self.state["store_made"] = marks
             save_state(self.state)
         self.hello()

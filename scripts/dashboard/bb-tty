@@ -750,7 +750,17 @@ case "$target" in
         # controller that is down costs a session nothing.
         if on_node; then
             bb login --check >/dev/null 2>&1 || true
-            ! logged_in && { bb login || true; }
+            if ! logged_in; then
+                # The read-only twin cannot take a code: an account with no
+                # shell was shown claude's URL and its prompt in a console
+                # it cannot type into (B137). Say where the sign-in is.
+                if [ -n "${BB_TTY_RO:-}" ]; then
+                    bad "This account is not signed in to Claude on ${BB_NODE:-this node}, and this" \
+                        "console is read-only, so the sign-in cannot be typed here. Press Sign in" \
+                        "on the dashboard's Doctor card, which runs it on the node, and open this again."
+                fi
+                bb login || true
+            fi
         fi
         if ! logged_in; then
             if on_node; then
