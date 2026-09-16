@@ -109,9 +109,10 @@ ok(true, 'the console errors above are the refusals themselves');
 // on its own does not say "error", so it reads as a hung page — and the two
 // want telling apart before anything else can be diagnosed.
 await page.route('**/api/status*', r => r.abort());
-await page.evaluate(() => refresh());
-await page.evaluate(() => refresh());
-await page.waitForTimeout(300);
+// Two failures in a row, however the page's own poll interleaves: a
+// refresh() asked while another is out only queues behind it, so asking
+// twice could count once (B146). Asked until it has counted two, bounded.
+for (let i = 0; i < 40 && await page.evaluate(async () => { await refresh(); return pollFails; }) < 2; i++);
 const dead = await page.evaluate(() => ({
   red: !!document.getElementById('dot')?.classList.contains('off'),
   title: document.getElementById('dot')?.getAttribute('title') || '',
