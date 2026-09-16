@@ -5,8 +5,7 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR,
-         openFold, animatedDuring, refreshUntil } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -395,6 +394,13 @@ ok(read('clash.md').includes('what the operator typed'),
 // what stops most of them happening. Both windows are the same ACCOUNT, so
 // the account cannot be the answer — the tab's own id is, which is why the
 // line can say "your other window" rather than naming you at yourself.
+// Nobody else is in this notebook when the block starts. An earlier file's
+// window that reloaded holds the old page's seat for the seat's fifty seconds
+// (its pagehide leave is sent during unload, which a harness page cannot
+// authenticate), and this block is about one window it opens itself (B144).
+// Free in a run where nothing came before; a wait for an expiry otherwise.
+await refreshUntil(page, () => !/your other window/.test(
+  document.getElementById('nbHere').textContent), { timeout: 70000 });
 const other = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await other.goto(URL);
 await ready(other);
@@ -413,10 +419,13 @@ ok(true, '...and says which view it is on, which is where the collision would be
 // itself would not do here, because the tab STRIP is per account and shared,
 // so shutting it in that window shuts it in this one.
 await other.evaluate(() => notebooks.get('alpha').destroy());
+// ...and the window then goes, the way a person's does. Without this its tab
+// is still in the shared strip, so its next draw made the notebook again and
+// the seat came back: the line cleared only if this page polled in between.
+await closePage(other);
 await refreshUntil(page, () => document.getElementById('nbHere').hidden
   || !/your other window/.test(document.getElementById('nbHere').textContent));
 ok(true, '...and goes when that window closes the notebook');
-await other.close();
 
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.

@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1254,7 +1254,7 @@ ok(await ultra.evaluate(() => {
      const p = document.querySelector('.doc.on .pkg');
      return p && p.getBoundingClientRect().width <= 1100; }),
    '...and so does the packages tab, where the bin was furthest from its row');
-await ultra.close();
+await closePage(ultra);
 
 // ---- one Save, and what it does NOT do ----------------------------------
 // There were two, and the second typed the change into a running session's
@@ -1369,7 +1369,7 @@ ok(wide.length === 0, `nothing in the panel scrolls sideways on a phone (${wide.
 ok(await phone.evaluate(() =>
      document.documentElement.scrollWidth <= document.documentElement.clientWidth),
    '...and neither does the page behind it');
-await phone.close();
+await closePage(phone);
 
 // ---- two writers, which is what the notebook actually has ----------------
 // The dashboard is one process and `bb roadmap` is another, and both do

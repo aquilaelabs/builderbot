@@ -3,8 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled,
-         refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -549,7 +548,7 @@ await phone.goto(URL + '?view=dash');
 await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
 ok(true, '?view= overrides the remembered side');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
-await phone.close();
+await closePage(phone);
 
 // A phone held sideways: a flyout must not push the bottom bar off the
 // screen — it gives way, and the terminal keeps a strip.
@@ -564,7 +563,7 @@ await land.evaluate(() => mobPanel('keys'));
 await land.waitForFunction(() => document.getElementById('keys').classList.contains('show') && !document.getElementById('keys').classList.contains('sliding'));
 const fit2 = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit2.bar <= 390 && fit2.panes >= 90, `landscape: same with the keys (bar bottom ${Math.round(fit2.bar)}px, terminal ${fit2.panes}px)`);
-await land.close();
+await closePage(land);
 
 // ---- a tab that outlived its container ---------------------------------
 // A browser left open across a restart still holds its Claude tabs, and a
