@@ -292,9 +292,7 @@ def ingest(project, text, by="you"):
         # Counted separately from the run history, which is capped: after
         # KEEP_RUNS ingests len(runs) is always KEEP_RUNS, so a poll token
         # taken from it stops moving and an open tab stops noticing runs.
-        # Seeded from the run count so a registry written before this field
-        # existed steps forward rather than back.
-        p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
+        p["rev"] = int(p.get("rev") or 0) + 1
         p.setdefault("runs", []).append({
             "at": now, "by": "claude" if by == "claude" else "you",
             "n": len(roster), "suites": len(by_suite),
@@ -376,7 +374,7 @@ def describe_many(project, rows):
                 t["notes"] = str(v["notes"] or "").strip()[:MAX_TEXT]
             wrote += 1
         if wrote:
-            p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
+            p["rev"] = int(p.get("rev") or 0) + 1
         save(d)
     return {"ok": True, "wrote": wrote, "unknown": unknown[:50],
             "unknown_n": len(unknown)}
@@ -522,5 +520,5 @@ def revisions():
     moving is a tab that stops re-reading."""
     with _lock:
         d = load()
-    return {p: v.get("rev", len(v.get("runs") or []))
+    return {p: int(v.get("rev") or 0)
             for p, v in (d.get("projects") or {}).items()}
