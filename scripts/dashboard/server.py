@@ -2770,6 +2770,7 @@ GET_ROUTES = (
     ("prefix", "/api/claude-now", "_get_claude_now"),
     ("prefix", "/api/todo", "_get_todo"),
     ("prefix", "/api/rules", "_get_rules"),
+    ("prefix", "/api/global-rules", "_get_global_rules"),
     ("prefix", "/api/preamble", "_get_preamble"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
@@ -2826,6 +2827,7 @@ POST_ROUTES = (
     ("prefix", "/api/idle", "_idle"),
     ("prefix", "/api/settings", "_settings_post"),
     ("prefix", "/api/rules", "_rules"),
+    ("prefix", "/api/global-rules", "_global_rules"),
     ("prefix", "/api/pending", "_pending"),
     ("prefix", "/api/memory", "_memory"),
     ("prefix", "/api/prefs", "_prefs_post"),
@@ -3972,6 +3974,13 @@ class Handler(BaseHTTPRequestHandler):
         if self._not_project(name):
             return
         return self._json(rules.payload(name))
+
+    def _get_global_rules(self):
+        """GET /api/global-rules."""
+        # Readable by anybody signed in, because it is the same text their
+        # sessions are already handed. Hiding it would only make the Briefing
+        # tab unable to say where a rule came from.
+        return self._json({"rules": rules.globals_now(), "max": rules.MAX_RULES})
 
     def _get_preamble(self):
         """GET /api/preamble."""
@@ -5730,6 +5739,31 @@ class Handler(BaseHTTPRequestHandler):
         if r.get("error"):
             return self._json(r, 400)
         return self._json(rules.payload(name))
+
+    def _global_rules(self, req):
+        """The rules that apply to EVERY project (R63). An administrator's.
+
+        Per-project rules are the operator's for that project; a global one
+        reaches projects the person saving it may not even work on, so this
+        asks for admin where /api/rules asks only for the project. A session
+        is refused the same way and for the same reason: its own token would
+        otherwise be the way around the arrangement.
+
+        A shipped rule is read-only and is turned off rather than edited, so
+        the only thing this writes for one is whether it is on.
+        """
+        if self._refused("admin"):
+            return None
+        act = field(req, "action")
+        if act == "save":
+            r = rules.replace(rules.GLOBAL, req.get("rules") or [])
+        elif act in ("enable", "disable"):
+            r = rules.set_disabled(field(req, "name"), act == "enable")
+        else:
+            return self._json({"error": "unknown action"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json({"rules": rules.globals_now()})
 
     def _pending(self, req):
         """Approve or deny what a session has waiting (roadmap #27).

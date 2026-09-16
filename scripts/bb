@@ -2620,6 +2620,12 @@ reg.configure(write_json=statefile.write_json, state=_rules_state,
               actor=lambda: _account_name(_rules_state))
 
 proj, argv = sys.argv[2], sys.argv[3:]
+# `--global` is the rules that apply to EVERY project (R63). Reading one is
+# anybody's; writing one is refused by rules.py itself, because the key is the
+# global one and everything bb writes is a session's.
+if "--global" in argv:
+    argv = [a for a in argv if a != "--global"]
+    proj = reg.GLOBAL
 op = argv[0] if argv else "list"
 rest = argv[1:]
 import pending  # noqa: E402 — rules.py put its directory on sys.path
@@ -2631,12 +2637,12 @@ if op == "--prompt":
     if b:
         print(b)
 elif op == "--json":
-    print(json.dumps(reg.rules(proj)))
+    print(json.dumps(reg.effective(proj)))
 elif op == "show":
     if not rest:
         sys.exit("usage: bb rules show <name>")
     want = rest[0].strip().lower()
-    for r in reg.rules(proj):
+    for r in reg.effective(proj):
         if r["name"] == want:
             print(r["text"])
             if r.get("doc"):
@@ -2645,7 +2651,7 @@ elif op == "show":
                 print(f"checked by: {r['check']}   (bb rules check {r['name']})")
             break
     else:
-        names = ", ".join(r["name"] for r in reg.rules(proj)) or "none"
+        names = ", ".join(r["name"] for r in reg.effective(proj)) or "none"
         sys.exit(f"no rule called {want} here — this project has: {names}")
 elif op == "add":
     if len(rest) < 2:
@@ -2740,7 +2746,7 @@ elif op == "history":
         if e.get("approved"):
             print(f"{'':>32}approved by the operator")
 elif op == "list":
-    rs = reg.rules(proj)
+    rs = reg.effective(proj)
     if not rs:
         print("no house rules on this project yet. The operator writes them on "
               "the notebook's Briefing tab; `bb rules add NAME \"...\"` leaves "
@@ -2756,7 +2762,8 @@ elif op == "list":
             when = "  [" + ", ".join(bits[:4]) + ("…" if len(bits) > 4 else "") + "]"
         first = (r["text"].strip().splitlines() or [""])[0]
         mine = "*" if r.get("by") == "claude" else " "
-        frame = (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else "")
+        frame = ((" [global]" if r.get("scope") == "global" else "")
+                 + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
         print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's — read "

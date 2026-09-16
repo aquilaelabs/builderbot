@@ -328,6 +328,50 @@ print(m.mint_session('alpha'))
      '...and nothing was written');
 }
 
+// ---- global rules (R63): set once on the controller, in every project -----
+// The drift the block has, these do not: there is no copy anywhere, so a rule
+// the operator sets is the rule every session on the box is handed.
+{
+  const auth = { 'Content-Type': 'application/json',
+                 Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  const api = async body => {
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+      { method: 'POST', headers: auth, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  const saved = await api({ action: 'save', rules: [
+    { name: 'no-secrets', text: 'Never write credentials into a repository.' }] });
+  ok(saved.status === 200 && (saved.body.rules || []).some(r => r.name === 'no-secrets'),
+     `the operator saves a rule that applies to every project (${saved.status})`);
+
+  const listed = bb();
+  ok(/no-secrets/.test(listed) && /\[global\]/.test(listed),
+     `a project's rules include the global one, marked (${
+       (listed.split('\n').find(l => /no-secrets/.test(l)) || '').trim()})`);
+  ok(/no-secrets/.test(bb('--global')) && !/\bmine\b/.test(bb('--global')),
+     '`bb rules --global` lists what applies everywhere and nothing project-specific');
+  ok(/Never write credentials/.test(bb('--prompt')),
+     '...and it is in the standing block every session here is handed');
+
+  let refused = '';
+  try { bb('add', '--global', 'sneaky', 'I rule everything'); }
+  catch (e) { refused = String(e.stderr) + String(e.stdout); }
+  ok(/only the operator adds or changes one/.test(refused),
+     `a session cannot add a global rule, and is told who does (${refused.trim().slice(0, 70)})`);
+
+  // A session's token is a principal with user rights over one project; a
+  // global rule reaches every project, so this endpoint wants an admin.
+  const tok = execFileSync('python3', ['-c', `
+import sys; sys.path.insert(0, ${JSON.stringify(join(HERE, '..'))})
+import users, statefile
+users.configure(write_json=statefile.write_json, state=${JSON.stringify(`${DIR}/state`)})
+print(users.mint_session('alpha'))`], { encoding: 'utf8' }).trim();
+  const asSession = await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ action: 'save', rules: [{ name: 'x', text: 'y' }] }) });
+  ok(asSession.status === 403, `...and a session's token is refused by the endpoint too (${asSession.status})`);
+}
+
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

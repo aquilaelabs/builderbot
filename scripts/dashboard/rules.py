@@ -128,6 +128,19 @@ MAX_TEXT = 2000
 MAX_RULES = 40
 MAX_TRIGGERS = 12
 
+# Global rules (R63) live under a key no project can be called: a project is a
+# directory on the projects share, and `*` is not a name one can have. So the
+# same store, the same shapes, the same history and the same triggers serve
+# both, and only the reading differs.
+GLOBAL = "*"
+
+# The global rules BuilderBot itself ships. Read-only on purpose: the next
+# image would bring an edited one back, and a change nobody can see reverted
+# is worse than no change, so the operator turns one off instead. Empty until
+# the briefing moves here (R63 step 2), because until then every session is
+# already handed the same words in its CLAUDE.md block and would pay twice.
+BUILTIN = []
+
 # What the standing block costs before it is worth saying out loud on the tab.
 # Not a refusal: the operator decides what their sessions are worth paying
 # for. This is the number that makes that a decision rather than a surprise.
@@ -151,6 +164,44 @@ def save(d):
 
 def _project(d, name):
     return d["projects"].setdefault(name, {"rules": []})
+
+
+def _off():
+    """The names of the shipped global rules the operator has turned off."""
+    with _lock:
+        d = load()
+    got = (d.get("projects") or {}).get(GLOBAL) or {}
+    return {str(n) for n in (got.get("disabled") or [])}
+
+
+def builtins():
+    """The global rules BuilderBot ships, each marked as read-only and
+    carrying whether it is currently off."""
+    off = _off()
+    out = []
+    for i, r in enumerate(BUILTIN):
+        r = _clean(dict(r), i)
+        r["scope"], r["builtin"], r["by"] = "global", True, "builderbot"
+        r["disabled"] = r["name"] in off
+        out.append(r)
+    return out
+
+
+def globals_now():
+    """Every rule that applies to every project: the shipped ones, then the
+    operator's own. What the Controller settings list shows."""
+    own = [dict(r, scope="global", builtin=False) for r in rules(GLOBAL)]
+    return builtins() + own
+
+
+def effective(project):
+    """What a session in this project actually works under: the global rules
+    that are on, then the project's own. One list, because to a session the
+    only difference that matters is whether it may change a rule, and the
+    marks already say that."""
+    if project == GLOBAL:
+        return globals_now()
+    return [r for r in globals_now() if not r.get("disabled")] + rules(project)
 
 
 def _clean(r, i):
@@ -221,7 +272,12 @@ def replace(project, rules):
     with _lock:
         was = {x.get("name"): x for x in
                ((load().get("projects") or {}).get(project) or {}).get("rules") or []}
-    keep, seen = [], set()
+    # A saved global rule cannot take a shipped one's name: the built-ins are
+    # not in this list, so a collision would shadow one and leave two rules
+    # answering to the same `bb rules show`. Suffixed, the way a duplicate
+    # inside the list already is.
+    keep = []
+    seen = set(_builtin_names()) if project == GLOBAL else set()
     for i, r in enumerate(rules):
         if not isinstance(r, dict):
             continue
@@ -296,6 +352,8 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
     """
     if not str(text or "").strip():
         return {"error": "a rule needs something to say"}
+    if project == GLOBAL and by == "claude":
+        return {"error": _NOT_YOURS}
     # The gate (roadmap #27): a session's rule may be held or refused per
     # project. Keyed by the name it would get, which the replay re-derives.
     if by == "claude" and not pending.replaying():
@@ -328,6 +386,38 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
     return {"ok": True, "rule": r}
 
 
+# Said the way `bb packages install` says its refusal: a sentence a session
+# can quote back, naming who does it and where, rather than a door that looks
+# like a fault.
+_NOT_YOURS = ("a global rule reaches every project on this BuilderBot, so only "
+              "the operator adds or changes one. Say in your reply what you "
+              "would add and why, and they add it in Controller settings")
+
+
+def _builtin_names():
+    return {r["name"] for r in builtins()}
+
+
+def set_disabled(name, on, by="you"):
+    """Turn a shipped global rule off, or back on. A built-in is read-only, so
+    this is the only thing that can be done to one."""
+    name = str(name or "").strip().lower()
+    if name not in _builtin_names():
+        return {"error": f"no rule called {name} ships with BuilderBot"}
+    with _lock:
+        d = load()
+        p = _project(d, GLOBAL)
+        off = {str(n) for n in (p.get("disabled") or [])}
+        if on:
+            off.discard(name)
+        else:
+            off.add(name)
+        p["disabled"] = sorted(off)
+        _log(d, GLOBAL, by, {"act": "enable" if on else "disable", "name": name})
+        save(d)
+    return {"ok": True, "name": name, "disabled": not on}
+
+
 def _mine(rs, name, by):
     """The rule by that name, when this writer may change it.
 
@@ -348,6 +438,11 @@ def _mine(rs, name, by):
 
 def edit(project, name, *, text=None, paths=None, words=None, by="claude",
          doc=None, check=None):
+    if project == GLOBAL and by == "claude":
+        return {"error": _NOT_YOURS}
+    if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
+        return {"error": "that rule ships with BuilderBot and is read-only: turn "
+                         "it off in Controller settings rather than editing it"}
     with _lock:
         d = load()
         p = _project(d, project)
@@ -371,6 +466,11 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude",
 
 
 def remove(project, name, why="", by="claude"):
+    if project == GLOBAL and by == "claude":
+        return {"error": _NOT_YOURS}
+    if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
+        return {"error": "that rule ships with BuilderBot and is read-only: turn "
+                         "it off in Controller settings rather than editing it"}
     with _lock:
         d = load()
         p = _project(d, project)
@@ -400,7 +500,7 @@ def block(project):
     being a rule the session never heard of — the worse of the two failures,
     because the session cannot even know to ask.
     """
-    rs = rules(project)
+    rs = effective(project)
     if not rs:
         return ""
     # WHOSE each one is, marked, because a session's own note must not reach
@@ -408,14 +508,19 @@ def block(project):
     # roadmap marks the items a session added.
     # Short, because every session pays for it: the one thing it has to
     # carry is whose each rule is.
-    out = ["House rules for this project. * marks a session's own note, which"
+    out = ["House rules in effect here. * marks a session's own note, which"
            " you may change or drop with `bb rules`; the rest are the"
-           " operator's — you cannot change them, so say in your reply if one"
-           " seems wrong.\n"]
+           " operator's, and you cannot change them, so say in your reply if"
+           " one seems wrong."
+           + (" A rule marked (global) is set for every project on this"
+              " BuilderBot." if any(r.get("scope") == "global" for r in rs) else "")
+           + "\n"]
     # A rule with a framework behind it says where it is defined and how it
     # is checked, so the session reads the one and runs the other.
     def frame(r):
         bits = []
+        if r.get("scope") == "global":
+            bits.append("global")
         if r.get("doc"):
             bits.append(f"defined in full in {r['doc']}, read first")
         if r.get("check"):
@@ -470,7 +575,7 @@ def matching(project, *, prompt="", path=""):
     low = str(prompt or "").lower()
     rel = str(path or "").lstrip("/")
     out = []
-    for r in rules(project):
+    for r in effective(project):
         if not conditional(r):
             continue
         hit = any(re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", low)
@@ -493,11 +598,17 @@ def payload(project):
     question anybody can answer without knowing what it is charged for, and
     the charge is on every session started in this project.
     """
-    rs = rules(project)
+    # `rules` stays this project's OWN, because the tab writes that list back
+    # whole and a global rule is not its to rewrite. The counts are over what
+    # a session is actually handed, global ones included, since that is what
+    # the characters are charged for.
+    own = rules(project)
+    eff = effective(project)
     b = block(project)
-    return {"project": project, "rules": rs,
-            "standing": sum(1 for r in rs if not conditional(r)),
-            "conditional": sum(1 for r in rs if conditional(r)),
+    return {"project": project, "rules": own,
+            "global": [r for r in eff if r.get("scope") == "global"],
+            "standing": sum(1 for r in eff if not conditional(r)),
+            "conditional": sum(1 for r in eff if conditional(r)),
             "chars": len(b), "loud": len(b) > LOUD_CHARS, "max": MAX_RULES}
 
 
