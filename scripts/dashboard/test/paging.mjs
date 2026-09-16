@@ -7,7 +7,7 @@
 // that the helper is wired to every list, that a short list is left whole,
 // and that revealing more never drops rows or their behaviour.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 
 // alpha's tracker, made long enough to page. Written straight to the state
 // file: this is about the list's length, not about how reports get filed.
@@ -86,8 +86,11 @@ ok(await page.evaluate(() => {
 // selector its own renderer actually produces. A wrong selector fails
 // silently (nothing to hide, so no footer), which is worth pinning. Read from
 // the file rather than the DOM: exact, instead of a guess about what
-// innerHTML happens to contain.
-const src = readFileSync(new globalThis.URL('../index.html', import.meta.url), 'utf8');
+// innerHTML happens to contain. The page and every notebook view file, since
+// a view's renderer lives in its own nb-*.js now (R60).
+const src = ['../index.html', ...readdirSync(new globalThis.URL('..', import.meta.url))
+    .filter(f => /^nb-.*\.js$/.test(f)).map(f => '../' + f)]
+  .map(f => readFileSync(new globalThis.URL(f, import.meta.url), 'utf8')).join('\n');
 for (const [what, call] of [
   ['the roadmap', 'paginate($("todoList"), ":scope > .grp"'],
   ['memory', 'paginate($("memList"), ":scope > .mem"'],
