@@ -164,6 +164,7 @@
 - A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
 - A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
 - The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running (bddf3bd)
+- A browser tab that was closed or reloaded no longer shows in the notebook as 'your other window' for up to a minute (5ccfc23)
 
 ### Removed
 
