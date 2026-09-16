@@ -4214,7 +4214,8 @@ class Handler(BaseHTTPRequestHandler):
         # how they are served — full paths, same shape as the favicons, so it
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
-                    "/tab-users.js", "/tab-phone.js", "/tab-profile.js"):
+                    "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
+                    "/nb-git.js"):
             return self._static(path[1:], "text/javascript; charset=utf-8")
         if self.path.split("?")[0] in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")

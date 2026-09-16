@@ -3872,7 +3872,7 @@ scripts/
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab
+  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-keep-login                keeps a node session's Claude login in step, once per prompt
