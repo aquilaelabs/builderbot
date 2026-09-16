@@ -5728,7 +5728,38 @@ cmd_doctor() {
     if on_node; then check "claude on PATH" command -v claude; fi
     check "workspace writable"        test -w "$WORKSPACE"
     check "home writable"             test -w "$HOME"
-    check "git identity configured"   git config --get user.email
+    # A commit identity is an ACCOUNT's (its Profile tab), handed to a
+    # session as git's environment. On a node that is what to look for; on
+    # the controller, where nobody commits, the question is whether the
+    # accounts have one, and a bare `git config` there failed on every fresh
+    # deploy for a thing no setting could fix.
+    if on_node; then
+        check "git identity configured" \
+            sh -c '[ -n "${GIT_AUTHOR_EMAIL:-}" ] || git config --get user.email'
+    else
+        DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'IDPY'
+import json, os
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "users.json")))
+    us = d.get("users") or {}
+except Exception:                                                # noqa: BLE001
+    us = {}
+def has(u):
+    p = u.get("prefs") or {}                # users.profile() reads the same keys
+    return bool((p.get("git_email") or p.get("email")) and (p.get("git_name") or p.get("full_name")))
+n, m = sum(1 for u in us.values() if has(u)), len(us)
+if not m:
+    print("  [skip] no accounts yet")
+elif n == m:
+    print(f"  [ok]   every account has a commit identity ({m})")
+elif n:
+    print(f"  [warn] {m - n} of {m} accounts have no commit identity yet: a session"
+          " refuses to open for them until it is set on their Profile")
+else:
+    print("  [warn] no account has a commit identity yet: set one on the Profile tab"
+          " (the gear in the header) before opening a session")
+IDPY
+    fi
     # No -f here: we only care that the connection and TLS handshake work.
     # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
     #
@@ -5756,7 +5787,7 @@ try:
     nodes.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception:                                                # noqa: BLE001
-    print("  [skip] no node store yet — the dashboard creates it on boot")
+    print("  [skip] no node store yet: the dashboard creates it on boot")
     raise SystemExit(0)
 # The same test the sign-in and the terminal proxy make, in the same words:
 # an agent node, online, still dialing in, reporting a session half that is
@@ -5768,7 +5799,7 @@ if live:
     print(f"  [ok]   {len(live)} node{'' if len(live) == 1 else 's'} can run a session "
           f"({', '.join(live[:4])})")
 else:
-    print("  [warn] no node can run a session — Claude runs on one and this")
+    print("  [warn] no node can run a session: Claude runs on one and this")
     print("         container carries none. Enroll one on the Nodes tab, or")
     print("         wait for one to come back")
 NODEPY
@@ -5783,9 +5814,12 @@ NODEPY
     # whether the thing is up.
     local docker_line dst dmsg lib note
     lib="$(dirname "$(readlink -f "$0")")/lib/docker-probe.py"
+    # `|| true`: a probe that dies is a skip line, not the end of the
+    # doctor. Under set -e a failing substitution here ended the function
+    # after the session line, and every check below it went unprinted.
     docker_line="$(python3 "$lib" \
         "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null \
-        | head -1)"
+        | head -1 || true)"
     read -r dst dmsg <<<"$docker_line"
     case "$dst" in
         ok)   printf '  [ok]   %s\n' "$dmsg" ;;
@@ -5807,7 +5841,7 @@ NODEPY
         # The vendor ICD only lands when capabilities include graphics, so test
         # for the file rather than trusting the variable.
         if [ ! -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
-            printf '  [FAIL] nvidia gpu present but no EGL — set NVIDIA_DRIVER_CAPABILITIES=all\n'
+            printf '  [FAIL] nvidia gpu present but no EGL: set NVIDIA_DRIVER_CAPABILITIES=all\n'
             printf '         (currently %s; compute works, -gpu host does not)\n' \
                 "${NVIDIA_DRIVER_CAPABILITIES:-unset, so the default compute,utility applies}"
             ok=1
@@ -5819,20 +5853,20 @@ NODEPY
             printf '  [ok]   nvidia graphics stack usable (EGL vendor: %s)\n' "$vendor"
         elif x_display_up; then
             printf '  [warn] nvidia EGL is installed but gave no vendor driver on the X display\n'
-            printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
+            printf '         (Mesa answering means llvmpipe; the emulator will use software)\n'
         else
             printf '  [warn] nvidia EGL is installed but has no display to render on\n'
             note="$(gpu_display_note)"
             [ -n "${note:-}" ] && printf '         the startup hook says: %s\n' "$note"
-            printf '         — %s; the emulator will use software (bb emu gpu)\n' \
+            printf '         %s; the emulator will use software (bb emu gpu)\n' \
                 "$(command -v Xorg >/dev/null 2>&1 \
                    && { [ -S /tmp/.X11-unix/X0 ] \
-                        && echo "the X server started and has gone — a stale socket is all that is left, see /var/log/xorg-builderbot.log" \
+                        && echo "the X server started and has gone: a stale socket is all that is left, see /var/log/xorg-builderbot.log" \
                         || echo "the X server did not start, see /var/log/xorg-builderbot.log"; } \
                    || echo "this image has no X server")"
         fi
     elif command -v nvidia-smi >/dev/null 2>&1; then
-        printf '  [FAIL] nvidia-smi present but no GPU visible — check --runtime=nvidia --gpus all\n'
+        printf '  [FAIL] nvidia-smi present but no GPU visible: check --runtime=nvidia --gpus all\n'
         ok=1
     else
         printf '  [skip] no nvidia gpu passed through\n'
@@ -5862,12 +5896,11 @@ NODEPY
     # exactly that. What gh being logged out actually costs is the API — no
     # `gh pr create`, no `gh release create` — and reporting that as broken git
     # sends somebody to fix a credential that is already working.
-    if gh auth status >/dev/null 2>&1; then
+    # Nothing here signs gh in, so it being signed out is the ordinary state
+    # and not a line: a skip nobody can act on is noise on every deploy.
+    # Signed in by hand on a node, it is worth a word.
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         printf '  [ok]   gh (the GitHub API) is authenticated\n'
-    else
-        printf '  [skip] gh (the GitHub API) is not authenticated — no gh pr/release.\n'
-        printf '         Git itself is unaffected: it uses an ssh key, or a\n'
-        printf '         per-project token from the clone dialog.\n'
     fi
     # And whether THIS repo can actually reach its remote, which is the
     # question the line above was being read as. Per-project tokens made the
@@ -5880,12 +5913,12 @@ NODEPY
             cred_project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo .)")"
             if on_node; then
                 printf '  [ok]   pushes go through the controller: bb git push|fetch|pull\n'
-                printf '         (no credential lives on a node — plain git push fails here by design)\n'
+                printf '         (no credential lives on a node: plain git push fails here by design)\n'
             elif [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
                 printf '  [ok]   this repo pushes over https with its own stored token\n'
             else
                 printf '  [FAIL] this repo has an https remote and no credential for it\n'
-                printf '         — add one in the dashboard, or switch it to ssh\n'
+                printf '         add one in the dashboard, or switch it to ssh\n'
                 ok=1
             fi ;;
     esac
@@ -5898,7 +5931,7 @@ NODEPY
     # Distinguish "no key" from "key loaded but the agent is unreachable from
     # this uid", which is otherwise indistinguishable and very confusing.
     if [ -z "$ssh_src" ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
-        printf '  [FAIL] an agent socket exists but this user cannot use it — see: bb logs | grep ssh\n'
+        printf '  [FAIL] an agent socket exists but this user cannot use it; see: bb logs | grep ssh\n'
         ok=1
     fi
     if [ -n "$ssh_src" ]; then
@@ -5923,9 +5956,9 @@ NODEPY
         # By design, and said so rather than left reading as a gap: no
         # credential of any kind lives on a node, which is why pushing there
         # goes through the controller.
-        printf '  [skip] no ssh key here, which is the design — a node holds no credential\n'
+        printf '  [skip] no ssh key here, which is the design: a node holds no credential\n'
     else
-        printf '  [skip] no ssh key (agent empty, nothing in ~/.ssh)\n'
+        printf '  [skip] no ssh key on the controller: a project pushes with the token or key given when it was cloned or linked\n'
     fi
     # The login, on the machine that holds one. This used to pass on the mere
     # EXISTENCE of ~/.claude, which since R47 is where the controller keeps
@@ -5933,9 +5966,11 @@ NODEPY
     # container carrying no Claude Code at all reported "Claude Code
     # credentials present in /home/builder", which was three kinds of wrong.
     # The credential is one file, and it lives on a node.
+    # On the controller: not a line. The card above the pills already says
+    # which account this login is, from the node that reported it, and a
+    # pill saying "no login here" beside it read as a contradiction.
     if ! on_node; then
-        printf '  [skip] no Claude login here — a session runs on a node, which keeps\n'
-        printf '         its own. The card names the account they report being signed in as\n'
+        :
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         printf '  [ok]   ANTHROPIC_API_KEY set\n'
     elif [ -f "$HOME/.claude/.credentials.json" ]; then
@@ -5947,7 +5982,7 @@ except Exception:
     e = ""
 sys.stdout.write(f" ({e})" if e else "")' 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine — the dashboard\n'
+        printf '  [warn] not signed in to Claude on this machine: the dashboard\n'
         printf '         Sign in runs the flow here, or `bb login` in this shell\n'
     fi
     return $ok
