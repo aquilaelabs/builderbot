@@ -337,9 +337,6 @@ sdk_status_local() {
                     printf 'sdkmanager ready — packages in %s' "$d"
                 elif [ -x "$d/cmdline-tools/latest/bin/sdkmanager" ]; then
                     printf 'cmdline-tools are in the store but not on PATH — packages in %s' "$d"
-                elif [ -L "$d/cmdline-tools/latest" ]; then
-                    printf 'cmdline-tools are installed and their link is broken (%s) — a node repairs it on its next start' \
-                        "$(readlink "$d/cmdline-tools/latest")"
                 else
                     echo 'no cmdline-tools'
                 fi)"

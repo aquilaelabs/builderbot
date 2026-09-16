@@ -741,51 +741,6 @@ def share_images(store, say=None):
             os.symlink(os.path.relpath(shared, os.path.dirname(mine)), mine)
 
 
-def fix_flat_links(store, say=None):
-    """The other standing rule, and it is a repair: a symlink inside this
-    scope that still points at the FLAT store it was made in.
-
-    Before R19 a store was one directory; now everything lives under
-    <store>/<os>-<arch>. The move brought the trees across, and the links
-    inside them kept naming where they used to be — so this scope's
-    android/cmdline-tools/latest still pointed at <store>/android-tools,
-    which no longer exists. Nothing said so: the PATH entry for it was
-    silently dropped for being a directory that is not there, `bb packages`
-    reported "no cmdline-tools" beside a store that has them, and every
-    sdkmanager call on the node failed to be found (B105).
-
-    Narrow on purpose: only a link that is broken AND whose target is the
-    same path one level up from the scope, which is the one thing the move
-    could have produced. Anything else is somebody's own arrangement.
-    """
-    say = say or (lambda t: log(t))
-    scoped = os.path.join(store or "", pkg_scope())
-    if not store or not os.path.isdir(scoped):
-        return
-    for root, dirs, names in os.walk(scoped):
-        # The link may be a directory entry, so both lists are walked; three
-        # levels is as deep as any of these go, and a store holds gigabytes
-        # of SDK below that nothing here should be reading.
-        if root[len(scoped):].count(os.sep) >= 3:
-            dirs[:] = []
-        for name in list(dirs) + names:
-            path = os.path.join(root, name)
-            if not os.path.islink(path) or os.path.exists(path):
-                continue
-            target = os.readlink(path)
-            if not target.startswith(store + os.sep):
-                continue
-            rest = target[len(store) + 1:]
-            fixed = os.path.join(scoped, rest)
-            if not os.path.exists(fixed):
-                continue
-            with contextlib.suppress(OSError):
-                os.remove(path)
-                os.symlink(fixed, path)
-                say(f"packages store: {path} pointed at the flat store; "
-                    f"repointed at {fixed}")
-
-
 def store_id(path):
     """A stable id for a store, from a marker inside it — the same file the
     controller reads for its own (nodes.store_id).
@@ -1077,11 +1032,9 @@ def store_dirs(state):
         out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
     with contextlib.suppress(OSError):
         out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
-    # A directory is not a package. The playwright recipe used to be its
-    # browsers alone, and a store from then has the directory without the
-    # module the recipe now carries — so the row said installed and offered
-    # nothing, while bb shot on the node could not find the module. A layout
-    # that names the file which completes it (`needs`) is checked here, and
+    # A directory is not a package: an install that stopped part-way leaves
+    # one without the file that completes it (playwright's module beside its
+    # browsers). A layout that names that file (`needs`) is checked here, and
     # the controller reads a name in this list as not installed.
     for entry in store_layout(state):
         need = entry.get("needs")
@@ -2640,7 +2593,6 @@ class Agent:
         # by `enroll`, which may run with a store it cannot write yet).
         try:
             share_images((self.state.get("stores") or {}).get("packages") or "")
-            fix_flat_links((self.state.get("stores") or {}).get("packages") or "")
         except OSError as e:
             log(f"packages store: could not share the images ({e})")
         c = census(self.state)
