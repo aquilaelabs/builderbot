@@ -168,10 +168,15 @@ walls_around() {
 # project, made if it is missing: its launcher, its scope, its token and its
 # session's environment. A folder per project, so that a session's view can
 # keep its own and leave every other project's out (R35).
+# THE ACCOUNT IN THE PATH IS NOT DECORATION (B159). On a node every account's
+# ~/.cache is a symlink to the base home's (common.sh shares the tool folders),
+# so without the uid this is ONE folder for everybody: two accounts with a
+# session on one project shared a token file and the last to start owned it,
+# which is another account's identity for anything that reads it back.
 cache_project_dir() {
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/project/$1"
-    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)/project/$1"; mkdir -p "$dir"; }
+    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/u/${account:-_none}/project/$1"
+    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)/u/${account:-_none}/project/$1"; mkdir -p "$dir"; }
     chmod 700 "$dir" 2>/dev/null || true
     printf '%s' "$dir"
 }

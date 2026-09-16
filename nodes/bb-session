@@ -170,7 +170,10 @@ def plan(c, a, uid):
     # first cover kept. A cache that is itself a link is refused rather than
     # left untrimmed: that would put every other project's token in view.
     caches = {}
-    for h, keep in [(home, (f"project/{project}", "account", "machine"))] + ([(home_root, ("machine",))] if base else []):
+    # Everything under u/<account> is that account's and nobody else's (B159);
+    # machine/ is this box's and is shared on purpose.
+    for h, keep in [(home, (f"u/{account}/project/{project}", f"u/{account}/account", "machine"))] \
+            + ([(home_root, ("machine",))] if base else []):
         path = f"{h}/.cache/builderbot"
         if os.path.lexists(path) and not _real_dir(path):
             raise Refused(f"bb-session: {path} is not a directory, so the view could not leave other projects out of it")
@@ -397,7 +400,8 @@ def enter(c, a, command):
         raise Refused("bb-session: nothing to run")
     envfile = a.get("env", "")
     project, home = a.get("project", ""), a.get("home", "").rstrip("/")
-    if not envfile.startswith(f"{home}/.cache/builderbot/project/{project}/"):
+    account = a.get("account", "")
+    if not envfile.startswith(f"{home}/.cache/builderbot/u/{account}/project/{project}/"):
         raise Refused("bb-session: the environment file is not in the project's cache folder")
     steps = plan(c, a, uid)
     pane = {k: os.environ[k] for k in FROM_PANE if k in os.environ}

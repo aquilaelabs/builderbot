@@ -25,7 +25,7 @@ const BBTTY = join(import.meta.dirname, '..', 'bb-tty');
 // stand-in and names that explicitly. Set on process.env because every spawn
 // here spreads it.
 process.env.BB_SESSION_BIN = join(DIR, 'no-bb-session-here');
-const LAUNCHER = join(DIR, 'home', '.cache', 'builderbot', 'project', 'alpha', 'claude-run.sh');
+const LAUNCHER = join(DIR, 'home', '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'claude-run.sh');
 
 // The boot this container is on, from the server rather than computed again
 // here: the page reads it from /api/status and puts it in the terminal's URL,
@@ -138,7 +138,7 @@ ok(genv('GIT_AUTHOR_NAME') === 'GIT_AUTHOR_NAME=Pat Tester'
 const cmd = paneCmd();
 ok(cmd.length < 200 && /project\/alpha\/claude-run\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');
-const PREF = join(DIR, 'home', '.cache', 'builderbot', 'project', 'alpha', 'preamble.txt');
+const PREF = join(DIR, 'home', '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'preamble.txt');
 const prefFile = () => existsSync(PREF) ? readFileSync(PREF, 'utf8') : '';
 ok(launcher().length < 40000 && prefFile().length > 40000,
    `...and the block tmux could not carry is beside it in a file the launcher names (${prefFile().length} bytes)`);
@@ -147,7 +147,7 @@ ok(launcher().length < 40000 && prefFile().length > 40000,
 // rewritten on every connection but a running claude keeps the environment
 // it started with, so this file is the only way back for one that has been
 // going longer than that (bb_token_now prefers it once BB_TOKEN is dead).
-const TOKFILE = join(DIR, 'home', '.cache', 'builderbot', 'project', 'alpha', 'token');
+const TOKFILE = join(DIR, 'home', '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'token');
 const tokWritten = existsSync(TOKFILE) ? readFileSync(TOKFILE, 'utf8').trim() : '';
 ok(/^bbs_/.test(tokWritten) && (statSync(TOKFILE).mode & 0o077) === 0,
    `the session's token is written beside the launcher for a running session to pick up, 0600 (${
@@ -411,10 +411,26 @@ tmuxKill('claude-alpha');
     ok(/branch refs\/heads\/claude\//.test(branch),
        `...on a branch of its own, so the work merges rather than collides (${
           (branch.match(/branch \S+/g) || []).join(", ")})`);
+    // TWO ACCOUNTS ON ONE PROJECT KEEP THEIR OWN CACHE (B159). Every session
+    // file lives under the account's id, because on a node the cache folder is
+    // one folder for everybody: without that level the second session to start
+    // wrote over the first's token, and a session would then be acting as
+    // another account. Asserted as two separate token files with two values.
+    {
+      const tok = u => join(HOMEDIR, '.cache', 'builderbot', 'u', u, 'project', proj, 'token');
+      const a = existsSync(tok(ownerUid)) ? readFileSync(tok(ownerUid), 'utf8').trim() : '';
+      const b = existsSync(tok(other)) ? readFileSync(tok(other), 'utf8').trim() : '';
+      ok(a && b && a !== b,
+         `two accounts with a session on one project keep their own token, not one shared file (${
+           a.slice(0, 12)}… vs ${b.slice(0, 12)}…)`);
+      ok(!existsSync(join(HOMEDIR, '.cache', 'builderbot', 'project', proj, 'token')),
+         '...and nothing is left in the shared folder they used to share');
+    }
+
     // The scope file walls it into ITS tree and names the other one as off
     // limits — two people on one project is exactly when that has to hold.
     const scope = JSON.parse(readFileSync(
-      join(HOMEDIR, '.cache', 'builderbot', 'project', proj, 'claude-scope.json'), 'utf8'));
+      join(HOMEDIR, '.cache', 'builderbot', 'u', other, 'project', proj, 'claude-scope.json'), 'utf8'));
     const deny = scope.permissions.deny.join(' ');
     ok(deny.includes(`Edit(${src}/**)`),
        '...with the project directory itself denied to it, being another tree');
@@ -570,7 +586,7 @@ tmuxKill('claude-alpha');
        && readlinkSync(join(nodeHome, '.claude', 'projects')) === join(DIR, 'ws', '.claude', ownerUid, 'projects'),
        'the home\'s ~/.claude/projects is a link to the account\'s directory on the projects share');
     // ...and the walls: other accounts' transcripts denied, this one's not.
-    const scopeN = JSON.parse(readFileSync(join(nodeHome, '.cache', 'builderbot', 'project', proj, 'claude-scope.json'), 'utf8'));
+    const scopeN = JSON.parse(readFileSync(join(nodeHome, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'claude-scope.json'), 'utf8'));
     const denyN = scopeN.permissions.deny.join(' ');
     ok(denyN.includes(`Edit(${join(DIR, 'ws', '.claude', 'u_0badf00d')}/**)`)
        && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude', ownerUid)}/**)`)
@@ -615,7 +631,7 @@ tmuxKill('claude-alpha');
     ok(genv('BB_CI_LOG_DIR') === 'BB_CI_LOG_DIR=/x/ci-logs' && !/bbs_/.test(genv('BB_TOKEN')),
        `the tmux server's environment is brought up to date before each session, the token excepted (${genv('BB_TOKEN') || 'no BB_TOKEN'})`);
     const launcher = readFileSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
-                                       'project', proj, 'claude-run.sh'), 'utf8');
+                                       'u', ownerUid, 'project', proj, 'claude-run.sh'), 'utf8');
     ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),
        'the launcher asks bb settings for the model when the prefs file is not here, and carries the token');
 
@@ -647,7 +663,7 @@ tmuxKill('claude-alpha');
       runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
       await sleep(400);
       const vcmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
-      const vcache = join(vhome, '.cache', 'builderbot', 'project', vproj);
+      const vcache = join(vhome, '.cache', 'builderbot', 'u', ownerUid, 'project', vproj);
       const envf = join(vcache, 'session.env');
       ok(alive(`${ownerUid}~claude-${vproj}`)
          && vcmd.startsWith(`sudo -n ${helper} enter --project ${vproj} --account ${ownerUid} --home ${vhome} --cwd ${join(DIR, 'ws', vproj)} --env ${envf} -- `)
@@ -735,8 +751,8 @@ tmuxKill('claude-alpha');
       // launcher a few lines earlier, and there would be nothing left to
       // warn about.
       const stand = join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
-                         'project', proj, 'claude-run.sh');
-      mkdirSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot', 'project', proj), { recursive: true });
+                         'u', ownerUid, 'project', proj, 'claude-run.sh');
+      mkdirSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot', 'u', ownerUid, 'project', proj), { recursive: true });
       writeFileSync(stand, '#!/usr/bin/env bash\nexec sleep 600\n', { mode: 0o755 });
       tmuxNew(`${ownerUid}~claude-${proj}`, join(DIR, 'ws', proj), [stand]);
       const noted = runTty();
@@ -819,6 +835,9 @@ tmuxKill('claude-alpha');
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${join(hk, 'bin')}:${process.env.PATH}`,
                HOME: join(hk, 'home'), XDG_CACHE_HOME: join(hk, 'cache2'),
+               // The account the hook runs for: its login state is its own,
+               // not the base home's, because the cache folder is shared (B159).
+               BB_ACCOUNT_UID: ownerUid,
                BUILDERBOT_ROLE: 'node' } }) || '';
     } catch (e) { return `EXIT ${e.status}: ${e.stdout || ''}${e.stderr || ''}`; } })();
   ok(out === '',
@@ -826,7 +845,7 @@ tmuxKill('claude-alpha');
        JSON.stringify(out)})`);
   // ...and it is stamped anyway, so a controller that is down does not turn
   // every prompt into a thirty-second wait.
-  ok(existsSync(join(hk, 'cache2', 'builderbot', 'account', 'login-sync')),
+  ok(existsSync(join(hk, 'cache2', 'builderbot', 'u', ownerUid, 'account', 'login-sync')),
      '...and still stamped, so a controller that is away is asked once, not every turn');
   rmSync(hk, { recursive: true, force: true });
 }
@@ -863,7 +882,7 @@ tmuxKill('claude-alpha');
       execFileSync('cp', ['-r', join(import.meta.dirname, '..', '..'), join(digest, 'scripts')]);
       symlinkSync('0123456789abcdef', join(bundles, 'current'));
       const scopeOf = () => JSON.stringify(JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid,
-        '.cache', 'builderbot', 'project', proj, 'claude-scope.json'), 'utf8')).hooks);
+        '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'claude-scope.json'), 'utf8')).hooks);
       const fromCheckout = join(realpathSync(join(import.meta.dirname, '..')), 'bb-gate');
       ok(scopeOf().includes(`${fromCheckout} ${proj} `),
          'run from a checkout, which has no .bb/current, the hooks keep the path they always had');

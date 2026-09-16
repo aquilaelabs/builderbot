@@ -47,7 +47,10 @@ def keep_token(tok):
         home = os.environ.get("HOME", "")
         d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
             or f"/tmp/bb-scope-{os.getuid()}"
-        d = os.path.join(d, "builderbot", "project", project)
+        # Per account (B159): on a node the cache folder is shared, so without
+        # the uid this writes over another account's token.
+        d = os.path.join(d, "builderbot", "u",
+                         os.environ.get("BB_ACCOUNT_UID") or "_none", "project", project)
         os.makedirs(d, mode=0o700, exist_ok=True)
         tmp = os.path.join(d, "token.new")
         with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:

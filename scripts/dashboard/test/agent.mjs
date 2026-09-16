@@ -437,7 +437,7 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
 import importlib.util, json, re
 spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-home = '/home/builder/users/u_0000abcd/.cache/builderbot/project'
+home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
 def respawn(start):
     # tmux_ops against a tmux that records what it was asked and answers the
@@ -469,7 +469,7 @@ print(json.dumps({
          `a respawn runs again a launcher inside the view, a plain one, or one from before the view, and nothing else (${JSON.stringify(out.good)} ${JSON.stringify(out.bad)})`);
       ok(JSON.stringify(out.respawn) === JSON.stringify(['respawn-pane', '-k', '-t', 'u_0000abcd~claude-alpha', 'sudo', '-n', bin, 'enter',
            '--project', 'alpha', '--account', 'u_0000abcd', '--cwd', '/workspace/alpha', '--',
-           '/home/builder/users/u_0000abcd/.cache/builderbot/project/alpha/claude-run.sh', '--respawn'])
+           '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project/alpha/claude-run.sh', '--respawn'])
          && JSON.stringify(out.flat.slice(4)) === JSON.stringify(['/home/builder/.cache/builderbot/claude-run-alpha.sh', '--respawn']),
          `a respawn hands tmux the view's launcher line word by word, since one string with spaces is a program nobody has (${out.respawn.slice(4, 6).join(' ')})`);
       ok(out.iso.sessions === false && /root/.test(out.iso.why),
@@ -563,10 +563,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // renewed one lands in the cache file, and the next call sends THAT.
       const cache = `${DIR}/cache-renew`;
       const env = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
-                    BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache };
+                    BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache,
+                    BB_ACCOUNT_UID: 'u_0000abcd' };
       execFileSync('bash', [`${REPO}/scripts/bb`, 'roadmap'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
-      const kept = existsSync(`${cache}/builderbot/project/alpha/token`)
-        ? readFileSync(`${cache}/builderbot/project/alpha/token`, 'utf8').trim() : '';
+      // Under the account's id (B159): the cache folder is shared between
+      // accounts on a node, so the uid is what keeps one account's token out
+      // of another's session.
+      const kept = existsSync(`${cache}/builderbot/u/u_0000abcd/project/alpha/token`)
+        ? readFileSync(`${cache}/builderbot/u/u_0000abcd/project/alpha/token`, 'utf8').trim() : '';
       ok(/^bbs_/.test(kept) && expOf(kept) > expOf(short),
          'bb keeps the renewed token in the account\'s cache, where it reads when the environment\'s has expired');
       const again = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', '--now'],
@@ -717,7 +721,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
             { input: '{"tool_name":"Bash"}', encoding: 'utf8', env: genv(extra), stdio: ['pipe', 'pipe', 'pipe'] });
           return { code: 0, err: '' };
         } catch (e) { return { code: e.status, err: String(e.stderr) }; } };
-        const fresh = () => rmSync(`${cache}/builderbot/project/alpha/gate`, { force: true });
+        // u/_none: this env names no account, and the gate is per account (B159).
+        const fresh = () => rmSync(`${cache}/builderbot/u/_none/project/alpha/gate`, { force: true });
         writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
         let r = gate({});
         ok(r.code === 0, `with the controller up and the block current, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);

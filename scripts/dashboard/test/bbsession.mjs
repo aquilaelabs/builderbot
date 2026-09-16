@@ -31,12 +31,12 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(tr, slug(join(ws, '.worktrees', 'alpha', me))),
                  join(tr, slug(join(ws, '.worktrees', 'alpha-two', me))),
                  join(ws, '.claude', other, 'projects'),
-                 join(myHome, '.cache', 'builderbot', 'project', 'alpha'),
-                 join(myHome, '.cache', 'builderbot', 'project', 'beta'),
-                 join(myHome, '.cache', 'builderbot', 'account'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'project', 'alpha'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'project', 'beta'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'account'),
                  join(users, other, '.claude'),
                  join(homeRoot, '.cache', 'builderbot', 'machine'),
-                 join(homeRoot, '.cache', 'builderbot', 'project', 'gamma'),
+                 join(homeRoot, '.cache', 'builderbot', 'u', me, 'project', 'gamma'),
                  join(homeRoot, '.claude'),
                  join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
@@ -81,9 +81,9 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
 ok(has('tmpfs', users, 'mode=0755') && has('bind', `${STAGE}/home`, myHome) && hidden(join(homeRoot, '.claude'))
    && hidden(join(homeRoot, '.claude.json')),
    'the account\'s home is the only home, and the base home\'s Claude login and history are out of sight');
-ok(has('tmpfs', myCache, 'mode=0700,owned') && bound(join(myCache, 'project', 'alpha')) && bound(join(myCache, 'account'))
-   && !bound(join(myCache, 'project', 'beta'))
-   && has('tmpfs', rootCache, 'mode=0700,owned') && bound(join(rootCache, 'machine')) && !bound(join(rootCache, 'project', 'gamma')),
+ok(has('tmpfs', myCache, 'mode=0700,owned') && bound(join(myCache, 'u', me, 'project', 'alpha')) && bound(join(myCache, 'u', me, 'account'))
+   && !bound(join(myCache, 'u', me, 'project', 'beta'))
+   && has('tmpfs', rootCache, 'mode=0700,owned') && bound(join(rootCache, 'machine')) && !bound(join(rootCache, 'u', me, 'project', 'gamma')),
    'the cache keeps this project\'s folder, the account\'s and the machine\'s, so no other project\'s token or launcher is there');
 ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(data, 'ci-logs', 'alpha'))
    && !bound(join(data, 'ci-logs', 'beta')) && !bound(join(data, 'jobs')) && !bound(join(data, 'compose'))
@@ -133,13 +133,14 @@ ok(bad.length === 0, `the plan refuses ${refusals.map(r => r[2]).join('; ')}${ba
   const linked = 'u_2222abcd', linkedHome = join(users, linked);
   mkdirSync(linkedHome, { recursive: true });
   symlinkSync(join(homeRoot, '.cache'), join(linkedHome, '.cache'));
-  mkdirSync(join(rootCache, 'project', 'alpha'), { recursive: true });
+  mkdirSync(join(rootCache, 'u', linked, 'project', 'alpha'), { recursive: true });
   const r = plan({ account: linked, home: linkedHome, cwd: join(ws, 'alpha') });
   const st = r.code === 0 ? JSON.parse(r.out) : [];
   const covers = st.filter(x => x[0] === 'tmpfs' && x[1].endsWith('/.cache/builderbot'));
   const binds = st.filter(x => x[0] === 'bind' && x[2].startsWith(rootCache + '/')).map(x => x[2].slice(rootCache.length + 1));
   ok(r.code === 0 && covers.length === 1 && covers[0][1] === rootCache
-     && binds.includes('project/alpha') && binds.includes('machine') && !binds.includes('project/gamma'),
+     && binds.includes(`u/${linked}/project/alpha`) && binds.includes('machine')
+     && !binds.some(b => b.endsWith('/project/gamma')),
      `an account whose .cache links to the base home's gets that one folder covered once, keeping this project's and the machine's (${covers.length} cover, kept ${binds.join(', ')})`);
   const planted = 'u_3333abcd', plantedHome = join(users, planted);
   mkdirSync(join(plantedHome, '.cache'), { recursive: true });

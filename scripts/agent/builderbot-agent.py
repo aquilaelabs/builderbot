@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.76"
+AGENT_VERSION = "0.5.77"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -282,7 +282,8 @@ SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/b
 # since then (the compatibility window).
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
-               rf"{_PATHCH}*/builderbot/(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
+               rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
+               rf"(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
