@@ -74,6 +74,7 @@
 - The Doctor card drops five lines a controller could not act on (a red git identity, 'no Claude login here', gh, an empty ssh agent, 'no node with a daemon') and says which accounts lack a commit identity instead (e61b013)
 - New project asks which node the project runs on when nodes exist; the About panel leads with the guide; a plain user's Doctor card shows only what is theirs; the changelog sheet can write the first line; the memory form says the hook is required; the Uninstall button says Uninstalling while it runs (3386d1d)
 - The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
+- Picking a commit in the Git view's history scrolls the page down to its changes (3fa7ede)
 
 ### Fixed
 
@@ -151,7 +152,7 @@
 - A dev instance built from its tree now shows the commit it was built from, in the header and to the agents, the way a CI build does (302ef24)
 - Installing Playwright on a fresh Ubuntu node no longer ends with its missing-dependencies warning: the recipe carries the five libraries it asked for (c08e8cc)
 - A build whose output already sits in dist/ no longer prints cp's same-file complaint (413953b)
-- The Enroll node dialog now starts with the line that fetches the provisioner from your controller (be8ab56)
+- The Enroll node dialog now starts with the line that fetches the provisioner from your controller, for a Mac as well as Linux (be8ab56, f02128e)
 - bb git policy and ls-remote answer before a commit identity is set; only push, fetch and pull need one (be8ab56)
 - bb packages lists node and the JDK; a runner install's log shows where it is; an uninstall that fails on the machine fails the job instead of retiring the node; a catalog change reaches the Nodes tab at once (be8ab56)
 - The Docker manager shows what is running on a node it reaches through its agent; it used to say the daemon did not answer and every row 'state unknown' on a fresh deploy (e61b013)
@@ -163,8 +164,10 @@
 - The Tools tab no longer asks to install the emulator's libraries on a node that only has the Android command-line tools (3386d1d)
 - A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
 - A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
-- The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running (bddf3bd)
+- The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running, and a one-shot service that finished, such as a seed, reads finished (bddf3bd, 8a0bbd5)
 - A browser tab that was closed or reloaded no longer shows in the notebook as 'your other window' for up to a minute (5ccfc23)
+- A session on a node can no longer make the controller run commands: its bb git push, fetch and pull no longer run the repository's hooks or config there, a house rule's check runs on the node, and a project cloned without push rights is refused a push (0a0de59, e2cc37e, 8aad305)
+- A git command in a project no longer fails now and then with index.lock: File exists because the dashboard was reading the tree's status at the same moment (2fae947)
 
 ### Removed
 
