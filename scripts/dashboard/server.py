@@ -5754,13 +5754,13 @@ class Handler(BaseHTTPRequestHandler):
         """
         if self._refused("admin"):
             return None
-        act = field(req, "action")
-        if act == "save":
-            r = rules.replace(rules.GLOBAL, req.get("rules") or [])
-        elif act in ("enable", "disable"):
-            r = rules.set_disabled(field(req, "name"), act == "enable")
-        else:
+        if field(req, "action") != "save":
             return self._json({"error": "unknown action"}, 400)
+        # `disabled` only when the caller sent one: absent means leave the
+        # shipped rules as they are rather than switching them all back on.
+        off = req.get("disabled")
+        r = rules.save_global(req.get("rules") or [],
+                              off if isinstance(off, list) else None)
         if r.get("error"):
             return self._json(r, 400)
         return self._json({"rules": rules.globals_now()})

@@ -56,6 +56,7 @@ function renderSettingsInto(i){
         <div id="setResetBox"></div>
       </div>
     </div>
+    ${globalRulesSection()}
     <div class="row stack2">
       <div class="grow">
         <div class="name">Nodes</div>
@@ -67,6 +68,14 @@ function renderSettingsInto(i){
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wireSettingsSections(d.el);
+  const gr = d.el.querySelector("#setGlobalRules");
+  if (gr) gr.onclick = openGlobalRules;
+  // The count on the section's line, fetched once: it is the only thing here
+  // that is not already in the poll.
+  if (globalRules === null) loadGlobalRules().then(() => {
+    const st = d.el.querySelector("#setGlobalRules")?.closest(".actbar")?.querySelector(".state");
+    if (st && globalRules) st.textContent = `${globalRules.length} rule${globalRules.length === 1 ? "" : "s"}`;
+  });
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
   if (nd) nd.onclick = openNodesTab;
@@ -262,4 +271,131 @@ function wireIdleSection(el){
   };
   el.querySelector("#idleApply").onclick = apply;
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
+}
+
+// ---- global rules (R63) ------------------------------------------------
+//
+// The rules that apply to EVERY project, which is why they are here and not
+// on a project's Briefing tab: one reaches projects the person setting it may
+// not work on, so it is an administrator's. A session may not add one at all
+// and is told to say what it would add instead, the way it is told about a
+// package it cannot install.
+//
+// The shipped ones are read-only. An edit would be undone by the next image,
+// and a change nobody can see reverted is worse than no change, so the only
+// thing that can be done to one is turn it off. That rides the same Save as
+// the rest: nothing here takes effect until it is pressed.
+let globalRules = null;
+
+function globalRulesSection(){
+  const n = globalRules ? globalRules.length : null;
+  return `<div class="row stack2">
+      <div class="grow">
+        <div class="name">Global rules</div>
+        <div class="sub">House rules every project's sessions are handed, kept here rather than copied into each project.</div>
+        <div class="actbar">
+          <span class="state">${n === null ? "" : `${n} rule${n === 1 ? "" : "s"}`}</span>
+          <button type="button" id="setGlobalRules">Global rules</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadGlobalRules(){
+  try{
+    const r = await (await fetch("/api/global-rules")).json();
+    globalRules = Array.isArray(r.rules) ? r.rules : [];
+  }catch{ globalRules = []; }
+  return globalRules;
+}
+
+function globalRuleRow(r, i){
+  const id = `gr${i}`;
+  if (r.builtin) {
+    return `<div class="rulerow" data-builtin="${esc(r.name)}">
+      <label class="lbl"><input type="checkbox" class="grOn"${r.disabled ? "" : " checked"}>
+        <b>${esc(r.name)}</b> <span class="dim">ships with BuilderBot</span></label>
+      <div class="sub">${esc(r.text)}</div>
+    </div>`;
+  }
+  return `<div class="rulerow" data-own="1">
+      <label class="lbl">Name<input class="grName" value="${esc(r.name || "")}" placeholder="short-name"></label>
+      <label class="lbl">The rule<textarea class="grText" rows="3">${esc(r.text || "")}</textarea></label>
+      <label class="lbl">Files it covers<input class="grPaths" value="${esc((r.paths || []).join(", "))}" placeholder="scripts/agent, docs"></label>
+      <label class="lbl">Words that raise it<input class="grWords" value="${esc((r.words || []).join(", "))}" placeholder="agent, protocol"></label>
+      <div class="actbar"><button type="button" class="danger grDrop" data-i="${id}">Remove</button></div>
+    </div>`;
+}
+
+function drawGlobalRules(){
+  const body = document.getElementById("grBody");
+  if (!body) return;
+  const rs = globalRules || [];
+  const shipped = rs.filter(r => r.builtin);
+  const own = rs.filter(r => !r.builtin);
+  body.innerHTML = `
+    <div class="sub">Every session on every project is handed these. A session cannot add one.</div>
+    ${shipped.length ? `<h4>Shipped with BuilderBot</h4>${shipped.map(globalRuleRow).join("")}` : ""}
+    <h4>Yours</h4>
+    <div id="grOwn">${own.length ? own.map(globalRuleRow).join("") : `<div class="sub">none yet</div>`}</div>
+    <div class="actbar">
+      <span class="state" id="grState"></span>
+      <button type="button" id="grAdd">Add a rule</button>
+      <button type="button" id="grSave">Save</button>
+      <button type="button" id="grClose">Close</button>
+    </div>`;
+  wireGlobalRules();
+}
+
+function wireGlobalRules(){
+  const body = document.getElementById("grBody");
+  const modal = document.getElementById("grmodal");
+  if (!body || !modal) return;
+  body.querySelectorAll(".grDrop").forEach(b => {
+    b.onclick = () => { b.closest(".rulerow").remove(); };
+  });
+  const add = body.querySelector("#grAdd");
+  if (add) add.onclick = () => {
+    const own = body.querySelector("#grOwn");
+    const none = own.querySelector(".sub");
+    if (none) none.remove();
+    own.insertAdjacentHTML("beforeend", globalRuleRow({}, Date.now()));
+    wireGlobalRules();
+  };
+  const close = body.querySelector("#grClose");
+  if (close) close.onclick = () => { modal.hidden = true; };
+  const save = body.querySelector("#grSave");
+  if (save) save.onclick = async () => {
+    const rules = [...body.querySelectorAll('.rulerow[data-own="1"]')].map(row => ({
+      name: row.querySelector(".grName").value.trim(),
+      text: row.querySelector(".grText").value.trim(),
+      paths: row.querySelector(".grPaths").value,
+      words: row.querySelector(".grWords").value,
+    })).filter(r => r.text);
+    const disabled = [...body.querySelectorAll(".rulerow[data-builtin]")]
+      .filter(row => !row.querySelector(".grOn").checked)
+      .map(row => row.dataset.builtin);
+    busy(save, "Saving");
+    try{
+      const r = await postJSON("/api/global-rules", {action: "save", rules, disabled});
+      if (r.error) return notify(r.error, true);
+      globalRules = r.rules || [];
+      notify("global rules saved: every project's next session is handed them");
+      drawGlobalRules();
+      refresh();
+    }catch(e){ notify("global rules: " + e, true); }
+    finally{ if (save.isConnected) unbusy(save, "Save"); }
+  };
+}
+
+async function openGlobalRules(){
+  const modal = document.getElementById("grmodal");
+  if (!modal) return;
+  modal.hidden = false;
+  // The backdrop closes it, like every other dialog on the page.
+  modal.onclick = e => { if (e.target === modal) modal.hidden = true; };
+  const body = document.getElementById("grBody");
+  if (body) body.innerHTML = `<div class="sub">loading…</div>`;
+  await loadGlobalRules();
+  drawGlobalRules();
 }

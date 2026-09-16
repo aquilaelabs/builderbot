@@ -165,4 +165,35 @@ await page.waitForSelector('#rnmodal:not([hidden])');
 ok(!(await page.$('#rnGitName')), 'the project dialog no longer asks for one');
 await page.click('#rnCancel');
 
+// ---- global rules (R63): set here, handed to every project's sessions -----
+// The point of the feature is that there is no copy to drift, so the proof is
+// that a rule typed here comes back out of a PROJECT's preamble.
+{
+  await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector('#setGlobalRules', { timeout: 15000 });
+  await page.click('#setGlobalRules');
+  await page.waitForSelector('#grmodal:not([hidden]) #grAdd', { timeout: 15000 });
+  ok(true, 'Controller settings opens a Global rules dialog');
+
+  await page.click('#grAdd');
+  await page.waitForSelector('#grBody .rulerow[data-own="1"] .grName');
+  await page.$eval('#grBody .rulerow[data-own="1"] .grName', e => { e.value = 'no-secrets'; });
+  await page.$eval('#grBody .rulerow[data-own="1"] .grText',
+    e => { e.value = 'Never write credentials into a repository.'; });
+  await page.click('#grSave');
+  await page.waitForFunction(
+    () => !!document.querySelector('#grBody .rulerow[data-own="1"] .grName')?.value,
+    null, { timeout: 15000 });
+
+  const saved = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok((saved.rules || []).some(r => r.name === 'no-secrets'),
+     `the rule is stored once, on the controller (${(saved.rules || []).map(r => r.name).join(', ')})`);
+
+  const pre = await (await fetch(URL.replace(/\/$/, '') + '/api/preamble?project=alpha',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(/Never write credentials/.test(pre.text || '') && /\(global\)/.test(pre.text || ''),
+     'and a project\'s sessions are handed it, marked global, with nothing pushed to the project');
+}
+
 await done(browser);

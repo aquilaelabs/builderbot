@@ -398,24 +398,33 @@ def _builtin_names():
     return {r["name"] for r in builtins()}
 
 
-def set_disabled(name, on, by="you"):
-    """Turn a shipped global rule off, or back on. A built-in is read-only, so
-    this is the only thing that can be done to one."""
-    name = str(name or "").strip().lower()
-    if name not in _builtin_names():
-        return {"error": f"no rule called {name} ships with BuilderBot"}
+def save_global(rule_list, disabled=None, by="you"):
+    """The global rules as the dialog saves them: the operator's own list, and
+    which shipped ones are off, in one go.
+
+    One call rather than two because the dialog has one Save, and a built-in
+    turned off by a press that half-landed is the state nobody can explain.
+    `disabled` of None leaves the shipped ones as they are, so a caller that
+    only means to rewrite the list cannot silently switch them all back on.
+    """
+    r = replace(GLOBAL, rule_list)
+    if r.get("error"):
+        return r
+    if disabled is None:
+        return r
+    want = {str(n).strip().lower() for n in disabled} & _builtin_names()
     with _lock:
         d = load()
         p = _project(d, GLOBAL)
-        off = {str(n) for n in (p.get("disabled") or [])}
-        if on:
-            off.discard(name)
-        else:
-            off.add(name)
-        p["disabled"] = sorted(off)
-        _log(d, GLOBAL, by, {"act": "enable" if on else "disable", "name": name})
-        save(d)
-    return {"ok": True, "name": name, "disabled": not on}
+        was = {str(n) for n in (p.get("disabled") or [])}
+        if want != was:
+            for n in sorted(want - was):
+                _log(d, GLOBAL, by, {"act": "disable", "name": n})
+            for n in sorted(was - want):
+                _log(d, GLOBAL, by, {"act": "enable", "name": n})
+            p["disabled"] = sorted(want)
+            save(d)
+    return r
 
 
 def _mine(rs, name, by):
