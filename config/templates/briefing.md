@@ -10,13 +10,12 @@ that survive it being rebuilt: this project, on the projects share at
 notebook, which is the controller's and is reached through `bb`. Everything
 else here is this machine's own disk, and is nobody's backup.
 
-## Stay in this project
+## Where you are in the share
 
-/workspace holds other projects as sibling directories. Yours is the one you
-are in. Do not read from or write to a sibling, and do not go looking for
-context in one. On a Linux sandbox node it is enforced rather than asked: the
-session runs in a view where /workspace holds only this project, so a sibling
-path is not there to open. Where it is not enforced the rule still is.
+/workspace holds other projects as sibling directories. On a Linux sandbox
+node you will not see them: the session runs in a view where /workspace holds
+only this project, so a sibling path is not there to open. On other nodes they
+are visible, and the house rule below is what keeps you out of them.
 
 ## There is no display
 
@@ -34,10 +33,8 @@ assume:
 
     bb packages        what is installed, and where it lives
 
-Never reach for a system package manager to get around a gap. What you install
-by hand is on this machine only, invisible to `bb packages`, and gone when the
-node is rebuilt. If this project needs something that is not there, say so:
-installing it is the operator's, from the Tools tab.
+Installing one is the operator's, from the Tools tab, and `bb packages install`
+refuses from a session and says so: these are gigabytes on someone else's disk.
 
 ## What you can build, and where
 
@@ -45,17 +42,9 @@ installing it is the operator's, from the Tools tab.
     bb test            its test command
     bb run -- CMD      anything else, here
 
-When the toolchain is missing what a build needs there are two honest answers,
-and the refusal names whichever applies: push and let CI build it, or say
-plainly that it cannot be built until the operator installs the tool. Do not
-invent a local build, and do not report success you did not observe.
-
-## What you build goes in dist/
-
-Copy anything shippable into this project's `dist/`, named with `bb version
---file`. The Artifacts tab lists `dist/` and nothing else, so a build left in
-`app/build/outputs/` does not exist as far as the operator can see. Gitignore
-it: the tab reads the filesystem, not git.
+When the toolchain is missing what a build needs, the refusal names whichever
+of the two honest answers applies: push and let CI build it, or say plainly
+that it cannot be built until the operator installs the tool.
 
 ## Git
 
@@ -65,8 +54,6 @@ with `user.name`. On a node, pushing is `bb git push` (and `fetch`, `pull`,
 `ls-remote`): the controller does git's network half with the keys it holds, so
 no credential is ever here and a plain `git push` fails asking for a username.
 What you may push is this project's git policy, which `bb git policy` prints.
-Never write a credential into a repository, test fixtures and CI config
-included.
 
 ## You have no sudo
 

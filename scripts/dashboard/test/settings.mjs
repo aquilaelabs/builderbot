@@ -196,7 +196,14 @@ await page.click('#rnCancel');
   const count = await page.waitForFunction(
     () => document.querySelector('#setGlobalRules')?.closest('.actbar')?.querySelector('.state')?.textContent?.trim(),
     null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
-  ok(/^1 rule$/.test(count || ''), `the Settings section counts what was saved (${count})`);
+  // Built-ins count too: what the line says is how many rules reach a project,
+  // not how many the operator typed. Read from the API rather than hardcoded,
+  // so shipping one more built-in does not make this a lie.
+  const all = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  const n = (all.rules || []).length;
+  ok(count === `${n} rule${n === 1 ? '' : 's'}` && (all.rules || []).some(r => r.name === 'no-secrets'),
+     `the Settings section counts every global rule in effect, the one just saved included (${count})`);
 
   const saved = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
     { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();

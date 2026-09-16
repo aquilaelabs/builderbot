@@ -40,9 +40,10 @@ put('rules.json', { projects: {} });
 put('todos.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing'
-   && /Stay in this project/.test(p.text) && p.capped === false,
-   `a project with nothing set still gets the briefing and nothing else (${
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules'
+   && /Where you are in the share/.test(p.text)
+   && /\(global\)/.test(p.text) && p.capped === false,
+   `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
 
 // ---- the order, which is the operator's rules first -------------------------

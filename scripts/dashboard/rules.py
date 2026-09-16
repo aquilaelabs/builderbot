@@ -136,10 +136,41 @@ GLOBAL = "*"
 
 # The global rules BuilderBot itself ships. Read-only on purpose: the next
 # image would bring an edited one back, and a change nobody can see reverted
-# is worse than no change, so the operator turns one off instead. Empty until
-# the briefing moves here (R63 step 2), because until then every session is
-# already handed the same words in its CLAUDE.md block and would pay twice.
-BUILTIN = []
+# is worse than no change, so the operator turns one off instead.
+#
+# THE LINE BETWEEN THESE AND THE BRIEFING, which is the question worth being
+# able to answer: the briefing states what is TRUE of this machine (there is
+# no display, the toolchain is the store, you have no sudo), and none of it
+# has an on and an off. A rule is an OBLIGATION, so it is a thing the operator
+# might scope differently, disagree with, or want to see and turn off, and it
+# belongs where they can. Nothing is said in both places, because a session
+# that reads it twice pays twice and the two copies drift.
+BUILTIN = [
+    {"name": "stay-in-project",
+     "text": "Work in this project only. /workspace holds other projects as"
+             " sibling directories: do not read from one, write to one, or go"
+             " looking for context in one. If something seems to be missing,"
+             " ask rather than going to find it next door."},
+    {"name": "ask-do-not-install",
+     "text": "Never install a tool with a system package manager to get around"
+             " a gap. What you install by hand is on that machine only,"
+             " invisible to `bb packages`, and gone when the node is rebuilt."
+             " Say what is missing and let the operator install it."},
+    {"name": "no-credentials-in-the-repo",
+     "text": "Never write a credential into a repository: not into test"
+             " fixtures, not into CI config, not into an .env file that is not"
+             " gitignored."},
+    {"name": "say-what-you-observed",
+     "text": "Report what happened rather than what should have happened. If"
+             " tests failed, say so and show the output; if a step was skipped,"
+             " say that. Do not invent a local build to route around a refusal,"
+             " and do not report success you did not observe."},
+    {"name": "ship-to-dist",
+     "text": "Anything shippable a build produces goes in the project's dist/,"
+             " named with `bb version --file`, and gitignored. The Artifacts"
+             " tab lists dist/ and nothing else, so a build left where the tool"
+             " put it does not exist as far as the operator can see."},
+]
 
 # What the standing block costs before it is worth saying out loud on the tab.
 # Not a refusal: the operator decides what their sessions are worth paying
