@@ -3271,14 +3271,30 @@ the list. That file is passed with
 widen its own boundary by editing files in the repo it is working on. Only the
 root-owned managed policy file outranks it.
 
-**This is a guardrail, not a sandbox.** It stops a session wandering into the
-wrong tree by mistake, which is the common failure. Note also that it only
-applies to sessions the dashboard starts: run `claude` yourself in a shell tab
-and there is no settings file, leaving the instruction in the project's
-CLAUDE.md as the only thing asking it to stay put. It does not contain one
-that goes looking: Bash still reaches the whole filesystem, and no in-process
-permission system changes that. If you need a hard boundary, do not mount the
-other projects into the same container.
+**On its own this is a guardrail, not a sandbox.** It stops a session wandering
+into the wrong tree by mistake, which is the common failure, and Bash is not
+under it.
+
+**The hard boundary is the session's view (roadmap R35).** Every session on a
+node runs as one account and the projects share is mounted whole, so file
+permissions cannot keep projects apart. On a Linux node provisioned as a
+sandbox, a project's Claude session and its project shells start inside a
+mount, PID and IPC namespace built by `nodes/bb-session`, a root helper that
+is the session account's one sudo rule. Inside it `/workspace` holds only the
+project, its worktrees and the account's Claude share (other projects'
+transcripts are empty); the account's home is the only home and its
+BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
+`/dev/shm` are the session's own; the agent's stores keep only the
+emulator's logs and the project's own CI logs and artifacts; and the
+process list and tmux server of other sessions are out of reach. The helper
+then drops to the session account with `no_new_privs`, so nothing inside
+can gain privilege again. The agent installs the helper, its layout file and
+the sudo rule from the bundle, and reports on the node's Sessions section
+whether a view can be built and why not. A Mac, a guest machine or a
+container node, whose agent is not root, cannot, and says so there. The
+view is not a VM: the network and the kernel are shared, so a session can
+still reach another project's dev instance through its published ports.
+A workspace-root shell, which needs the `terminal` right, is not confined.
 
 ### Push rights
 
@@ -3924,6 +3940,7 @@ scripts/
     test/                        its Playwright suite: `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes

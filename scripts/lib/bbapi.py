@@ -47,12 +47,12 @@ def keep_token(tok):
         home = os.environ.get("HOME", "")
         d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
             or f"/tmp/bb-scope-{os.getuid()}"
-        d = os.path.join(d, "builderbot")
+        d = os.path.join(d, "builderbot", "project", project)
         os.makedirs(d, mode=0o700, exist_ok=True)
-        tmp = os.path.join(d, f"token-{project}.new")
+        tmp = os.path.join(d, "token.new")
         with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
             f.write(tok + "\n")
-        os.replace(tmp, os.path.join(d, f"token-{project}"))
+        os.replace(tmp, os.path.join(d, "token"))
     except (OSError, ValueError, UnicodeDecodeError):
         pass
 

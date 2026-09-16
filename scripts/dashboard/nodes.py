@@ -1052,6 +1052,12 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # Whether a session there sees only its own project (R35), in the
+    # helper's own answer, and why not. An agent from before it reports
+    # nothing, which the row says as unknown rather than as a no.
+    iso = c.get("isolation")
+    if isinstance(iso, dict):
+        out["isolation"] = {"sessions": bool(iso.get("sessions")), "why": str(iso.get("why") or "")[:200]}
     # Which held recipes need system packages the machine lacks (roadmap
     # R51): the family and, per recipe, the package names, both bounded.
     sd = c.get("sysdeps") if isinstance(c.get("sysdeps"), dict) else {}

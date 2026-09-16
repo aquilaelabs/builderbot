@@ -179,7 +179,7 @@ PY
 # The home volume instead: container-local, survives a restart, and
 # regenerated on every boot and every install anyway.
 sdk_env_file() {
-    printf '%s/.cache/builderbot/sdk-env.sh' "${BUILDER_HOME:-$HOME}"
+    printf '%s/.cache/builderbot/machine/sdk-env.sh' "${BUILDER_HOME:-$HOME}"
 }
 
 sdk_write_env() {

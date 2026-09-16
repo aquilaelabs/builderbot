@@ -65,7 +65,7 @@ def token(project):
     d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
         or f"/tmp/bb-scope-{os.getuid()}"
     try:
-        with open(os.path.join(d, "builderbot", f"token-{project}")) as f:
+        with open(os.path.join(d, "builderbot", "project", project, "token")) as f:
             t = f.read().strip() or t
     except OSError:
         pass
@@ -76,7 +76,7 @@ def stamp_file(project):
     home = os.environ.get("HOME", "")
     d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
         or f"/tmp/bb-scope-{os.getuid()}"
-    return os.path.join(d, "builderbot", f"gate-{project}")
+    return os.path.join(d, "builderbot", "project", project, "gate")
 
 
 def controller_answers(project):

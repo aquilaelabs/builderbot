@@ -108,11 +108,19 @@ path, via a settings file passed on the command line. One of them coming back
 denied for a path outside this project is that rule, working as intended, not
 a bug to route around with Bash.
 
-Bash is **not** covered by it, and that is worth knowing rather than
-discovering: `cat ../other-project/src/main.kt` works. The settings file is a
-guardrail against wandering into the wrong tree by mistake, not a sandbox. The
-rule above is the actual boundary; the file tools just make it harder to cross
-by accident.
+**On a Linux node provisioned as a sandbox, Bash is walled in as well.** The
+session runs in a view of the machine that holds only this project:
+`/workspace` shows this project, its worktrees and your account's Claude
+share; `/tmp` is the session's own; the process list holds only its own
+processes; and the other projects' tokens, transcripts, test and CI logs are
+not there. `ls ../other-project` finds nothing, and that is the wall, not a
+missing mount. The shared tmux server is out of reach from inside it too.
+The node's row on the Nodes tab says whether its sessions are isolated.
+
+**On a node that cannot build that view** (a Mac, somebody's own machine, a
+container node), Bash is **not** covered: `cat ../other-project/src/main.kt`
+works, and the settings file is a guardrail against wandering into the wrong
+tree by mistake, not a sandbox. The rule above is the boundary either way.
 
 ## There is no display
 

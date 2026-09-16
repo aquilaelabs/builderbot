@@ -164,7 +164,57 @@ walls_around() {
         | { grep -vxF "$here" || true; }
 }
 
-# claude_scope PROJECT — write a settings file that walls this session into its
+# cache_project_dir PROJECT - this account's BuilderBot cache folder for one
+# project, made if it is missing: its launcher, its scope, its token and its
+# session's environment. A folder per project, so that a session's view can
+# keep its own and leave every other project's out (R35).
+cache_project_dir() {
+    local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/project/$1"
+    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)/project/$1"; mkdir -p "$dir"; }
+    chmod 700 "$dir" 2>/dev/null || true
+    printf '%s' "$dir"
+}
+
+# THE SESSION'S VIEW (R35). Every session on a node runs as one account and
+# the projects share is mounted whole, so the scope file below is all that
+# stands between a session and another project, and Bash is not under it.
+# Where the node can build one, a project's session runs inside a view of the
+# machine that holds only that project: bb-session, root, and the one command
+# the session account may run through sudo. The agent installs both.
+SESSION_BIN="${BB_SESSION_BIN:-/usr/local/sbin/bb-session}"
+
+# isolating - whether this node builds a session's view. Asked of the helper
+# through sudo, so it answers from what root set up and from nothing a
+# session can write. A node without it (a Mac, a guest, a container node)
+# runs sessions as it always has, and its row on the Nodes tab says so.
+isolating() {
+    on_node && [ -x "$SESSION_BIN" ] && sudo -n "$SESSION_BIN" check >/dev/null 2>&1
+}
+
+# in_view PROJECT DIR [CMD...] - set RUN to what the pane runs: CMD as it is,
+# or inside the project's view when this node builds one (a login shell when
+# CMD is empty). The session's environment goes into a file in the project's
+# own cache folder, which the helper reads only after dropping to the session
+# account. A view that cannot be planned for this session is a refusal, never
+# a session that quietly sees every project.
+in_view() {
+    local proj="$1" dir="$2" envf why
+    shift 2
+    RUN=("$@")
+    isolating || return 0
+    [ $# -gt 0 ] || set -- "${SHELL:-/bin/bash}" -l
+    envf="$(cache_project_dir "$proj")/session.env"
+    ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
+        || bad "Could not write this session's environment to $envf, so its view cannot start."
+    why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
+               --cwd "$dir" 2>&1 >/dev/null)" \
+        || bad "This node keeps each session to its own project, and could not for this one:" "$why"
+    RUN=(sudo -n "$SESSION_BIN" enter --project "$proj" --account "${account:-}" --home "$HOME"
+         --cwd "$dir" --env "$envf" -- "$@")
+}
+
+# claude_scope PROJECT - write a settings file that walls this session into its
 # own directory, and echo the path.
 #
 # Passed with --settings, which ranks as a command-line argument: above the
@@ -183,10 +233,8 @@ claude_scope() {
     # because it is this user's, not world-writable /tmp.
     # A per-uid directory rather than a shared /tmp path when HOME is unset,
     # so this never writes somewhere another user could have prepared.
-    dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot"
-    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
-    out="$dir/claude-scope-${proj}.json"
+    dir="$(cache_project_dir "$proj")"
+    out="$dir/claude-scope.json"
 
     # Read for reading, Edit for every tool that writes. Two eras of Claude
     # Code semantics meet here, and both left a mark. Originally a rule named
@@ -356,10 +404,8 @@ PY
 
     local dir out tmp base_resumes=0 a
     for a in "$@"; do [ "$a" = "--resume" ] && base_resumes=1; done
-    dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot"
-    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
-    out="$dir/claude-run-${proj}.sh"
+    dir="$(cache_project_dir "$proj")"
+    out="$dir/claude-run.sh"
     tmp="$out.new"
     # %q so the command survives being written down and read back as shell —
     # the system prompt is somebody's prose, with quotes and newlines in it.
@@ -406,8 +452,8 @@ PY
         # touch. Same directory and same account as the launcher, which holds
         # the token too, so it is no wider a secret than it already was.
         if [ -n "$tok" ]; then
-            ( umask 077; printf '%s\n' "$tok" > "$dir/token-${proj}.new" ) 2>/dev/null \
-                && mv -f "$dir/token-${proj}.new" "$dir/token-${proj}" 2>/dev/null || true
+            ( umask 077; printf '%s\n' "$tok" > "$dir/token.new" ) 2>/dev/null \
+                && mv -f "$dir/token.new" "$dir/token" 2>/dev/null || true
         fi
         printf 'extra=()\n'
         # The file where the dashboard keeps them, when it is here; on a node
@@ -669,7 +715,8 @@ case "$target" in
         need_author "a shell"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        start "$(sess "shell-${proj}-${num}")" "$dir"
+        in_view "$proj" "$dir"
+        start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
     claude:*)
@@ -943,7 +990,8 @@ case "$target" in
         if launcher="$(claude_launcher "$proj" \
                           "$HOME/.claude/projects/${dir//\//-}" \
                           "${cmd[@]}" "${prompt[@]}")"; then
-            start "$(sess "claude-${proj}")" "$dir" "$launcher"
+            in_view "$proj" "$dir" "$launcher"
+            start "$(sess "claude-${proj}")" "$dir" "${RUN[@]}"
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
@@ -954,7 +1002,8 @@ case "$target" in
             echo "and on claude's own model rather than the one set for it." >&2
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
-            start "$(sess "claude-${proj}")" "$dir" "${cmd[@]}"
+            in_view "$proj" "$dir" "${cmd[@]}"
+            start "$(sess "claude-${proj}")" "$dir" "${RUN[@]}"
         fi
         ;;
     shell:*)
@@ -963,7 +1012,8 @@ case "$target" in
         git_identity "$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        start "$(sess "shell-${proj}")" "$dir"
+        in_view "$proj" "$dir"
+        start "$(sess "shell-${proj}")" "$dir" "${RUN[@]}"
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with

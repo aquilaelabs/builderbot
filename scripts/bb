@@ -4135,7 +4135,7 @@ bb_token_dead() {
 bb_token_now() {
     local t="${BB_TOKEN:-}"
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/token-${BB_PROJECT:-}"
+    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/project/${BB_PROJECT:-}/token"
     local ft=""
     [ -r "$f" ] && ft="$(cat "$f" 2>/dev/null)"
     # The later-expiring of the two. The file used to be read only once the

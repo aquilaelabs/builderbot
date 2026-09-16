@@ -226,7 +226,7 @@ ok(/nothing changed here that a rule/.test(bb('check')),
   ok(stop({ stop_hook_active: true }) === '',
      '...but lets a stop through that a hook already refused once, so it never loops');
   bb('edit', 'design', '--check', 'test -d .git');
-  ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/checked-alpha`),
+  ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/project/alpha/checked`),
      'a passing check lets the stop go and stamps the tree');
   bb('edit', 'design', '--check', 'false');
   ok(stop({ stop_hook_active: false }) === '',

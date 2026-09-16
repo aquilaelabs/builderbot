@@ -259,6 +259,9 @@ def provenance(project, rel):
 # because a node has no /config for them to read; the verbs that need them
 # are relayed back here (server._bb_relay).
 BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json", "nodes/provision-linux.sh",
+                # The root helper that builds a session's view, which the
+                # agent installs from here on a sandbox node (R35).
+                "nodes/bb-session",
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
                 "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
                 # The gate, and the template it compares a project's

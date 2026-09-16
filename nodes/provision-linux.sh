@@ -1626,6 +1626,9 @@ cmd_uninstall() {
         esac
     done
     say "removing BuilderBot's files"
+    # The session account's sudo rule first: it is the one grant here that
+    # reaches root, and it must not outlive the helper it names (R35).
+    rm -f /etc/sudoers.d/builderbot-session /etc/bb-session.conf /usr/local/sbin/bb-session
     rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
     # ttyd only when the provisioner fetched it: a package's copy is the distribution's
     if [ -x /usr/local/bin/ttyd ]; then

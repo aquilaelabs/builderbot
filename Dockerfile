@@ -279,6 +279,9 @@ COPY nodes/unraid-vm.xml /opt/builderbot/nodes/unraid-vm.xml
 COPY nodes/provision-linux.sh /opt/builderbot/nodes/provision-linux.sh
 # ...and the Mac's, which the Enroll dialog fetches from here the same way.
 COPY nodes/provision-macos.sh /opt/builderbot/nodes/provision-macos.sh
+# The root helper that builds a session's view, in the bundle a node fetches;
+# its agent installs it (R35).
+COPY nodes/bb-session /opt/builderbot/nodes/bb-session
 COPY nodes/vm/ /opt/builderbot/nodes/vm/
 # The changelog, for the welcome panel: shown once per image update, so it
 # has to travel with the image it describes. Two levels above server.py,
