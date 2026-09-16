@@ -175,11 +175,9 @@ def unsaved(project):
 
 
 def _kinds(got):
-    """Normalize a stored flag. It used to be one boolean for the whole
-    project, from before the message said which half had moved."""
-    if isinstance(got, dict):
-        return {k: bool(got.get(k)) for k in KINDS}
-    return {"todo": bool(got), "memory": False}
+    """The stored flags, one per half, shape-checked."""
+    got = got if isinstance(got, dict) else {}
+    return {k: bool(got.get(k)) for k in KINDS}
 
 
 def _touch(d, project, kind="todo", on=True):
