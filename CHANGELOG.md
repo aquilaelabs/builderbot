@@ -164,6 +164,10 @@
 - A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
 - The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running (bddf3bd)
 
+### Removed
+
+- The Docker manager's Migrate button is gone: an instance made by this version is never under an older name (b36e689)
+
 ## 0.5.0: 2026-09-10
 
 - The Artifacts tab now shows each product's version, who may move it, and this changelog (5a7b49c)
