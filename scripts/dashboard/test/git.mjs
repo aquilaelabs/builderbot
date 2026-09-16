@@ -120,6 +120,26 @@ await page.waitForFunction(sel => /Feature work/.test(document.querySelector(sel
                            `${NB} #gitDetail`, { timeout: 10000 });
 ok(await page.$eval(`${NB} #gitDetail`, e => !!e.querySelector('pre.diff .d-add')),
    '...with its diff, and picking another swaps it');
+// The detail sits under the whole history, so on a short window a click has
+// to take the page down to it rather than leave the change below the fold.
+await page.setViewportSize({ width: 1280, height: 360 });
+await page.click(`${NB} .grow[data-sha="${merge.sha}"]`);
+const landed = await page.waitForFunction(sel => {
+  const d = document.querySelector(sel);
+  if (!d?.querySelector('.gcommit') || !/Merge feature/.test(d.textContent)) return false;
+  let p = d.parentElement;
+  while (p && !(p.scrollHeight > p.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(p).overflowY))) p = p.parentElement;
+  // At the top of the pane that scrolls, or as far down as the pane goes.
+  return !!p && (Math.abs(d.getBoundingClientRect().top - p.getBoundingClientRect().top) < 24
+                 || p.scrollTop >= p.scrollHeight - p.clientHeight - 2);
+}, `${NB} #gitDetail`, { timeout: 5000 }).then(() => true, () => false);
+const at = await page.$eval(`${NB} #gitDetail`, e => {
+  let p = e.parentElement;
+  while (p && !(p.scrollHeight > p.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(p).overflowY))) p = p.parentElement;
+  return p ? `${Math.round(e.getBoundingClientRect().top - p.getBoundingClientRect().top)}px below the pane's top` : 'no pane scrolls';
+});
+await page.setViewportSize({ width: 1280, height: 900 });
+ok(landed, `picking a commit scrolls the page down to its detail (${at}, in a 360px window)`);
 ok(await page.$eval(`${NB}`, e => [...e.querySelectorAll('.gbranch')].some(r => /claude\/tabmade/.test(r.textContent) && /tabmade's session/.test(r.textContent))
      && [...e.querySelectorAll('.gbranch')].some(r => /here/.test(r.textContent))),
    'Branches marks the one the tree is on and whose session a branch is');
@@ -532,9 +552,9 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   writeFileSync(`${B}/a.txt`, 'one\ntwo\nsix\n');
   await page.evaluate(() => getNotebook('beta').view('git'));
   await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] [data-gitaskfile]'), { timeout: 20000 });
-  // The second row: the first is still the pick from above, and a click on
-  // the picked row puts it away.
-  await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:nth-child(2)');
+  // A row that is not already picked: a click on the picked row puts it
+  // away, and which row that is depends on what the tests above committed.
+  await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:not(.on)');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitaskcommit]', { timeout: 10000 });
   const v = await page.$eval('.nb .nbview[data-view="git"]', el => ({
     file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('[data-gitaskcommit]'),
