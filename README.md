@@ -3886,6 +3886,8 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
+    claudemd.py                  a project's environment block: where it lives, what it should say, its window
+    names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     git.py                       the notebook's Git view: the repository read out, and its writes
@@ -3909,7 +3911,7 @@ scripts/
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
-    findings.py                  what the scanner used to say, so a finding that goes away leaves a trace
+    findings.py                  the scanner's reports read and attributed, and what they used to say
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
