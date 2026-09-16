@@ -3605,6 +3605,21 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": why}, 403)
         return True
 
+    def _not_project(self, name):
+        """True, with the 400 already written, when `name` is not a project
+        this account sees. The same shape as _refused: a guard that returns
+        a bool. Twenty-nine handlers each rebuilt the visible set and wrote
+        the same reply before this existed (R60)."""
+        if name and name in {p["name"] for p in project_list(self._who())}:
+            return False
+        self._json({"error": f"not a project: {name}" if name else "not a project"}, 400)
+        return True
+
+    def _result(self, r, bad=400):
+        """A module's {ok} or {error} answer as the reply: `bad` when it
+        carries an error, 200 otherwise."""
+        return self._json(r, bad if r.get("error") else 200)
+
     def _refused(self, action, project=None):
         """True — with the 403 already written — when this account may not.
 
@@ -4266,8 +4281,8 @@ class Handler(BaseHTTPRequestHandler):
             # as anything else.
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             what = q.get("what", [""])[0]
             try:
                 n = int(q.get("n", ["0"])[0])
@@ -4288,12 +4303,12 @@ class Handler(BaseHTTPRequestHandler):
                 f = forges.forge_of(at["host"]) if at else None
                 r["host"] = {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
                              "kind": (f or {}).get("kind", "")}
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             d = version._sub(name, q.get("component", [""])[0])
             if d is None:
                 return self._json({"error": "no such component"}, 400)
@@ -4305,14 +4320,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/version"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json(version_payload(name))
         if self.path.startswith("/api/artifacts"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             # `devapp` is the main instance, which is what the row shows;
             # `devapps` is every instance, which the manager reads. Both, so
             # the row keeps working while the manager grows around it.
@@ -4334,8 +4349,8 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
             rel = q.get("path", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             f = artifacts.resolve(name, rel)
             if f is None:
                 return self._json({"error": "no such artifact"}, 404)
@@ -4382,8 +4397,8 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if (self._who() or {}).get("session"):
                 return self._json({"error": "a session has the tree already"}, 403)
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             try:
                 got = artifacts.source_zip(name)
             except (OSError, subprocess.SubprocessError) as e:
@@ -4560,21 +4575,21 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/claude-now"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json({"model": claude_model_now(WORKSPACE / name)})
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             live = sessions_anywhere()
             return self._json({"project": name} | self._todo_state(name, live))
         if self.path.startswith("/api/rules"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json(rules.payload(name))
         if self.path.startswith("/api/preamble"):
             # What a session started here is handed, exactly: the Briefing tab
@@ -4584,29 +4599,29 @@ class Handler(BaseHTTPRequestHandler):
             # bugs, already on the three tabs beside it.
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json(preamble.payload(name))
         if self.path.startswith("/api/codebase"):
             # What git tracks in the project, by language: the Briefing
             # tab's first section. Tracked files only, cached by commit.
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json(codebase.payload(name))
         if self.path.startswith("/api/pending"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             return self._json(pending.payload(name))
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             # Against what this account may see, like every read above it —
             # this one passed the name straight through (bug #68).
-            if q.get("project", [""])[0] not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(q.get("project", [""])[0]):
+                return
             got = memory.payload(q.get("project", [""])[0], sessions_anywhere(),
                                  home=home_for(users.uid_of(self._who())))
             return self._json(got if got is not None
@@ -4614,14 +4629,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/tests"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": f"not a project: {name}"}, 400)
+            if self._not_project(name):
+                return
             return self._json(testreg.payload(name))
         if self.path.startswith("/api/bugs"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": f"not a project: {name}"}, 400)
+            if self._not_project(name):
+                return
             return self._json(bugs.payload(name))
         if self.path.startswith("/api/pubkeys"):
             # The shielded agent's public halves, for the New project dialog:
@@ -4821,8 +4836,8 @@ class Handler(BaseHTTPRequestHandler):
             if (self._who() or {}).get("session"):
                 return self._json({"error": "a project's settings are the operator's — "
                                             "say what should change in your reply"}, 403)
-            if name not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": "not a project"}, 400)
+            if self._not_project(name):
+                return
             if self._readonly(name):
                 return None
             # Everything else in this dialog is the project's own; the node is
@@ -4846,7 +4861,7 @@ class Handler(BaseHTTPRequestHandler):
             # running and there is nothing to interrupt.
             if not r.get("error") and req.get("restart"):
                 r |= end_claude(name)
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if path.startswith("/api/devapp"):
             return self._devapp(req)
         if path.startswith("/api/changelog"):
@@ -5049,7 +5064,7 @@ class Handler(BaseHTTPRequestHandler):
                                "why": got.get("why") or ""})
         else:
             return self._json({"error": "unknown action"}, 400)
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _jobs(self, req):
         """The Jobs tab's one verb. A queued job is ended; a running one is
@@ -5064,7 +5079,7 @@ class Handler(BaseHTTPRequestHandler):
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel(self._principal(), field(req, "id"))
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _claude_login(self, req=None):
         """This account's Claude identity, both directions (R47) — and no
@@ -5123,7 +5138,7 @@ class Handler(BaseHTTPRequestHandler):
                                req.get("plan") or "",
                                signed_in=bool(req.get("signed_in", True)))
         _auth.clear()
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24).
@@ -5506,7 +5521,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error"):
                 nodes.audit(auth["principal"], "artifact", j["id"],
                             {"path": r["path"], "sha256": r["sha256"]})
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if verb == "download":
             # The file itself. Any token gets it — the provisioner fetches
             # it with the enroll token before there is a node — and so does
@@ -5558,7 +5573,7 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.enroll(auth, req.get("census"), addr,
                              field(req, "version"), field(req, "digest"),
                              field(req, "user"))
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if auth["kind"] != "node":
             return self._json({"error": "an enrollment token enrolls, and "
                                         "nothing else"}, 403)
@@ -5575,7 +5590,7 @@ class Handler(BaseHTTPRequestHandler):
                 slot = only[0] if len(only) == 1 else ""
             r = mint_runner_token(kind, nid, slot, field(req, "runner_id"))
             nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if verb == "hello":
             r = nodes.hello(nid, req.get("census"), addr,
                             field(req, "version"), field(req, "digest"),
@@ -5608,7 +5623,7 @@ class Handler(BaseHTTPRequestHandler):
                                  req.get("outputs"))
         else:
             return self._json({"error": "not found"}, 404)
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
@@ -5678,8 +5693,7 @@ class Handler(BaseHTTPRequestHandler):
         r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
         _auth.clear()
-        return self._json(r | {"signin": signin.state()},
-                          400 if r.get("error") else 200)
+        return self._result(r | {"signin": signin.state()})
 
     def _signout(self, req):
         """Sign this account out of Claude, on every machine it is on.
@@ -5748,8 +5762,8 @@ class Handler(BaseHTTPRequestHandler):
         cannot name something that was never there.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
@@ -5903,7 +5917,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"no container {name}"}, 400)
             r = devapp.update_container(name, req.get("compose") or "",
                                         req.get("env") or "")
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act != "create":
             return self._json({"error": f"unknown action: {act}"}, 400)
         # A name that is also a project would collide in the store, which is
@@ -5921,11 +5935,11 @@ class Handler(BaseHTTPRequestHandler):
         # Shown under a project's notebook as well as here, when asked:
         # only a project this account can see, or nothing.
         under = field(req, "for")
-        if under and under not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {under}"}, 400)
+        if under and self._not_project(under):
+            return
         r = devapp.create_container(name, req.get("compose") or "",
                                     req.get("env") or "", field(req, "node"), under)
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _logs(self, req):
         """The log policy, and the two things that can be done to the pile.
@@ -5939,7 +5953,7 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         if act == "days":
             r = logs.set_days(req.get("days"))
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act == "clear":
             return self._json(logs.clear())
         return self._json({"error": f"unknown action: {act}"}, 400)
@@ -5950,7 +5964,7 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("admin"):
             return
         r = idle.set_minutes(req.get("minutes"))
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _devapp(self, req):
         """The dev-instance controls. Operator-only by construction — these
@@ -6016,7 +6030,7 @@ class Handler(BaseHTTPRequestHandler):
                     asker_uid=str(acct.get("uid") or ""),
                     asker_name=str(acct.get("name") or ""),
                     asker_admin=users.is_admin(acct))
-                return self._json(r, 400 if r.get("error") else 200)
+                return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(self._who())} \
                 and self._readonly(name):
@@ -6058,8 +6072,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"text": devapp.starter(name)})
         if act == "new":
             under = field(req, "for")
-            if under and under not in {p["name"] for p in project_list(self._who())}:
-                return self._json({"error": f"not a project: {under}"}, 400)
+            if under and self._not_project(under):
+                return
             r = devapp.create_instance(name, inst, field(req, "node"),
                                        "" if under == name else under)
             if not r.get("error") and field(req, "ref"):
@@ -6074,18 +6088,18 @@ class Handler(BaseHTTPRequestHandler):
                 # the env it needs instead of stopping at the gate and asking
                 # for it afterwards.
                 devapp.write_env(name, req["text"], r["instance"])
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if inst not in devapp.instances(name):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)
         if act == "remove":
             r = devapp.remove_instance(name, inst)
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act == "ref":
             # Which branch this instance builds from. `docker-write` above
             # has already had its say, so this is an administrator's like
             # every other thing that changes what a container IS.
             r = devapp.set_ref(name, inst, field(req, "ref"))
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act == "state":
             # The full picture for one instance — risks, problems, the parsed
             # compose — which overview() deliberately does not compute for
@@ -6140,8 +6154,8 @@ class Handler(BaseHTTPRequestHandler):
         policy and passes `by="claude"`.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         act = field(req, "action")
         if act == "bump":
             r = version.bump(name, field(req, "part"), by="operator", env=users.git_env(self._who()),
@@ -6182,7 +6196,7 @@ class Handler(BaseHTTPRequestHandler):
             # function counting commits.
             live = sessions_anywhere()
             r = version.ask(name, live, comp=field(req, "component") or "")
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
             if r.get("error"):
@@ -6195,8 +6209,8 @@ class Handler(BaseHTTPRequestHandler):
         one. The path is resolved against dist/ and unpacked before anything
         runs — push_dir never sees a caller-supplied path."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
@@ -6349,8 +6363,8 @@ class Handler(BaseHTTPRequestHandler):
         action there is — the entries are made by findings_counts noticing the
         report changed."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         if field(req, "action") != "history":
             return self._json({"error": "the findings log is read-only"}, 400)
         return self._json({"history": findings.history(
@@ -6375,8 +6389,8 @@ class Handler(BaseHTTPRequestHandler):
         person signed in to this dashboard with the project on their list.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         if self._refused("rules", name) or self._readonly(name):
             return None
         if (bad := locked_out(name)):
@@ -6399,8 +6413,8 @@ class Handler(BaseHTTPRequestHandler):
         now stands, so the modal redraws from one answer.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         if self._refused("pending", name) or self._readonly(name):
             return None
         act = field(req, "action")
@@ -6428,8 +6442,8 @@ class Handler(BaseHTTPRequestHandler):
         this is, which is where reading a runner's output belongs anyway.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         if self._readonly(name):
             return None
         if (bad := locked_out(name)):
@@ -6493,8 +6507,8 @@ class Handler(BaseHTTPRequestHandler):
         cleaner; this only picks the action and answers with the fresh list,
         so the tab never has to guess what the write left behind."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._not_project(name):
+            return
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
@@ -6692,7 +6706,7 @@ class Handler(BaseHTTPRequestHandler):
         if act == "password":
             r = users.change_password(me["name"], str(req.get("current") or ""),
                                       str(req.get("password") or ""))
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if act == "save":
             r = users.profile_set(me["name"], req.get("profile") or {})
             if r.get("error"):
@@ -6755,7 +6769,7 @@ class Handler(BaseHTTPRequestHandler):
         if action == "ask":
             live = sessions_anywhere()
             r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         env = {**projects._git_env(), **users.git_env(me)}
         env.pop("DASHBOARD_AUTH", None)
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
@@ -6764,7 +6778,7 @@ class Handler(BaseHTTPRequestHandler):
             nodes.audit(self._principal(), "git-" + action, name,
                         {k: v for k, v in (req.get("args") or {}).items()
                          if k in ("name", "sha", "path", "at")})
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _upload_archive(self):
         """Spool an archive for the create dialog; {id, name, size, kind}.
@@ -6779,7 +6793,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
         q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         r = projects.spool_archive(self.rfile, n, (q.get("name") or [""])[0])
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _link(self, req):
         """Link an existing local repo to an empty repo on a host. projects.py.
@@ -6890,7 +6904,7 @@ class Handler(BaseHTTPRequestHandler):
             r = users.remove(name)
         else:
             return self._json({"error": "unknown action"}, 400)
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._result(r)
 
     def _packages(self, req):
         """Queue installs or removals of the packages the Tools card offers.
@@ -6922,7 +6936,7 @@ class Handler(BaseHTTPRequestHandler):
                 # held one when none are named.
                 names = [n for n in (req.get("names") or []) if n in known][:8]
                 r = packages.node_job(self._principal(), nid, action, names)
-                return self._json(r, 400 if r.get("error") else 200)
+                return self._result(r)
             # ...or an android system image. Same rule as the local endpoint:
             # what reaches a command line is a string this server handed out —
             # for an install, one of the ids the picker was drawn from; for a
@@ -6934,7 +6948,7 @@ class Handler(BaseHTTPRequestHandler):
             if not names:
                 return self._json({"error": "nothing selected"}, 400)
             r = packages.node_job(self._principal(), nid, action, names)
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if action == "abort":
             return self._json({"ok": packages.abort_job()})
         if action not in ("install", "remove", "update", "check"):
@@ -7097,8 +7111,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "`bb changelog add`, and corrects one with "
                                         "`edit`, `merge`, `split` or `rm`"}, 403)
         name = req.get("project", "")
-        if name not in {p["name"] for p in project_list(self._who())}:
-            return self._json({"error": "not a project"}, 400)
+        if self._not_project(name):
+            return
         if (bad := locked_out(name)):
             return self._json(bad, 409)
         d = version._sub(name, str(req.get("component") or ""))
@@ -7150,7 +7164,7 @@ class Handler(BaseHTTPRequestHandler):
                                 field(req, "stream") or "agent",
                                 req.get("lines") or 200,
                                 debug_on=bool(settings.get("debug_mode")))
-        return self._json(r, 403 if r.get("error") else 200)
+        return self._result(r, 403)
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.
@@ -7402,7 +7416,7 @@ class Handler(BaseHTTPRequestHandler):
                         and (not want_node or s["node_id"] == want_node)), None)
         if on_node and (want_node or session not in {s["name"] for s in tmux_sessions()}):
             r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
@@ -7433,7 +7447,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self._json({"error": f"unknown key: {key}"}, 400)
             r = nodes.session_tmux(on_node["node_id"], [op])
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         # Only sessions that currently exist — never an arbitrary -t argument.
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
@@ -7563,7 +7577,7 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.session_tmux(on_node["node_id"], [
                 {"session": real, "argv": ["send-keys", "-t", real, "-l", "--", text]},
                 {"session": real, "argv": ["send-keys", "-t", real, "Enter"]}])
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._result(r)
         r = run(["tmux", "send-keys", "-t", want, "-l", "--", text], timeout=10)
         if r["code"] != 0:
             return self._json({"error": r["out"].strip()[:200] or "send failed"}, 500)
@@ -7607,9 +7621,8 @@ class Handler(BaseHTTPRequestHandler):
                 ops.append({"session": real, "argv": ["send-keys", "-t", real, "-l", "--", line]})
                 ops.append({"session": real, "argv": ["send-keys", "-t", real, "Enter"]})
             r = nodes.session_tmux(on_node["node_id"], ops)
-            return self._json(r | {"sent": lines[0] if len(lines) == 1
-                                   else f"{len(lines)} commands"},
-                              400 if r.get("error") else 200)
+            return self._result(r | {"sent": lines[0] if len(lines) == 1
+                                     else f"{len(lines)} commands"})
         # Clear whatever was half-typed at the prompt first, or the command
         # arrives glued to the end of it. End-of-line then kill-line, which is
         # readline editing and not a signal: Ctrl-C would also interrupt
