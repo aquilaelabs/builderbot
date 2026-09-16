@@ -3864,6 +3864,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
   lib/sdk.sh                     the package manager: `bb packages`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions

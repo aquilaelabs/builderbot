@@ -32,6 +32,7 @@ import time
 # Beside this file. Imported up here rather than with the modules below,
 # because write_json is defined from it before any of those load.
 import statefile
+from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
 import shutil
 import urllib.parse
 import urllib.request
@@ -254,17 +255,11 @@ LOGIN_HTML = """<!doctype html>
 # The runner controls stay because the Runner card sends them, but they are
 # not repeated in the bb commands card (CARD_HIDDEN below).
 # The bb verbs a session on a node may run HERE through /api/v1/bb (roadmap
-# #24): the ones whose state is this container's. The same list bb keeps in
-# BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
-# is either refused on arrival or never sent.
-RELAY_VERBS = frozenset((
-    "roadmap", "bug", "bugs", "tests", "rules", "preamble", "history", "version",
-    "changelog", "work",
-    "findings", "findings-history", "catchup", "claude-md", "claudemd",
-    "settings", "nodes", "jobs", "ci-labels",
-    # git's network half (docs/nodes.md §20, rule 2): the keys are here and
-    # nowhere else, and the tree is the share, so the push runs here.
-    "git"))
+# #24): the ones whose state is this container's, git's network half among
+# them (docs/nodes.md §20: the keys are here and the tree is the share). One
+# list, in lib/relay-verbs, read by bb on the node and by this side, so a
+# verb cannot be added to one and not the other.
+RELAY_VERBS = frozenset((HERE.parent / "lib" / "relay-verbs").read_text().split())
 
 MACROS = {
     "status":           ["bb", "status"],
@@ -1325,7 +1320,7 @@ def compat_reap_once():
     holds = compat_holds()
     if not holds:
         return []
-    wanted = {tmux_name(f"claude-{p}"): why for p, why in holds.items()}
+    wanted = {claude_session(p): why for p, why in holds.items()}
     ended = []
     for s in tmux_sessions():
         why = wanted.get(tmux_base(s["name"]))
@@ -1363,7 +1358,6 @@ def _compat_loop():
 # dotfiles and `..`. Where a clone may come from is forges.URL, next door: the
 # same allowlist reasoning (`git clone` accepts transports a browser form must
 # never reach — `ext::` runs commands) applied to more than one host.
-PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # a repo name, near enough
 
 def build_claude_md(about, tree=None):
     """A new project's two files, as (block, notes).
@@ -2223,19 +2217,6 @@ def tmux_owner(name):
     return m.group(0)[:-1] if m else ""
 
 
-def tmux_name(s):
-    """What tmux will actually call a session asked for under this name.
-
-    tmux rewrites `.` and `:` in a session name to `_` (they are its target
-    syntax) and says nothing. A project called `example.com` therefore runs
-    as `claude-example_com`, and every place that derives the session name
-    from the project name — here, bb-tty, the page — has to make the same
-    substitution, or the kill / keys / macro paths look for a session that
-    was never called that.
-    """
-    return re.sub(r"[.:]", "_", s)
-
-
 def tmux_sessions():
     r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}"],
             timeout=10)
@@ -2361,7 +2342,7 @@ def end_claude(project):
     account's own and the Claude button resumes it. What it costs is the turn
     in flight, which is what the dialog asking about it says.
     """
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     if session not in {s["name"] for s in tmux_sessions()}:
         # On a node, through its agent, under the name that machine knows it
         # by — the same path the Sessions card's kill takes.
@@ -3883,7 +3864,7 @@ class Handler(BaseHTTPRequestHandler):
         store = users.load()["users"]
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         owner = users.owner_name()
-        want = tmux_name(f"claude-{project}")
+        want = claude_session(project)
         here = [s for s in node_tmux_sessions()
                 if s.get("node_id") == t["id"] and tmux_base(s["name"]) == want]
         whose = {s["name"]: tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
@@ -5855,7 +5836,7 @@ class Handler(BaseHTTPRequestHandler):
     def _todo_state(self, name, live):
         """What the panel needs after any change: the list, whether there is
         anywhere to send, and whether a session has been told about it yet."""
-        session = todo.tmux_name("claude-" + name)
+        session = todo.claude_session(name)
         return {"items": todo.items(name),
                 # What the poll compares against, handed back with every read
                 # AND every write — so this panel's own change never reads as
@@ -6759,7 +6740,7 @@ class Handler(BaseHTTPRequestHandler):
             action == "merge" and str(args_.get("into") or "")
             in ("", gitview.status(WORKSPACE / name).get("branch") or ""))
         if lands_here:
-            mine = tmux_name(f"claude-{name}")
+            mine = claude_session(name)
             if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
                    for s in tmux_sessions() + node_tmux_sessions()):
                 return self._json({"error": "the owner's Claude session is running in this "
@@ -7263,7 +7244,7 @@ class Handler(BaseHTTPRequestHandler):
         # A lock that waits for the current session to end is a lock that
         # did not take, and the button does not say that.
         killed = None
-        sess = tmux_name(f"claude-{name}")
+        sess = claude_session(name)
         if on and sess in {s["name"] for s in tmux_sessions()}:
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
@@ -7283,7 +7264,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      if tmux_base(s) == claude_session(name)
                       or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
@@ -7334,7 +7315,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      if tmux_base(s) == claude_session(name)
                       or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
@@ -7559,7 +7540,7 @@ class Handler(BaseHTTPRequestHandler):
         # is somebody else's conversation, and typing into it is the thing a
         # read-only console must not become.
         project = next((p["name"] for p in project_list(me)
-                        if users.tmux_prefix(me) + tmux_name(f"claude-{p['name']}")
+                        if users.tmux_prefix(me) + claude_session(p['name'])
                         == want), "")
         if not project or users.may(me, "claude", project):
             return self._json({"error": "not a Claude session of yours"}, 403)

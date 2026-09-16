@@ -27,6 +27,12 @@ The server imports this and hands it the helpers it needs; nothing here reaches
 back into the server. bb reads and writes the same file through `bb roadmap`, so a
 session can add an item without a browser.
 """
+import os as _os
+import sys as _sys
+# Beside this file, whichever way it was loaded: bb's own Python loads the
+# modules by path, where a plain sibling import finds nothing.
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from names import claude_session   # noqa: E402
 import copy
 import json
 import os
@@ -1146,7 +1152,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
     # that is up is already on them, and a step is just the step. What used to
     # sit here typed /model ahead of it, which stopped working the day claude
     # put a confirmation behind that command: the step went into the dialog.
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
@@ -1341,7 +1347,7 @@ def announce(project, kinds, sessions=()):
     line = changed_line(kinds if isinstance(kinds, dict) else {kinds: True})
     if not line or tell is None or tmux_name is None:
         return {"ok": True, "sent": False}
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     if session not in set(sessions):
         return {"ok": True, "sent": False}
     return tell(session, line, sessions)

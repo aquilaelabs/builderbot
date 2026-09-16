@@ -4202,7 +4202,9 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb packages` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap bug bugs tests rules preamble history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+# One list, lib/relay-verbs, read here and by the server: a verb added to
+# one side only was either refused on arrival or never sent.
+BB_RELAY_VERBS=" $(tr -s '[:space:]' ' ' < "$(dirname "$(readlink -f "$0")")/lib/relay-verbs") "
 
 # revalidate_tree — open the files a relayed verb may have written, so this
 # machine sees them.

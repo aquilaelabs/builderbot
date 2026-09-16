@@ -887,17 +887,13 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),
        'a cwd outside the project\'s trees is ignored: the verb runs in the project directory');
-    // The two lists — the verbs bb relays and the verbs the server accepts —
-    // are one contract kept in two files, and this is what keeps them one.
-    const bbList = (readFileSync(`${REPO}/scripts/bb`, 'utf8').match(/^BB_RELAY_VERBS=" (.*) "$/m) || [])[1]
-      ?.split(' ').filter(Boolean).sort();
-    const srvList = execFileSync('python3', ['-c', `
-import ast, re
-src = open(${JSON.stringify(REPO + '/scripts/dashboard/server.py')}).read()
-m = re.search(r'RELAY_VERBS = frozenset\\(\\((.*?)\\)\\)', src, re.S)
-print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding: 'utf8' }).trim().split(' ');
-    ok(bbList && bbList.join(' ') === srvList.join(' '),
-       `bb's BB_RELAY_VERBS and the server's RELAY_VERBS are the same list (${bbList?.length} verbs)`);
+    // The verbs bb relays and the verbs the server accepts are one contract
+    // in one file, lib/relay-verbs, and this is what keeps both reading it.
+    const verbs = readFileSync(`${REPO}/scripts/lib/relay-verbs`, 'utf8').split(/\s+/).filter(Boolean);
+    ok(verbs.includes('roadmap') && verbs.includes('git')
+       && /lib\/relay-verbs/.test(readFileSync(`${REPO}/scripts/bb`, 'utf8'))
+       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/server.py`, 'utf8')),
+       `bb and the server read the relay verbs from one file (${verbs.length} verbs)`);
     await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added R(\d+)/) || [])[1]), 'test'] });
   }
 

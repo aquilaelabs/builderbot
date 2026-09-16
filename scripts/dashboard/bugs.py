@@ -25,6 +25,12 @@ remove. So a delete takes the row and leaves the reason in the log.
 Same arrangement as todo.py: the server or the bb CLI hands over write_json
 and the state directory; nothing here reaches back.
 """
+import os as _os
+import sys as _sys
+# Beside this file, whichever way it was loaded: bb's own Python loads the
+# modules by path, where a plain sibling import finds nothing.
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from names import claude_session   # noqa: E402
 import json
 import os
 import sys
@@ -600,7 +606,7 @@ def send(project, bug_id, sessions=(), note=""):
                          " — reopen it first if it needs work again"}
     # No /model or /effort ahead of it: a project's pair are launch flags now,
     # so the session this reaches is already running on them.
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report — the area, how to "

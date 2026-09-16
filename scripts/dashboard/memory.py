@@ -18,6 +18,12 @@ directories actually under /workspace and a file name against the directory's
 own listing, so nothing the page posts can name a path that was not already
 there to be named.
 """
+import os as _os
+import sys as _sys
+# Beside this file, whichever way it was loaded: bb's own Python loads the
+# modules by path, where a plain sibling import finds nothing.
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from names import claude_session   # noqa: E402
 import hashlib
 import json
 import re
@@ -398,7 +404,7 @@ def payload(project, live=(), home=None):
         issues.append({"level": "warning",
                        "text": f"{len(found) - MAX_FILES} more files here are not shown"})
 
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     return {"project": project, "dir": str(d),
             "memories": memories, "issues": issues, "types": list(TYPES),
             # The index is regenerated from the lines the memories carry, so

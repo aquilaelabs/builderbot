@@ -76,6 +76,12 @@ Bash, the same honest limit the sibling-project deny list has. What actually
 makes a bad bump recoverable is that VERSION is committed: every move is in
 `git log` with a date and a message saying who made it.
 """
+import os as _os
+import sys as _sys
+# Beside this file, whichever way it was loaded: bb's own Python loads the
+# modules by path, where a plain sibling import finds nothing.
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from names import claude_session   # noqa: E402
 import json
 import os
 import re
@@ -1121,7 +1127,7 @@ def ask(project, sessions=(), comp=""):
                 f"CLAUDE.md — propose and ask, do not apply.")
     # No switch ahead of it: a project's model and effort are launch flags now,
     # so the session this reaches is already running on them.
-    session = tmux_name("claude-" + project)
+    session = claude_session(project)
     r = tell(session, line, sessions)
     if r.get("error"):
         return r

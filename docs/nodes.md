@@ -1732,8 +1732,8 @@ above, in order:
    token carries the words (`roadmap add …`, `bug show 3`, `version --file`),
    the controller runs its own bb in that project's tree and returns what it
    printed. One implementation of every verb, kept where the state is;
-   `RELAY_VERBS` (server.py) and `BB_RELAY_VERBS` (bb) are the one list, and
-   a test holds them equal. `sdk`, `emu`, `run`, `build`, `test` are NOT
+   the verbs that relay are one list in `scripts/lib/relay-verbs`, read by
+   bb on the node and by the server, and a test holds both to it. `sdk`, `emu`, `run`, `build`, `test` are NOT
    relayed; they answer for the machine the session is on, which is the
    point. The token's scope is the project; a session's credential is the
    same scoped token it has always had (bug #16), now with a hop.

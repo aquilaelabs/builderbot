@@ -45,6 +45,11 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+import sys
+# Beside this file, whichever way it was loaded: bb's own Python and the
+# doctor's probe load this module by path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import names   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 MIGRATIONS = HERE / "migrations"
@@ -641,7 +646,7 @@ def node_update(principal, node_id, fields):
         name = str(fields["name"]).strip()[:60]
         if n["kind"] == "local":
             return {"error": "this container is not a node to rename"}
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        if not names.PROJECT_NAME.fullmatch(name):
             return {"error": "a node name is letters, digits, dots, dashes and underscores, "
                              "starting with a letter or digit"}
         if any(o["id"] != node_id and o["state"] != "retired"
