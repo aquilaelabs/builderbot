@@ -1897,101 +1897,6 @@ def end_claude(project):
     return {"ended": True}
 
 
-# The root-only helper that keeps each node's runner token and mints from
-# it: the builder account's one sudo rule (Dockerfile). Nothing here ever
-# sees a token: store hands one in on stdin, every other verb prints a
-# derived answer, and --check says only that one is there and for which URL.
-RUNNER_HELPER = "/opt/builderbot/scripts/mint-runner-token"
-
-
-def _helper_why(r):
-    why = (r["out"].strip().splitlines() or ["the helper printed nothing"])[-1]
-    return re.sub(r"^\[builderbot\] ERROR: ", "", why)[:200]
-
-
-def mint_runner_token(kind, node_id, slot, runner_id=""):
-    """A registration or removal token for one of a node's runners, minted
-    from the token stored for it. `runner_id` is the runner's id on a
-    Gitea, where removal is a deletion there rather than a token."""
-    argv = ["sudo", "-n", RUNNER_HELPER, kind, node_id, slot]
-    if re.fullmatch(r"[0-9]{1,12}", str(runner_id or "")):
-        argv.append(str(runner_id))
-    r = run(argv, timeout=60)
-    if r["code"] == 0 and r["out"].strip():
-        return {"token": r["out"].strip().splitlines()[-1]}
-    return {"error": f"the controller cannot mint a runner token: {_helper_why(r)}"}
-
-
-def runner_tokens_all():
-    """{node id: {slot, ...}} for every runner token stored, from one call
-    to the helper's --list. Which runners have a token, and nothing else."""
-    r = run(["sudo", "-n", RUNNER_HELPER, "--list"], timeout=20)
-    out = {}
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            parts = line.split()
-            if len(parts) == 2:
-                out.setdefault(parts[0], set()).add(parts[1])
-    return out
-
-
-def runner_token_store(node_id, slot, url, forge, token):
-    """Hand a runner's token to the helper on stdin: it never rides an argv,
-    where every account on the box could read it off ps."""
-    try:
-        p = subprocess.run(["sudo", "-n", RUNNER_HELPER, "store", node_id, slot],
-                           input=f"RUNNER_URL={url}\nRUNNER_FORGE={forge}\nRUNNER_TOKEN={token}\n",
-                           capture_output=True, text=True, timeout=30, check=False)
-    except (OSError, subprocess.SubprocessError) as e:
-        return {"error": f"could not store the token: {e}"}
-    r = {"code": p.returncode, "out": ((p.stdout or "") + (p.stderr or "")).strip()}
-    if r["code"]:
-        return {"error": _helper_why(r)}
-    return {"ok": True}
-
-
-def runner_token_forget(node_id, slot):
-    r = run(["sudo", "-n", RUNNER_HELPER, "forget", node_id, slot], timeout=20)
-    return {"ok": True} if r["code"] == 0 else {"error": _helper_why(r)}
-
-
-def node_runners():
-    """[{node, name, listening, busy, labels, url}] for every node whose
-    census reports a runner, or that has been asked for one. Quiet nodes are
-    included and marked: a runner nobody can hear from is a fact worth
-    seeing, not a row to hide."""
-    if NODES_OK or not nodes:
-        return []
-    out = []
-    for n in nodes.node_list():
-        if n["kind"] != "agent":
-            continue
-        asked = nodes.runners_of(n)
-        reported = {r.get("slot"): r for r in nodes.runners_reported(n)}
-        ap = n.get("applying") or {}
-        failed = n.get("runner_failed") or {}
-        for slot in sorted(set(asked) | set(reported)):
-            want = asked.get(slot) or {}
-            rep = reported.get(slot) or {}
-            # A runner job in flight keeps the row while it runs: a Remove
-            # takes the ask off the record the moment it is pressed, and the
-            # row went with it before the node had said a word.
-            applying = ap.get("what") == "runner" and (ap.get("slot") or slot) == slot
-            if not (rep.get("installed") or want.get("want") or applying):
-                continue
-            out.append({"node": n["name"], "id": n["id"], "slot": slot, "live": bool(n.get("live")),
-                        "installed": bool(rep.get("installed")),
-                        "listening": bool(rep.get("active")), "busy": bool(rep.get("busy")),
-                        "name": rep.get("name") or "", "url": rep.get("url") or want.get("url") or "",
-                        "labels": rep.get("labels") or want.get("labels") or [],
-                        # Why a runner that was asked for is not there, and
-                        # whether the install that would put it there runs now.
-                        "failed": failed if failed and (failed.get("slot") or slot) == slot else None,
-                        "installing": applying and bool(want.get("want")),
-                        "removing": applying and not want.get("want")})
-    return out
-
-
 def uptime():
     # PID 1 started when the container did, so its elapsed time is the
     # container's — /proc/uptime is the host's under a shared kernel.
@@ -2038,48 +1943,6 @@ def image_stamp():
             # file at build time, so an image built outside CI has none and
             # the page falls back to the commit, as it always did.
             "version": os.environ.get("BB_VERSION", "").strip()[:64]}
-
-
-# ---------------------------------------------------------------------------
-# bb doctor, cached. The checks take up to half a minute of network timeouts
-# when something is down, which rules out running them on the 15-second poll —
-# so a background thread keeps a cached verdict warm and the poll just carries
-# it. The card's refresh button re-runs on demand for the "did my fix work"
-# moment.
-# ---------------------------------------------------------------------------
-# Half an hour, a constant (R29): the card's own button re-runs it on demand,
-# which is the control anybody actually reached for.
-DOCTOR_EVERY = 1800
-
-_doctor_lock = threading.Lock()
-_doctor = {"when": 0, "checks": [], "failed": False, "running": True}
-
-# bb doctor's own line shape: "  [ok]   claude on PATH". Indented lines that
-# carry no tag are elaboration on the check above them (the ssh diagnosis
-# hint, the GPU capability note) and travel with it as detail.
-DOCTOR_LINE = re.compile(r"^\s*\[(ok|FAIL|skip|warn)\]\s+(.*\S)")
-
-
-def run_doctor():
-    """Run bb doctor and cache the parsed result. False if one is mid-run —
-    two at once would double every network probe for the same answer."""
-    with _doctor_lock:
-        if _doctor.get("busy"):
-            return False
-        _doctor["busy"] = True
-        _doctor["running"] = True
-    r = run(["bb", "doctor"], timeout=180)
-    checks = []
-    for line in r["out"].splitlines():
-        m = DOCTOR_LINE.match(line)
-        if m:
-            checks.append({"level": m.group(1), "text": m.group(2), "detail": ""})
-        elif checks and line.strip() and not line.startswith("=="):
-            checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
-    with _doctor_lock:
-        _doctor.update(when=int(time.time()), checks=checks,
-                       failed=r["code"] != 0, running=False, busy=False)
-    return True
 
 
 # Who this container is signed in as, for the Doctor card. `claude auth
@@ -2160,11 +2023,6 @@ def _read_auth(home=""):
              "plan": st["plan"], "nodes": len(st["nodes"])}
     _auth[home] = {"at": time.monotonic(), "state": state}
     return state
-
-
-def doctor_payload():
-    with _doctor_lock:
-        return {k: _doctor[k] for k in ("when", "checks", "failed", "running")}
 
 
 # ---- additional packages ---------------------------------------------------
@@ -2428,6 +2286,13 @@ except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
     print(f"[dashboard] node store unavailable: {e}", flush=True)
 
+# ---- a node's CI runners ----------------------------------------------------
+# The root-only helper that keeps each runner's token and mints from it, and
+# the list the Runner card draws: runners.py.
+import runners                                                   # noqa: E402
+
+runners.configure(run=run, nodes=None if NODES_OK else nodes)
+
 # The controller's own runner (docs/nodes.md §2, phase 4): the thread that
 # takes compose and local exec jobs off the queue and runs them here. devapp
 # registers its compose runner through configure(), so the queue is the seam
@@ -2495,7 +2360,7 @@ def wait_for_boot():
 
     This dashboard is started BY hook 15 and the hooks after it are still
     running. A `bb doctor` run inside that window does not report an early
-    truth, it reports a falsehood — and DOCTOR_EVERY is half an hour, so it
+    truth, it reports a falsehood; and doctor.EVERY is half an hour, so it
     stuck. Measured when a GPU still booted here: doctor cached at +46s and
     the thing it was asking about came up at +48s, so the card was wrong
     until somebody pressed refresh. The operator's remedy for that message is
@@ -2551,11 +2416,10 @@ def client_gone(sock):
         return False
 
 
-def _doctor_loop():
-    wait_for_boot()
-    while True:
-        run_doctor()
-        time.sleep(DOCTOR_EVERY)
+# ---- bb doctor, cached for the Doctor card: doctor.py ----------------------
+import doctor                                                    # noqa: E402
+
+doctor.configure(run=run, wait_for_boot=wait_for_boot)
 
 
 # ---- revisions -------------------------------------------------------------
@@ -2759,7 +2623,7 @@ def snapshot(who):
         # Every node with a runner on it: the Runner card is a view of these
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
-        "node_runners": node_runners(),
+        "node_runners": runners.listing(),
         "reports": findings.REPORTS.is_dir(),
         "reports_mtime": findings.reports_mtime(),
         "findings_counts": findings.counts(ps),
@@ -2772,7 +2636,7 @@ def snapshot(who):
         # ...and when each report was written, so one left behind by a failed
         # scanner is visible rather than silently counted as current.
         "reports_ages": findings.reports_ages(),
-        "doctor": doctor_payload(),
+        "doctor": doctor.payload(),
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
         # from the cache.
@@ -3253,7 +3117,7 @@ class Handler(BaseHTTPRequestHandler):
         rows = rows if scope is None else [n for n in rows if n["id"] in scope]
         # Which of each node's runners has a token stored: asked of the
         # helper once, which names slots and never a token.
-        tokens = runner_tokens_all() if any(n.get("kind") == "agent" for n in rows) else {}
+        tokens = runners.tokens() if any(n.get("kind") == "agent" for n in rows) else {}
         for n in rows:
             if n.get("kind") == "agent":
                 n["runner_tokens"] = sorted(tokens.get(n["id"], set()))
@@ -4258,8 +4122,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"could not move the state aside: {e}"}, 500)
         # The runner tokens are root's, behind the helper: forgotten
         # there, since the nodes they were for are being forgotten here.
-        tok = run(["sudo", "-n", RUNNER_HELPER, "--reset"], timeout=20)
-        kept = [k for k in moved["kept"] if not (k == "runner-tokens" and tok["code"] == 0)]
+        forgot = runners.reset()
+        kept = [k for k in moved["kept"] if not (k == "runner-tokens" and forgot)]
         print(f"dashboard: {self._principal()} reset this controller; the old state is in "
               f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
         threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
@@ -4379,7 +4243,7 @@ class Handler(BaseHTTPRequestHandler):
             slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
             r = nodes.node_runner(self._principal(), nid, slot, bool(req.get("want", True)),
                                   req.get("labels"),
-                                  token=slot in runner_tokens_all().get(nid, set()))
+                                  token=slot in runners.tokens().get(nid, set()))
         elif act == "runner-token":
             # The node's runner token: forge and URL onto the record, the
             # token itself into the root-only store through the helper.
@@ -4405,14 +4269,14 @@ class Handler(BaseHTTPRequestHandler):
                 if forge not in ("github", "gitea"):
                     forge = forges.forge_of(at.group(1)).get("kind") or "git"
                 slot = nodes.runner_slot(url)
-                r = runner_token_store(nid, slot, url, forge, str(req.get("token") or "").strip())
+                r = runners.store(nid, slot, url, forge, str(req.get("token") or "").strip())
                 if not r.get("error"):
                     r = nodes.node_runner_url(self._principal(), nid, slot, url, forge,
                                               req.get("labels") if isinstance(req.get("labels"), list) else None)
                     r["slot"] = slot
         elif act == "runner-forget":
             slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
-            r = runner_token_forget(nid, slot)
+            r = runners.forget(nid, slot)
             if not r.get("error"):
                 r = nodes.node_runner_forget(self._principal(), nid, slot)
         elif act == "paths":
@@ -5007,7 +4871,7 @@ class Handler(BaseHTTPRequestHandler):
             if not slot:
                 only = list(nodes.runners_of(nodes.node(nid) or {}))
                 slot = only[0] if len(only) == 1 else ""
-            r = mint_runner_token(kind, nid, slot, field(req, "runner_id"))
+            r = runners.mint(kind, nid, slot, field(req, "runner_id"))
             nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
             return self._result(r)
         if verb == "hello":
@@ -6592,9 +6456,9 @@ class Handler(BaseHTTPRequestHandler):
         answer, and the threading server keeps everything else responsive
         while this one connection waits the half-minute a bad network takes.
         """
-        if not run_doctor():
+        if not doctor.refresh():
             return self._json({"error": "doctor is already running"}, 409)
-        return self._json(doctor_payload())
+        return self._json(doctor.payload())
 
     def _cards(self, req):
         """Store the sidebar card arrangement. Last write wins, like the pins:
@@ -7082,7 +6946,7 @@ def main():
               "reaches this port can.", flush=True)
     prune_claude_tabs()
     # Daemons: these loops must die with the server, not hold it open.
-    threading.Thread(target=_doctor_loop, daemon=True).start()
+    doctor.start()
     idle.start()
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if packages.AUTOCHECK:
