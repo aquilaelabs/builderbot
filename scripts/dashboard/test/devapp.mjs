@@ -2638,4 +2638,21 @@ print(json.dumps({'gone': sorted(gone),
      `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
 }
 
+// A one-shot service that ran and exited 0 is finished, not down: the row
+// says running and the chip says finished, while a service that exited
+// non-zero still makes the row partly up (B147).
+{
+  const row = svc => ({ project: 'delta', instance: 'delta-dev', name: 'delta-dev', running: true, exists: true,
+    source: 'project', ports: [], services: [
+      { service: 'app', name: 'app', state: 'running', status: 'Up 5 hours (healthy)' },
+      { service: 'db', name: 'db', state: 'running', status: 'Up 5 hours (healthy)' }, svc] });
+  const draw = async svc => page.evaluate(r => { const el = document.createElement('div');
+    el.innerHTML = dmRowsHtml([r], null, false); return el.textContent.replace(/\s+/g, ' '); }, row(svc));
+  const seeded = await draw({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (0) 5 hours ago' });
+  const broken = await draw({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (1) 5 hours ago' });
+  ok(/\(running\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
+     `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
+       (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
+}
+
 await done(browser);
