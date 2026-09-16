@@ -15,8 +15,7 @@ const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
 // The packages store is scoped by platform (roadmap R19): a machine's
 // packages live under <store>/<os>-<arch>, so every fixture written INTO a
 // store goes there, while the store's own path — the setting — stays the
-// share. The agent moves a flat store into the scope once; these fixtures
-// are written after it starts, so they are written scoped from the start.
+// share.
 const SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
 const PK = `${DIR}/agentpackages/${SCOPE}`;
 const NODE_JSON = `${DIR}/node.json`;
@@ -2394,39 +2393,17 @@ r1 = {'link': os.path.islink(img), 'target': os.path.realpath(img),
 said2 = []
 m.share_images(store, said2.append)
 r2 = {'said': said2, 'link': os.path.islink(img)}
-# A link left pointing at the FLAT store the scope was moved out of, and one
-# broken link that is nobody's business but its owner's.
-os.makedirs(os.path.join(store, scope, 'android-tools', 'cmdline-tools', 'bin'))
-os.makedirs(os.path.join(store, scope, 'android', 'cmdline-tools'), exist_ok=True)
-flat = os.path.join(store, scope, 'android', 'cmdline-tools', 'latest')
-os.symlink(os.path.join(store, 'android-tools', 'cmdline-tools'), flat)
-odd = os.path.join(store, scope, 'android', 'somewhere-else')
-os.symlink('/nowhere/at/all', odd)
-said3 = []
-m.fix_flat_links(store, said3.append)
-r3 = {'fixed': os.path.realpath(flat) == os.path.join(store, scope, 'android-tools', 'cmdline-tools'),
-      'bin': os.path.isdir(os.path.join(flat, 'bin')),
-      'odd': os.readlink(odd), 'said': said3}
 m.platform.system = lambda: 'Darwin'
 m.platform.machine = lambda: 'arm64'
 m._run = lambda argv, timeout=5: '15.1' if argv[:1] == ['sw_vers'] else ''
 mac = m.distro_now()
-print(json.dumps({'r1': r1, 'r2': r2, 'r3': r3, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
+print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.pkg_scope(), 'root': m.pkg_root({'stores': {'packages': '/Volumes/SDK'}})}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
   ok(R.r1.link && R.r1.shared && /shared\/android\/system-images$/.test(R.r1.target),
      'a scope\'s android system images are moved once under shared/, with the scope\'s directory a link to them');
   ok(R.r1.said.some(t => /shared across platforms/.test(t)) && R.r2.said.length === 0 && R.r2.link,
      `...it says so once, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
-  // The move into <store>/<os>-<arch> left links inside the trees naming
-  // where they used to be, and nothing said so: the PATH entry was dropped
-  // for being a directory that is not there and sdkmanager was simply not
-  // found (B105).
-  ok(R.r3.fixed && R.r3.bin && R.r3.said.some(t => /pointed at the flat store/.test(t)),
-     `a link left pointing at the flat store is repointed into this scope (${
-       (R.r3.said[0] || '').slice(-60)})`);
-  ok(R.r3.odd === '/nowhere/at/all',
-     '...and a broken link that is not that shape is left exactly as it is');
   ok(R.mac.family === 'macos' && R.mac.init === 'launchd' && /macOS 15\.1/.test(R.mac.pretty) && R.mac.network === '' && R.mac.pkg === '',
      `a Mac is its own family: macos, launchd, no network backend, and no package manager until Homebrew is there (${JSON.stringify(R.mac)})`);
   ok(R.scope === 'darwin-arm64' && R.root === '/Volumes/SDK/darwin-arm64',
