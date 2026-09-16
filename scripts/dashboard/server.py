@@ -1744,9 +1744,9 @@ def project_list(who):
                     issues.append({"level": "warning", "action": "claude-md-update",
                                    "text": ("the environment block is from an older "
                                             f"compatibility window ({md_window(mdf)} "
-                                            f"against {md_window(TEMPLATE_MD)}) — update")
+                                            f"against {md_window(TEMPLATE_MD)}): update")
                                    if md_hold else
-                                   "CLAUDE.md environment block is out of date — update"})
+                                   "CLAUDE.md environment block is out of date: update"})
                 elif md == "unmarked":
                     # `bb claude-md --update` refuses this one, so it must not be
                     # offered as a link that would do nothing.
