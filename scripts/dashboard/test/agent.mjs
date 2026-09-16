@@ -737,6 +737,18 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(/not accepted/.test(exec) && /not accepted/.test(conf) && /takes push, fetch/.test(other),
          `...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it (${
            [exec, conf, other].map(x => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')})`);
+      // A rule's check is a command a session may write, so it runs on the
+      // machine the session is on and never on the controller (B152). The
+      // controller's relayed run carries BB_RELAYED; a local one does not.
+      bbOnNode(['rules', 'add', 'relayprobe', 'where a check runs', '--check', 'echo relayed=${BB_RELAYED:-no}']);
+      const checked = bbOnNode(['rules', 'check', 'relayprobe']);
+      bbOnNode(['rules', 'rm', 'relayprobe', 'test']);
+      const sent = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/bb', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + forMe, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ argv: ['rules', 'check', '--all'], cwd: `${DIR}/ws/alpha` }) })).json();
+      ok(/relayed=no/.test(checked) && /runs on the machine the session is on/.test(sent.error || ''),
+         `bb rules check on a node runs the rule's command there, and the controller refuses one relayed to it (${
+           checked.replace(/\s+/g, ' ').slice(0, 60)} | ${(sent.error || '').slice(0, 50)})`);
       // The identity a node session adopts is the controller's, through the
       // same settings answer bb-tty reads.
       const st = JSON.parse(bbOnNode(['settings', '--json']));

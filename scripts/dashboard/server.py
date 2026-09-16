@@ -4526,6 +4526,12 @@ class Handler(BaseHTTPRequestHandler):
         if not argv or argv[0] not in RELAY_VERBS:
             return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
                                "it answers for the machine the session is on"}, 400)
+        # A rule's check is a command, and a session may write its own rule's
+        # check, so it runs on the machine the session is on and never here
+        # (B152). A node's bb keeps it local; this refuses one sent anyway.
+        if argv[:2] == ["rules", "check"]:
+            return self._json({"error": "bb rules check runs on the machine the session is on, "
+                                        "not on the controller: run it there"}, 400)
         project = field(req, "project") or me.get("session") or ""
         if me.get("session") and project != me["session"]:
             return self._json({"error": "this session's token is for another project"}, 403)

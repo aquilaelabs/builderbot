@@ -6472,7 +6472,11 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # controller's to answer.
         # `lab` runs the lab suites against a real service reachable from
         # here, the same reason.
-        "tests run"|"tests last"|"tests lab") : ;;
+        # `rules check` runs each rule's check command, which belongs where
+        # the tree and the toolchain are, and never on the controller: a
+        # session may write its own rule's check (B152). It relays its
+        # rules --json read, which is the half that is state.
+        "tests run"|"tests last"|"tests lab"|"rules check") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry — `bb bug` printed the controller's answer and
