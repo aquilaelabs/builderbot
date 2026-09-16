@@ -1854,9 +1854,12 @@ checklist.
 **Credentials are set up on the controller and nowhere else.** PATs, deploy
 keys, the Claude login, the runner registration: one place. A node never
 holds a git credential. Git's network operations from a node session go
-through the controller (`bb git push|fetch|pull`, relayed, run in the
-shared tree with the keys the controller already shields: the shape
-shelved #15 wanted, arrived at from the other side). The Claude login is
+through the controller (`bb git push|fetch|pull`, relayed, with the keys
+the controller already shields: the shape shelved #15 wanted, arrived at
+from the other side). The controller never runs that git in the shared
+tree, whose hooks and config a session can write: it works in a repository
+of its own that borrows the tree's objects, and the node's bb brings the
+result into the tree as the session (scripts/dashboard/gitrelay.py). The Claude login is
 handed to a node's account by `bb login` with the session's token, which
 is the one exception and is deliberate: it is the account's own credential,
 placed in that account's home, 0600, and nowhere a job can read.

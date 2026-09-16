@@ -2345,6 +2345,17 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data)
 
+# ---- a node's git, relayed --------------------------------------------------
+# Push, fetch, pull and ls-remote from a session on a node, done in a
+# repository of the controller's own rather than in the tree the session can
+# write: gitrelay.py (B148).
+import gitrelay                                                  # noqa: E402
+
+gitrelay.configure(state=STATE, workspace=WORKSPACE,
+                   push_record=lambda p: projects.load_push().get(p),
+                   token_helper=projects.token_helper, parse_url=forges.parse,
+                   host_of=forges.host_of, git_env=projects._git_env)
+
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4544,6 +4555,8 @@ class Handler(BaseHTTPRequestHandler):
         # does not push, whatever its tree says. The refusing pre-push hook
         # in a read-only clone is a file a session can change, so this is
         # the check that holds (B149), the same one the Git view makes.
+        if argv[:1] == ["git"] and argv[1:2] and argv[1] in gitrelay.VERBS and gitrelay.bad_args(argv[2:]):
+            return self._json({"error": gitrelay.bad_args(argv[2:])}, 400)
         if argv[:2] == ["git", "push"] and not projects.may_push(project):
             return self._json({"error": "this project has no push rights: they are granted "
                                         "in the clone dialog, once"}, 403)
@@ -4557,12 +4570,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "this project's git policy does not let a session "
                                             "push — the operator pushes from the Git view"}, 403)
             if pol.get("main") == "deny":
+                # Read out of the tree's files, never by running git in it
+                # (B148): the branch HEAD names and which of main or master
+                # exists.
                 repo = WORKSPACE / project
-                head = (run(["git", "-C", str(repo), "symbolic-ref", "--short", "-q", "HEAD"],
-                            timeout=10)["out"] or "").strip()
-                main = next((b for b in ("main", "master") if run(
-                    ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", f"refs/heads/{b}"],
-                    timeout=10)["code"] == 0), "main")
+                try:
+                    head = gitrelay.head(repo / ".git").removeprefix("refs/heads/")
+                    have = gitrelay.refs(repo / ".git")
+                except gitrelay.Refused as e:
+                    return self._json({"error": str(e)}, 400)
+                main = next((b for b in ("main", "master") if f"refs/heads/{b}" in have), "main")
                 spec = [a for a in argv[2:] if not a.startswith("-")]
                 to_main = any(a == main or a.endswith(":" + main) or a.startswith(main + ":") for a in spec) \
                     or (not spec and head == main) or (len(spec) == 1 and head == main)
@@ -4601,6 +4618,15 @@ class Handler(BaseHTTPRequestHandler):
             env["CLAUDECODE"] = "1"
         else:
             env.pop("CLAUDECODE", None)
+        # git's network half never runs in the tree a session can write
+        # (B148): the controller does it in a repository of its own and
+        # hands the tree's half back to the node's bb as `apply`.
+        if argv[0] == "git" and argv[1:2] and argv[1] in gitrelay.VERBS:
+            r = gitrelay.run(project, str(cwd), argv[1], argv[2:])
+            if "error" in r:
+                return self._json(r, 400)
+            return self._json({"code": r["code"], "out": r["out"][-200000:], "err": r["err"][-20000:],
+                               **({"apply": r["apply"]} if r.get("apply") else {})})
         try:
             r = subprocess.run(["bash", str(HERE.parent / "bb"), *argv], cwd=str(cwd),
                                env=env, capture_output=True, text=True, timeout=180)

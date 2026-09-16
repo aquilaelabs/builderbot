@@ -919,8 +919,11 @@ only when the finding is genuinely a false positive, and say why.
   keeps working meanwhile; the token is only how `bb` reaches the
   controller.
 - **On a node, pushing is `bb git push`** (and `fetch`, `pull`, `ls-remote`).
-  The tree is the shared projects share, so the controller runs git in it
-  with the keys it holds, and no credential ever lives on a node. Plain
+  The controller does git's network half with the keys it holds, in a
+  repository of its own that borrows this tree's objects, and `bb` brings
+  the result into this tree: the refs that moved, what a fetch brought, the
+  merge a pull ends with. No credential ever lives on a node, and nothing
+  this tree's hooks or `.git/config` name runs on the controller. Plain
   `git push` there fails asking for a username: that is the rule, not a
   fault to work around. `bb status` says which machine this is.
 - **What you may push is the project's git policy**, set on its Git view:

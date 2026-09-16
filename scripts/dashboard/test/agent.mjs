@@ -724,13 +724,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
       const num = (once.match(/added R(\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
-      // bb git: git's network half from a node runs on the controller, in
-      // the project's tree, with the keys that live only there (docs/nodes.md
-      // §20, rule 2). The fixture has no remote, so git itself answers —
-      // which is the proof that git ran here and not on the "node".
+      // bb git: git's network half from a node runs on the controller, with
+      // the keys that live only there (docs/nodes.md §20, rule 2), in a
+      // repository of the controller's own (B148). The fixture's origin is
+      // an ssh address nobody holds a key for, so git itself answers, which
+      // is the proof that git ran there and not on the "node".
       const ls = bbOnNode(['git', 'ls-remote', 'origin']);
       ok(/fatal:/.test(ls) && !/not relayed|not accepted/.test(ls),
-         `bb git ls-remote from a node reaches the controller's git in the project's tree (${ls.replace(/\s+/g, ' ').slice(0, 70)})`);
+         `bb git ls-remote from a node reaches the controller's git (${ls.replace(/\s+/g, ' ').slice(0, 70)})`);
       const exec = bbOnNode(['git', 'push', '--upload-pack=/bin/sh', 'origin']);
       const conf = bbOnNode(['git', 'fetch', '-c', 'core.sshCommand=id']);
       const other = bbOnNode(['git', 'status']);
