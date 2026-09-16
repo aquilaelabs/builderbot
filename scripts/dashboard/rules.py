@@ -147,29 +147,27 @@ GLOBAL = "*"
 # that reads it twice pays twice and the two copies drift.
 BUILTIN = [
     {"name": "stay-in-project",
-     "text": "Work in this project only. /workspace holds other projects as"
-             " sibling directories: do not read from one, write to one, or go"
-             " looking for context in one. If something seems to be missing,"
-             " ask rather than going to find it next door."},
+     "text": "Work in this project only. Do not read from, write to, or go"
+             " looking for context in a sibling project under /workspace. If"
+             " something seems to be missing, ask."},
     {"name": "ask-do-not-install",
-     "text": "Never install a tool with a system package manager to get around"
-             " a gap. What you install by hand is on that machine only,"
-             " invisible to `bb packages`, and gone when the node is rebuilt."
-             " Say what is missing and let the operator install it."},
+     "text": "Never install a tool with a system package manager. It lands on"
+             " that machine only, is invisible to `bb packages`, and is gone"
+             " when the node is rebuilt. Say what is missing: installing is"
+             " the operator's."},
     {"name": "no-credentials-in-the-repo",
-     "text": "Never write a credential into a repository: not into test"
-             " fixtures, not into CI config, not into an .env file that is not"
+     "text": "Never write a credential into a repository: not in test"
+             " fixtures, not in CI config, not in an .env file that is not"
              " gitignored."},
     {"name": "say-what-you-observed",
-     "text": "Report what happened rather than what should have happened. If"
-             " tests failed, say so and show the output; if a step was skipped,"
-             " say that. Do not invent a local build to route around a refusal,"
-             " and do not report success you did not observe."},
+     "text": "Report what happened, not what should have. If tests failed, say"
+             " so with the output; if you skipped a step, say that. Never"
+             " invent a local build to route around a refusal, and never claim"
+             " success you did not see."},
     {"name": "ship-to-dist",
-     "text": "Anything shippable a build produces goes in the project's dist/,"
-             " named with `bb version --file`, and gitignored. The Artifacts"
-             " tab lists dist/ and nothing else, so a build left where the tool"
-             " put it does not exist as far as the operator can see."},
+     "text": "Shippable build output goes in this project's dist/, named with"
+             " `bb version --file`, and gitignored. The Artifacts tab lists"
+             " dist/ and nothing else."},
 ]
 
 # What the standing block costs before it is worth saying out loud on the tab.
