@@ -164,26 +164,6 @@ def migrate():
             except sqlite3.Error:
                 _db.rollback()
                 raise
-    _migrate_runners()
-
-
-def _migrate_runners():
-    """A record's single runner ask becomes an entry under its slot, once:
-    the records written before a node could hold several."""
-    for r in _rows("SELECT id, services FROM nodes"):
-        try:
-            sv = json.loads(r["services"] or "{}")
-        except (ValueError, TypeError):
-            continue
-        ar = sv.get("actions-runner") if isinstance(sv, dict) else None
-        if not isinstance(ar, dict):
-            continue
-        runners = sv.get("runners") if isinstance(sv.get("runners"), dict) else {}
-        if ar.get("url") and runner_slot(ar["url"]) not in runners:
-            runners[runner_slot(ar["url"])] = {k: ar[k] for k in ("url", "forge", "want", "labels") if k in ar}
-        sv["runners"] = runners
-        sv.pop("actions-runner", None)
-        _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(sv), r["id"]))
 
 
 def _statements(text):
@@ -1111,8 +1091,7 @@ def _census(c):
     ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
     runners = ([one_runner(x) for x in listed[:16] if isinstance(x, dict)] if listed is not None
                else ([one_runner(ar)] if ar.get("installed") else []))
-    out["services"] = {"runners": runners,
-                       "actions-runner": runners[0] if runners else {"installed": False}}
+    out["services"] = {"runners": runners}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
     fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
     out["services"]["tailscale"] = {
