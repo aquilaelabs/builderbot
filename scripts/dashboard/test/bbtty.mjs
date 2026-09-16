@@ -17,6 +17,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 const BBTTY = join(import.meta.dirname, '..', 'bb-tty');
+// This suite must not pick up the NODE'S OWN bb-session (R35). On a node where
+// the agent has installed it, `isolating()` is true, every launch below goes
+// through the real helper, and it rightly refuses this file's scratch paths:
+// they are not a project on the projects share. So the suite names a helper
+// that is not there, and the view section further down installs its own
+// stand-in and names that explicitly. Set on process.env because every spawn
+// here spreads it.
+process.env.BB_SESSION_BIN = join(DIR, 'no-bb-session-here');
 const LAUNCHER = join(DIR, 'home', '.cache', 'builderbot', 'project', 'alpha', 'claude-run.sh');
 
 // The boot this container is on, from the server rather than computed again
