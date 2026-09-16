@@ -358,9 +358,8 @@ data store, makes the bind directories itself rather than through a throwaway
 container, runs each step with the node's own docker, and reports how far it
 got. `devapp.compose_done` applies the records from that result, and only for
 a plan the agent ran: the controller's runner does its bookkeeping inline,
-and running both undid the env gate. A node with no agent (the legacy `ssh`
-kind) still takes the old path, until that kind goes. The wire gained one
-thing for it: a log post may carry `step`, so the row still shows the word.
+and running both undid the env gate. The wire gained one thing for it: a
+log post may carry `step`, so the row still shows the word.
 
 *What phase 4 added to the wire (protocol 2):* `hello` carries `running`,
 the job ids the agent still has in flight, so the controller can reconcile
@@ -540,8 +539,6 @@ artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot
 (`sdk_share_images`), so a first install on a fresh store lands there too.
-(The one-time move of a flat store into its scope ran on 9 Sep 2026 and
-was taken out the same day.)
 
 ### What `/workspace` means in the new model
 
@@ -841,24 +838,12 @@ What gets each tier there:
   vanishes mid-job fails the job with "node lost" after a grace window; a job
   is retried only if its spec says it is idempotent, never by default.
 
-## 11. Configuration and migration
+## 11. Configuration
 
-`DOCKER_HOST` and `DOCKER_HOST_PATHS` leave `.env` and become node fields:
-
-1. On first boot after the upgrade, if `DOCKER_HOST` is set and no node has
-   that address, create one: `kind: ssh`, name `sandbox`, capabilities
-   `[docker-host]`, and log that it happened.
-2. The env var keeps working for one release; the Nodes screen shows the node
-   as "from DOCKER_HOST; this setting is going away" with an adopt button.
-3. Then it leaves the five places (`.env.example`, `docker-compose.yml`,
-   `unraid/builderbot.xml`, README reference, `docs/unraid.md`) in one change.
-
-*Where it landed (roadmap #24, complete):* both variables are out of the five
-places, out of every doc that named them as settings, and read by nothing.
-The one-release deprecation path is gone with them: `nodes._adopt_docker_host`
-and `_seed_paths` are deleted, and so is the env branch of `devapp._pairs`.
-The path mapping lives on the node record (`config.paths`, edited on an agent
-node's row, read by `devapp.host_map` through the node being addressed).
+A node's daemon and its path mapping are node fields, never environment
+variables: the address is what the node dialed in from, and the path mapping
+lives on the node record (`config.paths`, edited on an agent node's row, read
+by `devapp.host_map` through the node being addressed).
 
 **Check, beside it (roadmap #13).** Under the identity mapping: the shipped
 default and the rule; nothing verified that the two machines actually mean
@@ -873,13 +858,11 @@ share root). Three answers and never a guess: the same directory, NOT the
 same directory with what that would cost, or "could not ask" with the
 daemon's own words. Off the poll; it is for when something changed.
 
-The `ssh` kind went in the same change, because the seed was the only thing
-that made one: `node_add` is a refusal naming enrollment, `_addr` and
-`runner_of` know two kinds, and the `ssh` branch of `jobs.run_exec`: the
-controller running a job on another machine over a key: is gone. The
-`ssh_addr` column stays, written empty and read by nothing: migrations are
-numbered and append-only, and dropping a column across two engines is a
-one-way door for a cosmetic gain.
+There is one node kind, the agent: `node_add` is a refusal naming
+enrollment, and the controller never runs a job on another machine over a
+key. The `ssh_addr` column stays, written empty and read by nothing:
+migrations are numbered and append-only, and dropping a column across two
+engines is a one-way door for a cosmetic gain.
 
 **Tools → Nodes** is the screen: a row per node with state, capability
 toggles, services, labels, pool, concurrency, last seen, and Enroll, Test,
@@ -1093,9 +1076,7 @@ does here can un-recognize the node it is doing it to. Root-level system
 jobs are *offered only* to nodes that carry the stamp: a machine enrolled
 as a plain builder never shows the mounts-and-network panel at all, which is
 the capability rule (§2) applied to the most privileged thing the agent
-does. Legacy `ssh` nodes keep the daemon-label check they have today and do
-not get the configuration plane; absorbing bb-sandbox's menu is the agent's
-job, not ssh's.
+does.
 
 *Where phase 5 landed it:* the desired config lives on the node record
 (`config.desired`: mounts, stores, network), validated to its shape when it
