@@ -1020,12 +1020,24 @@ def _agent_read(n, argv, timeout):
     if queue.job_running(n["id"]) > 0:
         with _reads_lock:
             hit = _last_reads.get(key)
-        out = dict(hit) if hit else {
-            "code": 1, "out": f"{n['name']} is on a job; what is running "
-                              "there is read again when it ends"}
-        if memo is not None:
-            memo[key] = out
-        return out
+        if hit is None:
+            # Nothing to stand in. Most jobs between two draws are short
+            # (another probe, a down), so a moment's wait is a listing
+            # where an answer of "on a job" was a blind page (B143's
+            # cousin, seen as cards.mjs flaking on the manager's rows).
+            for _ in range(16):
+                time.sleep(0.25)
+                if queue.job_running(n["id"]) == 0:
+                    break
+            with _reads_lock:
+                hit = _last_reads.get(key)
+        if hit is not None or queue.job_running(n["id"]) > 0:
+            out = dict(hit) if hit else {
+                "code": 1, "out": f"{n['name']} is on a job; what is running "
+                                  "there is read again when it ends"}
+            if memo is not None:
+                memo[key] = out
+            return out
     _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
     r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
                        forget=True)

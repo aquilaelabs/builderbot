@@ -1278,6 +1278,11 @@ await page.waitForFunction(() =>
 // shows the daemon's own containers.
 await page.click('#bDocker');
 await page.waitForSelector('.dmtab', { timeout: 15000 });
+// Waited for, not read off the first draw: on an agent node the listing is
+// a probe job, so the rows can land a draw after the tab does.
+await page.waitForFunction(() => [...document.querySelectorAll('.dmtab .row')]
+  .some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off')),
+  null, { timeout: 15000 }).catch(() => {});
 ok(await page.$$eval('.dmtab .row', rs =>
      rs.some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off'))),
    'the manager shows a container this dashboard did not start, marked not ours');

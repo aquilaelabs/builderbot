@@ -392,6 +392,11 @@ await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /fill in the env/.test(e.textContent);
 }, { timeout: 30000 });
+// The pill as well as the text: the text lands with the record the job
+// wrote, and on an agent node the pill comes from a listing read a moment
+// later, so the two can arrive a fetch apart (B143).
+await page.waitForFunction(sel => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === 'down',
+                           DM, { timeout: 20000 }).catch(() => {});
 ok(await pill() === 'down',
    'the gated rebuild stops after down rather than starting broken');
 await dmClick('env');
