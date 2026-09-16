@@ -8,7 +8,7 @@ function nbAnalysisView({$, nb, project}){
   async function loadAnalysis(){
     const hint = $("anaHint"), list = $("anaList");
     if (!findings || findings.error) await loadFindings(!!findings?.error);
-    anaStamp = state?.reports_mtime ?? null;
+    nb.anaStamp = state?.reports_mtime ?? null;
     if (!findings || findings.loading){ hint.textContent = "loading…"; return; }
     if (findings.error){ hint.textContent = "analysis: " + findings.error; return; }
     if (!findings.available){

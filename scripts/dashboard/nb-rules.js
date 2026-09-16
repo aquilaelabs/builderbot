@@ -148,7 +148,7 @@ function nbRulesView({$, nb, project}){
       row.querySelector(".rlRm").onclick = () => {
         const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
         nb.ruleEditing = shift(nb.ruleEditing); nb.ruleOpen = shift(nb.ruleOpen);
-        nb.ruleWas = new Map([...ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
+        nb.ruleWas = new Map([...nb.ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
         ruleStage(rs => rs.splice(i, 1));
       };
       const ed = row.querySelector(".rlEdit");
@@ -229,5 +229,5 @@ function nbRulesView({$, nb, project}){
     }catch(e){ notify("could not reach the server: " + e, true); }
   }
 
-  return {loadRules, drawRules, saveRules};
+  return {loadRules, drawRules, saveRules, ruleDirty};
 }

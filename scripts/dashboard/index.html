@@ -10185,7 +10185,7 @@ function makeNotebook(project){
   const {loadGit} = nbGitView({$, nb, project});
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
   const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
-  const {loadRules, drawRules, saveRules} = Object.assign(nb, nbRulesView({$, nb, project}));
+  const {loadRules, drawRules, saveRules, ruleDirty} = Object.assign(nb, nbRulesView({$, nb, project}));
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
   const {loadPending, drawPending} = Object.assign(nb, nbPendingView({$, nb, project, root}));
@@ -12222,11 +12222,6 @@ $("todoRevert").onclick = revertNotebook;
              return j.error ? (notify(j.error, true), {history: []}) : j;
            }});
 
-  // ---- analysis ------------------------------------------------------------
-  // The scanner's findings for this project. Read-only, from the page-wide
-  // cache: the scan runs on the host, and every notebook reads the one digest.
-  let anaStamp;
-
   // ---- the handle the rest of the page holds ------------------------------
   let dkSeen = "";
   async function loadNbDocker(){
@@ -12297,7 +12292,7 @@ $("todoRevert").onclick = revertNotebook;
       // A scan re-ran while the Analysis view is up: re-read. The cache was
       // dropped by refresh() when the mtime moved, so this is one fetch.
       if (!root.querySelector('[data-view="analysis"]').hidden
-          && anaStamp !== (state?.reports_mtime ?? null))
+          && nb.anaStamp !== (state?.reports_mtime ?? null))
         loadAnalysis();
 
     },
