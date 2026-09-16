@@ -376,8 +376,24 @@ await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
                workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
   { Authorization: 'Bearer ' + deskbox.token });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
-await refreshUntil(phone, () => (state?.projects || [])
-  .find(p => p.name === 'alpha')?.session_at === 'deskbox');
+// Under a full run this wait has crashed the file more than once (B124): a
+// node is live for LIVE_S after its hello, and a slow box can spend that
+// before the poll reads deskbox back. So the hello is repeated between
+// shorter waits rather than one long wait on a liveness that lapses.
+const deskboxCensus = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
+  session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
+             workspace: true, writable: true, boot: '9.9', up_s: 5000 } };
+for (let tries = 0; ; tries++){
+  try {
+    await refreshUntil(phone, () => (state?.projects || [])
+      .find(p => p.name === 'alpha')?.session_at === 'deskbox', { timeout: 30000 });
+    break;
+  } catch (e) {
+    if (tries >= 3) throw e;
+    await bapi('/api/v1/agent/hello', { census: deskboxCensus, version: 'harness', running: [] },
+               { Authorization: 'Bearer ' + deskbox.token });
+  }
+}
 await phone.click('#projects [data-c="alpha"]');
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
