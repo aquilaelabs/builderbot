@@ -3943,6 +3943,14 @@ const $ = id => document.getElementById(id);
 // label that names a group rather than one control.
 const helpIcon = t => t ? `<span class="help" data-tip="${esc(t)}" aria-label="${esc(t)}" tabindex="0">?</span>` : "";
 const lbl = (id, text, help) => `<label class="lbl"${id ? ` for="${esc(id)}"` : ""}>${esc(text)}${helpIcon(help)}</label>`;
+// One POST for everything the page sends: JSON in, the Response back, so
+// the caller reads r.ok and r.json() as it always did. Written once here
+// after forty-eight copies of the same three headers (R60).
+function postJSON(path, body){
+  return fetch(path, {method: "POST", headers: {"Content-Type": "application/json"},
+                      body: JSON.stringify(body)});
+}
+
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tabOf = id => tabs.find(t => t.id === id) || null;
@@ -6233,9 +6241,7 @@ async function sendKey(key){
   const t = tabOf(panes[active]);
   if (!t || t.kind !== "term") return;
   try{
-    const r = await fetch("/api/keys", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({session: sessionOf(t.arg), key})});
+    const r = await postJSON("/api/keys", {session: sessionOf(t.arg), key});
     const j = await r.json();
     if (j.error) notify("key: " + j.error, true);
   }catch(e){ notify("key failed: " + e, true); }
@@ -6396,8 +6402,7 @@ function adoptCards(next){
 async function saveCards(){
   cardsChangedAt = performance.now();
   try{
-    const r = await fetch("/api/cards", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify(cards)});
+    const r = await postJSON("/api/cards", cards);
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else { cards = j.cards; if (state) state.cards = j.cards; applyCards(); }
@@ -6896,9 +6901,7 @@ function wireLogSection(el){
     const btn = el.querySelector("#logApply");
     if (btn){ btn.disabled = true; btn.textContent = "Applying…"; }
     try{
-      const r = await fetch("/api/logs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "days", days})});
+      const r = await postJSON("/api/logs", {action: "days", days});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       if (typeof settingsDraft === "object") delete settingsDraft.logDays;
@@ -6918,9 +6921,7 @@ function wireLogSection(el){
     if (!confirm("Delete every kept log except this session's?\n\n"
                  + "This session keeps writing to its own.")) return;
     try{
-      const r = await fetch("/api/logs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "clear"})});
+      const r = await postJSON("/api/logs", {action: "clear"});
       const j = await r.json();
       notify(j.error || `${j.removed} file(s) removed`, !!j.error);
       refresh(); drawUiMenu();
@@ -6957,9 +6958,7 @@ async function resetCards(){
   // with, so what comes back is the default as this image defines it.
   cardsChangedAt = performance.now();
   try{
-    const r = await fetch("/api/cards", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({order: [], closed: []})});
+    const r = await postJSON("/api/cards", {order: [], closed: []});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     cards = j.cards; if (state) state.cards = j.cards;
@@ -7500,9 +7499,7 @@ async function signIn(node){
   if (b){ b.disabled = true; b.textContent = "Starting…"; }
   let j = {};
   try{
-    const r = await fetch("/api/signin", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(node ? {node} : {})});
+    const r = await postJSON("/api/signin", node ? {node} : {});
     j = await r.json();
   }catch(e){ j = {error: "could not reach the server: " + e}; }
   if (j.nodes?.length > 1){
@@ -7536,8 +7533,7 @@ async function sendCode(){
   if (!code) return f.focus();   // pressed Send with nothing in it
   b.disabled = true; b.textContent = "Sending…";
   try{
-    const r = await fetch("/api/login-code", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({code})});
+    const r = await postJSON("/api/login-code", {code});
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else { f.value = ""; notify("sent: the card says what the sign-in makes of it"); }
@@ -7724,8 +7720,7 @@ async function claudeMd(name, action, link){
   const said = link.textContent;
   link.textContent = `${action === "init" ? "creating" : "updating"} ${name}…`;
   try{
-    const r = await fetch("/api/claude-md", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({name, action})});
+    const r = await postJSON("/api/claude-md", {name, action});
     const j = await r.json();
     if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
     notify(action === "init"
@@ -7748,9 +7743,7 @@ async function claudeMdAll(link){
   const said = link.textContent;
   link.textContent = "updating…";
   try{
-    const r = await fetch("/api/claude-md", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action: "update", all: true})});
+    const r = await postJSON("/api/claude-md", {action: "update", all: true});
     const j = await r.json();
     if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
     const n = (j.updated || []).length;
@@ -7941,9 +7934,7 @@ function pkgTickDots(){
 // carry a tab's error handling with them.
 async function postTrash(path, body){
   try{
-    const r = await fetch(path, {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(body)});
+    const r = await postJSON(path, body);
     return await r.json();
   }catch(e){ return {error: String(e)}; }
 }
@@ -8502,9 +8493,7 @@ async function dnSubmit(){
 async function openDevEnv(project, instance){
   let j;
   try{
-    const r = await fetch("/api/devapp", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({project, instance, action: "env-get"})});
+    const r = await postJSON("/api/devapp", {project, instance, action: "env-get"});
     j = await r.json();
   }catch(e){ notify("env: " + e, true); return; }
   const m = document.getElementById("devEnvModal");
@@ -8691,9 +8680,7 @@ async function dmAction(project, instance, act, btn){
   if (act === "abort"){
     if (btn) btn.disabled = true;
     try{
-      await fetch("/api/devapp", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, instance, action: "abort"})});
+      await postJSON("/api/devapp", {project, instance, action: "abort"});
     }
     catch(e){ notify("could not stop it: " + e, true); }
     dockerRev++; drawPanes(); loadDocker();
@@ -8721,9 +8708,7 @@ async function dmAction(project, instance, act, btn){
     // config parse each, and the manager lists them all.
     let st;
     try{
-      const r = await fetch("/api/devapp", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project, instance, action:"state"})});
+      const r = await postJSON("/api/devapp", {project, instance, action:"state"});
       st = (await r.json()).state || {};
     }catch(e){ notify("could not read its state: " + e, true); return; }
     if ((st.problems || []).length){
@@ -8749,9 +8734,7 @@ async function dmAction(project, instance, act, btn){
   }
   if (btn) btn.disabled = true;
   try{
-    const r = await fetch("/api/devapp", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({project, instance, action:act, ack})});
+    const r = await postJSON("/api/devapp", {project, instance, action:act, ack});
     const j = await r.json();
     if (j.error) notify(j.error, true);
     // What was done instead of what was asked: a remove whose daemon could
@@ -8792,9 +8775,7 @@ async function loadWire(d){
   const box = d.querySelector(".wire");
   let html;
   try{
-    const r = await fetch("/api/devapp", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({project, instance, action:"state"})});
+    const r = await postJSON("/api/devapp", {project, instance, action:"state"});
     const st = (await r.json()).state || {};
     const lines =
       (st.ports || []).map(p => {
@@ -8852,9 +8833,7 @@ async function openEditContainer(name){
   cSeg("yml");
   $("cmodal").hidden = false;
   try{
-    const r = await fetch("/api/container", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action:"read", name})});
+    const r = await postJSON("/api/container", {action:"read", name});
     const j = await r.json();
     if (cEditing !== name) return;          // reopened on another one meanwhile
     $("cYml").value = j.compose || "";
@@ -9161,9 +9140,7 @@ function dmWireRows(el, list = dockerList){
     if (ref === undefined) return;
     busy(btn, "Applying");
     try{
-      const r = await fetch("/api/devapp", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, instance, action: "ref", ref})});
+      const r = await postJSON("/api/devapp", {project, instance, action: "ref", ref});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       delete dmRefDraft[key];
@@ -9186,9 +9163,7 @@ function dmWireRows(el, list = dockerList){
     if (!mode) return;
     busy(btn, "Applying");
     try{
-      const r = await fetch("/api/prefs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devtest: mode === "only"})});
+      const r = await postJSON("/api/prefs", {project, devtest: mode === "only"});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       delete dmTestDraft[project];
@@ -9212,9 +9187,7 @@ function dmWireRows(el, list = dockerList){
     if (!mode) return;
     busy(btn, "Applying");
     try{
-      const r = await fetch("/api/prefs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, devbuild: mode})});
+      const r = await postJSON("/api/prefs", {project, devbuild: mode});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       delete dmGrantDraft[project];
@@ -9252,9 +9225,7 @@ function dmWireRows(el, list = dockerList){
     delete dmRouteDraft[row.dataset.inst];
     busy(btn, "Applying");
     try{
-      const r = await fetch("/api/devapp", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project, instance, action:"route", mode, port})});
+      const r = await postJSON("/api/devapp", {project, instance, action:"route", mode, port});
       const j = await r.json();
       if (j.error) notify(j.error, true);
     }catch(e){ notify("route: " + e, true); }
@@ -9675,11 +9646,9 @@ async function pkgAct(action, only){
       return;
     // On a node the install is a job, and stopping it is the queue's Cancel.
     if (pkgNode !== "local" && packages?.job?.id)
-      await fetch("/api/v1/jobs", {method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({action: "cancel", id: packages.job.id})});
+      await postJSON("/api/v1/jobs", {action: "cancel", id: packages.job.id});
     else
-      await fetch("/api/packages", {method:"POST",
-        headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
+      await postJSON("/api/packages", {action});
     return loadPackages();
   }
   if (pkgNode !== "local" && !["install", "remove", "sysdeps"].includes(action))
@@ -9697,9 +9666,7 @@ async function pkgAct(action, only){
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
   try{
-    const r = await fetch("/api/packages", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action, names, node: pkgNode})});
+    const r = await postJSON("/api/packages", {action, names, node: pkgNode});
     const j = await r.json().catch(() => ({}));
     // A package that needs another used to be installed without it and fail
     // inside it: android-tools with no jdk, from sdkmanager, naming
@@ -10155,9 +10122,7 @@ async function pendAct(action){
   const btn = action === "approve" ? $("pendApprove") : $("pendDeny");
   busy(btn, action === "approve" ? "Approving" : "Denying");
   try{
-    const r = await fetch("/api/pending", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({project, action, ids})});
+    const r = await postJSON("/api/pending", {project, action, ids});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     const said = [];
@@ -10906,9 +10871,7 @@ async function reallySend(){
 async function postTodo(body, quiet){ return writing(() => postTodoDo(body, quiet)); }
 async function postTodoDo(body, quiet){
   try{
-    const r = await fetch("/api/todo", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({project: memProj, ...body})});
+    const r = await postJSON("/api/todo", {project: memProj, ...body});
     const j = await r.json();
     // Somebody else wrote this item first (roadmap #26). Not a toast: the op
     // stays at the head of the queue and the band asks which version wins,
@@ -11443,9 +11406,7 @@ async function postMemoryDo(body){
     return null;
   }
   try{
-    const r = await fetch("/api/memory", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({project: memProj, ...body})});
+    const r = await postJSON("/api/memory", {project: memProj, ...body});
     const j = await r.json();
     if (j.conflict){
       memClash = {body, what: body.action === "index" ? "The index" : body.file,
@@ -12243,9 +12204,7 @@ $("todoRevert").onclick = revertNotebook;
              + "scan of a project is taken as the starting point rather than "
              + "logged, so this fills in from the second one onwards.",
            fetchLog: async q => {
-             const r = await fetch("/api/findings", {method: "POST",
-               headers: {"Content-Type": "application/json"},
-               body: JSON.stringify({project, action: "history", ...q})});
+             const r = await postJSON("/api/findings", {project, action: "history", ...q});
              const j = await r.json();
              return j.error ? (notify(j.error, true), {history: []}) : j;
            }});
@@ -12271,8 +12230,7 @@ $("todoRevert").onclick = revertNotebook;
   async function gitAsk(kind, args, btn){
     if (btn) busy(btn, "Sending");
     try{
-      const r = await fetch("/api/git", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, action: "ask", kind, args: args || {}})});
+      const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       if (!j.sent) notify("typed into the session but not sent; something else has the keyboard there; press Enter in that tab when it is clear", true);
@@ -12322,9 +12280,7 @@ $("todoRevert").onclick = revertNotebook;
   async function gitAct(action, args, btn, verb){
     if (btn) busy(btn, verb || "Working");
     try{
-      const r = await fetch("/api/git", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, action, args: args || {}})});
+      const r = await postJSON("/api/git", {project, action, args: args || {}});
       const j = await r.json();
       if (j.error){
         if (j.unmerged && confirm(`${j.error}.\n\nDelete it anyway?`))
@@ -12494,8 +12450,7 @@ $("todoRevert").onclick = revertNotebook;
     if (pa) pa.onclick = async () => {
       busy(pa, "Applying");
       try{
-        const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, gitpol: {...pol, ...gitPolDraft}})});
+        const r = await postJSON("/api/prefs", {project, gitpol: {...pol, ...gitPolDraft}});
         const j = await r.json();
         if (j.error) return notify(j.error, true);
         gitPolDraft = {};
@@ -13179,9 +13134,7 @@ project can have several"
         if (save) save.onclick = async () => {
           busy(save, "Saving");
           try{
-            const r = await fetch("/api/changelog", {method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({project, component: comp, groups: gs})});
+            const r = await postJSON("/api/changelog", {project, component: comp, groups: gs});
             const a = await r.json();
             if (a.error){ notify(a.error, true); return; }
             gs = a.groups || [];
@@ -13232,9 +13185,7 @@ project can have several"
           pane.querySelector("#clFirstGo").onclick = async () => {
             const text = pane.querySelector("#clFirst").value.trim();
             if (!text) return notify("write the line first", true);
-            const r2 = await fetch("/api/changelog", {method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({project, component: comp, action: "first", text})});
+            const r2 = await postJSON("/api/changelog", {project, component: comp, action: "first", text});
             const j2 = await r2.json();
             if (j2.error) return notify(j2.error, true);
             notify("CHANGELOG.md written; the next bump dates it");
@@ -13305,9 +13256,7 @@ project can have several"
         : (b.dataset.verask || "");
       b.disabled = true;
       try{
-        const r = await fetch("/api/version", {method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: "ask", component: comp})});
+        const r = await postJSON("/api/version", {project, action: "ask", component: comp});
         const j = await r.json();
         if (j.error){ notify(j.error, true); b.disabled = false; return; }
         if (!j.sent){
@@ -13523,9 +13472,7 @@ become that version's section when it is created">Changelog${
 
   async function postVersion(body, quiet){
     try{
-      const r = await fetch("/api/version", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, ...body})});
+      const r = await postJSON("/api/version", {project, ...body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
       else if (j.bumped){
@@ -13543,9 +13490,7 @@ become that version's section when it is created">Changelog${
 
   async function postArtifacts(body){
     try{
-      const r = await fetch("/api/artifacts", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, ...body})});
+      const r = await postJSON("/api/artifacts", {project, ...body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
     }catch(e){ notify("artifacts: " + e, true); }
@@ -13921,9 +13866,7 @@ become that version's section when it is created">Changelog${
     if (!ruleDirty()) return;
     const body = rulePending;
     try{
-      const r = await fetch("/api/rules", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, action: "save", rules: body})});
+      const r = await postJSON("/api/rules", {project, action: "save", rules: body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       ruleData = j;
@@ -13968,9 +13911,7 @@ become that version's section when it is created">Changelog${
       return null;
     }
     try{
-      const r = await fetch("/api/tests", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, ...body})});
+      const r = await postJSON("/api/tests", {project, ...body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return null; }
       tests = j;
@@ -14249,9 +14190,7 @@ become that version's section when it is created">Changelog${
       return null;
     }
     try{
-      const r = await fetch("/api/bugs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, ...body})});
+      const r = await postJSON("/api/bugs", {project, ...body});
       const j = await r.json();
       // Somebody else edited this report first (roadmap #26). The tracker
       // that came back with the refusal is drawn; it is what the report now
@@ -14851,9 +14790,7 @@ async function unlinkProject(name){
                       $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`; };
   $("rnUnlink").disabled = true; $("rnUnlink").textContent = "Unlinking…";
   try{
-    const r = await fetch("/api/unlink", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name})});
+    const r = await postJSON("/api/unlink", {name});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return stop(j.error || `unlink failed (HTTP ${r.status})`);
     closeRename();
@@ -14967,8 +14904,7 @@ $("pCreate").onclick = async () => {
 
 async function postCustom(body){
   try{
-    const r = await fetch("/api/custom", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const r = await postJSON("/api/custom", body);
     const j = await r.json();
     if (j.error){ notify(j.error, true); return false; }
     if (state) state.custom = j.custom;
@@ -14979,9 +14915,7 @@ async function postCustom(body){
 
 async function setPinned(name, on){
   try{
-    const r = await fetch("/api/pin", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, pinned:on})});
+    const r = await postJSON("/api/pin", {name, pinned:on});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     // The server's answer is the truth, so two browsers cannot disagree about
@@ -15058,9 +14992,7 @@ async function pJobPoll(){
 
 async function pJobAct(action){
   try{
-    const j = await (await fetch("/api/project-job", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action})})).json();
+    const j = await (await postJSON("/api/project-job", {action})).json();
     if (j.error) notify(j.error, true);
   }catch(e){ notify("could not reach the server: " + e, true); }
   pJobPoll();
@@ -15182,9 +15114,7 @@ async function setLocked(name, on){
         + `Everything you do yourself still works: a shell, the findings and `
         + `their history, the artifacts, a dev instance. Unlock reverses it.`)) return;
   try{
-    const r = await fetch("/api/lock", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, locked:on})});
+    const r = await postJSON("/api/lock", {name, locked:on});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     if (j.killed){
@@ -15500,9 +15430,7 @@ async function rnSubmit(){
       refresh();
       return;
     }
-    const r = await fetch("/api/rename", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, to, token, auth, clear_token})});
+    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token});
     const j = await r.json();
     if (j.error) return stop(j.error);
     closeRename();
@@ -15530,9 +15458,7 @@ async function deleteProject(name){
       + `roadmap, bugs, versions and memories stay where they are.\n\n`
       + `Close its terminals first, and bring its dev instance down.`)) return;
   try{
-    const r = await fetch("/api/trash", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name})});
+    const r = await postJSON("/api/trash", {name});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     // The path is named back because it may not be the one the dialog said:
@@ -15554,9 +15480,7 @@ async function deleteProject(name){
 // asking the projects endpoint about a command.
 async function setProjectPinned(name, on){
   try{
-    const r = await fetch("/api/project-pin", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, pinned:on})});
+    const r = await postJSON("/api/project-pin", {name, pinned:on});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     // The answer IS the new state: the server sends back the whole pinned
@@ -15780,9 +15704,7 @@ async function killSession(name, node = ""){
 // front of it; Sign in is this without one, because the person just pressed a
 // button that says what it does.
 async function endSession(name, node = ""){
-  const r = await fetch("/api/session", {method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({action:"kill", session:name, node})});
+  const r = await postJSON("/api/session", {action:"kill", session:name, node});
   return r.json();
 }
 
@@ -16094,9 +16016,7 @@ async function macro(name, custom){
     return;
   }
   try{
-    const r = await fetch("/api/send", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(custom ? {session, custom} : {session, macro:name})});
+    const r = await postJSON("/api/send", custom ? {session, custom} : {session, macro:name});
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else {
