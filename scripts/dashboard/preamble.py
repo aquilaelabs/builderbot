@@ -25,10 +25,19 @@ is cut, the cut is made at a line boundary and says so in the text, so a
 session is told that it is reading part of a list rather than all of one.
 """
 
+import os
+import re
+from pathlib import Path
+
 # The three stores, set by configure(). Named here so the module reads as
 # what it is on its own, and so a typo is a lint finding rather than a
 # NameError on somebody's first session of the day.
 rules_mod = todo_mod = bugs_mod = None
+
+# The projects share, for deciding which parts of the briefing apply to this
+# project. From the environment rather than configure(), because both readers
+# (the server and bb) already run with it set and neither has to be taught.
+WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
 MAX = 200000
 
@@ -45,15 +54,72 @@ def configure(*, rules_mod, todo_mod, bugs_mod):
     globals().update(rules_mod=rules_mod, todo_mod=todo_mod, bugs_mod=bugs_mod)
 
 
+# Where the environment briefing is written, and where a project's tree is, so
+# the parts of it that only apply to some projects can be left out. WORKSPACE
+# is set by configure(); the file is beside the CLAUDE.md template it replaces.
+BRIEFING = Path(__file__).resolve().parents[2] / "config" / "templates" / "briefing.md"
+_IF = re.compile(r"<!-- BUILDERBOT:IF ([^>]*?) *-->")
+_END = "<!-- BUILDERBOT:END -->"
+
+
+def briefing(project):
+    """How this machine works, as every session on it is told (R63).
+
+    It used to be a 53KB block rendered into every project as CLAUDE.md and
+    pushed again whenever the template moved, which is drift by construction:
+    the copy is what a session reads and nothing keeps it current. Assembled
+    here instead, from one file, at the moment a session starts, so there is
+    no copy to be out of date and nothing to push.
+
+    What is in it is what would surprise somebody. The `bb` reference that
+    made up most of the old block is a `bb <verb> -h` away and does not need
+    paying for on every conversation.
+
+    The parts that only apply to some projects are marked in the file with
+    the evidence that decides them, the same way the template marks its own,
+    and the evidence is a glob against the project's tree because the tree is
+    what the controller and every node agree about.
+    """
+    try:
+        text = BRIEFING.read_text()
+    except OSError:
+        return ""
+    tree = Path(WORKSPACE or "/workspace") / project
+    out, skip = [], False
+    for line in text.split("\n"):
+        m = _IF.search(line)
+        if m:
+            bits = m.group(1).split()
+            skip = not any(_has(tree, g) for g in bits[1:])
+            continue
+        if _END in line:
+            skip = False
+            continue
+        if not skip:
+            out.append(line)
+    return "\n".join(out).strip("\n")
+
+
+def _has(tree, pattern):
+    try:
+        return any(True for _ in tree.glob(pattern))
+    except (OSError, ValueError):
+        return False
+
+
 def parts(project):
-    """The three pieces, in the order a session reads them.
+    """The pieces, in the order a session reads them.
+
+    The briefing first, because it is what the rest is said in terms of; then
+    how the operator wants this worked on; then what there is to work on.
 
     Each store answers "" when it has nothing, and an empty piece contributes
     no blank line: a project with no bugs must not start its sessions with a
     gap where the tracker would have been.
     """
     out = []
-    for name, fn in (("rules", lambda: rules_mod.block(project)),
+    for name, fn in (("briefing", lambda: briefing(project)),
+                     ("rules", lambda: rules_mod.block(project)),
                      ("roadmap", lambda: todo_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):
         try:

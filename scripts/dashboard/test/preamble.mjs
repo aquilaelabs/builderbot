@@ -32,15 +32,18 @@ const read = (name) => {
 };
 
 // ---- nothing at all --------------------------------------------------------
-// A project with no rules, no open items and no open bugs adds nothing to any
-// prompt. The empty case is the one a new project is in, so it is the one the
-// tab shows most often.
+// A project with no rules, no open items and no open bugs still gets the
+// briefing: how this machine works is true of every project, and it is the
+// thing a new project's first session most needs (R63). What it does NOT get
+// is an empty rules, roadmap or bugs piece.
 put('rules.json', { projects: {} });
 put('todos.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok(p.text === '' && p.bytes === 0 && p.capped === false,
-   `a project with nothing set adds nothing to a prompt (${JSON.stringify(p.text)})`);
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing'
+   && /Stay in this project/.test(p.text) && p.capped === false,
+   `a project with nothing set still gets the briefing and nothing else (${
+     (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted
@@ -65,15 +68,15 @@ ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
 ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.capped === false,
    `...and the size is the block's own (${p.bytes} bytes)`);
-ok((p.parts || []).map(x => x.name).join(',') === 'rules,roadmap,bugs',
-   `...with the three named and measured separately (${
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
+   `...with each named and measured separately, the briefing first (${
      (p.parts || []).map(x => `${x.name} ${x.bytes}`).join(' · ')})`);
 
 // ---- a store that contributes nothing leaves no gap -------------------------
 put('bugs.json', { projects: {} });
 p = await pre();
 ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
-   && (p.parts || []).map(x => x.name).join(',') === 'rules,roadmap',
+   && (p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
 // ---- the cap ---------------------------------------------------------------
