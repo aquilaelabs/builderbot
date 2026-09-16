@@ -9663,7 +9663,7 @@ async function pkgAct(action, only){
       : action === "sysdeps"
       ? "installing the system packages the held recipes need; the packages themselves are left alone"
       : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${
-          pkgNode !== "local" ? " on " + (pnodes.find(n => n.id === pkgNode)?.name || "the node") : ""
+          pkgNode !== "local" ? " on " + ((nodesList || []).find(n => n.id === pkgNode)?.name || "the node") : ""
         }; this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
