@@ -70,6 +70,12 @@ def verdict(m):
     a = m.available_default()
     why = " ".join((a["why"] or "").split())      # one line, whatever it said
     if a["on"]:
+        # An agent node's daemon is reached through its agent, never over
+        # the address the record carries, so name the node rather than an
+        # ssh:// nothing dials.
+        n = m.queue.node(a.get("node")) if getattr(m, "queue", None) and a.get("node") else None
+        if n and n.get("kind") == "agent":
+            return "ok", f"docker daemon: {n['name']}'s, through its agent"
         return "ok", f"docker daemon: {a['kind']} at {a['where']}"
     if why.startswith("no node with a daemon"):
         return "skip", "no node with a daemon: dev instances run on a node's docker (Nodes tab)"
