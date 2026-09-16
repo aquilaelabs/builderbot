@@ -1057,11 +1057,17 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     const sh = await bare('/term/ws?arg=sh:1:beta', { headers: noauthor });
     ok(sh.status === 409 && /no name and email/.test((await sh.json()).error || ''),
        'an account with no author is refused a shell at the door, and told where to set one');
+    // fetch writes with git and wants an author; a policy read and an
+    // ls-remote do not, and answer for the same account (B128).
     const git = await bare('/api/v1/bb', { method: 'POST',
       headers: { ...noauthor, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ argv: ['git', 'ls-remote'], cwd: `${DIR}/ws/beta` }) });
+      body: JSON.stringify({ argv: ['git', 'fetch'], cwd: `${DIR}/ws/beta` }) });
     ok(git.status === 403 && /no name and email/.test((await git.json()).error || ''),
-       '...and bb git for it is refused on the relay');
+       '...and bb git fetch for it is refused on the relay');
+    const pol = await bare('/api/v1/bb', { method: 'POST',
+      headers: { ...noauthor, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ argv: ['git', 'policy'], cwd: `${DIR}/ws/beta` }) });
+    ok(pol.status !== 403, `...while bb git policy, a read, answers it (${pol.status})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
