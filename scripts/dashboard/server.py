@@ -3689,7 +3689,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
-                    "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js"):
+                    "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
+                    "/nb-memory.js", "/nb-history.js"):
             return self._static(path[1:], "text/javascript; charset=utf-8")
         if self.path.split("?")[0] in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")
