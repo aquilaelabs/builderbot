@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.70"
+AGENT_VERSION = "0.5.71"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2202,10 +2202,15 @@ class Job(threading.Thread):
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
 
-    def flush(self):
+    def flush(self, keepalive=False):
         """Post what is pending, in bodies the controller will accept. A job
         that ran on while the controller was down can have megabytes waiting;
-        they go in order, a slice at a time, and stop at the first refusal."""
+        they go in order, a slice at a time, and stop at the first refusal.
+
+        `keepalive` posts even with nothing pending: the reply to a log post
+        is the one channel the controller has INTO a running job (its
+        cancel, a sign-in's code), and a flow waiting silently at a prompt
+        would otherwise never hear it (16 Sep)."""
         while True:
             with self.lock:
                 batch, size = [], 0
@@ -2215,9 +2220,13 @@ class Job(threading.Thread):
             if not batch:
                 with self.lock:
                     step, self.pending_step = self.pending_step, ""
-                if step:
-                    self.agent.ctl.call("log", {"job": self.job["id"], "chunks": [],
-                                                "step": step}, timeout=20)
+                if step or keepalive:
+                    body = {"job": self.job["id"], "chunks": []}
+                    if step:
+                        body["step"] = step
+                    st, r = self.agent.ctl.call("log", body, timeout=20)
+                    if st == 200:
+                        self._answered(r)
                 return True
             with self.lock:
                 step, self.pending_step = self.pending_step, ""
@@ -2229,16 +2238,19 @@ class Job(threading.Thread):
                 with self.lock:
                     self.pending = batch + self.pending
                 return False
-            if r.get("cancel") and not self.canceled:
-                self.cancel()
-            # ...and anything the controller wants typed INTO this job. The
-            # only downward channel a running job has is this reply, which is
-            # why `cancel` has always ridden it; a sign-in's code rides it the
-            # same way. One line, and only a job that opened a pty has
-            # anywhere to put it.
-            if r.get("input") and self.tty is not None:
-                with contextlib.suppress(OSError):
-                    os.write(self.tty, (str(r["input"]) + "\n").encode())
+            self._answered(r)
+
+    def _answered(self, r):
+        """What the controller sent down with its acknowledgement: a cancel,
+        and anything it wants typed INTO this job. The only downward channel
+        a running job has is this reply, which is why `cancel` has always
+        ridden it; a sign-in's code rides it the same way. One line, and only
+        a job that opened a pty has anywhere to put it."""
+        if r.get("cancel") and not self.canceled:
+            self.cancel()
+        if r.get("input") and self.tty is not None:
+            with contextlib.suppress(OSError):
+                os.write(self.tty, (str(r["input"]) + "\n").encode())
 
     def run(self):
         spec = self.job.get("spec") or {}
@@ -2351,6 +2363,7 @@ class Job(threading.Thread):
         os.close(slave)
         self.tty = master
         deadline = time.time() + int(spec.get("timeout") or 900)
+        last_beat = time.time()
         try:
             while True:
                 if time.time() > deadline:
@@ -2361,6 +2374,12 @@ class Job(threading.Thread):
                     r, _, _ = select.select([master], [], [], 0.5)
                 except (OSError, ValueError):
                     break
+                if not r:
+                    # Quiet: the flow is waiting at its prompt. A heartbeat
+                    # post is how the code the person pasted gets here.
+                    if time.time() - last_beat >= 1.0:
+                        self.flush(keepalive=True)
+                        last_beat = time.time()
                 if r:
                     try:
                         chunk = os.read(master, 65536)
