@@ -10124,28 +10124,31 @@ function makeNotebook(project){
   root.dataset.project = project;
   document.getElementById("nbPark").appendChild(root);
   const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
-  let loaded = false;
-  let ruleData = null, rulePending = null, rulesRev = null;
+  // The notebook's state, one object rather than sixty closure variables,
+  // so a view can live in its own file and reach it by name (R60).
+  const nb = {};
+  nb.loaded = false;
+  nb.ruleData = null; nb.rulePending = null; nb.rulesRev = null;
   // Which rules are open for editing, by row. A rule is READ by default:
   // its name, its text, its triggers, and shows its fields only after Edit,
   // the way a bug report does; every row opening as a form read as a tab
   // full of half-finished edits. A row just added starts open, since it is
   // nothing but a form until it has words.
-  let ruleEditing = new Set();
+  nb.ruleEditing = new Set();
   // ...and which are unfolded. A rule is a fold like a bug report: its name
   // on the line, the words behind a click: a tab that showed every rule in
   // full was a wall. Kept across redraws so a reword does not shut the fold.
-  let ruleOpen = new Set();
+  nb.ruleOpen = new Set();
   // What each row read when its Edit was pressed, so Cancel has somewhere
   // to go back to. A row with no entry here is one Add made: cancelling
   // that is removing it.
-  let ruleWas = new Map();
+  nb.ruleWas = new Map();
   // How many memories the tab found (null until read), for the head row that
   // sums both halves of the briefing: set by drawMemory, read by both draws.
-  let memN = null;
+  nb.memN = null;
   // The approval queue (roadmap #27): what the band and the tab counts draw
   // from, and the revision the poll compares to know when to re-read it.
-  let pendData = null, pendRev = null;
+  nb.pendData = null; nb.pendRev = null;
 
   // ---- the reading room --------------------------------------------------
   // What goes in is the real element, MOVED: every handler bound to a filter
@@ -10155,22 +10158,22 @@ function makeNotebook(project){
   // under the wrong heading.
   const sheet = root.querySelector(".nbsheet");
   armModal(sheet);                        // a clone: the page-load pass did not see it
-  let sheetHome = [], sheetClosed = null;
+  nb.sheetHome = []; nb.sheetClosed = null;
 
   function openSheet(title, els, onClose){
     closeSheet();                    // one at a time, like the env editor
     $("sheetTitle").textContent = title;
     const slot = $("sheetSlot");
-    sheetHome = els.map(el => [el, el.parentElement, el.nextSibling, el.hidden]);
+    nb.sheetHome = els.map(el => [el, el.parentElement, el.nextSibling, el.hidden]);
     els.forEach(el => { el.hidden = false; slot.appendChild(el); });
-    sheetClosed = onClose || null;
+    nb.sheetClosed = onClose || null;
     sheet.hidden = false;   // the fade is the stylesheet's, for every modal
   }
 
   function closeSheet(){
     if (sheet.hidden) return;
     sheet.hidden = true;
-    for (const [el, parent, next, wasHidden] of sheetHome){
+    for (const [el, parent, next, wasHidden] of nb.sheetHome){
       el.hidden = wasHidden;
       // No parent means it was built for the sheet and has nowhere to go back
       // to. next is null for "it was last".
@@ -10180,7 +10183,7 @@ function makeNotebook(project){
       // whose children drawVersion() replaces wholesale, which happens on a
       // commit, a version poll or a dist change while the sheet is still open
       // over the top. insertBefore then throws on a node that is no longer a
-      // child, mid-loop, so sheetHome was never cleared and sheetClosed never
+      // child, mid-loop, so nb.sheetHome was never cleared and nb.sheetClosed never
       // ran: the button stayed lit and the pane sat orphaned in the slot,
       // reappearing inside the next sheet opened.
       try{
@@ -10191,8 +10194,8 @@ function makeNotebook(project){
         el.remove();
       }
     }
-    sheetHome = [];
-    const done = sheetClosed; sheetClosed = null;
+    nb.sheetHome = [];
+    const done = nb.sheetClosed; nb.sheetClosed = null;
     done?.();
   }
 
@@ -10206,33 +10209,33 @@ function makeNotebook(project){
     if (e.key === "Escape" && !sheet.hidden){ e.preventDefault(); closeSheet(); }
   });
 
-let memProj = null;      // set by openMemory; always this project
-let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
+nb.memProj = null;  // set by openMemory; always this project
+nb.memGen  = 0;  // bumped on close, so a slow load cannot repaint it
 // What each half of the notebook was on at the last read, so the poll can see
 // somebody else writing (roadmap #26). Until this, the Bugs tab was the only
-// one of the four that noticed: the Roadmap and Memory views loaded once when
+// one of the four that noticed: the Roadmap and Memory views nb.loaded once when
 // the tab opened and then held that drawing until it was closed and reopened,
 // which is a long time to be looking at a list a session has moved on from.
-let todoRev = null, memRev = null;
+nb.todoRev = null; nb.memRev = null;
 
 async function openMemory(name){
-  memProj = name;
-  const gen = ++memGen;
+  nb.memProj = name;
+  const gen = ++nb.memGen;
   $("memTitle").textContent = "Notebook: " + name;
-  memN = null; briefingHead();
+  nb.memN = null; briefingHead();
   $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
   $("todoSaveQuiet").disabled = true;
-  todoSel = null;                 // the send box lives on the row, and the
-  todoOrdering = false;           // rows are about to be replaced wholesale
-  todoPending = []; todoWas = null;
-  todoBatch = null; todoStale = false;
-  todoRev = memRev = null;
-  clash = memClash = null; clashResume = null;
-  nbHere = []; nbRead = 0; nbWhere = "briefing"; drawHere();
+  nb.todoSel = null;                 // the send box lives on the row, and the
+  nb.todoOrdering = false;           // rows are about to be replaced wholesale
+  nb.todoPending = []; nb.todoWas = null;
+  nb.todoBatch = null; nb.todoStale = false;
+  nb.todoRev = nb.memRev = null;
+  nb.clash = nb.memClash = null; nb.clashResume = null;
+  nb.nbHere = []; nb.nbRead = 0; nb.nbWhere = "briefing"; drawHere();
   tests = null; testsRev = null;
   tstSuite = ""; tstFlagged = tstUndoc = false;
-  todoLogOn = false;
-  todoLog = null;
+  nb.todoLogOn = false;
+  nb.todoLog = null;
   $("histFind").value = "";
   cancelSend();
   $("todoText").value = "";
@@ -10250,13 +10253,13 @@ async function openMemory(name){
 
 async function loadTodo(gen){
   // What the staging counter was when we asked. See the guard below.
-  const staged = todoStaged;
+  const staged = nb.todoStaged;
   let j;
   try{
-    const r = await fetch("/api/todo?project=" + encodeURIComponent(memProj));
+    const r = await fetch("/api/todo?project=" + encodeURIComponent(nb.memProj));
     j = await r.json();
   }catch(e){ j = {error: String(e)}; }
-  if (gen !== memGen) return;
+  if (gen !== nb.memGen) return;
   // ...and never over something staged WHILE this was in flight. The guard
   // above catches a reply meant for a different project; this catches one for
   // this project that left before the operator typed and came back after.
@@ -10280,7 +10283,7 @@ async function loadTodo(gen){
   //
   // The batch marker still gets through: a session opening or closing one is
   // news whether or not this list can be replaced.
-  if (todoStaged !== staged){
+  if (nb.todoStaged !== staged){
     if (j.batch !== undefined) noteBatch(j.batch);
     return;
   }
@@ -10374,9 +10377,9 @@ function stepRow(r, idx, live){
             : idx === nxt ? "pick this to send"
             : `step ${nxt + 1} comes first`;
   // Both halves of a group light up together.
-  const on = todoSel && String(todoSel.id) === String(r.id)
-             && (idx < 0 ? (steps.length ? true : todoSel.step === null)
-                         : todoSel.step === idx);
+  const on = nb.todoSel && String(nb.todoSel.id) === String(r.id)
+             && (idx < 0 ? (steps.length ? true : nb.todoSel.step === null)
+                         : nb.todoSel.step === idx);
   // The tags sit above the line rather than beside it: they are labels on the
   // whole item, and on a phone a pill sharing the first line pushed the words
   // into a column two thirds as wide as the ones under it.
@@ -10401,7 +10404,7 @@ function stepRow(r, idx, live){
   return `<div class="todo${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
        idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
-    ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+    ${nb.todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? (st.done
@@ -10417,7 +10420,7 @@ function stepRow(r, idx, live){
         title="the technical half: files, functions, approach">▸ details</button>
       <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
     </span>
-    ${todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
+    ${nb.todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
         ? "take it off the shelf: back among the live ones"
@@ -10440,18 +10443,18 @@ function drawTodo(j){
   // it every write is followed by a redraw a second later, which detaches
   // whatever inline box was open (a send box, a drop confirmation) under
   // the finger that opened it.
-  if (j.rev !== undefined) todoRev = j.rev;
+  if (j.rev !== undefined) nb.todoRev = j.rev;
   const rows = j.items || [], live = !!j.session;
   // Whatever was armed may have been crossed off, dropped, or overtaken by a
   // step in front of it since the last draw.
-  if (todoSel){
-    const r = rows.find(x => String(x.id) === String(todoSel.id));
-    const ok = r && (todoSel.step === null
+  if (nb.todoSel){
+    const r = rows.find(x => String(x.id) === String(nb.todoSel.id));
+    const ok = r && (nb.todoSel.step === null
       ? !(r.steps || []).length && canSend(r, -1, live)
-      : canSend(r, todoSel.step, live));
-    if (!ok) todoSel = null;
+      : canSend(r, nb.todoSel.step, live));
+    if (!ok) nb.todoSel = null;
   }
-  todoSession = j.session || null;
+  nb.todoSession = j.session || null;
   // Shelved ones are not counted, here or on the project row: "still to send"
   // is a question about live work, and a parked item is not asking.
   const left = rows.reduce((n, r) =>
@@ -10469,7 +10472,7 @@ function drawTodo(j){
       : `${left} still to send${parked ? `, ${parked} shelved` : ""}: no session `
         + `is running here, so nothing can be sent yet`;
   $("todoField").hidden = !rows.length;
-  if (todoLogOn) drawHistory();
+  if (nb.todoLogOn) drawHistory();
   {
   $("todoList").innerHTML = rows.map(r =>
     // The group's own row gets the same `live` as its steps now: its arrow
@@ -10478,7 +10481,7 @@ function drawTodo(j){
       (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
       // How a plain item becomes a plan: give it a step. Hidden while
       // reordering, where the question is only where things sit.
-      todoOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
+      nb.todoOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
         type="button" class="link">+ step</button></div>`}</div>`).join("");
   $("todoList").querySelectorAll(".addstep").forEach(box => {
     box.querySelector("button").onclick = () => openStepInput(box);
@@ -10491,7 +10494,7 @@ function drawTodo(j){
     // A group's title arrow stands for its next step, so both resolve to the
     // same choice and light up together.
     if (go) go.onclick = () => {
-      const r = (todoItems || []).find(x2 => String(x2.id) === String(id));
+      const r = (nb.todoItems || []).find(x2 => String(x2.id) === String(id));
       const steps = r?.steps || [];
       pickTodo(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
     };
@@ -10529,14 +10532,14 @@ function drawTodo(j){
     row.querySelector(".txt").onclick = reword;
   });
   }
-  todoItems = rows;
-  todoUnsaved = j.unsaved || {};
+  nb.todoItems = rows;
+  nb.todoUnsaved = j.unsaved || {};
   if (j.batch !== undefined) noteBatch(j.batch);
   drawBatchNote();
   syncSave();
   $("todoOrder").hidden = !rows.length;
-  $("todoOrder").classList.toggle("on", todoOrdering);
-  $("todoLog").classList.toggle("on", todoLogOn);
+  $("todoOrder").classList.toggle("on", nb.todoOrdering);
+  $("todoLog").classList.toggle("on", nb.todoLogOn);
   drawSendBox(live);
   // Groups, not steps: a plan cut in half by a page boundary is a plan
   // nobody can read. The roadmap caps at 30 open items anyway, so this only
@@ -10550,7 +10553,7 @@ function drawTodo(j){
 // Remembered outside the box, because the box is rebuilt from scratch every
 // time its list is redrawn: a half-typed note that vanished whenever
 // something else on the panel moved would be worse than useless.
-let sendNoteText = "";
+nb.sendNoteText = "";
 
 // The box itself, built once and used by both lists.
 //
@@ -10573,10 +10576,10 @@ function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary" id="todoGo">Send</button></div>`;
   const more = box.querySelector("#sendMore");
-  more.value = sendNoteText;
+  more.value = nb.sendNoteText;
   // Kept on every keystroke rather than read at the end: a redraw between the
   // typing and the Send would otherwise take the words with it.
-  more.oninput = () => { sendNoteText = more.value; };
+  more.oninput = () => { nb.sendNoteText = more.value; };
   more.onkeydown = e => {
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); onCancel(); }
   };
@@ -10600,43 +10603,43 @@ function shutSendBoxes(){
 function drawSendBox(live){
   const list = $("todoList");
   list.querySelectorAll(".sendbox").forEach(b => b.remove());
-  if (!todoSel || !live || todoOrdering || todoLogOn){ sendShownFor = ""; return; }
-  const step = todoSel.step === null ? -1 : todoSel.step;
+  if (!nb.todoSel || !live || nb.todoOrdering || nb.todoLogOn){ nb.sendShownFor = ""; return; }
+  const step = nb.todoSel.step === null ? -1 : nb.todoSel.step;
   const row = list.querySelector(
-    `.todo[data-id="${CSS.escape(String(todoSel.id))}"][data-step="${step}"]`);
-  if (!row){ sendShownFor = ""; return; }
+    `.todo[data-id="${CSS.escape(String(nb.todoSel.id))}"][data-step="${step}"]`);
+  if (!row){ nb.sendShownFor = ""; return; }
   const box = sendBoxEl({
     label: "Send this one?",
     sub: step >= 0 ? `step ${step + 1}` : "",
     placeholder: "anything to send with it (optional)",
     onSend: reallySend,
-    onCancel: () => pickTodo(todoSel.id, todoSel.step),
+    onCancel: () => pickTodo(nb.todoSel.id, nb.todoSel.step),
   });
   row.after(box);
   // Only the first time this arrow arms, never again while it stays armed:
   // the box is rebuilt on every draw, and a poll landing while it is open
   // would otherwise replay the arrival two or three times a minute.
-  const key = `${todoSel.id}:${step}`;
-  if (key !== sendShownFor) arriveBox(box);
-  sendShownFor = key;
+  const key = `${nb.todoSel.id}:${step}`;
+  if (key !== nb.sendShownFor) arriveBox(box);
+  nb.sendShownFor = key;
 }
 
 // A batch opening is news; a batch closing is news of a different kind: the
 // list on screen is now a copy of something that has changed, so it is marked
 // stale and stays that way until it is re-read.
 function noteBatch(b){
-  if (todoBatch && !b){
-    todoStale = true;
+  if (nb.todoBatch && !b){
+    nb.todoStale = true;
     // Nothing staged and nothing half-typed: the fresh list can simply be
     // taken, and the banner never has to ask for a click it does not need.
-    if (!todoPending.length && !memDirty()){
-      todoStale = false;
-      todoBatch = null;
+    if (!nb.todoPending.length && !memDirty()){
+      nb.todoStale = false;
+      nb.todoBatch = null;
       reloadViews();
       return;
     }
   }
-  todoBatch = b || null;
+  nb.todoBatch = b || null;
 }
 
 // Is the notebook held against operator writes? While a session's batch is
@@ -10644,17 +10647,17 @@ function noteBatch(b){
 // everything: the Saves, and the write-through controls on the memory and
 // bug views, because "a session is mid-change here" is a fact about the
 // notebook, not about one of its tabs.
-function nbHeld(){ return !!todoBatch || todoStale; }
+function nbHeld(){ return !!nb.todoBatch || nb.todoStale; }
 
 function drawBatchNote(){
   const el = $("todoBatch");
   if (!el) return;
   root.classList.toggle("held", nbHeld());
-  el.hidden = !todoBatch && !todoStale;
+  el.hidden = !nb.todoBatch && !nb.todoStale;
   if (el.hidden){ el.innerHTML = ""; return; }
-  const n = todoBatch?.changes || 0;
-  el.innerHTML = todoBatch
-    ? `<div>${esc(todoBatch.by || "a session")} is part-way through changing this
+  const n = nb.todoBatch?.changes || 0;
+  el.innerHTML = nb.todoBatch
+    ? `<div>${esc(nb.todoBatch.by || "a session")} is part-way through changing this
          notebook${n ? `: ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving
          and reporting are held until it commits; your own edits are safe where
          they are. <button type="button" id="todoRecheck">Check now</button></div>`
@@ -10685,21 +10688,21 @@ function drawBatchNote(){
 // cover what it held. Reloading only the list is how the Bugs tab could sit
 // there showing what a session had already changed.
 async function reloadViews(){
-  await loadTodo(memGen);
+  await loadTodo(nb.memGen);
   if (bugs) await loadBugs();
-  await loadMemory(memGen);
+  await loadMemory(nb.memGen);
   if (!root.querySelector('[data-view="analysis"]').hidden) await loadAnalysis();
 }
 
 async function rereadTodo(){
-  if (todoPending.length
-      && !confirm(`Reload? ${todoPending.length} unsaved change`
-                  + `${todoPending.length === 1 ? "" : "s"} of yours would go: `
+  if (nb.todoPending.length
+      && !confirm(`Reload? ${nb.todoPending.length} unsaved change`
+                  + `${nb.todoPending.length === 1 ? "" : "s"} of yours would go: `
                   + "the notebook is being replaced with what is on disk."))
     return;
   revertPending();
-  todoOrdering = false;
-  todoStale = false;
+  nb.todoOrdering = false;
+  nb.todoStale = false;
   await reloadViews();
 }
 
@@ -10709,91 +10712,91 @@ async function rereadTodo(){
 function syncSave(){
   const q = $("todoSaveQuiet");
   if (!q) return;
-  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoPending.length > 0 || verStagedCount() > 0
-                || ruleStagedCount() > 0;
+  const dirty = nb.todoUnsaved.todo || nb.todoUnsaved.memory || memDirty()
+                || nb.todoPending.length > 0 || nb.verStagedCount() > 0
+                || nb.ruleStagedCount() > 0;
   // Held while a session is mid-batch, and again until the list is re-read
   // after one finishes. Reverting is still allowed either way: throwing away
   // your own unsaved work never depends on what anybody else is doing.
-  const held = !!todoBatch || todoStale;
+  const held = !!nb.todoBatch || nb.todoStale;
   q.disabled = !dirty || held;
   // Revert answers the same question the Saves do, from the other side.
   const rv = $("todoRevert");
   if (rv){
-    rv.disabled = !(todoPending.length || memDirty() || verStagedCount()
-                    || ruleStagedCount());
+    rv.disabled = !(nb.todoPending.length || memDirty() || nb.verStagedCount()
+                    || nb.ruleStagedCount());
     rv.title = rv.disabled ? "nothing unsaved to throw away"
       : "throw away what has not been saved: the list and the memory editors "
         + "go back to what is on disk";
   }
   q.title = held
-    ? (todoBatch ? "a session is part-way through changing this list"
+    ? (nb.todoBatch ? "a session is part-way through changing this list"
                  : "a session changed this list: reload it before saving over it")
     : "write any memory edits and settle the panel: a session running here "
       + "is told what moved on the next prompt it is given";
 }
 
-let todoItems = [];
-let todoSession = null;
-let todoUnsaved = {};       // {todo, memory}: what a session has not been told
-let todoSel = null;         // {id, step}: the arrow that is armed, if any
+nb.todoItems = [];
+nb.todoSession = null;
+nb.todoUnsaved = {};  // {todo, memory}: what a session has not been told
+nb.todoSel = null;  // {id, step}: the arrow that is armed, if any
 // Which arrow's box has already unrolled. The box is rebuilt on every draw
 // (see drawSendBox), so without this a poll landing while it is open would
 // replay the arrival two or three times a minute: the animation belongs to
 // the arrow being pressed, not to the box being drawn.
-let sendShownFor = "";
-let todoOrdering = false;   // the rows are showing move controls instead
+nb.sendShownFor = "";
+nb.todoOrdering = false;  // the rows are showing move controls instead
 // Reordering is the one edit held back. Everything else here is a decision:
 // ticked, crossed, dropped, and is written the moment it is made; arranging
 // is a draft you are in the middle of, and closing the panel on a half-done
 // shuffle should leave the order alone. So the moves live here until Save,
 // and the snapshot is what Cancel puts back.
-let todoPending = [];       // staged changes, in the order they were made
-let todoWas = null;         // the list as it was before the first staged change
+nb.todoPending = [];  // staged changes, in the order they were made
+nb.todoWas = null;  // the list as it was before the first staged change
 // A session's open batch, and whether one has closed since this copy of the
 // list was read. Both block Save: while it is open the list is moving, and
 // once it has closed what is on screen is out of date.
-let todoBatch = null;
-let todoStale = false;
+nb.todoBatch = null;
+nb.todoStale = false;
 
 // Picking one arms the Send button; picking it again puts it down. The
 // highlight is the whole confirmation: the line it would send is the line the
 // arrow is sitting next to, and a sentence repeating it back was noise.
 function pickTodo(id, step){
-  todoSel = (todoSel && String(todoSel.id) === String(id) && todoSel.step === step)
+  nb.todoSel = (nb.todoSel && String(nb.todoSel.id) === String(id) && nb.todoSel.step === step)
     ? null : {id, step};
   // A new target starts with an empty note. The text survives a *redraw* of
   // the box it was typed into, which is what the variable is for, but it
   // must not follow you to another step, or to a bug on the other tab, where
   // it would arrive pre-filled with words written about something else.
-  sendNoteText = "";
-  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+  nb.sendNoteText = "";
+  drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
 }
 
 // Putting the selection down, and the box with it. It redraws rather than
 // only clearing the variable: the box and the lit arrow are both drawn from
-// todoSel, and a sent row stays selectable now (that is the point of being
+// nb.todoSel, and a sent row stays selectable now (that is the point of being
 // able to send it again), so nothing else is going to take them off screen.
 function cancelSend(){
-  todoSel = null;
-  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+  nb.todoSel = null;
+  drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
 }
 
 async function reallySend(){
-  if (!todoSel) return;
-  let {id, step} = todoSel;
+  if (!nb.todoSel) return;
+  let {id, step} = nb.todoSel;
   // Always told, where this used to be a checkbox. The question the checkbox
   // asked ("shall I mention the list moved?") cannot have a useful "no" any
   // more: nothing can be sent until the panel is saved, so by the time a step
   // goes there IS no unsaved work to keep quiet about, and a session about to
   // act on a step is exactly who wants to know the plan around it changed.
   // It costs nothing when nothing moved: the note is empty and rides as "".
-  const proj = memProj;
+  const proj = nb.memProj;
   // Held in locals: the box is rebuilt by every redraw between here and the
   // end of this function, so the button read back at the end is not
   // necessarily the one that was pressed, but a switch that was asked for
   // still has to be the one that gets sent.
-  const note = sendNoteText;
+  const note = nb.sendNoteText;
   const go = $("todoGo");
   busy(go, "Sending");
   // Staged changes go first, always, not only when "also save" is ticked.
@@ -10801,13 +10804,13 @@ async function reallySend(){
   // against a list the server has not been told about would hand over a step
   // that does not exist there. An item added in this panel has a negative id
   // until that flush; the real one comes back from it.
-  if (todoPending.length){
-    clashResume = null;                 // settled by hand, then Send again
+  if (nb.todoPending.length){
+    nb.clashResume = null;                 // settled by hand, then Send again
     const map = await flushPending();
     if (map.has(String(id))) id = map.get(String(id));
     // Refused: the step about to be typed into a session is described by a
     // list the server has not accepted, so it must not go.
-    if (todoPending.length){
+    if (nb.todoPending.length){
       unbusy(go, "Send");
       return;
     }
@@ -10816,7 +10819,7 @@ async function reallySend(){
   // messages into one input box is how the second ends up glued to the first.
   const j = await postTodo({action: "send", id, step, tell: true, note});
   unbusy(go, "Send");
-  if (!j) { drawSendBox(!!todoSession); return; }
+  if (!j) { drawSendBox(!!nb.todoSession); return; }
   if (!j.sent){
     // Which line stalled matters: a step left in the box is one to press
     // Enter on, but a `/model` left there has the step still to come, and
@@ -10827,13 +10830,13 @@ async function reallySend(){
         + "send it again"
       : "typed into the session but not sent; something else has the "
         + "keyboard there; press Enter in that tab when it is clear", true);
-    drawSendBox(!!todoSession);
+    drawSendBox(!!nb.todoSession);
     return;
   }
   // Cleared only once it has gone. The pickers are a standing preference and
   // stay; a note belongs to the one thing it was written for, and finding it
   // still sitting there on the next step is how it ends up sent twice.
-  sendNoteText = "";
+  nb.sendNoteText = "";
   cancelSend();
   // The notebook stays open behind it now. Sending used to close the panel
   // because a modal was in the way of the tab you were being sent to; a tab
@@ -10847,7 +10850,7 @@ async function reallySend(){
 async function postTodo(body, quiet){ return writing(() => postTodoDo(body, quiet)); }
 async function postTodoDo(body, quiet){
   try{
-    const r = await postJSON("/api/todo", {project: memProj, ...body});
+    const r = await postJSON("/api/todo", {project: nb.memProj, ...body});
     const j = await r.json();
     // Somebody else wrote this item first (roadmap #26). Not a toast: the op
     // stays at the head of the queue and the band asks which version wins,
@@ -10871,18 +10874,18 @@ async function postTodoDo(body, quiet){
 // asking the server something every fifteen seconds, and a second clock would
 // be a second thing to get wrong. The request is not awaited: presence is
 // the least important thing on this page, and nothing else waits for it.
-let nbWhere = "briefing", nbHere = [], nbRead = 0;
+nb.nbWhere = "briefing"; nb.nbHere = []; nb.nbRead = 0;
 
 async function beat(leave){
-  if (!memProj) return;
+  if (!nb.memProj) return;
   try{
     const r = await fetch("/api/presence", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({project: memProj, client: nbClient,
-                            where: nbWhere, ...(leave ? {leave: 1} : {})})});
+      body: JSON.stringify({project: nb.memProj, client: nbClient,
+                            where: nb.nbWhere, ...(leave ? {leave: 1} : {})})});
     const j = await r.json();
     if (leave || !j.ok) return;
-    nbHere = j.here || []; nbRead = j.read || 0;
+    nb.nbHere = j.here || []; nb.nbRead = j.read || 0;
     drawHere();
   }catch(e){ /* the least important thing on the page */ }
 }
@@ -10896,14 +10899,14 @@ const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
 function drawHere(){
   const el = $("nbHere");
   if (!el) return;
-  const bits = nbHere.map(o =>
+  const bits = nb.nbHere.map(o =>
     `${o.mine ? "your other window" : esc(o.who)}${
       WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
   // A session that has gone and read the list, which is a different claim
   // from having been told: being told rides in on its next prompt (#27), and
   // what the operator wants to know after changing something is whether it
   // has actually looked.
-  const read = nbRead ? `a session here last read the roadmap ${ago(nbRead)}` : "";
+  const read = nb.nbRead ? `a session here last read the roadmap ${ago(nb.nbRead)}` : "";
   const line = [bits.length ? "Also open: " + bits.join(", ") : "", read]
     .filter(Boolean).join(" · ");
   el.hidden = !line;
@@ -10921,19 +10924,19 @@ function drawHere(){
 // than the overwrite it prevented: the op stays at the head of the queue, the
 // stored version is shown beside the typed one, and one of two buttons
 // decides it. Nothing is applied until it does.
-let clash = null;          // {op, item, rev, by, at}
-let clashResume = null;    // what to carry on with once it is settled
+nb.clash = null;  // {op, item, rev, by, at}
+nb.clashResume = null;  // what to carry on with once it is settled
 
-function showClash(op, j){ clash = {op, ...j.conflict}; drawClash(); }
+function showClash(op, j){ nb.clash = {op, ...j.conflict}; drawClash(); }
 
 function settleClash(mine){
-  const c = clash, go = clashResume;
-  clash = null; clashResume = null;
+  const c = nb.clash, go = nb.clashResume;
+  nb.clash = null; nb.clashResume = null;
   if (!c) return;
   // Either way the head of the queue is what moves: mine goes again saying it
   // replaces what is there NOW, theirs wins by the op simply being dropped.
-  if (mine && todoPending[0]) todoPending[0].was = c.current;
-  else todoPending.shift();
+  if (mine && nb.todoPending[0]) nb.todoPending[0].was = c.current;
+  else nb.todoPending.shift();
   drawClash();
   // Read before the redraw above, which is what raised this the first time
   // round: drawClash used to clear the resume itself, so settling a conflict
@@ -10946,15 +10949,15 @@ function settleClash(mine){
 function drawClash(){
   const box = $("todoClash");
   if (!box) return;
-  box.hidden = !clash;
-  if (!clash){ box.innerHTML = ""; return; }
-  const op = clash.op;
+  box.hidden = !nb.clash;
+  if (!nb.clash){ box.innerHTML = ""; return; }
+  const op = nb.clash.op;
   // "you" in the log means a person, and the person reading this is one, but
   // not the one who made that write, or the words would have matched. So it
   // is named as the other window rather than as them.
-  const who = clash.by === "claude" ? "a session" : "another window";
-  const when = clash.at ? " " + ago(clash.at) : "";
-  const theirs = String(clash.current ?? "");
+  const who = nb.clash.by === "claude" ? "a session" : "another window";
+  const when = nb.clash.at ? " " + ago(nb.clash.at) : "";
+  const theirs = String(nb.clash.current ?? "");
   const mine = op.action === "remove" ? "" : String(op.text || "");
   box.innerHTML = `
     <div class="hint bad">${who} changed this while you had it open${esc(when)}.
@@ -10983,7 +10986,7 @@ function openDrop(row, id, step){
   if (row.nextElementSibling?.classList.contains("dropbox")) return;
   row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
   const what = row.querySelector(".txt").textContent;
-  const r = (todoItems || []).find(x => String(x.id) === String(id));
+  const r = (nb.todoItems || []).find(x => String(x.id) === String(id));
   const also = step >= 0
     ? "the one behind it takes its place"
     : (r?.steps || []).length ? `its ${r.steps.length} steps go too` : "";
@@ -11114,22 +11117,22 @@ async function addTodo(){
 // What is unsaved here, in the words the buttons use. Both halves, because
 // both Saves write both and a Revert that left one behind would be a trap.
 function nbUnsaved(){
-  const n = todoPending.length;
-  const v = verStagedCount();
+  const n = nb.todoPending.length;
+  const v = nb.verStagedCount();
   return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
           memDirty() ? "an edited memory" : "",
-          ruleStagedCount() ? "an edited rule" : "",
+          nb.ruleStagedCount() ? "an edited rule" : "",
           v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
     .filter(Boolean).join(" and ");
 }
 // Set by the notebook's version block and its rules; the panel-level Save and
 // Revert are outside those closures and need a way to ask.
-let ruleStagedCount = () => 0;
-let ruleCommitStaged = async () => {};
-let ruleClearStaged = () => {};
-let verStagedCount = () => 0;
-let verCommitStaged = async () => {};
-let verClearStaged = () => {};
+nb.ruleStagedCount = () => 0;
+nb.ruleCommitStaged = async () => {};
+nb.ruleClearStaged = () => {};
+nb.verStagedCount = () => 0;
+nb.verCommitStaged = async () => {};
+nb.verClearStaged = () => {};
 
 // Throw the unsaved changes away. What Close used to do on the way out, now
 // that there is no way out to do it on: the tab stays, so this is the only
@@ -11139,12 +11142,12 @@ async function revertNotebook(){
   if (!what) return;
   if (!confirm(`Revert ${what}?\n\nIt goes back to what is on disk.`)) return;
   revertPending();
-  verClearStaged();
-  ruleClearStaged();
-  todoOrdering = false;
+  nb.verClearStaged();
+  nb.ruleClearStaged();
+  nb.todoOrdering = false;
   redrawTodo();
-  memEditing.clear();
-  await loadMemory(memGen);       // drops whatever the editors were holding
+  nb.memEditing.clear();
+  await loadMemory(nb.memGen);       // drops whatever the editors were holding
 }
 
 // A notebook tab going away takes whatever is unsaved in it with it, so it is
@@ -11157,28 +11160,28 @@ function notebookLeaving(){
   if (!what){ beat(true); return true; }
   if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
   revertPending();
-  todoOrdering = false;
+  nb.todoOrdering = false;
   beat(true);
-  memGen++; memProj = null;
+  nb.memGen++; nb.memProj = null;
   return true;
 }
 
 async function loadMemory(gen){
   let j;
   try{
-    const r = await fetch("/api/memory?project=" + encodeURIComponent(memProj));
+    const r = await fetch("/api/memory?project=" + encodeURIComponent(nb.memProj));
     j = await r.json();
   }catch(e){ j = {error: String(e)}; }
-  if (gen !== memGen) return;              // closed, or reopened elsewhere
+  if (gen !== nb.memGen) return;              // closed, or reopened elsewhere
   if (j.error){ $("memWhere").textContent = "memory: " + j.error; return; }
   drawMemory(j);
 }
 
-// The digest of the index as it was loaded, for the write that regenerates
+// The digest of the index as it was nb.loaded, for the write that regenerates
 // it: save_index rebuilds MEMORY.md from the lines the client sent, so a
 // stale one drops the line another writer just added: the third of roadmap
 // #26's three exposures, and the quietest.
-let memIndexRev = "";
+nb.memIndexRev = "";
 
 // The briefing's head row: one line for both halves of the tab, in the
 // order they sit: the rules, then what Claude remembers. Drawn by whichever
@@ -11186,22 +11189,22 @@ let memIndexRev = "";
 function briefingHead(){
   const el = $("memWhere");
   if (!el) return;
-  const r = ruleData?.rules?.length;
+  const r = nb.ruleData?.rules?.length;
   const bits = [];
   if (r !== undefined) bits.push(r ? `${r} rule${r === 1 ? "" : "s"}` : "no rules");
-  if (memN !== null) bits.push(memN ? `${memN} ${memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
+  if (nb.memN !== null) bits.push(nb.memN ? `${nb.memN} ${nb.memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
   el.textContent = "what every session here starts with" + (bits.length ? ": " + bits.join(", ") : "");
 }
 
 function drawMemory(j){
-  memLast = j;
+  nb.memLast = j;
   const n = j.memories.length;
-  memIndexRev = j.index_rev || "";
-  if (j.rev !== undefined) memRev = j.rev;
-  memN = j.exists ? n : 0;
+  nb.memIndexRev = j.index_rev || "";
+  if (j.rev !== undefined) nb.memRev = j.rev;
+  nb.memN = j.exists ? n : 0;
   briefingHead();
   $("memWhere").title = j.dir;
-  memTypes = j.types || memTypes;
+  nb.memTypes = j.types || nb.memTypes;
   // The index and the files disagreeing is the one thing on this tab that is
   // not a memory, so it is a section rather than two loose orange paragraphs
   // above the list. The section's own default is what it wants: open on a
@@ -11241,7 +11244,7 @@ function drawMemory(j){
         <span class="mname">${esc(m.name)}</span>
         <span class="mwhen">${ago(m.when)}</span>
       </summary>
-      <div class="body">${!memEditing.has(m.file) || m.big ? `
+      <div class="body">${!nb.memEditing.has(m.file) || m.big ? `
         <div class="bfield"><label>in the index</label><div class="bval${m.listed ? "" : " dim"}">${m.listed
           ? `${esc(m.title)}: ${esc(m.hook)}`
           : "not in the index: Claude sees this only when recall reaches for it"}</div></div>
@@ -11265,7 +11268,7 @@ function drawMemory(j){
             >${esc(m.hook)}</textarea>
         </div>
         <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
-          ? "Its line in the index: the one part loaded into every session started here."
+          ? "Its line in the index: the one part nb.loaded into every session started here."
           : "Not in the index, so Claude sees this only when recall reaches for it. Saving adds the line."}</div>
         ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
         ${m.big
@@ -11312,15 +11315,15 @@ function drawMemory(j){
     if (h && v.hook !== undefined) h.value = v.hook;
   });
   $("memList").querySelectorAll(".mEdit").forEach(b => b.onclick = () => {
-    memEditing.add(b.closest(".mem").dataset.file);
-    drawMemory(memLast);
+    nb.memEditing.add(b.closest(".mem").dataset.file);
+    drawMemory(nb.memLast);
   });
   $("memList").querySelectorAll(".mCancel").forEach(b => b.onclick = () => {
     const d = b.closest(".mem");
-    memEditing.delete(d.dataset.file);
+    nb.memEditing.delete(d.dataset.file);
     // Its fields go before the redraw reads them, so nothing typed is carried.
     d.querySelectorAll("textarea[data-file], .ix input").forEach(t => t.remove());
-    drawMemory(memLast);
+    drawMemory(nb.memLast);
   });
   // Not while one is being typed into: a redraw arrives after every save, and
   // it should not take a half-written memory with it.
@@ -11336,20 +11339,20 @@ function drawMemory(j){
 // So there is no "keep theirs" that quietly drops it. What is stored is put
 // on screen to read and copy from, and the only two answers are to write over
 // it or to reload deliberately, with the loss said out loud.
-let memClash = null;
+nb.memClash = null;
 
 // Which memories have their fields out. A memory is READ by default, like a
 // bug report and a rule: Edit puts the fields in its place, Save writes and
 // puts them away, Cancel puts them away and drops what was typed.
-let memEditing = new Set();
-let memLast = null;               // the last payload drawn, for a redraw with nothing fetched
+nb.memEditing = new Set();
+nb.memLast = null;  // the last payload drawn, for a redraw with nothing fetched
 
 function drawMemClash(){
   const box = $("memClash");
   if (!box) return;
-  box.hidden = !memClash;
-  if (!memClash){ box.innerHTML = ""; return; }
-  const c = memClash;
+  box.hidden = !nb.memClash;
+  if (!nb.memClash){ box.innerHTML = ""; return; }
+  const c = nb.memClash;
   box.innerHTML = `
     <div class="hint bad">${esc(c.what)} changed on disk while you had it
       open${c.at ? " " + esc(ago(c.at)) : ""}: most likely a session writing
@@ -11360,15 +11363,15 @@ function drawMemClash(){
       <button type="button" id="memClashDrop">Reload, losing your edits</button>
       <button type="button" id="memClashMine" class="primary">Write mine over it</button>
     </div>`;
-  $("memClashDrop").onclick = () => { memClash = null; drawMemClash();
-                                      memEditing.clear(); loadMemory(memGen); };
+  $("memClashDrop").onclick = () => { nb.memClash = null; drawMemClash();
+                                      nb.memEditing.clear(); loadMemory(nb.memGen); };
   $("memClashMine").onclick = async () => {
-    const c2 = memClash; memClash = null; drawMemClash();
+    const c2 = nb.memClash; nb.memClash = null; drawMemClash();
     // Rewritten against what is there now, which is what makes it a decision
     // rather than a race won twice.
     if (await postMemory({...c2.body, rev: c2.rev}))
-      memEditing.delete(c2.body.file);
-    await loadMemory(memGen); refresh(); syncSave();
+      nb.memEditing.delete(c2.body.file);
+    await loadMemory(nb.memGen); refresh(); syncSave();
   };
 }
 
@@ -11382,10 +11385,10 @@ async function postMemoryDo(body){
     return null;
   }
   try{
-    const r = await postJSON("/api/memory", {project: memProj, ...body});
+    const r = await postJSON("/api/memory", {project: nb.memProj, ...body});
     const j = await r.json();
     if (j.conflict){
-      memClash = {body, what: body.action === "index" ? "The index" : body.file,
+      nb.memClash = {body, what: body.action === "index" ? "The index" : body.file,
                   ...j.conflict};
       drawMemClash();
       return null;
@@ -11418,7 +11421,7 @@ function memLines(){
 async function saveMemory(quiet){
   const edits = [];
   $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
-    // With the digest of what was loaded: a memory is a whole-file write and
+    // With the digest of what was nb.loaded: a memory is a whole-file write and
     // the genuine last-writer-wins of this panel, so it is the one that most
     // needed a revision (roadmap #26).
     if (t.value !== t.dataset.was)
@@ -11429,26 +11432,26 @@ async function saveMemory(quiet){
   if (!edits.length && !ix){ if (!quiet) notify("nothing changed"); return; }
   let done = 0, want = edits.length + (ix ? 1 : 0);
   // Written, so the fields go away, except a row whose write was refused,
-  // whose typing the clash band promises is still in the editor.
+  // whose typing the nb.clash band promises is still in the editor.
   const kept = new Set();
   for (const e of edits){
     if (await postMemory({action:"save", ...e})) done++; else kept.add(e.file);
   }
   if (ix){
-    if (await postMemory({action:"index", lines: memLines(), rev: memIndexRev})) done++;
-    else memEditing.forEach(f => kept.add(f));   // the index lines live in every open row
+    if (await postMemory({action:"index", lines: memLines(), rev: nb.memIndexRev})) done++;
+    else nb.memEditing.forEach(f => kept.add(f));   // the index lines live in every open row
   }
-  memEditing = kept;
+  nb.memEditing = kept;
   if (done && !quiet)
     notify(`saved ${done} of ${want}: Claude reads these when a session starts`);
-  if (!quiet){ await loadMemory(memGen); refresh(); }
+  if (!quiet){ await loadMemory(nb.memGen); refresh(); }
 }
 
 // ---- writing one by hand ------------------------------------------------
 // Claude writes these itself, mid-conversation, and mostly that is the right
 // way round. This is for the other case: a standing instruction the operator
 // would otherwise have to say once per session and hope it stuck.
-let memTypes = ["user", "feedback", "project", "reference"];
+nb.memTypes = ["user", "feedback", "project", "reference"];
 const TYPE_WHAT = {
   user: "who you are: role, expertise, how you like to work",
   feedback: "how sessions here should work, and why",
@@ -11486,7 +11489,7 @@ function paintMemAdd(box){
         <input id="naName" maxlength="60" autocomplete="off" spellcheck="false"
           placeholder="no-parsed-progress"></div>
       <div><label for="naType">Kind</label>
-        <select id="naType">${memTypes.map(t =>
+        <select id="naType">${nb.memTypes.map(t =>
           `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
@@ -11533,7 +11536,7 @@ async function createMemory(){
   if (!j) return;
   notify(j.file + " written: a session started here reads it from now on");
   shutMemAdd();
-  await loadMemory(memGen);
+  await loadMemory(nb.memGen);
   refresh();
 }
 
@@ -11543,9 +11546,9 @@ async function forgetMemory(file){
 The file goes, and its line comes out of the`
     + ` index. A running session keeps what it already read.`)) return;
   if (await postMemory({action:"delete", file})){
-    memEditing.delete(file);
+    nb.memEditing.delete(file);
     notify(`${file} forgotten`);
-    await loadMemory(memGen);
+    await loadMemory(nb.memGen);
     refresh();
   }
 }
@@ -11555,8 +11558,8 @@ $("todoAdd").onclick = addTodo;
 $("todoOrder").onclick = () => {
   // Entering the mode throws nothing away either: whatever is already staged
   // stays staged, and the moves join it.
-  todoOrdering = !todoOrdering;
-  if (todoOrdering) cancelSend();
+  nb.todoOrdering = !nb.todoOrdering;
+  if (nb.todoOrdering) cancelSend();
   redrawTodo();
 };
 
@@ -11564,12 +11567,12 @@ $("todoOrder").onclick = () => {
 // this is only the page's own copy going back to the snapshot taken when the
 // first change was staged.
 function revertPending(){
-  if (todoPending.length && todoWas) todoItems = todoWas;
-  todoPending = []; todoWas = null;
+  if (nb.todoPending.length && nb.todoWas) nb.todoItems = nb.todoWas;
+  nb.todoPending = []; nb.todoWas = null;
 }
 
 const redrawTodo = () =>
-  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+  drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
 
 // ---- what happened to this list ----------------------------------------
 // The list shows the present tense and two people write it, so until this
@@ -11577,8 +11580,8 @@ const redrawTodo = () =>
 // dropped the third one?". Removing is now the only way a line leaves: the
 // cross-off-by-hand is gone, which makes the log the thing that stops a
 // deletion being final: the words are still here to retype.
-let todoLogOn = false;      // the panel is showing the log instead of the list
-let todoLog = null;         // what it is showing, or null while it loads
+nb.todoLogOn = false;  // the panel is showing the log instead of the list
+nb.todoLog = null;  // what it is showing, or null while it loads
 
 const ACT = {
   add:           ["added", "new"],
@@ -11605,11 +11608,11 @@ const stamp = t => new Date(t * 1000).toLocaleString(undefined,
   {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false});
 
 function drawHistory(){
-  if (!todoLog){
+  if (!nb.todoLog){
     $("todoHist").innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
-  if (!todoLog.length){
+  if (!nb.todoLog.length){
     const narrowed = $("histFind").value.trim() || $("histWhen").value !== "0";
     $("todoHist").innerHTML = `<div class="hint">${narrowed
       ? "Nothing in the log matches that. Widen the window, or clear the search."
@@ -11617,7 +11620,7 @@ function drawHistory(){
          and drop lands here from now on.`}</div>`;
     return;
   }
-  $("todoHist").innerHTML = todoLog.map(e => {
+  $("todoHist").innerHTML = nb.todoLog.map(e => {
     const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
     // R on the number, as everywhere an item is named (ids.py): a log line
     // is exactly where a bare number could be read against the bug tracker.
@@ -11651,7 +11654,7 @@ function drawHistory(){
   // Paged like the other three, now that it has a pane to page.
   paginate($("todoHist"), ":scope > .hist", {key: "todoHist", noun: "entries"});
 }
-const onList = id => todoItems.some(r => String(r.id) === String(id));
+const onList = id => nb.todoItems.some(r => String(r.id) === String(id));
 
 // The window the panel is asking for. Narrowed on the server, not here: the
 // log is capped at 300 events a project and most of a search is bytes that
@@ -11664,25 +11667,25 @@ function histQuery(){
           find: $("histFind").value.trim()};
 }
 
-let histTimer = null;
+nb.histTimer = null;
 async function loadHistory(){
-  todoLog = null;
+  nb.todoLog = null;
   redrawTodo();
   // quiet, because the answer is not a list payload and drawTodo must not be
   // handed one that has no items in it.
   const j = await postTodo(histQuery(), true);
-  todoLog = j?.history || [];
+  nb.todoLog = j?.history || [];
   redrawTodo();
 }
 
 // Typing searches, but not on every keystroke: each one is a round trip, and
 // a thumb types faster than a fetch comes back.
 $("histFind").oninput = () => {
-  clearTimeout(histTimer);
-  histTimer = setTimeout(loadHistory, 250);
+  clearTimeout(nb.histTimer);
+  nb.histTimer = setTimeout(loadHistory, 250);
 };
 $("histFind").onkeydown = e => {
-  if (e.key === "Enter"){ e.preventDefault(); clearTimeout(histTimer); loadHistory(); }
+  if (e.key === "Enter"){ e.preventDefault(); clearTimeout(nb.histTimer); loadHistory(); }
   if (e.key === "Escape" && e.target.value){
     e.preventDefault(); e.stopPropagation(); e.target.value = ""; loadHistory();
   }
@@ -11691,12 +11694,12 @@ $("histWhen").onchange = loadHistory;
 $("histN").onchange = loadHistory;
 
 $("todoLog").onclick = () => {
-  if (todoLogOn){ closeSheet(); return; }
-  todoOrdering = false;
-  todoLogOn = true;
+  if (nb.todoLogOn){ closeSheet(); return; }
+  nb.todoOrdering = false;
+  nb.todoLogOn = true;
   cancelSend();
   openSheet("Roadmap: history", [$("histBar"), $("todoHist")],
-            () => { todoLogOn = false; todoLog = null; $("todoLog").classList.remove("on"); });
+            () => { nb.todoLogOn = false; nb.todoLog = null; $("todoLog").classList.remove("on"); });
   loadHistory();
 };
 
@@ -11714,23 +11717,23 @@ $("todoLog").onclick = () => {
 // Sending is not staged and cannot be: it types into a live session, which no
 // Save button can take back. It flushes whatever is pending first, so the line
 // that goes carries the list as the operator has just arranged it.
-let tmpId = 0;              // ids for items the server has never heard of
+nb.tmpId = 0;  // ids for items the server has never heard of
 // Moves on every staged change, and never goes back. loadTodo reads it before
 // asking and again before drawing, which is how a reply that left before the
 // operator typed is told from one that left after; see the guard there.
-let todoStaged = 0;
+nb.todoStaged = 0;
 
 function stage(op, apply){
-  if (!todoPending.length) todoWas = structuredClone(todoItems);
+  if (!nb.todoPending.length) nb.todoWas = structuredClone(nb.todoItems);
   const out = apply();
   if (out === false) return false;      // nothing actually changed
-  todoPending.push(op);
-  todoStaged++;
+  nb.todoPending.push(op);
+  nb.todoStaged++;
   redrawTodo();
   return true;
 }
 
-const findRow = id => todoItems.find(r => String(r.id) === String(id));
+const findRow = id => nb.todoItems.find(r => String(r.id) === String(id));
 
 // The same tidy todo.py's _clean does, so the row on screen before Save is
 // the row that lands after it rather than one that quietly loses a space.
@@ -11740,9 +11743,9 @@ const _clean = t => String(t ?? "").replace(/\r\n?/g, "\n").split("\n")
   .join("\n").replace(/\n+$/, "");
 
 function stageAdd(text){
-  const id = --tmpId;                   // negative: not on the server yet
+  const id = --nb.tmpId;                   // negative: not on the server yet
   return stage({action: "add", text, tmp: id}, () => {
-    todoItems.splice(todoItems.filter(r => !r.shelved).length, 0,
+    nb.todoItems.splice(nb.todoItems.filter(r => !r.shelved).length, 0,
                      {id, text, by: "you", sent: 0, steps: [], shelved: 0});
     return true;
   });
@@ -11798,23 +11801,23 @@ function stageInfo(id, step, text){
 function stageRemove(id, step, why){
   return stage({action: "remove", id, ...(step >= 0 ? {step} : {}), why,
                 was: wasOf(id, step, "remove")}, () => {
-    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
     if (i < 0) return false;
-    if (step >= 0) todoItems[i].steps.splice(step, 1);
-    else todoItems.splice(i, 1);
+    if (step >= 0) nb.todoItems[i].steps.splice(step, 1);
+    else nb.todoItems.splice(i, 1);
   });
 }
 
 function stageShelve(id, on){
   return stage({action: "shelve", id, on}, () => {
-    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
     if (i < 0) return false;
-    const [r] = todoItems.splice(i, 1);
+    const [r] = nb.todoItems.splice(i, 1);
     r.shelved = on ? Math.floor(Date.now() / 1000) : 0;
     // The same place the server would put it: the shelf is the bottom of the
     // list, and coming back off it means the end of the live ones.
-    if (on) todoItems.push(r);
-    else todoItems.splice(todoItems.filter(x => !x.shelved).length, 0, r);
+    if (on) nb.todoItems.push(r);
+    else nb.todoItems.splice(nb.todoItems.filter(x => !x.shelved).length, 0, r);
   });
 }
 
@@ -11822,9 +11825,9 @@ function stageShelve(id, on){
 // replaying the list of them at Save arrives at what is on screen.
 function moveLocally(id, step, dir){
   stage({action: "move", id, step, dir}, () => {
-    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
     if (i < 0) return false;
-    const seq = step === null ? todoItems : (todoItems[i].steps || []);
+    const seq = step === null ? nb.todoItems : (nb.todoItems[i].steps || []);
     const at = step === null ? i : step;
     const to = at + dir;
     if (to < 0 || to >= seq.length) return false;
@@ -11850,8 +11853,8 @@ async function flushPending(){
   // used to discard everything behind it as well, which turned one rejected
   // edit into the loss of a whole panel's work. What is left stays staged, so
   // Save can be pressed again once whatever it was is dealt with.
-  while (todoPending.length){
-    const op = todoPending[0];
+  while (nb.todoPending.length){
+    const op = nb.todoPending[0];
     const body = {...op};
     delete body.tmp;
     if (body.id !== undefined) body.id = real(body.id);
@@ -11859,12 +11862,12 @@ async function flushPending(){
       body.was = now.get(fkey(body));
     const j = await postTodo(body, true);
     if (!j) return map;                 // postTodo has already said why
-    todoPending.shift();
+    nb.todoPending.shift();
     if (op.action === "add" && j.item) map.set(String(op.tmp), j.item.id);
     if (body.was !== undefined && op.action !== "remove")
       now.set(fkey(body), body.text);
   }
-  todoWas = null;
+  nb.todoWas = null;
   return map;
 }
 // Save writes whatever the memory editor is holding, replays whatever the
@@ -11876,23 +11879,23 @@ async function saveAll(){
   busy(b, "Saving");
   // Everything staged, replayed in the order it was made, which is what makes
   // the server arrive at what is on screen.
-  clashResume = () => saveAll();
+  nb.clashResume = () => saveAll();
   await flushPending();
   // A refusal stops the replay with the op still at the head of the queue and
   // the band asking which version wins. Settling it calls this again from the
   // top, so nothing further here should run in the meantime: writing the
   // memories and settling the panel while a roadmap change is still unwritten
   // would report "saved" over work that is not.
-  if (todoPending.length){ unbusy(b, was); syncSave(); return; }
-  clashResume = null;
+  if (nb.todoPending.length){ unbusy(b, was); syncSave(); return; }
+  nb.clashResume = null;
   // Before the memory write and the settle: a bump is a git commit, and if it
   // is going to refuse (a staged VERSION, a hand edit in the worktree) the
   // operator should hear that instead of "saved".
-  const verMsg = await verCommitStaged();
-  await ruleCommitStaged();
+  const verMsg = await nb.verCommitStaged();
+  await nb.ruleCommitStaged();
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: "save"});
-  await loadMemory(memGen);
+  await loadMemory(nb.memGen);
   // Out of the busy state, and no further: the button stays disabled, which
   // is what a finished save leaves. Asking syncSave here instead re-enabled
   // it for as long as it took the answer's `unsaved` to land, and a second
@@ -11900,7 +11903,7 @@ async function saveAll(){
   b.removeAttribute("aria-busy");
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
-  todoWas = null;
+  nb.todoWas = null;
   if (j) notify([verMsg, "saved: the session reads it on its next prompt"]
                 .filter(Boolean).join(" · "));
 }
@@ -11919,7 +11922,7 @@ $("todoRevert").onclick = revertNotebook;
     // Which view somebody is on is half of what the presence line says, so it
     // is reported on the switch rather than waiting for the next poll: the
     // other window would otherwise name the tab this one just left.
-    if (nbWhere !== v){ nbWhere = v; beat(); }
+    if (nb.nbWhere !== v){ nb.nbWhere = v; beat(); }
     nbViewMemo.keep(project, v);
     root.querySelectorAll(".nbtabs button").forEach(b => {
       const on = b.dataset.v === v;
@@ -11954,7 +11957,7 @@ $("todoRevert").onclick = revertNotebook;
     // The rules once; the code base every time the view is shown, since a
     // commit moves it and the server answers from its cache when not.
     if (v === "briefing"){
-      if (!ruleData) loadRules(); else loadCodebase().then(() => drawRules());
+      if (!nb.ruleData) loadRules(); else loadCodebase().then(() => drawRules());
       // Once, on the first show. It is re-read when one of the three stores
       // behind it moves, and only while this view is the one on screen.
       if (!preData) loadPreamble();
@@ -11981,12 +11984,12 @@ $("todoRevert").onclick = revertNotebook;
                  + "Unsaved work does not carry across the tabs: Save it "
                  + "first if you want to keep it.")) return false;
     revertPending();
-    verClearStaged();
-    ruleClearStaged();
-    todoOrdering = false;
+    nb.verClearStaged();
+    nb.ruleClearStaged();
+    nb.todoOrdering = false;
     redrawTodo();
-    memEditing.clear();
-    await loadMemory(memGen);     // drops whatever the editors were holding
+    nb.memEditing.clear();
+    await loadMemory(nb.memGen);     // drops whatever the editors were holding
     return true;
   }
   root.querySelectorAll(".nbtabs button").forEach(b =>
@@ -12143,13 +12146,13 @@ $("todoRevert").onclick = revertNotebook;
   // ask the same ones.
   const HALVES = [
     [() => `todo:${project}`,
-     k => todoRev !== null && revs[k] > todoRev
-          && !todoPending.length && !clash && !nbHeld(),
-     () => loadTodo(memGen)],
+     k => nb.todoRev !== null && revs[k] > nb.todoRev
+          && !nb.todoPending.length && !nb.clash && !nbHeld(),
+     () => loadTodo(nb.memGen)],
     [() => `mem:${project}`,
-     k => memRev !== null && revs[k] && revs[k] !== memRev
-          && !memDirty() && !memClash && !nbHeld(),
-     () => loadMemory(memGen)],
+     k => nb.memRev !== null && revs[k] && revs[k] !== nb.memRev
+          && !memDirty() && !nb.memClash && !nbHeld(),
+     () => loadMemory(nb.memGen)],
     [() => `bug:${project}`,
      k => bugs && bugRev !== null && revs[k] !== bugRev,
      () => loadBugs()],
@@ -12157,10 +12160,10 @@ $("todoRevert").onclick = revertNotebook;
      k => tests && testsRev !== null && revs[k] !== testsRev,
      () => loadTests()],
     [() => `rules:${project}`,
-     k => ruleData && rulesRev !== null && revs[k] !== rulesRev && !ruleDirty(),
+     k => nb.ruleData && nb.rulesRev !== null && revs[k] !== nb.rulesRev && !ruleDirty(),
      () => loadRules()],
     [() => `pending:${project}`,
-     k => pendRev !== null && revs[k] !== pendRev,
+     k => nb.pendRev !== null && revs[k] !== nb.pendRev,
      () => loadPending()],
   ];
   for (const [key, news, read] of HALVES)
@@ -12945,9 +12948,9 @@ project can have several"
     // Published to the panel-level Save/Revert, which live outside this
     // closure. Rebound on every draw so they always close over this
     // notebook's own state rather than whichever one drew last.
-    verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
-    verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
-    verCommitStaged = async () => {
+    nb.verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
+    nb.verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
+    nb.verCommitStaged = async () => {
       const parts = Object.entries(verPending);
       const policy = verPolicyPending;
       if (!parts.length && policy == null) return "";
@@ -13631,21 +13634,21 @@ become that version's section when it is created">Changelog${
     loadCodebase().then(() => drawRules());
     try{
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
-      ruleData = await r.json();
-    }catch(e){ ruleData = {error: String(e), rules: []}; }
-    rulesRev = revs[`rules:${project}`] ?? rulesRev;
-    rulePending = null;
+      nb.ruleData = await r.json();
+    }catch(e){ nb.ruleData = {error: String(e), rules: []}; }
+    nb.rulesRev = revs[`rules:${project}`] ?? nb.rulesRev;
+    nb.rulePending = null;
     drawRules();
   }
 
   // What is on screen: the staged copy if anything has been typed, otherwise
   // what the server last said.
-  const ruleRows = () => rulePending || (ruleData?.rules || []);
-  const ruleDirty = () => rulePending !== null;
+  const ruleRows = () => nb.rulePending || (nb.ruleData?.rules || []);
+  const ruleDirty = () => nb.rulePending !== null;
 
   function ruleStage(fn){
-    rulePending = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
-    fn(rulePending);
+    nb.rulePending = (nb.rulePending || (nb.ruleData?.rules || [])).map(r => ({...r}));
+    fn(nb.rulePending);
     drawRules();
     syncSave();
   }
@@ -13665,7 +13668,7 @@ become that version's section when it is created">Changelog${
     briefingHead();
     const box = $("rulesBox");
     if (!box) return;
-    const d = ruleData || {};
+    const d = nb.ruleData || {};
     if (d.error){
       box.innerHTML = `<div class="field"><div class="hint bad">rules: ${esc(d.error)}</div></div>`;
       return;
@@ -13683,15 +13686,15 @@ become that version's section when it is created">Changelog${
         change yours.</div>
       <div class="addbar" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
-        <details class="bug rulerow${ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
-            ruleEditing.has(i) || ruleOpen.has(i) ? " open" : ""}>
+        <details class="bug rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
+            nb.ruleEditing.has(i) || nb.ruleOpen.has(i) ? " open" : ""}>
           <summary>
             <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>
             <span class="rlkind ${cond(r) ? "cond" : ""}">${
               cond(r) ? "on its triggers" : "every session"}</span>${
               r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
           </summary>
-          <div class="body">${ruleEditing.has(i) ? `
+          <div class="body">${nb.ruleEditing.has(i) ? `
             ${lbl("", "Name", "a short name; the listing and bb rules show NAME use it")}
             <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
               placeholder="tests" value="${esc(r.name || "")}"
@@ -13755,9 +13758,9 @@ become that version's section when it is created">Changelog${
       // before the thing.
       + preambleSection();
     wireSections(box);
-    ruleStagedCount = () => (ruleDirty() ? 1 : 0);
-    ruleClearStaged = () => { rulePending = null; ruleEditing.clear(); ruleOpen.clear(); ruleWas.clear(); drawRules(); };
-    ruleCommitStaged = saveRules;
+    nb.ruleStagedCount = () => (ruleDirty() ? 1 : 0);
+    nb.ruleClearStaged = () => { nb.rulePending = null; nb.ruleEditing.clear(); nb.ruleOpen.clear(); nb.ruleWas.clear(); drawRules(); };
+    nb.ruleCommitStaged = saveRules;
     box.querySelectorAll(".rulerow").forEach(row => {
       const i = Number(row.dataset.i);
       const put = (k, sel) => {
@@ -13771,33 +13774,33 @@ become that version's section when it is created">Changelog${
       // the rows that stay so an open editor does not jump to its neighbour.
       row.querySelector(".rlRm").onclick = () => {
         const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
-        ruleEditing = shift(ruleEditing); ruleOpen = shift(ruleOpen);
-        ruleWas = new Map([...ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
+        nb.ruleEditing = shift(nb.ruleEditing); nb.ruleOpen = shift(nb.ruleOpen);
+        nb.ruleWas = new Map([...ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
         ruleStage(rs => rs.splice(i, 1));
       };
       const ed = row.querySelector(".rlEdit");
       if (ed) ed.onclick = () => {
-        const r = (rulePending || ruleData?.rules || [])[i];
-        ruleWas.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])]});
-        ruleEditing.add(i); ruleOpen.add(i); drawRules();
+        const r = (nb.rulePending || nb.ruleData?.rules || [])[i];
+        nb.ruleWas.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])]});
+        nb.ruleEditing.add(i); nb.ruleOpen.add(i); drawRules();
       };
       // Back to reading it, as it read before Edit. If that leaves the list
       // exactly as it is on disk there is nothing staged any more, and the
       // foot's Save goes quiet with it.
       const cn = row.querySelector(".rlCancel");
       if (cn) cn.onclick = () => {
-        const was = ruleWas.get(i); ruleWas.delete(i);
-        const rs = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
+        const was = nb.ruleWas.get(i); nb.ruleWas.delete(i);
+        const rs = (nb.rulePending || (nb.ruleData?.rules || [])).map(r => ({...r}));
         if (was) rs[i] = was;
         else {
           rs.splice(i, 1);
           const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
-          ruleEditing = shift(ruleEditing); ruleOpen = shift(ruleOpen);
+          nb.ruleEditing = shift(nb.ruleEditing); nb.ruleOpen = shift(nb.ruleOpen);
         }
-        ruleEditing.delete(i);
+        nb.ruleEditing.delete(i);
         const seen = list => JSON.stringify(list.map(r => [r.name || "", r.text || "",
           (r.paths || []).join(","), (r.words || []).join(","), r.doc || "", r.check || ""]));
-        rulePending = seen(rs) === seen(ruleData?.rules || []) ? null : rs;
+        nb.rulePending = seen(rs) === seen(nb.ruleData?.rules || []) ? null : rs;
         drawRules(); syncSave();
       };
       // The same tween the bug reports open with, bound on the summary
@@ -13805,13 +13808,13 @@ become that version's section when it is created">Changelog${
       const sum = row.querySelector("summary");
       if (sum) sum.onclick = e => {
         e.preventDefault();
-        if (row.open) ruleOpen.delete(i); else ruleOpen.add(i);
+        if (row.open) nb.ruleOpen.delete(i); else nb.ruleOpen.add(i);
         slideDetails(row, !row.open);
       };
     });
     const add = $("rlAdd");
     if (add) add.onclick = () => {
-      ruleEditing.add(rows.length);          // the new row, which is a form until it has words
+      nb.ruleEditing.add(rows.length);          // the new row, which is a form until it has words
       ruleStage(rs => rs.push({name: "", text: "", paths: [], words: []}));
     };
   }
@@ -13821,8 +13824,8 @@ become that version's section when it is created">Changelog${
   // "every session / on its triggers" word is the one thing that has to
   // follow, so it is the only thing touched.
   function ruleField(i, key, value){
-    rulePending = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
-    const r = rulePending[i];
+    nb.rulePending = (nb.rulePending || (nb.ruleData?.rules || [])).map(r => ({...r}));
+    const r = nb.rulePending[i];
     if (!r) return;
     if (key === "paths" || key === "words")
       r[key] = value.split(/[,\s]+/).filter(Boolean);
@@ -13840,15 +13843,15 @@ become that version's section when it is created">Changelog${
 
   async function saveRules(){
     if (!ruleDirty()) return;
-    const body = rulePending;
+    const body = nb.rulePending;
     try{
       const r = await postJSON("/api/rules", {project, action: "save", rules: body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
-      ruleData = j;
-      rulePending = null;
-      ruleEditing.clear();                   // written: back to reading them
-      ruleOpen.clear(); ruleWas.clear();
+      nb.ruleData = j;
+      nb.rulePending = null;
+      nb.ruleEditing.clear();                   // written: back to reading them
+      nb.ruleOpen.clear(); nb.ruleWas.clear();
       drawRules();
     }catch(e){ notify("could not reach the server: " + e, true); }
   }
@@ -14392,25 +14395,25 @@ become that version's section when it is created">Changelog${
         const body = d.querySelector(".body");
         if (body.querySelector(".sendbox")) { shutSendBoxes(); return; }
         shutSendBoxes();
-        sendNoteText = "";            // see pickTodo: a note is not carried over
-        todoSel = null;               // and only one thing is armed at a time
-        drawSendBox(!!todoSession);
+        nb.sendNoteText = "";            // see pickTodo: a note is not carried over
+        nb.todoSel = null;               // and only one thing is armed at a time
+        drawSendBox(!!nb.todoSession);
         // Same session the roadmap sends into, and the same reason it has to
         // exist first: there is no door into a Claude that is not running.
-        if (!todoSession){
+        if (!nb.todoSession){
           notify("no Claude session is running here: start one from the "
                  + "project's card first", true);
           return;
         }
         const box = sendBoxEl({
-          label: `Send bug #${id} to ${todoSession}?`,
+          label: `Send bug #${id} to ${nb.todoSession}?`,
           sub: "as a number to look up, not as a copy",
           placeholder: "anything to send with it (optional)",
           onCancel: shutSendBoxes,
           onSend: async () => {
             const go = box.querySelector("#todoGo");
             busy(go, "Sending");
-            const j = await postBug({action: "send", id, note: sendNoteText});
+            const j = await postBug({action: "send", id, note: nb.sendNoteText});
             unbusy(go, "Send");
             if (!j) return;
             if (!j.sent){
@@ -14422,7 +14425,7 @@ become that version's section when it is created">Changelog${
                 true);
               return;
             }
-            sendNoteText = "";
+            nb.sendNoteText = "";
             shutSendBoxes();
             startClaude(project, null);   // land in the tab it went to
           },
@@ -14487,31 +14490,31 @@ become that version's section when it is created">Changelog${
       const r = await fetch(`/api/pending?project=${encodeURIComponent(project)}`);
       const j = await r.json();
       if (j.error) return;
-      pendData = j;
+      nb.pendData = j;
     }catch(e){ return; }
     // ...and the same for the queue: what the poll last said is what this
     // copy now reflects, so the watch above can tell a later move from it.
-    pendRev = revs[`pending:${project}`] ?? pendRev ?? 0;
+    nb.pendRev = revs[`pending:${project}`] ?? nb.pendRev ?? 0;
     drawPending();
   }
   function drawPending(){
     const el = $("nbPending");
     if (!el) return;
-    const rows = pendData?.pending || [];
+    const rows = nb.pendData?.pending || [];
     const n = rows.length;
     // The strip's own counts, per tab: a number where the tab is, so the
     // question "which of these" is answered without opening anything.
     for (const b of root.querySelectorAll(".nbtabs button")){
       const k = {roadmap: "roadmap", bugs: "bugs", briefing: "rules"}[b.dataset.v];
       let badge = b.querySelector(".pcount");
-      const c = k ? (pendData?.counts?.[k] || 0) : 0;
+      const c = k ? (nb.pendData?.counts?.[k] || 0) : 0;
       if (!c){ if (badge) badge.remove(); continue; }
       if (!badge){ badge = document.createElement("span"); badge.className = "pcount"; b.appendChild(badge); }
       badge.textContent = String(c);
     }
     el.hidden = !n;
     if (!n){ el.innerHTML = ""; return; }
-    const c = pendData.counts || {};
+    const c = nb.pendData.counts || {};
     const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"]]
       .filter(([k]) => c[k]).map(([k, w]) => `${c[k]} ${w}${c[k] === 1 || w === "roadmap" ? "" : "s"}`);
     el.innerHTML = `<div><span>${n} change${n === 1 ? "" : "s"} from a session
@@ -14576,10 +14579,10 @@ become that version's section when it is created">Changelog${
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
-    shown(){ if (!loaded){ loaded = true; openMemory(project); loadPending(); } },
+    shown(){ if (!nb.loaded){ nb.loaded = true; openMemory(project); loadPending(); } },
     reloadPending: loadPending,
-    reload(){ return loadTodo(memGen); },
-    reloadMemory(){ return loadMemory(memGen); },
+    reload(){ return loadTodo(nb.memGen); },
+    reloadMemory(){ return loadMemory(nb.memGen); },
     reloadBugs(){ return loadBugs(); },
     reloadTests(){ return loadTests(); },
     leaving: notebookLeaving,
@@ -14604,7 +14607,7 @@ become that version's section when it is created">Changelog${
       // and a refetch here would quietly throw them away.
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
-      if (now !== todoSession){ todoSession = now; redrawTodo(); }
+      if (now !== nb.todoSession){ nb.todoSession = now; redrawTodo(); }
       // The Docker view follows a running job the way the tab does.
       if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
       // What this notebook re-reads and when is declared once, up where the
@@ -14618,7 +14621,7 @@ become that version's section when it is created">Changelog${
         loadAnalysis();
 
     },
-    escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
+    escape(){ if (nb.todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
     destroy(){
       beat(true);
       unwatch.forEach(off => off());
