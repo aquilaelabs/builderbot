@@ -2,7 +2,7 @@
 // Claude. One classic script beside index.html (docs/nodes.md §13): one file
 // per notebook view (R60). A factory makeNotebook calls per notebook.
 function nbBugsView({$, nb, project}){
-  // ---- nb.bugs ----------------------------------------------------------------
+  // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,
   // not a list curated in place, and a session finding one mid-task must not
   // depend on somebody pressing Save later.
@@ -76,7 +76,7 @@ function nbBugsView({$, nb, project}){
   // halves (a date is a date and a title is a title), so they are left alone.
   const BUG_SORTS = {
     // The tie-break matters here and nowhere else: `updated` has one-second
-    // resolution, and closing two nb.bugs in the same second is ordinary. Falling
+    // resolution, and closing two bugs in the same second is ordinary. Falling
     // back to the id keeps the rows from swapping places between draws.
     severity: (a, b) => a.status !== "open"
                         ? (b.updated || b.at || 0) - (a.updated || a.at || 0)

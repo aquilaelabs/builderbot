@@ -671,7 +671,7 @@ project can have several"
       finally { b.disabled = false; }
     });
     // Staged like a bump, written by the foot's Save (docs/design-language.md,
-    // Settings): picking the saved value back clears the nb.stage.
+    // Settings): picking the saved value back clears the stage.
     const pol = $("verPolicy");
     if (pol) pol.onchange = () => {
       verPolicyPending = pol.value === pol.dataset.was ? null : pol.value;
@@ -786,7 +786,7 @@ this directory">Ask Claude</button>
               class="${staged === pt ? "on" : ""}"
               title="${staged === pt
                 ? "staged: Save writes VERSION and commits it; press again to unstage"
-                : `nb.stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
+                : `stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
           <button type="button" data-verask="${esc(v.component || "")}"
             title="ask this project's Claude session whether ${esc(v.target)} is

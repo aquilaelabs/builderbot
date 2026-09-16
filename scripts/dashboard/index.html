@@ -10243,7 +10243,7 @@ nb.memProj = null;  // set by openMemory; always this project
 nb.memGen  = 0;  // bumped on close, so a slow load cannot repaint it
 // What each half of the notebook was on at the last read, so the poll can see
 // somebody else writing (roadmap #26). Until this, the Bugs tab was the only
-// one of the four that noticed: the Roadmap and Memory views nb.loaded once when
+// one of the four that noticed: the Roadmap and Memory views loaded once when
 // the tab opened and then held that drawing until it was closed and reopened,
 // which is a long time to be looking at a list a session has moved on from.
 nb.todoRev = null; nb.memRev = null;
@@ -11210,7 +11210,7 @@ async function loadMemory(gen){
   drawMemory(j);
 }
 
-// The digest of the index as it was nb.loaded, for the write that regenerates
+// The digest of the index as it was loaded, for the write that regenerates
 // it: save_index rebuilds MEMORY.md from the lines the client sent, so a
 // stale one drops the line another writer just added: the third of roadmap
 // #26's three exposures, and the quietest.
@@ -11301,7 +11301,7 @@ function drawMemory(j){
             >${esc(m.hook)}</textarea>
         </div>
         <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
-          ? "Its line in the index: the one part nb.loaded into every session started here."
+          ? "Its line in the index: the one part loaded into every session started here."
           : "Not in the index, so Claude sees this only when recall reaches for it. Saving adds the line."}</div>
         ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
         ${m.big
@@ -11454,7 +11454,7 @@ function memLines(){
 async function saveMemory(quiet){
   const edits = [];
   $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
-    // With the digest of what was nb.loaded: a memory is a whole-file write and
+    // With the digest of what was loaded: a memory is a whole-file write and
     // the genuine last-writer-wins of this panel, so it is the one that most
     // needed a revision (roadmap #26).
     if (t.value !== t.dataset.was)
@@ -11465,7 +11465,7 @@ async function saveMemory(quiet){
   if (!edits.length && !ix){ if (!quiet) notify("nothing changed"); return; }
   let done = 0, want = edits.length + (ix ? 1 : 0);
   // Written, so the fields go away, except a row whose write was refused,
-  // whose typing the nb.clash band promises is still in the editor.
+  // whose typing the clash band promises is still in the editor.
   const kept = new Set();
   for (const e of edits){
     if (await postMemory({action:"save", ...e})) done++; else kept.add(e.file);

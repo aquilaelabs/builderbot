@@ -5,7 +5,7 @@ function nbTestsView({$, nb, project}){
   // ---- the test registry ---------------------------------------------------
   // Write-through like the tracker beside it, and for the same reason: what
   // is written here is a sentence about a test that already exists, so there
-  // is nothing to nb.stage and nothing a Save could mean.
+  // is nothing to stage and nothing a Save could mean.
   //
   // The timings are not written from this page at all. They are parsed out of
   // a run somebody ingested (`bb tests ingest`) because a duration this
@@ -67,7 +67,7 @@ function nbTestsView({$, nb, project}){
     // replaces the list wholesale, so text somebody is part-way through
     // typing has to come back with the row. Carried only where it DIFFERS
     // from what is about to be drawn, which settles the precedence without a
-    // dirty flag to clear: their unsaved words nb.beat the stored ones, a save
+    // dirty flag to clear: their unsaved words beat the stored ones, a save
     // of their own leaves nothing to carry, and a row they never touched
     // takes whatever another window wrote.
     const drafts = new Map(), stored = new Map(all.map(t => [t.key, t]));
@@ -96,7 +96,7 @@ function nbTestsView({$, nb, project}){
       return;
     }
     // The header's three numbers. Projected is the sum of every test's last
-    // measured duration: what the suite spends *in* its nb.tests; the last run's
+    // measured duration: what the suite spends *in* its tests; the last run's
     // own wall time is shown beside it, and the difference is the harness.
     const proj = j.total_ms || 0, wall = j.last_wall_ms || 0;
     $("tstHint").innerHTML = `${j.n} tests · <b>${esc(dur(proj))}</b> projected`
