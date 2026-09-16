@@ -3722,7 +3722,8 @@ class Handler(BaseHTTPRequestHandler):
         # What the companion app asks first: the surface number this
         # dashboard serves, the image it is, and where a newer app is.
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
-                           "image": image_stamp().get("rev") or "", "apk": app_apk()})
+                           "image": image_stamp().get("rev") or "",
+                           "built": image_stamp().get("built") or "", "apk": app_apk()})
 
     def _get_welcome(self):
         """GET /api/welcome."""

@@ -27,6 +27,12 @@ ok(meta.status === 200 && meta.body.api === surface.api && appApi === surface.ap
    `the surface number agrees everywhere: server ${meta.body.api}, source ${srcApi}, app ${appApi}, contract ${surface.api}`);
 ok(typeof meta.body.version === 'string' && typeof meta.body.apk === 'string',
    '...and /api/meta names the image and where a newer app would be');
+// `built` rides the same endpoint for bb status on a node (R62): a session
+// there reads the controller's build off /api/meta, since its own env carries
+// no image stamp. Not an app field (not in api-surface.json), so it does not
+// move APP_API; asserted here because this is where /api/meta's shape is kept.
+ok(typeof meta.body.built === 'string',
+   '...and carries the build time, which bb status on a node shows for the controller');
 
 // ---- every GET the app makes answers with the fields it reads ------------------------
 // Against the fixture project alpha, which has a roadmap, bugs, rules and a

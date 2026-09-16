@@ -216,14 +216,22 @@ cmd_status() {
     # Dockerfile; empty means the image was built some other way.
     # Above the commit, because it is the half a person can order. A sha
     # says which build; only this says which came first.
-    printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
-    printf '  %-8s %s\n' image "$(
-        if [ -n "${BB_IMAGE_REV:-}" ]; then
-            printf '%.7s%s' "$BB_IMAGE_REV" \
-                "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
-        else
-            printf 'unstamped'
-        fi)"
+    if on_node; then
+        # A node runs no controller image of its own, so BB_VERSION/BB_IMAGE_REV
+        # are the controller's and unset here. What answers "which build is the
+        # box on" from a session is the CONTROLLER's build, asked for over the
+        # API rather than read off an env that was never set here (R62).
+        printf '  %-8s %s\n' controller "$(bb_controller_stamp)"
+    else
+        printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
+        printf '  %-8s %s\n' image "$(
+            if [ -n "${BB_IMAGE_REV:-}" ]; then
+                printf '%.7s%s' "$BB_IMAGE_REV" \
+                    "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
+            else
+                printf 'unstamped'
+            fi)"
+    fi
     # Only where a session runs: the controller carries no Claude Code (R47),
     # and a dash against it there reads as something missing rather than as
     # something that was never meant to be here.
@@ -4186,6 +4194,46 @@ BB_TOKEN. From a plain docker exec there is none: run this from a dashboard \
 terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
     fi
     printf '%s' "$h"
+}
+
+# The controller's own build, for `bb status` on a node (R62). A node runs no
+# controller image, so BB_IMAGE_REV and BB_VERSION are empty here and the old
+# status lines read "unstamped". The which-build rule sends a session to bb
+# status to learn which build the box is on, and a session is always on a node,
+# so that check has to work here. It asks the controller over the same channel
+# everything else uses: /api/meta carries the running image's version, commit
+# and build time. Softly, with a short timeout, because a controller that is
+# down, or a session with no token, is a state the line reports rather than
+# dies on.
+bb_controller_stamp() {
+    local auth; auth="$(bb_auth_header)"
+    [ -n "$auth" ] || { printf 'unknown: no session token to ask the controller with'; return; }
+    BB_META_AUTH="$auth" python3 - <<'PY' 2>/dev/null || printf 'unreachable: the controller did not answer'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+# Short: bb status is run often, and a controller that is down should cost a
+# line, not a 30-second wait on the default.
+try:
+    m = bbapi.call("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
+except Exception:
+    m = {"error": "no answer"}
+if not isinstance(m, dict) or m.get("error"):
+    print("unreachable: the controller did not answer", end="")
+    raise SystemExit(0)
+ver = (m.get("version") or "").strip()
+rev = (m.get("image") or "").strip()
+built = (m.get("built") or "").strip()
+if not ver and not rev:
+    print("unstamped: the controller's image was built outside CI", end="")
+else:
+    out = ver or rev[:7]
+    if rev and rev[:7] not in out:
+        out += f" ({rev[:7]})"
+    if built:
+        out += f" (built {built})"
+    print(out, end="")
+PY
 }
 
 # ---- a session on a node (roadmap #24) --------------------------------------
