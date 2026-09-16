@@ -214,12 +214,6 @@ def remember(host, fid):
     write_json(STATE / HOSTS, d)
 
 
-def forget_host(host):
-    d = known()
-    if d.pop((host or "").lower(), None) is not None and write_json and STATE:
-        write_json(STATE / HOSTS, d)
-
-
 def forge_of(host):
     """The catalog entry serving this host, falling back to the generic one.
 
@@ -323,12 +317,6 @@ def host_of(url):
         if line.strip().lower().startswith("hostname "):
             return line.split(None, 1)[1].strip()
     return host
-
-
-def https_url(host, path):
-    """The https spelling of an address. http only where it was asked for —
-    see link(), which is where a plaintext host is warned about."""
-    return f"https://{host}/{path}.git"
 
 
 def token_ok(entry, token):
