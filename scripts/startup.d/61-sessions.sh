@@ -29,10 +29,8 @@ while IFS=$'\t' read -r name dir; do
     [ -n "$name" ] || continue
     # Same shape check the writer applied. This file lives on a volume the
     # operator can edit, and the name becomes a tmux target and a filename.
-    # `login` is the sign-in flow's terminal, not a workspace: restoring one
-    # would put a finished conversation with an OAuth prompt back on screen.
     case "$name" in
-        claude-*|login|*[!A-Za-z0-9._-]*) continue ;;
+        *[!A-Za-z0-9._-]*) continue ;;
     esac
     tmux has-session -t "$name" 2>/dev/null && continue
     [ -d "$dir" ] || dir="$WORKSPACE"
