@@ -2389,6 +2389,12 @@ button[aria-busy="true"]{opacity:.75}
 .dmgrant select,.dmref select{width:auto;max-width:100%}
 .dmgrant label,.dmref label{color:var(--dim);flex:0 0 auto}
 .dmgrant select{width:auto;max-width:100%}
+/* The row's three settings (build from, Claude may rebuild, Claude tests)
+   on one line where there is room, wrapping on a phone: three stacked
+   pickers read as three forms above five buttons (R58). */
+.dmsettings{display:flex;flex-wrap:wrap;gap:2px 18px;align-items:flex-start}
+.dmsettings:empty{display:none}
+.dmsettings>.sub{margin-top:4px}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
@@ -9052,14 +9058,14 @@ function dmRowsHtml(ins, job, blind){
         <div class="name">${esc(d.name)}
           <span class="dim dmpill ${!blind && d.running ? "ok" : ""}">(${
             blind ? "state unknown"
+            : d.running && (d.services || []).some(c => c.state !== "running")
+              ? `partly up: ${d.services.filter(c => c.state === "running").length} of ${d.services.length}`
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
           : `${esc(d.project)} · ${esc(d.instance)}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
-            : d.running && (d.services || []).some(c => c.state !== "running")
-              ? `partly up: ${d.services.filter(c => c.state === "running").length} of ${d.services.length}`
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
@@ -9067,9 +9073,7 @@ function dmRowsHtml(ins, job, blind){
             esc(c.service || c.name)}: ${esc(c.status || c.state)}${
             (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
-        ${dmRefLine(d)}
-        ${dmGrantLine(d)}
-        ${dmTestLine(d)}
+        <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -15021,11 +15025,15 @@ async function setPinned(name, on){
 // A padlock, for a project the operator keeps and runs themselves. Only the
 // shackle differs between the two states (the body stays put), so which one
 // a row is wearing reads at a glance without comparing it to its neighbours.
-const LOCK_BODY = `<rect x="3.4" y="7" width="9.2" height="6.4" rx="1.3"/>`;
+// A padlock with a wide shackle and a keyhole: at 16px the old narrow
+// shackle over a low body read as another list icon beside the notebook's
+// ticks (R58), and the keyhole is the one mark no list has.
+const LOCK_BODY = `<rect x="2.9" y="7.2" width="10.2" height="6.4" rx="1.4"/>
+  <path d="M8 9.6v1.9"/>`;
 const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
-  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0V7"/></svg>`;
+  <path d="M5 7.2V4.9a3 3 0 0 1 6 0v2.3"/></svg>`;
 const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
-  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0"/></svg>`;
+  <path d="M5 7.2V4.9a3 3 0 0 1 6 0"/></svg>`;
 
 // A chain link: the remote, on every repository: the link form for one that
 // has none, and the credential and Unlink for one that has.
@@ -15249,11 +15257,9 @@ function renameProject(name, mode = "all"){
   $("rnErrWrap").hidden = true;
   $("rnPreview").hidden = true;
   $("rnName").classList.remove("bad");
-  $("rnHint").textContent =
-    "The directory moves, and so does everything keyed to its name: the "
-    + "roadmap and bugs, the versions, the dev instance's data and env, the "
-    + "CI logs, and Claude's transcripts and memories. Close its terminals "
-    + "first, and bring its dev instance down.";
+  // The warning about what a rename moves is shown once the name is
+  // edited (rnShow), not to everyone opening the dialog for a setting.
+  $("rnHint").textContent = "";
   // Offered where a token would mean something: a project that already has
   // one, and a project that may push but pushes with a deploy key; that
   // second case is the way off deploy keys, and without it there was no way
@@ -15415,8 +15421,14 @@ function rnDrawAuth(){
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
 
+const RN_MOVES = "The directory moves, and so does everything keyed to its name: the "
+  + "roadmap and bugs, the versions, the dev instance's data and env, the "
+  + "CI logs, and Claude's transcripts and memories. Close its terminals "
+  + "first, and bring its dev instance down.";
+
 function rnShow(){
   const raw = $("rnName").value, clean = projName(raw);
+  $("rnHint").textContent = clean && clean !== rnFor ? RN_MOVES : "";
   const taken = clean && clean !== rnFor
                 && (state?.projects || []).some(p => p.name === clean);
   $("rnName").classList.toggle("bad", !!taken);
