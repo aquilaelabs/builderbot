@@ -5095,7 +5095,12 @@ class Handler(BaseHTTPRequestHandler):
         could name itself could bind the account to whatever it liked.
         """
         proj = (self._who() or {}).get("session") or ""
-        nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
+        # A sign-in job's own token names the node it was queued on rather
+        # than a project: the controller minted it, signed, for that job.
+        if proj.startswith("node:"):
+            nid = proj[5:] if nodes.node(proj[5:]) else ""
+        else:
+            nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
         if not nid:
             return self._json({"error": "a sign-in is reported by a session on the "
                                         "node it happened on"}, 400)
@@ -5614,7 +5619,8 @@ class Handler(BaseHTTPRequestHandler):
         pick = next((n for n in live if want in (n["id"], n["name"])), None) \
             if want else (live[0] if len(live) == 1 else None)
         if pick:
-            return self._json(signin.start_on_node(nodes, pick["id"], uid, pick["name"])
+            tok = users.mint_session(f"node:{pick['id']}", ttl=1800, uid=uid)
+            return self._json(signin.start_on_node(nodes, pick["id"], uid, pick["name"], token=tok)
                               | {"signin": signin.state()})
         if live:
             return self._json({"error": "which node should the sign-in run on? "

@@ -925,6 +925,8 @@ claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
     (await (await fetch('/api/v1/jobs?id=' + id)).json()), nodeSignin.job);
   ok((queued.job || queued).type === 'claude-login',
      '...as a claude-login job, which is the one job that opens a pty');
+  ok(/^bbs_/.test(((queued.job || queued).spec || {}).token || ''),
+     '...carrying a token minted for the account and scoped to the node, so the flow can report what it signed in as');
   await page.evaluate(async () => { await fetch('/api/signin', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'cancel' }) }); });
