@@ -60,7 +60,7 @@ def stamp_of(cwd, files):
 
 def stamp_file(project):
     d = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME", "/tmp"), ".cache")
-    return os.path.join(d, "builderbot", f"checked-{project}")
+    return os.path.join(d, "builderbot", "project", project, "checked")
 
 
 def main():

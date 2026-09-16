@@ -8993,6 +8993,11 @@ function dmRowsHtml(ins, job, blind){
     // forever.
     const mine = job && job.project === d.project && job.instance === d.instance;
     const busy = !!(mine && job.running);
+    // A one-shot that ran and exited 0 (a seed, a migration) has done its
+    // job: it is neither up nor down, and counting it as down said an
+    // instance was partly up when nothing was wrong (B147).
+    const finished = c => c.state === "exited" && /^Exited \(0\)/.test(c.status || "");
+    const live = (d.services || []).filter(c => !finished(c));
     return `
     <div class="row stack2${blind ? " off" : ""}" data-inst="${
       esc(d.project)}|${esc(d.instance)}">
@@ -9001,8 +9006,8 @@ function dmRowsHtml(ins, job, blind){
         <div class="name">${esc(d.name)}
           <span class="dim dmpill ${!blind && d.running ? "ok" : ""}">(${
             blind ? "state unknown"
-            : d.running && (d.services || []).some(c => c.state !== "running")
-              ? `partly up: ${d.services.filter(c => c.state === "running").length} of ${d.services.length}`
+            : d.running && live.some(c => c.state !== "running")
+              ? `partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
@@ -9012,8 +9017,8 @@ function dmRowsHtml(ins, job, blind){
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
-          `<span class="dmsvc ${c.state === "running" ? "ok" : "dim"}" title="${esc(c.image || "")}">${
-            esc(c.service || c.name)}: ${esc(c.status || c.state)}${
+          `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
+            esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}${
             (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
         <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>

@@ -961,14 +961,15 @@ NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
 card and lands on llvmpipe: software by a slower road than the emulator's own
 SwiftShader.
 
-So a node starts a real `Xorg` on the injected `nvidia_drv.so` at boot
-(`nodes/provision-linux.sh` sets that up; this container starts none and
-claims no card). It has to happen
-at boot because a session runs unprivileged with no capabilities and cannot
-become DRM master. `bb emu start` then **tests** the result rather than
-trusting it: EGL has to answer with a vendor driver, and Mesa answering counts
-as failure for exactly the reason above, and falls back to software if it does
-not. `bb emu gpu` says which you have and why, in one line.
+So the card needs a real `Xorg` on the injected `nvidia_drv.so`, started at
+boot, because a session runs unprivileged with no capabilities and cannot
+become DRM master. **Nothing starts one on a node yet**: provisioning the
+display half is roadmap R20, and the controller starts none and claims no
+card, so an emulator renders in software today. `bb emu start` **tests** for
+the hardware path rather than trusting it: EGL has to answer on an X server
+with a vendor driver, and Mesa answering counts as failure for exactly the
+reason above, and it falls back to software when it does not. `bb emu gpu`
+says which you have and why, in one line.
 
 **That server is watched, three times over.** It has died hours into a boot
 with nothing in its log: no error, no signal, a clean startup and then
@@ -3270,14 +3271,30 @@ the list. That file is passed with
 widen its own boundary by editing files in the repo it is working on. Only the
 root-owned managed policy file outranks it.
 
-**This is a guardrail, not a sandbox.** It stops a session wandering into the
-wrong tree by mistake, which is the common failure. Note also that it only
-applies to sessions the dashboard starts: run `claude` yourself in a shell tab
-and there is no settings file, leaving the instruction in the project's
-CLAUDE.md as the only thing asking it to stay put. It does not contain one
-that goes looking: Bash still reaches the whole filesystem, and no in-process
-permission system changes that. If you need a hard boundary, do not mount the
-other projects into the same container.
+**On its own this is a guardrail, not a sandbox.** It stops a session wandering
+into the wrong tree by mistake, which is the common failure, and Bash is not
+under it.
+
+**The hard boundary is the session's view (roadmap R35).** Every session on a
+node runs as one account and the projects share is mounted whole, so file
+permissions cannot keep projects apart. On a Linux node provisioned as a
+sandbox, a project's Claude session and its project shells start inside a
+mount, PID and IPC namespace built by `nodes/bb-session`, a root helper that
+is the session account's one sudo rule. Inside it `/workspace` holds only the
+project, its worktrees and the account's Claude share (other projects'
+transcripts are empty); the account's home is the only home and its
+BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
+`/dev/shm` are the session's own; the agent's stores keep only the
+emulator's logs and the project's own CI logs and artifacts; and the
+process list and tmux server of other sessions are out of reach. The helper
+then drops to the session account with `no_new_privs`, so nothing inside
+can gain privilege again. The agent installs the helper, its layout file and
+the sudo rule from the bundle, and reports on the node's Sessions section
+whether a view can be built and why not. A Mac, a guest machine or a
+container node, whose agent is not root, cannot, and says so there. The
+view is not a VM: the network and the kernel are shared, so a session can
+still reach another project's dev instance through its published ports.
+A workspace-root shell, which needs the `terminal` right, is not confined.
 
 ### Push rights
 
@@ -3914,6 +3931,7 @@ scripts/
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
+    gitrelay.py                  a node session's push, fetch and pull, done in a repository of the controller's own
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
@@ -3922,6 +3940,7 @@ scripts/
     test/                        its Playwright suite: `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes

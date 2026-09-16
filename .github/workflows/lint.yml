@@ -129,7 +129,19 @@ jobs:
           # added later is simply never checked, and nothing says so. That is
           # how scripts/dashboard/bb-tty — which validates a browser-supplied
           # argument — went unlinted. A shebang cannot be forgotten.
-          mapfile -t files < <(find scripts -type f -exec grep -lE '^#!.*\b(ba)?sh\b' {} + | sort)
+          # The whole repository by its first line, and the scripts that live
+          # inside quoted heredocs (bb-sandbox in the provisioner), which is
+          # the selection bb lint makes, so the two agree about what a clean
+          # tree is (B145).
+          mapfile -t tracked < <(git ls-files)
+          files=()
+          for f in "${tracked[@]}"; do
+            if [ -f "$f" ] && head -c 64 "$f" | head -1 | grep -qE '^#!.*\b(ba)?sh\b'; then
+              files+=("$f")
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/embedded-shell"
+          mapfile -t -O "${#files[@]}" files < <(python3 scripts/lib/embedded.py shell "$RUNNER_TEMP/embedded-shell" "${files[@]}")
           printf 'checking %s\n' "${files[@]}"
           shellcheck -x -S warning "${files[@]}" 2>&1 | tee -a "$CI_LOG"
 

@@ -120,6 +120,26 @@ await page.waitForFunction(sel => /Feature work/.test(document.querySelector(sel
                            `${NB} #gitDetail`, { timeout: 10000 });
 ok(await page.$eval(`${NB} #gitDetail`, e => !!e.querySelector('pre.diff .d-add')),
    '...with its diff, and picking another swaps it');
+// The detail sits under the whole history, so on a short window a click has
+// to take the page down to it rather than leave the change below the fold.
+await page.setViewportSize({ width: 1280, height: 360 });
+await page.click(`${NB} .grow[data-sha="${merge.sha}"]`);
+const landed = await page.waitForFunction(sel => {
+  const d = document.querySelector(sel);
+  if (!d?.querySelector('.gcommit') || !/Merge feature/.test(d.textContent)) return false;
+  let p = d.parentElement;
+  while (p && !(p.scrollHeight > p.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(p).overflowY))) p = p.parentElement;
+  // At the top of the pane that scrolls, or as far down as the pane goes.
+  return !!p && (Math.abs(d.getBoundingClientRect().top - p.getBoundingClientRect().top) < 24
+                 || p.scrollTop >= p.scrollHeight - p.clientHeight - 2);
+}, `${NB} #gitDetail`, { timeout: 5000 }).then(() => true, () => false);
+const at = await page.$eval(`${NB} #gitDetail`, e => {
+  let p = e.parentElement;
+  while (p && !(p.scrollHeight > p.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(p).overflowY))) p = p.parentElement;
+  return p ? `${Math.round(e.getBoundingClientRect().top - p.getBoundingClientRect().top)}px below the pane's top` : 'no pane scrolls';
+});
+await page.setViewportSize({ width: 1280, height: 900 });
+ok(landed, `picking a commit scrolls the page down to its detail (${at}, in a 360px window)`);
 ok(await page.$eval(`${NB}`, e => [...e.querySelectorAll('.gbranch')].some(r => /claude\/tabmade/.test(r.textContent) && /tabmade's session/.test(r.textContent))
      && [...e.querySelectorAll('.gbranch')].some(r => /here/.test(r.textContent))),
    'Branches marks the one the tree is on and whose session a branch is');
@@ -144,7 +164,10 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
       body: JSON.stringify({ project: 'beta', action, args: args || {} }) });
     return { status: r.status, ...(await r.json()) };
   };
-  const origin = `${DIR}/beta-origin.git`;
+  // On the projects share, hidden so it is not a project: the only place a
+  // local remote is reachable through the relay (B148).
+  const origin = `${DIR}/ws/.remotes/beta-origin.git`;
+  mkdirSync(`${DIR}/ws/.remotes`, { recursive: true });
   execFileSync('git', ['init', '-q', '--bare', origin]);
   git('remote', 'add', 'origin', origin);
   writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
@@ -405,7 +428,7 @@ def wj(p, d):
 u.configure(state="${DIR}/state", write_json=wj)
 print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const S = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
-  const origin = `${DIR}/beta-origin.git`;
+  const origin = `${DIR}/ws/.remotes/beta-origin.git`;
   const relay = (argv) => post('/api/v1/bb', { argv, cwd: B }, S);
   const denied = await relay(['git', 'push', 'origin', 'topic']);
   ok(denied.status === 403 && /does not let a session push/.test(denied.error),
@@ -420,7 +443,88 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
   await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'allow' } });
   ok((await relay(['git', 'push', 'origin', main])).code === 0, `...and ${main} too once allowed`);
+  // Push rights hold on the relay itself: a read-only clone's refusing hook
+  // is a file in the tree a session can remove (B149).
+  writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({}));
+  const noRights = await relay(['git', 'push', 'origin', 'topic']);
+  writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
+  ok(noRights.status === 403 && /no push rights/.test(noRights.error || ''),
+     `a project without push rights is refused on the relay, not left to a hook in its tree (${noRights.error})`);
   await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'deny' } });
+
+  // The relay never runs git in the tree a session can write (B148). Every
+  // program the tree names, in a hook, in its config or as a local remote's
+  // pack program, would leave a mark; the network step still happens.
+  {
+    const mark = `${DIR}/relay-ran-a-program`;
+    const touch = `#!/bin/sh\ntouch ${mark}\n`;
+    git('checkout', '-q', '-b', 'planted');
+    writeFileSync(`${B}/planted.txt`, 'x\n');
+    git('add', 'planted.txt');
+    git('commit', '-q', '-m', 'Planted');
+    git('checkout', '-q', main);
+    // Planted after this test's own git has run, which would trip them.
+    const planted = `${DIR}/planted-hooks`;
+    mkdirSync(planted, { recursive: true });
+    for (const h of ['pre-push', 'reference-transaction', 'post-merge']) {
+      writeFileSync(`${B}/.git/hooks/${h}`, touch, { mode: 0o755 });
+      writeFileSync(`${planted}/${h}`, touch, { mode: 0o755 });
+    }
+    const plantedConf = [['core.hooksPath', planted], ['core.fsmonitor', `touch ${mark}`],
+      ['core.sshCommand', `touch ${mark}`], ['credential.helper', `!touch ${mark}`],
+      ['remote.origin.receivepack', `touch ${mark}; git-receive-pack`],
+      ['remote.origin.uploadpack', `touch ${mark}; git-upload-pack`]];
+    for (const [k, v] of plantedConf) git('config', k, v);
+    const pushed = await relay(['git', 'push', 'origin', 'planted']);
+    const fetched = await relay(['git', 'fetch', 'origin']);
+    const listed = await relay(['git', 'ls-remote', 'origin']);
+    ok(pushed.code === 0 && fetched.code === 0 && listed.code === 0 && /refs\/heads\/planted/.test(listed.out || '')
+       && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'planted'], { encoding: 'utf8' }).includes('planted')
+       && !existsSync(mark),
+       `a relayed push, fetch and ls-remote run none of the programs the tree names in its hooks, config or remote (${
+         [pushed, fetched, listed].map(r => r.code ?? r.error).join(',')}, mark ${existsSync(mark) ? 'made' : 'absent'})`);
+    ok(JSON.stringify(pushed.apply?.refs || []).includes('refs/remotes/origin/planted'),
+       `...and the push hands the node the remote-tracking ref to move, rather than moving it in the tree (${JSON.stringify(pushed.apply)})`);
+    for (const [k] of plantedConf) git('config', '--unset-all', k);
+    for (const h of ['pre-push', 'reference-transaction', 'post-merge']) rmSync(`${B}/.git/hooks/${h}`, { force: true });
+
+    // The credentials reach only the repository push rights were granted on.
+    writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', host: 'example.invalid', how: 'token' } }));
+    git('remote', 'set-url', 'origin', 'https://example.invalid/someone/else.git');
+    const elsewhere = await relay(['git', 'fetch', 'origin']);
+    git('remote', 'set-url', 'origin', `${DIR}/beta-origin-outside.git`);
+    const outside = await relay(['git', 'fetch', 'origin']);
+    git('remote', 'set-url', 'origin', origin);
+    writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
+    ok(elsewhere.status === 400 && /credentials reach only that repository/.test(elsewhere.error || '')
+       && outside.status === 400 && /not a repository on the projects share/.test(outside.error || ''),
+       `a remote pointed at another repository, or at a local path off the share, is refused before git runs (${
+         (elsewhere.error || '').slice(0, 50)} | ${(outside.error || '').slice(0, 50)})`);
+
+    // From a node, bb finishes the job in its own tree: the objects a pull
+    // fetched, the refs that moved, the merge; an upstream after push -u.
+    const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                      BB_TOKEN: tok, BB_NODE: 'agentbox', BB_PROJECT: 'beta', WORKSPACE: `${DIR}/ws` };
+    const onNode = (...a) => { try { return execFileSync('bash', [`${REPO}/scripts/bb`, ...a], { encoding: 'utf8', env: nodeEnv, cwd: B, stdio: ['ignore', 'pipe', 'pipe'] }); }
+                               catch (e) { return `FAILED ${e.status}: ${e.stdout || ''}${e.stderr || ''}`; } };
+    const clone = `${DIR}/beta-clone`;
+    execFileSync('git', ['-C', clone, 'pull', '-q', 'origin', main]);
+    writeFileSync(`${clone}/from-the-remote.txt`, 'y\n');
+    execFileSync('git', ['-C', clone, 'add', 'from-the-remote.txt']);
+    execFileSync('git', ['-C', clone, 'commit', '-q', '-m', 'Waiting on the remote']);
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', `HEAD:${main}`]);
+    const pulled = onNode('git', 'pull', 'origin', main);
+    const bundles = existsSync(`${B}/.git/bb-relay`) ? execFileSync('ls', [`${B}/.git/bb-relay`], { encoding: 'utf8' }).trim() : '';
+    ok(git('log', '-1', '--format=%s') === 'Waiting on the remote' && existsSync(`${B}/from-the-remote.txt`)
+       && git('rev-parse', `refs/remotes/origin/${main}`) === git('rev-parse', 'HEAD') && bundles === '',
+       `bb git pull on a node brings the commit into its own tree and moves its remote-tracking ref, leaving no bundle behind (${
+         pulled.replace(/\s+/g, ' ').slice(0, 120)})`);
+    git('checkout', '-q', '-b', 'fromnode');
+    const up = onNode('git', 'push', '-u', 'origin', 'fromnode');
+    ok(git('config', 'branch.fromnode.merge') === 'refs/heads/fromnode' && git('rev-parse', 'refs/remotes/origin/fromnode') === git('rev-parse', 'HEAD'),
+       `bb git push -u on a node sets the upstream and the remote-tracking ref in its own tree (${up.replace(/\s+/g, ' ').slice(0, 80)})`);
+    git('checkout', '-q', main);
+  }
 
   // Send to Claude lands in the project's session as one line naming the
   // thing and the ask; the session reads the rest from the tree itself.
@@ -448,9 +552,9 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   writeFileSync(`${B}/a.txt`, 'one\ntwo\nsix\n');
   await page.evaluate(() => getNotebook('beta').view('git'));
   await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] [data-gitaskfile]'), { timeout: 20000 });
-  // The second row: the first is still the pick from above, and a click on
-  // the picked row puts it away.
-  await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:nth-child(2)');
+  // A row that is not already picked: a click on the picked row puts it
+  // away, and which row that is depends on what the tests above committed.
+  await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:not(.on)');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitaskcommit]', { timeout: 10000 });
   const v = await page.$eval('.nb .nbview[data-view="git"]', el => ({
     file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('[data-gitaskcommit]'),

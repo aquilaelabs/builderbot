@@ -273,6 +273,10 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
      && n.agent.version === ships.version && n.agent.digest === ships.digest,
      `the row is online with the census, and runs the agent this controller ships (${n.agent.version})`);
+  // Whether a session there sees only its own project (R35), in the
+  // helper's own answer: an agent that is not root cannot build a view.
+  ok(n.reported.isolation && n.reported.isolation.sessions === false && /root/.test(n.reported.isolation.why || ''),
+     `...and says whether its sessions are kept to their own project, and why not (${JSON.stringify(n.reported.isolation)})`);
   // single use
   let again = '';
   try {
@@ -424,6 +428,51 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
       ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
          `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
     }
+    // The session's view (R35): the helper travels in the bundle, and what
+    // the agent writes for it is one rule for one command, the layout, and a
+    // respawn that runs again only a launcher it recognises.
+    {
+      const bin = '/opt/fake/bb-session';
+      const out = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, re
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+home = '/home/builder/users/u_0000abcd/.cache/builderbot/project'
+ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
+def respawn(start):
+    # tmux_ops against a tmux that records what it was asked and answers the
+    # pane's start command, which is all a respawn reads.
+    a, seen = object.__new__(m.Agent), []
+    a._tmux = lambda argv, timeout=10: seen.append(argv) or (start if argv[0] == 'display-message' else '')
+    a.tmux_ops([{'session': 'u_0000abcd~claude-alpha', 'respawn': True}])
+    return seen[-1]
+print(json.dumps({
+  'sudoers': m.session_sudoers('builder'),
+  'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a'}}, 'builder'),
+  'good': [ok(f'sudo -n ${bin} enter --project alpha --account u_0000abcd --home /home/builder/users/u_0000abcd --cwd /workspace/alpha --env {home}/alpha/session.env -- {home}/alpha/claude-run.sh'),
+           ok(f'{home}/alpha/claude-run.sh'), ok('/home/builder/.cache/builderbot/claude-run-alpha.sh')],
+  'bad': [ok(f'{home}/alpha/claude-run.sh; id'), ok(f'sudo -n /tmp/other enter -- {home}/alpha/claude-run.sh'),
+          ok(f'sudo -n ${bin} enter --project a;id -- {home}/alpha/claude-run.sh'), ok("bash -c 'id' /x/builderbot/project/a/claude-run.sh")],
+  'iso': m.isolation_now(),
+  'respawn': respawn(f'sudo -n ${bin} enter --project alpha --account u_0000abcd --cwd /workspace/alpha -- {home}/alpha/claude-run.sh'),
+  'flat': respawn('/home/builder/.cache/builderbot/claude-run-alpha.sh')}))
+`], { encoding: 'utf8', env: { ...process.env, BUILDERBOT_SESSION_BIN: bin } }).trim());
+      ok(existsSync(`${store}/.bb/current/nodes/bb-session`)
+         && out.sudoers.includes(`Defaults!${bin} !use_pty, !lecture`)
+         && out.sudoers.includes(`builder ALL=(root) NOPASSWD: ${bin}`)
+         && (out.sudoers.match(/NOPASSWD/g) || []).length === 1
+         && /SESSION_USER=builder\nWORKSPACE=\/workspace\nDATA_STORE=\/d\nARTIFACTS_STORE=\/a\n/.test(out.conf),
+         `the bundle carries bb-session, and the agent's sudo rule names that one command for the session account alone (${out.sudoers.split('\n')[3]})`);
+      ok(out.good.every(Boolean) && !out.bad.some(Boolean),
+         `a respawn runs again a launcher inside the view, a plain one, or one from before the view, and nothing else (${JSON.stringify(out.good)} ${JSON.stringify(out.bad)})`);
+      ok(JSON.stringify(out.respawn) === JSON.stringify(['respawn-pane', '-k', '-t', 'u_0000abcd~claude-alpha', 'sudo', '-n', bin, 'enter',
+           '--project', 'alpha', '--account', 'u_0000abcd', '--cwd', '/workspace/alpha', '--',
+           '/home/builder/users/u_0000abcd/.cache/builderbot/project/alpha/claude-run.sh', '--respawn'])
+         && JSON.stringify(out.flat.slice(4)) === JSON.stringify(['/home/builder/.cache/builderbot/claude-run-alpha.sh', '--respawn']),
+         `a respawn hands tmux the view's launcher line word by word, since one string with spaces is a program nobody has (${out.respawn.slice(4, 6).join(' ')})`);
+      ok(out.iso.sessions === false && /root/.test(out.iso.why),
+         `an agent that is not root says its sessions are not kept to their project, and why (${out.iso.why})`);
+    }
     // ...and the ones before it do not pile up forever. One directory per
     // delivery, one delivery per commit that touches bb: 33 of them in four
     // days on the first node anybody looked at. Driven directly rather than
@@ -514,8 +563,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const env = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
                     BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache };
       execFileSync('bash', [`${REPO}/scripts/bb`, 'roadmap'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
-      const kept = existsSync(`${cache}/builderbot/token-alpha`)
-        ? readFileSync(`${cache}/builderbot/token-alpha`, 'utf8').trim() : '';
+      const kept = existsSync(`${cache}/builderbot/project/alpha/token`)
+        ? readFileSync(`${cache}/builderbot/project/alpha/token`, 'utf8').trim() : '';
       ok(/^bbs_/.test(kept) && expOf(kept) > expOf(short),
          'bb keeps the renewed token in the account\'s cache, where it reads when the environment\'s has expired');
       const again = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', '--now'],
@@ -666,7 +715,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
             { input: '{"tool_name":"Bash"}', encoding: 'utf8', env: genv(extra), stdio: ['pipe', 'pipe', 'pipe'] });
           return { code: 0, err: '' };
         } catch (e) { return { code: e.status, err: String(e.stderr) }; } };
-        const fresh = () => rmSync(`${cache}/builderbot/gate-alpha`, { force: true });
+        const fresh = () => rmSync(`${cache}/builderbot/project/alpha/gate`, { force: true });
         writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
         let r = gate({});
         ok(r.code === 0, `with the controller up and the block current, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
@@ -703,7 +752,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         // used to read any error without "HTTP" in it as no connection at all,
         // so it told that session BuilderBot was restarting after an update.
         fresh();
-        rmSync(`${cache}/builderbot/token-alpha`, { force: true });
+        rmSync(`${cache}/builderbot/project/alpha/token`, { force: true });
         r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
         ok(r.code === 0 && !/not answering/.test(r.err),
            `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
@@ -724,19 +773,38 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
       const num = (once.match(/added R(\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
-      // bb git: git's network half from a node runs on the controller, in
-      // the project's tree, with the keys that live only there (docs/nodes.md
-      // §20, rule 2). The fixture has no remote, so git itself answers —
-      // which is the proof that git ran here and not on the "node".
+      // bb git: git's network half from a node runs on the controller, with
+      // the keys that live only there (docs/nodes.md §20, rule 2), in a
+      // repository of the controller's own (B148). The fixture's origin is
+      // an ssh address nobody holds a key for, so git itself answers, which
+      // is the proof that git ran there and not on the "node".
       const ls = bbOnNode(['git', 'ls-remote', 'origin']);
       ok(/fatal:/.test(ls) && !/not relayed|not accepted/.test(ls),
-         `bb git ls-remote from a node reaches the controller's git in the project's tree (${ls.replace(/\s+/g, ' ').slice(0, 70)})`);
+         `bb git ls-remote from a node reaches the controller's git (${ls.replace(/\s+/g, ' ').slice(0, 70)})`);
       const exec = bbOnNode(['git', 'push', '--upload-pack=/bin/sh', 'origin']);
       const conf = bbOnNode(['git', 'fetch', '-c', 'core.sshCommand=id']);
       const other = bbOnNode(['git', 'status']);
       ok(/not accepted/.test(exec) && /not accepted/.test(conf) && /takes push, fetch/.test(other),
          `...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it (${
            [exec, conf, other].map(x => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')})`);
+      // A rule's check is a command a session may write, so it runs on the
+      // machine the session is on and never on the controller (B152). The
+      // controller's relayed run carries BB_RELAYED; a local one does not.
+      bbOnNode(['rules', 'add', 'relayprobe', 'where a check runs', '--check', 'echo relayed=${BB_RELAYED:-no}']);
+      // WORKSPACE as a node has it: the check runs in the project's tree.
+      let checked;
+      try {
+        checked = execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', 'check', 'relayprobe'],
+          { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...nodeEnv, BB_PROJECT: 'alpha', WORKSPACE: `${DIR}/ws` },
+            stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (e) { checked = `FAILED ${e.status}: ${e.stdout}${e.stderr}`; }
+      bbOnNode(['rules', 'rm', 'relayprobe', 'test']);
+      const sent = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/bb', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + forMe, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ argv: ['rules', 'check', '--all'], cwd: `${DIR}/ws/alpha` }) })).json();
+      ok(/relayed=no/.test(checked) && /runs on the machine the session is on/.test(sent.error || ''),
+         `bb rules check on a node runs the rule's command there, and the controller refuses one relayed to it (${
+           checked.replace(/\s+/g, ' ').slice(0, 120)} | ${(sent.error || '').slice(0, 50)})`);
       // The identity a node session adopts is the controller's, through the
       // same settings answer bb-tty reads.
       const st = JSON.parse(bbOnNode(['settings', '--json']));
@@ -843,8 +911,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // session not being listed at all.
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const real = `${uid}~claude-beta`;
-      const launcher = `${DIR}/home/.cache/builderbot/claude-run-beta.sh`;
-      mkdirSync(`${DIR}/home/.cache/builderbot`, { recursive: true });
+      const launcher = `${DIR}/home/.cache/builderbot/project/beta/claude-run.sh`;
+      mkdirSync(`${DIR}/home/.cache/builderbot/project/beta`, { recursive: true });
       writeFileSync(launcher, `#!/usr/bin/env bash\nexec sleep 600\n`, { mode: 0o755 });
       tmuxKill(real); tmuxKill('claude-beta');
       tmuxNew(real, `${DIR}/ws/beta`, [launcher]);

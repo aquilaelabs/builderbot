@@ -2345,6 +2345,17 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data)
 
+# ---- a node's git, relayed --------------------------------------------------
+# Push, fetch, pull and ls-remote from a session on a node, done in a
+# repository of the controller's own rather than in the tree the session can
+# write: gitrelay.py (B148).
+import gitrelay                                                  # noqa: E402
+
+gitrelay.configure(state=STATE, workspace=WORKSPACE,
+                   push_record=lambda p: projects.load_push().get(p),
+                   token_helper=projects.token_helper, parse_url=forges.parse,
+                   host_of=forges.host_of, git_env=projects._git_env)
+
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4526,6 +4537,12 @@ class Handler(BaseHTTPRequestHandler):
         if not argv or argv[0] not in RELAY_VERBS:
             return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
                                "it answers for the machine the session is on"}, 400)
+        # A rule's check is a command, and a session may write its own rule's
+        # check, so it runs on the machine the session is on and never here
+        # (B152). A node's bb keeps it local; this refuses one sent anyway.
+        if argv[:2] == ["rules", "check"]:
+            return self._json({"error": "bb rules check runs on the machine the session is on, "
+                                        "not on the controller: run it there"}, 400)
         project = field(req, "project") or me.get("session") or ""
         if me.get("session") and project != me["session"]:
             return self._json({"error": "this session's token is for another project"}, 403)
@@ -4534,6 +4551,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._refused("bb", project):
             return None
+        # Push rights first, for everybody: a project cloned without them
+        # does not push, whatever its tree says. The refusing pre-push hook
+        # in a read-only clone is a file a session can change, so this is
+        # the check that holds (B149), the same one the Git view makes.
+        if argv[:1] == ["git"] and argv[1:2] and argv[1] in gitrelay.VERBS and gitrelay.bad_args(argv[2:]):
+            return self._json({"error": gitrelay.bad_args(argv[2:])}, 400)
+        if argv[:2] == ["git", "push"] and not projects.may_push(project):
+            return self._json({"error": "this project has no push rights: they are granted "
+                                        "in the clone dialog, once"}, 403)
         # ...and under the project's git policy (the Git view, roadmap R36):
         # a session may push its own branch unless told not to, and may not
         # push to main unless told it may. Judged here because here is
@@ -4544,12 +4570,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "this project's git policy does not let a session "
                                             "push — the operator pushes from the Git view"}, 403)
             if pol.get("main") == "deny":
+                # Read out of the tree's files, never by running git in it
+                # (B148): the branch HEAD names and which of main or master
+                # exists.
                 repo = WORKSPACE / project
-                head = (run(["git", "-C", str(repo), "symbolic-ref", "--short", "-q", "HEAD"],
-                            timeout=10)["out"] or "").strip()
-                main = next((b for b in ("main", "master") if run(
-                    ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", f"refs/heads/{b}"],
-                    timeout=10)["code"] == 0), "main")
+                try:
+                    head = gitrelay.head(repo / ".git").removeprefix("refs/heads/")
+                    have = gitrelay.refs(repo / ".git")
+                except gitrelay.Refused as e:
+                    return self._json({"error": str(e)}, 400)
+                main = next((b for b in ("main", "master") if f"refs/heads/{b}" in have), "main")
                 spec = [a for a in argv[2:] if not a.startswith("-")]
                 to_main = any(a == main or a.endswith(":" + main) or a.startswith(main + ":") for a in spec) \
                     or (not spec and head == main) or (len(spec) == 1 and head == main)
@@ -4588,6 +4618,15 @@ class Handler(BaseHTTPRequestHandler):
             env["CLAUDECODE"] = "1"
         else:
             env.pop("CLAUDECODE", None)
+        # git's network half never runs in the tree a session can write
+        # (B148): the controller does it in a repository of its own and
+        # hands the tree's half back to the node's bb as `apply`.
+        if argv[0] == "git" and argv[1:2] and argv[1] in gitrelay.VERBS:
+            r = gitrelay.run(project, str(cwd), argv[1], argv[2:])
+            if "error" in r:
+                return self._json(r, 400)
+            return self._json({"code": r["code"], "out": r["out"][-200000:], "err": r["err"][-20000:],
+                               **({"apply": r["apply"]} if r.get("apply") else {})})
         try:
             r = subprocess.run(["bash", str(HERE.parent / "bb"), *argv], cwd=str(cwd),
                                env=env, capture_output=True, text=True, timeout=180)
@@ -4608,6 +4647,16 @@ class Handler(BaseHTTPRequestHandler):
         the credential cannot prove (bug #16) but is worth writing down."""
         if NODES_OK:
             return {"error": "the node store did not open: " + NODES_OK}, 500
+        # Never from a session (R35). A session is on its project's node and
+        # runs these verbs where it is, inside its view; a job runs as the
+        # node's enrolled account, outside every view and in the docker
+        # group, so a session token that could queue one would read every
+        # project on the machine and be root on it. Measured on
+        # bb-dev-sandbox, 16 Sep, before this refusal.
+        if (self._who() or {}).get("session"):
+            return {"error": "a session runs bb run, build, test and emu where it is, on its "
+                             "project's node; a job would run outside the session's view, "
+                             "so a session cannot queue one"}, 403
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return {"error": "not a project"}, 400
@@ -4621,13 +4670,6 @@ class Handler(BaseHTTPRequestHandler):
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
-        # A session runs on its project's node and no other: naming one in
-        # the request is how a token for one project would reach a machine
-        # it was never bound to.
-        if (self._who() or {}).get("session") and field(req, "node") \
-                and field(req, "node") != pf["node"]:
-            return {"error": "a session's jobs run on its project's node — "
-                             "which node that is, is the operator's to change"}, 403
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400
@@ -4811,11 +4853,14 @@ class Handler(BaseHTTPRequestHandler):
             # the operator's own login, for reading it in a browser.
             if auth.get("error") and not self._authed():
                 return self._json({"error": auth["error"]}, 401)
-            if q.get("what", [""])[0] == "provisioner":
+            what = q.get("what", [""])[0]
+            if what in ("provisioner", "provisioner-macos"):
                 # The provisioner too, from the copy this image carries: the
                 # Enroll dialog's command names it, and a machine with an
-                # enroll token is what has to get it (B133).
-                p = workspace.REPO / "nodes" / "provision-linux.sh"
+                # enroll token is what has to get it (B133), a Mac's as well
+                # as a Linux machine's (B150).
+                p = workspace.REPO / "nodes" / ("provision-macos.sh" if what == "provisioner-macos"
+                                                else "provision-linux.sh")
                 body = p.read_bytes() if p.is_file() else b""
                 if not body:
                     return self._json({"error": "this controller ships no provisioner"}, 404)

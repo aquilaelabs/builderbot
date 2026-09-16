@@ -199,11 +199,15 @@ def _git(project, *args, timeout=10, env=None):
     git identity (users.git_env), so an operator's bump is theirs and not
     whatever the repository or the box happens to have configured.
     """
+    # GIT_OPTIONAL_LOCKS=0: a status here is a read, and the index lock it
+    # would otherwise take can make a session's git in the same tree fail
+    # with index.lock: File exists (B155). A commit still takes the locks it
+    # needs; only the optional one is skipped.
     try:
         r = subprocess.run(["git", "-C", str(root(project)), *args],
                            capture_output=True, text=True,
                            timeout=timeout, check=False,
-                           env={**os.environ, **env} if env else None)
+                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", **(env or {})})
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout.strip() if r.returncode == 0 else None

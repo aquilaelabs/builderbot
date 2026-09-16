@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.73"
+AGENT_VERSION = "0.5.75"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -269,6 +269,20 @@ def dir_bytes(path):
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+# The session's view (R35): the root helper that builds it, the file that
+# tells it this machine's layout, and the sudo rule that is the session
+# account's only way to it. Installed and kept by this agent from the bundle,
+# on a node set up as a sandbox; the seams are for the suite.
+SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
+SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
+SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
+# The pane a respawn may run again: bb-tty's claude launcher, in the project's
+# cache folder and started inside the project's view when the node builds one,
+# or in the flat cache a bundle before R35 wrote, for a session that has run
+# since then (the compatibility window).
+_PATHCH = r"[A-Za-z0-9._/@+-]"
+RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
+               rf"{_PATHCH}*/builderbot/(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -923,6 +937,50 @@ def _clean_version(text):
     return line[:40]
 
 
+def session_sudoers(user):
+    """The sudo rule that lets the session account start a session inside its
+    project's view, and nothing else. !use_pty keeps the session on the pane's
+    own terminal rather than a pty sudo would relay."""
+    return (f"# Written by the BuilderBot agent (R35): the one command {user} may run as root,\n"
+            f"# which starts a session inside a view of this node that holds only its project.\n"
+            f"Defaults!{SESSION_BIN} !use_pty, !lecture\n"
+            f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n")
+
+
+def session_conf(state, user):
+    """This machine's layout for bb-session: the session account and the
+    stores whose other projects' parts a session's view leaves out."""
+    stores = state.get("stores") or {}
+    return (f"# Written by the BuilderBot agent (R35) for bb-session.\n"
+            f"SESSION_USER={user}\n"
+            f"WORKSPACE=/workspace\n"
+            f"DATA_STORE={stores.get('data') or ''}\n"
+            f"ARTIFACTS_STORE={stores.get('artifacts') or ''}\n"
+            f"RUNNER_DIR={RUNNER_DIR}\n"
+            f"HIDE=/devdata\n")
+
+
+def isolation_now():
+    """Whether a session here runs inside a view of its own project (R35), and
+    why not when it does not: asked of the helper itself, which makes the
+    namespaces a view needs and lets them go."""
+    if os.geteuid() != 0:
+        return {"sessions": False, "why": "the agent does not run as root here, so it cannot set up a view"}
+    if not os.access(SESSION_BIN, os.X_OK):
+        return {"sessions": False, "why": "bb-session is not installed on this machine"}
+    if not os.path.isfile(SESSION_SUDOERS):
+        return {"sessions": False, "why": "the session account has no sudo rule for bb-session"}
+    if not shutil.which("sudo"):
+        return {"sessions": False, "why": "sudo is not installed on this machine"}
+    try:
+        r = subprocess.run([SESSION_BIN, "check"], capture_output=True, text=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"sessions": False, "why": f"bb-session did not run: {e}"[:200]}
+    if r.returncode:
+        return {"sessions": False, "why": ((r.stderr or r.stdout).strip() or "bb-session check failed")[:200]}
+    return {"sessions": True, "why": ""}
+
+
 def extract_sandbox_tool(text):
     """The bb-sandbox script embedded in provision-linux.sh: the body of its
     BBSANDBOX heredoc, or "" when the marker pair is not there."""
@@ -1259,6 +1317,8 @@ def census(state):
         # is mounted and from where, and the address this machine is on.
         # The row draws the operator's desired config against these.
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
+        # Whether a session here sees only its own project (R35).
+        "isolation": isolation_now(),
         "mounts": mounts_now(),
         "network": network_now(),
         # Which of the machine's own tools a system job would go through.
@@ -2753,9 +2813,11 @@ class Agent:
         # from hello is needed to start. A controller that is down fails the
         # fetch and the hello alike, and the hello that eventually succeeds
         # starts the sessions then.
+        self.refresh_session_tool()
         self.session_try()
         while True:
             if time.time() - self.hello_at > 600:
+                self.refresh_session_tool()
                 st, r = self.hello()
                 if st == 401:
                     log(f"refused: {r.get('error')} — this node's credential "
@@ -3480,8 +3542,13 @@ class Agent:
             if op.get("respawn"):
                 cmd = (self._tmux(["display-message", "-p", "-t", sess,
                                    "#{pane_start_command}"]) or "").strip()
-                if re.fullmatch(r"\S*/builderbot/claude-run-[^/\s]+\.sh", cmd):
-                    self._tmux(["respawn-pane", "-k", "-t", sess, cmd, "--respawn"])
+                if re.fullmatch(RESPAWNABLE, cmd):
+                    # Word by word. tmux runs more than one argument as the
+                    # program and its arguments, so the view's launcher line
+                    # handed over whole names a program nobody has, and the
+                    # pane dies with its session. The pattern admits no
+                    # quoting, so a space is exactly a word boundary.
+                    self._tmux(["respawn-pane", "-k", "-t", sess, *cmd.split(" "), "--respawn"])
                 continue
             argv = [str(a) for a in (op.get("argv") or [])][:12]
             if argv[:1] not in (["send-keys"], ["copy-mode"]) or "-t" not in argv:
@@ -3996,6 +4063,57 @@ class Agent:
             job.say(f"could not refresh {SANDBOX_BIN} from the bundle: {e}\n")
             return
         job.say(f"{SANDBOX_BIN} refreshed from the bundle\n")
+
+    def refresh_session_tool(self):
+        """The session's view kept installed (R35): bb-session from the bundle,
+        its layout file, and the session account's sudo rule, on a node set up
+        as a sandbox whose agent is root and which runs sessions. Written when
+        they differ and said when they change. A sudo rule is checked with
+        visudo before it replaces anything, since a broken file under
+        sudoers.d takes sudo away from every account on the machine; and it is
+        written beside its final name with a dot in it, which sudo skips."""
+        user = self.session_account()
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not user:
+            return
+        store = pkg_root(self.state)
+        src = os.path.join(store, ".bb", "current", "nodes", "bb-session") if store else ""
+        try:
+            with open(src, encoding="utf-8") as f:
+                tool = f.read()
+        except OSError:
+            return
+        wrote = []
+        for path, text, mode, sudoers in ((SESSION_BIN, tool, 0o755, False),
+                                          (SESSION_CONF, session_conf(self.state, user), 0o644, False),
+                                          (SESSION_SUDOERS, session_sudoers(user), 0o440, True)):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    if f.read() == text:
+                        continue
+            except OSError:
+                pass
+            tmp = path + ".new"
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(text)
+                os.chmod(tmp, mode)
+                os.chown(tmp, 0, 0)
+                if sudoers and shutil.which("visudo"):
+                    r = subprocess.run(["visudo", "-cf", tmp], capture_output=True, text=True,
+                                       timeout=20, check=False)
+                    if r.returncode:
+                        os.unlink(tmp)
+                        log(f"not writing {path}: visudo refused it: {(r.stdout + r.stderr).strip()[:200]}")
+                        continue
+                os.replace(tmp, path)
+                wrote.append(path)
+            except OSError as e:
+                log(f"could not write {path}: {e}")
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
+        if wrote:
+            log(f"the session's view: {', '.join(wrote)} written from the bundle")
 
     def _apply_uninstall(self, job):
         """Take BuilderBot off this machine, from the Nodes tab. The runners

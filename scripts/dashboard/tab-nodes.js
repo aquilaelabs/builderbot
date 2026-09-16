@@ -290,14 +290,21 @@ function nodeSessionsSection(n){
       : "the projects share is not mounted at /workspace: add it under Storage");
     else if (se.writable === false) gaps.push("the projects share is mounted read-only: untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
     if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
+    // Whether a session here is kept to its own project (R35): said on the
+    // status itself when it is not, since a folded section shows nothing else.
+    const iso = n.reported?.isolation;
+    const shared = !!iso && !iso.sessions;
     [status, cls] = gaps.length ? ["blocked", "bad"]
-      : [list.length ? `${list.length} open` : "ready", "ok"];
+      : [`${list.length ? `${list.length} open` : "ready"}${shared ? ", not isolated" : ""}`, shared ? "warn" : "ok"];
     body = `
       <div class="sub">Sessions run here as <code>${esc(se.user || "?")}</code>, on ports ${
         se.port || "?"} and ${se.ro_port || "?"} (read-only), with ${
         se.claude ? esc(se.claude) : "no Claude Code installed for that account yet"}.
         A project bound to this node opens its Claude sessions on this machine.</div>
       ${gaps.map(g => `<div class="sub bad">${esc(g)}</div>`).join("")}
+      ${!iso ? `<div class="sub dim">Whether a session here is kept to its own project is unknown: Update agent.</div>`
+        : iso.sessions ? `<div class="sub">Each session here sees only its own project: its tree, logs, cache and processes.</div>`
+        : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}:
         listed on the Sessions card, and ended from there</div>` : ""}`;
   }
@@ -980,7 +987,8 @@ function wireNodesTab(root){
 sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
         <div class="hint">on a Mac, as yourself: one directory and a launchd agent, no root:</div>
-        <pre class="ndcmd">bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+        <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner-macos' -o provision-macos.sh
+bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
         <div class="hint">or on a machine that already has python3, the agent alone:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent

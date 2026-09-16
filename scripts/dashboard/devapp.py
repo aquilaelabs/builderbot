@@ -3349,8 +3349,11 @@ def _head(project, instance=None):
 
 
 def _dirty(project):
+    # Without taking the index lock: this is polled for the row, and git
+    # status refreshing the index would hold it just as a session in the
+    # same tree runs git and meets index.lock: File exists (B155).
     r = _run(["git", "-C", str(WORKSPACE / project), "status", "--porcelain"],
-             timeout=10)
+             timeout=10, env_extra={"GIT_OPTIONAL_LOCKS": "0"})
     return r["code"] == 0 and bool(r["out"].strip())
 
 

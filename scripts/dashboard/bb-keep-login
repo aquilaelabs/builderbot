@@ -76,7 +76,7 @@ def main():
     # holds, so there is nothing to keep in step with.
     if os.environ.get("BUILDERBOT_ROLE", "").lower() not in ("node", "worker", "agent"):
         return 0
-    stamp = os.path.join(cache_dir(), "login-sync")
+    stamp = os.path.join(cache_dir(), "account", "login-sync")
     if not due(stamp):
         return 0
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")

@@ -1281,6 +1281,28 @@ print(json.dumps(out))
   ok(await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`, r =>
        /\/devdata: mounted, but the handle is stale/.test(r.textContent) && /re-export it there/.test(r.textContent)),
      'the row says which mount is stale and that the fix is on the host, whether or not the desired list names it');
+  // Whether a session there is kept to its own project (R35): on the
+  // Sessions section's status when it is not, since a folded section shows
+  // nothing else, and why; and said plainly when it is.
+  const isoCensus = iso => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, session: { ...SE, up_s: 5000, workspace: true, writable: true }, isolation: iso },
+                           version: shipped.version, digest: shipped.digest }) });
+  const rowText = () => page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`, r => r.textContent.replace(/\s+/g, ' '));
+  await isoCensus({ sessions: false, why: 'bb-session is not installed on this machine', extra: 'x'.repeat(500) });
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForFunction(id => /not isolated/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
+                             minted.id, { timeout: 15000 }).catch(() => {});
+  const shared = await rowText();
+  ok(/ready, not isolated/.test(shared) && /Sessions here can read each other's projects: bb-session is not installed on this machine/.test(shared),
+     `a node whose sessions are not kept to their project says so on the Sessions status, with the reason (${(shared.match(/Sessions here can read[^.]*/) || [''])[0]})`);
+  await isoCensus({ sessions: true, why: '' });
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForFunction(id => /sees only its own project/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
+                             minted.id, { timeout: 15000 }).catch(() => {});
+  const isolated = await rowText();
+  ok(/Each session here sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
+     '...and one whose sessions are says that instead');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
@@ -1412,6 +1434,13 @@ ok(await page.$eval('#ndBody .ndtoken', el => /curl -fsSL -H 'Authorization: Bea
      `...and the route hands the enroll token the provisioner itself (${r.status}, ${body.length} bytes)`);
   const no = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner');
   ok(no.status === 401, '...and nobody else');
+  // A Mac is told to run provision-macos.sh, so it gets a line that fetches
+  // that one, and the route serves it (B150).
+  const mac = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner-macos', { headers: { Authorization: 'Bearer ' + tok } });
+  const macBody = await mac.text();
+  ok(await page.$eval('#ndBody .ndtoken', el => /download\?what=provisioner-macos' -o provision-macos\.sh\s+bash provision-macos\.sh/.test(el.textContent))
+     && mac.status === 200 && /launchd|LaunchAgents/.test(macBody) && !/BBSANDBOX/.test(macBody),
+     `...and a Mac's line fetches the macOS provisioner, which the same route serves (${mac.status}, ${macBody.length} bytes)`);
 }
 ok(await page.evaluate(async () => { await loadNodes();
      return (nodesList.find(n => n.name === 'joesbox')?.config || {}).user; }) === 'joe',

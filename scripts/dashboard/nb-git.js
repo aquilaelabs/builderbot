@@ -14,6 +14,10 @@ function nbGitView({$, nb, project}){
   // redraw: the commit picked and the files unfolded are kept by sha and
   // path, not by position.
   let git = null, gitPick = "", gitOpenFiles = new Set(), gitOpenCmp = new Set();
+  // The commit a click picked, until its detail has drawn and been scrolled
+  // to: the detail sits under the whole history, so a long one leaves the
+  // change below the fold. A redraw from a poll leaves the page where it is.
+  let gitReveal = "";
   let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
   let gitPolDraft = {};                            // the policy picked and not applied
 
@@ -320,8 +324,8 @@ function nbGitView({$, nb, project}){
     });
     body.querySelectorAll(".grow[data-sha]").forEach(r => r.onclick = () => {
       gitPick = gitPick === r.dataset.sha ? "" : r.dataset.sha;
-      drawGit();
-      if (gitPick) loadGitCommit(gitPick);
+      gitReveal = gitPick;
+      drawGit();                 // which loads the picked commit's detail
     });
     if (gitPick) loadGitCommit(gitPick);
   }
@@ -382,6 +386,7 @@ function nbGitView({$, nb, project}){
         </div>`}
         ${renderDiff(c.diff)}
       </div>`;
+      revealCommit(box, sha);
       box.querySelectorAll("[data-gitrevert]").forEach(b => b.onclick = () => {
         if (confirm(`Revert ${c.short}: ${c.message.split("\n")[0]}?\n\nA new commit undoes it; the history keeps both.`))
           gitAct("revert", {sha: b.dataset.gitrevert}, gitBusy(b), "Reverting");
@@ -392,7 +397,17 @@ function nbGitView({$, nb, project}){
         const name = prompt(`A branch starting at ${c.short}. Its name:`);
         if (name && name.trim()) gitAct("branch", {name: name.trim(), at: b.dataset.gitbranchat, switch: true}, gitBusy(b), "Creating");
       });
-    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; revealCommit(box, sha); }
+  }
+
+  // Down to the picked commit's detail, once, when a click picked it.
+  function revealCommit(box, sha){
+    if (gitReveal !== sha || !box.isConnected) return;
+    gitReveal = "";
+    // A jump, the way the page scrolls elsewhere: a smooth scroll can be cut
+    // short by the redraw a git revision brings, leaving the change half
+    // way down.
+    box.scrollIntoView({block: "start"});
   }
   const rf = $("gitRefresh");
   if (rf) rf.onclick = () => { busy(rf, "Reading"); loadGit().finally(() => { if (rf.isConnected) unbusy(rf, "Refresh"); }); };
