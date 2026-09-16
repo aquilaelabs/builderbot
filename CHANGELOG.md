@@ -72,6 +72,7 @@
 - Dialogs close with the same tween they open with, and on a phone a project row's controls unfold with a slide instead of appearing at once (2ea5bd5)
 - The Doctor card drops five lines a controller could not act on (a red git identity, 'no Claude login here', gh, an empty ssh agent, 'no node with a daemon') and says which accounts lack a commit identity instead (e61b013)
 - New project asks which node the project runs on when nodes exist; the About panel leads with the guide; a plain user's Doctor card shows only what is theirs; the changelog sheet can write the first line; the memory form says the hook is required; the Uninstall button says Uninstalling while it runs (3386d1d)
+- The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
 
 ### Fixed
 
@@ -161,6 +162,7 @@
 - The Tools tab no longer asks to install the emulator's libraries on a node that only has the Android command-line tools (3386d1d)
 - A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
 - A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
+- The Docker manager says 'partly up: 2 of 3' when an up left a service down, instead of reading as running (bddf3bd)
 
 ## 0.5.0: 2026-09-10
 
