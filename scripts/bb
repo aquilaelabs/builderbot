@@ -5124,6 +5124,34 @@ cmd_lint() {
         fi
     fi
 
+    # The JavaScript: the dashboard's tab scripts and the page's inline
+    # scripts, parsed by node. Not a linter's rules, a parse: a script that
+    # does not parse takes the whole dashboard down, and nothing checked
+    # 15,000 lines of it before this (R60).
+    section "javascript (node --check)"
+    if need node; then
+        local -a jss=() jsbad=()
+        while IFS= read -r -d '' f; do
+            case "$f" in *.js|*.mjs) jss+=("$f") ;; esac
+        done < <(files '*.js' '*.mjs')
+        for f in "${jss[@]}"; do
+            node --check "$f" >/dev/null 2>&1 || jsbad+=("$f")
+        done
+        while IFS= read -r -d '' f; do
+            node -e '
+const fs = require("fs"); const s = fs.readFileSync(process.argv[1], "utf8");
+const m = [...s.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)];
+let bad = 0; m.forEach((x, i) => { try { new Function(x[1]); } catch (e) { bad++; console.error(`  ${process.argv[1]} inline script ${i + 1}: ${e.message}`); } });
+process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
+        done < <(files '*.html')
+        if [ "${#jsbad[@]}" -eq 0 ]; then
+            printf '  [ok]   %s script file(s) parse\n' "${#jss[@]}"
+        else
+            printf '  [FAIL] does not parse: %s\n' "${jsbad[*]}"
+            rc=1
+        fi
+    fi
+
     section "github workflows (actionlint)"
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then
@@ -6448,7 +6476,7 @@ case "${1:-help}" in
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
-    claude-md|claudemd) shift; cmd_claude_md "$@" ;;
+    claude-md) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
@@ -6462,7 +6490,7 @@ case "${1:-help}" in
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;
     roadmap)  shift; cmd_roadmap "$@" ;;
-    bug|bugs) shift; cmd_bug "$@" ;;
+    bug) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
