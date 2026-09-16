@@ -46,6 +46,7 @@
 - Settings gains Offer dev features: off, the pickers offer only the git hosts, hypervisors and node OS families that have been run for real; on, the rest appear tagged dev and the header says dev (287fdfc)
 - A node can be uninstalled: from its row (runners deregistered first), with sudo bb-sandbox uninstall on the machine, or provision-linux.sh --remove; docker, the packages and the shares' contents stay (971e9db)
 - Reset BuilderBot at the foot of Settings starts the controller over at Create the owner, moving its state aside and leaving project files alone (971e9db)
+- bb lint parses every JavaScript file and the page's inline scripts with node, beside the shell, Dockerfile, workflow and python checks (b7f29ff)
 
 ### Changed
 

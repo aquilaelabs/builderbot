@@ -58,7 +58,7 @@ private tmux server and photographs it with `bb shot`: the pattern the
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
 | **Build** | build-essential, cmake, pkg-config |
-| **Lint** | shellcheck, hadolint, actionlint, ruff: `bb lint` runs the right ones over a repo |
+| **Lint** | shellcheck, hadolint, actionlint, ruff, node --check: `bb lint` runs the right ones over a repo |
 | **Media** | ffmpeg, imagemagick |
 | **Runner** | latest `actions/runner`, ephemeral by default |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust, on demand) |
