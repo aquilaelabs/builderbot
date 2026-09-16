@@ -3258,6 +3258,18 @@ body.booting .pane>.loading{margin:auto}
   <div class="box wide">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
+      <!-- Two pages behind one switch: how to start, and what changed. The
+           panel opens itself on the guide the first time an account signs
+           in, and on the changelog once after every image update; a press
+           on the version in the header opens it any other time. The guide
+           comes first: a new owner meets "What this is" before the build
+           stamp, which is the last thing they need (16 Sep). -->
+      <div class="abswitch" role="tablist">
+        <button type="button" data-ab="guide" role="tab">Getting started</button>
+        <button type="button" data-ab="log" role="tab">Changelog</button>
+      </div>
+      <div class="abpage" id="abGuide" hidden></div>
+      <div class="abpage ablog" id="abLog" hidden></div>
       <div class="aline"><span>version</span><code id="aVer"></code></div>
       <div class="aline"><span>image commit</span><code id="aRev"></code></div>
       <div class="aline"><span>built</span><code id="aBuilt"></code></div>
@@ -3266,16 +3278,6 @@ body.booting .pane>.loading{margin:auto}
       <p class="hint">This is what <code>/opt</code> is serving: an update
         pulls whatever <code>:latest</code> is now, and <code>bb drift</code>
         says what a checkout has changed since.</p>
-      <!-- Two pages behind one switch: how to start, and what changed. The
-           panel opens itself on the guide the first time an account signs
-           in, and on the changelog once after every image update; a press
-           on the version in the header opens it any other time. -->
-      <div class="abswitch" role="tablist">
-        <button type="button" data-ab="guide" role="tab">Getting started</button>
-        <button type="button" data-ab="log" role="tab">Changelog</button>
-      </div>
-      <div class="abpage" id="abGuide" hidden></div>
-      <div class="abpage ablog" id="abLog" hidden></div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="aboutClose">Close</button>
@@ -3589,6 +3591,15 @@ body.booting .pane>.loading{margin:auto}
              placeholder="e.g. my-app">
       <div class="hint" id="pNameHint"></div>
       <div class="hint" id="pNamePreview" hidden></div>
+    </div>
+    <!-- Where it runs. A project born with no node has no builds, no
+         tests and no Claude session until its settings are opened, which
+         every new project on the dev pair went through (16 Sep); when
+         nodes exist the pick belongs here, defaulting to the one there is. -->
+    <div class="field" id="pNodeField" hidden>
+      <label for="pNode">Node</label>
+      <select id="pNode"></select>
+      <div class="hint">Builds, tests, CI and Claude sessions run there; the settings dialog changes it later.</div>
     </div>
     <!-- A code base somebody already has, for a fresh local repo: unpacked
          into the new directory before git init. Uploaded on Create rather
@@ -5642,7 +5653,7 @@ function rnFillNode(){
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
-    sel.innerHTML = `<option value="">none; this project does nothing off this box</option>`
+    sel.innerHTML = `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
@@ -7572,9 +7583,14 @@ function drawDoctor(){
     return;
   }
   const tip = c => c.text + (c.detail ? "\n\n" + c.detail : "");
-  const probs = d.checks.filter(c => c.level === "FAIL" || c.level === "warn");
-  const fine = d.checks.filter(c => c.level === "ok");
-  const skip = d.checks.filter(c => c.level === "skip");
+  // A plain user sees the lines that are theirs to act on: whether a node
+  // can run their session. Runner tokens, ssh keys and the docker daemon
+  // are the controller's, and on their card they read as things to fix.
+  const checks = state?.admin === false
+    ? d.checks.filter(c => /can run a session/.test(c.text)) : d.checks;
+  const probs = checks.filter(c => c.level === "FAIL" || c.level === "warn");
+  const fine = checks.filter(c => c.level === "ok");
+  const skip = checks.filter(c => c.level === "skip");
 
   // A changed verdict beats the operator's inner toggle: detail that turns
   // red must open even if it was folded away green an hour ago, and detail
@@ -9449,6 +9465,11 @@ function renderDockerInto(i){
 function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
+  // The pane is redrawn whole on every change, and a redraw put the
+  // reader at the foot (the images block) the moment Install was pressed,
+  // with the row that was installing off screen. Where they were, kept.
+  const keepScroll = el.scrollTop;
+  queueMicrotask(() => { if (el.isConnected) el.scrollTop = keepScroll; });
   // Fills its pane like the notebook and the other document tabs, rather than
   // sitting on the darker ground with an inset, which is what made this one
   // look like a different kind of screen.
@@ -9713,7 +9734,9 @@ async function pkgAct(action, only){
       ? "checking versions: each one asks its own upstream"
       : action === "sysdeps"
       ? "installing the system packages the held recipes need; the packages themselves are left alone"
-      : `${action}: ${names.length} package(s); this can take minutes`);
+      : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${
+          pkgNode !== "local" ? " on " + (pnodes.find(n => n.id === pkgNode)?.name || "the node") : ""
+        }; this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
 }
@@ -9728,9 +9751,9 @@ async function pkgAct(action, only){
 // failure so nothing typed is lost.
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pArchiveField", "pAboutField"] },
+           fields: ["pSrcField", "pNameField", "pNodeField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pForgeField",
+           fields: ["pSrcField", "pNameField", "pNodeField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
@@ -9959,6 +9982,7 @@ function pOpen(mode){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
+  pFillNode();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
   // agent no longer holds. The submit handler awaits pFetch directly, so an
@@ -9976,6 +10000,28 @@ function pOpen(mode){
       + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
     pShowKey(); pDraw();
   });
+}
+
+// The node picker on New project: the same list the settings dialog
+// offers, fetched the first time it is needed. One node is picked for
+// the person; several leave the choice open, with none as the last
+// option rather than the first.
+function pFillNode(){
+  const sel = $("pNode"), wrap = $("pNodeField");
+  if (!sel || !wrap) return;
+  if (nodesList === null){
+    const gen = pGen;
+    loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
+  }
+  const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
+  const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
+  wrap.hidden = !shown;
+  if (!shown){ sel.innerHTML = ""; return; }
+  const was = sel.value;
+  sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
+      n.live === false ? " (quiet)" : ""}</option>`).join("")
+    + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
+  sel.value = pick.some(n => n.id === was) ? was : (pick.length === 1 ? pick[0].id : "");
 }
 
 function openNewProject(){ pLink = null; pOpen("init"); }
@@ -11529,7 +11575,7 @@ function paintMemAdd(box){
           `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
-    <label for="naHook">Hook<span class="help" data-tip="its one line in the index, and what recall matches on" tabindex="0">?</span></label>
+    <label for="naHook">Hook (required)<span class="help" data-tip="its one line in the index, and what recall matches on; a memory with none cannot be filed" tabindex="0">?</span></label>
     <textarea id="naHook" class="proseline" rows="1" maxlength="240"
       placeholder="a word and an animated ellipsis, never a bar or a percentage"></textarea>
     <label for="naBody">The memory itself</label>
@@ -11554,6 +11600,13 @@ function paintMemAdd(box){
 
 async function createMemory(){
   const b = $("naGo"), was = b.textContent;
+  // The one field the server refuses without, said on the form rather
+  // than as a toast that names no field (16 Sep).
+  if (!$("naHook").value.trim()){
+    $("naWhat").textContent = "a hook is required: the one line the index carries and recall matches on";
+    $("naHook").focus();
+    return;
+  }
   b.disabled = true; b.textContent = "Writing…";
   const j = await postMemory({action: "create",
     name: $("naName").value.trim(), title: $("naTitle").value.trim(),
@@ -13193,9 +13246,25 @@ project can have several"
         const j = await r.json();
         if (j.error){ pane.textContent = `changelog: ${j.error}`; return; }
         if (j.text == null){
-          pane.textContent = `no CHANGELOG.md here yet: a session's first\n`
-            + `\`bb changelog add "..."\` creates it, and the next bump\n`
-            + `dates whatever has accumulated`;
+          // No file yet. The first line can be written here as well as by
+          // a session's `bb changelog add`: the editor used to sit dead
+          // until Claude made the file.
+          pane.innerHTML = `<div class="sub">No CHANGELOG.md here yet. A session's first
+              <code>bb changelog add "..."</code> creates it, or write the first line:</div>
+            <div class="actbar"><input id="clFirst" maxlength="300" autocomplete="off"
+              placeholder="what changed for the person using it, in their words">
+              <button type="button" class="primary" id="clFirstGo">Create</button></div>`;
+          pane.querySelector("#clFirstGo").onclick = async () => {
+            const text = pane.querySelector("#clFirst").value.trim();
+            if (!text) return notify("write the line first", true);
+            const r2 = await fetch("/api/changelog", {method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({project, component: comp, action: "first", text})});
+            const j2 = await r2.json();
+            if (j2.error) return notify(j2.error, true);
+            notify("CHANGELOG.md written; the next bump dates it");
+            drawChangelog(pane, comp, j2);
+          };
           return;
         }
         drawChangelog(pane, comp, j);
@@ -13356,8 +13425,9 @@ this directory">Ask Claude</button>
     // "building towards" until the tag exists, "released as" after: the two
     // gestures said in the label somebody reads first, because which of them
     // has happened is the question this block kept failing to answer.
-    return line(v.released ? "released as" : "building towards",
-                v.target || "no VERSION file")
+    return (v.target
+              ? line(v.released ? "released as" : "building towards", v.target)
+              : line("version", "none yet: no VERSION file; Set one below"))
       + (v.released ? line("tag", v.tag) : "")
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save: ${esc(staged)}${
@@ -13975,9 +14045,9 @@ become that version's section when it is created">Changelog${
         drafts.set(t.key, {protects: p.value, notes: n.value, accept, why});
     });
     if (!all.length){
-      $("tstHint").textContent = "Nothing ingested yet.";
+      $("tstHint").textContent = "";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">Nothing recorded yet. A session
+      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session
         runs the tests and records what each cost with
         <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
@@ -14889,6 +14959,7 @@ $("pCreate").onclick = async () => {
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
+                                node: $("pNodeField").hidden ? "" : $("pNode").value,
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not
                                 // name itself: the server prefers the host.

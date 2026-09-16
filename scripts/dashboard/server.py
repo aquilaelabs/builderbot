@@ -5730,7 +5730,13 @@ class Handler(BaseHTTPRequestHandler):
                       and (tmux_owner(n) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)
         if busy:
-            return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
+            # Said as projects, not tmux names: "u_3deb3420~claude-hello"
+            # named nothing a person recognises, and every one listed is
+            # the asker's own.
+            projs = sorted({tmux_base(n)[len("claude-"):] for n in busy})
+            return self._json({"error": "end your Claude session"
+                               + ("s" if len(projs) > 1 else "") + " on "
+                               + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)
         # In the asking account's home, like the sign-in: signing out is
         # signing THIS account out, and the credential is in their ~/.claude.
         #
@@ -6662,6 +6668,15 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         body, code = projects.create(req)
+        # The node it was made for, when the dialog offered one: the same
+        # write the settings dialog makes, so a project is born able to
+        # build and start a session rather than needing a second dialog
+        # first (16 Sep). Refused the way the settings dialog refuses it.
+        nid = str(req.get("node") or "").strip()
+        if code == 200 and body.get("name") and nid and not users.may(self._who(), "node", body["name"]):
+            r = prefs.set_prefs(body["name"], node=nid, workspace=WORKSPACE)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
         # on disk and never reaches the sidebar — created, and apparently gone.
@@ -7111,6 +7126,19 @@ class Handler(BaseHTTPRequestHandler):
         d = version._sub(name, str(req.get("component") or ""))
         if d is None:
             return self._json({"error": "no such component"}, 400)
+        if req.get("action") == "first":
+            # The first line, from the page: the editor was dead until a
+            # session's `bb changelog add` made the file, and the operator
+            # is as entitled to the first entry as to every arrangement
+            # after it (16 Sep). Only the first: a file that exists is
+            # edited through the editor, whole.
+            if changelog.read(d) is not None:
+                return self._json({"error": "there is a changelog here already; edit it below"}, 409)
+            r = changelog.add(d, str(req.get("text") or ""))
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(r | {"text": changelog.read(d),
+                                   "groups": changelog.groups(d)})
         gs = req.get("groups")
         if not isinstance(gs, list):
             return self._json({"error": "groups is a list of {name, entries}"}, 400)

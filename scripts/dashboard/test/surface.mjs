@@ -60,7 +60,7 @@ const SURFACE = [
   'openNewContainer', 'openNewProject', 'openNotebook', 'openPackages', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'pDrawForge', 'pUrlHost', 'unlinkProject',
-  'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
+  'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
   'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',

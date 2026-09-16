@@ -1191,7 +1191,11 @@ lives in its body. The cards:
   At the foot of the card, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes its `CLAUDE.md`, with the environment block rendered from the
-  image's template into `CLAUDE.local.md` beside it. It can
+  image's template into `CLAUDE.local.md` beside it. When nodes are
+  enrolled it also asks which node the project runs on (the only one is
+  picked for you; *none* is an option), the same setting the project's
+  settings dialog changes later, so a new project can build and start a
+  session without a second dialog. It can
   also start from an archive you already have: zip, or tar with gzip, bzip2
   or xz, unpacked into the new directory before `git init`. A single
   top-level folder inside is dropped (the project directory *is* that
@@ -1932,7 +1936,9 @@ container.
   own output in the tooltip, and passing checks collapsed into green chips.
   A verdict getting worse unfolds that detail by itself; healing folds it
   back. Only the detail: collapsing the whole card is your setting, and the
-  verdict never overrides it
+  verdict never overrides it. A plain user's card carries only the lines
+  that are theirs to act on (whether a node can run their session); the
+  runner tokens, ssh keys and the docker daemon are an administrator's
 
 ### Tabs and panes
 
