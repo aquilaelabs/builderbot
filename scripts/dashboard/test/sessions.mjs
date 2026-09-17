@@ -400,14 +400,6 @@ for (let tries = 0; ; tries++){
 // worst shape a test has (B124). Nothing here is about hit-testing the button,
 // only about what pressing it opens.
 const pressAlpha = () => phone.$eval('#projects [data-c="alpha"]', b => b.click());
-// The chooser only opens for a project the page knows has history: openClaude
-// returns early unless p.last_claude is set. Waiting for that rather than for
-// the press to become clickable is the difference between waiting for what
-// this needs and waiting for a budget, which is the whole of B124. The old
-// actionability wait was buying the time for the poll that brings it, by
-// accident, and pressing in the page took that away.
-await refreshUntil(phone, () => !!(state?.projects || [])
-  .find(p => p.name === 'alpha')?.last_claude, { timeout: 30000 });
 await pressAlpha();
 // The press can land on a row the poll is replacing under load, and then
 // opens nothing; a press that opened nothing is pressed again, and one
