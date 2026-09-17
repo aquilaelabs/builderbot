@@ -393,12 +393,19 @@ for (let tries = 0; ; tries++){
                { Authorization: 'Bearer ' + deskbox.token });
   }
 }
-await phone.click('#projects [data-c="alpha"]');
+// Pressed IN THE PAGE rather than through Playwright's click. The click waits
+// for the button to be "visible, enabled and stable", and this row is redrawn
+// by every poll, so under a full run the wait ran out and took the whole file
+// with it: five times before this, always green when run alone, which is the
+// worst shape a test has (B124). Nothing here is about hit-testing the button,
+// only about what pressing it opens.
+const pressAlpha = () => phone.$eval('#projects [data-c="alpha"]', b => b.click());
+await pressAlpha();
 // The press can land on a row the poll is replacing under load, and then
 // opens nothing; a press that opened nothing is pressed again, and one
 // that did is left alone, since a second press would close the chooser.
 await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => {
-  await phone.click('#projects [data-c="alpha"]');
+  await pressAlpha();
   await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 });
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
