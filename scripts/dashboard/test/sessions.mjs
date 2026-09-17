@@ -7,6 +7,7 @@ import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSet
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -400,6 +401,39 @@ for (let tries = 0; ; tries++){
 // worst shape a test has (B124). Nothing here is about hit-testing the button,
 // only about what pressing it opens.
 const pressAlpha = () => phone.$eval('#projects [data-c="alpha"]', b => b.click());
+// Waited for by the condition openClaude() ACTUALLY branches on, which the
+// wait above is not: session_at says only that there is a node a session
+// could run on. The press opens the Resume/New chooser when the project has
+// a transcript AND this account's claude session is not in state.sessions;
+// with a live one listed it starts a session straight away and no chooser is
+// ever drawn, which is the timeout that has taken this whole file down under
+// a full run on both the node and the container. Waiting on last_claude
+// alone was tried and was half the fact.
+// The transcript this needs is written HERE rather than relied on from the
+// harness's setup. The chooser is offered only for a project that already had
+// a conversation, and ~/.claude/projects becomes a link onto the share once a
+// node's account is synced, which orphans the fixture written before the
+// server started. Depending on it made this file's result depend on which
+// other files ran first: green alone, and a crash that took the whole file
+// down under a full run, on the node and in the container alike. What is
+// being tested is what the press opens, so the precondition is this file's to
+// establish.
+mkdirSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`,
+          { recursive: true });
+writeFileSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`
+              + '/bbbbbbbb-0000-4000-8000-00000000c0de.jsonl',
+              '{"type":"user","message":{"role":"user","content":"hello"}}\n');
+const chooserReady = () => phone.evaluate(() => {
+  const p = (state?.projects || []).find(x => x.name === 'alpha');
+  return { last_claude: !!p?.last_claude, why: p?.session_why || '',
+           mine: myClaude('alpha'), live: [...liveSessions()] };
+});
+await phone.waitForFunction(() => {
+  const p = (state?.projects || []).find(x => x.name === 'alpha');
+  return !!p?.last_claude && !liveSessions().has(myClaude('alpha'));
+}, null, { timeout: 20000 }).catch(async () => {
+  console.log('[diag] chooser precondition never held:', JSON.stringify(await chooserReady()));
+});
 await pressAlpha();
 // The press can land on a row the poll is replacing under load, and then
 // opens nothing; a press that opened nothing is pressed again, and one

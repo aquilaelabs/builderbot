@@ -102,8 +102,15 @@ export async function newPage(browser, opts = {}){
   // by design — same-origin now, which puts it in the page console where the
   // old dead-port fetch never appeared. Filtered here, not per test: it is a
   // property of the harness, not of any one scenario.
-  page.on('console', m => { if (m.type() === 'error'
-    && !(m.location()?.url || '').includes('/term')) page.errors.push(m.text()); });
+  // With the URL, because "Failed to load resource: 400" names neither what
+  // asked nor what was asked for, and a console error nobody can locate is
+  // one nobody fixes.
+  page.on('console', m => {
+    if (m.type() !== 'error') return;
+    const url = m.location()?.url || '';
+    if (url.includes('/term')) return;
+    page.errors.push(url ? `${m.text()} [${url.replace(/^https?:\/\/[^/]+/, '')}]` : m.text());
+  });
   page.on('pageerror', e => page.errors.push(String(e)));
   page.on('dialog', d => { page.dialogs.push(d.message()); d.accept(); });
   return page;
