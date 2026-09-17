@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.77"
+AGENT_VERSION = "0.5.78"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1294,6 +1294,13 @@ def census(state):
         "hostname": socket.gethostname(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
+        # git's, because nothing keeps it in step and nothing should: it is
+        # installed once at enrollment from whatever the distribution
+        # packages, and on a GUEST node the machine is its owner's, so the
+        # controller upgrading it is the one thing R23 says it must not do.
+        # What is owed instead is being able to SEE it, and to be told when a
+        # node is below the floor the Git view needs (bb doctor names it).
+        "git": _run(["git", "--version"]) if shutil.which("git") else "",
         # The daemon's OWN id, which is how the controller tells two VMs that
         # have worn one address apart — a rebuilt sandbox, a second machine
         # given the old one's IP. It used to read it over ssh with `docker

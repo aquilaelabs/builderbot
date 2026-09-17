@@ -88,6 +88,25 @@ async function nodeAct(body){
 const TOOL_LABELS = {java: "java", "android-sdk": "android sdk", emulator: "emulator",
                      flutter: "flutter", dotnet: ".NET", node: "node", go: "go"};
 
+// The git this machine carries, and whether it clears the floor the Git view
+// needs (merge-tree --write-tree, 2.38). Shown because NOTHING keeps the
+// nodes and the controller in step: git is installed once at enrollment from
+// whatever the distribution packages, and on a guest node the machine is its
+// owner's, so upgrading it is not the controller's to do. Being able to see
+// it, and to be told when one is too old, is what is owed instead.
+const GIT_FLOOR = [2, 38];
+function nodeGit(n){
+  const v = String(n.reported?.git || "").trim();
+  if (n.kind !== "agent" || !v) return "";
+  const m = v.match(/(\d+)\.(\d+)/);
+  const old = m && (+m[1] < GIT_FLOOR[0]
+                    || (+m[1] === GIT_FLOOR[0] && +m[2] < GIT_FLOOR[1]));
+  return old
+    ? `<div class="sub ndgit warn">${esc(v)}: older than ${GIT_FLOOR.join(".")}, which the Git
+       view's merge needs. This machine's own package manager updates it, not the controller</div>`
+    : `<div class="sub ndgit dim">${esc(v)}</div>`;
+}
+
 function nodeTools(n){
   const tc = n.reported?.toolchains || {};
   const names = Object.keys(tc);
@@ -831,6 +850,7 @@ function renderNodesInto(i){
       n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
         ${nodeMeters(n) || `<div class="sub dim">nothing measured yet</div>`}
         ${nodeTools(n)}
+        ${nodeGit(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What

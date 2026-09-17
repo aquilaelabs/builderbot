@@ -249,7 +249,8 @@ print(json.dumps(out))
     const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'buildbox' });
     await post('/api/v1/agent/enroll', {
       user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
-      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true,
+                git: 'git version 2.30.2' } },
       { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
   }
   const added = await page.evaluate(async () => {
@@ -260,6 +261,21 @@ print(json.dumps(out))
      'a machine is enrolled with a token, and arrives as an agent node');
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
+  // Nothing keeps the nodes and the controller on one git: it is installed
+  // once at enrollment from whatever the distribution packages, and on a
+  // guest node the machine is its owner's. So the row SAYS which one is
+  // there, and says plainly when it is below the floor the Git view's merge
+  // needs, rather than leaving a fleet of them unknowable.
+  ok(added.reported?.git === 'git version 2.30.2',
+     `a node's git reaches the controller through the census (${added.reported?.git})`);
+  const gitRow = await page.evaluate(() => nodeGit(
+    { kind: 'agent', reported: { git: 'git version 2.30.2' } }));
+  ok(/2\.30\.2/.test(gitRow) && /warn/.test(gitRow) && /older than 2\.38/.test(gitRow),
+     `...and one below the floor is flagged, saying whose job the upgrade is (${
+       gitRow.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)})`);
+  ok(!/warn/.test(await page.evaluate(() => nodeGit(
+       { kind: 'agent', reported: { git: 'git version 2.43.0' } }))),
+     '...while one that clears it is just stated');
   // The mechanism underneath is untouched (§15 door 7): a restricted node is
   // still expressible, it is just not something the UI makes.
   await page.evaluate(id => nodeAct({ action: 'update', id,
