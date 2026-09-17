@@ -175,6 +175,7 @@
 - A session handing work back on a node no longer fails its house-rule checks with 'rules.py is missing from this image': the check runs where the session and its files are, which is the only place it can (1edd5af)
 - Moving a project to another node no longer hides the dev instance it leaves behind: the containers keep running and their row stays in the Docker manager on the node they are on, so you can still stop or remove them there (aeb6d9b)
 - The dashboard's test suite runs from a local copy instead of straight off the projects share, which is what made its own waits time out and report failures that were not real (8a1f322)
+- Opening a project's Git view no longer runs anything that project's own git configuration names, so a session cannot have code run on the controller by leaving a hook or a filter behind (b8fb095)
 
 ### Removed
 
