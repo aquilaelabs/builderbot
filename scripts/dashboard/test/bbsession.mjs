@@ -45,9 +45,15 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  runner, devdata])
   mkdirSync(d, { recursive: true });
 writeFileSync(join(homeRoot, '.claude.json'), '{}');
-// The shared launcher: every account's ~/.local is a link to the base home's,
-// so this one file is what every session on the node execs.
-writeFileSync(join(homeRoot, '.local', 'bin', 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+// The shared launcher, in the shape the controller's own node has: a symlink
+// in .local/bin pointing at a versioned binary under .local/share/claude. The
+// dev VM has the other shape, a plain wrapper script, and the block below
+// covers that one; testing only the plain file is how the first version of
+// this fix came to do nothing on the box the operator works on.
+mkdirSync(join(homeRoot, '.local', 'share', 'claude', 'versions'), { recursive: true });
+writeFileSync(join(homeRoot, '.local', 'share', 'claude', 'versions', '2.1.273'), 'BINARY\n', { mode: 0o755 });
+symlinkSync(join(homeRoot, '.local', 'share', 'claude', 'versions', '2.1.273'),
+            join(homeRoot, '.local', 'bin', 'claude'));
 symlinkSync(join(ws, 'beta'), join(ws, 'linked'));
 const conf = join(L, 'bb-session.conf');
 writeFileSync(conf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
@@ -97,9 +103,29 @@ ok(has('bindro', join(pkg, '.bb'), join(pkg, '.bb'))
    && !steps.some(x => x[0] === 'bindro' && x[1] === join(pkg, 'jdk'))
    && !bound(join(pkg, '.bb')),
    'the packages bundle is read-only in the view so a session cannot rewrite the bb the agent and other sessions run, while the toolchains beside it stay writable for a build (B157)');
-ok(has('bindro', join(homeRoot, '.local', 'bin', 'claude'), join(homeRoot, '.local', 'bin', 'claude'))
+const versions = join(homeRoot, '.local', 'share', 'claude', 'versions');
+ok(has('bindro', versions, versions)
    && !steps.some(x => x[0] === 'bindro' && x[1] === join(homeRoot, '.local', 'bin')),
-   'the claude every account\'s session runs is read-only in the view, since .local is shared between homes, while the rest of .local/bin stays writable for a pip --user install (B157)');
+   'the claude binary every account\'s session runs is read-only in the view, since .local is shared between homes, while .local/bin stays writable for a pip --user install (B157)');
+{
+  // The OTHER shape, which the dev VM has: a plain wrapper script at
+  // .local/bin/claude and no versions directory at all. The file itself is
+  // what every account execs there, so it is the file that is bound.
+  const alt = join(L, 'althome');
+  mkdirSync(join(alt, '.local', 'bin'), { recursive: true });
+  writeFileSync(join(alt, '.local', 'bin', 'claude'), '#!/bin/sh\nexec real\n', { mode: 0o755 });
+  mkdirSync(join(alt, 'users', me), { recursive: true });
+  const altConf = join(L, 'bb-session-plainclaude.conf');
+  writeFileSync(altConf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`,
+    `HOME_ROOT=${alt}`, `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`,
+    `PACKAGES_STORE=${pkg}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
+  const g2 = JSON.parse(execFileSync(HELPER,
+    ['plan', '--project', 'alpha', '--account', me, '--home', join(alt, 'users', me),
+     '--cwd', join(ws, 'alpha')],
+    { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: altConf } }));
+  ok(g2.some(x => x[0] === 'bindro' && x[1] === join(alt, '.local', 'bin', 'claude')),
+     'a node whose claude is a plain wrapper script has that file made read-only instead');
+}
 {
   // No PACKAGES_STORE (an older agent's conf, before B157): no bundle bind at
   // all, which leaves the store as it was rather than failing the view.
@@ -115,7 +141,7 @@ ok(has('bindro', join(homeRoot, '.local', 'bin', 'claude'), join(homeRoot, '.loc
   // half of B157 without being updated.
   ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1].startsWith(pkg)),
      '...and a conf without PACKAGES_STORE (an agent from before B157) plans no bundle bind rather than failing');
-  ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === join(homeRoot, '.local', 'bin', 'claude')),
+  ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === versions),
      '...while the shared launcher is still made read-only there, since that is read off the home root');
 }
 ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0] === 'proc'

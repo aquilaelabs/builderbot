@@ -254,9 +254,30 @@ def plan(c, a, uid):
     # What this costs, and it is the point: claude cannot update itself from
     # inside a session any more. Updating it is the provisioner's, or a person
     # on the node outside a view, which is the same bargain as the bundle.
-    launcher = f"{home_root}/.local/bin/claude" if home_root else ""
-    if launcher and os.path.isfile(launcher) and not os.path.islink(launcher):
-        steps.append(("bindro", launcher, launcher))
+    #
+    # TWO SHAPES, both real and measured: a plain wrapper script at
+    # .local/bin/claude (the dev VM), and a symlink there pointing into
+    # .local/share/claude/versions/<version>, a 228MB binary (this box). The
+    # first version of this bound only a regular file and so did nothing at all
+    # on the second, which is the shape the controller's own node has.
+    #
+    # So: the file the name RESOLVES to, whichever shape it is, and the
+    # versions directory beside it, because a session that cannot overwrite
+    # 2.1.273 can otherwise write 2.1.274 and wait.
+    #
+    # What this still does not stop, and B157 says so rather than implying it
+    # is closed: a session replacing the .local/bin/claude SYMLINK itself. A
+    # bind cannot hold a symlink down, and .local/bin has to stay writable for
+    # `pip install --user`. Closing that means moving the shared launcher
+    # somewhere a session cannot write, which is a change to common.sh.
+    if home_root:
+        shared = f"{home_root}/.local/share/claude/versions"
+        if _real_dir(shared):
+            steps.append(("bindro", shared, shared))
+        launcher = f"{home_root}/.local/bin/claude"
+        real = os.path.realpath(launcher) if os.path.exists(launcher) else ""
+        if real and os.path.isfile(real) and not real.startswith(shared + "/"):
+            steps.append(("bindro", real, real))
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")):
             steps.append(("hide", hidden.rstrip("/")))
