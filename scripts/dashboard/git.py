@@ -23,12 +23,14 @@ configure() only knows where the workspace and the worktrees are.
 import os
 import re
 import shutil
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
 
 WORKSPACE = None
 WORKTREES = None
+STATE = None
 TELL = None               # notify.tell: type a line into a session, injected
 TMUX_NAME = None
 
@@ -40,18 +42,119 @@ US = "\x1f"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
-def configure(*, workspace, worktrees=None, tell=None, tmux_name=None):
+def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
-                     TELL=tell, TMUX_NAME=tmux_name)
+                     TELL=tell, TMUX_NAME=tmux_name,
+                     STATE=Path(state) if state else None)
+
+
+# ---- reading a tree without running what it carries (B153) -----------------
+#
+# A session can write .git/config, .git/hooks and .gitattributes in its own
+# project, and git EXECUTES what those name: core.fsmonitor on status, a
+# textconv driver on diff, a hook on checkout. The controller ran
+# `git -C <tree>` as the dashboard's account whenever somebody opened the Git
+# view, so a session on a node could have code run here by waiting for that.
+# Measured, not supposed: all three fire.
+#
+# What stops it is that each of those is NAMED by the tree but DEFINED in
+# config. With a git dir of the controller's own the definitions are ours: an
+# attribute naming a driver we do not define is ignored, the hooks are ours,
+# fsmonitor is ours. The worktree is still attached, so status and diff read
+# the real tree and answer honestly. Measured too: none of the three runs, and
+# status still reports the dirty file.
+#
+# Objects are borrowed through alternates rather than copied, and refs are
+# mirrored by READING them off the filesystem rather than by asking git in the
+# tree, which would be the same exposure one step smaller. gitrelay owns that
+# reading already, for git's network half (B148).
+#
+# WRITES still go through the tree: a commit made here would land in OUR refs
+# and leave the branch where it was. Moving those back is gitrelay's `apply`
+# step and is the rest of B153.
+def _own(repo):
+    """A git dir of the controller's for reading `repo`, or None.
+
+    None means "could not build one", and the caller falls back to the tree: a
+    Git view that goes blank is worse than one still doing what it always did.
+    The refusal says so in the log rather than passing quietly.
+    """
+    if STATE is None:
+        return None
+    try:
+        import gitrelay                                    # noqa: PLC0415
+        common = Path(repo) / ".git"
+        if common.is_symlink() or not common.is_dir():
+            return None
+        common = common.resolve()
+        d = STATE / "gitview" / hashlib.sha256(str(common).encode()).hexdigest()[:16]
+        for sub in ("refs/heads", "refs/tags", "objects/info"):
+            (d / sub).mkdir(parents=True, exist_ok=True)
+        _atomic(d / "objects" / "info" / "alternates", f"{common / 'objects'}\n")
+        # The tree's remotes and upstreams, which the view reports and which sit
+        # in config beside the dangerous keys. `git config --file` is a plain
+        # file read that runs nothing. Only these two prefixes: every other key
+        # in that file is one the tree wanted us to obey.
+        #
+        # Composed and written ONCE. Writing a base and then appending keys left
+        # a window in which a concurrent read saw a config with no remotes, and
+        # this runs on the poll path where there is always another read about
+        # to happen: the Git view lost its upstream at random.
+        got = subprocess.run(["git", "config", "--file", str(common / "config"),
+                              "--get-regexp", r"^(remote|branch)\."],
+                             capture_output=True, text=True, timeout=10, check=False)
+        sections = {}
+        for line in (got.stdout or "").splitlines():
+            key, _, val = line.partition(" ")
+            bits = key.split(".")
+            if len(bits) < 3 or bits[0] not in ("remote", "branch"):
+                continue
+            sections.setdefault((bits[0], ".".join(bits[1:-1])), []).append((bits[-1], val))
+        text = ["[core]", "\trepositoryformatversion = 0", "\tbare = false"]
+        for (kind, name), pairs in sorted(sections.items()):
+            text.append(f'[{kind} "{gitrelay._q(name)[1:-1]}"]')
+            text += [f"\t{k} = {gitrelay._q(v)}" for k, v in pairs]
+        _atomic(d / "config", "\n".join(text) + "\n")
+        tree_refs = gitrelay.refs(common)
+        _atomic(d / "packed-refs", "# pack-refs with: sorted \n"
+                + "".join(f"{tree_refs[n]} {n}\n" for n in sorted(tree_refs)))
+        # gitrelay's shape: a symbolic ref needs the `ref: ` prefix, and git
+        # rejects the whole directory without it.
+        h = gitrelay.head(common) or "refs/heads/main"
+        _atomic(d / "HEAD", f"ref: {h}\n" if h.startswith("refs/") else f"{h}\n")
+        return d
+    except Exception as e:                                  # noqa: BLE001
+        print(f"dashboard: reading {repo} through the controller's own git dir failed "
+              f"({e}); falling back to the tree, which runs what the tree carries (B153)",
+              flush=True)
+        return None
+
+
+def _atomic(path, text):
+    tmp = Path(f"{path}.new")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 def _git(repo, *args, timeout=20):
-    """stdout of one git command in `repo`, or None when it failed."""
+    """stdout of one git READ in `repo`, or None when it failed.
+
+    Through the controller's own git dir where one can be built, so the tree's
+    hooks, fsmonitor and diff drivers are not this process's to run (B153).
+    """
+    own = _own(repo)
+    argv = (["git", f"--git-dir={own}", f"--work-tree={repo}", *args] if own
+            else ["git", "-C", str(repo), *args])
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    if own:
+        # The tree's index, so what somebody staged in their own checkout is
+        # what status reports. An index is data git reads, not a place it is
+        # told to run anything.
+        env["GIT_INDEX_FILE"] = str(Path(repo) / ".git" / "index")
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
-                           text=True, timeout=timeout, check=False,
-                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+        r = subprocess.run(argv, capture_output=True,
+                           text=True, timeout=timeout, check=False, env=env)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None

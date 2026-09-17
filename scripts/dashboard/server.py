@@ -2145,7 +2145,7 @@ import workspace                                                 # noqa: E402
 artifacts.configure(workspace=WORKSPACE)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
-                  tell=notify.tell, tmux_name=tmux_name)
+                  tell=notify.tell, tmux_name=tmux_name, state=STATE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
