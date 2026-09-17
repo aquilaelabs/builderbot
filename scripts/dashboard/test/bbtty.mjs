@@ -74,15 +74,6 @@ if capped:
     t = c[:c.rfind("\\n") + 1] + "[the rest of this list did not fit in the prompt]"
 print(json.dumps({"text": t, "bytes": len(b), "max": MAX, "capped": capped, "parts": []}))' ;;
   settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
-  # The gate bb-tty asks before starting a session: exit 0 means the
-  # environment block is from another compatibility window and no session
-  # should start. Answered from an env var the cases below flip, the way the
-  # claude stub answers auth from a fixture — and answered HONESTLY by
-  # default, because a stub that exits 0 for everything reads as "every
-  # project is out of window" and would refuse every session in this file.
-  # Only for that flag: a stub answering --is-stale the same way would be
-  # testing the gate the page no longer asks.
-  claude-md) [ "\${2:-}" = --out-of-window ] && [ "\${FAKE_MD_GAP:-0}" = 1 ] && exit 0; exit 1 ;;
 esac
 exit 0
 `);
@@ -221,21 +212,6 @@ ok(refusedIn < 5000,
    `...promptly, rather than pausing for a terminal nobody is holding open (${refusedIn}ms)`);
 ok(/Projects card/.test(out),
    '...and says where to undo it, rather than only that it said no');
-
-// A CLAUDE.md whose environment block is from ANOTHER compatibility window
-// than this BuilderBot. The block is what a session is briefed with, so
-// starting one on that copy is starting it on a wrong map — it reads that
-// this container carries an Android SDK, or that builds happen here, and
-// acts on it. Refused HERE as well as ghosted on the row, for the same
-// reason the lock is: the ttyd URL is reachable directly. Drift inside the
-// window is the stub's default answer above, and refuses nothing.
-rmSync(LOCKS, { force: true });
-out = connect(0, { FAKE_MD_GAP: '1' });
-await sleep(400);
-ok(/another\s+compatibility window/.test(out) && !alive('claude-alpha'),
-   'a CLAUDE.md environment block from another window refuses a Claude session too');
-ok(/update/.test(out),
-   '...naming the one-press fix on the row rather than only saying no');
 
 // No author, no session: an account with no name and email for commits is
 // told to fill in its Profile, here as well as on the ghosted button, for

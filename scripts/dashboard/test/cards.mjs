@@ -968,6 +968,7 @@ await page.evaluate(async () => {
   page.errors = [];
 }
 
+
 // ---- the runner card -------------------------------------------------------
 // A view of the NODES' runners and nothing else: this container ran a runner
 // of its own until CI moved to nodes (docs/nodes.md phase 7), and the card
@@ -1134,28 +1135,23 @@ ok(true, 'pinning it puts it back on the sidebar');
 // Two failures that were the same failure, and both were reported as "the
 // tooltip gets buried". A tip in a sidebar row is measured against the ROW,
 // because 340px of column cannot hold a 280px box centred on anything in it.
+//
+// Measured on delta, which the fixture locks: a locked project's Claude button
+// is dead and carries the sentence saying why, which is what both halves of
+// this block are about. It used to be measured on the fix link a drifted
+// CLAUDE.md block put on the row, and that link went with the block itself
+// (R63 step 3). Nothing is planted or put back here: the lock is the
+// fixture's, so the poll landing mid-block redraws the same row.
 {
-  // The checkout's template, which is what the server compares against —
-  // run.sh points TEMPLATE_MD at it.
-  const tpl = readFileSync(new globalThis.URL('../../../config/templates/project-CLAUDE.md',
-                                   import.meta.url), 'utf8');
-  // From another WINDOW, not merely behind: only that ghosts the button
-  // whose tip is measured below — drift inside the window leaves it live.
-  writeFileSync(`${DIR}/ws/beta/CLAUDE.md`,
-    tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+ -->/, 'BUILDERBOT:ENV:WINDOW 0.1 -->'));
-  await refreshUntil(page, () => ((state.projects || []).find(p => p.name === 'beta')
-    ?.issues || []).some(i => i.action === 'claude-md-update'));
-  const row = '#projects .row[data-row="beta"]';
-  // The issue line is a LINK, and a link that wraps is an inline box whose
-  // line boxes are what a centred tip gets measured against — so this one was
-  // centred on nothing in particular and slid off the left of the card with
-  // its first characters cut off.
-  await page.hover(`${row} [data-fix]`);
+  const row = '#projects .row[data-row="delta"]';
+  const btn = `${row} [data-c]`;
+  await page.waitForSelector(`${btn}[disabled]`, { timeout: 5000 });
+  await page.hover(btn);
   const fit = await page.evaluate(sel => {
-    const a = document.querySelector(sel + ' [data-fix]');
-    const s = getComputedStyle(a, '::after');
-    // The content width plus what the box adds — 8px of padding either side
-    // and a 1px border — against the row inset 10px either side, which is
+    const b = document.querySelector(sel + ' [data-c]');
+    const s = getComputedStyle(b, '::after');
+    // The content width plus what the box adds: 8px of padding either side
+    // and a 1px border, against the row inset 10px either side, which is
     // where the rule puts it.
     return { box: parseFloat(s.width) + 18,
              row: document.querySelector(sel).getBoundingClientRect().width };
@@ -1163,24 +1159,24 @@ ok(true, 'pinning it puts it back on the sidebar');
   ok(Math.abs(fit.box - (fit.row - 20)) < 2,
      `a row's tooltip is as wide as its row, so nothing can push it off the card (${
        fit.box} in ${fit.row})`);
-  // ...and under the LINK, not under the row: with the row as the tip's
-  // containing block, the link's tip and the icons' landed in one place.
+  // ...and under the BUTTON, not under the row: with the row as the tip's
+  // containing block, every tip in a row landed in one place, so the one on
+  // the name read where the icons' do.
   const where = await page.evaluate(sel => {
-    const a = document.querySelector(sel + ' [data-fix]');
+    const b = document.querySelector(sel + ' [data-c]');
     const row = document.querySelector(sel);
-    return { top: parseFloat(getComputedStyle(a, '::after').top),
-             want: a.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
+    return { top: parseFloat(getComputedStyle(b, '::after').top),
+             want: b.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
              rowH: row.getBoundingClientRect().height };
   }, row);
   ok(Math.abs(where.top - where.want) < 2 && where.top < where.rowH,
-     `...and sits under the link it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
+     `...and sits under the control it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
   // ...and the tip on a DEAD control, which is the one somebody has to read,
   // because it is the sentence saying why the control is dead. The fade on a
   // disabled button is opacity, and opacity below 1 makes a stacking context
-  // that traps the button's own ::after inside it — half strength, painted
+  // that traps the button's own ::after inside it: half strength, painted
   // under the next row, that row's text straight through it.
-  const btn = `${row} [data-c]`;
-  await page.hover(btn);
+  //
   // Waited for rather than read at once: the swap from the opacity fade to
   // the colour one rides the same 150ms transition every other button state
   // does, and reading it on the first frame reads the fade it is leaving.
@@ -1189,15 +1185,9 @@ ok(true, 'pinning it puts it back on the sidebar');
   const dead = await page.$eval(btn, b => ({ off: b.disabled,
     op: getComputedStyle(b).opacity,
     tip: b.dataset.tip || '' }));
-  ok(dead.off && /compatibility window/.test(dead.tip) && dead.op === '1',
+  ok(dead.off && /padlock/.test(dead.tip) && dead.op === '1',
      `a ghosted button reading out its reason is not a layer of its own (${
        dead.op}, ${dead.tip.slice(0, 46)}…)`);
-  // Put back: the fixture tree outlives this file, and a project left held
-  // here would be held — its sessions ended, its row red in the bell — in
-  // every file after it.
-  // beta had no CLAUDE.md at fixture time: put back is remove.
-  rmSync(`${DIR}/ws/beta/CLAUDE.md`, { force: true });
-  await refreshUntil(page, () => !(state.projects || []).find(p => p.name === 'beta')?.held);
 }
 
 // The nodes come back: a drained node is this file's doing, not the
@@ -1637,13 +1627,6 @@ const refused = await page.evaluate(async () => {
 });
 ok(refused.status === 409 && /locked/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
-const mdRefused = await page.evaluate(async () => {
-  const r = await fetch('/api/claude-md', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'delta', action: 'init' }) });
-  return r.status;
-});
-ok(mdRefused === 409, '...including writing a CLAUDE.md into it');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid
 // out even while hidden: a 280px box centred on an icon near the right edge of

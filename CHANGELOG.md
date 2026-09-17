@@ -23,7 +23,7 @@
 
 ### Upgrading
 
-- A minor version moves the compatibility window: every project's CLAUDE.md block needs its one-line update, and a project on a node needs that node's agent updated too, before sessions will start there again (dbf8170)
+- A minor version moves the compatibility window: a project bound to a node is held until that node's agent is updated, and the sessions running on it end when the bump lands (dbf8170)
 - This image is the controller and nothing else: it cannot be turned into a node by a setting, carries no emulator runtime, no X server and no GPU flags, and its Unraid template no longer ships a device or a runtime that fails the container outright on hardware that lacks them (652f8e4)
 
 ### Added
@@ -55,7 +55,7 @@
 - A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
-- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
+- Sessions are briefed by the controller instead of from a file pushed into every project: nothing is written into your repository, there is no block to keep up to date, and CLAUDE.md is the project's own notes. Any block already rendered beside them is removed on the next start (016a5d3, 9127ee5)
 - The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
 - Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
@@ -66,7 +66,6 @@
 - The Users tab names which Anthropic account each BuilderBot account is signed in to, and still warns when two of them share one (7b34c58)
 - A project with no node no longer explains itself in a paragraph on every row: the Claude button is ghosted and says why on hover (4807a91)
 - A project's row says who has a Claude session open, and in red why nobody can, instead of naming the machine sessions run on (9651ee6)
-- A project's environment block is rendered to CLAUDE.local.md, which git does not carry, so CLAUDE.md is the project's own notes and a window move stops leaving every project with a 900-line change to commit (9127ee5)
 - The dashboard on a phone shows four projects on its first screen instead of two and a half: the desk cards start folded, a project row keeps its session and notebook buttons and folds the rest behind one, and every row is a little tighter (50ea516)
 - The changelog editor fits twelve entries on a screen instead of seven, with each line's controls beside its words, and moving a line keeps your place instead of scrolling back to the top (50ea516)
 - The Git view groups branches by what to do with them, opens work not yet in main to its commits and diff, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session (2ffee1e, cebd312)
@@ -79,7 +78,6 @@
 
 ### Fixed
 
-- Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container: only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
 - The Settings, Nodes and Profile tabs are laid out down the page again instead of the right third of it, the deleted-projects and approval dialogs line up with every other dialog, and the settings tab is called Controller settings everywhere (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)

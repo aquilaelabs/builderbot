@@ -789,9 +789,9 @@ setPolicyFor('askme', 'locked');
 const lockedAsk = JSON.parse(askText('askme', ['claude-askme']));
 ok(/what version should askme start at/.test(lockedAsk.text),
    'the ask names the thing it is asking about');
-ok(/CLAUDE\.md/.test(lockedAsk.text),
-   '...and points at the protocol rather than restating it');
-ok(/propose and ask, do not apply/.test(lockedAsk.text),
+ok(/bb version policy/.test(lockedAsk.text),
+   '...and points at the verb that answers, rather than restating the protocol');
+ok(/propose a number you derived here and ask; do not apply one/.test(lockedAsk.text),
    '...saying plainly that this is a proposal, not an instruction');
 // The length IS the contract. This is typed into a terminal a character at a
 // time and the echo has to be seen before Enter can follow; the first cut ran
@@ -806,8 +806,8 @@ writeFileSync(`${AK}/VERSION`, '0.4.0\n');
 execFileSync('git', ['-C', AK, 'add', '-A'], { env });
 execFileSync('git', ['-C', AK, 'commit', '-qm', 'v'], { env });
 const holds = JSON.parse(askText('askme', ['claude-askme']));
-ok(/is at 0\.4\.0 — is that still right\?/.test(holds.text)
-   && /propose and ask, do not apply/.test(holds.text),
+ok(/is at 0\.4\.0: is that still right\?/.test(holds.text)
+   && /propose and ask; do not apply/.test(holds.text),
    'with a version, the ask becomes "is this still right"');
 ok(holds.text.length < 250,
    `...and that one is short too (${holds.text.length} chars)`);
@@ -1275,8 +1275,8 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     await page.evaluate(() => setView('terminal'));
     await sleep(600);
     const long = 'A minor version moves the compatibility window, so every '
-      + "project's CLAUDE.md block needs its one-line update and a project on "
-      + "a node needs that node's agent updated too, before sessions start";
+      + "project bound to a node is held until that node's agent is updated, "
+      + "and the sessions running on it end when the bump lands";
     await page.$eval(`${NB} .clog .clrow textarea.cltext`, (ta, v) => {
       ta.value = v; ta.dispatchEvent(new Event('input', { bubbles: true }));
     }, long);
@@ -1349,9 +1349,8 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
 // ---- a repo's own stamps travel with the number ----------------------------
 // A project may carry its version somewhere else, and a bump that moves one
 // and not the other commits a lie. BuilderBot is the case: its minor IS the
-// compatibility window, written again in the agent and in the CLAUDE.md
-// template, and 0.5.0 only came out consistent because a person moved both by
-// hand before pressing Bump (B91).
+// compatibility window, written again in the agent, and 0.5.0 only came out
+// consistent because a person moved both by hand before pressing Bump (B91).
 //
 // The hook is generic — an executable tools/version-stamp, run from the repo
 // root with the new version and the part — so this exercises the mechanism on
@@ -1417,35 +1416,41 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
      `...in one commit, the way it went (${undone.join(', ')})`);
 
   // ---- what a window move costs, before it is pressed (B92) --------------
-  // One project can move the compatibility window: the one whose checkout
-  // carries the CLAUDE.md template every other project's block is compared
-  // against. A minor bump there ends the Claude sessions on every project
-  // that has a block, and nothing said so before the button was pressed. The
-  // two files that do it are the test, rather than a project's name.
-  mkdirSync(`${S}/config/templates`, { recursive: true });
-  writeFileSync(`${S}/config/templates/project-CLAUDE.md`,
-    '<!-- BUILDERBOT:ENV:BEGIN -->\n<!-- BUILDERBOT:ENV:WINDOW 0.5 -->\nx\n'
-    + '<!-- BUILDERBOT:ENV:END -->\n');
-  const held = `${WS}/mdcost`;
-  rmSync(held, { recursive: true, force: true });
-  mkdirSync(held, { recursive: true });
-  writeFileSync(`${held}/README.md`, 'x\n');
-  execFileSync('git', ['-C', held, 'init', '-q', '.'], { env });
-  execFileSync('bash', [BB, 'claude-md', '--init', held],
-               { env: { ...env, BB_RELAYED: '1' } });
+  // One project can move the compatibility window: the one whose checkout IS
+  // BuilderBot. What that window holds, now a session's briefing is assembled
+  // per session and cannot be from another one (R63 step 3), is a node's
+  // AGENT: every project bound to a node is held until that node is updated,
+  // and the sessions on it end. Nothing said so before the button was pressed.
+  // The two files that move the window are the test, rather than a project's
+  // name.
+  mkdirSync(`${S}/scripts/agent`, { recursive: true });
+  writeFileSync(`${S}/scripts/agent/builderbot-agent.py`, 'AGENT_VERSION = "0.5.1"\n');
+  // A project on an agent node is what the window holds, so bind one: the
+  // harness enrolls `sandbox` for the whole suite.
+  const sbox = await page.evaluate(async () =>
+    ((await (await fetch('/api/v1/nodes')).json()).nodes || [])
+      .find(n => n.kind === 'agent')?.id || '');
+  ok(/^n_/.test(sbox), `the harness's agent node is there to bind to (${sbox || 'none'})`);
+  await page.evaluate(async id => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'alpha', node: id }) });
+  }, sbox);
   const cost = await page.evaluate(async () => {
     const one = await (await fetch('/api/version?project=stampproj')).json();
     const other = await (await fetch('/api/version?project=alpha')).json();
     return { one: one.window_cost, other: other.window_cost };
   });
-  ok(cost.one && cost.one.projects.includes('mdcost'),
-     `the project that carries the template says which projects a window move would hold (${
-       JSON.stringify(cost.one || {}).slice(0, 80)})`);
-  ok(cost.one.window === '0.5',
-     '...and the window they are all on, which is the one that would move');
+  ok(cost.one && (cost.one.projects || []).includes('alpha'),
+     `the project that moves the window says which projects a move would hold (${
+       JSON.stringify(cost.one || {}).slice(0, 90)})`);
+  ok(cost.one.window && /^\d+\.\d+$/.test(cost.one.window),
+     `...and the window they are all on, which is the one that would move (${cost.one.window})`);
   ok(!cost.other,
      '...while a project that moves nobody\'s window says nothing, rather than warning about a cost it has not got');
-  rmSync(held, { recursive: true, force: true });
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'alpha', node: '' }) });
+  });
   rmSync(S, { recursive: true, force: true });
 }
 
@@ -1462,20 +1467,19 @@ ok(/no session is running/.test(askDead.error || ''),
 ok((await page.errors).every(e => /400/.test(e)),
    '...and the only failed request afterwards is the refusal just asked for');
 
-// The template every project's CLAUDE.md is built from. It is read into the
-// prompt of every session on every project, so a rendered example in it is a
-// number thousands of conversations see — and one did exactly what a number
-// in a briefing does: a session asked to give a new project its first version
-// read 0.4.0 out of this file and proposed it, having derived nothing.
+// The briefing every session is handed. It is read into the prompt of every
+// session on every project, so a rendered example version in it is a number
+// thousands of conversations see, and one did exactly what a number in a
+// briefing does: a session asked to give a new project its first version read
+// 0.4.0 out of the file it had been briefed with and proposed it, having
+// derived nothing. The file changed under R63 step 3; the trap did not.
 {
-  const tpl = readFileSync(new globalThis.URL(
-    '../../../config/templates/project-CLAUDE.md', import.meta.url), 'utf8');
-  const rendered = tpl.match(/\b\d+\.\d+\.\d+-dev\.\d+/g) || [];
+  const brief = readFileSync(new globalThis.URL(
+    '../../../config/templates/briefing.md', import.meta.url), 'utf8');
+  const rendered = brief.match(/\b\d+\.\d+\.\d+(-dev\.\d+)?/g) || [];
   ok(rendered.length === 0,
-     `the CLAUDE.md template renders no example version${
-       rendered.length ? ' — got ' + rendered.join(', ') : ''}`);
-  ok(/nothing here suggests one/.test(tpl),
-     '...and says outright that the number is the project\'s own to derive');
+     `the briefing renders no example version${
+       rendered.length ? ', got ' + rendered.join(', ') : ''}`);
 }
 
 // fresh() removes stray projects but does not reach inside a fixture, so the

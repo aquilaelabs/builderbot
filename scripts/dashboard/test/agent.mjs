@@ -704,17 +704,16 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
                         BB_TOKEN: forMe, BB_NODE: 'agentbox', BB_TREE: '/workspace/alpha' };
       const hook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
         { input, encoding: 'utf8', env: nodeEnv, stdio: ['pipe', 'pipe', 'pipe'] });
-      // ---- bb-gate: nothing runs while BuilderBot is away or the block is behind ----
-      // A session outlives an update. The gate refuses every tool call
-      // while the controller does not answer, or while the project's
-      // CLAUDE.md block differs from the shipped template, and lets the
-      // first call after the fix through without a wait.
+      // ---- bb-gate: nothing runs while BuilderBot is away --------------
+      // A session outlives an update. The gate refuses every tool call while
+      // the controller does not answer, and lets the first call after it
+      // comes back through without a wait. It used to weigh a second thing,
+      // the project's CLAUDE.md block being from another window; that went
+      // with the block (R63 step 3), so this is the whole of the rule now.
       {
         const gt = `${DIR}/gatetree`; mkdirSync(gt, { recursive: true });
-        const tplPath = `${REPO}/config/templates/project-CLAUDE.md`;
-        const tpl = readFileSync(tplPath, 'utf8');
         const cache = `${DIR}/gatecache`; mkdirSync(cache, { recursive: true });
-        const genv = extra => ({ ...nodeEnv, BB_TREE: gt, TEMPLATE_MD: tplPath, XDG_CACHE_HOME: cache,
+        const genv = extra => ({ ...nodeEnv, BB_TREE: gt, XDG_CACHE_HOME: cache,
                                  BUILDERBOT_ROLE: 'controller', ...extra });
         const gate = extra => { try {
           execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, 'alpha', 'x'],
@@ -723,46 +722,30 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         } catch (e) { return { code: e.status, err: String(e.stderr) }; } };
         // u/_none: this env names no account, and the gate is per account (B159).
         const fresh = () => rmSync(`${cache}/builderbot/u/_none/project/alpha/gate`, { force: true });
-        writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
         let r = gate({});
-        ok(r.code === 0, `with the controller up and the block current, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
-        // Behind INSIDE the window: the call goes through, and the prompt
-        // hook says so once — the window's promise is that drift stops nothing.
-        writeFileSync(`${gt}/CLAUDE.md`, tpl.replace('Before anything else in a session:', 'Before anything else in a session, once:') + '\n## Notes\n\nours.\n');
-        fresh();
-        r = gate({});
-        ok(r.code === 0, `a block behind inside the window lets the call through (${r.code} ${r.err.slice(0, 40)})`);
-        const said = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
-          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
-        ok(/behind the one the container now ships/.test(said) && /keep working/.test(said),
-           '...and the next prompt carries a warning that an update is waiting');
-        const again = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
-          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
-        ok(again.trim() === '', '...once, not on every prompt');
-        // From ANOTHER window: refused until the operator updates it.
-        writeFileSync(`${gt}/CLAUDE.md`, tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+/, 'BUILDERBOT:ENV:WINDOW 0.1') + '\n## Notes\n\nours.\n');
-        fresh();
-        r = gate({});
-        ok(r.code === 2 && /another compatibility window/.test(r.err) && /operator updates it/.test(r.err),
-           `a block from another window refuses the call and says the operator updates it (${r.code}: ${r.err.slice(0, 50)})`);
-        writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
-        r = gate({});
-        ok(r.code === 0, '...and the first call after the update goes through, with no wait — a refusal is never cached');
+        ok(r.code === 0, `with the controller up, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
         fresh();
         r = gate({ BB_CONTROLLER: 'http://127.0.0.1:1' });
         ok(r.code === 2 && /not answering/.test(r.err) && /restarting after an update/.test(r.err),
            `a controller that does not answer refuses every call until it is back (${r.code})`);
         r = gate({});
-        ok(r.code === 0, '...and answers again the moment it does');
+        ok(r.code === 0, '...and answers again the moment it does, with no wait: a refusal is never cached');
         // A controller that answers with a refusal is up. A session idle past
         // its token's twelve hours is refused "not signed in", and the gate
         // used to read any error without "HTTP" in it as no connection at all,
         // so it told that session BuilderBot was restarting after an update.
         fresh();
-        rmSync(`${cache}/builderbot/project/alpha/token`, { force: true });
+        rmSync(`${cache}/builderbot/u/_none/project/alpha/token`, { force: true });
         r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
         ok(r.code === 0 && !/not answering/.test(r.err),
            `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
+        // --prompt is kept as a no-op: the hook line naming it is written
+        // into settings files that outlive this change, so it has to stay
+        // callable and has to say nothing.
+        const said = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
+          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
+        ok(said.trim() === '',
+           `the prompt hook is silent: there is no copy of the briefing left to be behind (${said.trim().slice(0, 40) || 'nothing'})`);
       }
       // bb itself in the node role: a relayed verb is the controller's
       // answer and nothing else — the dispatch used to fall through and run
@@ -2546,16 +2529,11 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   ok(win === minor,
      `...and its window is the project's minor — bump one and you bump both (${
        win} against ${minor} from VERSION ${proj})`);
-  // The CLAUDE.md template is in the same window, for the same reason: the
-  // block a session is briefed with is a compatibility promise too, and a
-  // bump that moves the minor without restamping it would leave every
-  // project's copy claiming the window that just ended — or, worse, the
-  // template claiming the old one, so nothing is ever held.
-  const tmpl = readFileSync(`${REPO}/config/templates/project-CLAUDE.md`, 'utf8');
-  const mdWin = /<!-- BUILDERBOT:ENV:WINDOW (\d+\.\d+) -->/.exec(tmpl)?.[1] || '';
-  ok(mdWin === minor,
-     `...and the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line is the same minor (${
-       mdWin || 'unset'} against ${minor})`);
+  // The agent's is the only other copy of the window there is. There used
+  // to be a second, the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line, and
+  // it went with the block itself (R63 step 3): a session's briefing is
+  // assembled per session now, so nothing is copied anywhere to fall out of
+  // window. tools/version-stamp moves what is left.
 
   // ---- the sessions are not the agent's unit to kill (B107) --------------
   // systemd's default KillMode takes every process in the unit's cgroup on a

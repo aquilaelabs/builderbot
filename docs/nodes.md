@@ -461,13 +461,10 @@ that node: the controller ends the running ones and ghosts each such
 project's Claude button until the node is updated, per project, so a
 project on a current node is untouched.
 
-The CLAUDE.md environment block is in the same window. The template carries
-a `BUILDERBOT:ENV:WINDOW` line under its begin marker, held to the project's
-minor by the same test that holds the agent's, and a project's copy from
-another window is treated the way an agent from one is: the block described
-a different BuilderBot, so sessions on that project are ended and refused
-until `bb claude-md --update` restamps it. A block merely behind inside the
-window is drift: the row offers the update and nothing stops.
+What a session is briefed with is no longer in this window, or in any
+window: it is assembled per session by the controller and handed to `claude`
+on the way in, so there is no copy of it on a node or in a project to be from
+another version (R63). The window is the agent's alone.
 
 `0.5.0` was such a boundary and is what it looks like in practice: the flat
 `protocol` integer both sides declared and neither ever compared went, along

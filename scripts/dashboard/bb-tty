@@ -286,10 +286,9 @@ claude_scope() {
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
     # Four hooks ride in the same file. bb-gate refuses EVERY tool call
-    # while the controller is not answering (restarting after an update) or
-    # this project's CLAUDE.md block is from another compatibility window,
-    # until a person has updated it — and, on a prompt, warns once when the
-    # block is merely behind inside the window, which stops nothing.
+    # while the controller is not answering, which is what a restart after an
+    # update looks like: there is nothing to do but wait, and working blind
+    # against a machine that is changing is worse than waiting.
     # bb-work-note records what this session
     # touches and says when another has the same file open — it does NOT
     # refuse, because each session is in a worktree of its own and two people
@@ -827,32 +826,6 @@ case "$target" in
             bad "'${proj}' is locked: the operator runs this one, so no Claude" \
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
-        fi
-        # A session whose CLAUDE.md environment block is from ANOTHER
-        # compatibility window than this BuilderBot is a session being
-        # briefed on a container that no longer exists — it reads that the
-        # image carries an Android SDK, or that builds happen here, and acts
-        # on it. Drift inside the window is not that: the block goes stale
-        # every time the image gains a feature, the row offers the update,
-        # and a session may start meanwhile — the same promise the agent's
-        # window makes, that 0.4.anything works with 0.4.anything. Across a
-        # window the promise was never made, so the session waits for the
-        # click rather than starting on a wrong map. `--out-of-window`
-        # decides, and says why in its own comment: a project with no
-        # CLAUDE.md, or a block predating the window line, is not refused.
-        # The PROJECT's copy, not the worktree's, because that is the file
-        # the row's link updates and the one the ghosted button is reasoning
-        # about. An absolute path under the share also survives the relay: a
-        # node sends the words to the controller, which mounts the same tree
-        # at the same path, so the answer is about this project either way.
-        # Never fatal on its own account — a check that cannot answer must
-        # not stop a session.
-        if bb claude-md --out-of-window "$WORKSPACE/$proj/CLAUDE.md" 2>/dev/null; then
-            bad "'${proj}' has a CLAUDE.md whose environment block is from another" \
-                "compatibility window than this BuilderBot. A session started now" \
-                "would be told about a different container. The Projects card's" \
-                "'CLAUDE.md environment block ... update' link fixes it in one press;" \
-                "then open this again."
         fi
         git_identity "$proj"
         need_author "a Claude session"

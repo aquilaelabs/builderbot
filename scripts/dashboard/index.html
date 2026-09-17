@@ -620,7 +620,6 @@ body.dragging .side .card h2{cursor:grabbing}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
 .row .sub.bad{color:var(--bad)}
 /* A problem the page can fix is a link in the color of its own warning. */
-.row .sub a.fix{color:inherit;text-decoration:underline;cursor:pointer}
 .row .sub.warn{color:var(--warn)}
 /* Locked is a decision, not a fault: stated plainly rather than alarming.
    Nothing about the row is dimmed for it: a locked project is one the operator
@@ -648,7 +647,6 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
 @media(hover:hover){
   .side .card h2:hover{color:var(--ink)}
   .row .name.go:hover{text-decoration:underline}
-  .row .sub a.fix:hover{color:var(--ink)}
   button:hover{background:var(--btn-hi)}
   /* The green buttons kept their color through button:hover (their own rules
      come later and win), which meant no hover at all. A lighter green and a
@@ -7075,11 +7073,6 @@ function wireProjectRows(root){
       b.setAttribute("aria-expanded", on ? "true" : "false");
     });
   });
-  root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
-    if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
-  });
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
   // The chain is the remote, whichever state the project is in: linking one
@@ -7132,18 +7125,13 @@ function projectRow(p, live, cls, inTab){
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
 
-        ${p.issues.map(i => i.action && !p.locked
-          // An issue with a fix that takes no decisions says so, and is the
-          // control that applies it: underlined, because a line you can click
-          // should look like one. Not on a locked project: writing a CLAUDE.md
-          // into one is exactly what locking refuses, and a link that would be
-          // turned down is worse than plain text saying what is wrong.
-          ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
-               data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
-               title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"
-                     } in ${esc(p.name)}"
-               >${esc(i.text)}</a></div>`
-          : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
+        ${p.issues.map(i =>
+          // Every issue a project can carry now is something to go and look
+          // at rather than a button to press: an unreadable directory, a
+          // broken .git. There used to be a class with a one-press fix (the
+          // CLAUDE.md block, and the link that wrote it), and the link went
+          // with the block itself, R63 step 3.
+          `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
@@ -7706,53 +7694,6 @@ const drawGit   = () => drawShellCard("git", state?.gitcmds || []);
 // Create or refresh one project's CLAUDE.md. The link says what it is doing
 // while it does it: neither is instant, and a line that looks unchanged invites
 // a second click.
-async function claudeMd(name, action, link){
-  if (link.dataset.busy) return;
-  link.dataset.busy = "1";
-  const said = link.textContent;
-  link.textContent = `${action === "init" ? "creating" : "updating"} ${name}…`;
-  try{
-    const r = await postJSON("/api/claude-md", {name, action});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
-    notify(action === "init"
-      ? `${name}: CLAUDE.md created from the template: fill in the project section at the bottom`
-      : `${name}: CLAUDE.md environment block updated: your project notes are untouched`);
-  }catch(e){
-    notify("could not do that: " + e, true);
-    link.textContent = said; link.dataset.busy = "";
-    return;
-  }
-  refresh();                            // the warning goes away on its own
-}
-
-// Every project whose block is behind, in one press (B93). The set is the
-// server's (the same projects whose rows carry the link), so this cannot
-// disagree with what the bell just said was held.
-async function claudeMdAll(link){
-  if (link.dataset.busy) return;
-  link.dataset.busy = "1";
-  const said = link.textContent;
-  link.textContent = "updating…";
-  try{
-    const r = await postJSON("/api/claude-md", {action: "update", all: true});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
-    const n = (j.updated || []).length;
-    // Named, not counted, when something did not go: a failure nobody can
-    // name is a failure nobody can fix.
-    const left = [...(j.failed || []).map(f => `${f.project}: ${f.error}`),
-                  ...(j.locked || []).map(p => `${p} is locked`)];
-    notify(`${n} CLAUDE.md block${n === 1 ? "" : "s"} updated`
-           + (left.length ? ` · ${left.join(" · ")}` : ""), left.length > 0);
-  }catch(e){
-    notify("could not do that: " + e, true);
-    link.textContent = said; link.dataset.busy = "";
-    return;
-  }
-  refresh();
-}
-
 // ---- custom commands --------------------------------------------------
 // The operator's own lists, typed into the terminal like the bb ones. Kept in
 // their own card because they are theirs: the bb card is what the image can do
@@ -11930,9 +11871,6 @@ function drawBell(){
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
-  // ...and the projects a window move is holding, which come as one each and
-  // are drawn as one row when there is more than one.
-  const mds = att.filter(a => a.kind === "md");
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -11990,26 +11928,7 @@ function drawBell(){
     // A window move holds every project at once, so several of these is the
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
-    ...(mds.length > 1 ? [`<div class="bnote ask bad">
-        <div class="btag">CLAUDE.md out of window</div>
-        <div class="bwhy">${mds.length} projects have an environment block from ${
-          esc(mds[0].from)} and this BuilderBot is ${esc(mds[0].to)}: ${
-          mds.map(m => esc(m.project)).join(", ")}. No session runs in any of
-          them until they are updated</div>
-        <div class="bfoot"><span>sessions there are stopped</span>
-          <span class="acts"><a href="#" data-bmdall="1">Update all ${mds.length}</a></span></div></div>`]
-      : []),
-    ...att.filter(a => a.kind !== "md" || mds.length === 1).map(a => a.kind === "md"
-      // A project's CLAUDE.md block from another window: red like an agent
-      // out of window, because it stops the same thing, its sessions,
-      // and the fix is the row's own link, offered here too.
-      ? `<div class="bnote ask bad">
-        <div class="btag">CLAUDE.md out of window</div>
-        <div class="bwhy">${esc(a.project)}'s CLAUDE.md environment block is from ${esc(a.from)
-          } and this BuilderBot is ${esc(a.to)}. No session runs there until it is updated</div>
-        <div class="bfoot"><span>sessions there are stopped</span>
-          <span class="acts"><a href="#" data-bmd="${esc(a.project)}">Update</a></span></div></div>`
-      : `<div class="bnote ask${a.window ? " bad" : ""}">
+    ...att.map(a => `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
           a.window
@@ -12050,14 +11969,6 @@ function drawBell(){
     e.preventDefault();
     toggleBell(false);
     openNodesTab();
-  });
-  panel.querySelectorAll("[data-bmd]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    claudeMd(a.dataset.bmd, "update", a);
-  });
-  panel.querySelectorAll("[data-bmdall]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    claudeMdAll(a);
   });
 }
 

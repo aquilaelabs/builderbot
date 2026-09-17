@@ -4,17 +4,20 @@
 # `bb version bump` runs this from the repository root with the new version
 # and the part that moved, and commits whatever it changes alongside VERSION.
 # It exists because this project's minor is not only a number: it is the
-# COMPATIBILITY WINDOW, and the window is written down in two more places —
+# COMPATIBILITY WINDOW, and the window is written down in one more place:
 #
 #   scripts/agent/builderbot-agent.py   AGENT_VERSION = "WINDOW.BUILD"
-#   config/templates/project-CLAUDE.md  <!-- BUILDERBOT:ENV:WINDOW W -->
 #
-# — which a bump used to leave behind. 0.5.0 only came out consistent because
-# a person moved both by hand first; a bump that forgot would have committed
-# a controller promising one window while its agent and every project's
-# briefing promised another (B91). A test holds the three equal, but after the
-# commit and only when somebody runs it. This is the write that makes the test
-# a formality.
+# ...which a bump used to leave behind. 0.5.0 only came out consistent because
+# a person moved it by hand first; a bump that forgot would have committed a
+# controller promising one window while the agents it talks to promised
+# another (B91). A test holds the two equal, but after the commit and only
+# when somebody runs it. This is the write that makes the test a formality.
+#
+# There used to be a second stamp here, the window line in the CLAUDE.md
+# template every project carried a copy of. It went with the block itself
+# (R63 step 3): what a session is told is assembled per session now, so
+# nothing is copied anywhere to fall out of window.
 #
 # The BUILD does not reset at a window boundary — 0.5.28 follows 0.4.27 — so a
 # minor bump increments it rather than starting over. That rule is why this
@@ -28,7 +31,6 @@ new="${1:?usage: version-stamp NEW-VERSION PART}"
 part="${2:?usage: version-stamp NEW-VERSION PART}"
 
 AGENT=scripts/agent/builderbot-agent.py
-TEMPLATE=config/templates/project-CLAUDE.md
 
 case "$part" in
     major|minor) ;;
@@ -38,7 +40,6 @@ esac
 window="${new%.*}"               # 0.5.0 -> 0.5
 
 [ -f "$AGENT" ] || { echo "no ${AGENT}" >&2; exit 1; }
-[ -f "$TEMPLATE" ] || { echo "no ${TEMPLATE}" >&2; exit 1; }
 
 cur="$(sed -n 's/^AGENT_VERSION = "\([0-9.]*\)".*/\1/p' "$AGENT" | head -1)"
 [ -n "$cur" ] || { echo "no AGENT_VERSION in ${AGENT}" >&2; exit 1; }
@@ -53,9 +54,7 @@ esac
 agent_new="${window}.$((build + 1))"
 
 sed -i "s/^AGENT_VERSION = \"${cur}\"/AGENT_VERSION = \"${agent_new}\"/" "$AGENT"
-sed -i "s/<!-- BUILDERBOT:ENV:WINDOW [0-9][0-9]*\.[0-9][0-9]* -->/<!-- BUILDERBOT:ENV:WINDOW ${window} -->/" "$TEMPLATE"
 
 # Said out loud rather than done quietly: this is the moment the promise to
-# every node and every project's briefing changes, and the bump's own answer
-# is where somebody will read it.
-echo "agent ${cur} -> ${agent_new}, CLAUDE.md template window -> ${window}"
+# every node changes, and the bump's own answer is where somebody will read it.
+echo "agent ${cur} -> ${agent_new}  (window ${window})"

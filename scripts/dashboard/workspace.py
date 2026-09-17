@@ -264,15 +264,14 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json", "nodes/prov
                 "nodes/bb-session",
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
                 "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
-                # The gate, and the template it compares a project's
-                # CLAUDE.md block against — so `bb claude-md` and the gate
-                # answer on a node the same as here.
+                # The gate, which refuses every tool call while the
+                # controller is not answering, so a node's sessions stop for
+                # an update the same way the controller's do.
                 "scripts/dashboard/bb-gate",
                 # ...and the hook that keeps the account's Claude grant in
                 # step while a session runs, which only matters ON a node and
                 # so only ever runs from here (B100).
-                "scripts/dashboard/bb-keep-login",
-                "config/templates/project-CLAUDE.md")
+                "scripts/dashboard/bb-keep-login")
 
 
 def bundle():

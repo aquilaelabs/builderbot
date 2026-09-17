@@ -32,8 +32,6 @@ import time
 # because write_json is defined from it before any of those load.
 import statefile
 from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
-from claudemd import (TEMPLATE_MD, build_claude_md, md_block, md_file,   # noqa: F401
-                     md_for, md_gap, md_state, md_window)
 import shutil
 import urllib.parse
 import urllib.request
@@ -809,32 +807,37 @@ def version_payload(name):
 def window_cost(name):
     """What a MINOR bump of this project would cost the others, or {}.
 
-    Only one project can answer yes: the one whose checkout carries the
-    CLAUDE.md template, because its minor IS the compatibility window every
-    other project's environment block is compared against. Moving it holds
-    each of them — sessions ended, Claude button ghosted — until its block is
-    updated, and nothing said so before the button was pressed (B92). The
-    test is the two files that do it rather than a project's name:
-    tools/version-stamp is what rewrites the window line, and the template is
-    the line it rewrites.
+    Only one project can answer yes: the one whose checkout IS BuilderBot,
+    because its minor is the compatibility window. What that window still
+    holds, now the environment block is assembled per session and cannot be
+    from another one (R63 step 3), is a node's AGENT: bump the minor and every
+    node running an agent from the old window holds its projects until that
+    agent is updated. Sessions on them end. Said before the button is pressed
+    rather than after (B92); the test is the two files that move the window,
+    not a project's name.
     """
     try:
         here = WORKSPACE / name
         if not ((here / "tools" / "version-stamp").is_file()
-                and md_window(here / "config" / "templates" / "project-CLAUDE.md")):
+                and (here / "scripts" / "agent" / "builderbot-agent.py").is_file()):
             return {}
     except OSError:
         return {}
+    # Every project bound to a node that runs an agent: after the bump that
+    # agent is from the previous window until it is updated.
+    live = {n["id"] for n in nodes.node_list(all=True) if n.get("kind") == "agent"}
     held = []
     try:
         for d in sorted(WORKSPACE.iterdir()):
             if not d.is_dir() or (d / IGNORE_MARKER).exists():
                 continue
-            if md_window(md_file(d)):
+            if ((prefs.get(d.name) or {}).get("node") or "") in live:
                 held.append(d.name)
     except OSError:
         return {}
-    return {"window": md_window(TEMPLATE_MD), "projects": held}
+    if not held:
+        return {}
+    return {"window": nodes.agent_window(nodes.agent_file()["version"]), "projects": held}
 
 
 def node_holds():
@@ -854,9 +857,10 @@ def node_holds():
 
 def compat_holds():
     """{project: why} for every project no Claude session may run on right
-    now: its CLAUDE.md block from another window, or its node's agent from
-    one. Per project on purpose — another project's node being out of window
-    is that project's problem, and this one's button stays live."""
+    now, which since R63 step 3 means one thing: its node's agent is from
+    another compatibility window. Per project on purpose, because another
+    project's node being out of window is that project's problem and this
+    one's button stays live."""
     out = {}
     holds = node_holds()
     pp = prefs.all_projects()
@@ -865,10 +869,10 @@ def compat_holds():
     except OSError:
         return out
     for d in dirs:
-        md = md_file(d)
-        why = md_gap(md) if md.is_file() else ""
-        if not why:
-            why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
+        # The block's window went with the block (R63 step 3): what a session
+        # is told is assembled per session now, so there is no copy to be from
+        # another window. A node's agent still can be, and that is this.
+        why = holds.get((pp.get(d.name) or {}).get("node") or "", "")
         if why:
             out[d.name] = why
     return out
@@ -1195,12 +1199,6 @@ def project_list(who):
         # Path.is_file() only swallows ENOENT/ENOTDIR/EBADF/ELOOP — EACCES is
         # re-raised, so an unreadable project directory took out the whole
         # status endpoint rather than being reported as the one thing wrong.
-        md_hold = ""
-        try:
-            mdf = md_file(d)
-            has_md = mdf.is_file()
-        except OSError:
-            mdf, has_md = d / "CLAUDE.local.md", False
 
         # linked defaults to True and github to False: each gates an offered
         # action (the chain on the row; the GitHub command buttons), and a
@@ -1248,31 +1246,6 @@ def project_list(who):
                 # `out` carries stderr too, so a detached HEAD would otherwise
                 # put a `fatal:` line where the branch name goes.
                 branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
-                if not has_md:
-                    issues.append({"level": "warning", "action": "claude-md-init",
-                                   "text": "no environment block — create one"})
-                elif (md := md_state(mdf)) == "stale":
-                    # Offered as an action, not just a complaint: the fix is one
-                    # command with no decisions in it, and the block goes stale
-                    # every time the image gains a feature. From an OLDER
-                    # window it is the same link with the sharper words —
-                    # that one stops the project's sessions until pressed. A
-                    # block from a later window is drift like any other: the
-                    # container has not been rebuilt yet, which md_gap says
-                    # more about.
-                    md_hold = md_gap(mdf)
-                    issues.append({"level": "warning", "action": "claude-md-update",
-                                   "text": ("the environment block is from an older "
-                                            f"compatibility window ({md_window(mdf)} "
-                                            f"against {md_window(TEMPLATE_MD)}): update")
-                                   if md_hold else
-                                   "CLAUDE.md environment block is out of date: update"})
-                elif md == "unmarked":
-                    # `bb claude-md --update` refuses this one, so it must not be
-                    # offered as a link that would do nothing.
-                    issues.append({"level": "warning",
-                                   "text": "CLAUDE.md predates the BUILDERBOT:ENV markers"
-                                           " — merge the block in by hand once"})
 
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
@@ -1296,7 +1269,6 @@ def project_list(who):
                                    else forge["name"] if forge["id"] != forges.OTHER["id"]
                                    else fhost or forge["name"]),
                     "forge_host": fhost,
-                    "claude_md": has_md,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
                     # Whether it carries its own access token — so the rename
@@ -1341,14 +1313,13 @@ def project_list(who):
                     # for none: the row says "(node: X)" beside the name.
                     "node_name": node_names.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     # Why no Claude session may run here right now, or "":
-                    # its CLAUDE.md block from another compatibility window,
-                    # else its own node's agent from one. The button ghosts
-                    # on this and bb-tty refuses on the same facts; the sweep
-                    # ends what is running. Per project: another project's
-                    # node being out of window is not this row's hold.
-                    "held": md_hold or held_nodes.get(
+                    # its own node's agent is from another compatibility
+                    # window. The button ghosts on this and bb-tty refuses on
+                    # the same fact; the sweep ends what is running. Per
+                    # project: another project's node being out of window is
+                    # not this row's hold.
+                    "held": held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", ""),
-                    "md_window": md_window(mdf) if has_md else "",
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -2339,7 +2310,6 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
-                   build_claude_md=build_claude_md,
                    project_name=PROJECT_NAME,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    write_json=write_json,
@@ -2608,14 +2578,8 @@ def snapshot(who):
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true — nothing is stored to dismiss.
         "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}))
-        # ...and a project whose CLAUDE.md block is from another window: red
-        # like an agent out of window, since it stops the same thing, and
-        # only for projects this account sees — ps is already that list.
-        + [{"kind": "md", "project": p["name"], "from": p.get("md_window") or "?",
-            "to": md_window(TEMPLATE_MD), "window": True}
-           for p in ps if p.get("held") and p.get("md_window")
-           and p["md_window"] != md_window(TEMPLATE_MD)],
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
+
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
         # it properly is a subprocess: this rides the poll, and the poll is the
@@ -2812,7 +2776,6 @@ POST_ROUTES = (
     ("prefix", "/api/layout", "_layout"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
-    ("prefix", "/api/claude-md", "_claude_md"),
     ("exact", "/api/reset", "_reset"),
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
@@ -4963,6 +4926,48 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not found"}, 404)
         return self._result(r)
 
+    def _node_logins(self, nid, rows):
+        """What a node's agent says each account on it is signed in to Claude
+        as (B104). Absent from most heartbeats, and then nothing happens.
+
+        This is the ONLY report that does not come from a session's own token,
+        and it is worth being clear about what that means: a node could name
+        an account and an email that are not so. It could also read every
+        session's token and run as those accounts, because it runs them, so
+        the weakening is small, and what it buys is a card that is true when
+        nothing is running, and a way back from a sign-out that does not need
+        the session the sign-out just stopped.
+
+        Written only when it says something new, because a heartbeat must not
+        cost a write per node per poll, and _auth is cleared only then.
+        """
+        if not isinstance(rows, list):
+            return
+        moved = False
+        for r in rows[:64]:
+            if not isinstance(r, dict):
+                continue
+            uid = str(r.get("uid") or "")
+            if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
+                continue
+            home = home_for(uid)
+            if not home:
+                continue
+            email = " ".join(str(r.get("email") or "").split())[:120]
+            was = claudegrant.state(home)
+            on = (was["nodes"] or {}).get(nid) or {}
+            if email:
+                if on.get("email") == email:
+                    continue                       # already what we have
+                claudegrant.report(home, nid, email, str(r.get("plan") or ""))
+            else:
+                if not on:
+                    continue                       # never was on this node
+                claudegrant.report(home, nid, "", signed_in=False)
+            moved = True
+        if moved:
+            _auth.clear()
+
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
         _auth.clear()               # every home: the flow may have changed any
@@ -6341,120 +6346,6 @@ class Handler(BaseHTTPRequestHandler):
                                else "an install is already running"}, 409)
         return self._json({"ok": True, "queued": names})
 
-    def _claude_md(self, req):
-        """Create or refresh one project's CLAUDE.md.
-
-        Run here rather than typed into a terminal: the project has no terminal
-        open in the general case, and neither command takes a decision — one
-        copies the template in, the other replaces a delimited block and leaves
-        everything below it alone.
-
-        Creating one is deliberately a thing a *person* asks for; sessions are
-        told not to. That is what this link is — the person asking.
-
-        The project name is checked against the directories that exist, so the
-        path handed to `bb` is one this server built, never one the page sent.
-        """
-        name, action = req.get("name", ""), req.get("action", "update")
-        if action not in ("update", "init"):
-            return self._json({"error": "unknown action"}, 400)
-        if action == "update" and req.get("all"):
-            return self._claude_md_all()
-        # A locked project does not get a file written into it on Claude's
-        # behalf, which is what both of these are.
-        if (bad := locked_out(name)):
-            return self._json(bad, 409)
-        try:
-            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-        except OSError:
-            here = set()
-        if name not in here:
-            return self._json({"error": f"unknown project: {name}"}, 400)
-        # The DIRECTORY, not a file: bb resolves which of the two carries the
-        # block, and after an update that is CLAUDE.local.md rather than the
-        # name this used to hand it.
-        md = md_file(WORKSPACE / name)
-        if action == "init" and md.is_file():
-            return self._json({"error": f"{name} already has an environment block"}, 400)
-        if action == "update" and not md.is_file():
-            return self._json({"error": f"{name} has no environment block"}, 400)
-        r = run(["bb", "claude-md", f"--{action}", str(WORKSPACE / name)], timeout=60)
-        if r["code"] != 0:
-            return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
-        return self._json({"state": md_state(md), "out": r["out"].strip()})
-
-    def _node_logins(self, nid, rows):
-        """What a node's agent says each account on it is signed in to Claude
-        as (B104). Absent from most heartbeats, and then nothing happens.
-
-        This is the ONLY report that does not come from a session's own token,
-        and it is worth being clear about what that means: a node could name
-        an account and an email that are not so. It could also read every
-        session's token and run as those accounts, because it runs them — so
-        the weakening is small, and what it buys is a card that is true when
-        nothing is running, and a way back from a sign-out that does not need
-        the session the sign-out just stopped.
-
-        Written only when it says something new, because a heartbeat must not
-        cost a write per node per poll, and _auth is cleared only then.
-        """
-        if not isinstance(rows, list):
-            return
-        moved = False
-        for r in rows[:64]:
-            if not isinstance(r, dict):
-                continue
-            uid = str(r.get("uid") or "")
-            if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
-                continue
-            home = home_for(uid)
-            if not home:
-                continue
-            email = " ".join(str(r.get("email") or "").split())[:120]
-            was = claudegrant.state(home)
-            on = (was["nodes"] or {}).get(nid) or {}
-            if email:
-                if on.get("email") == email:
-                    continue                       # already what we have
-                claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-            else:
-                if not on:
-                    continue                       # never was on this node
-                claudegrant.report(home, nid, "", signed_in=False)
-            moved = True
-        if moved:
-            _auth.clear()
-
-    def _claude_md_all(self, req=None):
-        """Refresh every project's CLAUDE.md block that is behind, in one press.
-
-        A window move holds every project at once (see window_cost), and the
-        only way back was the update link on each project's own row — six
-        presses to undo one bump, and each link only appears once the poll has
-        noticed (B93). The set is the same one the rows offer: a project whose
-        block differs from the template this controller ships. Nothing else is
-        touched, so a project with no CLAUDE.md is left alone — creating one is
-        a person's decision, per project, and this is not that.
-
-        Locked projects are skipped and named rather than failed: a lock
-        refuses exactly this kind of write, and one locked project must not
-        stop the other five.
-        """
-        done, failed, locked = [], [], []
-        for p in project_list(self._who()):
-            if not any(i.get("action") == "claude-md-update" for i in p.get("issues") or []):
-                continue
-            if locked_out(p["name"]):
-                locked.append(p["name"])
-                continue
-            r = run(["bb", "claude-md", "--update", str(WORKSPACE / p["name"])], timeout=60)
-            if r["code"] == 0:
-                done.append(p["name"])
-            else:
-                failed.append({"project": p["name"],
-                               "error": (r["out"] or "").strip()[-200:] or "update failed"})
-        return self._json({"updated": done, "failed": failed, "locked": locked})
-
     def _changelog(self, req):
         """Write back the Unreleased section a person rearranged.
 
@@ -7010,6 +6901,52 @@ class Handler(BaseHTTPRequestHandler):
                                else f"{len(lines)} commands"})
 
 
+# MIGRATION, and nothing else: delete this once the boxes that mattered have
+# started once on a build that carries it (R63 step 3). Kept as its own
+# function with its own name so it is one thing to remove rather than a line
+# to find.
+#
+# The environment block used to be rendered into every project as
+# CLAUDE.local.md, and Claude Code loads that file whether or not BuilderBot
+# still writes it. Left behind, every session would keep reading a 53KB block
+# that nothing updates any more, beside the briefing that replaced it: the
+# duplication is the whole cost this change was meant to remove.
+#
+# Only a file that is ENTIRELY the block: first line the begin marker, last
+# the end marker, nothing outside them. That is what the renderer wrote and
+# only what it wrote. A block sitting inside a committed CLAUDE.md is left
+# alone on purpose. Removing one of those means editing a file somebody's
+# repository carries, which is a commit to their history and theirs to make
+# (R50 step 2), not something a server does on its way up.
+ENV_BEGIN = "<!-- BUILDERBOT:ENV:BEGIN -->"
+ENV_END = "<!-- BUILDERBOT:ENV:END -->"
+
+
+def sweep_rendered_blocks():
+    gone = []
+    try:
+        dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
+    except OSError:
+        return
+    for d in dirs:
+        f = d / "CLAUDE.local.md"
+        try:
+            if not f.is_file():
+                continue
+            lines = f.read_text().strip().split("\n")
+            if not lines or lines[0].strip() != ENV_BEGIN or lines[-1].strip() != ENV_END:
+                continue          # something else is in there: leave it
+            f.unlink()
+            gone.append(d.name)
+        except OSError:
+            continue
+    if gone:
+        print("dashboard: removed the rendered environment block from "
+              + ", ".join(sorted(gone))
+              + ": what a session is told is assembled per session now (R63)",
+              flush=True)
+
+
 def main():
     # No accounts is a normal first boot, not a failure. It used to be one:
     # the owner came from DASHBOARD_AUTH and the dashboard refused to start
@@ -7025,6 +6962,7 @@ def main():
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
     prune_claude_tabs()
+    sweep_rendered_blocks()
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()

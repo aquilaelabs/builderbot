@@ -41,7 +41,7 @@ import { dirname, join } from 'node:path';
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'cSeg', 'cSlide',
-  'cSubmit', 'cardDropIndex', 'claudeMd', 'claudeMdAll', 'daemonHost', 'closeEditor',
+  'cSubmit', 'cardDropIndex', 'daemonHost', 'closeEditor',
   'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
