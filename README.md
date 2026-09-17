@@ -444,6 +444,8 @@ bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
+bb findings sample [--remove]   write a clearly-fake report, so the Analysis
+                      surfaces can be worked on where no scanner runs
 bb roadmap            this project's roadmap: items are R1, R2, ...; bugs are B1, B2
 bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
@@ -984,7 +986,25 @@ bb findings              # this project's findings
 bb findings --all        # every project the report covers
 bb findings x.sarif      # one file rather than all of /reports
 bb findings --level error --rule DL3008 --find "quote"   # narrow it
+bb findings sample       # a fake report, for a box with no scanner
+bb findings sample --remove
 ```
+
+The scanner is the host's and a development stack has none, so the Analysis
+tab, the card's counts and the findings log have nothing to show in a dev
+instance. `bb findings sample` writes one obviously-fake report, tool
+`builderbot-sample`, with a finding in each of the first few projects on the
+share and one on a path that places nowhere, so every shape those surfaces
+draw has something to draw. It refuses to sit beside a real report, and it
+refuses a read-only `/reports`, which is what a box with a real scanner has.
+Run it inside the instance you want it in: it is not relayed to the
+controller, because planting findings in somebody else's report directory is
+not a thing a session should do.
+
+A session reads its own project's findings and no others: not through the
+Analysis tab, not in the poll's counts, and `bb findings --all` is refused for
+one, since the report covers the whole share and the flag means every project
+in it.
 
 A scanner pointed at a directory of repos writes one report covering all of
 them, so `bb findings` filters to the project you run it from and says how many

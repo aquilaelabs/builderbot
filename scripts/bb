@@ -136,6 +136,8 @@ bb — BuilderBot helper
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
   bb findings history    what the scanner stopped and started saying here
+  bb findings sample [--remove]   write a clearly-fake report, so the Analysis
+                         surfaces can be worked on where no scanner runs
                          (-n N, --since 7d, --find TEXT, as the other logs)
   bb phone               what phone is connected, and what is waiting on you
   bb root                what root commands are waiting on an administrator
@@ -4742,6 +4744,107 @@ PY
     fi
 }
 
+# A report the Analysis tab can be worked on where no scanner runs, which is
+# every dev instance and every checkout: the /reports mount is the operator's
+# host scanner, deliberately absent from a development stack, so the tab, the
+# card's counts, the findings log and `bb findings` had nothing to show and
+# could only be exercised by the browser suite's own fixture.
+#
+# Named and worded so nobody mistakes it for a scan: the tool is
+# "builderbot-sample", every message says so, and it refuses to sit beside a
+# real report rather than mixing fake rows into true ones.
+SAMPLE_REPORT="builderbot-sample.sarif"
+
+cmd_findings_sample() {
+    local dir="${FINDINGS_DIR:-/reports}" remove=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --remove) remove=1 ;;
+            -*) die "unknown option: $1 (bb findings sample takes --remove)" ;;
+            *)  dir="$1" ;;
+        esac
+        shift
+    done
+    if [ -n "$remove" ]; then
+        [ -f "$dir/$SAMPLE_REPORT" ] || die "there is no sample report in $dir"
+        rm -f "$dir/$SAMPLE_REPORT" || die "could not remove $dir/$SAMPLE_REPORT"
+        log "removed $dir/$SAMPLE_REPORT"
+        return
+    fi
+    # Never beside a real one. Two fake rows mixed into a true report is worse
+    # than no report: the numbers on the card would be wrong and nothing would
+    # say why.
+    local other
+    other="$(find "$dir" -maxdepth 1 -type f \( -name '*.sarif' -o -name '*.sarif.json' \) \
+             ! -name "$SAMPLE_REPORT" -print -quit 2>/dev/null || true)"
+    [ -z "$other" ] || die "$dir already holds a real report ($(basename "$other")): a sample beside it would make the counts wrong. Point somewhere else with 'bb findings sample DIR', or set FINDINGS_DIR"
+    mkdir -p "$dir" 2>/dev/null \
+        || die "cannot write $dir: on a box with the scanner mount it is read-only, which is the point. Use 'bb findings sample DIR' with somewhere writable"
+    [ -w "$dir" ] || die "$dir is not writable (the scanner mount is read-only by design). Use 'bb findings sample DIR'"
+    local made
+    made="$(WORKSPACE="${WORKSPACE:-/workspace}" python3 - "$dir/$SAMPLE_REPORT" <<'PY'
+import json
+import os
+import sys
+
+ws = os.environ.get("WORKSPACE", "/workspace")
+try:
+    names = sorted(d.name for d in os.scandir(ws)
+                   if d.is_dir() and not d.name.startswith("."))
+except OSError:
+    names = []
+# Three at most: enough for the tab's per-project rows to mean something,
+# few enough that the list is obviously a sample and not a scan.
+names = names[:3] or ["example"]
+
+LEVELS = ("error", "warning", "note")
+RULES = [
+    ("BBSAMPLE001", "error", "sample finding: a shell script runs a command without checking it"),
+    ("BBSAMPLE002", "warning", "sample finding: a dependency is pinned to a moving tag"),
+    ("BBSAMPLE003", "note", "sample finding: this line is longer than the style allows"),
+]
+results = []
+for i, project in enumerate(names):
+    rule, level, text = RULES[i % len(RULES)]
+    results.append({
+        "ruleId": rule, "level": level,
+        "message": {"text": f"{text} (sample data, no scanner ran)"},
+        "locations": [{"physicalLocation": {
+            "artifactLocation": {"uri": f"{project}/sample/where-it-would-be.txt"},
+            "region": {"startLine": 12 + i}}}]})
+# One the attribution cannot place, so the "unattributed" label on the tab has
+# something to label. This is what a scanner's own container paths look like.
+results.append({
+    "ruleId": "BBSAMPLE004", "level": "warning",
+    "message": {"text": "sample finding: a path this share does not mount (sample data)"},
+    "locations": [{"physicalLocation": {
+        "artifactLocation": {"uri": "opt/somewhere-else/thing.py"},
+        "region": {"startLine": 1}}}]})
+
+doc = {"version": "2.1.0",
+       "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+       "runs": [{"tool": {"driver": {
+           "name": "builderbot-sample",
+           "informationUri": "https://github.com/Stencil-Projects/BuilderBot",
+           "rules": [{"id": r, "shortDescription": {"text": t}} for r, _, t in RULES]}},
+           "results": results}]}
+with open(sys.argv[1], "w") as f:
+    json.dump(doc, f, indent=1)
+print(f"{len(results)} sample findings, one each in {', '.join(names)} "
+      "and one on a path that places nowhere")
+PY
+)" || die "could not write $dir/$SAMPLE_REPORT"
+    log "wrote $dir/$SAMPLE_REPORT, tool \"builderbot-sample\": $made"
+    if on_node; then
+        # Said rather than left to be discovered: the Analysis tab reads the
+        # CONTROLLER's reports, so a file written here is one nothing shows.
+        log "this is a node, and the dashboard reads the controller's reports: nothing will show this"
+        log "run it inside the dev instance you want it in (its terminal, or bb devapp), which is where the tab reads from"
+    else
+        log "the Analysis tab, the card's counts and 'bb findings' read it now; 'bb findings sample --remove' takes it away"
+    fi
+}
+
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -4749,6 +4852,9 @@ cmd_findings() {
     # the other three use, so the filters are the ones already learned.
     if [ "${1:-}" = history ]; then
         shift; cmd_findings_history "$@"; return
+    fi
+    if [ "${1:-}" = sample ]; then
+        shift; cmd_findings_sample "$@"; return
     fi
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -6314,7 +6420,12 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # the tree and the toolchain are, and never on the controller: a
         # session may write its own rule's check (B152). It relays its
         # rules --json read, which is the half that is state.
-        "tests run"|"tests last"|"tests lab"|"rules check") : ;;
+        # `findings sample` writes a file for the dashboard beside it to read,
+        # so it belongs on the machine it was typed on: in a dev instance,
+        # which is a controller of its own and where there is no scanner. Sent
+        # to the real controller it would be a session planting findings in
+        # somebody else's report directory.
+        "tests run"|"tests last"|"tests lab"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry — `bb bug` printed the controller's answer and

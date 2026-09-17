@@ -7,6 +7,7 @@ import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
+const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
@@ -284,6 +285,47 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
      'the tab\'s filter bar, headings, rules and footer all start at one x: '
      + JSON.stringify(xs));
+}
+// `bb findings sample`: the report a box with no scanner can still work on.
+// Every surface above ghosts or empties without one, and a development stack
+// has no scanner by design, so this is how they are exercised at all.
+{
+  const bb = (...a) => {
+    try {
+      return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', ...a],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, FINDINGS_DIR: `${DIR}/sample-reports`, WORKSPACE: `${DIR}/ws` } }) };
+    } catch (e) { return { code: e.status ?? 1, out: String(e.stdout || '') + String(e.stderr || '') }; }
+  };
+  const made = bb('sample');
+  const f = `${DIR}/sample-reports/builderbot-sample.sarif`;
+  ok(made.code === 0 && existsSync(f), `a sample report is written where no scanner runs (${
+    made.out.trim().split('\n')[0].slice(0, 70)})`);
+  const doc = JSON.parse(readFileSync(f, 'utf8'));
+  const rows = doc.runs[0].results;
+  ok(doc.runs[0].tool.driver.name === 'builderbot-sample'
+     && rows.every(r => /sample/i.test(r.message.text)),
+     '...named and worded so nobody reads it as a scan');
+  // One per project, so the per-project rows have something, plus one the
+  // attribution cannot place, so the unattributed label does too.
+  const uris = rows.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
+  ok(uris.some(u => u.startsWith('alpha/')) && uris.some(u => !u.includes('/ws/'))
+     && new Set(rows.map(r => r.level)).size >= 2,
+     `...with a finding in a project, one that places nowhere, and more than one level (${uris.join(', ')})`);
+  // Never mixed into a true report: two fake rows in a real one would make
+  // every number on the card wrong and nothing would say why.
+  const beside = (() => {
+    try {
+      execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', 'sample'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, FINDINGS_DIR: `${DIR}/reports`, WORKSPACE: `${DIR}/ws` } });
+      return '';
+    } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); }
+  })();
+  ok(/already holds a real report/.test(beside) && !existsSync(`${DIR}/reports/builderbot-sample.sarif`),
+     `...and refused beside a real one, which is left alone (${beside.trim().slice(-60)})`);
+  ok(bb('sample', '--remove').code === 0 && !existsSync(f),
+     '...and taken away again by the same verb');
 }
 // Nothing readable in /reports and the way in goes quiet — three ways to have
 // nothing (no mount, nothing in it, nothing that parses) and one greyed button
