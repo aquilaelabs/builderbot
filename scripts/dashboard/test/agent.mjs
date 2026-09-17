@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -781,10 +781,25 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // machine the session is on and never on the controller (B152). The
       // controller's relayed run carries BB_RELAYED; a local one does not.
       bbOnNode(['rules', 'add', 'relayprobe', 'where a check runs', '--check', 'echo relayed=${BB_RELAYED:-no}']);
+      // Run from a BUNDLE-SHAPED copy, not from the checkout: bb beside its
+      // library and NO dashboard modules, which is what a node actually has
+      // (workspace.BUNDLE_PARTS ships bb, lib and the hooks, and deliberately
+      // not the notebook modules, because a node has no /config for them to
+      // read). Run from the checkout this passed while `bb rules check` was
+      // dead on every real node, because cmd_rules demanded rules.py at its
+      // top for verbs that need it and `check` does not: it takes the rules
+      // through `bb rules --json`, which a node relays.
+      const nb = `${DIR}/nodebundle`;
+      rmSync(nb, { recursive: true, force: true });
+      mkdirSync(`${nb}/scripts/dashboard`, { recursive: true });
+      copyFileSync(`${REPO}/scripts/bb`, `${nb}/scripts/bb`);
+      cpSync(`${REPO}/scripts/lib`, `${nb}/scripts/lib`, { recursive: true });
+      ok(!existsSync(`${nb}/scripts/dashboard/rules.py`),
+         'the bundle a node runs bb from carries no dashboard module, as BUNDLE_PARTS ships it');
       // WORKSPACE as a node has it: the check runs in the project's tree.
       let checked;
       try {
-        checked = execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', 'check', 'relayprobe'],
+        checked = execFileSync('bash', [`${nb}/scripts/bb`, 'rules', 'check', 'relayprobe'],
           { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...nodeEnv, BB_PROJECT: 'alpha', WORKSPACE: `${DIR}/ws` },
             stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (e) { checked = `FAILED ${e.status}: ${e.stdout}${e.stderr}`; }

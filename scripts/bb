@@ -2229,9 +2229,6 @@ cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
     # change only its own — see rules.py for the ownership and the log.
-    local py
-    py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
-    [ -f "$py" ] || die "rules.py is missing from this image"
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -2300,6 +2297,17 @@ sys.exit(rc)
 CHECKPY
         return $?
     fi
+    # Every verb BELOW here reads and writes the rules themselves, which is
+    # the controller's file and the controller's module. Resolved here rather
+    # than at the top of this function, because `check` above needs neither:
+    # it takes the rules through `bb rules --json`, which a node relays, and
+    # runs the command in this tree. Asked for at the top, this killed every
+    # `bb rules check` on a node, where the bundle carries bb and no dashboard
+    # module by design, so the hand-back hook blocked on the one machine
+    # sessions actually run on.
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
+    [ -f "$py" ] || die "rules.py is missing from this image"
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$py" "$proj" "$@" <<'RULESPY'
 def _wrote(e):
