@@ -171,6 +171,7 @@
 - bb status on a node now names the build the controller is running instead of 'unstamped', so a session can tell which BuilderBot the box is on (3b6e454)
 - A session on a node can no longer overwrite the shared BuilderBot tooling that its own and other accounts' sessions, and the node's jobs, run (3b6e454)
 - A session that cannot reach the controller for its briefing now says so in the terminal, instead of starting as if it had one and knowing none of your house rules, roadmap or open bugs (17a38e3)
+- A session handing work back on a node no longer fails its house-rule checks with 'rules.py is missing from this image': the check runs where the session and its files are, which is the only place it can (1edd5af)
 
 ### Removed
 
