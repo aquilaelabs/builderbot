@@ -145,6 +145,69 @@ def _instance_node(project, instance):
     return nid or (node_for() if node_for else "")
 
 
+def project_daemon(project):
+    """The node THIS project works on: its own, else the default docker host.
+
+    Which is where its session runs (a project with no node keeps its session
+    on the controller), and where a new instance of it would be built. The
+    same chain _instance_node ends with, minus the record, so "is this
+    instance on the machine this project works on" is one comparison.
+    """
+    return (project_node(project) if project_node else "") or _default_node()
+
+
+def instance_node(project, instance):
+    """Which node an instance is on, for a caller outside this module.
+
+    _instance_node is the rule; this is the name the server asks by, so the
+    fallback chain (the record's node, else the project's, else the default
+    docker host) stays written down in exactly one place.
+    """
+    return _instance_node(project, instance or only_instance(project))
+
+
+def pin_to_current_node(project):
+    """Fix this project's built instances to the node they are on, before the
+    project's node setting moves them somewhere they do not exist.
+
+    An instance with no node of its own follows the project's, which
+    _instance_node above is the whole of. So changing that setting pointed the
+    manager at a daemon holding none of this instance's containers, image or
+    data directory. The containers on the old node kept running, which is
+    right, and went invisible, which is not: the row that could stop or remove
+    them had moved, so the one control for the thing still running was gone.
+
+    Pinned at the moment the setting changes rather than worked out later, for
+    the same reason _stamp writes a build's ref: afterwards nothing is left to
+    say which node it meant.
+
+    Only instances that have been BUILT somewhere. A record that is settings
+    and nothing else has nothing on any daemon to strand, and belongs on
+    whichever node the project is moving to.
+
+    Returns the names pinned, oldest record first, for the caller to say so.
+    """
+    # What a record with no node of its own resolves to today, which is what
+    # it is about to stop resolving to. Read once: every record here answers
+    # the same way, by definition of having no node.
+    here = project_daemon(project)
+    if not here:
+        return []
+    pinned = []
+    with _lock:
+        d = _load()
+        for name, rec in (d.get(project) or {}).items():
+            if rec.get("node") or not rec.get("at"):
+                continue
+            _rec(d, project, name)["node"] = here
+            pinned.append(name)
+        if pinned:
+            write_json(FILE, d)
+    if pinned:
+        _bump()
+    return pinned
+
+
 def _on_instance(fn):
     """Route a per-instance entry point at the daemon its instance is bound
     to. The decorator is the whole multi-host story for actions: the body

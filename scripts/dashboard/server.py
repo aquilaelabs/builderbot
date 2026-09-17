@@ -4143,6 +4143,17 @@ class Handler(BaseHTTPRequestHandler):
         # reaches every other project there.
         if "node" in req and self._refused("node", name):
             return
+        # A dev instance with no node of its own follows the project's, so a
+        # node change would move its row onto a daemon that has none of it
+        # while its containers carry on running where they are. They stay up
+        # on purpose: an instance is removed from the Docker manager, never by
+        # a setting changed somewhere else. So they keep their row too, pinned
+        # to the machine they are actually on, and the manager can still stop
+        # or remove them. Before the write, because afterwards the old node is
+        # not recorded anywhere.
+        moved = []
+        if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
+            moved = devapp.pin_to_current_node(name)
         r = prefs.set_prefs(name, model=req.get("model"),
                             effort=req.get("effort"),
                             node=req.get("node"),
@@ -4159,6 +4170,8 @@ class Handler(BaseHTTPRequestHandler):
         # running and there is nothing to interrupt.
         if not r.get("error") and req.get("restart"):
             r |= end_claude(name)
+        if moved and not r.get("error"):
+            r = dict(r) | {"pinned": moved}
         return self._result(r)
 
     def _nodes(self, req):
@@ -5356,6 +5369,23 @@ class Handler(BaseHTTPRequestHandler):
         # A test run is not on the rebuild dial: it runs the project's own
         # test command inside a container that is already up, which a
         # session could run on the node anyway (roadmap R48).
+        # ...and before the dial, a session may only touch the instance on its
+        # OWN node. A session runs on the project's node; an instance pinned
+        # to another one is a container on a machine this session is not on,
+        # left behind by a node change and still running on purpose. Using or
+        # rebuilding it from here would act on somebody else's box through a
+        # row that happens to carry this project's name, and a rebuild would
+        # bounce a service still being used. The operator keeps both, through
+        # the Docker manager, which is where an instance is removed.
+        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+            on = devapp.instance_node(name, field(req, "instance"))
+            mine = devapp.project_daemon(name)
+            if on and mine and on != mine:
+                return self._json({"error": "this dev instance is on another node: it stayed "
+                                            "where it was running when this project moved, "
+                                            "and a session works on its own node's. The "
+                                            "operator uses or removes it from the Docker "
+                                            "manager"}, 403)
         if act not in ("starter", "state", "test") and (self._who() or {}).get("session"):
             mode = prefs.get(name)["devbuild"]
             if mode == "deny":

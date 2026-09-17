@@ -312,6 +312,86 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   });
 }
 
+// ---- moving the project leaves a built instance where it is running -------
+// The containers on the old node keep running when a project's node changes,
+// which is right: an instance is removed from the Docker manager and never by
+// a setting changed somewhere else. What used to go with them was the ROW.
+// An instance with no node of its own resolves to the project's, so the node
+// change pointed the manager at a daemon holding none of it, and the one
+// control that could stop or remove what was still running had gone. So a
+// BUILT instance is pinned to the machine it is on at the moment the setting
+// moves, and only a built one: a record that is settings and nothing else has
+// nothing on any daemon to strand.
+{
+  const store = `${DIR}/state/devapps.json`;
+  const nodeOf = (proj, inst) =>
+    (JSON.parse(readFileSync(store, 'utf8'))[proj] || {})[inst]?.node || '';
+  const setNode = (proj, n) => page.evaluate(async ([p2, n2]) => {
+    const r = await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: p2, node: n2 }) });
+    return r.json();
+  }, [proj, n]);
+  const sandboxId = await page.evaluate(
+    () => (nodesList || []).find(n => n.name === 'sandbox')?.id || '');
+
+  // From a known baseline: blocks above this one move the node too, and a
+  // node change is exactly what pins, so the fixture arrives here already
+  // pinned by them.
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  await setNode('ep.silon', sandboxId);
+  ok(nodeOf('ep.silon', 'main') === sandboxId,
+     `the first node a project is given pins what is already built on the daemon it was built on (${
+       nodeOf('ep.silon', 'main') || 'unpinned'})`);
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  ok(nodeOf('ep.silon', 'main') === '',
+     'a built instance with no node of its own follows its project');
+  const said = await setNode('ep.silon', 'n_somewhereelse');
+  ok(nodeOf('ep.silon', 'main') === sandboxId,
+     `moving the project pins its built instance to the node it is on (${
+       nodeOf('ep.silon', 'main') || 'unpinned'})`);
+  ok((said.pinned || []).includes('main'),
+     `...and the answer names what it pinned, rather than doing it silently (${
+       JSON.stringify(said.pinned || [])})`);
+  // The point of the pin: the manager still lists it where it runs, so Stop
+  // and Remove are still there for something that is still up.
+  const rows = await page.evaluate(async (n) => {
+    const j = await (await fetch('/api/docker?node=' + encodeURIComponent(n))).json();
+    return (j.instances || []).map(i => `${i.project}|${i.instance}`);
+  }, sandboxId);
+  ok(rows.includes('ep.silon|main'),
+     `...so the Docker manager still offers it on that node (${rows.join(', ') || 'no rows'})`);
+  // An instance that was never built is not pinned: it has nothing anywhere.
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    d['ep.silon'] = { ...d['ep.silon'], fresh: { ref: 'main' } };
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  await setNode('ep.silon', sandboxId);
+  await setNode('ep.silon', 'n_somewhereelse');
+  ok(nodeOf('ep.silon', 'fresh') === '',
+     `an instance that was never built is left to move with the project (${
+       nodeOf('ep.silon', 'fresh') || 'unpinned'})`);
+  // Put the fixture back, and in this order: clearing the node is itself a
+  // change, so it pins all over again. The store is tidied after the last one.
+  await setNode('ep.silon', '');
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].fresh;
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+}
+
 // A build belongs to the daemon it ran on. Repointing the node at another
 // VM leaves the image and the containers behind on a machine the dashboard can
 // no longer reach, and the row went on saying "built from
@@ -2288,6 +2368,40 @@ ok(await page.$('#devSend'),
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
+  }
+  // An instance on ANOTHER node is not this session's to touch, whatever the
+  // dial says. It is a container still running on a machine this session is
+  // not on, left there on purpose when the project moved; using or rebuilding
+  // it would act on somebody else's box, and a rebuild would bounce a service
+  // somebody may still be using. Refused before the dial is consulted, so
+  // turning the dial to auto does not open it.
+  {
+    const store2 = `${DIR}/state/devapps.json`;
+    const before = readFileSync(store2, 'utf8');
+    const d = JSON.parse(before);
+    d['ep.silon'] = { ...d['ep.silon'],
+                      main: { ...(d['ep.silon'] || {}).main, node: 'n_anothernode' } };
+    writeFileSync(store2, JSON.stringify(d));
+    await page.evaluate(async () => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devbuild: 'auto' }) });
+    });
+    for (const act of ['rebuild', 'test']){
+      const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
+      ok(r.status === 403 && /on another node/.test(r.error || ''),
+         `a session may not ${act} an instance left on the node the project moved off (${
+           String(r.error).slice(0, 56)})`);
+    }
+    // ...and it can still SEE it, which is how it knows to say so rather than
+    // reporting the verb as broken.
+    const seen = await asSession({ project: 'ep.silon', action: 'state', instance: 'main' });
+    ok(seen.status === 200,
+       '...while reading it is still allowed, so a session can say where it went');
+    writeFileSync(store2, before);
+    await page.evaluate(async () => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devbuild: 'deny' }) });
+    });
   }
   // Reading is nobody's secret: the state is how a session knows what it is
   // looking at before it asks for anything.
