@@ -327,6 +327,71 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   ok((await act('delete', { name: main })).error && (await act('delete', { name: 'nope' })).error,
      'the main branch and a branch that is not there are refused');
 
+  // The WRITES run none of the programs the tree names either (B153). The
+  // reads were the first half; a commit, a switch and a merge are the half
+  // that has to move the tree afterwards, and each of them is a hook git
+  // would otherwise run here as the dashboard's account.
+  {
+    const mark = `${DIR}/a-write-ran-a-program`;
+    const touch = `#!/bin/sh\ntouch ${mark}\n`;
+    const planted = ['pre-commit', 'post-commit', 'prepare-commit-msg', 'post-checkout',
+      'post-merge', 'reference-transaction', 'post-index-change'];
+    const was = git('rev-parse', 'HEAD').trim();
+    // Reading the tree from here on goes through a git with the traps turned
+    // off: this test's own commands would otherwise spring them and the mark
+    // would say nothing about what the dashboard did.
+    const nohooks = `${DIR}/no-hooks-at-all`;
+    mkdirSync(nohooks, { recursive: true });
+    const plain = (...a) => execFileSync('git', ['-c', 'core.fsmonitor=',
+      '-c', `core.hooksPath=${nohooks}`, '-C', B, ...a], { encoding: 'utf8' }).trim();
+    for (const h of planted) writeFileSync(`${B}/.git/hooks/${h}`, touch, { mode: 0o755 });
+    git('config', 'core.fsmonitor', `touch ${mark}; echo`);
+    writeFileSync(`${B}/w.txt`, 'written by the dashboard\n');
+    const wc = await act('commit', { message: 'Written through our own git dir' });
+    ok(wc.ok && plain('log', '-1', '--format=%s') === 'Written through our own git dir'
+       && plain('show', 'HEAD:w.txt') === 'written by the dashboard',
+       `a commit moves the tree's own branch and stores the tree's own bytes (${wc.commit || wc.error})`);
+    ok(plain('log', '-1', '--format=%an') === 'Dashboard Test' && !plain('status', '--porcelain'),
+       '...under the acting account, leaving nothing staged behind it');
+    await act('branch', { name: 'traps' });
+    const ws = await act('switch', { name: 'traps' });
+    ok(ws.ok && plain('rev-parse', '--abbrev-ref', 'HEAD') === 'traps',
+       "...and a switch moves the tree's own HEAD, not a copy of it");
+    await act('switch', { name: main });
+    ok(!existsSync(mark),
+       `and not one of ${planted.length} hooks, nor fsmonitor, ran on the way (${
+         existsSync(mark) ? 'a mark was made' : 'no mark'})`);
+    // Still a repository afterwards, by git's own reckoning rather than ours.
+    let fsck = '';
+    try { execFileSync('git', ['-C', B, 'fsck', '--no-progress', '--no-dangling'], { encoding: 'utf8' }); }
+    catch (e) { fsck = String(e.stdout || '') + String(e.stderr || ''); }
+    ok(!fsck.trim(), `...and what it left passes git fsck (${fsck.trim().slice(0, 80) || 'clean'})`);
+    for (const h of planted) rmSync(`${B}/.git/hooks/${h}`, { force: true });
+    git('config', '--unset-all', 'core.fsmonitor');
+    rmSync(mark, { force: true });
+
+    // A filter is the one thing skipping is not free on: it decides the bytes
+    // that get stored, so the write is refused rather than quietly storing
+    // the unfiltered ones. Only one the TREE defines: git-lfs lives in the
+    // system config, outside any tree, and still applies.
+    git('config', 'filter.redact.clean', 'sed s/SECRET/xxx/');
+    writeFileSync(`${B}/.gitattributes`, '*.txt filter=redact\n');
+    writeFileSync(`${B}/w.txt`, 'SECRET\n');
+    const refused = await act('commit', { message: 'must not land' });
+    ok(/filter\.redact\.clean/.test(refused.error || '') && /terminal/.test(refused.error || '')
+       && plain('log', '-1', '--format=%s') === 'Written through our own git dir',
+       `a repository whose own config names a content filter is told why the dashboard will not commit it (${
+         String(refused.error).slice(0, 60)})`);
+    ok(/filter\.redact/.test((await act('switch', { name: 'traps' })).error || '')
+       && !/filter\.redact/.test(JSON.stringify(await act('fetch')) || ''),
+       '...and the same for a switch, while fetch goes through: it writes no file');
+    git('config', '--unset-all', 'filter.redact.clean');
+    rmSync(`${B}/.gitattributes`, { force: true });
+    rmSync(`${B}/w.txt`, { force: true });
+    git('branch', '-D', 'traps');
+    git('reset', '--hard', '-q', was);
+  }
+
   // Whose: a session's token cannot press these — it has bb git.
   const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys
