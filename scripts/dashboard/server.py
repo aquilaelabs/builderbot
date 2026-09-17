@@ -6149,9 +6149,10 @@ class Handler(BaseHTTPRequestHandler):
         # and editing right now, which is the same surprise for the same
         # reason, so it waits for the same moment.
         # A merge INTO ANOTHER branch (into: main, from wherever the tree
-        # stands) happens in a temporary worktree and moves nothing here, so
-        # the session is no reason to refuse it: that is the merge the
-        # operator makes to accept a session's work while it keeps working.
+        # stands) is done with plumbing and checks nothing out, so it moves
+        # nothing here and the session is no reason to refuse it: that is the
+        # merge the operator makes to accept a session's work while it keeps
+        # working.
         args_ = req.get("args") or {}
         lands_here = action == "switch" or (
             action == "merge" and str(args_.get("into") or "")
