@@ -3660,7 +3660,7 @@ body.booting .pane>.loading{margin:auto}
       </div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, kept in /config and named in this repo's git config" tabindex="0">?</span></label>
+      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, kept in /config on the controller and named, never copied, in this repo's git config. A session can push with it and cannot read it, the same bargain as a shielded ssh key" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>

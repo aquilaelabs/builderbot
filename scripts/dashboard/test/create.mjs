@@ -937,6 +937,31 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
   };
   const before = history();
   ok(cfg().includes('[remote "origin"]'), 'alpha starts out linked');
+  // The stored token is USABLE through the relay and never READABLE, which is
+  // the whole bargain (roadmap R15). Claude runs on a node, and a node has no
+  // /config, so what has to hold is that nothing the API hands out carries
+  // the value: the row says whether there is one, not what it is. Asked of
+  // the payloads a project row is drawn from, and of the tree a session owns.
+  {
+    const secret = 'ghp_ExampleTokenValue123';
+    const bodies = await page.evaluate(async () => {
+      const out = {};
+      // The real GETs a project row is drawn from. There is no GET
+      // /api/settings: that payload rides on /api/status.
+      for (const p of ['/api/status', '/api/git?project=alpha&what=all',
+                       '/api/findings']) {
+        try { out[p] = await (await fetch(p)).text(); } catch (e) { out[p] = String(e); }
+      }
+      return out;
+    });
+    const carrying = Object.entries(bodies).filter(([, b]) => b.includes(secret)).map(([p]) => p);
+    ok(carrying.length === 0,
+       `a stored token is in no payload the browser can fetch (${carrying.join(', ') || 'none carry it'})`);
+    ok(/"has_token":\s*true/.test(bodies['/api/status'] || ''),
+       '...while the row still says there IS one, which is what the dialog needs');
+    ok(!cfg().includes(secret),
+       '...and the tree a session owns, which it may rewrite, never carries the value either');
+  }
   const u = await page.evaluate(async () => {
     const r = await fetch('/api/unlink', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },

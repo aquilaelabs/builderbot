@@ -224,7 +224,19 @@ def address(project, name, url):
         if isinstance(rec, dict) and rec.get("repo"):
             host = (host_of(url) or got["host"] or "").lower()
             want = (rec.get("host") or "").lower()
-            if got["path"].lower() != str(rec["repo"]).lower() or (want and host != want):
+            if not want:
+                # Fail CLOSED on a credential boundary. The address in the
+                # tree is a session's to rewrite, so the host is half of what
+                # says this remote is the one the rights were granted on:
+                # without it, a matching path at any host in the world would
+                # be handed the project's token. Both places that grant rights
+                # record a host, so this is an old record rather than a
+                # reachable state, and re-granting is one press.
+                raise Refused(
+                    f"{project}'s push rights name a repository but not a host, so the relay "
+                    "cannot tell this remote from one with the same path somewhere else. "
+                    "Re-grant them in the project's remote dialog, which records both")
+            if got["path"].lower() != str(rec["repo"]).lower() or host != want:
                 raise Refused(
                     f"remote {name} points at {got['host']}/{got['path']}, but {project}'s push rights "
                     f"were granted on {rec.get('host') or 'its host'}/{rec['repo']}, and the controller's "

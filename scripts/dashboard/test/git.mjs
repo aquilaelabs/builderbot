@@ -557,6 +557,22 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', host: 'example.invalid', how: 'token' } }));
     git('remote', 'set-url', 'origin', 'https://example.invalid/someone/else.git');
     const elsewhere = await relay(['git', 'fetch', 'origin']);
+    // A record naming a repository but no host fails CLOSED. The path here
+    // MATCHES the one the rights were granted on, so the only thing left to
+    // tell this remote from the real one is the host: without it a session,
+    // which owns the address in its own tree, could point origin at the same
+    // path on a machine it runs and be handed the project's token. Both
+    // places that grant rights record a host, so this is an old record and
+    // not a reachable state, but a credential boundary does not get to
+    // assume that.
+    writeFileSync(`${DIR}/state/push-rights.json`,
+                  JSON.stringify({ beta: { repo: 'owner/beta', how: 'token' } }));
+    git('remote', 'set-url', 'origin', 'https://example.invalid/owner/beta.git');
+    const noHost = await relay(['git', 'fetch', 'origin']);
+    ok(noHost.status === 400 && /not a host/.test(noHost.error || '')
+       && /remote dialog/.test(noHost.error || ''),
+       `push rights with no host are refused, not taken as any host (${
+         (noHost.error || '').slice(0, 60)})`);
     git('remote', 'set-url', 'origin', `${DIR}/beta-origin-outside.git`);
     const outside = await relay(['git', 'fetch', 'origin']);
     git('remote', 'set-url', 'origin', origin);
