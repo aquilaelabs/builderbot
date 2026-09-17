@@ -242,6 +242,21 @@ def plan(c, a, uid):
     bundle = f"{c['PACKAGES_STORE'].rstrip('/')}/.bb" if c.get("PACKAGES_STORE") else ""
     if bundle and _real_dir(bundle):
         steps.append(("bindro", bundle, bundle))
+    # ...and the claude every account's session runs, for the same reason and
+    # the other half of B157. `.local` is one of the shared dotfiles, so every
+    # account's ~/.local is a link to the base home's: one session could
+    # rewrite the binary the next account's session execs. Read-only here.
+    #
+    # The FILE and not the directory: .local/bin also takes `pip install
+    # --user` and anything else a session installs for itself, which is the
+    # session's own to write and no one else's to run.
+    #
+    # What this costs, and it is the point: claude cannot update itself from
+    # inside a session any more. Updating it is the provisioner's, or a person
+    # on the node outside a view, which is the same bargain as the bundle.
+    launcher = f"{home_root}/.local/bin/claude" if home_root else ""
+    if launcher and os.path.isfile(launcher) and not os.path.islink(launcher):
+        steps.append(("bindro", launcher, launcher))
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")):
             steps.append(("hide", hidden.rstrip("/")))

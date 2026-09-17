@@ -41,9 +41,13 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
                  join(pkg, '.bb', 'current'), join(pkg, 'jdk'),
+                 join(homeRoot, '.local', 'bin'),
                  runner, devdata])
   mkdirSync(d, { recursive: true });
 writeFileSync(join(homeRoot, '.claude.json'), '{}');
+// The shared launcher: every account's ~/.local is a link to the base home's,
+// so this one file is what every session on the node execs.
+writeFileSync(join(homeRoot, '.local', 'bin', 'claude'), '#!/bin/sh\n', { mode: 0o755 });
 symlinkSync(join(ws, 'beta'), join(ws, 'linked'));
 const conf = join(L, 'bb-session.conf');
 writeFileSync(conf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
@@ -93,6 +97,9 @@ ok(has('bindro', join(pkg, '.bb'), join(pkg, '.bb'))
    && !steps.some(x => x[0] === 'bindro' && x[1] === join(pkg, 'jdk'))
    && !bound(join(pkg, '.bb')),
    'the packages bundle is read-only in the view so a session cannot rewrite the bb the agent and other sessions run, while the toolchains beside it stay writable for a build (B157)');
+ok(has('bindro', join(homeRoot, '.local', 'bin', 'claude'), join(homeRoot, '.local', 'bin', 'claude'))
+   && !steps.some(x => x[0] === 'bindro' && x[1] === join(homeRoot, '.local', 'bin')),
+   'the claude every account\'s session runs is read-only in the view, since .local is shared between homes, while the rest of .local/bin stays writable for a pip --user install (B157)');
 {
   // No PACKAGES_STORE (an older agent's conf, before B157): no bundle bind at
   // all, which leaves the store as it was rather than failing the view.
@@ -103,8 +110,13 @@ ok(has('bindro', join(pkg, '.bb'), join(pkg, '.bb'))
     ['plan', '--project', 'alpha', '--account', me, '--home', myHome, '--cwd', join(ws, '.worktrees', 'alpha', me)],
     { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: noStore } }) };
   } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } })();
-  ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro'),
+  // No BUNDLE bind. The launcher's is planned either way: it is read off the
+  // home root, which every conf carries, so an older agent's node gets that
+  // half of B157 without being updated.
+  ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1].startsWith(pkg)),
      '...and a conf without PACKAGES_STORE (an agent from before B157) plans no bundle bind rather than failing');
+  ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === join(homeRoot, '.local', 'bin', 'claude')),
+     '...while the shared launcher is still made read-only there, since that is read off the home root');
 }
 ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0] === 'proc'
    && steps[steps.length - 1][0] === 'detach',
