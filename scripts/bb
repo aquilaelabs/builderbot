@@ -5728,6 +5728,17 @@ cmd_doctor() {
     if on_node; then check "claude on PATH" command -v claude; fi
     check "workspace writable"        test -w "$WORKSPACE"
     check "home writable"             test -w "$HOME"
+    # git's floor, said out loud because the two machines run different ones:
+    # the image is built on one Ubuntu and a node is provisioned on whatever
+    # its owner has, so the controller and a node have differed by a whole
+    # release without anything noticing. The newest thing anything here asks
+    # of git is `merge-tree --write-tree` (2.38, Oct 2022), which the Git
+    # view merges into main with; on an older one that is a usage error
+    # halfway through a merge instead of a sentence. Checked on BOTH, because
+    # the controller does the merging and a session commits in its own tree.
+    check "git 2.38 or newer, for merge-tree --write-tree" \
+        sh -c 'v=$(git --version | sed -n "s/^git version \([0-9]*\)\.\([0-9]*\).*/\1 \2/p"); \
+               set -- $v; [ "${1:-0}" -gt 2 ] || { [ "${1:-0}" -eq 2 ] && [ "${2:-0}" -ge 38 ]; }'
     # A commit identity is an ACCOUNT's (its Profile tab), handed to a
     # session as git's environment. On a node that is what to look for; on
     # the controller, where nobody commits, the question is whether the

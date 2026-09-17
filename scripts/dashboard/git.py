@@ -920,6 +920,10 @@ def _merge_off_tree(repo, name, into, env):
     if _git(repo, "merge-base", "--is-ancestor", a, b) is not None:
         new, msg = b, f"{into}: fast-forward to {name}"
     else:
+        # git 2.38 (Oct 2022) and the oldest thing this module requires of
+        # git; `bb doctor` checks for it by name, because the controller and
+        # a node are built from different Ubuntus and have differed by a
+        # release without anything saying so.
         r = _run(repo, "merge-tree", "--write-tree", a, b, env=env, index=False)
         first = ((r["out"] or "").splitlines() or [""])[0].strip()
         if r["code"] or not SHA_RE.match(first):
