@@ -326,6 +326,28 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `...and refused beside a real one, which is left alone (${beside.trim().slice(-60)})`);
   ok(bb('sample', '--remove').code === 0 && !existsSync(f),
      '...and taken away again by the same verb');
+
+  // `bb findings` from a session, which is what BB_RELAYED marks: the report
+  // covers the whole share, so the two lines that used to help are the two
+  // that leak. With no findings of its own it listed every project the report
+  // covered, by name, and with some it advertised --all, which the relay
+  // refuses. The operator still gets both.
+  const asSession = (cwd) => {
+    try {
+      return execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', `${DIR}/reports`],
+        { encoding: 'utf8', cwd, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, BB_RELAYED: '1', WORKSPACE: `${DIR}/ws` } });
+    } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); }
+  };
+  const quiet = asSession(`${DIR}/ws/ep.silon`);
+  const named = ['alpha', 'gamma', 'delta', 'toolstore', 'vendored-junk'].filter(w => quiet.includes(w));
+  ok(/No findings for ep\.silon/.test(quiet) && named.length === 0,
+     `a session with no findings of its own is not handed the list of projects that do have them (${
+       named.join(', ') || 'nothing named'})`);
+  const loud = asSession(`${DIR}/ws/alpha`);
+  ok(/in alpha/.test(loud) && !/--all/.test(loud),
+     `...and one with findings is not told to run --all, which the relay refuses (${
+       (loud.split('\n').find(l => l.startsWith('# ')) || '').slice(0, 50)})`);
 }
 // Nothing readable in /reports and the way in goes quiet — three ways to have
 // nothing (no mount, nothing in it, nothing that parses) and one greyed button
