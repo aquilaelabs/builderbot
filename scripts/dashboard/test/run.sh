@@ -183,6 +183,33 @@ unset TMUX
 # that looked like was agent.mjs dying on "no node called agentbox" — a 401
 # the caller reads as an empty node list — hours into a session, with nothing
 # in the diff to explain it.
+# ---- the container is the boundary, where the project says so (R65) --------
+#
+# `bb test` routes a project's tests into its dev instance and refuses when the
+# instance is down and the Docker row says the container is the only place they
+# run. Calling this script directly skipped bb entirely, which is the door
+# BuilderBot's own suite went through for a day while its dev instance sat
+# untouched: the machinery was built and simply not taken.
+#
+# NOT CI's. The setting is about a SESSION's tests (prefs.devtest), and a
+# workflow runs on a node's runner precisely to test the tree the image will be
+# built from, where there is no instance to run in.
+#
+# And best effort: read through bb, which on a node relays to the controller,
+# so where the policy cannot be read at all (no token, no controller) this says
+# nothing rather than refusing a run it cannot judge.
+if [ -z "${BB_IN_INSTANCE:-}" ] && [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+    _proj="${BB_PROJECT:-$(basename "$(cd "$HERE/../../.." && pwd)")}"
+    _only="$(BB_PROJECT="$_proj" BB_SETTINGS_JSON=1 bb settings --json 2>/dev/null         | python3 -c 'import json,sys
+try: print("only" if json.load(sys.stdin).get("devtest") else "")
+except Exception: print("")' 2>/dev/null || true)"
+    if [ "$_only" = only ]; then
+        echo "[dashboard-test] ERROR: $_proj's tests run only inside its dev instance, and this is not it." >&2
+        echo "[dashboard-test] Run 'bb test' (or 'bb devapp test FILE'), which puts them there and says so if the instance is down." >&2
+        exit 1
+    fi
+fi
+
 unset BB_TOKEN
 # And the role. Run from a session ON A NODE, this script inherits
 # BUILDERBOT_ROLE=node, the real controller's address and pin, and the

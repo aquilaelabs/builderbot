@@ -22,6 +22,7 @@ configure() only knows where the workspace and the worktrees are.
 """
 import os
 import re
+import secrets
 import shutil
 import hashlib
 import subprocess
@@ -187,9 +188,25 @@ def _own(repo, write=False):
 
 
 def _atomic(path, text):
-    tmp = Path(f"{path}.new")
-    tmp.write_text(text)
-    os.replace(tmp, path)
+    """Write `text` at `path`, all of it or none of it.
+
+    The temporary name is UNIQUE per call, which is the whole of it working.
+    A fixed `.new` raced with itself: the Git view polls, so two reads build
+    the mirror at once, both write the same temporary file and the second
+    rename finds it already moved. That surfaced as ENOENT, which _own catches
+    and answers by falling back to running git in the TREE, so the protection
+    this module exists for switched itself off for that request and said so
+    only in the log. gitrelay's _atomic already took a random suffix; this one
+    did not. git.mjs asserts the log carries no fallback, which is how it was
+    found at all.
+    """
+    tmp = Path(f"{path}.{secrets.token_hex(4)}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _carry(src, dst):

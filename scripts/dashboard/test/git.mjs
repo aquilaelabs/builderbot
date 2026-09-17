@@ -5,7 +5,7 @@
 // here writes through the dashboard, because this step has no actions.
 import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const B = `${DIR}/ws/beta`;
@@ -682,5 +682,20 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
   git('branch', '-D', 'wtcheck');
 }
 
+// B153's protection degrades QUIETLY by design: where the controller cannot
+// build a git dir of its own it falls back to the tree, because a Git view
+// that goes blank is worse than one still doing what it always did. That is
+// the right default and a terrible thing to leave untested: the fallback runs
+// the tree's hooks, so a transient failure turns every guarantee above into a
+// coin toss, and the only trace is a line in the log. Read it here, which is
+// how a hook firing in the container was told from a test being wrong (R65).
+{
+  const log = (() => { try { return readFileSync(`${DIR}/server.log`, 'utf8'); }
+                       catch { return ''; } })();
+  const fell = log.split('\n').filter(l => /falling back to the tree/.test(l));
+  ok(fell.length === 0,
+     `the controller never fell back to running git in the tree (${
+       fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
+}
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

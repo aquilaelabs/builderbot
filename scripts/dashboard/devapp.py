@@ -502,7 +502,12 @@ def _plan(project, instance, action, extra=None):
         # otherwise. The first run of BuilderBot's suite inside its own
         # instance ran at / and found no scripts/ (15 Sep).
         wd = ["-w", extra["workdir"]] if extra.get("workdir") else []
-        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", *wd, extra["service"],
+        # BB_IN_INSTANCE says this run IS the container's, which is the one
+        # thing a suite cannot work out for itself: the dev instance is a
+        # container like any other and the controller is one too. run.sh
+        # reads it to tell "tests run here" from "tests were run around me".
+        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1",
+                       "-e", "BB_IN_INSTANCE=1", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
         test = [{"name": "testing", "argv": argv, "timeout": 3600}]
     return {"up": [up], "down": [down], "remove": [down],

@@ -952,6 +952,26 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
        { action: 'save', project: 'ep.silon', items: [] })).json()).error) || ''),
      '...and another project reads as absent, not refused');
 
+  // Parking a roadmap item is one direction for a session. It knows when
+  // something is blocked or waiting on somebody; it does not know why the
+  // operator wants one back, so taking it OFF the shelf is theirs. The CLI
+  // only ever passed on=true, and this door used to take whatever it was
+  // handed.
+  {
+    const added = await (await post('/api/todo',
+      { action: 'add', project: 'alpha', text: 'something to park' })).json();
+    const id = (added.items || []).slice(-1)[0]?.id ?? added.id;
+    const on = await (await post('/api/todo',
+      { action: 'shelve', project: 'alpha', id, on: true })).json();
+    ok(!on.error, `a session may park a roadmap item (${on.error || 'shelved'})`);
+    const off = await post('/api/todo', { action: 'shelve', project: 'alpha', id, on: false });
+    const why = (await off.json()).error || '';
+    ok(off.status === 403 && /operator/.test(why),
+       `...and may not take it back off, which is the operator's (${why.slice(0, 60)})`);
+    const still = await (await as('/api/status')).json();
+    ok((still.projects || []).length === 1, '...with the refusal leaving the rest answering');
+  }
+
   // The scanner's report covers the whole share, so the Analysis surfaces are
   // the one place a session could read somebody else's code back. The fixture
   // report has a finding in alpha, in beta, in gamma, in delta, in two

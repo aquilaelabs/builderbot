@@ -5283,7 +5283,21 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "restore":
             r = todo.restore(name, req.get("id"), at=req.get("at"), who=who)
         elif act == "shelve":
-            r = todo.shelve(name, req.get("id"), bool(req.get("on", True)))
+            # One direction for a session, the way `bb roadmap shelve` is on
+            # the command line: parking something is a thing a session knows
+            # (it is blocked, it is waiting on somebody, the design moved
+            # under it) and it is loud, with the row dark at the foot of the
+            # list and the log saying who did it. Taking one OFF reverses a
+            # decision the operator made for reasons the session was not told,
+            # so it is theirs. The CLI only ever passed on=True; this door
+            # took whatever it was handed.
+            on = bool(req.get("on", True))
+            if me.get("session") and not on:
+                return self._json({"error": "taking an item off the shelf is the operator's: a "
+                                            "session can park one and say why, and one tap in "
+                                            "the roadmap panel is what brings it back"}, 403)
+            r = todo.shelve(name, req.get("id"), on,
+                            by="claude" if me.get("session") else "you", who=who)
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for
