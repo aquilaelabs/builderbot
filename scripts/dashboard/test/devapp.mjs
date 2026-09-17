@@ -235,6 +235,46 @@ ok(/BUILDKIT=0/.test(log),
   ok(new RegExp(`BB_BUILD_REV=${head} BB_BUILD_AT=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\dZ`).test(log),
      `...with the commit it builds from and the time in the environment, for a compose that stamps its image (${
        (log.match(/BB_BUILD_REV=[^\n]*/) || ['none'])[0].slice(0, 70)})`);
+  // ...and the version in the IDENTITY form, the one tools/build-image-here.sh
+  // gives a production image, so one commit built either way answers with one
+  // string. It used to be the docker-tag-safe `file` form, whose whole job is
+  // that it cannot carry `+`, so the same build read `…+sha` on production and
+  // `…-sha` on the dev instance and the two read as different builds (B158).
+}
+// ...and the VERSION it stamps is the identity form, the one
+// tools/build-image-here.sh gives a production image, so a commit built either
+// way answers with one string. It used to take the docker-tag-safe `file`
+// form, whose whole job is that it cannot carry `+`, so the same commit read
+// `…-dev.1633+8dfc0b2` on production and `…-dev.1633-8dfc0b2` on the dev
+// instance and the two read as different builds (B158). Asked of the function
+// against a repo that HAS a version, since the fixture project has none and
+// the assertion would pass on an empty string.
+{
+  const vrepo = `${DIR}/ws/verstamp`;
+  rmSync(vrepo, { recursive: true, force: true });
+  mkdirSync(vrepo, { recursive: true });
+  writeFileSync(`${vrepo}/VERSION`, '1.2.3\n');
+  const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t',
+                GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  execFileSync('git', ['-C', vrepo, 'init', '-q', '.'], { env });
+  execFileSync('git', ['-C', vrepo, 'add', '-A'], { env });
+  execFileSync('git', ['-C', vrepo, 'commit', '-qm', 'v'], { env });
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys, os
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+import pathlib, version
+m.WORKSPACE = pathlib.Path(${JSON.stringify(`${DIR}/ws`)})
+version.configure(workspace=${JSON.stringify(`${DIR}/ws`)}, state=${JSON.stringify(`${DIR}/state`)},
+                  write_json=lambda *a, **k: None)
+print(json.dumps(m._build_env('verstamp', '')))
+`], { encoding: 'utf8', env }));
+  ok(/^1\.2\.3-dev\.\d+\+[0-9a-f]+$/.test(got.BB_BUILD_VERSION || ''),
+     `the dev build stamps the identity form, with the + a docker tag cannot carry (${
+       got.BB_BUILD_VERSION || 'unstamped'})`);
+  rmSync(vrepo, { recursive: true, force: true });
 }
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');

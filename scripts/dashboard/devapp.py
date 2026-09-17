@@ -2199,7 +2199,14 @@ def _build_env(project, instance=MAIN):
     # beside this one on the dashboard and absent in a module-level test.
     with contextlib.suppress(Exception):
         import version                                 # noqa: PLC0415
-        f = ((version.render(project) or {}).get("forms") or {}).get("file")
+        # The IDENTITY form, which is what tools/build-image-here.sh stamps a
+        # production image with, so one commit built either way answers with
+        # one string. It used to take `file`, the docker-tag-safe form, whose
+        # whole job is that it cannot carry `+`: the same build then read
+        # 0.5.0-dev.1633+8dfc0b2 on production and 0.5.0-dev.1633-8dfc0b2 on
+        # the dev instance, and the rule that makes this string the first
+        # thing anybody compares turned one build into two (B158).
+        f = ((version.render(project) or {}).get("forms") or {}).get("semver")
         if f:
             out["BB_BUILD_VERSION"] = str(f)
     return out
