@@ -75,6 +75,7 @@
 - New project asks which node the project runs on when nodes exist; the About panel leads with the guide; a plain user's Doctor card shows only what is theirs; the changelog sheet can write the first line; the memory form says the hook is required; the Uninstall button says Uninstalling while it runs (3386d1d)
 - The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
 - Picking a commit in the Git view's history scrolls the page down to its changes (3fa7ede)
+- Claude can only build and test the dev instance on the node its project works on, so a container left behind on another node is not rebuilt or used from a session by mistake (aeb6d9b)
 
 ### Fixed
 
@@ -172,6 +173,7 @@
 - A session on a node can no longer overwrite the shared BuilderBot tooling that its own and other accounts' sessions, and the node's jobs, run (3b6e454)
 - A session that cannot reach the controller for its briefing now says so in the terminal, instead of starting as if it had one and knowing none of your house rules, roadmap or open bugs (17a38e3)
 - A session handing work back on a node no longer fails its house-rule checks with 'rules.py is missing from this image': the check runs where the session and its files are, which is the only place it can (1edd5af)
+- Moving a project to another node no longer hides the dev instance it leaves behind: the containers keep running and their row stays in the Docker manager on the node they are on, so you can still stop or remove them there (aeb6d9b)
 
 ### Removed
 
