@@ -761,6 +761,17 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok((listing.match(/once, from a node/g) || []).length === 1 && !/nothing on/.test(listing),
          `a relayed verb run from a node answers once, with the controller's answer (${
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
+      // ...and a relayed verb that the controller REFUSED exits non-zero, so
+      // a script, a hook or a session's `&&` can tell a refusal from a run.
+      // The dispatch reads `exit $rc` rather than `exit 0`: it was the second
+      // for a long time and still propagated, because bb runs under set -e
+      // and the failing relay aborted before reaching it. Pinned here because
+      // that is an accident to rely on, and B154 is the report that it might
+      // not hold.
+      const refused = bbOnNode(['roadmap', 'done', '99999']);
+      ok(/^FAILED 1:/.test(refused) && /no such item/.test(refused),
+         `a relayed verb the controller refused exits non-zero (${
+           refused.replace(/\s+/g, ' ').slice(0, 60)})`);
       const num = (once.match(/added R(\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
       // bb git: git's network half from a node runs on the controller, with

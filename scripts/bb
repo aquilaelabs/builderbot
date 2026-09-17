@@ -6312,7 +6312,14 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
             # does not carry — `bb bug` printed the controller's answer and
             # then died with "bugs.py is missing from this image".
             case "$BB_RELAY_VERBS" in
-                *" ${1:-help} "*) bb_relay "$@"; exit 0 ;;
+                # The controller's answer IS this command's answer. It used to
+                # be `exit 0` whatever came back, so a refused roadmap edit, a
+                # denied push and a bug that was never filed all read as
+                # success to a script, to a hook, and to a session's `&&`.
+                # bb_relay has carried the code the whole time (it ends with
+                # `return $rc`); only the dispatch threw it away.
+                *" ${1:-help} "*) relay_rc=0; bb_relay "$@" || relay_rc=$?
+                                  exit "$relay_rc" ;;
             esac ;;
     esac
 fi
