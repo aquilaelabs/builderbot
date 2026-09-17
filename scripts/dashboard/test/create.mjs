@@ -525,7 +525,7 @@ ok(await page.$eval('#pForge', el => el.value) === 'git',
    '...starting on the entry that promises nothing, rather than on GitHub');
 ok(/git\.home\.lan:3000/.test(await page.$eval('#pForgeHint', el => el.textContent)),
    '...naming the server it is asking about');
-await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+await page.keyboard.press('Escape');
 // And the answer is kept against the host: cloning from it declares it, so
 // the next address on the same server is not a question again. Refused for
 // the name collision, which is after the address has been accepted.
@@ -541,7 +541,7 @@ ok(await page.$eval('#pForgeField', el => el.hidden),
    '...and once answered, that server is never asked about again');
 ok(/Gitea/.test(await page.$eval('#pToken', el => el.placeholder)),
    '...with the token field asking for the kind of token that host issues');
-await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+await page.keyboard.press('Escape');
 
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.
@@ -553,10 +553,10 @@ await page.click('#pClone');
 ok(await page.$eval('#pTokenField', el => !el.hidden)
    && await page.$eval('#pToken', el => el.type === 'password'),
    'cloning is, and it is not typed in the clear');
-// Bounded: when the close button is not there this waits, and the default
-// wait is thirty seconds for a fallback that is one keystroke.
-await page.click('#pmodalClose', { timeout: 1500 })
-  .catch(() => page.keyboard.press('Escape'));
+// Escape, because that is what closes this dialog: there is no close button
+// in the markup and never was. Clicking for one cost the default wait, thirty
+// seconds, three times over, before the keystroke that did the work.
+await page.keyboard.press('Escape');
 
 // Shape is checked before it is written: the store is a one-line format, so a
 // token with a space or a newline in it would produce a file git reads as
