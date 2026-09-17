@@ -957,10 +957,22 @@ await page.evaluate(async () => {
   // changes and a refusal changes none of it, so the button is put back by
   // the press itself.
   await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
-  await page.click('#bSignIn');
+  // Pressed IN THE PAGE rather than through Playwright's click. The card
+  // repaints whenever its html changes, and while a sign-in flow is live its
+  // own watcher changes that html, so the button Playwright had resolved kept
+  // being detached between "visible and stable" and the press: "element was
+  // detached from the DOM, retrying", then a timeout. It passed alone and
+  // failed in a full run, which is the worst shape a test has (B124's family).
+  // Nothing here is about hit-testing the button, only about what pressing it
+  // does, so the actionability wait is the whole of what went wrong.
+  await page.$eval('#bSignIn', b => b.click());
   await page.waitForFunction(() => /no node is running sessions/.test(
     document.getElementById('toast')?.textContent || ''), null, { timeout: 15000 });
   ok(true, '...and pressing Sign in says the refusal rather than swallowing it');
+  // Re-resolved rather than read off the handle above: a repaint between the
+  // press and this line replaces the button with an equal one, and that is not
+  // what this assertion is about.
+  await page.waitForSelector('#bSignIn', { timeout: 10000 });
   ok(await page.$eval('#bSignIn', b => !b.disabled && b.textContent === 'Sign in'),
      '...with the button live again, not left saying Starting…');
   // That refusal is a 400 by design and the browser logs every one as a
@@ -968,6 +980,18 @@ await page.evaluate(async () => {
   page.errors = [];
 }
 
+// The nodes come back, HERE rather than further down: a drained node is this
+// file's doing and every suite after it needs one that takes work, so the
+// window in which a crash could leave the whole run poisoned is kept to the
+// block that actually needs the drain. It was nine failures across three
+// files once, all reading "node is draining", none of them about themselves.
+await page.evaluate(async () => {
+  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
+  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
+    await fetch('/api/v1/nodes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'online', id: n.id }) });
+});
 
 // ---- the runner card -------------------------------------------------------
 // A view of the NODES' runners and nothing else: this container ran a runner
@@ -1190,15 +1214,6 @@ ok(true, 'pinning it puts it back on the sidebar');
        dead.op}, ${dead.tip.slice(0, 46)}…)`);
 }
 
-// The nodes come back: a drained node is this file's doing, not the
-// fixture's, and the suites after it expect one that takes work.
-await page.evaluate(async () => {
-  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
-  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
-    await fetch('/api/v1/nodes', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'online', id: n.id }) });
-});
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render
