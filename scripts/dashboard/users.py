@@ -32,6 +32,10 @@ from pathlib import Path
 
 STATE = Path("/config")
 write_json = None
+# prefs.for_user: one person's settings on one project, for the git
+# identity override below. Injected, so users.py stays the module the
+# login path imports on its own.
+project_prefs = None
 _lock = threading.RLock()
 
 ROLES = ("owner", "admin", "user")
@@ -42,8 +46,9 @@ ITERATIONS = 600_000
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$")
 
 
-def configure(*, state, write_json):
-    globals().update(STATE=Path(state), write_json=write_json)
+def configure(*, state, write_json, project_prefs=None):
+    globals().update(STATE=Path(state), write_json=write_json,
+                     project_prefs=project_prefs)
 
 
 def _file():
@@ -205,7 +210,7 @@ def profile(u):
     return {k: str(p.get(k) or "")[:n] for k, n in PROFILE_FIELDS.items()}
 
 
-def git_identity(u):
+def git_identity(u, project=""):
     """The name and email this account's commits carry: its git identity
     where it set one, else its real name and email, else nothing — a made-up
     address would be a lie in every log it landed in (git_ready).
@@ -218,25 +223,47 @@ def git_identity(u):
     at the keyboard all the same.
     """
     p = profile(u)
-    return {"name": p["git_name"] or p["full_name"],
+    # A per-project override first where the person set one: somebody may
+    # commit to one repository under a different address, and that is a choice
+    # about their own commits rather than the project's about everybody's.
+    # Each field falls back on its own, so an override may set the email and
+    # leave the name alone.
+    base = {"name": p["git_name"] or p["full_name"],
             "email": p["git_email"] or p["email"]}
+    over = {}
+    if project and project_prefs:
+        acc = account_of(u)
+        over = project_prefs(str(acc.get("uid") or ""), project) or {}
+    return identity_over(base, over)
 
 
-def git_ready(u):
+def identity_over(base, over):
+    """`base` with a per-project override applied, field by field.
+
+    Beside git_identity so the precedence is written once: project_list wants
+    the answer for a dozen projects from one read of each file, so it resolves
+    them through here rather than calling git_identity per row.
+    """
+    over = over or {}
+    return {"name": str(over.get("git_name") or "") or base["name"],
+            "email": str(over.get("git_email") or "") or base["email"]}
+
+
+def git_ready(u, project=""):
     """Whether this account's commits would carry an author: a name and an
     email, from the git fields or the plain ones. A Claude session is not
     started without it — every project is a repository, and a commit with
     no author is one git refuses, halfway through whatever the session was
     doing. Nothing is invented to fill the gap: an address made up from an
     account name would be a lie in every log it lands in."""
-    g = git_identity(u)
+    g = git_identity(u, project)
     return bool(g["name"] and g["email"])
 
 
-def git_env(u):
+def git_env(u, project=""):
     """The four variables git reads ahead of any config, for a subprocess
     committing on this account's behalf; {} for a principal that is nobody."""
-    g = git_identity(u)
+    g = git_identity(u, project)
     if not (g["name"] and g["email"]):
         return {}
     return {"GIT_AUTHOR_NAME": g["name"], "GIT_AUTHOR_EMAIL": g["email"],

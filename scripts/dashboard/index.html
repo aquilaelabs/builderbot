@@ -3316,21 +3316,6 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnAuthHint"></div>
     </div>
-    <!-- What this project's Claude sessions run on. Per project because the
-         session is: one long-lived conversation per directory, and which model
-         suits a Kotlin app is not which model suits a shell script. Applied as
-         launch flags by bb-tty rather than typed into a running session; see
-         prefs.py for why that stopped working. -->
-    <div class="field" id="rnPrefField">
-      <label id="rnPrefLabel">Claude runs on</label>
-      <div class="prefrow" role="group" aria-labelledby="rnPrefLabel">
-        <label class="pick">Model <select id="rnModel"
-          aria-label="model this project's sessions start on"></select></label>
-        <label class="pick">Effort <select id="rnEffort"
-          aria-label="effort this project's sessions start on"></select></label>
-      </div>
-      <div class="hint" id="rnPrefHint"></div>
-    </div>
     <!-- The project's node: where everything it does on a node goes:
          containers, builds, tests, CI, emulation. One setting, by decision
          (docs/nodes.md §13): per-role pickers were more control than anybody
@@ -3368,6 +3353,32 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
+    </div>
+    <!-- YOURS, not the project's, and last so that is legible from the
+         shape of the dialog rather than only from the words. Everything
+         above changes what the project does for everybody; nothing here
+         reaches anybody else's sessions or anybody else's commits. Kept per
+         uid in claude-prefs.json, applied as launch flags by bb-tty for the
+         model and as git's environment for the author. -->
+    <div class="field" id="rnMineField">
+      <label id="rnMineLabel">Yours on this project<span class="help" data-tip="these four are this account's alone: they change your sessions and your commits here, and nobody else's" tabindex="0">?</span></label>
+      <div class="hint">These are yours alone. Everything above is the project's, for everyone.</div>
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+        <label class="pick">Model <select id="rnModel"
+          aria-label="model your sessions here start on"></select></label>
+        <label class="pick">Effort <select id="rnEffort"
+          aria-label="effort your sessions here start on"></select></label>
+      </div>
+      <div class="hint" id="rnPrefHint"></div>
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+        <label class="pick">Commit name <input id="rnGitName" type="text"
+          autocomplete="off" spellcheck="false" maxlength="120"
+          aria-label="name your commits here carry"></label>
+        <label class="pick">Commit email <input id="rnGitEmail" type="text"
+          autocomplete="off" spellcheck="false" maxlength="200"
+          aria-label="email your commits here carry"></label>
+      </div>
+      <div class="hint" id="rnGitHint"></div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -5585,7 +5596,8 @@ function rnLoadModelNow(name){
 // dialog that was merely looked at: the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: "",
+let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
+                 node: "", build: "", test: "", outputs: "",
                  gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -5622,13 +5634,21 @@ const rnGateNow = () => Object.fromEntries(
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
 
 function rnFillPrefs(p){
-  rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
+  rnPrefWas = {model: p?.yours?.model || "", effort: p?.yours?.effort || "",
+               git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
+  $("rnGitName").value = rnPrefWas.git_name;
+  $("rnGitEmail").value = rnPrefWas.git_email;
+  // Said where it is typed: the Profile is the default, this is the exception,
+  // and a commit needs both halves from somewhere.
+  $("rnGitHint").textContent = rnPrefWas.git_name || rnPrefWas.git_email
+    ? "Your commits here use these instead of your Profile."
+    : "Empty uses your Profile. Set these to commit here under a different name.";
   rnFillNode();
   rnFillPrefsRest(p);
   rnLoadModelNow(rnFor);
@@ -7025,8 +7045,12 @@ const isBroken = p => p.issues.some(i => i.level === "error");
 // ...and a session that is ALREADY RUNNING is reached, not started: the same
 // button goes to its tab, and stranding somebody from a live conversation
 // over a missing author would be a worse fault than the one this prevents.
-const heldWhy = p => p.held || (state?.git_ready === false && !liveSessions().has(myClaude(p.name))
-  ? "set your name and email for commits on your Profile (the gear) first: every project here is a repository, and a commit needs an author"
+// The ROW's answer, not the account's: somebody whose Profile carries no
+// email can set one for this project alone, and then this project is ready
+// while the others are not.
+const gitReadyFor = p => (p.git_ready !== undefined ? p.git_ready : state?.git_ready) !== false;
+const heldWhy = p => p.held || (!gitReadyFor(p) && !liveSessions().has(myClaude(p.name))
+  ? "set your name and email for commits on your Profile (the gear), or for this project alone in its settings: every project here is a repository, and a commit needs an author"
   : "");
 
 let showAllProjects = false;
@@ -7169,10 +7193,10 @@ function projectRow(p, live, cls, inTab){
                  : p.last_claude ? "Claude: no session running; resume or start one"
                  : "Claude: start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        ${notMine(p) || state?.git_ready === false ? "disabled" : ""}
+        ${notMine(p) || !gitReadyFor(p) ? "disabled" : ""}
         title="${notMine(p) ? NOT_MINE_WHY
-                : state?.git_ready === false
-                  ? "set your name and email for commits on your Profile (the gear) first: a shell is where git is typed"
+                : !gitReadyFor(p)
+                  ? "set your name and email for commits on your Profile (the gear), or for this project in its settings: a shell is where git is typed"
                 : "shell: open another terminal here"}"
         >${TERM}</button>` : ""}
       ${p.git_ok && !isBroken(p)
@@ -11253,7 +11277,7 @@ function renameProject(name, mode = "all"){
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
-  for (const id of ["rnNameField", "rnColorField", "rnPrefField",
+  for (const id of ["rnNameField", "rnColorField", "rnMineField",
                     "rnGateField", "rnBuildField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
@@ -11467,7 +11491,14 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color;
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
+  const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
+  // Yours, so they travel with the model and the effort rather than with the
+  // project's group: the same request, a different store on the server.
+  // Only the launch flags are worth interrupting a session for: the model and
+  // the effort are read when claude starts, the author is read per commit.
+  const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
+  const prefChanged = launchChanged
+    || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -11488,7 +11519,7 @@ async function rnSubmit(){
   // landed, and restarting the session by hand afterwards changed nothing,
   // because there was nothing to read. Saving and interrupting are two
   // decisions and only one of them was being asked about.
-  const restartNow = !(prefChanged && running)
+  const restartNow = !(launchChanged && running)
     ? false
     : confirm(`End the Claude session in ${name} now?\n\n`
         + `What it runs on is read when a session starts, so this takes `
@@ -11508,7 +11539,7 @@ async function rnSubmit(){
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort,
+        body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, build, test, gate, color,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
@@ -11520,7 +11551,7 @@ async function rnSubmit(){
       // is: a session quietly left on the old model is exactly the confusion
       // this whole thing exists to remove, and a session deliberately left
       // running is not a fault to colour red.
-      if (running && prefChanged && !j.ended)
+      if (running && launchChanged && !j.ended)
         notify(restartNow
                  ? `${name}: saved, but the session was not ended: `
                    + (j.why || "it is still on what it started with")

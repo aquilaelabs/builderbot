@@ -4211,6 +4211,12 @@ prefs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prefs)
 prefs.configure(state=state, write_json=lambda *a: None)
 rec = dict(prefs.get(proj) or {})
+# The model, the effort and any commit-author override are the ACCOUNT's on
+# this project, not the project's (prefs.for_user): two people on one project
+# are two authors on two models. BB_ACCOUNT_UID names the seat; no seat means
+# nothing set, which is claude's own default.
+_mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
+rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
 # What `bb test` runs here with nothing set. Never written to the file: the
 # record stays the operator's, and this is what an empty box means. From the
 # tree itself where the caller stands in one — the workspace is not in the
@@ -4246,6 +4252,15 @@ def _identity(uid):
                     str(pr.get("git_email") or pr.get("email") or ""), True)
     return "", "", False
 rec["git_name"], rec["git_email"], _found = _identity(os.environ.get("BB_ACCOUNT_UID", ""))
+# ...with this project's override ahead of it, field by field, the way
+# users.identity_over resolves it. So somebody whose Profile carries no email
+# can still commit here, which is the whole point of the override.
+if _mine.get("git_name"):
+    rec["git_name"] = _mine["git_name"]
+    _found = True
+if _mine.get("git_email"):
+    rec["git_email"] = _mine["git_email"]
+    _found = True
 if _found:
     rec["git_ready"] = bool(rec["git_name"] and rec["git_email"])
 if os.environ.get("BB_SETTINGS_JSON") == "1":

@@ -464,10 +464,14 @@ PY
         # it is not, and `bb settings` asks the controller for the same two
         # fields — still at exec time, so a respawn still picks up a change.
         printf 'if [ -r %q ]; then\n' "$PREFS_FILE"
-        printf '  m="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
-            "$proj" '.projects[$n].model // empty' "$PREFS_FILE"
-        printf '  e="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
-            "$proj" '.projects[$n].effort // empty' "$PREFS_FILE"
+        # Under the ACCOUNT, not the project: the pair is whoever is at the
+        # keyboard's, so two people on one project launch on their own (17
+        # Sep). No account is a terminal opened before accounts existed, and
+        # it gets nothing set, which is claude's own default.
+        printf '  m="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+            "$account" "$proj" '.users[$u][$n].model // empty' "$PREFS_FILE"
+        printf '  e="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+            "$account" "$proj" '.users[$u][$n].effort // empty' "$PREFS_FILE"
         printf 'else\n'
         printf '  s="$(BB_PROJECT=%q bb settings --json 2>/dev/null)"\n' "$proj"
         printf '  m="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.model // empty'

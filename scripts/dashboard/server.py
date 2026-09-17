@@ -1081,6 +1081,12 @@ def _session_at(name):
     return {"session_at": "", "session_why": "", "session_boot": ""}
 
 
+def _row_git_ready(base, over):
+    """Whether a commit on this project would carry an author, for one row."""
+    g = users.identity_over(base, over)
+    return bool(g["name"] and g["email"])
+
+
 def project_list(who):
     """Every directory under /workspace that is a project, with what is wrong
     with it. Named _list because `projects` is the module beside this one that
@@ -1115,6 +1121,13 @@ def project_list(who):
     # there with nothing set — the settings field offers it as what an
     # empty box means.
     project_prefs = prefs.all_projects(WORKSPACE)
+    # ...and, in one read each, what the ACCOUNT ASKING chose per project and
+    # the author its commits carry with nothing overridden. The model, the
+    # effort and the commit identity are the person's, not the directory's
+    # (prefs.for_user), so they are resolved against `who` here rather than
+    # read off the project.
+    mine_prefs = prefs.all_for_user(users.uid_of(who))
+    base_git = users.git_identity(who)
     # One answer per node about its agent, for every project row on it.
     node_gaps = {}
     # ...and its name, for the row to wear beside the project's.
@@ -1276,10 +1289,24 @@ def project_list(who):
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
                     "push": projects.may_push(d.name),
-                    # Which model and effort this project's sessions launch on.
-                    # On the row because the settings dialog draws from the poll
-                    # like every other field it shows.
-                    "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
+                    # The project's own settings: its node, what build and
+                    # test run, the gates. NOT the model, the effort or the
+                    # commit author, which are whoever is asking's.
+                    "prefs": project_prefs.get(d.name, {}),
+                    # ...and this account's own, on this project. On the row
+                    # because the settings dialog draws from the poll like
+                    # every other field it shows, and per account because two
+                    # people on one project are two authors on two models.
+                    # `yours`, because `mine` on this row is already taken by
+                    # may_work: whether the project is this account's to change.
+                    "yours": mine_prefs.get(d.name, {"model": "", "effort": "",
+                                                     "git_name": "", "git_email": ""}),
+                    # Whether a commit here would carry an author, asked WITH
+                    # the override: somebody whose Profile has no email can
+                    # still set one for this project, and then a session may
+                    # start and push here even though the global flag is off.
+                    "git_ready": _row_git_ready(base_git, mine_prefs.get(d.name))
+                                 if users.uid_of(who) else True,
                     "push_how": projects.push_how(d.name),
                     # The newest transcript — read through the home's link
                     # onto the projects share (lib/common.sh's
@@ -2230,6 +2257,10 @@ logs.prune()
 import prefs                                                     # noqa: E402
 
 prefs.configure(write_json=write_json, state=STATE)
+# Said again, now that prefs exists: users.git_identity resolves a per-project
+# override of the commit author, and that override lives in prefs, which is
+# configured after users because the login path must not depend on it.
+users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user)
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -3166,11 +3197,18 @@ class Handler(BaseHTTPRequestHandler):
         # with no name and email behind it is one git refuses halfway through
         # the work, and a shell is where git is typed. bb-tty asks the same
         # question on the node, from the same answer (bb settings --json's
-        # git_ready).
+        # git_ready). Asked WITH the project this terminal is for, so an
+        # author set for one repository alone opens a session there.
+        # claude:<project>[:r:<id>] and sh:<n>:<project> put it in different
+        # places, so the shape decides rather than a fixed index.
+        bits = arg.split(":")
+        want = (bits[1] if arg.startswith("claude:") and len(bits) > 1
+                else bits[2] if arg.startswith("sh:") and len(bits) > 2 else "")
         if uid and (arg == "shell" or arg.startswith("sh:") or arg.startswith("claude:")) \
-                and not users.git_ready(me):
-            return (f"{me['name']} has no name and email for commits yet — set them "
-                    "on your Profile (the gear in the header) and open this again")
+                and not users.git_ready(me, want):
+            return (f"{me['name']} has no name and email for commits yet: set them on your "
+                    "Profile (the gear in the header), or for one project in its settings "
+                    "dialog, and open this again")
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
@@ -4193,9 +4231,7 @@ class Handler(BaseHTTPRequestHandler):
         moved = []
         if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
             moved = devapp.pin_to_current_node(name)
-        r = prefs.set_prefs(name, model=req.get("model"),
-                            effort=req.get("effort"),
-                            node=req.get("node"),
+        r = prefs.set_prefs(name, node=req.get("node"),
                             build=req.get("build"),
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
@@ -4203,6 +4239,14 @@ class Handler(BaseHTTPRequestHandler):
                             devtest=req.get("devtest"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
+        # ...and what is the ASKING ACCOUNT's rather than the project's: the
+        # model and effort its sessions launch on, and the author its commits
+        # here carry. Same dialog, same request, different store, because two
+        # people on one project are two authors on two models and neither
+        # should be able to change the other's (17 Sep).
+        mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email") if k in req}
+        if mine and not r.get("error"):
+            r = dict(r) | {"yours": prefs.set_for_user(users.uid_of(self._who()), name, mine)}
         # The restart is asked for by the dialog, which is where the
         # operator was told what it costs, and never inferred here from the
         # change alone, because the same write happens when nothing is
@@ -4551,14 +4595,6 @@ class Handler(BaseHTTPRequestHandler):
         if not me:
             return self._json({"error": "not signed in"}, 401)
         argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
-        # git's network half runs under the account's author like everything
-        # else it does with a repository: none set, none run.
-        # Push, fetch and pull write with git, and git wants an author; a
-        # policy read and an ls-remote do not (B128).
-        if argv and argv[0] == "git" and argv[1:2] not in (["policy"], ["ls-remote"]) \
-                and users.uid_of(me) and not users.git_ready(me):
-            return self._json({"error": "no name and email for commits yet — set them on "
-                                        "your Profile (the gear in the dashboard's header) first"}, 403)
         if not argv or argv[0] not in RELAY_VERBS:
             return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
                                "it answers for the machine the session is on"}, 400)
@@ -4583,6 +4619,19 @@ class Handler(BaseHTTPRequestHandler):
         project = field(req, "project") or me.get("session") or ""
         if me.get("session") and project != me["session"]:
             return self._json({"error": "this session's token is for another project"}, 403)
+        # git's network half runs under the account's author like everything
+        # else it does with a repository: none set, none run. Push, fetch and
+        # pull write with git, and git wants an author; a policy read and an
+        # ls-remote do not (B128). Asked WITH the project, so an author set for
+        # one repository alone is enough even when the Profile has none, and
+        # asked BEFORE the project is checked for being one, so a request that
+        # names no project still hears the useful half rather than "not a
+        # project": having no author is the answer either way.
+        if argv and argv[0] == "git" and argv[1:2] not in (["policy"], ["ls-remote"]) \
+                and users.uid_of(me) and not users.git_ready(me, project):
+            return self._json({"error": "no name and email for commits yet: set them on your "
+                                        "Profile (the gear in the dashboard's header), or for "
+                                        "this project alone in its settings dialog"}, 403)
         if not project or (WORKSPACE / project).name != project \
                 or not (WORKSPACE / project).is_dir():
             return self._json({"error": "not a project"}, 400)
@@ -5582,7 +5631,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         act = field(req, "action")
         if act == "bump":
-            r = version.bump(name, field(req, "part"), by="operator", env=users.git_env(self._who()),
+            r = version.bump(name, field(req, "part"), by="operator", env=users.git_env(self._who(), name),
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
@@ -5594,7 +5643,7 @@ class Handler(BaseHTTPRequestHandler):
             # number, and publishing a marker other people fetch is not
             # the same decision.
             r = version.release(name, comp=field(req, "component") or "",
-                                env={**projects._git_env(), **users.git_env(self._who())},
+                                env={**projects._git_env(), **users.git_env(self._who(), name)},
                                 may_push=projects.may_push(name))
             if r.get("error"):
                 return self._json(r, 400)
@@ -5603,13 +5652,13 @@ class Handler(BaseHTTPRequestHandler):
                             {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
             return self._json(version_payload(name) | {"released": r})
         if act == "init":
-            r = version.init(name, field(req, "value"), by="operator", env=users.git_env(self._who()),
+            r = version.init(name, field(req, "value"), by="operator", env=users.git_env(self._who(), name),
                              comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version_payload(name) | {"created": r})
         if act == "unbump":
-            r = version.unbump(name, by="operator", env=users.git_env(self._who()),
+            r = version.unbump(name, by="operator", env=users.git_env(self._who(), name),
                                comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
@@ -6220,7 +6269,7 @@ class Handler(BaseHTTPRequestHandler):
             live = sessions_anywhere()
             r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
             return self._result(r)
-        env = {**projects._git_env(), **users.git_env(me)}
+        env = {**projects._git_env(), **users.git_env(me, name)}
         env.pop("DASHBOARD_AUTH", None)
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
                         may_push=projects.may_push(name))

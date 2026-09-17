@@ -64,6 +64,94 @@ def configure(*, write_json, state):
     globals()["FILE"] = Path(state) / "claude-prefs.json"
 
 
+# ---- what is the PERSON's rather than the project's ------------------------
+#
+# The operator's call (17 Sep): the model and the effort a session launches on
+# are facts about whoever is at the keyboard, not about the directory. Two
+# people on one project want different ones, and the old per-project pair made
+# one of them change the other's sessions. The author a commit carries is the
+# same kind of fact, and git_identity already says so for the account; this
+# adds the per-project override, for somebody who commits to one repository
+# under a different name or address.
+#
+# Kept here, keyed by uid, and NOT in users.json: that file holds password
+# hashes and is not a session's to read, while this one is read by the
+# launcher at exec time so a respawn picks up a change. Nothing here is a
+# secret; a git author is on every commit by design.
+USER_CHOICES = {"model": MODELS, "effort": EFFORTS}
+USER_TEXT = {"git_name": 120, "git_email": 200}
+
+
+def _clean_user(rec):
+    """One person's settings on one project; unset and invalid read the same,
+    for the reason _clean gives: a hand-edited typo means "leave as is"."""
+    rec = rec if isinstance(rec, dict) else {}
+    out = {k: (rec.get(k) if rec.get(k) in vals else "") for k, vals in USER_CHOICES.items()}
+    out.update({k: str(rec.get(k) or "").strip()[:n] for k, n in USER_TEXT.items()})
+    return out
+
+
+def for_user(uid, project):
+    """What this account chose on this project. Empty for anybody with no uid,
+    which is a terminal opened before accounts existed."""
+    if not uid:
+        return _clean_user(None)
+    d = _load()
+    return _clean_user(((d.get("users") or {}).get(str(uid)) or {}).get(str(project)))
+
+
+def all_for_user(uid):
+    """{project: settings} for one account, in ONE read. project_list resolves
+    a row per project on the poll and cannot afford a file read per row."""
+    if not uid:
+        return {}
+    users = _load().get("users") or {}
+    mine = users.get(str(uid)) or {}
+    return {k: _clean_user(v) for k, v in mine.items()} if isinstance(mine, dict) else {}
+
+
+def set_for_user(uid, project, patch):
+    """Write one person's settings on one project; the cleaned record back.
+
+    A field left out of the patch is left alone, and one set to "" is cleared,
+    so the dialog can unset a model without unsetting an email beside it.
+    """
+    if not uid or not project:
+        return _clean_user(None)
+    patch = patch if isinstance(patch, dict) else {}
+    with _lock:
+        d = _load()
+        users = d.setdefault("users", {})
+        mine = users.setdefault(str(uid), {})
+        cur = _clean_user(mine.get(str(project)))
+        for k in list(USER_CHOICES) + list(USER_TEXT):
+            if k in patch:
+                cur[k] = patch[k]
+        cur = _clean_user(cur)
+        if any(cur.values()):
+            mine[str(project)] = cur
+        else:
+            # Nothing set is no record, so the file does not grow a row per
+            # person per project that says "default, default".
+            mine.pop(str(project), None)
+        if not mine:
+            users.pop(str(uid), None)
+        write_json(FILE, d)
+        return cur
+
+
+def forget_user_project(project):
+    """Drop everybody's settings for a project that is gone."""
+    with _lock:
+        d = _load()
+        users = d.get("users") or {}
+        for uid in list(users):
+            users[uid].pop(str(project), None)
+            if not users[uid]:
+                users.pop(uid, None)
+        write_json(FILE, d)
+
+
 def _load():
     """The whole file, in the per-project shape, tolerating the old one.
 
@@ -78,11 +166,13 @@ def _load():
         with open(FILE) as f:
             d = json.load(f)
     except (OSError, ValueError):
-        return {"projects": {}}
+        return {"projects": {}, "users": {}}
     if not isinstance(d, dict):
-        return {"projects": {}}
+        return {"projects": {}, "users": {}}
     p = d.get("projects")
-    return {"projects": p if isinstance(p, dict) else {}}
+    u = d.get("users")
+    return {"projects": p if isinstance(p, dict) else {},
+            "users": u if isinstance(u, dict) else {}}
 
 
 def _clean(rec):
@@ -93,8 +183,7 @@ def _clean(rec):
     every time a session starts.
     """
     rec = rec if isinstance(rec, dict) else {}
-    return {"model": rec.get("model") if rec.get("model") in MODELS else "",
-            "effort": rec.get("effort") if rec.get("effort") in EFFORTS else "",
+    return {
             # Which docker-host node this project's containers default to.
             # A node id, opaque here: prefs stores the choice, the pickers
             # resolve it, and "" means auto — the default docker node.
@@ -234,7 +323,7 @@ def all_projects(workspace=None):
     return out
 
 
-def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
+def set_prefs(project, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, devtest=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
@@ -243,18 +332,10 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
     with _lock:
         d = _load()
         cur = _clean(d["projects"].get(project))
-        if model is not None:
-            if model not in MODELS and model != "":
-                return {"error": f"not a model this can set: {model}"}
-            cur["model"] = model
         if color is not None:
             if color not in COLORS and color != "":
                 return {"error": f"color is one of {', '.join(COLORS)}, or none: not {color}"}
             cur["color"] = color
-        if effort is not None:
-            if effort not in EFFORTS and effort != "":
-                return {"error": f"not an effort this can set: {effort}"}
-            cur["effort"] = effort
         if node is not None:
             cur["node"] = str(node)[:40]
         if build is not None:
@@ -293,7 +374,7 @@ def set_prefs(project, model=None, effort=None, node=None, build=None, test=None
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["model"] or cur["effort"] or cur["node"] or cur["color"]
+        if (cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["devtest"]

@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -26,6 +26,7 @@ const BBTTY = join(import.meta.dirname, '..', 'bb-tty');
 // here spreads it.
 process.env.BB_SESSION_BIN = join(DIR, 'no-bb-session-here');
 const LAUNCHER = join(DIR, 'home', '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'claude-run.sh');
+
 
 // The boot this container is on, from the server rather than computed again
 // here: the page reads it from /api/status and puts it in the terminal's URL,
@@ -95,6 +96,16 @@ chmodSync(join(bin, 'claude'), 0o755);
 // One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
 // attach-session`, which fails without a terminal — by then the session either
 // exists or does not, which is the whole question.
+// `as` is the account the /term proxy stamps on the argument. The model and
+// the effort are that account's, so the launcher has to be told whose terminal
+// this is before it can find them; without one it is a terminal opened before
+// accounts existed, and there is nothing of anybody's to apply.
+// The pair is the SEAT's, not the project's (17 Sep), and jq is handed the
+// seat bb-tty is running on. These connects carry no `u:` prefix, which is a
+// terminal nobody is signed in on, so the seat is the empty one and that is
+// the key the fixtures below use. A signed-in seat is settings.mjs's, which
+// saves through the dialog and reads it back out of `bb settings --json`.
+const SEAT = '';
 function connect(promptBytes, env){
   tmuxKill('claude-alpha');
   try {
@@ -268,7 +279,7 @@ ok(alive('claude-alpha'), 'unlocking lets a session start there again');
 // through the same file pick up a change. Asserted on the argv the stub
 // records, because that is the only place the answer is real.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
-  { projects: { alpha: { model: 'sonnet', effort: 'xhigh' } } }));
+  { users: { [SEAT]: { alpha: { model: 'sonnet', effort: 'xhigh' } } } }));
 connect(0);
 await sleep(400);
 let a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
@@ -281,7 +292,7 @@ ok(!/--resume/.test(a),
 // same tables the dashboard writes from, so a hand-edited value is dropped
 // rather than passed to claude.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
-  { projects: { alpha: { model: '--dangerously-skip-permissions', effort: 'max' } } }));
+  { users: { [SEAT]: { alpha: { model: '--dangerously-skip-permissions', effort: 'max' } } } }));
 connect(0);
 await sleep(400);
 a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
@@ -291,7 +302,7 @@ ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
 // --respawn is how the dashboard restarts a session onto a changed setting:
 // the same launcher, re-reading the file and resuming what was running.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
-  { projects: { alpha: { model: 'opus', effort: 'low' } } }));
+  { users: { [SEAT]: { alpha: { model: 'opus', effort: 'low' } } } }));
 const tdir = join(DIR, 'home', '.claude', 'projects',
                   join(DIR, 'ws', 'alpha').replaceAll('/', '-'));
 mkdirSync(tdir, { recursive: true });

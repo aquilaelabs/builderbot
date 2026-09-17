@@ -162,8 +162,29 @@ const bare = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'set
 ok(bare.git_name === 'T. Person', '...for a shell with no project too');
 await page.click('#projects [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
-ok(!(await page.$('#rnGitName')), 'the project dialog no longer asks for one');
-await page.click('#rnCancel');
+// The dialog asks again (17 Sep), but for a different thing: the old field
+// was the PROJECT's identity and wrote user.name into the repository, which
+// made two people on it one author. This one is the asking ACCOUNT's, on this
+// project, and lives in that account's record. The invariant the removal was
+// protecting still holds, and is what is asserted: nothing reaches the tree.
+ok(!!(await page.$('#rnGitName')) && !!(await page.$('#rnGitEmail')),
+   'the project dialog asks for a commit author again, as this account\'s own');
+await page.fill('#rnGitName', 'Alter Ego');
+await page.fill('#rnGitEmail', 'alter@example.invalid');
+await page.click('#rnGo');
+await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 15000 });
+ok(gitc('user.name') === 'dashboard test' && gitc('user.email') === 'test@example.invalid',
+   '...and saving it still writes nothing into the repository, which is what the old one got wrong');
+const over = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
+  { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha', BB_ACCOUNT_UID: owner } }));
+ok(over.git_name === 'Alter Ego' && over.git_email === 'alter@example.invalid',
+   `...and a session here is handed it instead of the Profile's (${over.git_name} <${over.git_email}>)`);
+const elsewhere = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
+  { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'beta', BB_ACCOUNT_UID: owner } }));
+ok(elsewhere.git_name === 'T. Person',
+   `...on that project only, with every other one still the Profile's (${elsewhere.git_name})`);
 
 // ---- global rules (R63): set here, handed to every project's sessions -----
 // The point of the feature is that there is no copy to drift, so the proof is

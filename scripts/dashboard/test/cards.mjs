@@ -1036,9 +1036,14 @@ await page.evaluate(async () => {
   // Re-resolved rather than read off the handle above: a repaint between the
   // press and this line replaces the button with an equal one, and that is not
   // what this assertion is about.
-  await page.waitForSelector('#bSignIn', { timeout: 10000 });
-  ok(await page.$eval('#bSignIn', b => !b.disabled && b.textContent === 'Sign in'),
-     '...with the button live again, not left saying Starting…');
+  // Asked in ONE evaluation rather than as a wait and then a read: the card
+  // re-renders from the poll, so a repaint between the two lines left the
+  // selector resolving to nothing and took the whole file down.
+  await page.waitForFunction(() => {
+    const b = document.getElementById('bSignIn');
+    return !!b && !b.disabled && b.textContent === 'Sign in';
+  }, null, { timeout: 15000 });
+  ok(true, '...with the button live again, not left saying Starting…');
   // That refusal is a 400 by design and the browser logs every one as a
   // failed resource. Cleared, so the check below is about the page.
   page.errors = [];
@@ -1393,7 +1398,7 @@ await page.click('.doc .projtab [data-l="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(/GitHub/.test(await page.$eval('#rnTitle', e => e.textContent))
    && await page.$eval('#rnNameField', el => el.hidden)
-   && await page.$eval('#rnPrefField', el => el.hidden),
+   && await page.$eval('#rnMineField', el => el.hidden),
    'the chain opens the same dialog on the remote alone, with the rest put away');
 ok(!await page.$eval('#rnTokenField', el => el.hidden),
    'a project pushing with a deploy key is offered a token');
@@ -1588,7 +1593,7 @@ await page.click('#rnCancel');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
   ok(page.dialogs.length === askedBefore, 'saving with that model left where it was asks nothing');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
-       && !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.model),
+       && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
      '...restarts nothing, and stores nothing: the default is still the default');
   rmSync(tdir, { recursive: true, force: true });
   await page.click('.doc .projtab [data-rn="alpha"]');
@@ -1607,7 +1612,7 @@ await page.click('#rnCancel');
   ok(/Cancel saves the setting/.test(asked),
      'a running session is asked about, and the question says Cancel still saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.model === 'sonnet', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
   ok(true, '...and declining the restart still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -1628,7 +1633,7 @@ await page.click('#rnCancel');
   // stored (the file says only what somebody chose), so the row carries no
   // model key at all, which every reader of it defaults the same way.
   await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.model || '') === '',
+    .find(p => p.name === 'alpha')?.yours?.model || '') === '',
     { timeout: 20000 });
 }
 
