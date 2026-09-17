@@ -161,3 +161,58 @@ New project dialog has no node picker, so every project is born with
 settings dialog leads with rename; the Docker row stacks three settings
 pickers above its buttons; and the notebook foot's Save and Revert sit
 ghosted on views with nothing to save.
+
+## Several people on one controller, and what a walk actually proves (17 September 2026)
+
+Walked to answer one question before letting anybody else in: what does a
+second person see, and can they reach past what they were given. The dev pair
+already carried three accounts from the 16 September walk, so this needed no
+setup: `stencil` (owner), `dev2` (user, granted `hello` alone), `dev3`
+(admin).
+
+What was pressed, in order:
+
+1. **New project, from nothing.** `journey-scratch`, no git host, a sentence
+   of notes. It came back as a repository on `main` with CLAUDE.md written
+   from those notes, and its row said `no node: pick one in the project's
+   settings, or enroll one on the Nodes tab`. No snag: the row names the one
+   thing standing between it and a session, which is what the 16 September
+   walk asked for.
+2. **The same box as dev2.** The Projects card listed `hello` and nothing
+   else. `journey-scratch`, made a minute earlier, was not there.
+3. **Reaching past the grant, as a person does by pasting a link.** The Git
+   view, the roadmap, the changelog and the settings write, all named
+   `journey-scratch`, all answered 400 `not a project` rather than 403. That
+   is the design and it is the right one: a project somebody cannot see does
+   not exist for them, so the answer is the same one a typo gets and leaks
+   nothing. Creating a project at all was 403, which a plain user may not do.
+4. **...and doing the job they were given.** The other half, because a grant
+   that is too tight fails a tester as surely as one that leaks: on `hello`,
+   the Git view, the roadmap and the changelog all answered, the row said the
+   project was theirs to work in, and a session could start on
+   `bb-dev-sandbox`.
+5. **As dev3, the admin.** Every project listed, and none of them marked
+   theirs to work in. That is the seatbelt the code describes rather than a
+   wall: hiding a project from somebody who administers the box would only
+   send them looking for it.
+
+No snag in any of it. The isolation a second person meets holds at both
+edges, which is the half of "ready for testing" that cannot be argued from
+the code.
+
+**The snag was in the walk itself.** The dev instance's dashboard answers
+from the image it was last built from, and only its TEST runs use the live
+checkout. It was serving `f681c5d`, built twenty hours earlier and thirty
+commits behind the branch, so everything hardened that day (a session's
+findings scoped to its own project, the per-account model and commit author,
+B165's atomic fix) was not in what was walked. The walk proved yesterday's
+isolation.
+
+So the routine gains a first step, and it is not optional: **rebuild the dev
+instance before walking a journey on it, and record the build the walk was
+against.** A walk whose build is not written down says less than it appears
+to, which is the same fault as a green suite that ran somewhere else (R65).
+
+- Alpha, new evidence: several accounts on one controller, each seeing only
+  what they were granted, proved from the outside rather than from the tests.
+- Still dev: nothing this walk touched.
