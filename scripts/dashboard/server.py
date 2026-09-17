@@ -2539,6 +2539,20 @@ def revisions(who=None, projects=None):
 # Who has polled lately, in memory: presence, not a record. See chat.online.
 _polls = {}
 
+def _findings_counts(who, ps):
+    """Per-project finding counts for the poll, scoped the way the tab is.
+
+    counts() is already narrowed to the projects the caller may see, but it
+    buckets a path it could not place under "", and for a session that bucket
+    holds every row the attribution refused: the rest of the box. So a session
+    gets its own project's number and nothing beside it, and the unplaceable
+    `heads` that go with it are dropped at the call site for the same reason.
+    """
+    c = findings.counts(ps)
+    mine = (who or {}).get("session")
+    return {k: v for k, v in c.items() if k == mine} if mine else c
+
+
 def snapshot(who):
     if who and who.get("name") and users.uid_of(who):
         _polls[who["name"]] = time.time()
@@ -2601,10 +2615,12 @@ def snapshot(who):
         "node_runners": runners.listing(),
         "reports": findings.REPORTS.is_dir(),
         "reports_mtime": findings.reports_mtime(),
-        "findings_counts": findings.counts(ps),
+        "findings_counts": _findings_counts(who, ps),
         # ...and, for the row they land on, what those paths actually look
-        # like. Order matters: this reads what the call above computed.
-        "findings_heads": findings.heads(),
+        # like. Order matters: this reads what the call above computed. Empty
+        # for a session: a head is a fragment of a path from outside its
+        # project, which is the one thing it must not be shown.
+        "findings_heads": [] if (who or {}).get("session") else findings.heads(),
         # ...and whether there is a readable report at all, which is what the
         # Static analysis button and the Analysis tab ghost on.
         "reports_ok": findings.reports_ok(),
@@ -3576,8 +3592,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(snapshot(self._who()))
 
     def _get_findings(self):
-        """GET /api/findings."""
-        return self._json(findings.payload(project_list(self._who())))
+        """GET /api/findings.
+
+        Scoped by project_list, which for a session's token is the one project
+        it was minted for: a finding in anybody else's code attributes to
+        IGNORED and never reaches the payload. The count of what was
+        attributed away does not go either. For the operator it means "the
+        package store and the vendored trees"; for a session it would be every
+        other project on the share, and a number that moves when somebody
+        else's code changes is a fact about their code.
+        """
+        me = self._who() or {}
+        r = findings.payload(project_list(me))
+        mine = me.get("session")
+        if mine:
+            r.pop("aside", None)
+            # Positively its own, rather than "not obviously somebody else's".
+            # Attribution is by path component, so a report whose URIs are
+            # relative to a project root places NOTHING and every row would
+            # arrive here as unattributed: allowing those through would hand a
+            # session the whole box the first time a scanner is configured
+            # that way. A finding it cannot be told is in its own project is
+            # one it does not get.
+            for rep in r.get("reports") or []:
+                rep["findings"] = [f for f in rep["findings"] if f.get("project") == mine]
+        return self._json(r)
 
     def _get_git(self):
         """GET /api/git."""
@@ -4529,6 +4568,18 @@ class Handler(BaseHTTPRequestHandler):
         if argv[:2] == ["rules", "check"]:
             return self._json({"error": "bb rules check runs on the machine the session is on, "
                                         "not on the controller: run it there"}, 400)
+        # `bb findings --all` means every project in the scanner's report, and
+        # the report covers the whole share. The rest of this door keeps a
+        # session inside its own project; this flag walks straight out of it,
+        # and the reports live on the CONTROLLER, so a node's session cannot
+        # read them any other way and this is the only place to say no.
+        # Measured from a session, not supposed: it listed file paths out of
+        # three other projects' trees. Without the flag the same command
+        # answers for its own project, which is what a session wants anyway.
+        if (self._who() or {}).get("session") and argv[:1] == ["findings"] \
+                and any(a in ("-a", "--all") for a in argv[1:]):
+            return self._json({"error": "bb findings --all reads every project in the report, "
+                                        "and a session reads its own: run it without --all"}, 403)
         project = field(req, "project") or me.get("session") or ""
         if me.get("session") and project != me["session"]:
             return self._json({"error": "this session's token is for another project"}, 403)

@@ -952,6 +952,35 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
        { action: 'save', project: 'ep.silon', items: [] })).json()).error) || ''),
      '...and another project reads as absent, not refused');
 
+  // The scanner's report covers the whole share, so the Analysis surfaces are
+  // the one place a session could read somebody else's code back. The fixture
+  // report has a finding in alpha, in beta, in gamma, in delta, in two
+  // directories that are not projects, and one whose path places nowhere.
+  {
+    const fp = await (await as('/api/findings')).json();
+    const rows = (fp.reports || []).flatMap(r => r.findings || []);
+    ok(rows.length === 1 && rows[0].project === 'alpha' && rows[0].rule === 'A1',
+       `a session's findings are its own project's and no other (${
+         rows.map(r => `${r.project || '?'}:${r.rule}`).join(', ') || 'none'})`);
+    // Said of the whole payload, not just the rows: a project name in a
+    // subtitle or a count is the same leak in a smaller font.
+    const blob = JSON.stringify(fp);
+    const leaked = ['beta', 'gamma', 'delta', 'toolstore', 'vendored-junk', 'entirely.py']
+      .filter(w => blob.includes(w));
+    ok(leaked.length === 0,
+       `...and nothing else on the share is named anywhere in the payload (${
+         leaked.join(', ') || 'nothing leaked'})`);
+    ok(!('aside' in fp),
+       '...not even how many findings were held back, which would move when somebody else edits their code');
+    ok(JSON.stringify(fp.projects || []) === '["alpha"]',
+       `...and the projects it lists are its own (${JSON.stringify(fp.projects || [])})`);
+    // The same question of the poll, which carries its own copy of the counts.
+    const stat = await (await as('/api/status')).json();
+    ok(Object.keys(stat.findings_counts || {}).join(',') === 'alpha',
+       `the poll's finding counts are its project's alone (${
+         Object.keys(stat.findings_counts || {}).join(',') || 'none'})`);
+  }
+
   // The whole reason this exists: it is not the operator.
   for (const ep of ['/api/v1/nodes', '/api/packages', '/api/users']) {
     ok((await post(ep, { action: 'x' })).status === 403, `${ep} is closed to a session`);

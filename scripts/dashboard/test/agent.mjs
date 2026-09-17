@@ -524,6 +524,20 @@ print(json.dumps(sorted(os.listdir(d))))
     const added = await relay({ argv: ['roadmap', 'add', 'relayed from a node'], cwd: `${DIR}/ws/alpha` });
     ok(added.status === 200 && added.code === 0 && /added R\d+/.test(added.out),
        `a session's bb roadmap runs on the controller and answers (${(added.out || added.error || '').trim().slice(0, 60)})`);
+    // The scanner's reports live on the controller and cover the whole share,
+    // so a relayed `bb findings --all` is the one verb whose own flag walks
+    // out of the project this door keeps a session inside. Measured from a
+    // real session before this refusal existed: it listed file paths out of
+    // three other projects' trees.
+    const everyone = await relay({ argv: ['findings', '--all'], cwd: `${DIR}/ws/alpha` });
+    ok(everyone.status === 403 && /its own/.test(everyone.error || ''),
+       `a session's bb findings --all is refused, naming what it may read instead (${
+         (everyone.error || '').slice(0, 60)})`);
+    ok((await relay({ argv: ['findings', '-a'], cwd: `${DIR}/ws/alpha` })).status === 403,
+       '...by the short flag too, which is the same door');
+    ok((await relay({ argv: ['findings'], cwd: `${DIR}/ws/alpha` })).status === 200,
+       '...while its own project\'s findings go through');
+
     const listed = await relay({ argv: ['roadmap'] });
     ok(listed.code === 0 && /relayed from a node/.test(listed.out),
        '...against the project the token was minted for, with no cwd sent at all');
