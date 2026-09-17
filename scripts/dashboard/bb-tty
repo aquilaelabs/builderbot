@@ -857,8 +857,10 @@ case "$target" in
         #
         # Named rather than inferred: bb takes the project from the working
         # directory, and this is not run from one. A controller that is not
-        # answering makes this fail, which is caught here and simply means no
-        # block rather than no session.
+        # answering makes this fail, which is caught here so the session still
+        # starts; the else below is what says so, because an empty answer used
+        # to be an ordinary state (a project with nothing on its lists) and
+        # since the briefing joined it, empty means the fetch failed (B160).
         pre="$(BB_PROJECT="$proj" bb preamble --json 2>/dev/null || true)"
         todo_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
         # The block goes in a file now, so the kernel's argv ceiling is not
@@ -895,6 +897,11 @@ case "$target" in
                 echo "WARNING: could not write this session's briefing to ${pref};" >&2
                 echo "it starts without the rules, roadmap and bugs." >&2
             fi
+        else
+            echo "WARNING: could not fetch this session's briefing from the" >&2
+            echo "controller, so it starts with none: no house rules, no" >&2
+            echo "roadmap, no open bugs, and nothing about this machine." >&2
+            echo "\`bb status\` says whether the controller is answering." >&2
         fi
         # Where this session works (roadmap #24). The owner gets the project
         # directory; anybody else gets a worktree of their own on a branch of

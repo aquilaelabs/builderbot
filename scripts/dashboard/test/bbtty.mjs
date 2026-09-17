@@ -57,7 +57,11 @@ case "\${1:-}" in
   # the order a session reads them, with the cap applied. The real assembly is
   # preamble.py and is tested against the real stores in preamble.mjs; this
   # stands in for it so the SIZE stays the thing these cases control.
-  preamble) [ "\${2:-}" = --json ] && FAKE_PROMPT="\${FAKE_PROMPT:-0}" python3 -c '
+  # Nothing at all when asked for it: what a controller that is not answering
+  # looks like from here, which is the case the session must not start silently
+  # on (B160).
+  preamble) [ "\${FAKE_NO_PREAMBLE:-0}" = 1 ] && exit 0
+            [ "\${2:-}" = --json ] && FAKE_PROMPT="\${FAKE_PROMPT:-0}" python3 -c '
 import json, os
 n = int(os.environ.get("FAKE_PROMPT", "0")) // 50
 parts = ["THE HOUSE RULES"]
@@ -212,6 +216,22 @@ ok(refusedIn < 5000,
    `...promptly, rather than pausing for a terminal nobody is holding open (${refusedIn}ms)`);
 ok(/Projects card/.test(out),
    '...and says where to undo it, rather than only that it said no');
+
+// A briefing that could not be fetched is said out loud rather than started on.
+// The empty answer used to be an ordinary state, a project with nothing on its
+// lists, so it was allowed through in silence; since the briefing joined the
+// block, empty means the controller did not answer, and a session that starts
+// anyway knows none of the house rules, the roadmap, the open bugs or the
+// machine it is on. It still STARTS, because a briefing nobody can fetch is not
+// a reason to leave somebody without a terminal (B160).
+rmSync(LOCKS, { force: true });
+out = connect(0, { FAKE_NO_PREAMBLE: '1' });
+await sleep(400);
+ok(/could not fetch this session's briefing/.test(out) && /starts with none/.test(out),
+   'a briefing the controller did not answer for is said out loud, not passed over');
+ok(alive('claude-alpha'),
+   '...and the session starts anyway, because that is not a reason to refuse a terminal');
+try { execFileSync('tmux', ['kill-session', '-t', 'claude-alpha'], { env: { ...process.env, TMUX: '' } }); } catch { /* none */ }
 
 // No author, no session: an account with no name and email for commits is
 // told to fill in its Profile, here as well as on the ghosted button, for
