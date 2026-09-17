@@ -6195,6 +6195,14 @@ if argv and argv[0] == "add":
     n = len(changelog.unreleased(d))
     print(f"logged{' (new ' + changelog.FILE + ')' if r.get('created') else ''} — "
           f"{n} unreleased entr{'y' if n == 1 else 'ies'} now waiting for a bump")
+    # ...and that the file is now modified. An entry is stamped with the commit
+    # it describes, so it is written AFTER that commit and lands in the next
+    # one: every entry but a session's last gets swept up by the commit that
+    # follows it, and the last one sits in a dirty tree that Pull, Switch and
+    # Merge all refuse on (B162). Said rather than committed here, because the
+    # wording belongs with whatever commit the author is making next.
+    print(f"{changelog.FILE} is modified now: commit it with your next commit",
+          file=sys.stderr)
     raise SystemExit(0)
 
 if argv and argv[0] == "unreleased":
