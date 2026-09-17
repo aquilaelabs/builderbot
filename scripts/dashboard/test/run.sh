@@ -33,6 +33,31 @@ if [ "$(id -u)" = 0 ] && id builder >/dev/null 2>&1 && command -v runuser >/dev/
     exec runuser -u builder -- env HOME="$(getent passwd builder | cut -d: -f6)" \
         USER=builder bash "$0" "$@"
 fi
+# ...and never straight off the projects share. The server serves its own
+# code on every request and the suite reads its files as it goes, and
+# /workspace is NFS on every node and on the controller. Measured on an idle
+# box (load 0.06), same commit, same file: testreg.mjs takes 22.7s from the
+# share and fails its ten-second waits, and 8.9s from local disk and passes.
+# Two and a half times, which is the difference between a budget that holds
+# and one that does not, and it is why a run here could not be trusted (B124).
+#
+# So the run happens from a copy on local disk: the same bytes, uncommitted
+# work included, with the network out of the way. Left behind: the android
+# BUILD output, which is 73MB of the 87 and is nobody's input (appapi.mjs does
+# read android/api-surface.json and app/build.gradle.kts, so android itself
+# comes along); dist/, for the same reason; and .git, because nothing here runs
+# git against this repository, only against the fixtures it makes.
+# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
+if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
+   && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
+    _src="$(cd "$HERE/../../.." && pwd)"
+    _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
+    tar -C "$_src" -cf - --exclude=./.git --exclude=./dist \
+        --exclude=./android/app/build --exclude=./android/build . \
+        | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
+    printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
+    BB_TEST_COPY="$_dst" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
+fi
 DASH="$(dirname "$HERE")"
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
@@ -204,6 +229,15 @@ cleanup() {
     # inside them looked like, and they used to go with the run that made it.
     [ -n "${BB_TEST_KEEP:-}" ] && log "scratch kept at $S" || rm -rf "$S"
     [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    # ...and the local copy this run was made from, if it was made from one.
+    # cd out of it first: this script is inside what it is removing. Kept with
+    # the scratch dir under BB_TEST_KEEP, since a failure in the copy is read
+    # in the copy.
+    if [ -n "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_KEEP:-}" ]; then
+        cd / && rm -rf "$BB_TEST_COPY"
+    elif [ -n "${BB_TEST_COPY:-}" ]; then
+        log "the tree it ran from is kept at $BB_TEST_COPY"
+    fi
 }
 
 # ---- fixtures --------------------------------------------------------------
