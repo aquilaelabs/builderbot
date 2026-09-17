@@ -6901,52 +6901,6 @@ class Handler(BaseHTTPRequestHandler):
                                else f"{len(lines)} commands"})
 
 
-# MIGRATION, and nothing else: delete this once the boxes that mattered have
-# started once on a build that carries it (R63 step 3). Kept as its own
-# function with its own name so it is one thing to remove rather than a line
-# to find.
-#
-# The environment block used to be rendered into every project as
-# CLAUDE.local.md, and Claude Code loads that file whether or not BuilderBot
-# still writes it. Left behind, every session would keep reading a 53KB block
-# that nothing updates any more, beside the briefing that replaced it: the
-# duplication is the whole cost this change was meant to remove.
-#
-# Only a file that is ENTIRELY the block: first line the begin marker, last
-# the end marker, nothing outside them. That is what the renderer wrote and
-# only what it wrote. A block sitting inside a committed CLAUDE.md is left
-# alone on purpose. Removing one of those means editing a file somebody's
-# repository carries, which is a commit to their history and theirs to make
-# (R50 step 2), not something a server does on its way up.
-ENV_BEGIN = "<!-- BUILDERBOT:ENV:BEGIN -->"
-ENV_END = "<!-- BUILDERBOT:ENV:END -->"
-
-
-def sweep_rendered_blocks():
-    gone = []
-    try:
-        dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
-    except OSError:
-        return
-    for d in dirs:
-        f = d / "CLAUDE.local.md"
-        try:
-            if not f.is_file():
-                continue
-            lines = f.read_text().strip().split("\n")
-            if not lines or lines[0].strip() != ENV_BEGIN or lines[-1].strip() != ENV_END:
-                continue          # something else is in there: leave it
-            f.unlink()
-            gone.append(d.name)
-        except OSError:
-            continue
-    if gone:
-        print("dashboard: removed the rendered environment block from "
-              + ", ".join(sorted(gone))
-              + ": what a session is told is assembled per session now (R63)",
-              flush=True)
-
-
 def main():
     # No accounts is a normal first boot, not a failure. It used to be one:
     # the owner came from DASHBOARD_AUTH and the dashboard refused to start
@@ -6962,7 +6916,6 @@ def main():
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
     prune_claude_tabs()
-    sweep_rendered_blocks()
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()
