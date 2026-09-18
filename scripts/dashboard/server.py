@@ -5793,6 +5793,16 @@ class Handler(BaseHTTPRequestHandler):
         if self._not_project(name):
             return
         act = field(req, "action")
+        # B173: this is the panel's, and `by="operator"` below is only true of
+        # an administrator at it. A session moves its version with bb version
+        # bump, under the project's policy, and never here, where it could
+        # also have loosened that policy; a plain account may ask a session
+        # to bump and no more.
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a session moves its version with bb version bump, "
+                                        "under the project's policy"}, 403)
+        if act != "ask" and self._refused("version", name):
+            return None
         if act == "bump":
             r = version.bump(name, field(req, "part"), by="operator", env=users.git_env(self._who(), name),
                              comp=field(req, "component") or "")
@@ -6776,6 +6786,8 @@ class Handler(BaseHTTPRequestHandler):
     def _pin(self, req):
         """Pin or unpin a command. Names are keys from MACROS, so this file can
         never grow an entry the card would not know what to do with."""
+        if self._refused("pin"):
+            return None
         name, on = req.get("name", ""), bool(req.get("pinned"))
         if name not in MACROS:
             return self._json({"error": f"unknown macro: {name}"}, 400)
@@ -6828,6 +6840,11 @@ class Handler(BaseHTTPRequestHandler):
         "no session of its own", not a sandbox. The tooltip says so.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
+        # A project this account was given, and the right (B174): a lock ends
+        # whoever's Claude session is running there, so it is not a tester's
+        # and not a session's.
+        if self._not_project(name) or self._refused("lock", name):
+            return None
         try:
             here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
         except OSError:
@@ -6939,6 +6956,10 @@ class Handler(BaseHTTPRequestHandler):
         subprocess per dialog is nothing; one per project per poll is not.
         """
         name = req.get("name", "")
+        # The rename dialog's question, about a project this account sees
+        # (B175): it says how the project's remote authenticates.
+        if self._not_project(name) or self._refused("rename", name):
+            return None
         if not PROJECT_NAME.fullmatch(name or ""):
             return self._json({"error": "unknown project"}, 400)
         d = WORKSPACE / name
@@ -6957,6 +6978,9 @@ class Handler(BaseHTTPRequestHandler):
         one: until then there is no file, which means "all of them", and
         saving a single removal would have read as "only this one is pinned".
         """
+        # One set for everybody, so an administrator's (B175).
+        if self._refused("pin"):
+            return None
         name, on = req.get("name", ""), bool(req.get("pinned"))
         try:
             here = {d.name for d in WORKSPACE.iterdir()
@@ -6982,6 +7006,8 @@ class Handler(BaseHTTPRequestHandler):
         session = req.get("session", "")
         if req.get("action") != "kill":
             return self._json({"error": "unknown action"}, 400)
+        if self._not_theirs(session):
+            return None
         # Already gone is already ended. The check is here so an arbitrary name
         # never becomes a `-t` argument, which holds either way — nothing runs
         # for a name that is not a live session. Answering with an error
@@ -7003,6 +7029,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
+    def _not_theirs(self, session):
+        """True, with the 403 written, when this account may not act on that
+        session: end it, press a key in it or type a macro into it (B172).
+
+        A session is its owner's. Its name says whose (u_<uid>~...), and the
+        owner's own on this container keep bare names, so a bare name is the
+        owner's. Nobody acts on anybody else's, administrators included: a
+        key in another person's Claude session is an answer to a question
+        it asked them. A session's token is held to its own project as well,
+        the way everything else it does is.
+        """
+        who = self._who() or {}
+        mine = users.uid_of(who)
+        owner = tmux_owner(session) or users.uid_of(users.get(users.owner_name() or ""))
+        ok = bool(mine) and owner == mine
+        if ok and who.get("session"):
+            base = tmux_base(session)
+            stem = base.split("-", 1)[1] if "-" in base else ""
+            proj = tmux_name(who["session"])
+            ok = stem == proj or stem.startswith(proj + "-")
+        if not ok:
+            self._json({"error": "that session is not yours"}, 403)
+        return not ok
+
     def _session_on_node(self, session, node=""):
         """The node session row this page-name means, or None — for the
         three key paths, which type into a node's session through its
@@ -7014,6 +7064,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _keys(self, req):
         session, key = req.get("session", ""), req.get("key", "")
+        if self._not_theirs(session):
+            return None
         on_node = self._session_on_node(session, str(req.get("node") or ""))
         if on_node:
             # The same table, queued for the node's agent (roadmap #24); the
@@ -7176,6 +7228,8 @@ class Handler(BaseHTTPRequestHandler):
         """
         session, name, cid = (req.get("session", ""), req.get("macro", ""),
                               req.get("custom", ""))
+        if self._not_theirs(session):
+            return None
         if cid:
             m = next((x for x in load_custom() if x["id"] == cid), None)
             if not m:

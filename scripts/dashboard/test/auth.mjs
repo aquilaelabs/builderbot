@@ -1168,6 +1168,59 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     }
     ok(JSON.stringify(asUser.project_job) === '{}' && typeof asOwner.project_job?.running === 'boolean',
        `...and its status carries no project job to draw, while an administrator's does (${JSON.stringify(asUser.project_job)})`);
+    // B172: a session is its owner's. The name says whose (u_<uid>~...),
+    // and the owner's own here keep bare names; nobody ends, keys or types
+    // into anybody else's. Decided before the session is looked up, so a
+    // name is enough to ask with.
+    const ownerAuth = { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const act = async (h, path, body) => {
+      const r = await bare(path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+      return { status: r.status, error: ((await r.json().catch(() => ({}))).error || '') };
+    };
+    for (const [path, body] of [['/api/keys', { session: 'claude-alpha', key: 'enter' }],
+                                ['/api/session', { action: 'kill', session: 'claude-alpha' }],
+                                ['/api/send', { session: 'shell-alpha-1', macro: 'status' }]]) {
+      const r = await act(plainAuth, path, body);
+      ok(r.status === 403 && /not yours/.test(r.error), `a plain account cannot use ${path} on the owner's session (${r.status})`);
+    }
+    const other = await act(ownerAuth, '/api/keys', { session: 'u_0badf00d~claude-alpha', key: 'enter' });
+    ok(other.status === 403, `...nor can the owner press a key in another account's session (${other.status})`);
+    const own = await act(ownerAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    ok(own.status !== 403, `...while the owner still reaches their own (${own.status}: ${own.error.slice(0, 40)})`);
+    const { execFileSync: ef } = await import('node:child_process');
+    const ownerUid = JSON.parse((await import('node:fs')).readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    const stok = ef('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${new globalThis.URL('..', import.meta.url).pathname}users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim();
+    const sessAuth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + stok };
+    const across = await act(sessAuth, '/api/keys', { session: 'claude-beta', key: 'enter' });
+    ok(across.status === 403, `a session's token cannot reach its own account's session on another project (${across.status})`);
+    const home = await act(sessAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    ok(home.status !== 403, `...and does reach its own project's (${home.status})`);
+    // B173-B175: what acts on a project by name asks the right as well as
+    // the name. A plain account given alpha cannot lock it, move the shared
+    // pins, read how its remote authenticates, or move its version; the
+    // version panel is closed to a session's token outright.
+    await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
+    for (const [path, body, why] of [
+        ['/api/lock', { name: 'alpha', locked: true }, /administrator's/],
+        ['/api/project-pin', { name: 'alpha', pinned: true }, /administrator's/],
+        ['/api/pin', { name: 'status', pinned: true }, /administrator's/],
+        ['/api/project-auth', { name: 'alpha' }, /administrator's|rename/],
+        ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /administrator's/],
+        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/]]) {
+      const r = await act(plainAuth, path, body);
+      ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
+    }
+    const lockBeta = await act(plainAuth, '/api/lock', { name: 'beta', locked: true });
+    ok(lockBeta.status === 400 && /not a project/.test(lockBeta.error),
+       `...nor lock a project it was not given, which it is not told exists (${lockBeta.status})`);
+    const vs = await act(sessAuth, '/api/version', { project: 'alpha', action: 'policy', policy: 'any' });
+    ok(vs.status === 403 && /bb version bump/.test(vs.error),
+       `a session's token cannot use the version panel, where it could loosen its own policy (${vs.status})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,

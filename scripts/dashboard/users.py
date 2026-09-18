@@ -409,7 +409,7 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
 USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
-               "docker-write", "packages-write", "jobs")
+               "docker-write", "packages-write", "jobs", "lock", "pin", "version")
 
 
 def sees_all(u):
@@ -514,6 +514,13 @@ def may(u, action, project=None):
     if action in USER_DENIES:
         return {"rename": "renaming a project is an administrator's",
                 "trash": "deleting a project is an administrator's",
+                "lock": "locking a project is an administrator's: it ends whoever's "
+                        "Claude session is running there",
+                "pin": "the pins are one set for everybody on this controller, so "
+                       "moving them is an administrator's",
+                "version": "moving a project's version, releasing it or changing who may "
+                           "is an administrator's: a release pushes a tag with the "
+                           "project's own credentials",
                 "jobs": "running a command on a node is an administrator's: a job "
                         "runs outside every session's view, as the node's own "
                         "account, so it reaches everything on that machine",

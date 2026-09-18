@@ -7228,18 +7228,20 @@ function projectRow(p, live, cls, inTab){
         title="settings: the name, its node, and what Claude runs on here.
 Renaming moves the directory and everything keyed to it">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
-        data-on="${p.locked ? "0" : "1"}"
+        data-on="${p.locked ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
         aria-label="${p.locked ? "unlock" : "lock"}"
-        title="${p.locked
+        title="${state?.admin === false ? "locking a project is an administrator's"
+          : p.locked
           ? "unlock: let Claude start sessions here and write its notebook again"
           : "lock: keep this project and run it yourself. No Claude session "
             + "starts here and its notebook goes read-only. Everything you do "
             + "yourself still works: the findings, the artifacts, a dev instance"}"
         >${p.locked ? LOCK : LOCK_OPEN}</button>
       ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
-        data-on="${p.pinned ? "0" : "1"}"
+        data-on="${p.pinned ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
         aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${p.pinned
+        title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
+          : p.pinned
           ? "unpin: take it off the sidebar. It keeps every control here on "
             + "the Projects tab; this is only about where you meet it"
           : "pin: show it on the sidebar's Projects card"}"
@@ -7691,7 +7693,7 @@ function drawCommands(){
       <button data-m="${esc(m.name)}" title="bb ${esc(m.label)}: runs in the terminal"
         >${esc(m.label)}</button>
       <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}"
-        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"
+        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"${state?.admin === false ? " disabled" : ""}
         title="${on ? "unpin: let it fall back into the list"
                     : "pin: keep it at the top of this card"}">${TACK}</button>
     </span>`;
