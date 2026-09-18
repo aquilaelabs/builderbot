@@ -109,4 +109,44 @@ const lostC = wantC.filter(t => seen(t) === 0), twiceC = wantC.filter(t => seen(
 ok(!lostC.length && !twiceC.length && /^# /.test(log),
    `every changelog entry landed exactly once and the file is whole (${wantC.length} logged${lostC.length ? `, lost ${lostC.length}: ${lostC.slice(0, 3).join(', ')}` : ''}${twiceC.length ? `, twice ${twiceC.length}` : ''})`);
 
+// ---- the hooks every prompt fires, from every session at once ------------
+// A session's hooks call the controller on each prompt and each edit: a note
+// of the file it is about to change (which is how two people meet on one
+// file), a question it asked, that it started, and what it has not been told
+// about the notebook yet. Six sessions prompting together is these arriving
+// together; every one must answer, the meeting on a shared file must be
+// said, and nothing asked may go missing from the feed.
+{
+  const hook = (t, body) => req('POST', '/api/v1/hook', { project: 'alpha', ...body }, 'Bearer ' + t);
+  const hjobs = [];
+  for (const [who, t] of sessions) {
+    hjobs.push(hook(t, { kind: 'started' }).then(r => ({ who, kind: 'started', r })));
+    for (let i = 0; i < 8; i++) {
+      hjobs.push(hook(t, { kind: 'note', path: 'shared/app.js' }).then(r => ({ who, kind: 'note', r })));
+      hjobs.push(hook(t, { kind: 'note', path: `own/${who}-${i}.js` }).then(r => ({ who, kind: 'note', r })));
+      hjobs.push(hook(t, { kind: 'seen' }).then(r => ({ who, kind: 'seen', r })));
+    }
+    for (let i = 0; i < 3; i++)
+      hjobs.push(hook(t, { kind: 'asked', text: `cc ${who} asked ${i}` }).then(r => ({ who, kind: 'asked', r })));
+  }
+  const hs = await Promise.all(hjobs);
+  const bad = hs.filter(x => x.r.status !== 200 || !x.r.ok);
+  ok(bad.length === 0, `${hs.length} hooks from ${sessions.length} prompting sessions at once all answered${
+    bad.length ? `: ${bad.slice(0, 3).map(x => `${x.who} ${x.kind} ${x.r.status} ${(x.r.error || '').slice(0, 40)}`).join(' | ')}` : ''}`);
+  // The meeting: somebody else is on shared/app.js, by name, for somebody.
+  const met = hs.filter(x => x.kind === 'note' && (x.r.others || []).length);
+  ok(met.length > 0 && met.some(x => x.r.others.some(o => /cc\.|test/.test(o))),
+     `two people on one file are told about each other (${met.length} notes named somebody else)`);
+  const feed = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("chat", ${JSON.stringify(join(HERE, 'chat.py'))})
+c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+c.configure(state=${JSON.stringify(join(DIR, 'state'))}, write_json=lambda p, d: None)
+print(json.dumps(c.feed("alpha")))`], { encoding: 'utf8' }).trim().split('\n').pop());
+  const text = JSON.stringify(feed);
+  const asked = sessions.flatMap(([who]) => [0, 1, 2].map(i => `cc ${who} asked ${i}`));
+  const missing = asked.filter(a => !text.includes(a));
+  ok(missing.length === 0, `every question a session asked is in the project's feed (${asked.length}${missing.length ? `, missing: ${missing.slice(0, 3).join(', ')}` : ''})`);
+}
+
 await done();
