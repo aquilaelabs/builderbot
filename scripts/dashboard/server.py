@@ -2710,7 +2710,10 @@ def snapshot(who):
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
-        "project_job": projects.job(),
+        # The clone or link in flight, for whoever may start one (B171): it
+        # names a project the account may not have been given, and its
+        # buttons are that account's.
+        "project_job": {} if users.may(who, "create") else projects.job(),
         "max_tabs": max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": settings.payload(),
@@ -6436,7 +6439,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(body, code)
 
     def _project_job(self, req):
-        """Stop the running project job, or clear the last one's outcome."""
+        """Stop the running project job, or clear the last one's outcome.
+
+        The create gate, as for starting one (B171): a clone or a link is the
+        create dialog's, and without it any account could stop an
+        administrator's clone halfway or clear a failure before they read it.
+        """
+        if self._refused("create"):
+            return None
         act = req.get("action", "")
         if act == "abort":
             return self._json(projects.abort())

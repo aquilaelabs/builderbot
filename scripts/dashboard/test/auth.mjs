@@ -1158,6 +1158,16 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
       ok(r.status === 403 && /administrator's/.test(why),
          `a plain account cannot queue a ${body.action} job, which would run outside every view (${r.status}: ${why.slice(0, 50)})`);
     }
+    // ...nor stop or clear the project job (B171): a clone or a link is the
+    // create dialog's, and so is its Abort and its Dismiss.
+    const plainAuth = { 'Content-Type': 'application/json',
+      Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') };
+    for (const action of ['abort', 'dismiss']) {
+      const r = await bare('/api/project-job', { method: 'POST', headers: plainAuth, body: JSON.stringify({ action }) });
+      ok(r.status === 403, `a plain account cannot ${action} the project job somebody else started (${r.status})`);
+    }
+    ok(JSON.stringify(asUser.project_job) === '{}' && typeof asOwner.project_job?.running === 'boolean',
+       `...and its status carries no project job to draw, while an administrator's does (${JSON.stringify(asUser.project_job)})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
