@@ -33,6 +33,7 @@
 - Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
 - A polish pass on phones, foldables and desktop: dialogs that drew flush or showed controls with nothing to act on, dropdown text running past the arrow, a cut-off bottom bar on narrow phones, and small touch targets across the tab strip, dialogs and notebook (9da871c)
 - Updating the controller now reloads an open dashboard with the new code, where it used to show the new version's changelog over the old page until a manual reload (c4b1e0c)
+- Each person picks the time zone the dashboard shows times in, per browser, on the Profile tab; the container's TZ is optional and only sets its own clock for logs and file names (f1d6384)
 
 ### Upgrading
 
