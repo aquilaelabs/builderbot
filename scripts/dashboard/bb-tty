@@ -364,9 +364,13 @@ claude_scope() {
     # rotates the token and retires every other copy, and until that hook the
     # only thing that ever synced was this script, on a connection (B100). bb-check-relay runs, when the session is about to stop, the
     # checks of the house rules whose files it changed, and refuses the stop
-    # while one fails (roadmap R31). All three swallow every failure of their
-    # own: a note is never worth an edit and a line is never worth a turn.
-    # Their headers have the arguments.
+    # while one fails (roadmap R31). bb-gate --turn holds a prompt until the
+    # node's limit on sessions working at once has a turn free (turns.py),
+    # and --turn-done on Stop hands it back. Its timeout is its own: a
+    # UserPromptSubmit hook gets thirty seconds otherwise, and one that runs
+    # out lets the prompt through uncounted. All of them swallow every failure
+    # of their own: a note is never worth an edit and a line is never worth a
+    # turn. Their headers have the arguments.
     # The hooks by a name that outlives this bundle (B120). On a node bb-tty
     # runs from .bb/<digest>, and the settings file is read once, when claude
     # starts, so a path resolved there kept a session on the hooks it began
@@ -410,12 +414,15 @@ claude_scope() {
               {hooks: [{type: "command",
                         command: "\($relay) \($proj) \($who)"},
                        {type: "command",
-                        command: "\($gate) --prompt \($proj) \($who)"},
+                        command: "\($gate) --turn \($proj) \($who) --wait 840",
+                        timeout: 900, statusMessage: "Waiting for a turn on this node"},
                        {type: "command",
                         command: "\($keep) \($proj) \($who)"}]}],
               Stop: [
               {hooks: [{type: "command",
-                        command: "\($check) \($proj) \($who)", timeout: 3600}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
+                        command: "\($check) \($proj) \($who)", timeout: 3600},
+                       {type: "command",
+                        command: "\($gate) --turn-done \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0

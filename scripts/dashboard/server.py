@@ -1845,6 +1845,46 @@ def node_tmux_sessions():
     return rows
 
 
+def node_heart(n):
+    """(tmux names working, when that was seen) from a node's last heartbeat:
+    a Claude pane whose title carries the spinner. A node that has stopped
+    answering shows nothing working, since what it said last is not true any
+    more."""
+    rep = n.get("reported") or {}
+    heart = set()
+    if n.get("live"):
+        for r in rep.get("sessions") or []:
+            name = str((r or {}).get("name") or "")
+            if tmux_base(name).startswith("claude-") \
+                    and claude_state(str((r or {}).get("title") or ""))[0] == "working":
+                heart.add(name)
+    return heart, float((rep.get("sample") or {}).get("at") or 0)
+
+
+def turn_scope(project, uid):
+    """(node id, key, limit, heart, at) for a turn of `uid`'s session on
+    `project` (turns.py), or None when there is no node to count on: the
+    project runs on no agent node, so nothing here is the machine a session
+    works on. The key is the session's tmux name on the node, which is what
+    the heartbeat reports it as."""
+    if NODES_OK:
+        return None
+    nid = prefs.get(project)["node"]
+    n = nodes.node(nid) if nid else None
+    if not n or n["kind"] != "agent":
+        return None
+    heart, at = node_heart(n)
+    return nid, f"{uid}~{claude_session(project)}", nodes.turn_limit(nid), heart, at
+
+
+def node_turns(n):
+    """What a node's row says about its sessions' turns: how many are working
+    and waiting now, and the limit."""
+    st = turns.state(n["id"], *node_heart(n))
+    return {"working": len(st["working"]), "waiting": st["waiting"],
+            "limit": nodes.turn_limit(n["id"])}
+
+
 def last_claude(project_dir):
     """The most recent Claude transcript for a working directory, or None.
 
@@ -2324,6 +2364,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 import devapp                                                    # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
+import turns                                                     # noqa: E402
 
 # The node data plane first, because devapp's job claim asks it which node
 # work belongs to. Guarded: a database that will not open (a corrupt file, a
@@ -4018,8 +4059,11 @@ class Handler(BaseHTTPRequestHandler):
         # ones its own projects build on and no others, because the list
         # is otherwise a way to learn what machines exist and what they
         # are called (roadmap #27). An administrator sees the registry.
-        return self._json({"nodes": self._nodes_for(nodes.node_list()),
-                           "agent": nodes.agent_shipped()})
+        rows = self._nodes_for(nodes.node_list())
+        for n in rows:
+            if n.get("kind") == "agent":
+                n["turns"] = node_turns(n)
+        return self._json({"nodes": rows, "agent": nodes.agent_shipped()})
 
     def _get_jobs(self):
         """GET /api/v1/jobs."""
@@ -4440,6 +4484,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_log_grant(self._principal(), nid,
                                      req.get("from") if isinstance(req.get("from"), list) else [],
                                      diag=req["diag"] if isinstance(req.get("diag"), bool) else None)
+        elif act == "turns":
+            # How many Claude sessions on the node may work at once; 0 for
+            # no limit. An administrator's, like the rest of this handler.
+            r = nodes.node_turn_limit(self._principal(), nid, req.get("limit"))
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -4736,7 +4784,23 @@ class Handler(BaseHTTPRequestHandler):
             line = " ".join(x for x in (todo.catchup(project, uid),
                                         pending.settled_line(project)) if x)
             return self._json({"ok": True, "line": line})
-        return self._json({"error": "a hook is note, asked, started or seen"}, 400)
+        if kind in ("turn", "turn-done"):
+            # A prompt about to start, or a turn over (turns.py): how many
+            # sessions on one node work at once, when an administrator has
+            # said. No node to count on, or no limit, and every turn goes.
+            scope = turn_scope(project, uid)
+            if not scope:
+                return self._json({"ok": True, "go": True})
+            nid, key, limit, heart, at = scope
+            if kind == "turn-done":
+                turns.done(nid, key)
+                return self._json({"ok": True})
+            r = turns.ask(nid, key, limit, heart, at)
+            if not r["go"]:
+                n = nodes.node(nid) or {}
+                r["node"] = n.get("name") or nid
+            return self._json({"ok": True, **r})
+        return self._json({"error": "a hook is note, asked, started, seen, turn or turn-done"}, 400)
 
     def _bb_relay(self, req):
         """A bb verb from a session on a NODE, run here (roadmap #24).

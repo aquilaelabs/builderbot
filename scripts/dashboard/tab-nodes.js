@@ -325,9 +325,35 @@ function nodeSessionsSection(n){
         : iso.sessions ? `<div class="sub">Each session here sees only its own project: its tree, logs, cache and processes.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}:
-        listed on the Sessions card, and ended from there</div>` : ""}`;
+        listed on the Sessions card, and ended from there</div>` : ""}
+      ${nodeTurnsRow(n)}`;
   }
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
+}
+
+// How many Claude sessions here may work on a prompt at once (turns.py on
+// the controller). What is working and waiting now is on the status line,
+// so the number is set against what the machine is actually doing. The
+// typed value is a draft, kept across the repaints a poll brings.
+function nodeTurnsRow(n){
+  const t = n.turns || {};
+  const have = String(t.limit || 0);
+  const c = nodeDraft(n);
+  if (c.draft.turnsText === undefined || c.draft.turnsFrom !== have){
+    c.draft.turnsText = have; c.draft.turnsFrom = have;
+  }
+  const now = `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${
+    t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
+  const inp = `ndTurns-${n.id}`;
+  return `<div class="logdays setrow col">
+      ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
+      <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
+        value="${esc(c.draft.turnsText)}">
+    </div>
+    <div class="actbar">
+      <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
+      <button type="button" data-nd="turns" title="save the limit: the next prompt here is held to it">Save</button>
+    </div>`;
 }
 
 // The node's path mapping (docs/nodes.md §11): what this container's paths
@@ -1211,7 +1237,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
                retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
-               rename: "Renaming"}[act] || "Working");
+               rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -1229,6 +1255,15 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (j.error) return notify(j.error, true);
         const c = nodesConf[id]; if (c && c.draft) c.draft.nameText = undefined;
         notify(`${was} is now ${name}. A runner already installed there keeps the label ${was} until it is reinstalled.`);
+        return;
+      }
+      if (act === "turns"){
+        const inp = box.querySelector('[data-k="turns"]');
+        const j = await nodeAct({action: "turns", id, limit: Number(inp ? inp.value : 0)});
+        if (j.error) return;
+        const c = nodesConf[id]; if (c && c.draft) c.draft.turnsText = undefined;
+        notify(j.limit ? `at most ${j.limit} Claude session${j.limit === 1 ? "" : "s"} work here at once`
+                       : "no limit on Claude sessions working here at once");
         return;
       }
       if (act === "paths"){
@@ -1272,6 +1307,14 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       pi.onfocus = () => { nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
       pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
                            nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+    }
+    // The same for the limit on sessions working at once, in the Sessions
+    // section: a number is typed across a heartbeat as easily as a path.
+    const ti = box.querySelector('[data-k="turns"]');
+    if (ti){
+      ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
+      ti.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.turnsText = ti.value;
+                           nodesFocus = {id, key: "turns"}; };
     }
   });
   // The field that had the caret before this repaint gets it back: the

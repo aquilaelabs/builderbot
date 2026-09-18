@@ -35,6 +35,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import names   # noqa: E402
 import db   # noqa: E402
+import turns   # noqa: E402
 from db import _exec, _lock, _rows, audit, mint   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -1228,6 +1229,32 @@ def node_log_grant(principal, node_id, from_ids, diag=None):
     _touch(node_id, principal, "node-log-grant",
            {"from": want, "self": node_id in want, "diag": bool(conf.get("diag"))})
     return {"ok": True, "log_from": want, "diag": bool(conf.get("diag"))}
+
+
+def node_turn_limit(principal, node_id, limit):
+    """How many Claude sessions on this node may work on a prompt at once
+    (turns.py): 0 for no limit. An administrator's, like the rest of the
+    config plane; a session that could raise its own node's limit would make
+    it a suggestion."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    want = turns.limit_of(limit)
+    if want is None:
+        return {"error": f"a limit is a whole number from 0 (none) to {turns.LIMIT_MAX}"}
+    conf = dict(n.get("config") or {})
+    conf["turns"] = want
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-turn-limit", {"limit": want})
+    return {"ok": True, "limit": want}
+
+
+def turn_limit(node_id):
+    """The limit set on a node, 0 when none is."""
+    n = node(node_id)
+    return turns.limit_of(((n or {}).get("config") or {}).get("turns")) or 0
 
 
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,

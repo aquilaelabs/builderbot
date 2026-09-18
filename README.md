@@ -3629,6 +3629,20 @@ is proxied, not only in the page, because the ttyd URL is reachable directly.
 The notebook (roadmap, bugs, analysis) stays shared, because it is about the
 project; memories do not, because they are about the person.
 
+**How many sessions work at once is a node's to limit**, not a project's:
+what a working session costs is the machine's (Claude Code itself, and the
+builds and tests it runs), several projects share a node, and each Anthropic
+account's own limits are already its own. An administrator sets it in the node's
+**Sessions** section on the Nodes tab, where the line beside it says how many are
+working and waiting now; 0, the default, is no limit. A prompt past the limit
+is not thrown away: it waits for a turn ("Waiting for a turn on this node" under
+the prompt), and the turns go in the order they were asked for. One that has
+waited fourteen minutes is refused with a sentence naming the node and the
+limit, since a UserPromptSubmit hook is cut off at fifteen. A session counts as
+working from the moment its prompt is let through until it stops, and also
+whenever its pane's title shows Claude working, so a session opened before the
+limit existed, or one that was interrupted, is counted by what it is doing.
+
 **A `user` has no shell and no command line at all**, and that is what makes
 the rest of the role mean something: everything else is enforced by the
 dashboard, in Python, and a terminal is the way around all of it. So a `user`

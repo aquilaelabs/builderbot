@@ -996,6 +996,18 @@ print(uid)`);
       const fromCheckout = join(realpathSync(join(import.meta.dirname, '..')), 'bb-gate');
       ok(scopeOf().includes(`${fromCheckout} ${proj} `),
          'run from a checkout, which has no .bb/current, the hooks keep the path they always had');
+      // A prompt waits for a turn on the node (turns.py) under a timeout of
+      // its own, since a UserPromptSubmit hook gets thirty seconds otherwise
+      // and one that runs out lets the prompt through uncounted; Stop hands
+      // the turn back.
+      {
+        const h = JSON.parse(scopeOf());
+        const prompt = (h.UserPromptSubmit || []).flatMap(g => g.hooks || []).find(x => /bb-gate --turn /.test(x.command));
+        const stop = (h.Stop || []).flatMap(g => g.hooks || []).find(x => /bb-gate --turn-done /.test(x.command));
+        ok(prompt && prompt.timeout > 840 && / --wait 840$/.test(prompt.command) && prompt.statusMessage
+           && stop && stop.command.endsWith(`--turn-done ${proj} ${ownerUid}`),
+           `a prompt asks for a turn and waits under its own timeout, and Stop hands it back (${prompt?.timeout}, ${!!stop})`);
+      }
       tmuxKill(`${ownerUid}~claude-${proj}`);
       try {
         execFileSync('bash', [join(digest, 'scripts', 'dashboard', 'bb-tty'), `u:${ownerUid}:claude:${proj}:b:${boot}`,
