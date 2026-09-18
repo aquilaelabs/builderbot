@@ -446,6 +446,8 @@ bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
 bb findings sample [--remove]   write a clearly-fake report, so the Analysis
                       surfaces can be worked on where no scanner runs
+bb token keep      store BB_TOKEN where this account's sessions on this
+                   machine read it; the agent runs it for an idle session
 bb roadmap            this project's roadmap: items are R1, R2, ...; bugs are B1, B2
 bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned

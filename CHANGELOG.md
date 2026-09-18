@@ -20,6 +20,7 @@
 - A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
 - Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
 - A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
+- A Claude session's token no longer dies under it while the session is idle: the machine it runs on is handed a fresh one on its heartbeat, so a token lives as long as its tmux session does and none is ever accepted past its expiry (dc01fb7)
 
 ### Upgrading
 

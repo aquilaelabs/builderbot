@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.78"
+AGENT_VERSION = "0.5.79"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2652,6 +2652,56 @@ class Agent:
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
 
+    def keep_session_tokens(self, rows):
+        """Store each live session's fresh token where that session reads it.
+
+        Handed to the BUNDLE's own `bb token keep` rather than written here,
+        and as the session account rather than the job one. Both halves of
+        "where does this token go" already live in bb: which home this
+        BuilderBot account has on this machine (user_home) and what the cache
+        file is called (bbapi.keep_token). A copy of either here would be a
+        second thing to keep in step with the controller, which is the fault
+        claudegrant.py was written to stop repeating.
+
+        Best effort and quiet: a token that could not be kept is a token that
+        expires on schedule, which is what happened before this existed.
+        """
+        if not isinstance(rows, list) or not rows:
+            return
+        who_name = self.session_account()
+        if not who_name:
+            return
+        # The copy already unpacked for this node's sessions, never a fetch:
+        # this runs on the heartbeat, and `bundle()` pulls from the controller
+        # every time it is called. `.bb/current` is what a shell here puts on
+        # its PATH, so it is the same bb the session itself runs.
+        store = pkg_root(self.state)
+        bb = os.path.join(store, ".bb", "current", "bb") if store else ""
+        if not bb or not os.access(bb, os.X_OK):
+            return
+        env0 = dict(os.environ)
+        try:
+            who = self.as_user(env0, who_name)
+        except RuntimeError:
+            return
+        for row in rows[:64]:
+            project = str((row or {}).get("project") or "")
+            uid = str((row or {}).get("uid") or "")
+            token = str((row or {}).get("token") or "")
+            if not project or not token or "/" in project:
+                continue
+            env = dict(env0)
+            env.update({"BUILDER_HOME": env.get("HOME", ""), "BB_ACCOUNT_UID": uid,
+                        "BB_PROJECT": project, "BB_TOKEN": token,
+                        "BUILDERBOT_ROLE": "node"})
+            try:
+                subprocess.run([bb, "token", "keep"],
+                               env=env, capture_output=True, timeout=20, check=False,
+                               **({"user": who["user"], "group": who["group"],
+                                   "extra_groups": who["extra_groups"]} if who else {}))
+            except (OSError, subprocess.SubprocessError):
+                return
+
     # -- the channel -------------------------------------------------------
     def hello(self):
         # `running` is the list of job ids this process still holds. The
@@ -2692,6 +2742,13 @@ class Agent:
                 self.state["session_idle_minutes"] = im
                 save_state(self.state)
                 log(f"sessions: idle rule is {im} minute(s)" if im else "sessions: no idle rule")
+            # Fresh credentials for the Claude sessions alive here (R27). A
+            # session that is talking slides its own token forward on every
+            # answer it gets; one sitting idle has nothing to slide it, and a
+            # dead token is never renewed, which is what makes the life mean
+            # anything for one that leaked. So the machine the session is on
+            # keeps it, on the beat it already has.
+            self.keep_session_tokens(r.get("session_tokens") or [])
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in

@@ -1853,6 +1853,11 @@ def node_apply(principal, node_id, what):
 layout_of = lambda: []
 bundle_digest = lambda: ""
 idle_minutes = lambda: 0            # noqa: E731 — idle.minutes, injected by server.py
+# server.session_tokens_for: fresh credentials for the Claude sessions alive
+# on one node, so a session idle past its token's life is not locked out of
+# its own controller (R27). Injected, because minting is users.py's and the
+# project list is the server's, and neither is the node store's business.
+session_tokens_for = lambda nid, sessions: []   # noqa: E731
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -1876,6 +1881,10 @@ def hello(nid, census, addr, version="", digest="", running=None):
                "addr": addr, "last_seen": int(time.time()),
                })
     rep = n.get("reported") or {}
+    # The tmux sessions ride the HEARTBEAT, not the census, so the live set is
+    # what the last one recorded rather than anything hello was handed. Read
+    # before _census replaces the record below (R27).
+    live_sessions = rep.get("sessions") or []
     sample = rep.get("sample")
     # When this census was taken. The heartbeat is every 25 seconds but the
     # census only rides hello, every ten minutes, so "when did the node last
@@ -1906,7 +1915,16 @@ def hello(nid, census, addr, version="", digest="", running=None):
             "bundle": bundle_digest() or "",
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
-            "session_idle_minutes": idle_minutes()}
+            "session_idle_minutes": idle_minutes(),
+            # A fresh token for each Claude session alive on this node (R27).
+            # A session's token slides forward while it is TALKING, because
+            # every answer it gets carries a renewal; one that sits idle past
+            # twelve hours has nothing to slide it, and a dead token is never
+            # renewed, which is what makes the life mean anything for a leaked
+            # one. So the machine the session is on refreshes it instead, on
+            # the beat it already has. A token lives as long as its tmux
+            # session does, and none is ever accepted past its expiry.
+            "session_tokens": session_tokens_for(nid, live_sessions)}
 
 
 def heartbeat(nid, sample, addr, running=0):

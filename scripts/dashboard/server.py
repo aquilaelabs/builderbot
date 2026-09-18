@@ -1781,6 +1781,37 @@ def sessions_anywhere():
     return [s["name"] for s in tmux_sessions()] + [s["name"] for s in node_tmux_sessions()]
 
 
+def session_tokens_for(nid, sessions):
+    """[{project, uid, token}] for the Claude sessions alive on one node.
+
+    A session's token slides forward on every answer it gets, so one that is
+    working never runs out. One that sits idle past twelve hours has nothing
+    to slide it, and a dead token is deliberately never renewed: that refusal
+    is what makes the life mean anything for a token that leaked. So the
+    machine the session is running on is told a fresh one on its heartbeat,
+    and a token then lives exactly as long as its tmux session does (R27).
+
+    Matched from the PROJECT towards the session name, never the other way:
+    tmux rewrites `.` and `:` in a name, so `ep.silon` runs as
+    `claude-ep_silon` and the project cannot be read back out of it.
+    """
+    want = {}
+    for p in project_list(users.ALL):
+        want[claude_session(p["name"])] = p["name"]
+    out = []
+    seen = set()
+    for row in sessions if isinstance(sessions, list) else []:
+        real = str((row or {}).get("name") or "")
+        uid, base = tmux_owner(real), tmux_base(real)
+        project = want.get(base)
+        if not uid or not project or (uid, project) in seen:
+            continue
+        seen.add((uid, project))
+        out.append({"project": project, "uid": uid,
+                    "token": users.mint_session(project, uid=uid)})
+    return out[:64]
+
+
 def node_tmux_sessions():
     """The sessions running on nodes (roadmap #24), shaped like this
     container's own so the Sessions card, the project rows and claude_with
@@ -2283,6 +2314,7 @@ try:
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     nodes.idle_minutes = idle.minutes
+    nodes.session_tokens_for = session_tokens_for
     NODES_OK = ""
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)

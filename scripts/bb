@@ -138,6 +138,7 @@ bb — BuilderBot helper
   bb findings history    what the scanner stopped and started saying here
   bb findings sample [--remove]   write a clearly-fake report, so the Analysis
                          surfaces can be worked on where no scanner runs
+  bb token keep          store BB_TOKEN where this account's sessions read it
                          (-n N, --since 7d, --find TEXT, as the other logs)
   bb phone               what phone is connected, and what is waiting on you
   bb root                what root commands are waiting on an administrator
@@ -3881,6 +3882,31 @@ bb_token_dead() {
 # was left holding a token that no longer verified and every verb answered
 # "not signed in". bb-tty refreshes that file on every connection, so opening
 # the tab is what puts this back in touch.
+# `bb token keep` stores the token in BB_TOKEN where this account's sessions
+# on this machine read it. The agent runs this for a session that is IDLE
+# (R27): a session that is talking slides its own token forward on every
+# answer, one that is not has nothing to slide it, and a dead token is never
+# renewed. Here rather than in the agent because both halves of the answer
+# already live here: which home this account has on this machine (user_home)
+# and what the cache file is called (bbapi.keep_token). A second copy of
+# either is a second thing to keep in step.
+cmd_token() {
+    [ "${1:-}" = keep ] || die "usage: bb token keep   (with BB_TOKEN set)"
+    [ -n "${BB_TOKEN:-}" ] || die "no BB_TOKEN to keep"
+    local home py
+    home="$(user_home "${BB_ACCOUNT_UID:-}")"
+    [ -n "$home" ] || die "no home for account ${BB_ACCOUNT_UID:-(none)} on this machine"
+    py="$(dirname "$(readlink -f "$0")")/lib/bbapi.py"
+    [ -f "$py" ] || die "bbapi.py is missing beside bb"
+    HOME="$home" python3 - "$py" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("bbapi", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.keep_token(os.environ["BB_TOKEN"])
+PY
+}
+
 bb_token_now() {
     local t="${BB_TOKEN:-}"
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
@@ -6483,6 +6509,7 @@ case "${1:-help}" in
     emu)      shift; cmd_emu "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
+    token)    shift; cmd_token "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
     users) shift; cmd_users "$@" ;;
     work)  shift; cmd_work "$@" ;;

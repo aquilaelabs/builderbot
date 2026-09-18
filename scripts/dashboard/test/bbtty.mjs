@@ -174,6 +174,29 @@ ok(launcher().includes(tokWritten),
      'bb reaches for that file the moment the token it started with has expired');
   ok(ask({ BB_TOKEN: tokWritten }) === tokWritten,
      '...and leaves a live one alone');
+  // ...and `bb token keep` is how a token gets INTO that file for a session
+  // nobody is typing in. A session that is talking slides its own forward on
+  // every answer it gets; one idle past twelve hours has nothing to slide it,
+  // and a dead token is never renewed, so the machine it runs on is handed a
+  // fresh one on its heartbeat and stores it here (R27). Both halves of where
+  // that goes already live in bb, which is why the agent hands it to bb
+  // rather than writing the path itself.
+  const keepHome = join(DIR, 'tokkeep');
+  const fresh = execFileSync('bash', [BBBIN, 'users', 'token', 'alpha'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: join(DIR, 'state'),
+                               WORKSPACE: join(DIR, 'ws') } }).trim();
+  execFileSync('bash', [BBBIN, 'token', 'keep'],
+    { env: { ...process.env, BUILDER_HOME: keepHome, BB_ACCOUNT_UID: '', BB_TOKEN: fresh } });
+  const landed = join(keepHome, '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'token');
+  ok(existsSync(landed) && readFileSync(landed, 'utf8').trim() === fresh
+     && (statSync(landed).mode & 0o077) === 0,
+     `bb token keep stores a token where that account's sessions read it, 0600 (${fresh.slice(0, 12)}…)`);
+  ok(execFileSync('bash', ['-c',
+       'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+       'sh', BBBIN],
+       { encoding: 'utf8', env: { ...process.env, HOME: keepHome, BB_PROJECT: 'alpha',
+                                  BB_TOKEN: dead } }).trim() === fresh,
+     '...and a session whose own token has died reaches for exactly that');
 }
 const argv = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 // In a FILE now, not in the argument: --append-system-prompt-file has no

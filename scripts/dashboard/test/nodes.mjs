@@ -504,6 +504,41 @@ print(json.dumps(out))
     version: shipped.version, digest: shipped.digest, user: 'bb' },
     { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
   ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
+  // A session's token slides forward on every answer it gets, so one that is
+  // WORKING never runs out. One idle past twelve hours has nothing to slide
+  // it, and a dead token is deliberately never renewed, since that refusal is
+  // what makes the life mean anything for one that leaked. So the machine the
+  // session runs on is handed a fresh one on the beat it already has (R27).
+  {
+    const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    // The tmux sessions ride the heartbeat, so they are reported the way a
+    // node reports them and the hello that follows reads them back.
+    const beat = sessions => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 8192, mem_used_mb: 512, sessions },
+                             running: [], wait: 0 }) });
+    await beat([{ name: `${uid}~claude-alpha` }, { name: `${uid}~shell-3` }]);
+    const hello = await napi('/api/v1/agent/hello', {
+      census: CENSUS, version: shipped.version, digest: shipped.digest },
+      { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' });
+    const toks = hello.session_tokens || [];
+    ok(toks.length === 1 && toks[0].project === 'alpha' && toks[0].uid === uid,
+       `the heartbeat carries a fresh token for each Claude session on the node, and only those (${
+         JSON.stringify(toks.map(t => t.project))})`);
+    // Worth being a real credential rather than a shape: the whole point is
+    // that the session can go on using it.
+    const asSession = await (await fetch(URL.replace(/\/$/, '') + '/api/status',
+      { headers: { Authorization: 'Bearer ' + toks[0].token } })).json();
+    ok(JSON.stringify((asSession.projects || []).map(p => p.name)) === '["alpha"]',
+       `...and it is a working token for that project alone (${
+         (asSession.projects || []).map(p => p.name).join(',') || 'none'})`);
+    await beat([{ name: `${uid}~shell-3` }]);
+    const none = await napi('/api/v1/agent/hello', {
+      census: CENSUS, version: shipped.version, digest: shipped.digest },
+      { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' });
+    ok((none.session_tokens || []).length === 0,
+       '...while a node running no Claude session is handed none');
+  }
   // A heartbeat, in the shape the real one has: the sample flattens each
   // store to a bare free-space number while the census keeps the whole
   // record. Sent here because reading only the sample called four healthy
