@@ -36,6 +36,7 @@
 - Each person picks the time zone the dashboard shows times in, per browser, on the Profile tab; the container's TZ is optional and only sets its own clock for logs and file names (f1d6384)
 - The install settings say what they do now: the unused Anthropic API key field is gone (each person signs in on a node), NPM_TOKEN is described as the controller shell's, and the stop timeout no longer needs raising (8a7a112)
 - Two people who open a Claude session on one project at the same moment each get a credential of their own, naming who they are (33ae896)
+- An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
 
 ### Upgrading
 
