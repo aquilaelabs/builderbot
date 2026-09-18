@@ -27,6 +27,7 @@
 - The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
 - A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
 - A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
+- On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
 
 ### Upgrading
 
