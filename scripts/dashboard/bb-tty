@@ -135,6 +135,20 @@ if [ -n "$account" ]; then
     export HOME
 fi
 
+# On a node the packages store is read-only in a session's view (B163), and
+# two things a session does were writes into it. Rust's crate cache is
+# CARGO_HOME, which the store's layout puts at rust/cargo: it is the
+# account's own now, and the store's cargo/bin stays on PATH for the proxies,
+# which read the toolchains through RUSTUP_HOME. And Claude Code's own
+# updater, which could only ever fail in a view (the launcher and its
+# versions are the base home's, read-only there) and would otherwise fetch a
+# copy into every account's home that nothing runs: updating claude is the
+# provisioner's.
+if on_node && [ -n "$account" ]; then
+    [ -z "${CARGO_HOME:-}" ] || export CARGO_HOME="$HOME/.cargo"
+    export DISABLE_AUTOUPDATER=1
+fi
+
 # sess NAME — the session name for this account.
 #
 # A SHELL is per account: two people opening a terminal on the same project
@@ -682,7 +696,7 @@ start() {
     # right — the session that exists already has its own.
     local -a envs=() v
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
-             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
     # The server is started on its own first. When new-session is what
@@ -704,7 +718,7 @@ start() {
     local kv
     while IFS= read -r -d '' kv; do
         case "$kv" in
-            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*) continue ;;
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*) continue ;;
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)

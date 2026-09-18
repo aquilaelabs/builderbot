@@ -237,11 +237,31 @@ def plan(c, a, uid):
     # the shared store the squash makes writable by the session account. So a
     # session could rewrite what another account's session, or a job, then
     # executes. Read-only in the view (B157): the session still reads and runs
-    # it, and cannot change it. Only the bundle; the toolchains beside it stay
-    # writable, since a build legitimately writes under some of them.
-    bundle = f"{c['PACKAGES_STORE'].rstrip('/')}/.bb" if c.get("PACKAGES_STORE") else ""
-    if bundle and _real_dir(bundle):
-        steps.append(("bindro", bundle, bundle))
+    # it, and cannot change it.
+    #
+    # ...and so is every toolchain beside it (B163). Each one's bin is on a
+    # session's PATH and a job's ahead of /usr/bin, so a writable store let a
+    # session drop a `git` into jdk/bin that the next job ran as the job
+    # account, which is in the docker group. Installing and updating a
+    # toolchain is a job the agent runs outside every view, so a session loses
+    # nothing it should have. Measured on bb-dev-sandbox, 18 Sep, as the
+    # session account under a read-only store: a clean Android build and a
+    # Playwright Chromium launch both work.
+    #
+    # Flutter is the exception, because it writes under its own tree on every
+    # run (the lock and the update stamps in bin/cache, the version check in
+    # .git). So its tree stays writable except bin/, which is what PATH holds:
+    # nothing can be planted there under a command's name, and bin/cache, which
+    # only flutter itself runs from, is given back. What is left is a session
+    # changing what a flutter command runs, on a node that has flutter.
+    store = c["PACKAGES_STORE"].rstrip("/") if c.get("PACKAGES_STORE") else ""
+    if store and _real_dir(store):
+        steps.append(("bindro", store, store))
+        flutter = f"{store}/flutter"
+        if _real_dir(f"{flutter}/bin/cache"):
+            steps.append(("bindrw", flutter, flutter))
+            steps.append(("bindro", f"{flutter}/bin", f"{flutter}/bin"))
+            steps.append(("bindrw", f"{flutter}/bin/cache", f"{flutter}/bin/cache"))
     # ...and the claude every account's session runs, for the same reason and
     # the other half of B157. `.local` is one of the shared dotfiles, so every
     # account's ~/.local is a link to the base home's: one session could
@@ -265,11 +285,11 @@ def plan(c, a, uid):
     # versions directory beside it, because a session that cannot overwrite
     # 2.1.273 can otherwise write 2.1.274 and wait.
     #
-    # What this still does not stop, and B157 says so rather than implying it
-    # is closed: a session replacing the .local/bin/claude SYMLINK itself. A
-    # bind cannot hold a symlink down, and .local/bin has to stay writable for
-    # `pip install --user`. Closing that means moving the shared launcher
-    # somewhere a session cannot write, which is a change to common.sh.
+    # What this alone did not stop was a session replacing the
+    # .local/bin/claude SYMLINK itself, since a bind cannot hold a symlink
+    # down. The base home being read-only in the view, below, is what stops
+    # that: nothing in it can be replaced any more, and an account's own
+    # pip --user installs go to its own home (common.sh, unshare_dotfiles).
     if home_root:
         shared = f"{home_root}/.local/share/claude/versions"
         if _real_dir(shared):
@@ -278,6 +298,15 @@ def plan(c, a, uid):
         real = os.path.realpath(launcher) if os.path.exists(launcher) else ""
         if real and os.path.isfile(real) and not real.startswith(shared + "/"):
             steps.append(("bindro", real, real))
+    # ...and the base home itself, last, over everything mounted inside it
+    # (B157). It is nobody's on a node, where every account is homed under
+    # users/, and it was writable: the dotfiles every home linked to, the
+    # .bashrc a new home is copied from and the launcher every session runs
+    # all sat in it. The recursive bind carries the mounts above with it, so
+    # the account's own home under users/ stays writable and the hidden parts
+    # stay hidden; only the base home's own files become read-only.
+    if base and _real_dir(home_root):
+        steps.append(("bindro", home_root, home_root))
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")):
             steps.append(("hide", hidden.rstrip("/")))
@@ -320,7 +349,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro") else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro", "bindrw") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -344,6 +373,15 @@ def apply(steps, uid, gid):
             src = step[1]
             _mount(src, target, None, MS_BIND | MS_REC)
             _mount(src, target, None, MS_BIND | MS_REMOUNT | MS_RDONLY)
+        elif kind == "bindrw":
+            # A writable bind INSIDE a read-only one. A bind copies the flags
+            # of the mount it is taken from, read-only included (measured on
+            # bb-dev-sandbox: a plain bind of flutter under the read-only store
+            # came out read-only), so the flag is cleared with a remount of its
+            # own. The file system underneath is writable; only this mount was not.
+            src = step[1]
+            _mount(src, target, None, MS_BIND | MS_REC)
+            _mount(src, target, None, MS_BIND | MS_REMOUNT)
         elif kind == "hide":
             _mount("tmpfs", target, "tmpfs", MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0500")
         elif kind == "hidefile":

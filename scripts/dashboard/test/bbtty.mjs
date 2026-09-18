@@ -1009,6 +1009,47 @@ print(uid)`);
       tmuxKill(`${ownerUid}~claude-${proj}`);
       rmSync(join(DIR, 'store'), { recursive: true, force: true });
     }
+    // B157/B163: on a node an account keeps nothing in common with the base
+    // home. A link made before this is taken down so the tool makes the
+    // account's own, a launcher in the base home that reached its binary
+    // through this account's .local is pointed at the base home's own copy
+    // first (B169), the crate cache is the account's, and Claude's updater
+    // is off. Staged the way bb-sandbox had it on 18 Sep.
+    {
+      const ah = join(HOMEDIR, 'users', otherUid);
+      mkdirSync(join(HOMEDIR, '.gradle'), { recursive: true });
+      mkdirSync(join(HOMEDIR, '.local', 'share', 'claude', 'versions'), { recursive: true });
+      writeFileSync(join(HOMEDIR, '.local', 'share', 'claude', 'versions', '9.9.9'), 'BIN\n', { mode: 0o755 });
+      mkdirSync(join(HOMEDIR, '.local', 'bin'), { recursive: true });
+      rmSync(join(HOMEDIR, '.local', 'bin', 'claude'), { force: true });
+      symlinkSync(join(ah, '.local', 'share', 'claude', 'versions', '9.9.9'), join(HOMEDIR, '.local', 'bin', 'claude'));
+      rmSync(join(ah, '.gradle'), { recursive: true, force: true }); rmSync(join(ah, '.local'), { recursive: true, force: true });
+      symlinkSync(join(HOMEDIR, '.gradle'), join(ah, '.gradle'));
+      symlinkSync(join(HOMEDIR, '.local'), join(ah, '.local'));
+      tmuxKill(`${otherUid}~shell-wtproj-14`);
+      shell(`u:${otherUid}:sh:14:wtproj`, { ...node, CARGO_HOME: '/store/rust/cargo' }, [`tok:${tok('wtproj', otherUid)}`]);
+      await sleep(300);
+      const env14 = k => { try {
+        return execFileSync('tmux', ['show-environment', '-t', `${otherUid}~shell-wtproj-14`, k],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env }).trim();
+      } catch { return ''; } };
+      const genv14 = k => { try {
+        return execFileSync('tmux', ['show-environment', '-g', k], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env }).trim();
+      } catch { return ''; } };
+      // Gone or the account's own directory, never a link: the shell that
+      // just started may already have made its own ~/.local.
+      const notLinked = d => !lstatSync(join(ah, d), { throwIfNoEntry: false })?.isSymbolicLink();
+      ok(notLinked('.gradle') && notLinked('.local'),
+         'on a node an account\'s links into the base home are taken down, so its tools make their own (B157)');
+      ok(readlinkSync(join(HOMEDIR, '.local', 'bin', 'claude')) === join(HOMEDIR, '.local', 'share', 'claude', 'versions', '9.9.9'),
+         `...after the base home's launcher, which reached its binary through that account's link, is pointed at the base home's own copy (${readlinkSync(join(HOMEDIR, '.local', 'bin', 'claude')).replace(DIR, '…')})`);
+      ok(env14('CARGO_HOME') === `CARGO_HOME=${join(ah, '.cargo')}` && !genv14('CARGO_HOME').includes(ah),
+         `...the crate cache is the account's, and never in the tmux server's shared environment (${env14('CARGO_HOME').replace(DIR, '…')})`);
+      ok(env14('DISABLE_AUTOUPDATER') === 'DISABLE_AUTOUPDATER=1' || genv14('DISABLE_AUTOUPDATER') === 'DISABLE_AUTOUPDATER=1',
+         '...and Claude\'s own updater is off: updating claude on a node is the provisioner\'s');
+      tmuxKill(`${otherUid}~shell-wtproj-14`);
+      rmSync(join(HOMEDIR, '.local', 'bin', 'claude'), { force: true });
+    }
     // The second account goes, with anything it left running.
     tmuxKill(`${otherUid}~claude-${proj}`);
     usersPy(`

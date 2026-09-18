@@ -417,6 +417,31 @@ tmux_prefix() {
     printf '%s~' "$uid"
 }
 
+# unshare_dotfiles HOME: an account's links into the base home, taken down on
+# a node (see user_home). The base home's own launchers first: one that
+# reached its target THROUGH this home's .local link (a claude installed while
+# this account's HOME was set, measured on bb-sandbox as B169) is pointed at
+# the base home's own copy, or every account's claude would break the moment
+# this link goes. Only links that point exactly at the base home's copy are
+# removed; anything else in the home is the account's.
+unshare_dotfiles() {
+    local home="$1" d f t
+    for f in "$BUILDER_HOME"/.local/bin/*; do
+        [ -L "$f" ] || continue
+        t="$(readlink "$f")"
+        case "$t" in
+            "$home/.local/"*)
+                [ -e "$BUILDER_HOME/.local/${t#"$home"/.local/}" ] \
+                    && ln -sfn "$BUILDER_HOME/.local/${t#"$home"/.local/}" "$f" 2>/dev/null ;;
+        esac
+    done
+    for d in $BB_SHARED_DOTFILES; do
+        [ -L "$home/$d" ] && [ "$(readlink "$home/$d")" = "$BUILDER_HOME/$d" ] \
+            && rm -f "$home/$d"
+    done
+    return 0
+}
+
 # user_home UID — where that account's home is, made if it is missing.
 #
 # Prints the path and nothing else, so a caller can use it directly. An empty
@@ -450,11 +475,25 @@ user_home() {
     # Linked every time rather than only at creation: the list grows as the
     # image does, and an account made before a name was added to it would
     # otherwise never get the link.
-    for d in $BB_SHARED_DOTFILES; do
-        target="$BUILDER_HOME/$d"
-        [ -e "$target" ] || continue
-        [ -e "$home/$d" ] || [ -L "$home/$d" ] || ln -s "$target" "$home/$d" 2>/dev/null || true
-    done
+    #
+    # NOT ON A NODE (B157). There every account's session runs in a view and
+    # the base home is read-only in it, so a shared dotfile was either
+    # unwritable (a build cache) or a way into the next account's session (a
+    # .gradle distribution or jar its build runs, a .local/bin on PATH, a
+    # .config or .tmux.conf that runs commands). Each account keeps its own
+    # there, and a link made before this is taken down so the tool makes the
+    # account's own directory on its next run. The operator chose the cost,
+    # 18 Sep: each person's first build on a node downloads its own
+    # dependencies.
+    if on_node; then
+        unshare_dotfiles "$home"
+    else
+        for d in $BB_SHARED_DOTFILES; do
+            target="$BUILDER_HOME/$d"
+            [ -e "$target" ] || continue
+            [ -e "$home/$d" ] || [ -L "$home/$d" ] || ln -s "$target" "$home/$d" 2>/dev/null || true
+        done
+    fi
     claude_projects_link "$home" "$uid"
     printf '%s' "$home"
 }

@@ -40,7 +40,7 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(homeRoot, '.claude'),
                  join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
-                 join(pkg, '.bb', 'current'), join(pkg, 'jdk'),
+                 join(pkg, '.bb', 'current'), join(pkg, 'jdk'), join(pkg, 'flutter', 'bin', 'cache'),
                  join(homeRoot, '.local', 'bin'),
                  runner, devdata])
   mkdirSync(d, { recursive: true });
@@ -99,14 +99,20 @@ ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(dat
    && !bound(join(data, 'ci-logs', 'beta')) && !bound(join(data, 'jobs')) && !bound(join(data, 'compose'))
    && bound(join(art, 'alpha')) && !bound(join(art, 'beta')) && hidden(runner) && hidden(devdata),
    'the agent\'s stores keep the emulator, its own CI logs and artifacts; jobs, compose files, the runner and dev data are gone');
-ok(has('bindro', join(pkg, '.bb'), join(pkg, '.bb'))
-   && !steps.some(x => x[0] === 'bindro' && x[1] === join(pkg, 'jdk'))
-   && !bound(join(pkg, '.bb')),
-   'the packages bundle is read-only in the view so a session cannot rewrite the bb the agent and other sessions run, while the toolchains beside it stay writable for a build (B157)');
+ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
+   'the whole packages store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
+const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+const fl = join(pkg, 'flutter');
+ok(at('bindro', pkg, pkg) < at('bindrw', fl, fl) && at('bindrw', fl, fl) < at('bindro', join(fl, 'bin'), join(fl, 'bin'))
+   && at('bindro', join(fl, 'bin'), join(fl, 'bin')) < at('bindrw', join(fl, 'bin', 'cache'), join(fl, 'bin', 'cache')),
+   '...but flutter, which writes its own tree on every run, gets it back, with its bin on PATH still read-only and only bin/cache writable again');
+const last = at('bindro', homeRoot, homeRoot);
+ok(last > 0 && last > at('bind', `${STAGE}/home`, myHome) && last > at('tmpfs', users, 'mode=0755')
+   && steps.slice(last + 1).every(x => !String(x[x.length - 1]).startsWith(homeRoot + '/')),
+   'and the base home is read-only, bound last so the account\'s own home under users/ and everything hidden in it keep their own mounts');
 const versions = join(homeRoot, '.local', 'share', 'claude', 'versions');
-ok(has('bindro', versions, versions)
-   && !steps.some(x => x[0] === 'bindro' && x[1] === join(homeRoot, '.local', 'bin')),
-   'the claude binary every account\'s session runs is read-only in the view, since .local is shared between homes, while .local/bin stays writable for a pip --user install (B157)');
+ok(has('bindro', versions, versions),
+   'the claude binary every account\'s session runs is read-only in the view (B157)');
 {
   // The OTHER shape, which the dev VM has: a plain wrapper script at
   // .local/bin/claude and no versions directory at all. The file itself is

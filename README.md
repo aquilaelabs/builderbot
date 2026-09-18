@@ -3280,8 +3280,16 @@ project, its worktrees and the account's Claude share (other projects'
 transcripts are empty); the account's home is the only home and its
 BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
 `/dev/shm` are the session's own; the agent's stores keep only the
-emulator's logs and the project's own CI logs and artifacts; and the
-process list and tmux server of other sessions are out of reach. The helper
+emulator's logs and the project's own CI logs and artifacts; the packages
+store and the base home are read-only, so nothing a session writes can reach
+a command another account or a job runs (Flutter's own tree is the one
+exception, since it writes there on every run, with its `bin` still
+read-only); and the process list and tmux server of other sessions are out of
+reach. Each account on a node keeps its own tool caches and dotfiles
+(`.gradle`, `.m2`, `.npm`, `.cache`, the Rust crate cache and the rest)
+rather than sharing the base home's, so a person's first build on a node
+downloads its own dependencies. Updating Claude Code on a node is the
+provisioner's; a session's own updater is off. The helper
 then drops to the session account with `no_new_privs`, so nothing inside
 can gain privilege again. The agent installs the helper, its layout file and
 the sudo rule from the bundle, and reports on the node's Sessions section
