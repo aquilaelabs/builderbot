@@ -2410,6 +2410,39 @@ BOOT_WAIT = 180
 BOOT_GRACE = 300
 
 
+# When this process started, for the one question only it can answer: which
+# nodes have dialed in since.
+STARTED = time.time()
+NODE_WAIT = 300
+
+
+def wait_for_nodes(limit=NODE_WAIT):
+    """Hold until every node that was alive when this controller went down
+    has dialed in again, or give up.
+
+    The same race wait_for_boot closes, one step further out. An update
+    restarts the controller and every agent reconnects on its own schedule
+    (bb-sandbox-redhat took over two minutes on 18 Sep), so a doctor run in
+    that window says "not dialing in" and "no node can run a session" about
+    nodes that are fine, and keeps saying it for doctor.EVERY. Only nodes
+    seen in the quarter hour before this start are waited for: one that has
+    been off for a day is not coming back because the controller did.
+    """
+    if NODES_OK:
+        return
+    end = time.time() + limit
+    while time.time() < end:
+        try:
+            owed = [n for n in nodes.node_list()
+                    if n.get("kind") == "agent" and not (n.get("agent") or {}).get("revoked")
+                    and STARTED - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < STARTED]
+        except Exception:                                        # noqa: BLE001
+            return
+        if not owed:
+            return
+        time.sleep(5)
+
+
 def wait_for_boot():
     """Hold until the container has finished starting, or give up.
 
@@ -2474,7 +2507,7 @@ def client_gone(sock):
 # ---- bb doctor, cached for the Doctor card: doctor.py ----------------------
 import doctor                                                    # noqa: E402
 
-doctor.configure(run=run, wait_for_boot=wait_for_boot)
+doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()))
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).

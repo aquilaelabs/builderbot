@@ -459,6 +459,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   overflow-wrap:anywhere;box-shadow:0 6px 18px rgba(0,0,0,.5);
   display:block;opacity:1;pointer-events:none;z-index:90}
 .uadd{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+/* display:flex outranks the hidden attribute, and the settings tab folds one of
+   these behind a button by hiding it: without this the fold never closed. */
+.uadd[hidden]{display:none}
 .uadd .setrow{flex:1 1 12em}
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
 .logset .setrow select{width:auto;flex:0 1 auto}

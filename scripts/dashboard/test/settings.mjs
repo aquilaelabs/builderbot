@@ -90,13 +90,13 @@ ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
 // debug mode is saved on: a draft tick is not debug mode.
 ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()
      && !!f.querySelector('[data-set="claude_shared_login"]')),
    '...and the shared-login switch is folded behind it, out of the way');
 await post('/api/settings', { set: { debug_mode: true } });
 await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
                            null, { timeout: 30000 });
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden),
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()),
    'debug mode on: the button is live, and the fold stays shut until it is pressed');
 await page.click('.settingstab [data-debugshow]');
 await page.waitForFunction(() => document.querySelector('.settingstab [data-debugfold]')?.checkVisibility(),
