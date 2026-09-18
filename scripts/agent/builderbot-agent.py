@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.81"
+AGENT_VERSION = "0.5.82"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2197,6 +2197,19 @@ def fill_default_stores(state):
         if have.get(role):
             continue
         have[role] = os.path.join(base, role) if base else default
+        # MADE, not just recorded. A store that exists only in node.json
+        # reports null free space and the row calls it missing, which is the
+        # true answer and a useless one for a directory nothing else is ever
+        # going to create: enrolment makes the four it knows about, so
+        # adoption makes the one it did not. Best effort, the same as there:
+        # a store that cannot be made is reported rather than fatal.
+        try:
+            made = state.setdefault("store_made", {})
+            if isinstance(made, dict):
+                made[role] = make_store(have[role])
+        except OSError as e:
+            log(f"stores: {role} at {have[role]} could not be created "
+                f"({e.strerror}); it will report no space until it exists")
         log(f"stores: {role} was not set; using {have[role]}")
         added = True
     if added:

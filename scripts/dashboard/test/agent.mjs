@@ -292,6 +292,8 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     const after = JSON.parse(readFileSync(NODE_JSON, 'utf8')).stores;
     ok(after.appdata === `${DIR}/appdata`,
        `a store role added since enrolment is adopted beside the data store (${after.appdata})`);
+    ok(existsSync(`${DIR}/appdata`),
+       '...and the directory is MADE, not just recorded, or the row calls it missing forever');
     writeFileSync(NODE_JSON, JSON.stringify(keep));
   }
 
