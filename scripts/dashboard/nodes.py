@@ -1198,7 +1198,14 @@ def log_grants(node_id):
     return list(((n or {}).get("config") or {}).get("log_from") or [])
 
 
-def node_log_grant(principal, node_id, from_ids):
+def diag_granted(node_id):
+    """Whether a session on `node_id` may read the controller's diagnostics
+    (diag.py), which is a tick of its own beside the log grant."""
+    n = node(node_id)
+    return bool(((n or {}).get("config") or {}).get("diag"))
+
+
+def node_log_grant(principal, node_id, from_ids, diag=None):
     """Set that list. The operator's, and an administrator's: a session token
     is refused this endpoint the way it is refused the rest of the config
     plane, or the boundary would be one a session could open for itself."""
@@ -1214,10 +1221,13 @@ def node_log_grant(principal, node_id, from_ids):
         return {"error": f"no such node: {bad[0]}"}
     conf = dict(n.get("config") or {})
     conf["log_from"] = want
+    # The controller's diagnostics, when the form says (None leaves it).
+    if diag is not None:
+        conf["diag"] = bool(diag)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-log-grant",
-           {"from": want, "self": node_id in want})
-    return {"ok": True, "log_from": want}
+           {"from": want, "self": node_id in want, "diag": bool(conf.get("diag"))})
+    return {"ok": True, "log_from": want, "diag": bool(conf.get("diag"))}
 
 
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,

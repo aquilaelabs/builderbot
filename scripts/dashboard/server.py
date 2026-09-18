@@ -2476,6 +2476,13 @@ import doctor                                                    # noqa: E402
 
 doctor.configure(run=run, wait_for_boot=wait_for_boot)
 
+# The controller's diagnostics: read-only, for an administrator and, behind
+# the debug switch and a node's tick, an administrator's session (diag.py).
+import diag                                                      # noqa: E402
+
+diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
+               settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir)
+
 
 # ---- revisions -------------------------------------------------------------
 # One token per thing a view can depend on. A view says what it watches and is
@@ -2893,6 +2900,7 @@ POST_ROUTES = (
     ("prefix", "/api/version", "_version"),
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
+    ("exact", "/api/diag", "_diag"),
     ("prefix", "/api/phone", "_phone"),
     ("prefix", "/api/findings", "_findings_log"),
     ("prefix", "/api/tests", "_tests"),
@@ -4364,7 +4372,8 @@ class Handler(BaseHTTPRequestHandler):
             # administrator's, like the rest of this handler — a session that
             # could grant itself the journal is not a boundary.
             r = nodes.node_log_grant(self._principal(), nid,
-                                     req.get("from") if isinstance(req.get("from"), list) else [])
+                                     req.get("from") if isinstance(req.get("from"), list) else [],
+                                     diag=req["diag"] if isinstance(req.get("diag"), bool) else None)
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -6678,6 +6687,33 @@ class Handler(BaseHTTPRequestHandler):
                                 req.get("lines") or 200,
                                 debug_on=bool(settings.get("debug_mode")))
         return self._result(r, 403)
+
+    def _diag(self, req):
+        """The controller's diagnostics (diag.py). An administrator's, and a
+        session's only when the debug switch is on, the session's node is
+        ticked for it on Debug settings, and the session's account is an
+        administrator: a node is shared, so the node's tick alone would hand
+        it to every tester whose session runs there. POST, so each read is in
+        the audit trail."""
+        who = self._who() or {}
+        if who.get("session"):
+            if not settings.get("debug_mode"):
+                return self._json({"error": "debug mode is off, so the controller's diagnostics "
+                                            "are not offered to any session"}, 403)
+            me = users.account_of(who)
+            if me is who or not users.is_admin(me):
+                return self._json({"error": "the controller's diagnostics are an "
+                                            "administrator's, and this session's account "
+                                            "is not one"}, 403)
+            nid = prefs.get(who["session"])["node"]
+            if not nid or not nodes.diag_granted(nid):
+                name = (nodes.node(nid) or {}).get("name") or "this session's node"
+                return self._json({"error": f"{name} has not been granted the controller's "
+                                            "diagnostics: Debug settings on its row"}, 403)
+        elif self._refused("admin"):
+            return None
+        want = req.get("sections") if isinstance(req.get("sections"), list) else None
+        return self._json(diag.report([str(x) for x in want] if want else None))
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.

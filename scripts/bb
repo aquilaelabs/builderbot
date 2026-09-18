@@ -153,6 +153,11 @@ bb — BuilderBot helper
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
+  bb diag [--json] [SECTION...]
+                         the controller's diagnostics: its build and images,
+                         the doctor, each node's agent and sessions, failed
+                         jobs, error lines in its logs, the audit trail; for
+                         a session, behind debug mode and its node's grant
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
   bb logs --node NAME [--agent|--runner|--terminal] [N]
@@ -1351,6 +1356,83 @@ logs_are_the_controllers() {
     on_node || return 0
     die "there is no container log here — this is a node, and that log is the" \
         "controller's. \`bb ci-log\` reads a CI run's output on this machine"
+}
+
+# bb diag: the controller's diagnostics (scripts/dashboard/diag.py). One
+# request, so the gate is the server's: an administrator anywhere, and a
+# session only with debug mode on, its node ticked for it on Debug settings,
+# and an administrator's account behind it. Read-only; secrets are redacted
+# there, not here.
+cmd_diag() {
+    local json=0 sections=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json) json=1 ;;
+            -h|--help) printf 'usage: bb diag [--json] [controller|images|settings|doctor|nodes|jobs|errors|audit]...\n'; return 0 ;;
+            -*) die "bb diag: no such option \`$1'" ;;
+            *) sections+=("$1") ;;
+        esac
+        shift
+    done
+    local auth
+    auth="$(bb_auth_or_die)"
+    BB_DIAG_AUTH="$auth" BB_DIAG_JSON="$json" python3 - "${sections[@]}" <<'DIAG'
+import json, os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+body = {"sections": sys.argv[1:]} if sys.argv[1:] else {}
+d = bbapi.call("/api/diag", body, auth=os.environ["BB_DIAG_AUTH"], timeout=60)
+if d.get("error") and len(d) == 1:
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+if os.environ["BB_DIAG_JSON"] == "1":
+    print(json.dumps(d, indent=2))
+    raise SystemExit(0)
+
+
+def head(t):
+    print(f"\n== {t} ==")
+
+
+for name, v in d.items():
+    if name == "at":
+        continue
+    head(name)
+    if isinstance(v, dict) and set(v) == {"error"}:
+        print(f"  could not read: {v['error']}")
+    elif name == "controller":
+        print(f"  {v.get('version') or v.get('rev')} built {v.get('built')}, up {v.get('uptime')}")
+        print(f"  ships agent {v.get('agent_shipped')}, bundle {v.get('bundle')}, {v.get('git')}")
+    elif name == "images":
+        print("\n".join(f"  {x}" for x in v) or "  none recorded")
+    elif name == "settings":
+        print("\n".join(f"  {k} = {val}" for k, val in v.items()) or "  none")
+    elif name == "doctor":
+        print(f"  ran {v.get('when')}")
+        for c in v.get("checks") or []:
+            print(f"  [{c['level']}] {c['text']}")
+            if c["level"] in ("FAIL", "warn") and c.get("detail"):
+                print("\n".join(f"         {x}" for x in c["detail"].splitlines()))
+    elif name == "nodes":
+        for n in v:
+            se, vw = n["session"], n["views"]
+            print(f"  {n['name']}: {n['state']}{'' if n['live'] else ', not dialing in'}, seen {n['last_seen']}, "
+                  f"agent {n['agent']}{'' if n['agent_current'] else ' (not the shipped one)'}, {n['git'] or 'git ?'}")
+            print(f"    sessions {'up' if se['up'] else 'down: ' + (se['why'] or '?')}, "
+                  f"views {'built' if vw['built'] else 'not built: ' + (vw['why'] or '?')}, bundle {se['bundle'] or '?'}")
+            for e in n.get("mount_errors") or []:
+                print(f"    mount: {e}")
+    elif name == "jobs":
+        print("  last 24h: " + (", ".join(f"{k} {c}" for k, c in sorted(v.get("last_24h", {}).items())) or "none"))
+        for j in v.get("failed") or []:
+            print(f"  {j['when']:>8}  {j['state']:<9} {j['type']:<6} {j['project'] or '-'} on {j['node'] or '-'}"
+                  f"{' exit ' + str(j['exit']) if j['exit'] is not None else ''}{': ' + j['error'] if j['error'] else ''}")
+    elif name == "errors":
+        print("\n".join(f"  {x}" for x in v) or "  nothing that looks like a fault")
+    elif name == "audit":
+        for a in v:
+            print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
+DIAG
 }
 
 cmd_logs() {
@@ -6527,6 +6609,7 @@ case "${1:-help}" in
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
+    diag)     shift; cmd_diag "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;

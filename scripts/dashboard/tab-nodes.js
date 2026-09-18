@@ -934,6 +934,13 @@ function wireNodesTab(root){
         </div>
         ${rows.length ? "" : `<div class="hint">No other node is enrolled.</div>`}
       </div>
+      <div class="field">
+        <div class="logdays setrow"><label class="ndcap">
+          <input type="checkbox" id="ndDiag"${n.config?.diag ? " checked" : ""}>
+          <span>The controller's diagnostics</span></label></div>
+        <div class="hint">Lets an administrator's session here run bb diag: the build, the
+          doctor, nodes, failed jobs and error lines. Never a tester's.</div>
+      </div>
       <div class="foot">
         <button type="button" class="primary" id="ndDbgSave">Save</button>
         <button type="button" id="ndDbgCancel">Cancel</button>
@@ -943,11 +950,13 @@ function wireNodesTab(root){
     go.onclick = () => pressing(go, async () => {
       const from = [...body.querySelectorAll("[data-grant]")]
         .filter(c => c.checked).map(c => c.dataset.grant);
-      const j = await nodeAct({action: "log-grant", id: n.id, from});
+      const diag = body.querySelector("#ndDiag").checked;
+      const j = await nodeAct({action: "log-grant", id: n.id, from, diag});
       if (j.error){ notify(j.error, true); return; }
       shut();
-      notify(from.length ? `${n.name} may read ${from.length} node's logs`
-                         : `${n.name} reads no machine logs`);
+      notify((from.length ? `${n.name} may read ${from.length} node's logs`
+                          : `${n.name} reads no machine logs`)
+             + (diag ? ", and the controller's diagnostics" : ""));
       loadNodes();
     });
   };

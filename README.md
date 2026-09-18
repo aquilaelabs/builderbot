@@ -535,6 +535,16 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
                    project, proved by its token, never the `BB_NODE` in its
                    environment. What can be read is a table of three streams;
                    anything else is refused, not run
+bb diag [--json] [SECTION...]
+                   the controller's diagnostics, read-only: its build and the
+                   images it ran, its switches, the doctor's every check, each
+                   node's agent and session half, the last day's jobs and the
+                   failures, error lines from its own logs and the audit
+                   trail, with anything shaped like a credential redacted. An
+                   administrator's. A session reads it only while **debug
+                   mode** is on, its node is ticked for **the controller's
+                   diagnostics** on its Debug settings, and its account is an
+                   administrator's, so a tester on the same node never gets it
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
