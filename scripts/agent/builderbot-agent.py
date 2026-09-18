@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.82"
+AGENT_VERSION = "0.5.83"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -284,6 +284,10 @@ SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandb
 SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
+# Where the projects share is mounted, which is what a session works in. The
+# seam is for the suite: it runs its agent as a session account, and inside a
+# session's view /workspace is the view's own read-only root.
+SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # The pane a respawn may run again: bb-tty's claude launcher, in the project's
 # cache folder and started inside the project's view when the node builds one,
 # or in the flat cache a bundle before R35 wrote, for a session that has run
@@ -1358,13 +1362,13 @@ def session_now(state):
     if not SESSION:
         return {}
     out = dict(SESSION)
-    out["workspace"] = os.path.ismount("/workspace")
+    out["workspace"] = os.path.ismount(SHARE)
     # ...and writable: a projects share mounted read-only was the right
     # arrangement for a Docker-only sandbox (nothing there wrote source), and
     # is the wrong one for a machine that runs sessions — Claude could not
     # save a file, and the home's transcripts link cannot be made on it.
     # The kernel answers EROFS for root too, so this is an honest probe.
-    out["writable"] = out["workspace"] and os.access("/workspace", os.W_OK)
+    out["writable"] = out["workspace"] and os.access(SHARE, os.W_OK)
     home = out.pop("home", "")
     out.pop("bind", None)
     # Claude Code as the session account has it: its own ~/.local/bin (the
@@ -3772,8 +3776,8 @@ class Agent:
         if not SESSION or self.session_mount is None:
             return
         try:
-            mounted = os.path.ismount("/workspace")
-            now = (mounted, mounted and os.access("/workspace", os.W_OK))
+            mounted = os.path.ismount(SHARE)
+            now = (mounted, mounted and os.access(SHARE, os.W_OK))
         except OSError:
             return
         if now != self.session_mount:

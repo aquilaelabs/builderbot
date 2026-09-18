@@ -227,7 +227,20 @@ const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
 const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does — a real node needs nothing here.
+// The share the fixture node reports as mounted and writable. /workspace when
+// it is both; inside a session's view it is the view's read-only root, so the
+// mount holding the harness's own directory stands in, which is writable by
+// construction. What the tests assert is that the controller reads the
+// agent's answer, not which directory it was measured on.
+const SHARE = execFileSync('python3', ['-c', `
+import os, sys
+p = os.path.realpath(sys.argv[1])
+while not os.path.ismount(p):
+    p = os.path.dirname(p)
+ok = lambda d: os.path.ismount(d) and os.access(d, os.W_OK)
+print("/workspace" if ok("/workspace") else p)`, DIR], { encoding: 'utf8' }).trim();
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
   // A PATH of the harness's own. The agent reports what it finds on PATH as
@@ -1364,7 +1377,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and this container\'s into everybody else\'s');
       const c = await term('claude:alpha');
       ok(c.status === 200 && /^ttyd-stub GET \/ws\?/.test(c.body),
-         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 40)})`);
+         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 400)})`);
       const args = (c.body.match(/arg=[^& ]+/g) || []).map(x => decodeURIComponent(x.slice(4)));
       ok(args[0] === `u:${uid}:claude:alpha`,
          `...with the account stamped into the argument as it is locally (${args[0]})`);
