@@ -29,6 +29,7 @@
 - A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
 - On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
 - A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
+- bb diag: the controller's diagnostics (its build, the doctor, each node, failed jobs, error lines, the audit trail) with credentials redacted, readable by an administrator's session once debug mode is on and its node is ticked for it on Debug settings (96899bb)
 
 ### Upgrading
 
