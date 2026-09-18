@@ -23,6 +23,7 @@
 - A Claude session's token no longer dies under it while the session is idle: the machine it runs on is handed a fresh one on its heartbeat, so a token lives as long as its tmux session does and none is ever accepted past its expiry (dc01fb7)
 - provision-linux.sh --guest: enroll somebody's own machine as a node without touching it. One directory and one systemd user unit, no root, no accounts, no docker, no fstab, no netplan, no firewall; Storage and Network are refused for it, and --guest --remove takes exactly that away (e4f4fc1)
 - appdata is a node store like the other four: where a dev instance keeps its databases and uploads is reported by the node with its headroom and edited in its Storage section, rather than being BB_DEV_DATA_DIR on the controller with an optional mount beside it (5aa7810)
+- Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
 
 ### Upgrading
 

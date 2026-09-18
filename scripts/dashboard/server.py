@@ -2316,6 +2316,16 @@ try:
     nodes.idle_minutes = idle.minutes
     nodes.session_tokens_for = session_tokens_for
     NODES_OK = ""
+    # The job logs are the only copy of what a node's job wrote and had no
+    # retention at all until R17 step 1. Swept once here for whatever ended
+    # while this controller was down; a running one sweeps a project as its
+    # own jobs end, which is when it gains a log.
+    try:
+        _gone = nodes.prune_job_logs()
+        if _gone:
+            print(f"[dashboard] job logs: dropped {_gone} past the policy", flush=True)
+    except Exception as e:                                # noqa: BLE001
+        print(f"[dashboard] job log sweep skipped: {e}", flush=True)
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
     print(f"[dashboard] node store unavailable: {e}", flush=True)

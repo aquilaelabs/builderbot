@@ -776,6 +776,55 @@ print(json.dumps(out))
      && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // A job's log is the only copy of what a node's job wrote, it lives in the
+  // controller's store, and until R17 step 1 nothing deleted one: a build's
+  // log runs to megabytes, so a busy project filled the database quietly. The
+  // ROW stays and only the chunks go, because a list that forgets a build ran
+  // is worse than one that cannot show its output.
+  {
+    const py = (code) => execFileSync('python3', ['-c', code],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }).trim();
+    const out = py(`
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+now = int(time.time())
+# One project, more finished jobs than the policy keeps, each with a log.
+for i in range(m.JOB_LOG_KEEP + 6):
+    jid = f"j_ret{i:04d}"
+    m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+            " spec, outputs, state, node, exit_code, queued, ended) VALUES"
+            " (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (jid, "exec", "retproj", "test", "{}", "{}", "{}", "[]", "succeeded",
+             "n_x", 0, now - (200 - i), now - (200 - i)))
+    m._exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?,?,?,?)",
+            (jid, 0, now, "x" * 32))
+# ...and one on ANOTHER project, old enough to be swept, to prove the sweep is
+# per project when it is asked for one.
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+        " spec, outputs, state, node, exit_code, queued, ended) VALUES"
+        " (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("j_other", "exec", "otherproj", "test", "{}", "{}", "{}", "[]", "succeeded",
+         "n_x", 0, now - 99 * 86400, now - 99 * 86400))
+m._exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?,?,?,?)", ("j_other", 0, now, "y"))
+before = len(m._rows("SELECT DISTINCT job_id FROM job_logs", ()))
+m.prune_job_logs("retproj")
+kept = len(m._rows("SELECT DISTINCT job_id FROM job_logs WHERE job_id LIKE 'j_ret%'", ()))
+rows = len(m._rows("SELECT id FROM jobs WHERE project = 'retproj'", ()))
+other = len(m._rows("SELECT 1 FROM job_logs WHERE job_id = 'j_other'", ()))
+m.prune_job_logs()
+other_after = len(m._rows("SELECT 1 FROM job_logs WHERE job_id = 'j_other'", ()))
+print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
+    const [before, kept, rows, other, otherAfter, keepN] = out.split(/\s+/).map(Number);
+    ok(kept === keepN && before > keepN,
+       `job logs past the count are dropped, the newest ${keepN} kept (${before} had logs, ${kept} left)`);
+    ok(rows === keepN + 6,
+       `...and every job ROW stays, so the list still says what ran (${rows} rows)`);
+    ok(other === 1 && otherAfter === 0,
+       'a sweep for one project leaves another alone, and the sweep for all of them takes the aged one');
+  }
+
   // appdata is a store role like the other four (R17 step 2): where a node
   // keeps a dev instance's databases is a fact about that node, so it is
   // reported with its headroom and edited here, rather than being

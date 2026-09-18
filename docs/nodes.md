@@ -504,6 +504,18 @@ the first migration:
 - Log chunks batched on write (the one place SQLite's write rate is a real
   limit) and pruned by the retention job.
 
+*Amended 18 September:* the retention job exists (roadmap R17 step 1, R42).
+A job's log is the only copy of what a node's job wrote, and nothing deleted
+one: `nodes.prune_job_logs` keeps the newest `JOB_LOG_KEEP` per project and
+nothing older than `JOB_LOG_DAYS`, swept as each project's jobs end and once
+at boot for whatever ended while the controller was down. The job ROW stays
+and only the chunks go, because a list that forgets a build ran is worse than
+one that cannot show its output. Two constants with a reason rather than the
+controller-scoped setting described below: that scope is switches today, and
+`env-only-what-must` takes a default with a reason in the code as the other
+honest answer. Artifacts in `dist/` and a node's failed workspaces are still
+unswept.
+
 This is the Gitea/Grafana pattern and it is well-trodden: the homelab never
 learns Postgres exists; the enterprise gets real concurrency and a backup
 story their DBAs already own, and it is the prerequisite for controller HA

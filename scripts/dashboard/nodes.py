@@ -2512,6 +2512,60 @@ def job(job_id, with_log=True):
     return j
 
 
+# ---- retention on the job logs (roadmap R17 step 1, R42) --------------------
+#
+# A job's log is the only copy of what a node's job wrote, and it lives in the
+# controller's store: nothing else has it, and until this there was no DELETE
+# for one anywhere in the tree. A build's log runs to megabytes, so a busy
+# project fills /config/builderbot.db and nothing says so.
+#
+# The ROW is kept and only the CHUNKS go. The job list, its state, its exit
+# code and what it produced are the history and stay; what is dropped is the
+# console output, which is the large part and the part nobody reads a month
+# later. A list that forgets a build ran is worse than one that cannot show
+# you its output.
+#
+# Hard-coded with a reason rather than a setting, per env-only-what-must: a
+# limit is a default with a reason in the code or a field on the Settings tab,
+# and that tab holds switches today. These two numbers are the same pair every
+# other store here uses, a count and an age, and the count wins where they
+# disagree: forty builds on a quiet project can be a year of history, and
+# thirty days on a busy one can be a thousand.
+JOB_LOG_KEEP = 40          # newest jobs per project whose logs are kept
+JOB_LOG_DAYS = 30          # ...and nothing older than this, however few there are
+
+
+def prune_job_logs(project=None):
+    """Drop the log chunks past the policy; how many jobs lost theirs.
+
+    Per project, because one project building all day should not age out
+    another's, and a controller serving several people is the case this
+    exists for.
+    """
+    where = "WHERE project = ?" if project else ""
+    args = (project,) if project else ()
+    gone = 0
+    for row in _rows(f"SELECT DISTINCT project FROM jobs {where}", args):
+        proj = row["project"]
+        # Beyond the newest N, by when they ended (a job still running has no
+        # `ended` and sorts first, which is right: it is the one being read).
+        old = _rows(
+            "SELECT id FROM jobs WHERE project = ? AND state IN "
+            "('succeeded', 'failed', 'canceled') "
+            "ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
+            (proj, JOB_LOG_KEEP))
+        cutoff = int(time.time()) - JOB_LOG_DAYS * 86400
+        aged = _rows(
+            "SELECT id FROM jobs WHERE project = ? AND state IN "
+            "('succeeded', 'failed', 'canceled') AND COALESCE(ended, queued) < ?",
+            (proj, cutoff))
+        for jid in {r["id"] for r in old} | {r["id"] for r in aged}:
+            if _rows("SELECT 1 FROM job_logs WHERE job_id = ? LIMIT 1", (jid,)):
+                _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
+                gone += 1
+    return gone
+
+
 def job_forget(job_id):
     """Drop a finished job and its log: only for a probe whose answer was
     read by the caller that queued it (run_wait's `forget`). A job somebody
@@ -2605,7 +2659,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
-    got = _rows("SELECT node, state, type FROM jobs WHERE id = ?", (job_id,))
+    got = _rows("SELECT node, state, type, project FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     if got[0]["state"] in JOB_END:
@@ -2624,6 +2678,13 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         keep = [o for o in outputs[:64] if isinstance(o, dict)]
         _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    # Swept here rather than on a timer: a job ending is exactly when a
+    # project gains a log, so it is when one of its old ones can go, and the
+    # work is bounded by that project's own history.
+    # Housekeeping never loses a result: whatever goes wrong in the sweep, the
+    # job that just finished is already recorded above.
+    with contextlib.suppress(Exception):        # noqa: BLE001
+        prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
     # An uninstall that ran retires the node: the agent is gone with it, so
     # the row leaves every list now rather than after a stale timeout.
     if got[0]["type"] == "system" and state == "succeeded":
