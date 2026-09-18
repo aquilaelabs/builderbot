@@ -4888,6 +4888,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(r, 400)
             return self._json({"code": r["code"], "out": r["out"][-200000:], "err": r["err"][-20000:],
                                **({"apply": r["apply"]} if r.get("apply") else {})})
+        # A few at a time: every relayed verb is a process of its own here, and
+        # six sessions and two people writing at once was 129 of them started
+        # together, each slowing the rest (68s for what took 8). The rest wait
+        # their turn in this thread; a wait that long says the box is busy.
+        if not _RELAY_SLOTS.acquire(timeout=120):
+            return self._json({"error": "the controller is busy with other sessions' bb; try again",
+                               "code": 75, "out": "", "err": ""}, 503)
         try:
             r = subprocess.run(["bash", str(HERE.parent / "bb"), *argv], cwd=str(cwd),
                                env=env, capture_output=True, text=True, timeout=180)
@@ -4896,6 +4903,8 @@ class Handler(BaseHTTPRequestHandler):
                                "code": 124, "out": "", "err": ""}, 504)
         except OSError as e:
             return self._json({"error": str(e), "code": 1, "out": "", "err": ""}, 500)
+        finally:
+            _RELAY_SLOTS.release()
         return self._json({"code": r.returncode, "out": r.stdout[-200000:],
                            "err": r.stderr[-20000:]})
 
@@ -7316,6 +7325,20 @@ class Handler(BaseHTTPRequestHandler):
                                else f"{len(lines)} commands"})
 
 
+# How many relayed bb verbs run at once, across every session.
+_RELAY_SLOTS = threading.BoundedSemaphore(8)
+
+
+class Server(ThreadingHTTPServer):
+    """The listen queue a room of people and sessions needs. socketserver's
+    default is 5 connections waiting to be accepted: at 129 arriving together
+    the kernel reset the rest, and the ones it kept retried on a backoff that
+    turned seconds into a minute. Threads are daemons so a stop is not held
+    up by a request still being answered."""
+    request_queue_size = 128
+    daemon_threads = True
+
+
 def main():
     # No accounts is a normal first boot, not a failure. It used to be one:
     # the owner came from DASHBOARD_AUTH and the dashboard refused to start
@@ -7337,7 +7360,7 @@ def main():
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if packages.AUTOCHECK:
         threading.Thread(target=packages.versions_loop, daemon=True).start()
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

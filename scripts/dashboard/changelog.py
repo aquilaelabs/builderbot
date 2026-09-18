@@ -28,8 +28,16 @@ browser); answering it twice here would be a second copy that drifts. So this
 module has no configure() and no state — the callers that already resolved
 the directory hand it over.
 """
+import functools
+import hashlib
+import os
 import re
+import sys
+import tempfile
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statefile   # noqa: E402
 
 FILE = "CHANGELOG.md"
 
@@ -39,6 +47,47 @@ UNRELEASED = "## Unreleased"
 
 def path(d):
     return Path(d) / FILE
+
+
+# Every change is a read, an edit and a write of one file, and the writers are
+# several processes: the dashboard's editor and each session's `bb changelog
+# add`, relayed to the controller and run there as a process of its own. Two
+# of those landing together each read the file, each added their line and
+# each wrote, and one line was gone (test/concurrent.mjs lost one of 72). So
+# the whole of a change holds a file lock, as the notebook's stores do. The
+# lock lives in the temp directory, keyed by the file's real path, rather
+# than beside it: beside it is inside the project's repository. Every writer
+# is on the controller, so they share that directory.
+def _lock_key(d):
+    real = os.path.realpath(path(d))
+    return os.path.join(tempfile.gettempdir(),
+                        "bb-changelog-" + hashlib.sha1(real.encode()).hexdigest()[:16])
+
+
+def _held(fn):
+    @functools.wraps(fn)
+    def inner(d, *a, **k):
+        with statefile.locked(_lock_key(d)):
+            return fn(d, *a, **k)
+    return inner
+
+
+def _write(d, text):
+    """The file replaced whole: a temp beside it, renamed over it, so a reader
+    never meets it half-written."""
+    p = path(d)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=f".{FILE}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read(d):
@@ -138,6 +187,7 @@ def _clean_name(n):
     return n
 
 
+@_held
 def put(d, gs):
     """Write the Unreleased section from the structure `groups` returns.
 
@@ -201,13 +251,14 @@ def put(d, gs):
         at = next((i for i, ln in enumerate(out) if ln.startswith("## ")), len(out))
         out = out[:at] + ["", UNRELEASED, ""] + lines + [""] + out[at:]
     try:
-        path(d).write_text("\n".join(_tidy(out)) + "\n", encoding="utf-8")
+        _write(d, "\n".join(_tidy(out)) + "\n")
     except OSError as e:
         return {"error": f"could not write {FILE}: {e}"}
     return {"ok": True, "entries": sum(len(e) for _, e in rows),
             "categories": len([n for n, _ in rows if n])}
 
 
+@_held
 def add(d, text, sha="", cat=""):
     """Log one user-facing change under Unreleased, creating what is missing.
 
@@ -229,7 +280,7 @@ def add(d, text, sha="", cat=""):
         entry = f"- {text}" + (f" ({sha})" if sha else "")
         body = f"{CATEGORY}{cat}\n\n{entry}" if cat else entry
         try:
-            path(d).write_text(f"{HEADER}\n{UNRELEASED}\n\n{body}\n", encoding="utf-8")
+            _write(d, f"{HEADER}\n{UNRELEASED}\n\n{body}\n")
         except OSError as e:
             return {"error": f"could not write {FILE}: {e}"}
         return {"ok": True, "created": True}
@@ -327,6 +378,7 @@ def _pick(rows, ns):
     return want
 
 
+@_held
 def edit(d, n, text=None, sha="", cat=None):
     """Reword Unreleased entry n, move it between categories, or both.
 
@@ -370,6 +422,7 @@ def edit(d, n, text=None, sha="", cat=None):
     return r
 
 
+@_held
 def remove(d, n):
     """Drop one Unreleased entry.
 
@@ -384,6 +437,7 @@ def remove(d, n):
     return _apply(d, go)
 
 
+@_held
 def merge(d, ns, text, cat=None):
     """Fold several Unreleased entries into one line carrying all their
     commits.
@@ -412,6 +466,7 @@ def merge(d, ns, text, cat=None):
     return _apply(d, go)
 
 
+@_held
 def split(d, n):
     """Break one Unreleased entry into one line per commit it carries.
 
@@ -432,6 +487,7 @@ def split(d, n):
     return _apply(d, go)
 
 
+@_held
 def unroll(d, version):
     """Dissolve a version's dated section back into Unreleased.
 
@@ -471,7 +527,7 @@ def unroll(d, version):
                   or rest[i].startswith("## ")), len(rest))
         out = rest[:j] + section + rest[j:]
     try:
-        path(d).write_text("\n".join(_tidy(out)) + "\n", encoding="utf-8")
+        _write(d, "\n".join(_tidy(out)) + "\n")
     except OSError:
         return False
     return True
@@ -489,6 +545,7 @@ def _tidy(lines):
     return out
 
 
+@_held
 def roll(d, version, date):
     """Date the Unreleased section as `version`, ready to commit with it.
 
@@ -510,7 +567,7 @@ def roll(d, version, date):
         else:
             out.append(ln)
     try:
-        path(d).write_text("\n".join(out) + "\n", encoding="utf-8")
+        _write(d, "\n".join(out) + "\n")
     except OSError:
         return False
     return True

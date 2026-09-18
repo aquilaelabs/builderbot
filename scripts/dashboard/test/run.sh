@@ -246,6 +246,7 @@ cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
+    [ -n "${PIDF:-}" ] && rm -f "$PIDF"
     # The private server only — guarded again, because this is the line that
     # once took the real one down.
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
@@ -869,8 +870,13 @@ fresh
 # their own daemon — a suite that passes on one box and fails on the next with
 # nothing in the diff to explain it. Found when a check on an identity pair
 # started firing against this box's /workspace:/workspace.
+# The server and the stub are started from a subshell, so init adopts them
+# and this shell never has them as children: bash reaping a killed child of
+# its own asynchronously was "wait_for: No record of process", which ended
+# the whole run now and then. Their pids come back through a file outside $S.
+PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
 start_server() {
-env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     PKG_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
@@ -888,7 +894,8 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
-pid=$!
+  echo $! > "$PIDF" )
+pid="$(cat "$PIDF")"
 for _ in $(seq 40); do
     curl -fs -u test:test -o /dev/null "http://127.0.0.1:$PORT/api/status" && break
     kill -0 "$pid" 2>/dev/null || { cat "$S/server.log"; die "server exited"; }
@@ -969,12 +976,13 @@ sandbox_node=$(curl -fs -H "Authorization: Bearer $sandbox_tok" \
 # and not the shipped agent.
 stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
 start_stub() {
-    STUB_AGENT_URL="http://127.0.0.1:$PORT" \
+    ( STUB_AGENT_URL="http://127.0.0.1:$PORT" \
     STUB_AGENT_DIR="$S/sandboxdata" \
     STUB_AGENT_TOKEN="$stub_token" \
     DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
         python3 "$HERE/agent-stub.py" >> "$S/agent-stub.log" 2>&1 &
-    stub_pid=$!
+      echo $! > "$PIDF" )
+    stub_pid="$(cat "$PIDF")"
 }
 start_stub
 
