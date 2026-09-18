@@ -90,11 +90,47 @@ export async function newPage(browser, opts = {}){
   page.setDefaultTimeout(patience(30000));
   for (const m of ["waitForFunction", "waitForSelector"]){
     const real = page[m].bind(page);
-    page[m] = (...args) => {
+    page[m] = async (...args) => {
       const last = args[args.length - 1];
       if (last && typeof last === "object" && typeof last.timeout === "number")
         args[args.length - 1] = { ...last, timeout: patience(last.timeout) };
-      return real(...args);
+      try {
+        return await real(...args);
+      } catch (e) {
+        // A timeout here says what was waited for and nothing about WHY it
+        // never came, which is how the same few files have been rewaited
+        // rather than fixed. Measured 18 Sep, and there are two causes, which
+        // this dump tells apart. In a full run the server answers /api/status
+        // in 10ms first file or last, the box peaks at a load of 2 and a file
+        // takes the same seconds as it does alone: those are waits on
+        // something another file made untrue, and the dump shows a loaded,
+        // healthy page. Right after the machine is disturbed (a session
+        // restarting beside the suite) files that pass alone timed out at
+        // ready() and passed four times running minutes later: that one is
+        // the box, and the dump shows a page that never finished arriving.
+        if (e && e.name === "TimeoutError"){
+          try {
+            const seen = await page.evaluate(() => ({
+              tabs: (typeof tabs !== "undefined" ? tabs : []).map(t => t.kind),
+              active: typeof active !== "undefined" ? active : null,
+              projects: (state?.projects || []).map(p => p.name),
+              sessions: (state?.sessions || []).map(s => s.name),
+              nodes: (state?.node_runners || []).length,
+              // What ready() waits on, which is the most common wait there is:
+              // the doctor dot going ok. A failing check anywhere keeps it red.
+              docDot: (() => { const d = document.getElementById("docDot");
+                               return d ? `${d.hidden ? "hidden " : ""}${d.className}` : "absent"; })(),
+              doctor: (state?.doctor?.checks || [])
+                .filter(c => c.level !== "ok").map(c => `${c.level} ${c.text}`).slice(0, 4),
+            }));
+            console.log("[wait] timed out; the page at that moment: "
+                        + JSON.stringify(seen));
+          } catch { /* the page may be gone, which is its own answer */ }
+          if (page.errors?.length)
+            console.log("[wait] console errors so far: " + page.errors.slice(-3).join(" | "));
+        }
+        throw e;
+      }
     };
   }
   page.errors = []; page.dialogs = [];
