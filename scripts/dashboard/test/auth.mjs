@@ -1147,6 +1147,17 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     const asOwner = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
     ok(plain.status === 200 && asUser.admin === false && asOwner.admin === true,
        `the status payload carries admin: ${asUser.admin} for a user, ${asOwner.admin} for the owner`);
+    // A plain account cannot queue a job with its password either: a job
+    // runs outside every view as the node's own account, in the docker
+    // group, which is what a session was already refused (R35).
+    for (const body of [{ action: 'run', project: 'alpha', argv: ['true'] },
+                        { action: 'emu', project: 'alpha', argv: ['emu', 'list'] }]) {
+      const r = await bare('/api/v1/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json',
+        Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') }, body: JSON.stringify(body) });
+      const why = r.status === 403 ? ((await r.json()).error || '') : '';
+      ok(r.status === 403 && /administrator's/.test(why),
+         `a plain account cannot queue a ${body.action} job, which would run outside every view (${r.status}: ${why.slice(0, 50)})`);
+    }
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,

@@ -4840,6 +4840,13 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": "a session runs bb run, build, test and emu where it is, on its "
                              "project's node; a job would run outside the session's view, "
                              "so a session cannot queue one"}, 403
+        # ...nor from an account without the right: the same job queued with
+        # a password instead of a token is the same command in the same
+        # docker group. Nothing on the page queues one for a plain user; bb
+        # on the controller does, for an administrator.
+        why = users.may(self._who(), "jobs")
+        if why:
+            return {"error": why}, 403
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return {"error": "not a project"}, 400
