@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -687,37 +687,24 @@ await page.evaluate(() => {
   if (t) dropTab(t.id);
 });
 
-// ---- the restart check drops the tabs from BEFORE the restart, only ----
-// The page notices a restart on a poll and drops its Claude tabs, whose
-// sessions ended with the container. A tab opened after the container came
-// back but before the page noticed — the operator pressed Claude, the
-// session started, the tab vanished on the next poll while Sessions still
-// listed it — carries the new boot and has to stay.
-// Against bootFor — the boot of the machine that RUNS the session — rather
-// than this container's, which is not the same thing for a project bound to
-// a node and is why this read the wrong way round once: alpha has a node by
-// the time this file runs after nodes.mjs, so its tab carried the NODE's
-// boot and a controller restart dropped it.
-const kept = await page.evaluate(async () => {
-  openTab({ kind: 'term', arg: 'claude:alpha', label: 'Claude: alpha' });
-  const t0 = tabs.find(t => t.arg === 'claude:alpha');
-  const stamped = !!t0 && t0.boot === bootFor('claude:alpha');
-  while (refreshBusy) await new Promise(r => setTimeout(r, 50));   // a poll in flight would swallow the call
-  bootSeen = 'the-run-before';
-  await refresh();
-  return { stamped, after: tabs.filter(t => t.arg === 'claude:alpha').length };
-});
-ok(kept.stamped && kept.after === 1,
-   `a Claude tab is stamped with the boot of the machine that runs it, and survives the page noticing a restart (${JSON.stringify(kept)})`);
-const dropped = await page.evaluate(async () => {
-  const t = tabs.find(t => t.arg === 'claude:alpha');
-  if (!t) return 'the tab went before this could ask';
-  t.boot = 'the-run-before';
-  while (refreshBusy) await new Promise(r => setTimeout(r, 50));
-  bootSeen = 'the-run-before';
-  await refresh();
-  return tabs.filter(t => t.arg === 'claude:alpha').length;
-});
-ok(dropped === 0, `...and one whose machine has restarted under it is dropped (${dropped})`);
+// ---- a new run of the container reloads the page ------------------------
+// Whichever poll notices first. The status poll used to drop the Claude tabs
+// that died with the container and open the changelog, and carry on with the
+// code it had: the operator met the old Global rules dialog under the new
+// version's notes. It reloads now, before the changelog, so the page is the
+// new run's code and the changelog is opened by that page.
+{
+  await page.evaluate(() => { window.__before = 1; });
+  const nav = page.waitForNavigation({ timeout: 20000 }).then(() => true).catch(() => false);
+  await page.evaluate(async () => {
+    while (refreshBusy) await new Promise(r => setTimeout(r, 50));   // a poll in flight would swallow the call
+    bootSeen = 'the-run-before';
+    refresh();
+  });
+  const reloaded = await nav;
+  await ready(page);
+  ok(reloaded && await page.evaluate(() => window.__before === undefined),
+     `a restart the status poll notices reloads the page (${reloaded ? 'reloaded' : 'did not'})`);
+}
 
 await done(browser);

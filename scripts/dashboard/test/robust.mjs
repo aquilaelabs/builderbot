@@ -14,18 +14,52 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 // to the browser's heuristics, and the failure is silent: yesterday's page
 // against today's server, with nothing on screen admitting it. `no-cache`
 // means "ask me first", so the usual answer is a 304 of a few bytes.
+// Over node:http, not fetch. Node's fetch (undici) asserts inside itself,
+// assert(!this.paused) in Parser.finish, when a large body is still being
+// read as this HTTP/1.0 server closes the connection it answered on; it
+// crashed this file in whole runs and then on every run once the page's body
+// was read to its end. node:http has no such path.
+import http from 'node:http';
+const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+const get = (path, extra = {}) => new Promise((resolve, reject) => {
+  const u = new globalThis.URL(URL.replace(/\/$/, '') + path);
+  http.get({ host: u.hostname, port: u.port, path: u.pathname + u.search, headers: { ...H, ...extra } }, res => {
+    const chunks = [];
+    res.on('data', c => chunks.push(c));
+    res.on('end', () => resolve({ status: res.statusCode, tag: res.headers.etag,
+      cache: res.headers['cache-control'] || '', type: res.headers['content-type'] || '',
+      text: Buffer.concat(chunks).toString('utf8') }));
+  }).on('error', reject);
+});
 {
-  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
   for (const path of ['/', '/tab-nodes.js']){
-    const r = await fetch(URL.replace(/\/$/, '') + path, { headers: H });
-    const tag = r.headers.get('etag');
-    ok(r.status === 200 && !!tag && /no-cache/.test(r.headers.get('cache-control') || ''),
-       `${path} is served with a validator and asked to be revalidated (${
-         tag || 'no etag'}, ${r.headers.get('cache-control') || 'no directive'})`);
-    const again = await fetch(URL.replace(/\/$/, '') + path,
-                              { headers: { ...H, 'If-None-Match': tag } });
+    const r = await get(path);
+    ok(r.status === 200 && !!r.tag && /no-cache/.test(r.cache),
+       `${path} is served with a validator and asked to be revalidated (${r.tag || 'no etag'}, ${r.cache || 'no directive'})`);
+    const again = await get(path, { 'If-None-Match': r.tag });
     ok(again.status === 304, `...and an unchanged ${path} comes back 304 (${again.status})`);
   }
+}
+// The page names each of its scripts with that script's version, and its
+// own tag covers them: a phone left on the page across an update reloaded
+// into the old Global rules dialog, and a URL that moves with the file
+// cannot be answered from a copy made before it.
+{
+  const g0 = await get('/');
+  const v = g0.text.match(/<script src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  ok(!!v && !/<script src="(tab|nb)-[a-z-]+\.js">/.test(g0.text),
+     `every tab and notebook script is named with its version (${v ? v[1] : 'unversioned'})`);
+  const served = new globalThis.URL('../nb-history.js', import.meta.url).pathname;
+  const { utimesSync } = await import('node:fs');
+  const later = new Date(Date.now() + 5000);
+  utimesSync(served, later, later);
+  const g1 = await get('/');
+  const v1 = g1.text.match(/<script src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  ok(v1 && v && v1[1] !== v[1] && g1.tag !== g0.tag,
+     `...and a script that changes gets a new name and a new page tag, the page itself untouched (${v1?.[1]}, ${g1.tag !== g0.tag})`);
+  const js = await get('/nb-history.js?v=' + (v1 ? v1[1] : ''));
+  ok(js.status === 200 && /javascript/.test(js.type),
+     `...which the server answers under that name (${js.status})`);
 }
 
 const browser = await launch();

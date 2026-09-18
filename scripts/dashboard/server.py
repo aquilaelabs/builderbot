@@ -1955,6 +1955,31 @@ def app_apk():
     return apks[0].name if apks else ""
 
 
+# The page's own scripts, each named with its version as the page is served.
+# `no-cache` makes a browser ask before it uses a copy, but a phone left on
+# the page across an update still met the old Global rules dialog after it
+# reloaded, and a URL that changes with the file cannot be answered from a
+# copy of the file before it. The version is the script's size and mtime,
+# the same thing its ETag is; the page's own tag covers them all, so a change
+# to one script alone is still a new page.
+_SCRIPT_TAG = re.compile(rb'<script src="((?:tab|nb)-[a-z-]+\.js)">')
+
+
+def _versioned_page(raw, tag):
+    parts = [tag]
+
+    def named(m):
+        try:
+            st = (HERE / m.group(1).decode()).stat()
+        except OSError:
+            return m.group(0)
+        v = f"{st.st_size:x}-{st.st_mtime_ns:x}"
+        parts.append(v)
+        return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
+    out = _SCRIPT_TAG.sub(named, raw)
+    return out, 'W/"' + hashlib.sha256("|".join(parts).encode()).hexdigest()[:24] + '"'
+
+
 def image_stamp():
     """Which build of the image this container is running.
 
@@ -3548,10 +3573,13 @@ class Handler(BaseHTTPRequestHandler):
         """
         try:
             st = (HERE / rel).stat()
-            body, zipped = self._gzip((HERE / rel).read_bytes())
+            raw = (HERE / rel).read_bytes()
         except OSError:
             return self._json({"error": "not found"}, 404)
         tag = f'W/"{st.st_size:x}-{st.st_mtime_ns:x}"'
+        if rel == "index.html":
+            raw, tag = _versioned_page(raw, tag)
+        body, zipped = self._gzip(raw)
         if self.headers.get("If-None-Match") == tag:
             self.send_response(304)
             self.send_header("ETag", tag)

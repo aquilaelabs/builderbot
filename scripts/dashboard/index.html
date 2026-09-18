@@ -10669,6 +10669,15 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    // A new run of the container under this page, noticed here or by the
+    // revs poll, whichever answers first: its code is what that run serves,
+    // so the page starts again rather than carrying on with the old code.
+    // Ahead of everything below, the changelog above all: opened by this
+    // page, it announced a build the page was not running, which is how the
+    // operator met an old Global rules dialog under a new version's notes.
+    // The reloaded page opens the changelog itself, and its tabs come from
+    // the layout the server pruned of this container's dead sessions at boot.
+    if (state.boot && bootSeen && state.boot !== bootSeen){ location.reload(); return; }
     welcomeOnce();
     fetched = true;
     // The bell reads what sessions have waiting for approval off this
@@ -10691,39 +10700,6 @@ async function refresh(){
     if (!mayShell()){
       const shells = tabs.filter(t => t.kind === "term" && !isClaude(t));
       if (shells.length) shells.forEach(t => dropTab(t.id));
-    }
-    // The container was recreated under this page. Its Claude tabs are tabs to
-    // conversations that ended with it: the server prunes them from the saved
-    // layout at boot, but a page that has saved since then is ahead of that
-    // revision and would never adopt the pruned strip. So it drops its own,
-    // and the transcripts stay on disk for the Projects card to offer.
-    // Only the tabs whose SESSION died with the restart, which is not every
-    // Claude tab: a project bound to a node runs its session on that node,
-    // in that node's tmux, and a controller restart does not touch it: the
-    // operator watched one carry straight through an image update. So each
-    // tab is compared against the boot of the machine that runs it
-    // (bootFor: the node's, or this container's), not against this
-    // container's. That also keeps a tab opened after the container came
-    // back but before this page had noticed: a poll that failed part way,
-    // a click in the gap, which otherwise vanished a moment after the
-    // operator pressed Claude while the Sessions list still showed it.
-    if (state.boot && bootSeen && state.boot !== bootSeen){
-      // Collected first, then dropped: dropTab repairs the panes and
-      // re-renders, and doing that while walking the list it edits is how
-      // one of two dying tabs gets missed (reapDeadTerminals says the same).
-      const stale = [];
-      for (const t of tabs){
-        if (!String(t.arg).startsWith("claude:")) continue;
-        const now = bootFor(t.arg);
-        // Never stamped: restored from a saved layout, or opened by a build
-        // before this existed. Adopt rather than drop: the server already
-        // prunes this container's Claude tabs from the layout at boot, so an
-        // unstamped one here is not evidence of a dead session, and dropping
-        // it would take a live node session's tab with it.
-        if (t.boot === undefined) t.boot = now;
-        else if (t.boot !== now) stale.push(t.id);
-      }
-      stale.forEach(dropTab);
     }
     if (state.boot) bootSeen = state.boot;
     // After the boot check above, which drops every Claude tab on a restart:
