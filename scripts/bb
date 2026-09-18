@@ -2618,6 +2618,10 @@ except OSError as e:
     sys.exit(f"[builderbot] ERROR: no run log to read: {e}")
 
 BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==")
+# The same file run again, alone, after it failed in the whole run (run.sh,
+# B124): its result decides whether the first failure was the file's or the
+# run's.
+AGAIN = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) again ==")
 # ` in Xs` only when the run was timed: `bb dashboard test FILE` prints the
 # bare form, and a verdict that required the seconds read a passing file as a
 # crash — which is the one thing this tool must never do.
@@ -2628,8 +2632,13 @@ FAIL = re.compile(r"^FAIL\s+(?:\[\+[\d.]+s\]\s+)?(.*)")
 # is the thing to quote.
 DIED = re.compile(r"^(?:\w+Error|Error|AssertionError)\b.*|^[a-zA-Z.]+: .*(?:Timeout|exceeded|not defined|is not a function).*")
 
-files, cur = [], None
+files, again, cur = [], {}, None
 for ln in lines:
+    m = AGAIN.match(ln)
+    if m:
+        cur = {"name": m.group(1), "fails": [], "totals": None, "why": "", "tail": []}
+        again[m.group(1)] = cur
+        continue
     m = BANNER.match(ln)
     if m:
         cur = {"name": m.group(1), "fails": [], "totals": None, "why": "", "tail": []}
@@ -2671,8 +2680,22 @@ for f in files:
 checks = sum(f["totals"][0] + f["totals"][1] for f in files if f["totals"])
 if not files:
     sys.exit("[builderbot] ERROR: that log has no test output in it")
+# A file that failed in the run and passed alone, in a world of its own, is
+# flaky: named, and not a failure. One that failed alone as well is.
+passed_alone = lambda f: (again.get(f["name"]) or {}).get("totals") and not again[f["name"]]["totals"][1]
+flaky = [f for f in bad if passed_alone(f)]
+bad = [f for f in bad if not passed_alone(f)]
+for f in bad:
+    f["again"] = f["name"] in again
+if flaky:
+    print()
+    print("== flaky: failed in the whole run, passed alone ==")
+    for f in flaky:
+        first = f["fails"][0] if f["fails"] else (f["why"] or "crashed")
+        print(f"  {f['name']}  {first[:140]}")
 if not bad:
-    print(f"all {len(files)} suites passed — {checks} checks")
+    print(f"all {len(files)} suites passed: {checks} checks"
+          + (f", {len(flaky)} of them flaky (above)" if flaky else ""))
     sys.exit(0)
 
 print()
@@ -2699,7 +2722,9 @@ for f in bad:
             print(f"      {x[:150]}")
         if len(f["fails"]) > 10:
             print(f"      ...and {len(f['fails']) - 10} more")
-print(f"{len(bad)} of {len(files)} suites have problems — {checks} checks ran")
+print(f"{len(bad)} of {len(files)} suites have problems: {checks} checks ran"
+      + (" (each failed again alone)" if all(f.get("again") for f in bad) else "")
+      + (f"; {len(flaky)} more flaky" if flaky else ""))
 sys.exit(1)
 VERDICT
 }

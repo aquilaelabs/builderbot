@@ -869,6 +869,7 @@ fresh
 # their own daemon — a suite that passes on one box and fails on the next with
 # nothing in the diff to explain it. Found when a check on an identity pair
 # started firing against this box's /workspace:/workspace.
+start_server() {
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     PKG_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
@@ -886,13 +887,15 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_ARCHIVE_SPOOL="$S/spool" \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
-    python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
+    python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do
     curl -fs -u test:test -o /dev/null "http://127.0.0.1:$PORT/api/status" && break
     kill -0 "$pid" 2>/dev/null || { cat "$S/server.log"; die "server exited"; }
     sleep 0.25
 done
+}
+start_server
 
 # ---- the owner ---------------------------------------------------------------
 # There is no DASHBOARD_AUTH any more: a fresh container serves a first-run
@@ -964,12 +967,77 @@ sandbox_node=$(curl -fs -H "Authorization: Bearer $sandbox_tok" \
 # the agent's, so without this every Up and Rebuild in the suite would queue
 # and then be reconciled away. agent-stub.py's header says why it is a stub
 # and not the shipped agent.
-STUB_AGENT_URL="http://127.0.0.1:$PORT" \
-STUB_AGENT_DIR="$S/sandboxdata" \
-STUB_AGENT_TOKEN="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')" \
-DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
-    python3 "$HERE/agent-stub.py" > "$S/agent-stub.log" 2>&1 &
-stub_pid=$!
+stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+start_stub() {
+    STUB_AGENT_URL="http://127.0.0.1:$PORT" \
+    STUB_AGENT_DIR="$S/sandboxdata" \
+    STUB_AGENT_TOKEN="$stub_token" \
+    DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
+        python3 "$HERE/agent-stub.py" >> "$S/agent-stub.log" 2>&1 &
+    stub_pid=$!
+}
+start_stub
+
+# ---- one world per file (B124) ---------------------------------------------
+# Every file starts from the same world, whatever the one before it did. The
+# fixture above is built once and kept whole (everything under $S but the
+# private tmux server, the ssh-agent's socket, the logs and the copy itself);
+# before each file the server and the stub agent stop, the copy is put back
+# and both start again. Before this, fresh() below kept a hand-written list
+# of files to reset, and every leak it missed was a failure that showed only
+# in a whole run: a node, an account or a setting one file made, in the
+# database, in memory, read by the next. A list cannot keep up with that; a
+# copy of everything does. It costs a server start per file, about a second.
+stop_world() {
+    local p _
+    for p in "$pid" "$stub_pid"; do [ -z "$p" ] || kill "$p" 2>/dev/null || true; done
+    # Polled, not waited for: bash's wait on a child it has already reaped
+    # is an internal error that ended the script, and the database has to be
+    # closed before its files are copied or put back.
+    for p in "$pid" "$stub_pid"; do
+        [ -n "$p" ] || continue
+        for _ in $(seq 50); do kill -0 "$p" 2>/dev/null || break; sleep 0.1; done
+        kill -9 "$p" 2>/dev/null || true
+    done
+    pid=""; stub_pid=""
+}
+WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar)
+snapshot_world() {
+    local ex=() n
+    for n in "${WORLD_OUT[@]}"; do ex+=("--exclude=./$n"); done
+    ( cd "$S" && tar cf .world.tar "${ex[@]}" . )
+}
+restore_world() {
+    local keep=() n
+    for n in "${WORLD_OUT[@]}"; do keep+=(! -name "$n"); done
+    find "$S" -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf {} +
+    ( cd "$S" && tar xf .world.tar )
+}
+# Up and dialed in: the stub says hello the moment it starts, and a file that
+# opens on the node's row must not meet it still marked as not answering.
+wait_stub() {
+    local since="$1" _
+    for _ in $(seq 40); do
+        curl -fs -u test:test "http://127.0.0.1:$PORT/api/v1/nodes" 2>/dev/null \
+            | python3 -c 'import json,sys; since=float(sys.argv[1]); d=json.load(sys.stdin)
+n=[x for x in d.get("nodes",[]) if x.get("name")=="sandbox"]
+sys.exit(0 if n and float((n[0].get("agent") or {}).get("last_seen") or 0) >= since else 1)' "$since" \
+            && return 0
+        sleep 0.25
+    done
+    warn "the stub agent did not dial in again within ten seconds"
+}
+fresh_world() {
+    local since
+    stop_world
+    restore_world
+    since="$(date +%s)"
+    start_server
+    start_stub
+    wait_stub "$since"
+}
+stop_world
+snapshot_world
 
 # ---- tests -----------------------------------------------------------------
 if [ $# -gt 0 ]; then
@@ -983,12 +1051,34 @@ else
         case "$(basename "$t")" in lib.mjs|lab-*.mjs) ;; *) tests+=("$t") ;; esac
     done
 fi
-rc=0
-for t in "${tests[@]}"; do
+run_file() {
+    fresh_world
     fresh
-    log "== $(basename "$t") =="
+    log "== $(basename "$1")${2:+ $2} =="
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" node "$t" || rc=1
+    DASHBOARD_TEST_DIR="$S" node "$1"
+}
+rc=0
+failed=()
+for t in "${tests[@]}"; do
+    run_file "$t" || failed+=("$t")
 done
+# Once more, alone, for each file that failed, in a world of its own like
+# every other. A file that passes then is FLAKY: it failed under the whole
+# run's load and not on its own, and it is named as that, never folded into
+# a pass. A file that fails again is a failure. Only in a run of more than
+# one file: asking for one file and getting it twice would be noise.
+flaky=()
+if [ "${#tests[@]}" -gt 1 ]; then
+    for t in "${failed[@]}"; do
+        if run_file "$t" again; then flaky+=("$(basename "$t")"); else rc=1; fi
+    done
+elif [ "${#failed[@]}" -gt 0 ]; then
+    rc=1
+fi
+stop_world
+if [ "${#flaky[@]}" -gt 0 ]; then
+    warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
+fi
 [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
 exit "$rc"

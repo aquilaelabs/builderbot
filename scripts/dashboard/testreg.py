@@ -107,6 +107,10 @@ def _project(d, project):
 # parser that only knows the two statuses one runner happens to print is a
 # parser that has to be rewritten the day a test is skipped.
 BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==\s*$")
+# A file run again, alone, after it failed in the whole run (B124). Its lines
+# are not recorded: the run's own timings are the ones worth keeping, and
+# the second copy of a file's roster would read as every test doubled.
+RETRY = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) again ==\s*$")
 RESULT = re.compile(r"^(PASS|FAIL|SKIP|TODO)\s+(?:\[\+([0-9.]+)s\]\s+)?(.+?)\s*$")
 FILETOT = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([0-9.]+)s)?\s*$")
 STATUS = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "TODO": "todo"}
@@ -125,6 +129,9 @@ def parse(text):
         # carries an epoch in front. Stripped here rather than asked for, so
         # the same command takes a log either way.
         line = re.sub(r"^\d{9,}\.\d+ ", "", raw)
+        if RETRY.match(line):
+            suite = ""
+            continue
         m = BANNER.match(line)
         if m:
             suite, n = m.group(1), 0

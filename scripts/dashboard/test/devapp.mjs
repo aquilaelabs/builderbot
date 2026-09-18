@@ -158,7 +158,13 @@ const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li.${cls}`,
 ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Build',
    'the button says Build before a first image exists — nothing auto-builds');
-ok(!r.rebuild, '...and it is live for that first build');
+// Waited for, not read once: the button goes live when the manager has the
+// node's answer, and on a server that started a moment ago (every file gets
+// its own now, B124) that answer can be a poll away.
+await openManager();
+const live = await page.waitForFunction(sel => document.querySelector(sel)?.disabled === false,
+  `${DM} [data-dm="rebuild"]`, { timeout: 20000 }).then(() => true).catch(() => false);
+ok(live, '...and it is live for that first build');
 ok(r.up, '...and Up is dead: the env is missing PORT, and starting against a '
         + 'known-missing env is a crash with extra steps');
 ok(r.down, '...and Down is dead with nothing running');

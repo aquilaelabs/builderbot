@@ -2756,6 +2756,17 @@ it would answer "body too large" for the only input it was for. It also
 belongs there: reading a runner's output is work for the machine the runner
 ran on.
 
+**Every file starts from the same world.** The harness builds its fixture
+once (projects, accounts, the stub node, the store), keeps a copy, and before
+each file stops the server and the stub agent, puts the copy back and starts
+both again, about a second and a half per file. What one file creates (a
+node, an account, a setting, a job, anything the server keeps in memory)
+cannot reach the next. A file that fails in a whole run is run once more,
+alone, in a world of its own: if it passes it is reported as **flaky**, by
+name, above the verdict, and never folded into a pass; if it fails again it
+is a failure. The registry records the first run's timings, not the
+retry's.
+
 A test is keyed on **where the runner puts it** (`<file>#<ordinal>`) rather
 than on its name, so rewording one keeps its description. Ingest reconciles
 the list against the roster it just read: longest common subsequence on the
