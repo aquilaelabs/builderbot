@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.80"
+AGENT_VERSION = "0.5.81"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2173,6 +2173,35 @@ def load_state():
                          "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
+
+
+def fill_default_stores(state):
+    """Give an already-enrolled node a store role it predates; True if it
+    gained one.
+
+    The store list is written at ENROLMENT and never revisited, so a node
+    enrolled before `appdata` existed would never have one and the controller
+    would answer its fallback forever. A role added to DEFAULT_STORES has to
+    reach the nodes that are already out there or it only ever works on the
+    next machine somebody enrols.
+
+    Placed BESIDE the store this node already keeps its data in, never at the
+    hard-coded default: a guest node keeps everything under one directory in
+    its owner's home (R23), and handing it /var/lib/builderbot would be a
+    path it has no root to make. Where data sits is where the rest belongs.
+    """
+    have = state.get("stores") if isinstance(state.get("stores"), dict) else {}
+    base = os.path.dirname(str(have.get("data") or "")) if have.get("data") else ""
+    added = False
+    for role, default in DEFAULT_STORES.items():
+        if have.get(role):
+            continue
+        have[role] = os.path.join(base, role) if base else default
+        log(f"stores: {role} was not set; using {have[role]}")
+        added = True
+    if added:
+        state["stores"] = have
+    return added
 
 
 def save_state(state):
@@ -5148,6 +5177,11 @@ def cmd_enroll(args):
 
 def cmd_run():
     state = load_state()
+    # A store role added since this node enrolled: adopted here, once, so a
+    # machine that is already out there gains it on its next start rather
+    # than only on a re-enrolment nobody is going to do.
+    if fill_default_stores(state):
+        save_state(state)
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")
     Agent(state).loop()

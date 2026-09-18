@@ -25,6 +25,7 @@
 - appdata is a node store like the other four: where a dev instance keeps its databases and uploads is reported by the node with its headroom and edited in its Storage section, rather than being BB_DEV_DATA_DIR on the controller with an optional mount beside it (5aa7810)
 - Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
 - The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
+- A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
 
 ### Upgrading
 
