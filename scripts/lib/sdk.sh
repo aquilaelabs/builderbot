@@ -1065,7 +1065,17 @@ sdk_install_command() {
     link_at="$(sdk_meta field "$what" source.link.as)"
     if [ -n "$find_at" ] && [ -n "$link_at" ]; then
         exe="$(find "$d" -path "$find_at" -type f 2>/dev/null | head -1)"
-        [ -z "$exe" ] || ln -sfn "$exe" "${link_at//\{dir\}/$d}"
+        # RELATIVE to the link's own directory (B170): the store is mounted at
+        # /sdk in the controller and at /mnt/... on a node, so an absolute
+        # target written by one is a dangling link on the other. realpath -s
+        # does not resolve links on the way; where it has no --relative-to
+        # (macOS) the absolute form is the one machine's answer, as before.
+        local at rel
+        at="${link_at//\{dir\}/$d}"
+        if [ -n "$exe" ]; then
+            rel="$(realpath -s --relative-to="$(dirname "$at")" "$exe" 2>/dev/null)" || rel="$exe"
+            ln -sfn "${rel:-$exe}" "$at"
+        fi
     fi
     log "${what} ready at ${d}"
 }

@@ -47,7 +47,9 @@ ln -sfn "$STORE" "$BROWSERS"
 relink_chromium() {
     local exe
     exe="$(find -L "$STORE" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-    [ -n "$exe" ] && ln -sfn "$exe" "$STORE/chromium"
+    # Relative (B170): this store is the nodes' too, mounted elsewhere there,
+    # and an absolute /sdk/... target is a dangling link on every node.
+    [ -n "$exe" ] && ln -sfn "${exe#"$STORE"/}" "$STORE/chromium"
 }
 
 # First boot on an empty share: fetch them. Synchronous and loud, like the
