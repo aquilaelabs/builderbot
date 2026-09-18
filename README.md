@@ -106,7 +106,7 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 | Dir | Holds |
 |---|---|
-| `home/` | each account's home (shell history, npm globals) and the AVDs; survives image updates |
+| `home/` | each account's home on the controller (shell history, npm globals, which Claude login it is bound to); survives image updates |
 | `config/` | your custom startup hooks (`config/startup.d/*.sh`) + persistent logs (`config/logs/`) |
 
 The dashboard starts early in the boot, before any project's own `setup.sh`
@@ -131,7 +131,7 @@ mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
 
 cp /path/to/git-key /mnt/user/appdata/BuilderBot/secrets/ssh/id_ed25519
 
-# only if a session publishes to npm: any *.env file here is loaded the same way
+# only if you publish to npm from a controller shell: any *.env file here is loaded the same way
 cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
 NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
 EOF
@@ -172,9 +172,8 @@ Required / usually touched:
 | Field | Set it to |
 |---|---|
 | Projects folder | One mapping for all of them: `/mnt/user/projects` → `/workspace`. Every folder inside it is a project |
-| State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
+| State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
-| `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 
 Everything else has sane defaults: full reference below.
 
@@ -203,7 +202,7 @@ credential mode** (shielded vs in-environment), **SSH auth against GitHub**
 it actually answers, and says it is a sandbox; and, when a GPU is passed through,: whether its **graphics stack** is usable or
 only CUDA is.
 
-If you're on a Claude subscription (no API key), sign in from the dashboard's
+Each person signs in to Claude from the dashboard's
 **Sign in** button, under the doctor verdict. The flow runs on a node: the
 machine Claude Code is installed on, and the code is pasted back into the
 card. Each node signs in for itself and keeps the grant it alone refreshes;
@@ -265,9 +264,8 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its logs and file names. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab's On this browser, kept in a cookie there |
-| `ANTHROPIC_API_KEY` | *(empty)* | API-key billing, passed to the sessions on your nodes; empty = subscription login, from the dashboard's Sign in |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
-| `NPM_TOKEN` | *(none)* | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
+| `NPM_TOKEN` | *(none)* | `npm publish` auth for a shell on the controller (lands in its `~/.npmrc`). A Claude session runs on a node, with that node's home, and does not get it |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `BUILDERBOT_PULL` | `missing` | compose's pull policy for the image: `missing` pulls (an install); `build` builds this checkout, which is what BuilderBot's own dev instance sets, with `BUILDERBOT_TAG=dev` |
 | `COMPOSE_PROFILES` | empty | compose's own switch: `lab` in a dev instance's env file starts the lab's Gitea beside it (the `gitea` service), for `bb tests lab` |
@@ -3704,16 +3702,18 @@ policed.
 
 ## Playwright, Android, publishing
 
-- **Playwright**: three browsers + deps pre-installed; `npx playwright test`
-  works headless immediately. Shared writable `/opt/pw-browsers` lets
-  projects pin their own versions.
-- **Android**: `./gradlew assembleRelease` works out of the box; emulator
-  headless via `bb emu start`. See [Multiple Android versions](#multiple-android-versions)
-  to emulate more than one API level.
-- **Publishing**: `npm publish` (`NPM_TOKEN`), `uv publish`
-  (`UV_PUBLISH_TOKEN`), `gh release create`, Gradle publish tasks; `docker
-  push` to GHCR needs the opt-in socket. Signing keys belong in the home
-  volume or CI secrets, never the image.
+- **Playwright**: the browsers are a package on the store (the Tools tab's
+  playwright), so `npx playwright test` runs headless in a session on any
+  node that has it installed.
+- **Android**: `./gradlew assembleRelease` runs on the project's node once
+  the Tools tab has installed the JDK and the Android tools there; the
+  emulator is that node's too, `bb emu start`. See
+  [Multiple Android versions](#multiple-android-versions) to emulate more
+  than one API level.
+- **Publishing**: from a session, whatever the project's own credentials
+  allow on its node (`gh release create`, Gradle publish tasks); from a shell
+  on the controller, `npm publish` with `NPM_TOKEN`. Signing keys belong in CI
+  secrets, never the image.
 
 ## Logs
 

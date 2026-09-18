@@ -5422,6 +5422,76 @@ except xml.parsers.expat.ExpatError as e:
         fi
     fi
 
+    # The container's settings live in five places (.env.example, the
+    # compose file, the Unraid template, the README's reference, and
+    # docs/unraid.md for host setup), and the copies nobody runs drift: on 18
+    # Sep ANTHROPIC_API_KEY was still offered in four of them, though nothing
+    # on a controller had read it since Claude moved to the nodes (R47). So
+    # what compose passes
+    # into the container is held against the other three, by name and by
+    # default, and every template path against its compose volume.
+    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f README.md ]; then
+        section "settings (compose, .env.example, Unraid template, README)"
+        python3 - <<'SETTINGS' || rc=1
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+compose = open("docker-compose.yml").read()
+# The builderbot service only: the lab's services carry their own.
+svc = compose.split("\n  builderbot:", 1)[1]
+svc = re.split(r"\n  [a-z][a-z0-9_-]*:\s*\n", svc, maxsplit=1)[0]
+env = {}
+for m in re.finditer(r"^\s+([A-Z][A-Z0-9_]+):\s*\$\{([A-Z][A-Z0-9_]+)(?::?-([^}]*))?\}", svc, re.M):
+    if m.group(1) == m.group(2):
+        env[m.group(1)] = m.group(3) or ""
+example = {}
+for ln in open(".env.example"):
+    m = re.match(r"^#?\s*([A-Z][A-Z0-9_]+)=(.*)$", ln.rstrip("\n"))
+    if m:
+        example[m.group(1)] = m.group(2).strip()
+root = ET.parse("unraid/builderbot.xml").getroot()
+tmpl = {c.get("Target"): c.get("Default") or "" for c in root.iter("Config") if c.get("Type") == "Variable"}
+paths = {c.get("Target"): c.get("Default") or "" for c in root.iter("Config") if c.get("Type") == "Path"}
+# A row may name two at once, `PUID` / `PGID` | `99` / `100`, paired in order.
+readme = {}
+for m in re.finditer(r"^\|\s*((?:`[A-Z][A-Z0-9_]+`(?:\s*/\s*)?)+)\s*\|\s*([^|]*)\|", open("README.md").read(), re.M):
+    names = re.findall(r"`([A-Z][A-Z0-9_]+)`", m.group(1))
+    defs = [x.strip().strip("`") for x in m.group(2).split(" / ")] if len(names) > 1 else [m.group(2).strip().strip("`")]
+    for i, n in enumerate(names):
+        readme[n] = defs[i] if i < len(defs) else ""
+bad = []
+for v, d in sorted(env.items()):
+    if v not in example:
+        bad.append(f"{v} is passed by compose and missing from .env.example")
+    elif example[v] != d:
+        bad.append(f"{v}: compose defaults to {d!r}, .env.example says {example[v]!r}")
+    if v not in tmpl:
+        bad.append(f"{v} is passed by compose and missing from the Unraid template")
+    elif tmpl[v] != d:
+        bad.append(f"{v}: compose defaults to {d!r}, the Unraid template to {tmpl[v]!r}")
+    if v not in readme:
+        bad.append(f"{v} is passed by compose and missing from the README's reference")
+    elif readme[v] != d and not (d == "" and readme[v] in ("*(none)*", "*(empty)*")):
+        bad.append(f"{v}: compose defaults to {d!r}, the README to {readme[v]!r}")
+for v in sorted(set(tmpl) - set(env)):
+    bad.append(f"{v} is in the Unraid template and compose does not pass it")
+for target, d in sorted(paths.items()):
+    m = re.search(r"^\s*#?\s*-\s*\"?(?:\$\{[A-Z_]+:-([^}]*)\}([^:\"]*)|([^:\"$ ]+)):" + re.escape(target) + r"(?::r[ow])?\"?\s*$",
+                  svc, re.M)
+    if not m:
+        continue
+    cd = (m.group(1) + m.group(2)) if m.group(1) is not None else m.group(3)
+    if d and cd != d:
+        bad.append(f"{target}: the Unraid template mounts {d!r}, compose {cd!r}")
+for b in bad:
+    print(f"  [FAIL] {b}")
+if not bad:
+    print(f"  [ok]   {len(env)} settings and {len(paths)} paths agree across compose, .env.example, the template and the README")
+sys.exit(1 if bad else 0)
+SETTINGS
+    fi
+
     echo
     if [ "$rc" -ne 0 ]; then
         echo "lint: FAILURES above"
