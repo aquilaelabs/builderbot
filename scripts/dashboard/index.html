@@ -6904,6 +6904,28 @@ function drawUiMenu(){
 // In this menu rather than on a card: it is a setting about the container,
 // which is what the gear now holds, and it is read far less often than
 // anything the sidebar is for.
+// The time zone this browser shows times in, chosen on the Profile tab and
+// kept in a cookie: it is where this device is, not who the account is, so a
+// phone abroad and the desk at home each keep their own. "" is the device's
+// own zone, which is what the browser does unasked. A zone the browser does
+// not know is ignored rather than trusted.
+const TZ_COOKIE = "bb_tz";
+function userTZ(){
+  const m = document.cookie.match(/(?:^|;\s*)bb_tz=([^;]*)/);
+  const z = m ? decodeURIComponent(m[1]) : "";
+  if (!z) return "";
+  try{ new Intl.DateTimeFormat([], {timeZone: z}); return z; }catch(e){ return ""; }
+}
+function setUserTZ(z){
+  document.cookie = `${TZ_COOKIE}=${encodeURIComponent(z || "")}; path=/; SameSite=Lax; `
+    + (z ? "max-age=315360000" : "max-age=0");
+}
+// Every time the page shows goes through here: `t` in milliseconds.
+function fmtTime(t, opts = {}){
+  const z = userTZ();
+  return new Date(t).toLocaleString([], z ? {...opts, timeZone: z} : opts);
+}
+
 const humanBytes = n =>
   n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
@@ -7053,7 +7075,7 @@ function drawRunner(){
     paint(el, `<div class="empty">no runner on any node: the Nodes tab installs one</div>`);
     return;
   }
-  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   paint(el, rows.map(n => {
     // A runner job in flight comes first: a remove of a listening runner is
     // "removing now", not "listening, idle" until the census catches up. And
@@ -8401,7 +8423,7 @@ function drawPendingModal(j){
     }
     return bits.filter(Boolean).join("\n");
   };
-  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   let html = "", last = null;
   for (const r of rows){
     if (r.kind !== last){ html += `<div class="pkind">${NAMES[r.kind] || esc(r.kind)}</div>`; last = r.kind; }
@@ -10278,7 +10300,7 @@ function drawBell(){
   // not when a flag says it is open; those two disagreed and the panel a
   // reader was looking at stopped updating.
   if (panel.hidden) return;
-  const when = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  const when = t => fmtTime(t, {hour: "2-digit", minute: "2-digit"});
   const rows = [
     // Above everything the page merely said: somebody is blocked on these.
     // A root ask (roadmap R38) is the same row with the stakes said: which

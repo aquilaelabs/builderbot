@@ -237,4 +237,36 @@ ok(elsewhere.git_name === 'T. Person',
      'and a project\'s sessions are handed it, marked global, with nothing pushed to the project');
 }
 
+// ---- the time zone is this browser's (Profile, On this browser) ----------
+// A cookie, not the account: a phone abroad and the desk at home each keep
+// their own. Every time the page shows goes through fmtTime, so picking a
+// zone moves them all, and "This device's own" takes the cookie away again.
+{
+  await page.evaluate(() => openProfileTab());
+  await page.waitForSelector('#pfTZ', { timeout: 15000 });
+  const zone = 'Pacific/Chatham';          // +12:45: no browser's own zone by accident
+  await page.selectOption('#pfTZ', zone);
+  ok(await page.$eval('#pfSave', b => b.disabled) && !await page.$eval('#pfTZApply', b => b.disabled),
+     'picking a zone lights its own Apply, not the account\'s Save');
+  await page.click('#pfTZApply');
+  const after = await page.evaluate(z => ({
+    cookie: document.cookie.includes('bb_tz=' + encodeURIComponent(z)),
+    tz: userTZ(),
+    same: fmtTime(0, { hour: '2-digit', minute: '2-digit' })
+      === new Date(0).toLocaleString([], { hour: '2-digit', minute: '2-digit', timeZone: z }),
+  }), zone);
+  ok(after.cookie && after.tz === zone && after.same,
+     `Apply keeps the zone in a cookie on this browser, and the page's times follow it (${JSON.stringify(after)})`);
+  const acct = await (await page.evaluate(() => fetch('/api/profile').then(r => r.text())));
+  ok(!acct.includes(zone), '...and nothing of it is stored against the account');
+  await page.waitForSelector('#pfTZ', { timeout: 15000 });
+  await page.selectOption('#pfTZ', '');
+  await page.click('#pfTZApply');
+  ok(await page.evaluate(() => !document.cookie.includes('bb_tz=') && userTZ() === ''),
+     'This device\'s own takes the cookie away again');
+  await page.evaluate(() => { document.cookie = 'bb_tz=Not%2FAZone; path=/'; });
+  ok(await page.evaluate(() => userTZ() === ''), 'a zone this browser does not know is ignored, not trusted');
+  await page.evaluate(() => setUserTZ(''));
+}
+
 await done(browser);

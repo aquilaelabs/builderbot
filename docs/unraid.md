@@ -150,7 +150,9 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / work
-* fields for `ANTHROPIC_API_KEY` (masked) and TZ
+* a field for `ANTHROPIC_API_KEY` (masked), and TZ under the advanced view,
+  which only sets the container's own clock: each person picks the zone the
+  dashboard shows times in on their Profile tab
 
 Each account's commit identity is set on its Profile tab; leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit

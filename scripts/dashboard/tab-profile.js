@@ -15,6 +15,21 @@ let profile = null, profileRev = 0;
 // emptied itself mid-sentence would be unusable (docs/design-language.md,
 // Settings; nothing takes effect until Save).
 const profileDraft = {};
+// The time zone picked and not yet applied, kept apart from the account's
+// draft: it is this browser's (a cookie, userTZ in index.html), and it has
+// its own Apply, so it must not light the account's Save.
+let tzDraft = null;
+
+// This browser's zone and every zone it knows, alphabetically after it. UTC
+// by that name, which some browsers leave out of their own list.
+function tzOptions(cur){
+  const own = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  let zones = [];
+  try{ zones = Intl.supportedValuesOf("timeZone"); }catch(e){ zones = own ? [own] : []; }
+  if (!zones.includes("UTC")) zones = [...zones, "UTC"];
+  return `<option value=""${cur ? "" : " selected"}>This device's own${own ? ` (${esc(own)})` : ""}</option>`
+    + [...zones].sort().map(z => `<option value="${esc(z)}"${z === cur ? " selected" : ""}>${esc(z)}</option>`).join("");
+}
 
 function openProfileTab(){
   openTab({kind: "profile", arg: "__profile", label: "Profile"});
@@ -71,6 +86,21 @@ function renderProfileInto(i){
                 ? "no author for commits yet: a Claude session waits for a name and an email here"
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row stack2">
+      <div class="grow">
+        <h4>On this browser</h4>
+        <div class="logset">
+          <div class="logdays setrow col">
+            ${lbl("pfTZ", "Time zone", "kept on this browser rather than your account, so each device shows times where it is")}
+            <select id="pfTZ">${tzOptions(tzDraft ?? userTZ())}</select>
+          </div>
+          <div class="actbar">
+            <span class="state">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</span>
+            <button type="button" id="pfTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
           </div>
         </div>
       </div>
@@ -135,6 +165,17 @@ function wireProfile(root){
       refresh();                      // the Claude buttons follow git_ready
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
+  };
+  const tz = root.querySelector("#pfTZ"), tzApply = root.querySelector("#pfTZApply");
+  if (tz) tz.onchange = () => {
+    tzDraft = tz.value;
+    if (tzApply) tzApply.disabled = tzDraft === userTZ();
+  };
+  if (tzApply) tzApply.onclick = () => {
+    setUserTZ(tzDraft || "");
+    tzDraft = null;
+    notify(userTZ() ? `times on this browser are in ${userTZ()} now` : "times on this browser follow this device again");
+    drawPanes();
   };
   const pw = root.querySelector("#pfPasswd");
   if (pw) pw.onclick = async () => {

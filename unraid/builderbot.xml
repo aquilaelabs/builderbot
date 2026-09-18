@@ -57,7 +57,7 @@ NOTES
   <Config Name="Unraid icon cache" Target="/unraid-icons" Default="/var/lib/docker/unraid/images" Mode="rw" Description="Optional, cosmetic: mounted here, the container writes its icon in on every start so the Docker page shows one without downloading it - which is what fails while this repo is private." Type="Path" Display="advanced" Required="false" Mask="false">/var/lib/docker/unraid/images</Config>
 
   <!-- ===================== core settings ===================== -->
-  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Container timezone, e.g. America/New_York or Europe/London" Type="Variable" Display="always" Required="true" Mask="false">Etc/UTC</Config>
+  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="The container's clock, for its logs and file names (e.g. America/New_York). Optional: each person picks the zone the dashboard shows times in, per browser, on their Profile tab" Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="File-owner uid (99 = Unraid's nobody)" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="File-owner gid (100 = Unraid's users)" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
 

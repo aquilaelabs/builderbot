@@ -195,7 +195,7 @@ function nodeRunnerSection(n, c){
   if (d.runner === undefined) d.runner = {url: "", token: "", forge: "", labels: ""};
   const busyNow = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
-  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   const hostOf = (want, rep) => (rep.forge || want.forge) === "gitea" ? "Gitea" : (rep.forge || want.forge) === "github" ? "GitHub" : "";
   let worst = "";
   const rows = slots.map(slot => {

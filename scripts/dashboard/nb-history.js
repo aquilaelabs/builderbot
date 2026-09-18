@@ -31,9 +31,8 @@ function nbHistoryView({$, nb, project}){
     unshelved:     ["off the shelf", ""],
   };
 
-  // Local time, like everything else this container prints: its clock is set
-  // from the host's TZ.
-  const stamp = t => new Date(t * 1000).toLocaleString(undefined,
+  // In this browser's time zone (Profile), like every time on the page.
+  const stamp = t => fmtTime(t * 1000,
     {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false});
 
   function drawHistory(){

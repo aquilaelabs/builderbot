@@ -174,7 +174,6 @@ Required / usually touched:
 | Projects folder | One mapping for all of them: `/mnt/user/projects` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
-| `TZ` | Your timezone |
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 
 Everything else has sane defaults: full reference below.
@@ -265,7 +264,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | Variable | Default | Purpose |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
-| `TZ` | `Etc/UTC` | Container timezone: set yours, or timestamps read as somebody else's day |
+| `TZ` | `Etc/UTC` | The container's clock, for its logs and file names. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab's On this browser, kept in a cookie there |
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing, passed to the sessions on your nodes; empty = subscription login, from the dashboard's Sign in |
 | `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `NPM_TOKEN` | *(none)* | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
