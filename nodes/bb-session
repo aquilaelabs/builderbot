@@ -53,6 +53,7 @@ ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 FROM_PANE = ("TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES")
 
 MS_RDONLY, MS_NOSUID, MS_NODEV, MS_NOEXEC = 1, 2, 4, 8
+MS_REMOUNT = 32
 MS_BIND, MS_REC, MS_PRIVATE = 4096, 16384, 1 << 18
 MNT_DETACH = 2
 CLONE_NEWNS, CLONE_NEWIPC, CLONE_NEWPID = 0x00020000, 0x08000000, 0x20000000
@@ -68,7 +69,12 @@ def conf():
     the defaults a provisioned node has."""
     c = {"SESSION_USER": "builder", "WORKSPACE": "/workspace", "HOME_ROOT": "",
          "DATA_STORE": "/var/lib/builderbot/data", "ARTIFACTS_STORE": "/var/lib/builderbot/artifacts",
-         "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata"}
+         "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata",
+         # The scoped packages store, whose .bb bundle is the bb and bb-tty a
+         # session and the agent run. Empty until the agent writes it, and then
+         # the bundle is read-only in the view (B157); empty here just leaves
+         # it as it was, which an older agent's conf does.
+         "PACKAGES_STORE": ""}
     # Another layout file only for somebody who is not root, which is `plan`
     # run by the suite: `enter` is root through sudo, which resets the
     # environment, and root reads the machine's own file whatever it says.
@@ -164,7 +170,10 @@ def plan(c, a, uid):
     # first cover kept. A cache that is itself a link is refused rather than
     # left untrimmed: that would put every other project's token in view.
     caches = {}
-    for h, keep in [(home, (f"project/{project}", "account", "machine"))] + ([(home_root, ("machine",))] if base else []):
+    # Everything under u/<account> is that account's and nobody else's (B159);
+    # machine/ is this box's and is shared on purpose.
+    for h, keep in [(home, (f"u/{account}/project/{project}", f"u/{account}/account", "machine"))] \
+            + ([(home_root, ("machine",))] if base else []):
         path = f"{h}/.cache/builderbot"
         if os.path.lexists(path) and not _real_dir(path):
             raise Refused(f"bb-session: {path} is not a directory, so the view could not leave other projects out of it")
@@ -223,6 +232,81 @@ def plan(c, a, uid):
         steps.append(("tmpfs", art, "mode=0755"))
         if _real_dir(f"{art}/{project}"):
             steps.append(("bind", f"{STAGE}/artifacts/{project}", f"{art}/{project}"))
+    # The packages store's bundle is the bb and bb-tty a session runs and the
+    # agent runs for a job (as the enrolled account, in the docker group), on
+    # the shared store the squash makes writable by the session account. So a
+    # session could rewrite what another account's session, or a job, then
+    # executes. Read-only in the view (B157): the session still reads and runs
+    # it, and cannot change it.
+    #
+    # ...and so is every toolchain beside it (B163). Each one's bin is on a
+    # session's PATH and a job's ahead of /usr/bin, so a writable store let a
+    # session drop a `git` into jdk/bin that the next job ran as the job
+    # account, which is in the docker group. Installing and updating a
+    # toolchain is a job the agent runs outside every view, so a session loses
+    # nothing it should have. Measured on bb-dev-sandbox, 18 Sep, as the
+    # session account under a read-only store: a clean Android build and a
+    # Playwright Chromium launch both work.
+    #
+    # Flutter is the exception, because it writes under its own tree on every
+    # run (the lock and the update stamps in bin/cache, the version check in
+    # .git). So its tree stays writable except bin/, which is what PATH holds:
+    # nothing can be planted there under a command's name, and bin/cache, which
+    # only flutter itself runs from, is given back. What is left is a session
+    # changing what a flutter command runs, on a node that has flutter.
+    store = c["PACKAGES_STORE"].rstrip("/") if c.get("PACKAGES_STORE") else ""
+    if store and _real_dir(store):
+        steps.append(("bindro", store, store))
+        flutter = f"{store}/flutter"
+        if _real_dir(f"{flutter}/bin/cache"):
+            steps.append(("bindrw", flutter, flutter))
+            steps.append(("bindro", f"{flutter}/bin", f"{flutter}/bin"))
+            steps.append(("bindrw", f"{flutter}/bin/cache", f"{flutter}/bin/cache"))
+    # ...and the claude every account's session runs, for the same reason and
+    # the other half of B157. `.local` is one of the shared dotfiles, so every
+    # account's ~/.local is a link to the base home's: one session could
+    # rewrite the binary the next account's session execs. Read-only here.
+    #
+    # The FILE and not the directory: .local/bin also takes `pip install
+    # --user` and anything else a session installs for itself, which is the
+    # session's own to write and no one else's to run.
+    #
+    # What this costs, and it is the point: claude cannot update itself from
+    # inside a session any more. Updating it is the provisioner's, or a person
+    # on the node outside a view, which is the same bargain as the bundle.
+    #
+    # TWO SHAPES, both real and measured: a plain wrapper script at
+    # .local/bin/claude (the dev VM), and a symlink there pointing into
+    # .local/share/claude/versions/<version>, a 228MB binary (this box). The
+    # first version of this bound only a regular file and so did nothing at all
+    # on the second, which is the shape the controller's own node has.
+    #
+    # So: the file the name RESOLVES to, whichever shape it is, and the
+    # versions directory beside it, because a session that cannot overwrite
+    # 2.1.273 can otherwise write 2.1.274 and wait.
+    #
+    # What this alone did not stop was a session replacing the
+    # .local/bin/claude SYMLINK itself, since a bind cannot hold a symlink
+    # down. The base home being read-only in the view, below, is what stops
+    # that: nothing in it can be replaced any more, and an account's own
+    # pip --user installs go to its own home (common.sh, unshare_dotfiles).
+    if home_root:
+        shared = f"{home_root}/.local/share/claude/versions"
+        if _real_dir(shared):
+            steps.append(("bindro", shared, shared))
+        launcher = f"{home_root}/.local/bin/claude"
+        real = os.path.realpath(launcher) if os.path.exists(launcher) else ""
+        if real and os.path.isfile(real) and not real.startswith(shared + "/"):
+            steps.append(("bindro", real, real))
+    # ...and the base home itself, last, over everything mounted inside it
+    # (B157). It is nobody's on a node, where every account is homed under
+    # users/, and it was writable: the dotfiles every home linked to, the
+    # .bashrc a new home is copied from and the launcher every session runs
+    # all sat in it. The recursive bind carries the mounts above with it, so
+    # the account's own home under users/ stays writable and the hidden parts
+    # stay hidden; only the base home's own files become read-only.
+    if base and _real_dir(home_root):
+        steps.append(("bindro", home_root, home_root))
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")):
             steps.append(("hide", hidden.rstrip("/")))
@@ -265,7 +349,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind",) else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro", "bindrw") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -281,6 +365,23 @@ def apply(steps, uid, gid):
             if not os.path.isdir(target):
                 _mkdirs(target, uid, gid)
             _mount(src, target, None, MS_BIND | MS_REC)
+        elif kind == "bindro":
+            # A read-only bind of a directory onto itself: bind first, then
+            # remount read-only, which is the only way the flag takes on a bind.
+            # The view's root is private, so this is read-only here and nowhere
+            # else, and the agent still writes the bundle from outside the view.
+            src = step[1]
+            _mount(src, target, None, MS_BIND | MS_REC)
+            _mount(src, target, None, MS_BIND | MS_REMOUNT | MS_RDONLY)
+        elif kind == "bindrw":
+            # A writable bind INSIDE a read-only one. A bind copies the flags
+            # of the mount it is taken from, read-only included (measured on
+            # bb-dev-sandbox: a plain bind of flutter under the read-only store
+            # came out read-only), so the flag is cleared with a remount of its
+            # own. The file system underneath is writable; only this mount was not.
+            src = step[1]
+            _mount(src, target, None, MS_BIND | MS_REC)
+            _mount(src, target, None, MS_BIND | MS_REMOUNT)
         elif kind == "hide":
             _mount("tmpfs", target, "tmpfs", MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0500")
         elif kind == "hidefile":
@@ -373,7 +474,8 @@ def enter(c, a, command):
         raise Refused("bb-session: nothing to run")
     envfile = a.get("env", "")
     project, home = a.get("project", ""), a.get("home", "").rstrip("/")
-    if not envfile.startswith(f"{home}/.cache/builderbot/project/{project}/"):
+    account = a.get("account", "")
+    if not envfile.startswith(f"{home}/.cache/builderbot/u/{account}/project/{project}/"):
         raise Refused("bb-session: the environment file is not in the project's cache folder")
     steps = plan(c, a, uid)
     pane = {k: os.environ[k] for k in FROM_PANE if k in os.environ}

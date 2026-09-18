@@ -161,7 +161,6 @@ services:
       # shares and not folders — see the template's note on this setting.
       # Only needed where the daemon is this box's: a sandbox VM mounts the
       # share itself and makes the per-instance directory over there.
-      # - ${DEVDATA_PATH:-/mnt/user/builderbot/devdata}:/devdata
 
     # Web dashboard + browser terminals, one port: terminals are proxied
     # through it under /term, behind the same sign-in. Published on the same

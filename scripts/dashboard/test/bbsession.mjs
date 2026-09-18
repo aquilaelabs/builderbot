@@ -16,6 +16,9 @@ const STAGE = '/run/bb-session';
 const L = join(DIR, 'viewlayout');
 const ws = join(L, 'workspace'), homeRoot = join(L, 'home'), users = join(homeRoot, 'users');
 const data = join(L, 'data'), art = join(L, 'artifacts'), runner = join(L, 'runner'), devdata = join(L, 'devdata');
+// The scoped packages store: the .bb bundle a session and the agent run, and a
+// toolchain beside it a build writes to (B157).
+const pkg = join(L, 'packages', 'linux-x86_64');
 const me = 'u_0000abcd', other = 'u_1111abcd';
 const myHome = join(users, me);
 // Claude Code's transcript folder for a path: every other character a dash.
@@ -28,22 +31,34 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(tr, slug(join(ws, '.worktrees', 'alpha', me))),
                  join(tr, slug(join(ws, '.worktrees', 'alpha-two', me))),
                  join(ws, '.claude', other, 'projects'),
-                 join(myHome, '.cache', 'builderbot', 'project', 'alpha'),
-                 join(myHome, '.cache', 'builderbot', 'project', 'beta'),
-                 join(myHome, '.cache', 'builderbot', 'account'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'project', 'alpha'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'project', 'beta'),
+                 join(myHome, '.cache', 'builderbot', 'u', me, 'account'),
                  join(users, other, '.claude'),
                  join(homeRoot, '.cache', 'builderbot', 'machine'),
-                 join(homeRoot, '.cache', 'builderbot', 'project', 'gamma'),
+                 join(homeRoot, '.cache', 'builderbot', 'u', me, 'project', 'gamma'),
                  join(homeRoot, '.claude'),
                  join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
+                 join(pkg, '.bb', 'current'), join(pkg, 'jdk'), join(pkg, 'flutter', 'bin', 'cache'),
+                 join(homeRoot, '.local', 'bin'),
                  runner, devdata])
   mkdirSync(d, { recursive: true });
 writeFileSync(join(homeRoot, '.claude.json'), '{}');
+// The shared launcher, in the shape the controller's own node has: a symlink
+// in .local/bin pointing at a versioned binary under .local/share/claude. The
+// dev VM has the other shape, a plain wrapper script, and the block below
+// covers that one; testing only the plain file is how the first version of
+// this fix came to do nothing on the box the operator works on.
+mkdirSync(join(homeRoot, '.local', 'share', 'claude', 'versions'), { recursive: true });
+writeFileSync(join(homeRoot, '.local', 'share', 'claude', 'versions', '2.1.273'), 'BINARY\n', { mode: 0o755 });
+symlinkSync(join(homeRoot, '.local', 'share', 'claude', 'versions', '2.1.273'),
+            join(homeRoot, '.local', 'bin', 'claude'));
 symlinkSync(join(ws, 'beta'), join(ws, 'linked'));
 const conf = join(L, 'bb-session.conf');
 writeFileSync(conf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
-  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n',
+  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `PACKAGES_STORE=${pkg}`,
+  `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n',
   { mode: 0o644 });
 
 const run = (...args) => {
@@ -76,14 +91,65 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
 ok(has('tmpfs', users, 'mode=0755') && has('bind', `${STAGE}/home`, myHome) && hidden(join(homeRoot, '.claude'))
    && hidden(join(homeRoot, '.claude.json')),
    'the account\'s home is the only home, and the base home\'s Claude login and history are out of sight');
-ok(has('tmpfs', myCache, 'mode=0700,owned') && bound(join(myCache, 'project', 'alpha')) && bound(join(myCache, 'account'))
-   && !bound(join(myCache, 'project', 'beta'))
-   && has('tmpfs', rootCache, 'mode=0700,owned') && bound(join(rootCache, 'machine')) && !bound(join(rootCache, 'project', 'gamma')),
+ok(has('tmpfs', myCache, 'mode=0700,owned') && bound(join(myCache, 'u', me, 'project', 'alpha')) && bound(join(myCache, 'u', me, 'account'))
+   && !bound(join(myCache, 'u', me, 'project', 'beta'))
+   && has('tmpfs', rootCache, 'mode=0700,owned') && bound(join(rootCache, 'machine')) && !bound(join(rootCache, 'u', me, 'project', 'gamma')),
    'the cache keeps this project\'s folder, the account\'s and the machine\'s, so no other project\'s token or launcher is there');
 ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(data, 'ci-logs', 'alpha'))
    && !bound(join(data, 'ci-logs', 'beta')) && !bound(join(data, 'jobs')) && !bound(join(data, 'compose'))
    && bound(join(art, 'alpha')) && !bound(join(art, 'beta')) && hidden(runner) && hidden(devdata),
    'the agent\'s stores keep the emulator, its own CI logs and artifacts; jobs, compose files, the runner and dev data are gone');
+ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
+   'the whole packages store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
+const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+const fl = join(pkg, 'flutter');
+ok(at('bindro', pkg, pkg) < at('bindrw', fl, fl) && at('bindrw', fl, fl) < at('bindro', join(fl, 'bin'), join(fl, 'bin'))
+   && at('bindro', join(fl, 'bin'), join(fl, 'bin')) < at('bindrw', join(fl, 'bin', 'cache'), join(fl, 'bin', 'cache')),
+   '...but flutter, which writes its own tree on every run, gets it back, with its bin on PATH still read-only and only bin/cache writable again');
+const last = at('bindro', homeRoot, homeRoot);
+ok(last > 0 && last > at('bind', `${STAGE}/home`, myHome) && last > at('tmpfs', users, 'mode=0755')
+   && steps.slice(last + 1).every(x => !String(x[x.length - 1]).startsWith(homeRoot + '/')),
+   'and the base home is read-only, bound last so the account\'s own home under users/ and everything hidden in it keep their own mounts');
+const versions = join(homeRoot, '.local', 'share', 'claude', 'versions');
+ok(has('bindro', versions, versions),
+   'the claude binary every account\'s session runs is read-only in the view (B157)');
+{
+  // The OTHER shape, which the dev VM has: a plain wrapper script at
+  // .local/bin/claude and no versions directory at all. The file itself is
+  // what every account execs there, so it is the file that is bound.
+  const alt = join(L, 'althome');
+  mkdirSync(join(alt, '.local', 'bin'), { recursive: true });
+  writeFileSync(join(alt, '.local', 'bin', 'claude'), '#!/bin/sh\nexec real\n', { mode: 0o755 });
+  mkdirSync(join(alt, 'users', me), { recursive: true });
+  const altConf = join(L, 'bb-session-plainclaude.conf');
+  writeFileSync(altConf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`,
+    `HOME_ROOT=${alt}`, `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`,
+    `PACKAGES_STORE=${pkg}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
+  const g2 = JSON.parse(execFileSync(HELPER,
+    ['plan', '--project', 'alpha', '--account', me, '--home', join(alt, 'users', me),
+     '--cwd', join(ws, 'alpha')],
+    { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: altConf } }));
+  ok(g2.some(x => x[0] === 'bindro' && x[1] === join(alt, '.local', 'bin', 'claude')),
+     'a node whose claude is a plain wrapper script has that file made read-only instead');
+}
+{
+  // No PACKAGES_STORE (an older agent's conf, before B157): no bundle bind at
+  // all, which leaves the store as it was rather than failing the view.
+  const noStore = join(L, 'bb-session-nostore.conf');
+  writeFileSync(noStore, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
+    `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
+  const g = (() => { try { return { code: 0, out: execFileSync(HELPER,
+    ['plan', '--project', 'alpha', '--account', me, '--home', myHome, '--cwd', join(ws, '.worktrees', 'alpha', me)],
+    { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: noStore } }) };
+  } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } })();
+  // No BUNDLE bind. The launcher's is planned either way: it is read off the
+  // home root, which every conf carries, so an older agent's node gets that
+  // half of B157 without being updated.
+  ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1].startsWith(pkg)),
+     '...and a conf without PACKAGES_STORE (an agent from before B157) plans no bundle bind rather than failing');
+  ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === versions),
+     '...while the shared launcher is still made read-only there, since that is read off the home root');
+}
 ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0] === 'proc'
    && steps[steps.length - 1][0] === 'detach',
    'the view starts private with its own /proc, gets its own /tmp, and lets the staging copy of the machine go last');
@@ -111,13 +177,14 @@ ok(bad.length === 0, `the plan refuses ${refusals.map(r => r[2]).join('; ')}${ba
   const linked = 'u_2222abcd', linkedHome = join(users, linked);
   mkdirSync(linkedHome, { recursive: true });
   symlinkSync(join(homeRoot, '.cache'), join(linkedHome, '.cache'));
-  mkdirSync(join(rootCache, 'project', 'alpha'), { recursive: true });
+  mkdirSync(join(rootCache, 'u', linked, 'project', 'alpha'), { recursive: true });
   const r = plan({ account: linked, home: linkedHome, cwd: join(ws, 'alpha') });
   const st = r.code === 0 ? JSON.parse(r.out) : [];
   const covers = st.filter(x => x[0] === 'tmpfs' && x[1].endsWith('/.cache/builderbot'));
   const binds = st.filter(x => x[0] === 'bind' && x[2].startsWith(rootCache + '/')).map(x => x[2].slice(rootCache.length + 1));
   ok(r.code === 0 && covers.length === 1 && covers[0][1] === rootCache
-     && binds.includes('project/alpha') && binds.includes('machine') && !binds.includes('project/gamma'),
+     && binds.includes(`u/${linked}/project/alpha`) && binds.includes('machine')
+     && !binds.some(b => b.endsWith('/project/gamma')),
      `an account whose .cache links to the base home's gets that one folder covered once, keeping this project's and the machine's (${covers.length} cover, kept ${binds.join(', ')})`);
   const planted = 'u_3333abcd', plantedHome = join(users, planted);
   mkdirSync(join(plantedHome, '.cache'), { recursive: true });

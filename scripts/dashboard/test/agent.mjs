@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -227,7 +227,20 @@ const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
 const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does — a real node needs nothing here.
+// The share the fixture node reports as mounted and writable. /workspace when
+// it is both; inside a session's view it is the view's read-only root, so the
+// mount holding the harness's own directory stands in, which is writable by
+// construction. What the tests assert is that the controller reads the
+// agent's answer, not which directory it was measured on.
+const SHARE = execFileSync('python3', ['-c', `
+import os, sys
+p = os.path.realpath(sys.argv[1])
+while not os.path.ismount(p):
+    p = os.path.dirname(p)
+ok = lambda d: os.path.ismount(d) and os.access(d, os.W_OK)
+print("/workspace" if ok("/workspace") else p)`, DIR], { encoding: 'utf8' }).trim();
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
   // A PATH of the harness's own. The agent reports what it finds on PATH as
@@ -252,7 +265,12 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     // this container cannot write, and the session half unpacks bb there.
     out = execFileSync('python3', [AGENT, 'enroll', '--controller', URL,
       '--token', minted.token, '--user', process.env.USER || 'builder',
-      '--store', `data=${DIR}/agentdata`, '--store', `packages=${DIR}/agentpackages`],
+      '--store', `data=${DIR}/agentdata`, '--store', `packages=${DIR}/agentpackages`,
+      // Where a dev instance's data goes on this node (R17 step 2). The same
+      // directory the suite blocks a bind in below, because it is now the
+      // NODE that says where that is rather than the controller's
+      // BB_DEV_DATA_DIR.
+      '--store', `appdata=${DIR}/devdata`],
       { env: agentEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { out = String(e.stdout) + String(e.stderr); }
   ok(/enrolled as node n_/.test(out) && existsSync(NODE_JSON)
@@ -264,6 +282,33 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
      && st.stores.data === `${DIR}/agentdata`,
      '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
+  // A store role added AFTER a node enrolled reaches it anyway. The list is
+  // written at enrolment and never revisited, so `appdata` would have existed
+  // only on the next machine somebody enrolled and every node already out
+  // there would have used the controller's fallback forever. Placed beside
+  // the data store rather than at the hard-coded default, because a guest
+  // node keeps everything in one directory in its owner's home (R23) and has
+  // no root to make /var/lib/builderbot.
+  {
+    const keep = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+    const without = { ...keep, stores: { ...keep.stores } };
+    delete without.stores.appdata;
+    writeFileSync(NODE_JSON, JSON.stringify(without));
+    execFileSync('python3', ['-c',
+      'import importlib.util,sys\n' +
+      `spec=importlib.util.spec_from_file_location("a","${AGENT}")\n` +
+      'm=importlib.util.module_from_spec(spec);sys.modules["a"]=m;spec.loader.exec_module(m)\n' +
+      'st=m.load_state()\n' +
+      'm.fill_default_stores(st)\n' +
+      'm.save_state(st)\n'],
+      { env: { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON }, encoding: 'utf8' });
+    const after = JSON.parse(readFileSync(NODE_JSON, 'utf8')).stores;
+    ok(after.appdata === `${DIR}/appdata`,
+       `a store role added since enrolment is adopted beside the data store (${after.appdata})`);
+    ok(existsSync(`${DIR}/appdata`),
+       '...and the directory is MADE, not just recorded, or the row calls it missing forever');
+    writeFileSync(NODE_JSON, JSON.stringify(keep));
+  }
 
   const n = await nodeById(minted.id);
   // The version is read from the controller, not written here: the agent
@@ -428,6 +473,37 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
       ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
          `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
     }
+    // B167: the distribution's own root ttyd is switched off by the agent on
+    // a managed node, not only by a provisioner run that may never come
+    // again; left alone when it is already off, and never on a guest.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, shutil, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.os.geteuid = lambda: 0
+m.shutil.which = lambda n: '/usr/bin/' + n
+stamp = tempfile.NamedTemporaryFile(delete=False).name
+def case(state, sandbox=True):
+    seen = []
+    def run(argv, timeout=5):
+        seen.append(argv)
+        return {'is-enabled': state[0], 'is-active': state[1]}.get(argv[1], '')
+    m.SANDBOX_BIN = stamp if sandbox else '/nonexistent/bb-sandbox'
+    acted = m.Agent.quiet_distro_ttyd(object.__new__(m.Agent), run)
+    return [acted, [a[1:] for a in seen if a[1] == 'disable']]
+print(json.dumps({'on': case(('enabled', 'active')), 'running': case(('disabled', 'active')),
+                  'off': case(('disabled', 'inactive')), 'guest': case(('enabled', 'active'), False)}))
+os.unlink(stamp)
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.on[0] === true && JSON.stringify(r.on[1]) === JSON.stringify([['disable', '--now', 'ttyd.service']])
+         && r.running[0] === true,
+         `the agent switches off the distribution's ttyd.service when it is enabled or running (${said.slice(0, 90)})`);
+      ok(r.off[0] === false && r.off[1].length === 0 && r.guest[0] === false && r.guest[1].length === 0,
+         '...and leaves it alone when it is already off, and on a guest, whose services are its owner\'s');
+    }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
     // respawn that runs again only a launcher it recognises.
@@ -437,7 +513,7 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
 import importlib.util, json, re
 spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-home = '/home/builder/users/u_0000abcd/.cache/builderbot/project'
+home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
 def respawn(start):
     # tmux_ops against a tmux that records what it was asked and answers the
@@ -448,7 +524,8 @@ def respawn(start):
     return seen[-1]
 print(json.dumps({
   'sudoers': m.session_sudoers('builder'),
-  'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a'}}, 'builder'),
+  'conf': m.session_conf({'stores': {'data': '/d', 'artifacts': '/a', 'packages': '/p'}}, 'builder'),
+  'pkgroot': m.pkg_root({'stores': {'packages': '/p'}}),
   'good': [ok(f'sudo -n ${bin} enter --project alpha --account u_0000abcd --home /home/builder/users/u_0000abcd --cwd /workspace/alpha --env {home}/alpha/session.env -- {home}/alpha/claude-run.sh'),
            ok(f'{home}/alpha/claude-run.sh'), ok('/home/builder/.cache/builderbot/claude-run-alpha.sh')],
   'bad': [ok(f'{home}/alpha/claude-run.sh; id'), ok(f'sudo -n /tmp/other enter -- {home}/alpha/claude-run.sh'),
@@ -461,13 +538,14 @@ print(json.dumps({
          && out.sudoers.includes(`Defaults!${bin} !use_pty, !lecture`)
          && out.sudoers.includes(`builder ALL=(root) NOPASSWD: ${bin}`)
          && (out.sudoers.match(/NOPASSWD/g) || []).length === 1
-         && /SESSION_USER=builder\nWORKSPACE=\/workspace\nDATA_STORE=\/d\nARTIFACTS_STORE=\/a\n/.test(out.conf),
+         && /SESSION_USER=builder\nWORKSPACE=\/workspace\nDATA_STORE=\/d\nARTIFACTS_STORE=\/a\n/.test(out.conf)
+         && out.conf.includes(`PACKAGES_STORE=${out.pkgroot}\n`) && out.pkgroot.startsWith('/p/'),
          `the bundle carries bb-session, and the agent's sudo rule names that one command for the session account alone (${out.sudoers.split('\n')[3]})`);
       ok(out.good.every(Boolean) && !out.bad.some(Boolean),
          `a respawn runs again a launcher inside the view, a plain one, or one from before the view, and nothing else (${JSON.stringify(out.good)} ${JSON.stringify(out.bad)})`);
       ok(JSON.stringify(out.respawn) === JSON.stringify(['respawn-pane', '-k', '-t', 'u_0000abcd~claude-alpha', 'sudo', '-n', bin, 'enter',
            '--project', 'alpha', '--account', 'u_0000abcd', '--cwd', '/workspace/alpha', '--',
-           '/home/builder/users/u_0000abcd/.cache/builderbot/project/alpha/claude-run.sh', '--respawn'])
+           '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project/alpha/claude-run.sh', '--respawn'])
          && JSON.stringify(out.flat.slice(4)) === JSON.stringify(['/home/builder/.cache/builderbot/claude-run-alpha.sh', '--respawn']),
          `a respawn hands tmux the view's launcher line word by word, since one string with spaces is a program nobody has (${out.respawn.slice(4, 6).join(' ')})`);
       ok(out.iso.sessions === false && /root/.test(out.iso.why),
@@ -522,6 +600,20 @@ print(json.dumps(sorted(os.listdir(d))))
     const added = await relay({ argv: ['roadmap', 'add', 'relayed from a node'], cwd: `${DIR}/ws/alpha` });
     ok(added.status === 200 && added.code === 0 && /added R\d+/.test(added.out),
        `a session's bb roadmap runs on the controller and answers (${(added.out || added.error || '').trim().slice(0, 60)})`);
+    // The scanner's reports live on the controller and cover the whole share,
+    // so a relayed `bb findings --all` is the one verb whose own flag walks
+    // out of the project this door keeps a session inside. Measured from a
+    // real session before this refusal existed: it listed file paths out of
+    // three other projects' trees.
+    const everyone = await relay({ argv: ['findings', '--all'], cwd: `${DIR}/ws/alpha` });
+    ok(everyone.status === 403 && /its own/.test(everyone.error || ''),
+       `a session's bb findings --all is refused, naming what it may read instead (${
+         (everyone.error || '').slice(0, 60)})`);
+    ok((await relay({ argv: ['findings', '-a'], cwd: `${DIR}/ws/alpha` })).status === 403,
+       '...by the short flag too, which is the same door');
+    ok((await relay({ argv: ['findings'], cwd: `${DIR}/ws/alpha` })).status === 200,
+       '...while its own project\'s findings go through');
+
     const listed = await relay({ argv: ['roadmap'] });
     ok(listed.code === 0 && /relayed from a node/.test(listed.out),
        '...against the project the token was minted for, with no cwd sent at all');
@@ -561,10 +653,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // renewed one lands in the cache file, and the next call sends THAT.
       const cache = `${DIR}/cache-renew`;
       const env = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
-                    BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache };
+                    BB_TOKEN: short, BB_PROJECT: 'alpha', XDG_CACHE_HOME: cache,
+                    BB_ACCOUNT_UID: 'u_0000abcd' };
       execFileSync('bash', [`${REPO}/scripts/bb`, 'roadmap'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
-      const kept = existsSync(`${cache}/builderbot/project/alpha/token`)
-        ? readFileSync(`${cache}/builderbot/project/alpha/token`, 'utf8').trim() : '';
+      // Under the account's id (B159): the cache folder is shared between
+      // accounts on a node, so the uid is what keeps one account's token out
+      // of another's session.
+      const kept = existsSync(`${cache}/builderbot/u/u_0000abcd/project/alpha/token`)
+        ? readFileSync(`${cache}/builderbot/u/u_0000abcd/project/alpha/token`, 'utf8').trim() : '';
       ok(/^bbs_/.test(kept) && expOf(kept) > expOf(short),
          'bb keeps the renewed token in the account\'s cache, where it reads when the environment\'s has expired');
       const again = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', '--now'],
@@ -698,64 +794,48 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
                         BB_TOKEN: forMe, BB_NODE: 'agentbox', BB_TREE: '/workspace/alpha' };
       const hook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
         { input, encoding: 'utf8', env: nodeEnv, stdio: ['pipe', 'pipe', 'pipe'] });
-      // ---- bb-gate: nothing runs while BuilderBot is away or the block is behind ----
-      // A session outlives an update. The gate refuses every tool call
-      // while the controller does not answer, or while the project's
-      // CLAUDE.md block differs from the shipped template, and lets the
-      // first call after the fix through without a wait.
+      // ---- bb-gate: nothing runs while BuilderBot is away --------------
+      // A session outlives an update. The gate refuses every tool call while
+      // the controller does not answer, and lets the first call after it
+      // comes back through without a wait. It used to weigh a second thing,
+      // the project's CLAUDE.md block being from another window; that went
+      // with the block (R63 step 3), so this is the whole of the rule now.
       {
         const gt = `${DIR}/gatetree`; mkdirSync(gt, { recursive: true });
-        const tplPath = `${REPO}/config/templates/project-CLAUDE.md`;
-        const tpl = readFileSync(tplPath, 'utf8');
         const cache = `${DIR}/gatecache`; mkdirSync(cache, { recursive: true });
-        const genv = extra => ({ ...nodeEnv, BB_TREE: gt, TEMPLATE_MD: tplPath, XDG_CACHE_HOME: cache,
+        const genv = extra => ({ ...nodeEnv, BB_TREE: gt, XDG_CACHE_HOME: cache,
                                  BUILDERBOT_ROLE: 'controller', ...extra });
         const gate = extra => { try {
           execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, 'alpha', 'x'],
             { input: '{"tool_name":"Bash"}', encoding: 'utf8', env: genv(extra), stdio: ['pipe', 'pipe', 'pipe'] });
           return { code: 0, err: '' };
         } catch (e) { return { code: e.status, err: String(e.stderr) }; } };
-        const fresh = () => rmSync(`${cache}/builderbot/project/alpha/gate`, { force: true });
-        writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
+        // u/_none: this env names no account, and the gate is per account (B159).
+        const fresh = () => rmSync(`${cache}/builderbot/u/_none/project/alpha/gate`, { force: true });
         let r = gate({});
-        ok(r.code === 0, `with the controller up and the block current, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
-        // Behind INSIDE the window: the call goes through, and the prompt
-        // hook says so once — the window's promise is that drift stops nothing.
-        writeFileSync(`${gt}/CLAUDE.md`, tpl.replace('Before anything else in a session:', 'Before anything else in a session, once:') + '\n## Notes\n\nours.\n');
-        fresh();
-        r = gate({});
-        ok(r.code === 0, `a block behind inside the window lets the call through (${r.code} ${r.err.slice(0, 40)})`);
-        const said = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
-          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
-        ok(/behind the one the container now ships/.test(said) && /keep working/.test(said),
-           '...and the next prompt carries a warning that an update is waiting');
-        const again = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
-          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
-        ok(again.trim() === '', '...once, not on every prompt');
-        // From ANOTHER window: refused until the operator updates it.
-        writeFileSync(`${gt}/CLAUDE.md`, tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+/, 'BUILDERBOT:ENV:WINDOW 0.1') + '\n## Notes\n\nours.\n');
-        fresh();
-        r = gate({});
-        ok(r.code === 2 && /another compatibility window/.test(r.err) && /operator updates it/.test(r.err),
-           `a block from another window refuses the call and says the operator updates it (${r.code}: ${r.err.slice(0, 50)})`);
-        writeFileSync(`${gt}/CLAUDE.md`, tpl + '\n## Notes\n\nours.\n');
-        r = gate({});
-        ok(r.code === 0, '...and the first call after the update goes through, with no wait — a refusal is never cached');
+        ok(r.code === 0, `with the controller up, a tool call goes through (${r.code} ${r.err.slice(0, 60)})`);
         fresh();
         r = gate({ BB_CONTROLLER: 'http://127.0.0.1:1' });
         ok(r.code === 2 && /not answering/.test(r.err) && /restarting after an update/.test(r.err),
            `a controller that does not answer refuses every call until it is back (${r.code})`);
         r = gate({});
-        ok(r.code === 0, '...and answers again the moment it does');
+        ok(r.code === 0, '...and answers again the moment it does, with no wait: a refusal is never cached');
         // A controller that answers with a refusal is up. A session idle past
         // its token's twelve hours is refused "not signed in", and the gate
         // used to read any error without "HTTP" in it as no connection at all,
         // so it told that session BuilderBot was restarting after an update.
         fresh();
-        rmSync(`${cache}/builderbot/project/alpha/token`, { force: true });
+        rmSync(`${cache}/builderbot/u/_none/project/alpha/token`, { force: true });
         r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
         ok(r.code === 0 && !/not answering/.test(r.err),
            `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
+        // --prompt is kept as a no-op: the hook line naming it is written
+        // into settings files that outlive this change, so it has to stay
+        // callable and has to say nothing.
+        const said = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-gate`, '--prompt', 'alpha', 'x'],
+          { input: '{"prompt":"go"}', encoding: 'utf8', env: genv({}), stdio: ['pipe', 'pipe', 'pipe'] });
+        ok(said.trim() === '',
+           `the prompt hook is silent: there is no copy of the briefing left to be behind (${said.trim().slice(0, 40) || 'nothing'})`);
       }
       // bb itself in the node role: a relayed verb is the controller's
       // answer and nothing else — the dispatch used to fall through and run
@@ -771,6 +851,17 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok((listing.match(/once, from a node/g) || []).length === 1 && !/nothing on/.test(listing),
          `a relayed verb run from a node answers once, with the controller's answer (${
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
+      // ...and a relayed verb that the controller REFUSED exits non-zero, so
+      // a script, a hook or a session's `&&` can tell a refusal from a run.
+      // The dispatch reads `exit $rc` rather than `exit 0`: it was the second
+      // for a long time and still propagated, because bb runs under set -e
+      // and the failing relay aborted before reaching it. Pinned here because
+      // that is an accident to rely on, and B154 is the report that it might
+      // not hold.
+      const refused = bbOnNode(['roadmap', 'done', '99999']);
+      ok(/^FAILED 1:/.test(refused) && /no such item/.test(refused),
+         `a relayed verb the controller refused exits non-zero (${
+           refused.replace(/\s+/g, ' ').slice(0, 60)})`);
       const num = (once.match(/added R(\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
       // bb git: git's network half from a node runs on the controller, with
@@ -791,10 +882,25 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // machine the session is on and never on the controller (B152). The
       // controller's relayed run carries BB_RELAYED; a local one does not.
       bbOnNode(['rules', 'add', 'relayprobe', 'where a check runs', '--check', 'echo relayed=${BB_RELAYED:-no}']);
+      // Run from a BUNDLE-SHAPED copy, not from the checkout: bb beside its
+      // library and NO dashboard modules, which is what a node actually has
+      // (workspace.BUNDLE_PARTS ships bb, lib and the hooks, and deliberately
+      // not the notebook modules, because a node has no /config for them to
+      // read). Run from the checkout this passed while `bb rules check` was
+      // dead on every real node, because cmd_rules demanded rules.py at its
+      // top for verbs that need it and `check` does not: it takes the rules
+      // through `bb rules --json`, which a node relays.
+      const nb = `${DIR}/nodebundle`;
+      rmSync(nb, { recursive: true, force: true });
+      mkdirSync(`${nb}/scripts/dashboard`, { recursive: true });
+      copyFileSync(`${REPO}/scripts/bb`, `${nb}/scripts/bb`);
+      cpSync(`${REPO}/scripts/lib`, `${nb}/scripts/lib`, { recursive: true });
+      ok(!existsSync(`${nb}/scripts/dashboard/rules.py`),
+         'the bundle a node runs bb from carries no dashboard module, as BUNDLE_PARTS ships it');
       // WORKSPACE as a node has it: the check runs in the project's tree.
       let checked;
       try {
-        checked = execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', 'check', 'relayprobe'],
+        checked = execFileSync('bash', [`${nb}/scripts/bb`, 'rules', 'check', 'relayprobe'],
           { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...nodeEnv, BB_PROJECT: 'alpha', WORKSPACE: `${DIR}/ws` },
             stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (e) { checked = `FAILED ${e.status}: ${e.stdout}${e.stderr}`; }
@@ -1302,7 +1408,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and this container\'s into everybody else\'s');
       const c = await term('claude:alpha');
       ok(c.status === 200 && /^ttyd-stub GET \/ws\?/.test(c.body),
-         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 40)})`);
+         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 400)})`);
       const args = (c.body.match(/arg=[^& ]+/g) || []).map(x => decodeURIComponent(x.slice(4)));
       ok(args[0] === `u:${uid}:claude:alpha`,
          `...with the account stamped into the argument as it is locally (${args[0]})`);
@@ -2539,16 +2645,11 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   ok(win === minor,
      `...and its window is the project's minor — bump one and you bump both (${
        win} against ${minor} from VERSION ${proj})`);
-  // The CLAUDE.md template is in the same window, for the same reason: the
-  // block a session is briefed with is a compatibility promise too, and a
-  // bump that moves the minor without restamping it would leave every
-  // project's copy claiming the window that just ended — or, worse, the
-  // template claiming the old one, so nothing is ever held.
-  const tmpl = readFileSync(`${REPO}/config/templates/project-CLAUDE.md`, 'utf8');
-  const mdWin = /<!-- BUILDERBOT:ENV:WINDOW (\d+\.\d+) -->/.exec(tmpl)?.[1] || '';
-  ok(mdWin === minor,
-     `...and the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line is the same minor (${
-       mdWin || 'unset'} against ${minor})`);
+  // The agent's is the only other copy of the window there is. There used
+  // to be a second, the CLAUDE.md template's BUILDERBOT:ENV:WINDOW line, and
+  // it went with the block itself (R63 step 3): a session's briefing is
+  // assembled per session now, so nothing is copied anywhere to fall out of
+  // window. tools/version-stamp moves what is left.
 
   // ---- the sessions are not the agent's unit to kill (B107) --------------
   // systemd's default KillMode takes every process in the unit's cgroup on a

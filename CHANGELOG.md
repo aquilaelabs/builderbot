@@ -20,10 +20,22 @@
 - A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
 - Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
 - A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
+- A Claude session's token no longer dies under it while the session is idle: the machine it runs on is handed a fresh one on its heartbeat, so a token lives as long as its tmux session does and none is ever accepted past its expiry (dc01fb7)
+- provision-linux.sh --guest: enroll somebody's own machine as a node without touching it. One directory and one systemd user unit, no root, no accounts, no docker, no fstab, no netplan, no firewall; Storage and Network are refused for it, and --guest --remove takes exactly that away (e4f4fc1)
+- appdata is a node store like the other four: where a dev instance keeps its databases and uploads is reported by the node with its headroom and edited in its Storage section, rather than being BB_DEV_DATA_DIR on the controller with an optional mount beside it (5aa7810)
+- Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
+- The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
+- A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
+- A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
+- On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
+- A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
+- bb diag: the controller's diagnostics (its build, the doctor, each node, failed jobs, error lines, the audit trail) with credentials redacted, readable by an administrator's session once debug mode is on and its node is ticked for it on Debug settings (96899bb)
+- Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
+- A polish pass on phones, foldables and desktop: dialogs that drew flush or showed controls with nothing to act on, dropdown text running past the arrow, a cut-off bottom bar on narrow phones, and small touch targets across the tab strip, dialogs and notebook (9da871c)
 
 ### Upgrading
 
-- A minor version moves the compatibility window: every project's CLAUDE.md block needs its one-line update, and a project on a node needs that node's agent updated too, before sessions will start there again (dbf8170)
+- A minor version moves the compatibility window: a project bound to a node is held until that node's agent is updated, and the sessions running on it end when the bump lands (dbf8170)
 - This image is the controller and nothing else: it cannot be turned into a node by a setting, carries no emulator runtime, no X server and no GPU flags, and its Unraid template no longer ships a device or a runtime that fails the container outright on hardware that lacks them (652f8e4)
 
 ### Added
@@ -47,6 +59,7 @@
 - A node can be uninstalled: from its row (runners deregistered first), with sudo bb-sandbox uninstall on the machine, or provision-linux.sh --remove; docker, the packages and the shares' contents stay (971e9db)
 - Reset BuilderBot at the foot of Settings starts the controller over at Create the owner, moving its state aside and leaving project files alone (971e9db)
 - bb lint parses every JavaScript file and the page's inline scripts with node, beside the shell, Dockerfile, workflow and python checks (b7f29ff)
+- House rules can apply to every project: set them once under Global rules in Controller settings and every project's sessions are handed them, marked global, with nothing copied into a project. A session may suggest one but only you can add it (0b980c1)
 
 ### Changed
 
@@ -54,7 +67,7 @@
 - A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
 - Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
-- A project's CLAUDE.md now carries only the sections that apply to it, so a plain project's sessions start on about a thousand fewer words (016a5d3)
+- Sessions are briefed by the controller instead of from a file pushed into every project: nothing is written into your repository, there is no block to keep up to date, and CLAUDE.md is the project's own notes. Any block already rendered beside them is removed on the next start (016a5d3, 9127ee5)
 - The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
 - Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
@@ -65,7 +78,6 @@
 - The Users tab names which Anthropic account each BuilderBot account is signed in to, and still warns when two of them share one (7b34c58)
 - A project with no node no longer explains itself in a paragraph on every row: the Claude button is ghosted and says why on hover (4807a91)
 - A project's row says who has a Claude session open, and in red why nobody can, instead of naming the machine sessions run on (9651ee6)
-- A project's environment block is rendered to CLAUDE.local.md, which git does not carry, so CLAUDE.md is the project's own notes and a window move stops leaving every project with a 900-line change to commit (9127ee5)
 - The dashboard on a phone shows four projects on its first screen instead of two and a half: the desk cards start folded, a project row keeps its session and notebook buttons and folds the rest behind one, and every row is a little tighter (50ea516)
 - The changelog editor fits twelve entries on a screen instead of seven, with each line's controls beside its words, and moving a line keeps your place instead of scrolling back to the top (50ea516)
 - The Git view groups branches by what to do with them, opens work not yet in main to its commits and diff, says GitHub rather than origin, and Merge into main works from any branch without moving the tree or ending the session (2ffee1e, cebd312)
@@ -75,10 +87,10 @@
 - New project asks which node the project runs on when nodes exist; the About panel leads with the guide; a plain user's Doctor card shows only what is theirs; the changelog sheet can write the first line; the memory form says the hook is required; the Uninstall button says Uninstalling while it runs (3386d1d)
 - The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
 - Picking a commit in the Git view's history scrolls the page down to its changes (3fa7ede)
+- Claude can only build and test the dev instance on the node its project works on, so a container left behind on another node is not rebuilt or used from a session by mistake (aeb6d9b)
 
 ### Fixed
 
-- Bumping the version no longer kills the sessions on a project whose CLAUDE.md is ahead of the container: only a block from an older window stops anything (dbf8170)
 - The phone app now reports the same version as the dashboard it talks to, instead of a number of its own that never moved (dbf8170)
 - The Settings, Nodes and Profile tabs are laid out down the page again instead of the right third of it, the deleted-projects and approval dialogs line up with every other dialog, and the settings tab is called Controller settings everywhere (de06bb3)
 - The companion APK is named after the version again, instead of shipping as builderbot-app-.apk (de06bb3)
@@ -169,6 +181,13 @@
 - A session on a node can no longer make the controller run commands: its bb git push, fetch and pull no longer run the repository's hooks or config there, a house rule's check runs on the node, and a project cloned without push rights is refused a push (0a0de59, e2cc37e, 8aad305)
 - A git command in a project no longer fails now and then with index.lock: File exists because the dashboard was reading the tree's status at the same moment (2fae947)
 - A Claude session on a node now sees only the project it was started for, even with other projects on the machine: another project's files, logs, saved tokens and Claude transcripts, and other accounts' homes, are out of its view, and it cannot reach one by queueing a build there (ca78635)
+- bb status on a node now names the build the controller is running instead of 'unstamped', so a session can tell which BuilderBot the box is on (3b6e454)
+- A session on a node can no longer overwrite the shared BuilderBot tooling that its own and other accounts' sessions, and the node's jobs, run (3b6e454)
+- A session that cannot reach the controller for its briefing now says so in the terminal, instead of starting as if it had one and knowing none of your house rules, roadmap or open bugs (17a38e3)
+- A session handing work back on a node no longer fails its house-rule checks with 'rules.py is missing from this image': the check runs where the session and its files are, which is the only place it can (1edd5af)
+- Moving a project to another node no longer hides the dev instance it leaves behind: the containers keep running and their row stays in the Docker manager on the node they are on, so you can still stop or remove them there (aeb6d9b)
+- The dashboard's test suite runs from a local copy instead of straight off the projects share, which is what made its own waits time out and report failures that were not real (8a1f322)
+- Opening a project's Git view no longer runs anything that project's own git configuration names, so a session cannot have code run on the controller by leaving a hook or a filter behind (b8fb095)
 
 ### Removed
 

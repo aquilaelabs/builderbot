@@ -133,130 +133,15 @@ await page.waitForFunction(() => [...document.querySelectorAll('#projects .name'
   .some(n => n.textContent === 'zeta'), { timeout: 15000 });
 ok(true, 'the new project appears in the card');
 ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
-// Two files: the render, which git never sees, and the project's own notes,
-// which it does (roadmap R50).
-ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.local.md`, 'utf8').includes('BUILDERBOT:ENV:END'),
-   'it gets the environment block, in the file that is not committed');
+// One file, and it is the project's own (R63 step 3): what a session is told
+// about the environment is assembled per session now, so nothing is rendered
+// into the tree and there is no second file to exclude from git.
 ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('A widget frobnicator'),
-   '...and CLAUDE.md is the notes that were typed, with no block in it');
+   'CLAUDE.md is the notes that were typed, and is the project\'s own');
+ok(!existsSync(`${DIR}/ws/zeta/CLAUDE.local.md`),
+   '...and no environment block is rendered beside it');
 ok(!readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('BUILDERBOT:ENV:BEGIN'),
-   '...which is what makes it a file worth committing');
-ok(readFileSync(`${DIR}/ws/zeta/.git/info/exclude`, 'utf8').includes('/CLAUDE.local.md'),
-   '...and the render is excluded in this checkout, not in the project\'s own .gitignore');
-
-// ---- drift inside the window stops nothing ------------------------------
-// The block is what a session is briefed with, and it goes stale every time
-// the image gains a feature. Inside a compatibility window that is routine
-// — the row offers the one-press fix, and a session may start meanwhile,
-// the same promise the agent's window makes. Only a block from ANOTHER
-// window (below) holds the project.
-{
-  const mdPath = `${DIR}/ws/zeta/CLAUDE.local.md`;
-  const current = readFileSync(mdPath, 'utf8');
-  writeFileSync(mdPath, current.replace('BUILDERBOT:ENV:BEGIN -->',
-    'BUILDERBOT:ENV:BEGIN -->\nA line the image never wrote.'));
-  await page.evaluate(() => refresh());
-  await page.waitForFunction(() => (state.projects || []).find(p => p.name === 'zeta')
-    ?.issues.some(i => i.action === 'claude-md-update'), { timeout: 20000 });
-  const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
-  await page.waitForSelector(btn, { timeout: 10000 });
-  const drifted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  // Asked about the HOLD and not about `disabled`: these fixture projects
-  // have no node, and a project with no node has a dead Claude button
-  // whatever its CLAUDE.md says. What must not happen is the window
-  // becoming the reason.
-  ok(!(await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held))
-     && !/compatibility window/.test(drifted.why),
-     `a block behind inside the window offers the update and does not hold the project (${
-       drifted.why.slice(0, 50)})`);
-  ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
-     '...and pins nothing in the bell');
-}
-
-// ---- a block from another window holds the project ----------------------
-// Across a window the promise was never made: the block describes a
-// different BuilderBot, so the button ghosts saying so, the bell pins it in
-// red, and a session already running on the project is ended by the sweep
-// — the moment after a controller update is exactly when a conversation
-// started under the old window is acting on a map that is now wrong. The
-// row's own link is the fix, and everything above leaves when it is pressed.
-{
-  const mdPath = `${DIR}/ws/zeta/CLAUDE.local.md`;
-  const current = readFileSync(mdPath, 'utf8');
-  const win = /BUILDERBOT:ENV:WINDOW (\d+\.\d+)/.exec(current)?.[1] || '';
-  ok(/^\d+\.\d+$/.test(win), `a project made from the template carries its window (${win || 'none'})`);
-  tmuxNew('claude-zeta', `${DIR}/ws/zeta`);
-  await refreshUntil(page, () => (state.sessions || []).some(s => s.name === 'claude-zeta'));
-  writeFileSync(mdPath, current.replace(`BUILDERBOT:ENV:WINDOW ${win} -->`,
-    'BUILDERBOT:ENV:WINDOW 0.1 -->'));
-  await page.evaluate(() => refresh());
-  await page.waitForFunction(() => (state.projects || []).find(p => p.name === 'zeta')?.held,
-    { timeout: 20000 });
-  const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
-  const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
-  ok(ghosted.off && /older compatibility window \(0\.1 against/.test(ghosted.why),
-     `a block from another window ghosts the Claude button, saying which (${ghosted.why.slice(0, 70)})`);
-  ok(await page.$eval('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]',
-       a => /older compatibility window/.test(a.textContent)),
-     '...and the row\'s update link says the same');
-  const alert = await page.evaluate(() => (state.attention || []).find(a => a.kind === 'md' && a.project === 'zeta'));
-  ok(alert && alert.project === 'zeta' && alert.window && alert.from === '0.1',
-     `...and the bell pins it in red, naming the project and the window (${JSON.stringify(alert)})`);
-  await page.click('#bBell');
-  await page.waitForSelector('#bellPanel .bnote.bad', { timeout: 10000 });
-  ok(await page.$eval('#bellPanel', e => /CLAUDE\.md out of window/.test(e.textContent)
-                                          && !!e.querySelector('[data-bmd="zeta"]')),
-     '...as a row in the bell with Update on it');
-  await page.click('#bBell');
-  // The sweep runs every second under the suite: the session it ends is the
-  // one on the held project, and nothing else on the box.
-  //
-  // Waited on both names. claude-zeta may already be gone from `state` here
-  // — the sweep fires within a second of the write, and the payload that
-  // said `held` lists sessions after the git walk — and refreshUntil looks
-  // before it refreshes, so a wait on the absence alone can return without
-  // any poll having listed the session just made, which then reads as
-  // ended (B78).
-  tmuxNew('claude-alpha-keep', `${DIR}/ws/alpha`);
-  await refreshUntil(page, () => !(state.sessions || []).some(s => s.name === 'claude-zeta')
-                                 && (state.sessions || []).some(s => s.name === 'claude-alpha-keep'),
-                     { timeout: 20000 });
-  ok(await page.evaluate(() => (state.sessions || []).some(s => s.name === 'claude-alpha-keep')),
-     '...and the session running on the held project is ended, while another project\'s is not');
-  tmuxKill('claude-alpha-keep');
-  // ...and the fix the row offers is what brings it all back.
-  await page.click('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]');
-  await page.waitForFunction(() => !((state.projects || []).find(p => p.name === 'zeta')
-    ?.issues || []).some(i => i.action === 'claude-md-update'), { timeout: 20000 });
-  ok(!(await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held))
-     && !/compatibility window/.test(
-          await page.$eval(btn, b => b.dataset.tip || b.title || '')),
-     '...and the update link on the row lifts the hold, so a session can start again');
-  ok(!(await page.evaluate(() => (state.attention || []).some(a => a.kind === 'md' && a.project === 'zeta'))),
-     '...with the bell\'s row gone on its own');
-  ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('A widget frobnicator'),
-     '...with the project\'s own notes, in their own file, untouched');
-
-  // AHEAD is not the same state and must not be held. It is what this repo's
-  // own checkout looks like between a minor bump and the image built from
-  // it: the block describes the BuilderBot the container is about to be, the
-  // session's own bb comes from the container either way, and the remedy the
-  // hold offered made it worse — restamping the block DOWN contradicts the
-  // tree it came from, and rebuilding puts it back. The operator hit exactly
-  // this and lost a session to it.
-  const ahead = String(Number(win) + 0.1).slice(0, 3);
-  writeFileSync(mdPath, current.replace(`BUILDERBOT:ENV:WINDOW ${win} -->`,
-    `BUILDERBOT:ENV:WINDOW ${ahead} -->`));
-  await page.evaluate(() => refresh());
-  await refreshUntil(page, () => (state.projects || []).some(p => p.name === 'zeta'),
-                     { timeout: 20000 });
-  ok(!await page.evaluate(() => (state.projects || []).find(p => p.name === 'zeta')?.held),
-     `a block from a LATER window is drift, not a hold (${ahead} against ${win})`);
-  ok(!/compatibility window/.test(
-       await page.$eval(btn, b => b.dataset.tip || b.title || '')),
-     '...so nothing about the window is held against it');
-  writeFileSync(mdPath, current);
-}
+   '...nor put inside it, so the file is entirely theirs to commit');
 
 // A project made after anything has been pinned is pinned itself. Without
 // that it lands on disk and never reaches the sidebar — created, and to the
@@ -310,9 +195,10 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
      '...without the wrapper folder or the desktop junk');
   ok((statSync(`${DIR}/ws/fromtar/build.sh`).mode & 0o111) !== 0,
      '...and a script keeps its executable bit');
-  ok(readFileSync(`${DIR}/ws/fromtar/CLAUDE.local.md`, 'utf8').includes('BUILDERBOT:ENV:END')
-     && readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8').trim().split('\n').length > 3,
-     'with no notes typed, a CLAUDE.md is drafted from the unpacked files');
+  ok(/frobnicates widgets/.test(readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8'))
+     && /Drafted automatically/.test(readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8'))
+     && !existsSync(`${DIR}/ws/fromtar/CLAUDE.local.md`),
+     'with no notes typed, a CLAUDE.md is drafted from the unpacked files, and nothing else');
 
   // A zip with no wrapper folder lands as it is.
   execFileSync('python3', ['-c', `
@@ -579,7 +465,7 @@ saved = {}
 m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '',
-            build_claude_md=lambda *a, **k: '', project_name=None,
+            project_name=None,
             state=d, home=d,
             write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
@@ -639,7 +525,7 @@ ok(await page.$eval('#pForge', el => el.value) === 'git',
    '...starting on the entry that promises nothing, rather than on GitHub');
 ok(/git\.home\.lan:3000/.test(await page.$eval('#pForgeHint', el => el.textContent)),
    '...naming the server it is asking about');
-await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+await page.keyboard.press('Escape');
 // And the answer is kept against the host: cloning from it declares it, so
 // the next address on the same server is not a question again. Refused for
 // the name collision, which is after the address has been accepted.
@@ -655,7 +541,7 @@ ok(await page.$eval('#pForgeField', el => el.hidden),
    '...and once answered, that server is never asked about again');
 ok(/Gitea/.test(await page.$eval('#pToken', el => el.placeholder)),
    '...with the token field asking for the kind of token that host issues');
-await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+await page.keyboard.press('Escape');
 
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.
@@ -667,10 +553,10 @@ await page.click('#pClone');
 ok(await page.$eval('#pTokenField', el => !el.hidden)
    && await page.$eval('#pToken', el => el.type === 'password'),
    'cloning is, and it is not typed in the clear');
-// Bounded: when the close button is not there this waits, and the default
-// wait is thirty seconds for a fallback that is one keystroke.
-await page.click('#pmodalClose', { timeout: 1500 })
-  .catch(() => page.keyboard.press('Escape'));
+// Escape, because that is what closes this dialog: there is no close button
+// in the markup and never was. Clicking for one cost the default wait, thirty
+// seconds, three times over, before the keystroke that did the work.
+await page.keyboard.press('Escape');
 
 // Shape is checked before it is written: the store is a one-line format, so a
 // token with a space or a newline in it would produce a file git reads as
@@ -696,7 +582,7 @@ d = tempfile.mkdtemp()
 m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '',
-            build_claude_md=lambda *a, **k: '', project_name=None,
+            project_name=None,
             state=d, home=d, write_json=lambda *a: None)
 helper = m.write_token('alpha', 'ghp_ExampleTokenValue123', 'github.com')
 f = os.path.join(d, 'gitcreds', 'alpha')
@@ -766,7 +652,7 @@ def fake_run(cmd, **k):
 m.configure(run=fake_run, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '',
-            build_claude_md=lambda *a, **k: '', project_name=None,
+            project_name=None,
             state=d, home=d,
             write_json=lambda p, v: open(p, 'w').write(json.dumps(v)))
 out = {}
@@ -1051,6 +937,31 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
   };
   const before = history();
   ok(cfg().includes('[remote "origin"]'), 'alpha starts out linked');
+  // The stored token is USABLE through the relay and never READABLE, which is
+  // the whole bargain (roadmap R15). Claude runs on a node, and a node has no
+  // /config, so what has to hold is that nothing the API hands out carries
+  // the value: the row says whether there is one, not what it is. Asked of
+  // the payloads a project row is drawn from, and of the tree a session owns.
+  {
+    const secret = 'ghp_ExampleTokenValue123';
+    const bodies = await page.evaluate(async () => {
+      const out = {};
+      // The real GETs a project row is drawn from. There is no GET
+      // /api/settings: that payload rides on /api/status.
+      for (const p of ['/api/status', '/api/git?project=alpha&what=all',
+                       '/api/findings']) {
+        try { out[p] = await (await fetch(p)).text(); } catch (e) { out[p] = String(e); }
+      }
+      return out;
+    });
+    const carrying = Object.entries(bodies).filter(([, b]) => b.includes(secret)).map(([p]) => p);
+    ok(carrying.length === 0,
+       `a stored token is in no payload the browser can fetch (${carrying.join(', ') || 'none carry it'})`);
+    ok(/"has_token":\s*true/.test(bodies['/api/status'] || ''),
+       '...while the row still says there IS one, which is what the dialog needs');
+    ok(!cfg().includes(secret),
+       '...and the tree a session owns, which it may rewrite, never carries the value either');
+  }
   const u = await page.evaluate(async () => {
     const r = await fetch('/api/unlink', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },

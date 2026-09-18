@@ -195,7 +195,6 @@ WORKSPACE = None
 agent_keys = None
 gh_authed = None
 ensure_deploy_alias = None
-build_claude_md = None
 PROJECT_NAME = None
 # Renaming's own share of the injection: where the state and the home volume
 # live.
@@ -212,13 +211,12 @@ rename_project_data = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
-              build_claude_md, project_name,
+              project_name,
               state, home, write_json, rename_project_data=None):
     """Hand over the server's helpers."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
-        build_claude_md=build_claude_md,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
         rename_project_data=rename_project_data)
@@ -1611,64 +1609,34 @@ def _clone(dest, url, helper="", may_push_=False):
 
 
 def _write_md(dest, about, cloned):
-    """The CLAUDE.md, and the sentence describing what happened to it.
+    """A CLAUDE.md for a new project, and the sentence saying what happened.
 
-    A cloned repo that already carries one keeps it; one that does not gets a
-    draft read out of its own files. A fresh local repo gets the operator's
-    notes.
+    Only the project's OWN notes now. The environment block that used to go in
+    beside them is assembled per session from the controller instead (R63), so
+    there is nothing here to render, push or keep in step: a project that
+    brought its own CLAUDE.md keeps it untouched, and one with none gets a
+    short file it owns from that moment on.
     """
-    md, local = dest / "CLAUDE.md", dest / "CLAUDE.local.md"
-    kept = md.is_file()
-    if cloned and not kept:
+    md = dest / "CLAUDE.md"
+    if md.is_file():
+        return "kept the repository's own CLAUDE.md"
+    # A project that arrived rather than being typed gets its notes drafted
+    # from its own files, marked as a draft for a session to check.
+    if cloned and not about.strip():
         about = describe_repo(dest) or ""
-    built = build_claude_md(about, dest)
-    if built is None:
-        return "no CLAUDE.md template in this image; none written"
-    block, notes = built
+    text = (about.strip() + "\n") if about.strip() else ""
+    if not text:
+        return "no CLAUDE.md written; this project's notes are yours to start"
     try:
-        # The block always, even into a repository that brought its own
-        # CLAUDE.md: it is not committed, it does not collide with anything
-        # the repository wrote, and without it a session here has no
-        # environment brief at all — which is what a cloned project with its
-        # own CLAUDE.md used to get.
-        local.write_text(block)
-        _exclude_local(dest)
-        if not kept:
-            md.write_text(notes)
+        md.write_text(text)
     except OSError as e:
         return f"could not write CLAUDE.md: {e}"
-    if kept:
-        return "kept the repository's own CLAUDE.md; the environment block is beside it"
-    if not about:
-        return "CLAUDE.md created from the template"
     # Said out loud because it is a file this dashboard added to somebody
     # else's tree: it is not in the repository's history, and a `git status`
     # that opens with an unexpected untracked file is a small mystery worth
     # not creating.
-    return ("CLAUDE.md drafted from the repository's own files — untracked, "
+    return ("CLAUDE.md drafted from the repository's own files, untracked, "
             "commit or delete it" if cloned else "CLAUDE.md created from your notes")
-
-
-def _exclude_local(dest):
-    """Keep the rendered block out of git without touching the project's own
-    .gitignore: .git/info/exclude belongs to this checkout and is never
-    committed. bb's md_exclude does the same thing for the same reason; the
-    rule is one line and is stated twice rather than shelled out for."""
-    try:
-        r = run(["git", "-C", str(dest), "rev-parse", "--git-dir"], timeout=10)
-        if r["code"] != 0:
-            return                       # not a repository: nothing to exclude
-        gd = Path(r["out"].strip())
-        if not gd.is_absolute():
-            gd = dest / gd
-        excl = gd / "info" / "exclude"
-        excl.parent.mkdir(parents=True, exist_ok=True)
-        have = excl.read_text() if excl.is_file() else ""
-        if "/CLAUDE.local.md" not in have.split():
-            with open(excl, "a") as f:
-                f.write("/CLAUDE.local.md\n")
-    except (OSError, ValueError):
-        pass                             # an ignore line is never worth failing a clone
 
 
 # ---- linking --------------------------------------------------------------

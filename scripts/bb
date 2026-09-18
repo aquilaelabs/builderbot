@@ -73,13 +73,6 @@ bb — BuilderBot helper
   bb emu shot [FILE]     screenshot the emulator into dist/emu/
   bb emu gfx PKG [FILE]  a package's per-frame timings (gfxinfo framestats) into dist/emu/
                          — every emu verb runs on the project's node when it has one
-  bb claude-md           is this project's CLAUDE.md environment block current?
-  bb claude-md --update  refresh that block, leaving the project section alone
-  bb claude-md --init    create a CLAUDE.md here from the shipped template
-  bb claude-md --is-stale  exit 0 when that block exists and has drifted
-  bb claude-md --out-of-window  exit 0 when that block is from another compatibility
-                         window than the template — the gate the ghosted Claude
-                         button and bb-tty both ask; --window prints a block's window
   bb ci-labels [--write] the runner labels the registry knows; --write regenerates
                          .github/actionlint.yaml from them
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
@@ -143,6 +136,9 @@ bb — BuilderBot helper
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
   bb findings history    what the scanner stopped and started saying here
+  bb findings sample [--remove]   write a clearly-fake report, so the Analysis
+                         surfaces can be worked on where no scanner runs
+  bb token keep          store BB_TOKEN where this account's sessions read it
                          (-n N, --since 7d, --find TEXT, as the other logs)
   bb phone               what phone is connected, and what is waiting on you
   bb root                what root commands are waiting on an administrator
@@ -157,6 +153,11 @@ bb — BuilderBot helper
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
+  bb diag [--json] [SECTION...]
+                         the controller's diagnostics: its build and images,
+                         the doctor, each node's agent and sessions, failed
+                         jobs, error lines in its logs, the audit trail; for
+                         a session, behind debug mode and its node's grant
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
   bb logs --node NAME [--agent|--runner|--terminal] [N]
@@ -216,14 +217,22 @@ cmd_status() {
     # Dockerfile; empty means the image was built some other way.
     # Above the commit, because it is the half a person can order. A sha
     # says which build; only this says which came first.
-    printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
-    printf '  %-8s %s\n' image "$(
-        if [ -n "${BB_IMAGE_REV:-}" ]; then
-            printf '%.7s%s' "$BB_IMAGE_REV" \
-                "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
-        else
-            printf 'unstamped'
-        fi)"
+    if on_node; then
+        # A node runs no controller image of its own, so BB_VERSION/BB_IMAGE_REV
+        # are the controller's and unset here. What answers "which build is the
+        # box on" from a session is the CONTROLLER's build, asked for over the
+        # API rather than read off an env that was never set here (R62).
+        printf '  %-8s %s\n' controller "$(bb_controller_stamp)"
+    else
+        printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
+        printf '  %-8s %s\n' image "$(
+            if [ -n "${BB_IMAGE_REV:-}" ]; then
+                printf '%.7s%s' "$BB_IMAGE_REV" \
+                    "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
+            else
+                printf 'unstamped'
+            fi)"
+    fi
     # Only where a session runs: the controller carries no Claude Code (R47),
     # and a dash against it there reads as something missing rather than as
     # something that was never meant to be here.
@@ -1349,6 +1358,83 @@ logs_are_the_controllers() {
         "controller's. \`bb ci-log\` reads a CI run's output on this machine"
 }
 
+# bb diag: the controller's diagnostics (scripts/dashboard/diag.py). One
+# request, so the gate is the server's: an administrator anywhere, and a
+# session only with debug mode on, its node ticked for it on Debug settings,
+# and an administrator's account behind it. Read-only; secrets are redacted
+# there, not here.
+cmd_diag() {
+    local json=0 sections=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json) json=1 ;;
+            -h|--help) printf 'usage: bb diag [--json] [controller|images|settings|doctor|nodes|jobs|errors|audit]...\n'; return 0 ;;
+            -*) die "bb diag: no such option \`$1'" ;;
+            *) sections+=("$1") ;;
+        esac
+        shift
+    done
+    local auth
+    auth="$(bb_auth_or_die)"
+    BB_DIAG_AUTH="$auth" BB_DIAG_JSON="$json" python3 - "${sections[@]}" <<'DIAG'
+import json, os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+body = {"sections": sys.argv[1:]} if sys.argv[1:] else {}
+d = bbapi.call("/api/diag", body, auth=os.environ["BB_DIAG_AUTH"], timeout=60)
+if d.get("error") and len(d) == 1:
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+if os.environ["BB_DIAG_JSON"] == "1":
+    print(json.dumps(d, indent=2))
+    raise SystemExit(0)
+
+
+def head(t):
+    print(f"\n== {t} ==")
+
+
+for name, v in d.items():
+    if name == "at":
+        continue
+    head(name)
+    if isinstance(v, dict) and set(v) == {"error"}:
+        print(f"  could not read: {v['error']}")
+    elif name == "controller":
+        print(f"  {v.get('version') or v.get('rev')} built {v.get('built')}, up {v.get('uptime')}")
+        print(f"  ships agent {v.get('agent_shipped')}, bundle {v.get('bundle')}, {v.get('git')}")
+    elif name == "images":
+        print("\n".join(f"  {x}" for x in v) or "  none recorded")
+    elif name == "settings":
+        print("\n".join(f"  {k} = {val}" for k, val in v.items()) or "  none")
+    elif name == "doctor":
+        print(f"  ran {v.get('when')}")
+        for c in v.get("checks") or []:
+            print(f"  [{c['level']}] {c['text']}")
+            if c["level"] in ("FAIL", "warn") and c.get("detail"):
+                print("\n".join(f"         {x}" for x in c["detail"].splitlines()))
+    elif name == "nodes":
+        for n in v:
+            se, vw = n["session"], n["views"]
+            print(f"  {n['name']}: {n['state']}{'' if n['live'] else ', not dialing in'}, seen {n['last_seen']}, "
+                  f"agent {n['agent']}{'' if n['agent_current'] else ' (not the shipped one)'}, {n['git'] or 'git ?'}")
+            print(f"    sessions {'up' if se['up'] else 'down: ' + (se['why'] or '?')}, "
+                  f"views {'built' if vw['built'] else 'not built: ' + (vw['why'] or '?')}, bundle {se['bundle'] or '?'}")
+            for e in n.get("mount_errors") or []:
+                print(f"    mount: {e}")
+    elif name == "jobs":
+        print("  last 24h: " + (", ".join(f"{k} {c}" for k, c in sorted(v.get("last_24h", {}).items())) or "none"))
+        for j in v.get("failed") or []:
+            print(f"  {j['when']:>8}  {j['state']:<9} {j['type']:<6} {j['project'] or '-'} on {j['node'] or '-'}"
+                  f"{' exit ' + str(j['exit']) if j['exit'] is not None else ''}{': ' + j['error'] if j['error'] else ''}")
+    elif name == "errors":
+        print("\n".join(f"  {x}" for x in v) or "  nothing that looks like a fault")
+    elif name == "audit":
+        for a in v:
+            print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
+DIAG
+}
+
 cmd_logs() {
     local base logfile follow=0 lines=100 gen="" want_node="" stream=""
     base="$(bb_log_dir)/builderbot.log"
@@ -1431,277 +1517,6 @@ NODELOG
     fi
 }
 
-# Overridable for one reason: developing the template itself. `bb claude-md`
-# compares a project against the image's copy, which is right everywhere except
-# in a checkout of this repo, where the template being edited is the one under
-# config/templates. The dashboard's server has had the same override for the
-# same reason (its tests point it at a checkout).
-# The image's copy here; on a node, the one the bundle carries beside bb.
-TEMPLATE_MD="${TEMPLATE_MD:-/opt/builderbot/templates/project-CLAUDE.md}"
-[ -f "$TEMPLATE_MD" ] || TEMPLATE_MD="$(dirname "$(readlink -f "$0")")/../config/templates/project-CLAUDE.md"
-ENV_BEGIN='<!-- BUILDERBOT:ENV:BEGIN -->'
-ENV_END='<!-- BUILDERBOT:ENV:END -->'
-
-# Print the marked environment block of a file, markers included.
-md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
-    'index($0,b){f=1} f{print} index($0,e){exit}' "$1"; }
-
-# md_file DIR — where this project's environment block lives.
-#
-# CLAUDE.local.md, which is the render and is not in git: the template is the
-# source and a rendered block is an artifact, so git carries the template and
-# the project's own notes and never the output (roadmap R50). Claude Code
-# loads it beside CLAUDE.md — 2.1.270 lists it among the instruction files it
-# reads, as "the local file" — so a session is briefed by both and neither
-# has to import the other.
-#
-# CLAUDE.md is the fallback, because that is where every block written before
-# the move still is. It is the migration and nothing more: the first --update
-# moves the block out and leaves the notes, and after that the old place holds
-# none. server.md_file draws the same line and the two have to agree.
-md_file() {
-    local dir="$1"
-    if [ -f "$dir/CLAUDE.local.md" ]; then printf '%s\n' "$dir/CLAUDE.local.md"
-    else printf '%s\n' "$dir/CLAUDE.md"; fi
-}
-
-# Keep the rendered block out of git WITHOUT touching the project's own
-# .gitignore: .git/info/exclude is this checkout's, never committed, and
-# never reaches anybody else's history. A project that is not a git
-# repository needs nothing done.
-md_exclude() {
-    local dir="$1" gitdir excl
-    gitdir="$(git -C "$dir" rev-parse --git-dir 2>/dev/null)" || return 0
-    case "$gitdir" in /*) ;; *) gitdir="$dir/$gitdir" ;; esac
-    excl="$gitdir/info/exclude"
-    mkdir -p "$(dirname "$excl")" 2>/dev/null || return 0
-    grep -qxF '/CLAUDE.local.md' "$excl" 2>/dev/null && return 0
-    printf '%s\n' '/CLAUDE.local.md' >> "$excl" 2>/dev/null || true
-}
-
-# md_render TEMPLATE TARGET — the block this project should have.
-#
-# Parts of the file only matter to some projects: Android, the dev instance,
-# the findings report. Every project used to carry all of them on every
-# session, which was about a sixth of the block paid for by projects it could
-# not apply to. The environment already knows which apply, so the template
-# marks them and this drops the ones it cannot see evidence for:
-#
-#   <!-- BUILDERBOT:IF android -->  ...  <!-- BUILDERBOT:END -->
-#
-# Evidence IN THE TREE, never a guess and never the machine: a gradle file or
-# an AndroidManifest for android, a compose file for compose. The tree is the
-# shared projects share, so the controller and every node read the same
-# answer — a condition on something only one machine can see (the /reports
-# mount was the tempting one) renders a project differently depending on where
-# the update ran, and then each machine reports the other's answer as drift.
-# A project that gains a compose file gains that section as ordinary drift and
-# the row offers the update, which is why the check comes through here too and
-# not only the update.
-#
-# The phone is deliberately NOT conditional. The evidence for it is on a node
-# rather than in the tree, and a section left out on a guess is a capability a
-# session does not know exists, which costs more than the words do.
-# Any of these paths exists. Not `ls a b c`, which exits non-zero when ANY of
-# them is missing however many matched — measured, and it is why a project
-# with one gradle file at its root read as not-Android.
-_any_of() {
-    local p
-    for p in "$@"; do [ -e "$p" ] && return 0; done
-    return 1
-}
-
-md_render() {
-    local tpl="$1" dir have name pats p
-    dir="$(dirname "$(readlink -f "$2" 2>/dev/null || printf '%s' "$2")")"
-    # The patterns come off the marker, not out of this function: server.py
-    # renders the same block on every poll to decide whether a project has
-    # drifted, and two lists of evidence would make each one report the
-    # other's answer as drift forever. The template is the one copy; both
-    # readers are three lines of glob.
-    have=" "
-    while read -r name pats; do
-        [ -n "$name" ] || continue
-        for p in $pats; do
-            # Unquoted on purpose: these are globs, and the point is expansion.
-            # shellcheck disable=SC2086
-            if _any_of "$dir"/$p; then have="${have}${name} "; break; fi
-        done
-    done <<EOF
-$(grep -o '<!-- BUILDERBOT:IF [^>]*-->' "$tpl" \
-    | sed 's|<!-- BUILDERBOT:IF ||; s| *-->$||')
-EOF
-    md_block "$tpl" | awk -v have="$have" '
-        /<!-- BUILDERBOT:IF /{
-            # The first word only: the rest of the marker is the evidence
-            # that decided it, which was read above and is not the name.
-            name = $0; sub(/.*BUILDERBOT:IF /, "", name); sub(/[ \t].*/, "", name)
-            sub(/-->.*/, "", name)
-            skip = (index(have, " " name " ") == 0); next
-        }
-        /<!-- BUILDERBOT:END -->/{ skip = 0; next }
-        !skip { print }'
-}
-# The window stamped in a block, or nothing: only the line inside the markers
-# counts, so a project's own notes cannot claim one.
-md_window() { md_block "$1" | sed -n 's/.*BUILDERBOT:ENV:WINDOW \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1; }
-
-# Keep a project's CLAUDE.md environment section in step with the image.
-#
-# The block is delimited so refreshing it is a substitution rather than a
-# judgment call: everything below the end marker is the project's own and is
-# never read, compared or written. That is the whole point — the environment
-# notes go stale every time the container gains a feature, and the project
-# notes are the expensive part nobody wants to risk.
-cmd_claude_md() {
-    local mode=check target=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --update) mode=update ;;
-            --init)   mode=init ;;
-            --check)  mode=check ;;
-            --is-stale) mode=is-stale ;;
-            --out-of-window) mode="out-of-window" ;;
-            --window)  mode="window" ;;
-            -*) die "unknown option: $1" ;;
-            *)  target="$1" ;;
-        esac
-        shift
-    done
-    # A DIRECTORY resolves to whichever file carries the block; a file is
-    # taken as given, so an explicit path still means what it says.
-    if [ -z "$target" ]; then target="$(md_file "$PWD")"
-    elif [ -d "$target" ]; then target="$(md_file "$target")"; fi
-    local mddir; mddir="$(dirname "$target")"
-
-    # `--is-stale` is the question a gate asks, and the only mode that answers
-    # with its exit code alone: 0 when this project's block EXISTS and differs
-    # from the image's, which is the one state `--update` can fix in a click —
-    # so it is the one state worth refusing a session over (bb-tty, and the
-    # ghosted button beside it). Everything else exits 1 and says nothing: no
-    # template to compare against, no CLAUDE.md at all (that is `--init`, and
-    # the operator's decision), and a file predating the markers (`--update`
-    # refuses that one, so blocking on it would strand somebody with no fix
-    # to press). Silent on purpose — a caller wanting the words runs the
-    # plain check, which prints them and a diff.
-    if [ "$mode" = is-stale ]; then
-        [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
-        grep -qF "$ENV_BEGIN" "$target" && grep -qF "$ENV_END" "$target" || return 1
-        ! cmp -s <(md_render "$TEMPLATE_MD" "$target") <(md_block "$target")
-        return
-    fi
-
-    # `--window` prints the compatibility window a block was written for —
-    # the BUILDERBOT:ENV:WINDOW line under the begin marker, BuilderBot's
-    # minor — and nothing for a block that predates the line. `--out-of-window`
-    # is the gate: exit 0 only when the block CARRIES a window and it differs
-    # from the template's. A block behind inside the window is drift, which
-    # `--is-stale` reports and nothing refuses a session over; a block from
-    # another window is the one a session must not be briefed with, because
-    # what it says about the environment was true of a different BuilderBot.
-    # Empty means "cannot say" and is never read as a gap, the same rule the
-    # agent's window follows.
-    if [ "$mode" = window ]; then
-        [ -f "$target" ] || return 1
-        md_window "$target"
-        return 0
-    fi
-    if [ "$mode" = out-of-window ]; then
-        [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
-        local ours theirs
-        ours="$(md_window "$TEMPLATE_MD")"; theirs="$(md_window "$target")"
-        [ -n "$ours" ] && [ -n "$theirs" ] || return 1
-        [ "$ours" = "$theirs" ] && return 1
-        # Only BEHIND. A block from a later window is a container that has not
-        # been rebuilt yet — the state this repo's own checkout is in between
-        # a bump and its image — and the block over-promises rather than
-        # describing something gone. server.md_gap draws the same line; the
-        # two have to agree or the hook refuses what the controller allows.
-        [ "$(printf '%s\n%s\n' "$ours" "$theirs" | sort -V | head -1)" = "$theirs" ]
-        return
-    fi
-
-    [ -f "$TEMPLATE_MD" ] || die "no template at ${TEMPLATE_MD} — is this an older image?"
-
-    if [ ! -f "$target" ]; then
-        if [ "$mode" = init ]; then
-            # Two files: the rendered block, which is not in git, and the
-            # project's own notes, which are. Rendered rather than copied, or
-            # the first check after --init reports drift against the file it
-            # just wrote. An existing CLAUDE.md is left exactly as it is —
-            # a cloned repository's own notes are not ours to overwrite.
-            md_render "$TEMPLATE_MD" "$mddir/CLAUDE.local.md" > "$mddir/CLAUDE.local.md"
-            md_exclude "$mddir"
-            if [ ! -f "$mddir/CLAUDE.md" ]; then
-                # The notes half, starting at its own first heading: the
-                # separator under the end marker divided two halves of one
-                # file and has nothing to divide in a file of its own.
-                awk -v e="$ENV_END" 'p{print} index($0,e){p=1}' "$TEMPLATE_MD" \
-                    | awk '!seen && ($0 == "" || $0 == "---"){next} {seen=1; print}' \
-                    > "$mddir/CLAUDE.md"
-                log "created ${mddir}/CLAUDE.local.md and ${mddir}/CLAUDE.md — fill in the project section"
-            else
-                log "created ${mddir}/CLAUDE.local.md — your CLAUDE.md is untouched"
-            fi
-            return 0
-        fi
-        die "no environment block in ${mddir}. Create one with: bb claude-md --init"
-    fi
-
-    if ! grep -qF "$ENV_BEGIN" "$target" || ! grep -qF "$ENV_END" "$target"; then
-        warn "${target} has no BUILDERBOT:ENV markers"
-        warn "It predates them, so which part is environment and which is yours"
-        warn "cannot be determined safely. Merge once by hand — or ask Claude to —"
-        warn "putting the block from ${TEMPLATE_MD} above your project section."
-        return 1
-    fi
-
-    local tmp_new tmp_cur
-    tmp_new="$(mktemp)"; tmp_cur="$(mktemp)"
-    # shellcheck disable=SC2064 # expand the paths now, not at trap time
-    trap "rm -f '$tmp_new' '$tmp_cur'" RETURN
-    md_render "$TEMPLATE_MD" "$target" > "$tmp_new"
-    md_block "$target"      > "$tmp_cur"
-
-    if cmp -s "$tmp_new" "$tmp_cur"; then
-        log "${target}: environment block is current"
-        return 0
-    fi
-
-    if [ "$mode" != update ]; then
-        log "${target}: environment block differs from the image's template"
-        diff -u --label "$target" --label "$TEMPLATE_MD" "$tmp_cur" "$tmp_new" || true
-        log "refresh just that block with: bb claude-md --update"
-        return 0
-    fi
-
-    local out; out="$(mktemp)"
-    # shellcheck disable=SC2064
-    trap "rm -f '$tmp_new' '$tmp_cur' '$out'" RETURN
-    # The block is written whole to its own file rather than spliced between
-    # markers in somebody's notes: it is a render, and a render is replaced,
-    # not merged.
-    cat "$tmp_new" > "$mddir/CLAUDE.local.md"
-    md_exclude "$mddir"
-    if [ "$target" != "$mddir/CLAUDE.md" ]; then
-        log "${mddir}/CLAUDE.local.md: environment block updated"
-        return 0
-    fi
-    # ...and out of CLAUDE.md, where it used to live. Everything outside the
-    # markers is left exactly as it is, title and notes alike: that rule is
-    # what makes this safe to run on a file somebody else wrote, and tidying
-    # a heading is not worth breaking it for.
-    awk -v b="$ENV_BEGIN" -v e="$ENV_END" '
-        index($0,b) { skip=1; next }
-        index($0,e) { skip=0; next }
-        !skip       { print }
-    ' "$mddir/CLAUDE.md" > "$out"
-    grep -qF "$ENV_BEGIN" "$out" && die "refused to write: the block is still in CLAUDE.md"
-    cat "$out" > "$mddir/CLAUDE.md"
-    log "${mddir}: the environment block is CLAUDE.local.md now, which this checkout ignores"
-    log "  CLAUDE.md keeps your project section; commit its removal when you are ready"
-}
-
 # Reduce a SARIF report to grouped markdown.
 #
 # This reads scan output and nothing else. The scanner itself lives outside the
@@ -1766,12 +1581,14 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
   elif $n == 0 and $filtered and ($scoped | length) > 0 then
     "No findings match the filters — \($scoped | length) before filtering.\n"
   elif $n == 0 then
-    "No findings for \($proj). This report covers: "
-    + (($all | map(.tree) | unique | join(", ")))
-    + "\nRun with --all to see them anyway.\n"
+    ( if $relayed != "" then "No findings for \($proj) in this report.\n"
+      else "No findings for \($proj). This report covers: "
+           + (($all | map(.tree) | unique | join(", ")))
+           + "\nRun with --all to see them anyway.\n" end )
   else
   ( "# Findings (\($n)\(if $filtered then " matching, of \($scoped | length)" else "" end))"
   + (if $scope == "all" then " — all projects in this report\n"
+     elif $relayed != "" then " in \($proj)\n"
      else " in \($proj), of \($all | length) in the report — --all for the rest\n" end)
   + ( $rows | group_by(.level) | sort_by(.[0].level | rank)
       | map( "\n## \(.[0].level) (\(length))\n"
@@ -2499,9 +2316,6 @@ cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
     # change only its own — see rules.py for the ownership and the log.
-    local py
-    py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
-    [ -f "$py" ] || die "rules.py is missing from this image"
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -2570,6 +2384,17 @@ sys.exit(rc)
 CHECKPY
         return $?
     fi
+    # Every verb BELOW here reads and writes the rules themselves, which is
+    # the controller's file and the controller's module. Resolved here rather
+    # than at the top of this function, because `check` above needs neither:
+    # it takes the rules through `bb rules --json`, which a node relays, and
+    # runs the command in this tree. Asked for at the top, this killed every
+    # `bb rules check` on a node, where the bundle carries bb and no dashboard
+    # module by design, so the hand-back hook blocked on the one machine
+    # sessions actually run on.
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
+    [ -f "$py" ] || die "rules.py is missing from this image"
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$py" "$proj" "$@" <<'RULESPY'
 def _wrote(e):
@@ -2612,6 +2437,12 @@ reg.configure(write_json=statefile.write_json, state=_rules_state,
               actor=lambda: _account_name(_rules_state))
 
 proj, argv = sys.argv[2], sys.argv[3:]
+# `--global` is the rules that apply to EVERY project (R63). Reading one is
+# anybody's; writing one is refused by rules.py itself, because the key is the
+# global one and everything bb writes is a session's.
+if "--global" in argv:
+    argv = [a for a in argv if a != "--global"]
+    proj = reg.GLOBAL
 op = argv[0] if argv else "list"
 rest = argv[1:]
 import pending  # noqa: E402 — rules.py put its directory on sys.path
@@ -2623,12 +2454,12 @@ if op == "--prompt":
     if b:
         print(b)
 elif op == "--json":
-    print(json.dumps(reg.rules(proj)))
+    print(json.dumps(reg.effective(proj)))
 elif op == "show":
     if not rest:
         sys.exit("usage: bb rules show <name>")
     want = rest[0].strip().lower()
-    for r in reg.rules(proj):
+    for r in reg.effective(proj):
         if r["name"] == want:
             print(r["text"])
             if r.get("doc"):
@@ -2637,7 +2468,7 @@ elif op == "show":
                 print(f"checked by: {r['check']}   (bb rules check {r['name']})")
             break
     else:
-        names = ", ".join(r["name"] for r in reg.rules(proj)) or "none"
+        names = ", ".join(r["name"] for r in reg.effective(proj)) or "none"
         sys.exit(f"no rule called {want} here — this project has: {names}")
 elif op == "add":
     if len(rest) < 2:
@@ -2732,7 +2563,7 @@ elif op == "history":
         if e.get("approved"):
             print(f"{'':>32}approved by the operator")
 elif op == "list":
-    rs = reg.rules(proj)
+    rs = reg.effective(proj)
     if not rs:
         print("no house rules on this project yet. The operator writes them on "
               "the notebook's Briefing tab; `bb rules add NAME \"...\"` leaves "
@@ -2748,7 +2579,8 @@ elif op == "list":
             when = "  [" + ", ".join(bits[:4]) + ("…" if len(bits) > 4 else "") + "]"
         first = (r["text"].strip().splitlines() or [""])[0]
         mine = "*" if r.get("by") == "claude" else " "
-        frame = (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else "")
+        frame = ((" [global]" if r.get("scope") == "global" else "")
+                 + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
         print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's — read "
@@ -4132,10 +3964,36 @@ bb_token_dead() {
 # was left holding a token that no longer verified and every verb answered
 # "not signed in". bb-tty refreshes that file on every connection, so opening
 # the tab is what puts this back in touch.
+# `bb token keep` stores the token in BB_TOKEN where this account's sessions
+# on this machine read it. The agent runs this for a session that is IDLE
+# (R27): a session that is talking slides its own token forward on every
+# answer, one that is not has nothing to slide it, and a dead token is never
+# renewed. Here rather than in the agent because both halves of the answer
+# already live here: which home this account has on this machine (user_home)
+# and what the cache file is called (bbapi.keep_token). A second copy of
+# either is a second thing to keep in step.
+cmd_token() {
+    [ "${1:-}" = keep ] || die "usage: bb token keep   (with BB_TOKEN set)"
+    [ -n "${BB_TOKEN:-}" ] || die "no BB_TOKEN to keep"
+    local home py
+    home="$(user_home "${BB_ACCOUNT_UID:-}")"
+    [ -n "$home" ] || die "no home for account ${BB_ACCOUNT_UID:-(none)} on this machine"
+    py="$(dirname "$(readlink -f "$0")")/lib/bbapi.py"
+    [ -f "$py" ] || die "bbapi.py is missing beside bb"
+    HOME="$home" python3 - "$py" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("bbapi", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.keep_token(os.environ["BB_TOKEN"])
+PY
+}
+
 bb_token_now() {
     local t="${BB_TOKEN:-}"
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/project/${BB_PROJECT:-}/token"
+    # Per account (B159): the cache folder is shared between accounts on a node.
+    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/u/${BB_ACCOUNT_UID:-_none}/project/${BB_PROJECT:-}/token"
     local ft=""
     [ -r "$f" ] && ft="$(cat "$f" 2>/dev/null)"
     # The later-expiring of the two. The file used to be read only once the
@@ -4186,6 +4044,55 @@ BB_TOKEN. From a plain docker exec there is none: run this from a dashboard \
 terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
     fi
     printf '%s' "$h"
+}
+
+# The controller's own build, for `bb status` on a node (R62). A node runs no
+# controller image, so BB_IMAGE_REV and BB_VERSION are empty here and the old
+# status lines read "unstamped". The which-build rule sends a session to bb
+# status to learn which build the box is on, and a session is always on a node,
+# so that check has to work here. It asks the controller over the same channel
+# everything else uses: /api/meta carries the running image's version, commit
+# and build time. Softly, with a short timeout, because a controller that is
+# down, or a session with no token, is a state the line reports rather than
+# dies on.
+bb_controller_stamp() {
+    local auth; auth="$(bb_auth_header)"
+    [ -n "$auth" ] || { printf 'unknown: no session token to ask the controller with'; return; }
+    BB_META_AUTH="$auth" python3 - <<'PY' 2>/dev/null || printf 'unreachable: the controller did not answer'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+# request() rather than call(), because the two failures want different
+# answers and call() cannot tell them apart: a refusal the server worded and a
+# refused connection both come back as {"error": sentence}. Reporting an
+# expired token as "the controller is down" is the mistake bb-gate already
+# made once, and the first version of this line made it again.
+# Short timeout: bb status is run often, and a controller that is down should
+# cost a line rather than a 30-second wait.
+try:
+    st, m = bbapi.request("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
+except Exception:
+    st, m = None, {}
+if st is None:
+    print("unreachable: the controller did not answer", end="")
+    raise SystemExit(0)
+if st >= 400 or not isinstance(m, dict) or m.get("error"):
+    why = (m or {}).get("error") or f"HTTP {st}"
+    print(f"the controller refused this session: {why}", end="")
+    raise SystemExit(0)
+ver = (m.get("version") or "").strip()
+rev = (m.get("image") or "").strip()
+built = (m.get("built") or "").strip()
+if not ver and not rev:
+    print("unstamped: the controller's image was built outside CI", end="")
+else:
+    out = ver or rev[:7]
+    if rev and rev[:7] not in out:
+        out += f" ({rev[:7]})"
+    if built:
+        out += f" (built {built})"
+    print(out, end="")
+PY
 }
 
 # ---- a session on a node (roadmap #24) --------------------------------------
@@ -4412,6 +4319,12 @@ prefs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prefs)
 prefs.configure(state=state, write_json=lambda *a: None)
 rec = dict(prefs.get(proj) or {})
+# The model, the effort and any commit-author override are the ACCOUNT's on
+# this project, not the project's (prefs.for_user): two people on one project
+# are two authors on two models. BB_ACCOUNT_UID names the seat; no seat means
+# nothing set, which is claude's own default.
+_mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
+rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
 # What `bb test` runs here with nothing set. Never written to the file: the
 # record stays the operator's, and this is what an empty box means. From the
 # tree itself where the caller stands in one — the workspace is not in the
@@ -4447,6 +4360,15 @@ def _identity(uid):
                     str(pr.get("git_email") or pr.get("email") or ""), True)
     return "", "", False
 rec["git_name"], rec["git_email"], _found = _identity(os.environ.get("BB_ACCOUNT_UID", ""))
+# ...with this project's override ahead of it, field by field, the way
+# users.identity_over resolves it. So somebody whose Profile carries no email
+# can still commit here, which is the whole point of the override.
+if _mine.get("git_name"):
+    rec["git_name"] = _mine["git_name"]
+    _found = True
+if _mine.get("git_email"):
+    rec["git_email"] = _mine["git_email"]
+    _found = True
 if _found:
     rec["git_ready"] = bool(rec["git_name"] and rec["git_email"])
 if os.environ.get("BB_SETTINGS_JSON") == "1":
@@ -4642,7 +4564,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
@@ -4700,7 +4622,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     jid = sys.argv[3] if len(sys.argv) > 3 else ""
     rows = ([nodes.job(jid)] if jid else nodes.jobs_for(n=int(sys.argv[2])))
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
@@ -4930,7 +4852,7 @@ import contextlib, importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
 with contextlib.suppress(Exception):
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     print("\n".join(nodes.runner_labels_known()))
 PY
         } | awk 'NF && !seen[$0]++')
@@ -4947,6 +4869,107 @@ PY
     fi
 }
 
+# A report the Analysis tab can be worked on where no scanner runs, which is
+# every dev instance and every checkout: the /reports mount is the operator's
+# host scanner, deliberately absent from a development stack, so the tab, the
+# card's counts, the findings log and `bb findings` had nothing to show and
+# could only be exercised by the browser suite's own fixture.
+#
+# Named and worded so nobody mistakes it for a scan: the tool is
+# "builderbot-sample", every message says so, and it refuses to sit beside a
+# real report rather than mixing fake rows into true ones.
+SAMPLE_REPORT="builderbot-sample.sarif"
+
+cmd_findings_sample() {
+    local dir="${FINDINGS_DIR:-/reports}" remove=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --remove) remove=1 ;;
+            -*) die "unknown option: $1 (bb findings sample takes --remove)" ;;
+            *)  dir="$1" ;;
+        esac
+        shift
+    done
+    if [ -n "$remove" ]; then
+        [ -f "$dir/$SAMPLE_REPORT" ] || die "there is no sample report in $dir"
+        rm -f "$dir/$SAMPLE_REPORT" || die "could not remove $dir/$SAMPLE_REPORT"
+        log "removed $dir/$SAMPLE_REPORT"
+        return
+    fi
+    # Never beside a real one. Two fake rows mixed into a true report is worse
+    # than no report: the numbers on the card would be wrong and nothing would
+    # say why.
+    local other
+    other="$(find "$dir" -maxdepth 1 -type f \( -name '*.sarif' -o -name '*.sarif.json' \) \
+             ! -name "$SAMPLE_REPORT" -print -quit 2>/dev/null || true)"
+    [ -z "$other" ] || die "$dir already holds a real report ($(basename "$other")): a sample beside it would make the counts wrong. Point somewhere else with 'bb findings sample DIR', or set FINDINGS_DIR"
+    mkdir -p "$dir" 2>/dev/null \
+        || die "cannot write $dir: on a box with the scanner mount it is read-only, which is the point. Use 'bb findings sample DIR' with somewhere writable"
+    [ -w "$dir" ] || die "$dir is not writable (the scanner mount is read-only by design). Use 'bb findings sample DIR'"
+    local made
+    made="$(WORKSPACE="${WORKSPACE:-/workspace}" python3 - "$dir/$SAMPLE_REPORT" <<'PY'
+import json
+import os
+import sys
+
+ws = os.environ.get("WORKSPACE", "/workspace")
+try:
+    names = sorted(d.name for d in os.scandir(ws)
+                   if d.is_dir() and not d.name.startswith("."))
+except OSError:
+    names = []
+# Three at most: enough for the tab's per-project rows to mean something,
+# few enough that the list is obviously a sample and not a scan.
+names = names[:3] or ["example"]
+
+LEVELS = ("error", "warning", "note")
+RULES = [
+    ("BBSAMPLE001", "error", "sample finding: a shell script runs a command without checking it"),
+    ("BBSAMPLE002", "warning", "sample finding: a dependency is pinned to a moving tag"),
+    ("BBSAMPLE003", "note", "sample finding: this line is longer than the style allows"),
+]
+results = []
+for i, project in enumerate(names):
+    rule, level, text = RULES[i % len(RULES)]
+    results.append({
+        "ruleId": rule, "level": level,
+        "message": {"text": f"{text} (sample data, no scanner ran)"},
+        "locations": [{"physicalLocation": {
+            "artifactLocation": {"uri": f"{project}/sample/where-it-would-be.txt"},
+            "region": {"startLine": 12 + i}}}]})
+# One the attribution cannot place, so the "unattributed" label on the tab has
+# something to label. This is what a scanner's own container paths look like.
+results.append({
+    "ruleId": "BBSAMPLE004", "level": "warning",
+    "message": {"text": "sample finding: a path this share does not mount (sample data)"},
+    "locations": [{"physicalLocation": {
+        "artifactLocation": {"uri": "opt/somewhere-else/thing.py"},
+        "region": {"startLine": 1}}}]})
+
+doc = {"version": "2.1.0",
+       "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+       "runs": [{"tool": {"driver": {
+           "name": "builderbot-sample",
+           "informationUri": "https://github.com/Stencil-Projects/BuilderBot",
+           "rules": [{"id": r, "shortDescription": {"text": t}} for r, _, t in RULES]}},
+           "results": results}]}
+with open(sys.argv[1], "w") as f:
+    json.dump(doc, f, indent=1)
+print(f"{len(results)} sample findings, one each in {', '.join(names)} "
+      "and one on a path that places nowhere")
+PY
+)" || die "could not write $dir/$SAMPLE_REPORT"
+    log "wrote $dir/$SAMPLE_REPORT, tool \"builderbot-sample\": $made"
+    if on_node; then
+        # Said rather than left to be discovered: the Analysis tab reads the
+        # CONTROLLER's reports, so a file written here is one nothing shows.
+        log "this is a node, and the dashboard reads the controller's reports: nothing will show this"
+        log "run it inside the dev instance you want it in (its terminal, or bb devapp), which is where the tab reads from"
+    else
+        log "the Analysis tab, the card's counts and 'bb findings' read it now; 'bb findings sample --remove' takes it away"
+    fi
+}
+
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -4954,6 +4977,9 @@ cmd_findings() {
     # the other three use, so the filters are the ones already learned.
     if [ "${1:-}" = history ]; then
         shift; cmd_findings_history "$@"; return
+    fi
+    if [ "${1:-}" = sample ]; then
+        shift; cmd_findings_sample "$@"; return
     fi
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -5035,7 +5061,8 @@ cmd_findings() {
         fi
         printf '<!-- %s — written %s ago -->\n' "$f" "$(ago $(( now - m )))"
         jq -r --arg proj "$proj" --arg scope "$scope" --arg level "$lvl" \
-            --arg rule "$rule" --arg find "$fnd" "$FINDINGS_JQ" "$f" \
+            --arg rule "$rule" --arg find "$fnd" --arg relayed "${BB_RELAYED:-}" \
+            "$FINDINGS_JQ" "$f" \
             || warn "could not parse ${f} as SARIF"
     done
 }
@@ -5268,7 +5295,7 @@ import importlib.util, os, pathlib, re, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     label = nodes.node_runner_label(sys.argv[2])
 except Exception:
     label = ""
@@ -5807,8 +5834,27 @@ cmd_doctor() {
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).
     if on_node; then check "claude on PATH" command -v claude; fi
-    check "workspace writable"        test -w "$WORKSPACE"
+    # A session on a node asks about its own project's tree (B168): inside
+    # its view /workspace is the view's read-only root by design, and the
+    # project, its worktrees and nothing else are bound in under it, so the
+    # root's answer was a FAIL about nothing a session could fix.
+    if on_node && [ -n "${BB_PROJECT:-}" ]; then
+        check "project tree writable"  test -w "${BB_TREE:-$WORKSPACE/$BB_PROJECT}"
+    else
+        check "workspace writable"    test -w "$WORKSPACE"
+    fi
     check "home writable"             test -w "$HOME"
+    # git's floor, said out loud because the two machines run different ones:
+    # the image is built on one Ubuntu and a node is provisioned on whatever
+    # its owner has, so the controller and a node have differed by a whole
+    # release without anything noticing. The newest thing anything here asks
+    # of git is `merge-tree --write-tree` (2.38, Oct 2022), which the Git
+    # view merges into main with; on an older one that is a usage error
+    # halfway through a merge instead of a sentence. Checked on BOTH, because
+    # the controller does the merging and a session commits in its own tree.
+    check "git 2.38 or newer, for merge-tree --write-tree" \
+        sh -c 'v=$(git --version | sed -n "s/^git version \([0-9]*\)\.\([0-9]*\).*/\1 \2/p"); \
+               set -- $v; [ "${1:-0}" -gt 2 ] || { [ "${1:-0}" -eq 2 ] && [ "${2:-0}" -ge 38 ]; }'
     # A commit identity is an ACCOUNT's (its Profile tab), handed to a
     # session as git's environment. On a node that is what to look for; on
     # the controller, where nobody commits, the question is whether the
@@ -5865,7 +5911,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception:                                                # noqa: BLE001
     print("  [skip] no node store yet: the dashboard creates it on boot")
@@ -5880,9 +5926,9 @@ if live:
     print(f"  [ok]   {len(live)} node{'' if len(live) == 1 else 's'} can run a session "
           f"({', '.join(live[:4])})")
 else:
-    print("  [warn] no node can run a session: Claude runs on one and this")
-    print("         container carries none. Enroll one on the Nodes tab, or")
-    print("         wait for one to come back")
+    print("  [warn] no node can run a session, and this container carries no Claude Code")
+    print("         enroll one on the Nodes tab, or wait for one to come back: a node")
+    print("         that has just restarted or updated its agent is back in a minute")
 NODEPY
     fi
     # The daemon the dashboard's dev instances are built and run on: the
@@ -6275,7 +6321,7 @@ if v["sha"]:
 # What this container is running, but only where that is a comparison rather
 # than a coincidence: BB_VERSION is the image's, and the image is built from
 # THIS repo. Beside any other project's version it would be noise.
-own = not comp and (version.root(proj) / "config/templates/project-CLAUDE.md").is_file()
+own = not comp and (version.root(proj) / "config/templates/briefing.md").is_file()
 running = os.environ.get("BB_VERSION", "").strip()
 if own and running:
     print(f"  running here      {running}")
@@ -6400,6 +6446,14 @@ if argv and argv[0] == "add":
     n = len(changelog.unreleased(d))
     print(f"logged{' (new ' + changelog.FILE + ')' if r.get('created') else ''} — "
           f"{n} unreleased entr{'y' if n == 1 else 'ies'} now waiting for a bump")
+    # ...and that the file is now modified. An entry is stamped with the commit
+    # it describes, so it is written AFTER that commit and lands in the next
+    # one: every entry but a session's last gets swept up by the commit that
+    # follows it, and the last one sits in a dirty tree that Pull, Switch and
+    # Merge all refuse on (B162). Said rather than committed here, because the
+    # wording belongs with whatever commit the author is making next.
+    print(f"{changelog.FILE} is modified now: commit it with your next commit",
+          file=sys.stderr)
     raise SystemExit(0)
 
 if argv and argv[0] == "unreleased":
@@ -6511,13 +6565,25 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # the tree and the toolchain are, and never on the controller: a
         # session may write its own rule's check (B152). It relays its
         # rules --json read, which is the half that is state.
-        "tests run"|"tests last"|"tests lab"|"rules check") : ;;
+        # `findings sample` writes a file for the dashboard beside it to read,
+        # so it belongs on the machine it was typed on: in a dev instance,
+        # which is a controller of its own and where there is no scanner. Sent
+        # to the real controller it would be a session planting findings in
+        # somebody else's report directory.
+        "tests run"|"tests last"|"tests lab"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry — `bb bug` printed the controller's answer and
             # then died with "bugs.py is missing from this image".
             case "$BB_RELAY_VERBS" in
-                *" ${1:-help} "*) bb_relay "$@"; exit 0 ;;
+                # The controller's answer IS this command's answer. It used to
+                # be `exit 0` whatever came back, so a refused roadmap edit, a
+                # denied push and a bug that was never filed all read as
+                # success to a script, to a hook, and to a session's `&&`.
+                # bb_relay has carried the code the whole time (it ends with
+                # `return $rc`); only the dispatch threw it away.
+                *" ${1:-help} "*) relay_rc=0; bb_relay "$@" || relay_rc=$?
+                                  exit "$relay_rc" ;;
             esac ;;
     esac
 fi
@@ -6531,9 +6597,9 @@ case "${1:-help}" in
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
-    claude-md) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
+    token)    shift; cmd_token "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
     users) shift; cmd_users "$@" ;;
     work)  shift; cmd_work "$@" ;;
@@ -6551,6 +6617,7 @@ case "${1:-help}" in
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
+    diag)     shift; cmd_diag "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;

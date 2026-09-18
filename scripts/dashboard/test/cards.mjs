@@ -7,6 +7,7 @@ import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
+const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
@@ -164,6 +165,23 @@ await page.waitForFunction(() => document.getElementById('docDot').className.inc
 ok(await page.$eval('.card[data-card="doctor"]', el => el.classList.contains('closed')), 'a FAIL leaves a collapsed doctor card collapsed');
 ok(await page.$eval('#doctor', el => !el.hidden), '...but opens the detail behind it');
 ok(await page.$eval('#docBar', el => getComputedStyle(el).display === 'none'), 'collapsed card hides the status row too');
+// A problem reads as one: its line takes the level's colour, and what the
+// check said after its first line is on the card, not only in a title a phone
+// never shows. They rendered as plain body text once, under a red dot.
+const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => {
+  const root = getComputedStyle(document.documentElement);
+  const tok = el.classList.contains('bad') ? '--bad' : '--warn';
+  const want = document.createElement('i');
+  want.style.color = root.getPropertyValue(tok).trim();
+  document.body.append(want);
+  const same = getComputedStyle(want).color === getComputedStyle(el).color;
+  want.remove();
+  return { text: el.textContent, same, why: el.querySelector('.why')?.textContent || '' };
+}));
+ok(probLines.length === 2 && probLines.every(l => l.same),
+   `each problem line is drawn in its level's colour (${JSON.stringify(probLines.map(l => l.same))})`);
+ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(l.why)),
+   '...and carries the rest of what the check said under it');
 doctorFixture('ok');
 await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
@@ -284,6 +302,69 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
      'the tab\'s filter bar, headings, rules and footer all start at one x: '
      + JSON.stringify(xs));
+}
+// `bb findings sample`: the report a box with no scanner can still work on.
+// Every surface above ghosts or empties without one, and a development stack
+// has no scanner by design, so this is how they are exercised at all.
+{
+  const bb = (...a) => {
+    try {
+      return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', ...a],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, FINDINGS_DIR: `${DIR}/sample-reports`, WORKSPACE: `${DIR}/ws` } }) };
+    } catch (e) { return { code: e.status ?? 1, out: String(e.stdout || '') + String(e.stderr || '') }; }
+  };
+  const made = bb('sample');
+  const f = `${DIR}/sample-reports/builderbot-sample.sarif`;
+  ok(made.code === 0 && existsSync(f), `a sample report is written where no scanner runs (${
+    made.out.trim().split('\n')[0].slice(0, 70)})`);
+  const doc = JSON.parse(readFileSync(f, 'utf8'));
+  const rows = doc.runs[0].results;
+  ok(doc.runs[0].tool.driver.name === 'builderbot-sample'
+     && rows.every(r => /sample/i.test(r.message.text)),
+     '...named and worded so nobody reads it as a scan');
+  // One per project, so the per-project rows have something, plus one the
+  // attribution cannot place, so the unattributed label does too.
+  const uris = rows.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
+  ok(uris.some(u => u.startsWith('alpha/')) && uris.some(u => !u.includes('/ws/'))
+     && new Set(rows.map(r => r.level)).size >= 2,
+     `...with a finding in a project, one that places nowhere, and more than one level (${uris.join(', ')})`);
+  // Never mixed into a true report: two fake rows in a real one would make
+  // every number on the card wrong and nothing would say why.
+  const beside = (() => {
+    try {
+      execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', 'sample'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, FINDINGS_DIR: `${DIR}/reports`, WORKSPACE: `${DIR}/ws` } });
+      return '';
+    } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); }
+  })();
+  ok(/already holds a real report/.test(beside) && !existsSync(`${DIR}/reports/builderbot-sample.sarif`),
+     `...and refused beside a real one, which is left alone (${beside.trim().slice(-60)})`);
+  ok(bb('sample', '--remove').code === 0 && !existsSync(f),
+     '...and taken away again by the same verb');
+
+  // `bb findings` from a session, which is what BB_RELAYED marks: the report
+  // covers the whole share, so the two lines that used to help are the two
+  // that leak. With no findings of its own it listed every project the report
+  // covered, by name, and with some it advertised --all, which the relay
+  // refuses. The operator still gets both.
+  const asSession = (cwd) => {
+    try {
+      return execFileSync('bash', [`${REPO}/scripts/bb`, 'findings', `${DIR}/reports`],
+        { encoding: 'utf8', cwd, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, BB_RELAYED: '1', WORKSPACE: `${DIR}/ws` } });
+    } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); }
+  };
+  const quiet = asSession(`${DIR}/ws/ep.silon`);
+  const named = ['alpha', 'gamma', 'delta', 'toolstore', 'vendored-junk'].filter(w => quiet.includes(w));
+  ok(/No findings for ep\.silon/.test(quiet) && named.length === 0,
+     `a session with no findings of its own is not handed the list of projects that do have them (${
+       named.join(', ') || 'nothing named'})`);
+  const loud = asSession(`${DIR}/ws/alpha`);
+  ok(/in alpha/.test(loud) && !/--all/.test(loud),
+     `...and one with findings is not told to run --all, which the relay refuses (${
+       (loud.split('\n').find(l => l.startsWith('# ')) || '').slice(0, 50)})`);
 }
 // Nothing readable in /reports and the way in goes quiet — three ways to have
 // nothing (no mount, nothing in it, nothing that parses) and one greyed button
@@ -957,16 +1038,46 @@ await page.evaluate(async () => {
   // changes and a refusal changes none of it, so the button is put back by
   // the press itself.
   await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
-  await page.click('#bSignIn');
+  // Pressed IN THE PAGE rather than through Playwright's click. The card
+  // repaints whenever its html changes, and while a sign-in flow is live its
+  // own watcher changes that html, so the button Playwright had resolved kept
+  // being detached between "visible and stable" and the press: "element was
+  // detached from the DOM, retrying", then a timeout. It passed alone and
+  // failed in a full run, which is the worst shape a test has (B124's family).
+  // Nothing here is about hit-testing the button, only about what pressing it
+  // does, so the actionability wait is the whole of what went wrong.
+  await page.$eval('#bSignIn', b => b.click());
   await page.waitForFunction(() => /no node is running sessions/.test(
     document.getElementById('toast')?.textContent || ''), null, { timeout: 15000 });
   ok(true, '...and pressing Sign in says the refusal rather than swallowing it');
-  ok(await page.$eval('#bSignIn', b => !b.disabled && b.textContent === 'Sign in'),
-     '...with the button live again, not left saying Starting…');
+  // Re-resolved rather than read off the handle above: a repaint between the
+  // press and this line replaces the button with an equal one, and that is not
+  // what this assertion is about.
+  // Asked in ONE evaluation rather than as a wait and then a read: the card
+  // re-renders from the poll, so a repaint between the two lines left the
+  // selector resolving to nothing and took the whole file down.
+  await page.waitForFunction(() => {
+    const b = document.getElementById('bSignIn');
+    return !!b && !b.disabled && b.textContent === 'Sign in';
+  }, null, { timeout: 15000 });
+  ok(true, '...with the button live again, not left saying Starting…');
   // That refusal is a 400 by design and the browser logs every one as a
   // failed resource. Cleared, so the check below is about the page.
   page.errors = [];
 }
+
+// The nodes come back, HERE rather than further down: a drained node is this
+// file's doing and every suite after it needs one that takes work, so the
+// window in which a crash could leave the whole run poisoned is kept to the
+// block that actually needs the drain. It was nine failures across three
+// files once, all reading "node is draining", none of them about themselves.
+await page.evaluate(async () => {
+  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
+  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
+    await fetch('/api/v1/nodes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'online', id: n.id }) });
+});
 
 // ---- the runner card -------------------------------------------------------
 // A view of the NODES' runners and nothing else: this container ran a runner
@@ -1134,28 +1245,23 @@ ok(true, 'pinning it puts it back on the sidebar');
 // Two failures that were the same failure, and both were reported as "the
 // tooltip gets buried". A tip in a sidebar row is measured against the ROW,
 // because 340px of column cannot hold a 280px box centred on anything in it.
+//
+// Measured on delta, which the fixture locks: a locked project's Claude button
+// is dead and carries the sentence saying why, which is what both halves of
+// this block are about. It used to be measured on the fix link a drifted
+// CLAUDE.md block put on the row, and that link went with the block itself
+// (R63 step 3). Nothing is planted or put back here: the lock is the
+// fixture's, so the poll landing mid-block redraws the same row.
 {
-  // The checkout's template, which is what the server compares against —
-  // run.sh points TEMPLATE_MD at it.
-  const tpl = readFileSync(new globalThis.URL('../../../config/templates/project-CLAUDE.md',
-                                   import.meta.url), 'utf8');
-  // From another WINDOW, not merely behind: only that ghosts the button
-  // whose tip is measured below — drift inside the window leaves it live.
-  writeFileSync(`${DIR}/ws/beta/CLAUDE.md`,
-    tpl.replace(/BUILDERBOT:ENV:WINDOW \d+\.\d+ -->/, 'BUILDERBOT:ENV:WINDOW 0.1 -->'));
-  await refreshUntil(page, () => ((state.projects || []).find(p => p.name === 'beta')
-    ?.issues || []).some(i => i.action === 'claude-md-update'));
-  const row = '#projects .row[data-row="beta"]';
-  // The issue line is a LINK, and a link that wraps is an inline box whose
-  // line boxes are what a centred tip gets measured against — so this one was
-  // centred on nothing in particular and slid off the left of the card with
-  // its first characters cut off.
-  await page.hover(`${row} [data-fix]`);
+  const row = '#projects .row[data-row="delta"]';
+  const btn = `${row} [data-c]`;
+  await page.waitForSelector(`${btn}[disabled]`, { timeout: 5000 });
+  await page.hover(btn);
   const fit = await page.evaluate(sel => {
-    const a = document.querySelector(sel + ' [data-fix]');
-    const s = getComputedStyle(a, '::after');
-    // The content width plus what the box adds — 8px of padding either side
-    // and a 1px border — against the row inset 10px either side, which is
+    const b = document.querySelector(sel + ' [data-c]');
+    const s = getComputedStyle(b, '::after');
+    // The content width plus what the box adds: 8px of padding either side
+    // and a 1px border, against the row inset 10px either side, which is
     // where the rule puts it.
     return { box: parseFloat(s.width) + 18,
              row: document.querySelector(sel).getBoundingClientRect().width };
@@ -1163,24 +1269,24 @@ ok(true, 'pinning it puts it back on the sidebar');
   ok(Math.abs(fit.box - (fit.row - 20)) < 2,
      `a row's tooltip is as wide as its row, so nothing can push it off the card (${
        fit.box} in ${fit.row})`);
-  // ...and under the LINK, not under the row: with the row as the tip's
-  // containing block, the link's tip and the icons' landed in one place.
+  // ...and under the BUTTON, not under the row: with the row as the tip's
+  // containing block, every tip in a row landed in one place, so the one on
+  // the name read where the icons' do.
   const where = await page.evaluate(sel => {
-    const a = document.querySelector(sel + ' [data-fix]');
+    const b = document.querySelector(sel + ' [data-c]');
     const row = document.querySelector(sel);
-    return { top: parseFloat(getComputedStyle(a, '::after').top),
-             want: a.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
+    return { top: parseFloat(getComputedStyle(b, '::after').top),
+             want: b.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
              rowH: row.getBoundingClientRect().height };
   }, row);
   ok(Math.abs(where.top - where.want) < 2 && where.top < where.rowH,
-     `...and sits under the link it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
+     `...and sits under the control it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
   // ...and the tip on a DEAD control, which is the one somebody has to read,
   // because it is the sentence saying why the control is dead. The fade on a
   // disabled button is opacity, and opacity below 1 makes a stacking context
-  // that traps the button's own ::after inside it — half strength, painted
+  // that traps the button's own ::after inside it: half strength, painted
   // under the next row, that row's text straight through it.
-  const btn = `${row} [data-c]`;
-  await page.hover(btn);
+  //
   // Waited for rather than read at once: the swap from the opacity fade to
   // the colour one rides the same 150ms transition every other button state
   // does, and reading it on the first frame reads the fade it is leaving.
@@ -1189,26 +1295,11 @@ ok(true, 'pinning it puts it back on the sidebar');
   const dead = await page.$eval(btn, b => ({ off: b.disabled,
     op: getComputedStyle(b).opacity,
     tip: b.dataset.tip || '' }));
-  ok(dead.off && /compatibility window/.test(dead.tip) && dead.op === '1',
+  ok(dead.off && /padlock/.test(dead.tip) && dead.op === '1',
      `a ghosted button reading out its reason is not a layer of its own (${
        dead.op}, ${dead.tip.slice(0, 46)}…)`);
-  // Put back: the fixture tree outlives this file, and a project left held
-  // here would be held — its sessions ended, its row red in the bell — in
-  // every file after it.
-  // beta had no CLAUDE.md at fixture time: put back is remove.
-  rmSync(`${DIR}/ws/beta/CLAUDE.md`, { force: true });
-  await refreshUntil(page, () => !(state.projects || []).find(p => p.name === 'beta')?.held);
 }
 
-// The nodes come back: a drained node is this file's doing, not the
-// fixture's, and the suites after it expect one that takes work.
-await page.evaluate(async () => {
-  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
-  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
-    await fetch('/api/v1/nodes', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'online', id: n.id }) });
-});
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render
@@ -1324,7 +1415,7 @@ await page.click('.doc .projtab [data-l="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(/GitHub/.test(await page.$eval('#rnTitle', e => e.textContent))
    && await page.$eval('#rnNameField', el => el.hidden)
-   && await page.$eval('#rnPrefField', el => el.hidden),
+   && await page.$eval('#rnMineField', el => el.hidden),
    'the chain opens the same dialog on the remote alone, with the rest put away');
 ok(!await page.$eval('#rnTokenField', el => el.hidden),
    'a project pushing with a deploy key is offered a token');
@@ -1519,7 +1610,7 @@ await page.click('#rnCancel');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
   ok(page.dialogs.length === askedBefore, 'saving with that model left where it was asks nothing');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
-       && !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.model),
+       && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
      '...restarts nothing, and stores nothing: the default is still the default');
   rmSync(tdir, { recursive: true, force: true });
   await page.click('.doc .projtab [data-rn="alpha"]');
@@ -1538,7 +1629,7 @@ await page.click('#rnCancel');
   ok(/Cancel saves the setting/.test(asked),
      'a running session is asked about, and the question says Cancel still saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.model === 'sonnet', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
   ok(true, '...and declining the restart still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -1559,7 +1650,7 @@ await page.click('#rnCancel');
   // stored (the file says only what somebody chose), so the row carries no
   // model key at all, which every reader of it defaults the same way.
   await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.prefs?.model || '') === '',
+    .find(p => p.name === 'alpha')?.yours?.model || '') === '',
     { timeout: 20000 });
 }
 
@@ -1637,13 +1728,6 @@ const refused = await page.evaluate(async () => {
 });
 ok(refused.status === 409 && /locked/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
-const mdRefused = await page.evaluate(async () => {
-  const r = await fetch('/api/claude-md', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'delta', action: 'init' }) });
-  return r.status;
-});
-ok(mdRefused === 409, '...including writing a CLAUDE.md into it');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid
 // out even while hidden: a 280px box centred on an icon near the right edge of

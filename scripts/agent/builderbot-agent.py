@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.75"
+AGENT_VERSION = "0.5.84"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -108,7 +108,15 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   # is free on a LAN and is not on a node in somebody's
                   # cloud. Per project underneath (artifact_dir), because a
                   # VM may be several projects' node.
-                  "artifacts": "/var/lib/builderbot/artifacts"}
+                  "artifacts": "/var/lib/builderbot/artifacts",
+                  # What a dev instance KEEPS: the databases, the uploads, the
+                  # caches its containers write, under <appdata>/<project>/
+                  # <instance>. A store like the other four (R17 step 2), so
+                  # the node reports its path and its headroom and the config
+                  # plane edits it there. It used to be BB_DEV_DATA_DIR on the
+                  # CONTROLLER, which is a fact about a node kept on the wrong
+                  # machine, and an optional /devdata mount to go with it.
+                  "appdata": "/var/lib/builderbot/appdata"}
 
 # The session half (roadmap #24): the ttyd this node runs bb-tty under, the
 # ports it binds, and the address. Seams for the suite — which runs a ttyd
@@ -276,13 +284,18 @@ SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandb
 SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
+# Where the projects share is mounted, which is what a session works in. The
+# seam is for the suite: it runs its agent as a session account, and inside a
+# session's view /workspace is the view's own read-only root.
+SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # The pane a respawn may run again: bb-tty's claude launcher, in the project's
 # cache folder and started inside the project's view when the node builds one,
 # or in the flat cache a bundle before R35 wrote, for a session that has run
 # since then (the compatibility window).
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
-               rf"{_PATHCH}*/builderbot/(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
+               rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
+               rf"(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -956,6 +969,7 @@ def session_conf(state, user):
             f"WORKSPACE=/workspace\n"
             f"DATA_STORE={stores.get('data') or ''}\n"
             f"ARTIFACTS_STORE={stores.get('artifacts') or ''}\n"
+            f"PACKAGES_STORE={pkg_root(state)}\n"
             f"RUNNER_DIR={RUNNER_DIR}\n"
             f"HIDE=/devdata\n")
 
@@ -1292,6 +1306,13 @@ def census(state):
         "hostname": socket.gethostname(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
+        # git's, because nothing keeps it in step and nothing should: it is
+        # installed once at enrollment from whatever the distribution
+        # packages, and on a GUEST node the machine is its owner's, so the
+        # controller upgrading it is the one thing R23 says it must not do.
+        # What is owed instead is being able to SEE it, and to be told when a
+        # node is below the floor the Git view needs (bb doctor names it).
+        "git": _run(["git", "--version"]) if shutil.which("git") else "",
         # The daemon's OWN id, which is how the controller tells two VMs that
         # have worn one address apart — a rebuilt sandbox, a second machine
         # given the old one's IP. It used to read it over ssh with `docker
@@ -1341,13 +1362,13 @@ def session_now(state):
     if not SESSION:
         return {}
     out = dict(SESSION)
-    out["workspace"] = os.path.ismount("/workspace")
+    out["workspace"] = os.path.ismount(SHARE)
     # ...and writable: a projects share mounted read-only was the right
     # arrangement for a Docker-only sandbox (nothing there wrote source), and
     # is the wrong one for a machine that runs sessions — Claude could not
     # save a file, and the home's transcripts link cannot be made on it.
     # The kernel answers EROFS for root too, so this is an honest probe.
-    out["writable"] = out["workspace"] and os.access("/workspace", os.W_OK)
+    out["writable"] = out["workspace"] and os.access(SHARE, os.W_OK)
     home = out.pop("home", "")
     out.pop("bind", None)
     # Claude Code as the session account has it: its own ~/.local/bin (the
@@ -2158,6 +2179,48 @@ def load_state():
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
 
 
+def fill_default_stores(state):
+    """Give an already-enrolled node a store role it predates; True if it
+    gained one.
+
+    The store list is written at ENROLMENT and never revisited, so a node
+    enrolled before `appdata` existed would never have one and the controller
+    would answer its fallback forever. A role added to DEFAULT_STORES has to
+    reach the nodes that are already out there or it only ever works on the
+    next machine somebody enrols.
+
+    Placed BESIDE the store this node already keeps its data in, never at the
+    hard-coded default: a guest node keeps everything under one directory in
+    its owner's home (R23), and handing it /var/lib/builderbot would be a
+    path it has no root to make. Where data sits is where the rest belongs.
+    """
+    have = state.get("stores") if isinstance(state.get("stores"), dict) else {}
+    base = os.path.dirname(str(have.get("data") or "")) if have.get("data") else ""
+    added = False
+    for role, default in DEFAULT_STORES.items():
+        if have.get(role):
+            continue
+        have[role] = os.path.join(base, role) if base else default
+        # MADE, not just recorded. A store that exists only in node.json
+        # reports null free space and the row calls it missing, which is the
+        # true answer and a useless one for a directory nothing else is ever
+        # going to create: enrolment makes the four it knows about, so
+        # adoption makes the one it did not. Best effort, the same as there:
+        # a store that cannot be made is reported rather than fatal.
+        try:
+            made = state.setdefault("store_made", {})
+            if isinstance(made, dict):
+                made[role] = make_store(have[role])
+        except OSError as e:
+            log(f"stores: {role} at {have[role]} could not be created "
+                f"({e.strerror}); it will report no space until it exists")
+        log(f"stores: {role} was not set; using {have[role]}")
+        added = True
+    if added:
+        state["stores"] = have
+    return added
+
+
 def save_state(state):
     d = os.path.dirname(NODE_JSON)
     os.makedirs(d, mode=0o700, exist_ok=True)
@@ -2643,6 +2706,56 @@ class Agent:
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
 
+    def keep_session_tokens(self, rows):
+        """Store each live session's fresh token where that session reads it.
+
+        Handed to the BUNDLE's own `bb token keep` rather than written here,
+        and as the session account rather than the job one. Both halves of
+        "where does this token go" already live in bb: which home this
+        BuilderBot account has on this machine (user_home) and what the cache
+        file is called (bbapi.keep_token). A copy of either here would be a
+        second thing to keep in step with the controller, which is the fault
+        claudegrant.py was written to stop repeating.
+
+        Best effort and quiet: a token that could not be kept is a token that
+        expires on schedule, which is what happened before this existed.
+        """
+        if not isinstance(rows, list) or not rows:
+            return
+        who_name = self.session_account()
+        if not who_name:
+            return
+        # The copy already unpacked for this node's sessions, never a fetch:
+        # this runs on the heartbeat, and `bundle()` pulls from the controller
+        # every time it is called. `.bb/current` is what a shell here puts on
+        # its PATH, so it is the same bb the session itself runs.
+        store = pkg_root(self.state)
+        bb = os.path.join(store, ".bb", "current", "bb") if store else ""
+        if not bb or not os.access(bb, os.X_OK):
+            return
+        env0 = dict(os.environ)
+        try:
+            who = self.as_user(env0, who_name)
+        except RuntimeError:
+            return
+        for row in rows[:64]:
+            project = str((row or {}).get("project") or "")
+            uid = str((row or {}).get("uid") or "")
+            token = str((row or {}).get("token") or "")
+            if not project or not token or "/" in project:
+                continue
+            env = dict(env0)
+            env.update({"BUILDER_HOME": env.get("HOME", ""), "BB_ACCOUNT_UID": uid,
+                        "BB_PROJECT": project, "BB_TOKEN": token,
+                        "BUILDERBOT_ROLE": "node"})
+            try:
+                subprocess.run([bb, "token", "keep"],
+                               env=env, capture_output=True, timeout=20, check=False,
+                               **({"user": who["user"], "group": who["group"],
+                                   "extra_groups": who["extra_groups"]} if who else {}))
+            except (OSError, subprocess.SubprocessError):
+                return
+
     # -- the channel -------------------------------------------------------
     def hello(self):
         # `running` is the list of job ids this process still holds. The
@@ -2683,6 +2796,13 @@ class Agent:
                 self.state["session_idle_minutes"] = im
                 save_state(self.state)
                 log(f"sessions: idle rule is {im} minute(s)" if im else "sessions: no idle rule")
+            # Fresh credentials for the Claude sessions alive here (R27). A
+            # session that is talking slides its own token forward on every
+            # answer it gets; one sitting idle has nothing to slide it, and a
+            # dead token is never renewed, which is what makes the life mean
+            # anything for one that leaked. So the machine the session is on
+            # keeps it, on the beat it already has.
+            self.keep_session_tokens(r.get("session_tokens") or [])
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
@@ -2814,10 +2934,12 @@ class Agent:
         # fetch and the hello alike, and the hello that eventually succeeds
         # starts the sessions then.
         self.refresh_session_tool()
+        self.quiet_distro_ttyd()
         self.session_try()
         while True:
             if time.time() - self.hello_at > 600:
                 self.refresh_session_tool()
+                self.quiet_distro_ttyd()
                 st, r = self.hello()
                 if st == 401:
                     log(f"refused: {r.get('error')} — this node's credential "
@@ -3656,8 +3778,8 @@ class Agent:
         if not SESSION or self.session_mount is None:
             return
         try:
-            mounted = os.path.ismount("/workspace")
-            now = (mounted, mounted and os.access("/workspace", os.W_OK))
+            mounted = os.path.ismount(SHARE)
+            now = (mounted, mounted and os.access(SHARE, os.W_OK))
         except OSError:
             return
         if now != self.session_mount:
@@ -4063,6 +4185,28 @@ class Agent:
             job.say(f"could not refresh {SANDBOX_BIN} from the bundle: {e}\n")
             return
         job.say(f"{SANDBOX_BIN} refreshed from the bundle\n")
+
+    def quiet_distro_ttyd(self, run=_run):
+        """The distribution's own ttyd switched off, on a managed node (B167).
+
+        Debian's package enables ttyd.service: root, on lo:7681, serving a
+        login prompt, which nothing here asked for and which every session on
+        the machine can reach over loopback. The provisioner disables it, but
+        only when it runs, so a node provisioned before that fix kept it until
+        somebody re-provisioned. This is the process that is already on every
+        node, so it asks each time it does its upkeep and says so when it acts.
+        Not on a guest: that machine's services are its owner's (R23). The
+        agent's own ttyds are processes it started, not this unit."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("systemctl"):
+            return False
+        on = (run(["systemctl", "is-enabled", "ttyd.service"]) == "enabled"
+              or run(["systemctl", "is-active", "ttyd.service"]) == "active")
+        if not on:
+            return False
+        run(["systemctl", "disable", "--now", "ttyd.service"], timeout=30)
+        log("sessions: switched off the distribution's own ttyd.service (root, on lo:7681), "
+            "which every session on this machine could reach")
+        return True
 
     def refresh_session_tool(self):
         """The session's view kept installed (R35): bb-session from the bundle,
@@ -5074,6 +5218,11 @@ def cmd_enroll(args):
 
 def cmd_run():
     state = load_state()
+    # A store role added since this node enrolled: adopted here, once, so a
+    # machine that is already out there gains it on its next start rather
+    # than only on a re-enrolment nobody is going to do.
+    if fill_default_stores(state):
+        save_state(state)
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")
     Agent(state).loop()

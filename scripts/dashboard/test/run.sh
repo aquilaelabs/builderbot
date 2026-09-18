@@ -33,6 +33,31 @@ if [ "$(id -u)" = 0 ] && id builder >/dev/null 2>&1 && command -v runuser >/dev/
     exec runuser -u builder -- env HOME="$(getent passwd builder | cut -d: -f6)" \
         USER=builder bash "$0" "$@"
 fi
+# ...and never straight off the projects share. The server serves its own
+# code on every request and the suite reads its files as it goes, and
+# /workspace is NFS on every node and on the controller. Measured on an idle
+# box (load 0.06), same commit, same file: testreg.mjs takes 22.7s from the
+# share and fails its ten-second waits, and 8.9s from local disk and passes.
+# Two and a half times, which is the difference between a budget that holds
+# and one that does not, and it is why a run here could not be trusted (B124).
+#
+# So the run happens from a copy on local disk: the same bytes, uncommitted
+# work included, with the network out of the way. Left behind: the android
+# BUILD output, which is 73MB of the 87 and is nobody's input (appapi.mjs does
+# read android/api-surface.json and app/build.gradle.kts, so android itself
+# comes along); dist/, for the same reason; and .git, because nothing here runs
+# git against this repository, only against the fixtures it makes.
+# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
+if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
+   && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
+    _src="$(cd "$HERE/../../.." && pwd)"
+    _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
+    tar -C "$_src" -cf - --exclude=./.git --exclude=./dist \
+        --exclude=./android/app/build --exclude=./android/build . \
+        | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
+    printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
+    BB_TEST_COPY="$_dst" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
+fi
 DASH="$(dirname "$HERE")"
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
@@ -158,6 +183,33 @@ unset TMUX
 # that looked like was agent.mjs dying on "no node called agentbox" — a 401
 # the caller reads as an empty node list — hours into a session, with nothing
 # in the diff to explain it.
+# ---- the container is the boundary, where the project says so (R65) --------
+#
+# `bb test` routes a project's tests into its dev instance and refuses when the
+# instance is down and the Docker row says the container is the only place they
+# run. Calling this script directly skipped bb entirely, which is the door
+# BuilderBot's own suite went through for a day while its dev instance sat
+# untouched: the machinery was built and simply not taken.
+#
+# NOT CI's. The setting is about a SESSION's tests (prefs.devtest), and a
+# workflow runs on a node's runner precisely to test the tree the image will be
+# built from, where there is no instance to run in.
+#
+# And best effort: read through bb, which on a node relays to the controller,
+# so where the policy cannot be read at all (no token, no controller) this says
+# nothing rather than refusing a run it cannot judge.
+if [ -z "${BB_IN_INSTANCE:-}" ] && [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+    _proj="${BB_PROJECT:-$(basename "$(cd "$HERE/../../.." && pwd)")}"
+    _only="$(BB_PROJECT="$_proj" BB_SETTINGS_JSON=1 bb settings --json 2>/dev/null         | python3 -c 'import json,sys
+try: print("only" if json.load(sys.stdin).get("devtest") else "")
+except Exception: print("")' 2>/dev/null || true)"
+    if [ "$_only" = only ]; then
+        echo "[dashboard-test] ERROR: $_proj's tests run only inside its dev instance, and this is not it." >&2
+        echo "[dashboard-test] Run 'bb test' (or 'bb devapp test FILE'), which puts them there and says so if the instance is down." >&2
+        exit 1
+    fi
+fi
+
 unset BB_TOKEN
 # And the role. Run from a session ON A NODE, this script inherits
 # BUILDERBOT_ROLE=node, the real controller's address and pin, and the
@@ -204,6 +256,15 @@ cleanup() {
     # inside them looked like, and they used to go with the run that made it.
     [ -n "${BB_TEST_KEEP:-}" ] && log "scratch kept at $S" || rm -rf "$S"
     [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    # ...and the local copy this run was made from, if it was made from one.
+    # cd out of it first: this script is inside what it is removing. Kept with
+    # the scratch dir under BB_TEST_KEEP, since a failure in the copy is read
+    # in the copy.
+    if [ -n "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_KEEP:-}" ]; then
+        cd / && rm -rf "$BB_TEST_COPY"
+    elif [ -n "${BB_TEST_COPY:-}" ]; then
+        log "the tree it ran from is kept at $BB_TEST_COPY"
+    fi
 }
 
 # ---- fixtures --------------------------------------------------------------
@@ -336,14 +397,6 @@ cat > "$S/bin/bb" <<'EOF'
 # directories instead of downloading gigabytes — enough for the Tools card to
 # watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
-# claude-md is the REAL one, not a stub. It only reads the shipped template
-# and rewrites a delimited block in the file it is handed — no network, no
-# /config, nothing this harness needs to keep away from — and the dashboard's
-# "environment block is out of date — update" link is only worth testing if
-# pressing it actually fixes the file. Stubbed, that link was tested to POST
-# and nothing more, and a session gate built on the same state had no way to
-# prove it clears.
-if [ "${1:-}" = claude-md ]; then exec bash "${BB_REAL:?}" "$@"; fi
 if [ "${1:-}" = packages ]; then
     # Where this stub pretends a package lives. Shared by every verb, so
     # check and versions answer for what install and remove actually did —
@@ -700,7 +753,7 @@ chmod +x "$S/bin/web-ext"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
 chmod +x "$S/bin/gh"
 printf '  [ok]   claude on PATH\n  [ok]   github reachable\n  [ok]   disk space\n  [skip] gpu (no device)\n' > "$S/doctor-ok.txt"
-{ cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; } > "$S/doctor-fail.txt"
+{ cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; echo '         diagnose with: bb logs --runner'; } > "$S/doctor-fail.txt"
 cp "$S/doctor-ok.txt" "$S/doctor.txt"
 python3 - "$S/reports/test.sarif" <<'EOF'
 import json, sys
@@ -817,8 +870,7 @@ fresh
 # nothing in the diff to explain it. Found when a check on an identity pair
 # started firing against this box's /workspace:/workspace.
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
-    TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
-    BB_BIN="$S/bin/bb" BB_REAL="$DASH/../bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
+    BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     PKG_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \

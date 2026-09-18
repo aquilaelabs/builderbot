@@ -235,6 +235,46 @@ ok(/BUILDKIT=0/.test(log),
   ok(new RegExp(`BB_BUILD_REV=${head} BB_BUILD_AT=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\dZ`).test(log),
      `...with the commit it builds from and the time in the environment, for a compose that stamps its image (${
        (log.match(/BB_BUILD_REV=[^\n]*/) || ['none'])[0].slice(0, 70)})`);
+  // ...and the version in the IDENTITY form, the one tools/build-image-here.sh
+  // gives a production image, so one commit built either way answers with one
+  // string. It used to be the docker-tag-safe `file` form, whose whole job is
+  // that it cannot carry `+`, so the same build read `…+sha` on production and
+  // `…-sha` on the dev instance and the two read as different builds (B158).
+}
+// ...and the VERSION it stamps is the identity form, the one
+// tools/build-image-here.sh gives a production image, so a commit built either
+// way answers with one string. It used to take the docker-tag-safe `file`
+// form, whose whole job is that it cannot carry `+`, so the same commit read
+// `…-dev.1633+8dfc0b2` on production and `…-dev.1633-8dfc0b2` on the dev
+// instance and the two read as different builds (B158). Asked of the function
+// against a repo that HAS a version, since the fixture project has none and
+// the assertion would pass on an empty string.
+{
+  const vrepo = `${DIR}/ws/verstamp`;
+  rmSync(vrepo, { recursive: true, force: true });
+  mkdirSync(vrepo, { recursive: true });
+  writeFileSync(`${vrepo}/VERSION`, '1.2.3\n');
+  const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t',
+                GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  execFileSync('git', ['-C', vrepo, 'init', '-q', '.'], { env });
+  execFileSync('git', ['-C', vrepo, 'add', '-A'], { env });
+  execFileSync('git', ['-C', vrepo, 'commit', '-qm', 'v'], { env });
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys, os
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+import pathlib, version
+m.WORKSPACE = pathlib.Path(${JSON.stringify(`${DIR}/ws`)})
+version.configure(workspace=${JSON.stringify(`${DIR}/ws`)}, state=${JSON.stringify(`${DIR}/state`)},
+                  write_json=lambda *a, **k: None)
+print(json.dumps(m._build_env('verstamp', '')))
+`], { encoding: 'utf8', env }));
+  ok(/^1\.2\.3-dev\.\d+\+[0-9a-f]+$/.test(got.BB_BUILD_VERSION || ''),
+     `the dev build stamps the identity form, with the + a docker tag cannot carry (${
+       got.BB_BUILD_VERSION || 'unstamped'})`);
+  rmSync(vrepo, { recursive: true, force: true });
 }
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
@@ -310,6 +350,86 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project: 'ep.silon', node: '' }) });
   });
+}
+
+// ---- moving the project leaves a built instance where it is running -------
+// The containers on the old node keep running when a project's node changes,
+// which is right: an instance is removed from the Docker manager and never by
+// a setting changed somewhere else. What used to go with them was the ROW.
+// An instance with no node of its own resolves to the project's, so the node
+// change pointed the manager at a daemon holding none of it, and the one
+// control that could stop or remove what was still running had gone. So a
+// BUILT instance is pinned to the machine it is on at the moment the setting
+// moves, and only a built one: a record that is settings and nothing else has
+// nothing on any daemon to strand.
+{
+  const store = `${DIR}/state/devapps.json`;
+  const nodeOf = (proj, inst) =>
+    (JSON.parse(readFileSync(store, 'utf8'))[proj] || {})[inst]?.node || '';
+  const setNode = (proj, n) => page.evaluate(async ([p2, n2]) => {
+    const r = await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: p2, node: n2 }) });
+    return r.json();
+  }, [proj, n]);
+  const sandboxId = await page.evaluate(
+    () => (nodesList || []).find(n => n.name === 'sandbox')?.id || '');
+
+  // From a known baseline: blocks above this one move the node too, and a
+  // node change is exactly what pins, so the fixture arrives here already
+  // pinned by them.
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  await setNode('ep.silon', sandboxId);
+  ok(nodeOf('ep.silon', 'main') === sandboxId,
+     `the first node a project is given pins what is already built on the daemon it was built on (${
+       nodeOf('ep.silon', 'main') || 'unpinned'})`);
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  ok(nodeOf('ep.silon', 'main') === '',
+     'a built instance with no node of its own follows its project');
+  const said = await setNode('ep.silon', 'n_somewhereelse');
+  ok(nodeOf('ep.silon', 'main') === sandboxId,
+     `moving the project pins its built instance to the node it is on (${
+       nodeOf('ep.silon', 'main') || 'unpinned'})`);
+  ok((said.pinned || []).includes('main'),
+     `...and the answer names what it pinned, rather than doing it silently (${
+       JSON.stringify(said.pinned || [])})`);
+  // The point of the pin: the manager still lists it where it runs, so Stop
+  // and Remove are still there for something that is still up.
+  const rows = await page.evaluate(async (n) => {
+    const j = await (await fetch('/api/docker?node=' + encodeURIComponent(n))).json();
+    return (j.instances || []).map(i => `${i.project}|${i.instance}`);
+  }, sandboxId);
+  ok(rows.includes('ep.silon|main'),
+     `...so the Docker manager still offers it on that node (${rows.join(', ') || 'no rows'})`);
+  // An instance that was never built is not pinned: it has nothing anywhere.
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    d['ep.silon'] = { ...d['ep.silon'], fresh: { ref: 'main' } };
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  await setNode('ep.silon', sandboxId);
+  await setNode('ep.silon', 'n_somewhereelse');
+  ok(nodeOf('ep.silon', 'fresh') === '',
+     `an instance that was never built is left to move with the project (${
+       nodeOf('ep.silon', 'fresh') || 'unpinned'})`);
+  // Put the fixture back, and in this order: clearing the node is itself a
+  // change, so it pins all over again. The store is tidied after the last one.
+  await setNode('ep.silon', '');
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
+    delete d['ep.silon'].fresh;
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
 }
 
 // A build belongs to the daemon it ran on. Repointing the node at another
@@ -2289,6 +2409,40 @@ ok(await page.$('#devSend'),
     ok(r.status === 403 && /administrator/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
   }
+  // An instance on ANOTHER node is not this session's to touch, whatever the
+  // dial says. It is a container still running on a machine this session is
+  // not on, left there on purpose when the project moved; using or rebuilding
+  // it would act on somebody else's box, and a rebuild would bounce a service
+  // somebody may still be using. Refused before the dial is consulted, so
+  // turning the dial to auto does not open it.
+  {
+    const store2 = `${DIR}/state/devapps.json`;
+    const before = readFileSync(store2, 'utf8');
+    const d = JSON.parse(before);
+    d['ep.silon'] = { ...d['ep.silon'],
+                      main: { ...(d['ep.silon'] || {}).main, node: 'n_anothernode' } };
+    writeFileSync(store2, JSON.stringify(d));
+    await page.evaluate(async () => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devbuild: 'auto' }) });
+    });
+    for (const act of ['rebuild', 'test']){
+      const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
+      ok(r.status === 403 && /on another node/.test(r.error || ''),
+         `a session may not ${act} an instance left on the node the project moved off (${
+           String(r.error).slice(0, 56)})`);
+    }
+    // ...and it can still SEE it, which is how it knows to say so rather than
+    // reporting the verb as broken.
+    const seen = await asSession({ project: 'ep.silon', action: 'state', instance: 'main' });
+    ok(seen.status === 200,
+       '...while reading it is still allowed, so a session can say where it went');
+    writeFileSync(store2, before);
+    await page.evaluate(async () => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project: 'ep.silon', devbuild: 'deny' }) });
+    });
+  }
   // Reading is nobody's secret: the state is how a session knows what it is
   // looking at before it asks for anything.
   const read = await asSession({ project: 'ep.silon', action: 'state' });
@@ -2453,7 +2607,7 @@ ok(await page.$('#devSend'),
   const j1 = await finished(nocmd.job);
   ok(j1.state === 'succeeded' && /TEST-RAN-one\n.*TEST-RAN-two/s.test(j1.log || ''),
      `...the recorded command runs there with the arguments as positional parameters (${j1.state}: ${(j1.log || '').replace(/\n/g, ' / ').slice(-160)})`);
-  ok(/exec -T -e BB_TEST_TIMING=1 app sh -c printf/.test(j1.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 app sh -c printf/.test(j1.log || ''),
      '...through compose exec into the service the project builds, with timing on for the registry, and no working directory when nothing mounts the project');
   // A compose that mounts the project (or the whole share it sits in) puts
   // the tests in the project's directory inside the container: the first
@@ -2461,8 +2615,14 @@ ok(await page.$('#devSend'),
   writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
     volumes: [{ type: 'bind', source: `${DIR}/ws`, target: '/workspace' }] } } }));
   const j1b = await finished((await asSession({ project: 'ep.silon', action: 'test', args: ['wd'] })).job);
-  ok(/exec -T -e BB_TEST_TIMING=1 -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
      `...and in the project's directory inside the container when the compose mounts it (${(j1b.log || '').match(/exec [^\n]*/)?.[0]?.slice(0, 90)})`);
+  // BB_IN_INSTANCE is how run.sh tells "these tests ARE the container's" from
+  // "these tests were run around it": a dev instance is a container and so is
+  // the controller, so the suite cannot work it out for itself, and without it
+  // the container-only setting could only be enforced by asking nicely (R65).
+  ok(/-e BB_IN_INSTANCE=1/.test(j1.log || '') && /-e BB_IN_INSTANCE=1/.test(j1b.log || ''),
+     '...carrying the mark that says this run is the instance\'s own');
   rmSync(stubCfg, { force: true });
   await setTest('false');
   const j2 = await finished((await asSession({ project: 'ep.silon', action: 'test' })).job);

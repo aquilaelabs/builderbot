@@ -5,7 +5,7 @@
 // here writes through the dashboard, because this step has no actions.
 import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const B = `${DIR}/ws/beta`;
@@ -327,6 +327,71 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   ok((await act('delete', { name: main })).error && (await act('delete', { name: 'nope' })).error,
      'the main branch and a branch that is not there are refused');
 
+  // The WRITES run none of the programs the tree names either (B153). The
+  // reads were the first half; a commit, a switch and a merge are the half
+  // that has to move the tree afterwards, and each of them is a hook git
+  // would otherwise run here as the dashboard's account.
+  {
+    const mark = `${DIR}/a-write-ran-a-program`;
+    const touch = `#!/bin/sh\ntouch ${mark}\n`;
+    const planted = ['pre-commit', 'post-commit', 'prepare-commit-msg', 'post-checkout',
+      'post-merge', 'reference-transaction', 'post-index-change'];
+    const was = git('rev-parse', 'HEAD').trim();
+    // Reading the tree from here on goes through a git with the traps turned
+    // off: this test's own commands would otherwise spring them and the mark
+    // would say nothing about what the dashboard did.
+    const nohooks = `${DIR}/no-hooks-at-all`;
+    mkdirSync(nohooks, { recursive: true });
+    const plain = (...a) => execFileSync('git', ['-c', 'core.fsmonitor=',
+      '-c', `core.hooksPath=${nohooks}`, '-C', B, ...a], { encoding: 'utf8' }).trim();
+    for (const h of planted) writeFileSync(`${B}/.git/hooks/${h}`, touch, { mode: 0o755 });
+    git('config', 'core.fsmonitor', `touch ${mark}; echo`);
+    writeFileSync(`${B}/w.txt`, 'written by the dashboard\n');
+    const wc = await act('commit', { message: 'Written through our own git dir' });
+    ok(wc.ok && plain('log', '-1', '--format=%s') === 'Written through our own git dir'
+       && plain('show', 'HEAD:w.txt') === 'written by the dashboard',
+       `a commit moves the tree's own branch and stores the tree's own bytes (${wc.commit || wc.error})`);
+    ok(plain('log', '-1', '--format=%an') === 'Dashboard Test' && !plain('status', '--porcelain'),
+       '...under the acting account, leaving nothing staged behind it');
+    await act('branch', { name: 'traps' });
+    const ws = await act('switch', { name: 'traps' });
+    ok(ws.ok && plain('rev-parse', '--abbrev-ref', 'HEAD') === 'traps',
+       "...and a switch moves the tree's own HEAD, not a copy of it");
+    await act('switch', { name: main });
+    ok(!existsSync(mark),
+       `and not one of ${planted.length} hooks, nor fsmonitor, ran on the way (${
+         existsSync(mark) ? 'a mark was made' : 'no mark'})`);
+    // Still a repository afterwards, by git's own reckoning rather than ours.
+    let fsck = '';
+    try { execFileSync('git', ['-C', B, 'fsck', '--no-progress', '--no-dangling'], { encoding: 'utf8' }); }
+    catch (e) { fsck = String(e.stdout || '') + String(e.stderr || ''); }
+    ok(!fsck.trim(), `...and what it left passes git fsck (${fsck.trim().slice(0, 80) || 'clean'})`);
+    for (const h of planted) rmSync(`${B}/.git/hooks/${h}`, { force: true });
+    git('config', '--unset-all', 'core.fsmonitor');
+    rmSync(mark, { force: true });
+
+    // A filter is the one thing skipping is not free on: it decides the bytes
+    // that get stored, so the write is refused rather than quietly storing
+    // the unfiltered ones. Only one the TREE defines: git-lfs lives in the
+    // system config, outside any tree, and still applies.
+    git('config', 'filter.redact.clean', 'sed s/SECRET/xxx/');
+    writeFileSync(`${B}/.gitattributes`, '*.txt filter=redact\n');
+    writeFileSync(`${B}/w.txt`, 'SECRET\n');
+    const refused = await act('commit', { message: 'must not land' });
+    ok(/filter\.redact\.clean/.test(refused.error || '') && /terminal/.test(refused.error || '')
+       && plain('log', '-1', '--format=%s') === 'Written through our own git dir',
+       `a repository whose own config names a content filter is told why the dashboard will not commit it (${
+         String(refused.error).slice(0, 60)})`);
+    ok(/filter\.redact/.test((await act('switch', { name: 'traps' })).error || '')
+       && !/filter\.redact/.test(JSON.stringify(await act('fetch')) || ''),
+       '...and the same for a switch, while fetch goes through: it writes no file');
+    git('config', '--unset-all', 'filter.redact.clean');
+    rmSync(`${B}/.gitattributes`, { force: true });
+    rmSync(`${B}/w.txt`, { force: true });
+    git('branch', '-D', 'traps');
+    git('reset', '--hard', '-q', was);
+  }
+
   // Whose: a session's token cannot press these — it has bb git.
   const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys
@@ -492,6 +557,22 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', host: 'example.invalid', how: 'token' } }));
     git('remote', 'set-url', 'origin', 'https://example.invalid/someone/else.git');
     const elsewhere = await relay(['git', 'fetch', 'origin']);
+    // A record naming a repository but no host fails CLOSED. The path here
+    // MATCHES the one the rights were granted on, so the only thing left to
+    // tell this remote from the real one is the host: without it a session,
+    // which owns the address in its own tree, could point origin at the same
+    // path on a machine it runs and be handed the project's token. Both
+    // places that grant rights record a host, so this is an old record and
+    // not a reachable state, but a credential boundary does not get to
+    // assume that.
+    writeFileSync(`${DIR}/state/push-rights.json`,
+                  JSON.stringify({ beta: { repo: 'owner/beta', how: 'token' } }));
+    git('remote', 'set-url', 'origin', 'https://example.invalid/owner/beta.git');
+    const noHost = await relay(['git', 'fetch', 'origin']);
+    ok(noHost.status === 400 && /not a host/.test(noHost.error || '')
+       && /remote dialog/.test(noHost.error || ''),
+       `push rights with no host are refused, not taken as any host (${
+         (noHost.error || '').slice(0, 60)})`);
     git('remote', 'set-url', 'origin', `${DIR}/beta-origin-outside.git`);
     const outside = await relay(['git', 'fetch', 'origin']);
     git('remote', 'set-url', 'origin', origin);
@@ -601,5 +682,41 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
   git('branch', '-D', 'wtcheck');
 }
 
+// B153's protection degrades QUIETLY by design: where the controller cannot
+// build a git dir of its own it falls back to the tree, because a Git view
+// that goes blank is worse than one still doing what it always did. That is
+// the right default and a terrible thing to leave untested: the fallback runs
+// the tree's hooks, so a transient failure turns every guarantee above into a
+// coin toss, and the only trace is a line in the log. Read it here, which is
+// how a hook firing in the container was told from a test being wrong (R65).
+{
+  const log = (() => { try { return readFileSync(`${DIR}/server.log`, 'utf8'); }
+                       catch { return ''; } })();
+  const fell = log.split('\n').filter(l => /falling back to the tree/.test(l));
+  ok(fell.length === 0,
+     `the controller never fell back to running git in the tree (${
+       fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
+}
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+// B164: a repository with no main and no master. Merge into main cannot
+// mean anything there, and the refusal said "or on :" with the name empty.
+{
+  const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, subprocess, tempfile
+spec = importlib.util.spec_from_file_location("git", "${REPO}/scripts/dashboard/git.py")
+g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+ws = tempfile.mkdtemp(dir="${DIR}")
+g.configure(workspace=ws, state="${DIR}/state")
+repo = os.path.join(ws, "nomain")
+run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True, capture_output=True)
+os.makedirs(repo)
+run("init", "-q", "-b", "trunk")
+run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "one")
+run("branch", "feat"); run("checkout", "-q", "feat")
+print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { encoding: 'utf8' }).trim();
+  const r = JSON.parse(said.split('\n').pop());   // the module may print a line of its own first
+  ok(/no main or master branch/.test(r.error || '') && !/or on :/.test(r.error || '') && !/Switch to/.test(r.error || ''),
+     `with no main or master, the merge refusal says so rather than naming an empty branch (${r.error})`);
+}
+
 await done(browser);

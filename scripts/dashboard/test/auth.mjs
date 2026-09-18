@@ -716,6 +716,20 @@ ${code}`], { encoding: 'utf8' }).trim();
   const post = (path, body) => as(path, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  // Controller settings, and the global rules on it, are an administrator's
+  // (R63): a global rule reaches every project, including ones this account
+  // cannot see. The card carrying the button is not drawn for them either,
+  // which `can.admin` is what decides.
+  const asUser = await (await as('/api/status')).json();
+  ok(asUser.can?.admin === false,
+     'an ordinary account is told it is not an administrator, so the page draws no Administration card');
+  const wrote = await post('/api/global-rules',
+    { action: 'save', rules: [{ name: 'sneak', text: 'every project, please' }] });
+  ok(wrote.status === 403, `...and cannot write a rule for every project (${wrote.status})`);
+  const stillNone = await (await bare('/api/global-rules', { headers: {
+    Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(!(stillNone.rules || []).some(r => r.name === 'sneak'), '...and nothing was written');
+
   const mine = await (await as('/api/status')).json();
   const names = (mine.projects || []).map(p => p.name);
   ok(names.includes('alpha') && !names.includes('ep.silon') && names.length === 1,
@@ -938,6 +952,55 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
        { action: 'save', project: 'ep.silon', items: [] })).json()).error) || ''),
      '...and another project reads as absent, not refused');
 
+  // Parking a roadmap item is one direction for a session. It knows when
+  // something is blocked or waiting on somebody; it does not know why the
+  // operator wants one back, so taking it OFF the shelf is theirs. The CLI
+  // only ever passed on=true, and this door used to take whatever it was
+  // handed.
+  {
+    const added = await (await post('/api/todo',
+      { action: 'add', project: 'alpha', text: 'something to park' })).json();
+    const id = (added.items || []).slice(-1)[0]?.id ?? added.id;
+    const on = await (await post('/api/todo',
+      { action: 'shelve', project: 'alpha', id, on: true })).json();
+    ok(!on.error, `a session may park a roadmap item (${on.error || 'shelved'})`);
+    const off = await post('/api/todo', { action: 'shelve', project: 'alpha', id, on: false });
+    const why = (await off.json()).error || '';
+    ok(off.status === 403 && /operator/.test(why),
+       `...and may not take it back off, which is the operator's (${why.slice(0, 60)})`);
+    const still = await (await as('/api/status')).json();
+    ok((still.projects || []).length === 1, '...with the refusal leaving the rest answering');
+  }
+
+  // The scanner's report covers the whole share, so the Analysis surfaces are
+  // the one place a session could read somebody else's code back. The fixture
+  // report has a finding in alpha, in beta, in gamma, in delta, in two
+  // directories that are not projects, and one whose path places nowhere.
+  {
+    const fp = await (await as('/api/findings')).json();
+    const rows = (fp.reports || []).flatMap(r => r.findings || []);
+    ok(rows.length === 1 && rows[0].project === 'alpha' && rows[0].rule === 'A1',
+       `a session's findings are its own project's and no other (${
+         rows.map(r => `${r.project || '?'}:${r.rule}`).join(', ') || 'none'})`);
+    // Said of the whole payload, not just the rows: a project name in a
+    // subtitle or a count is the same leak in a smaller font.
+    const blob = JSON.stringify(fp);
+    const leaked = ['beta', 'gamma', 'delta', 'toolstore', 'vendored-junk', 'entirely.py']
+      .filter(w => blob.includes(w));
+    ok(leaked.length === 0,
+       `...and nothing else on the share is named anywhere in the payload (${
+         leaked.join(', ') || 'nothing leaked'})`);
+    ok(!('aside' in fp),
+       '...not even how many findings were held back, which would move when somebody else edits their code');
+    ok(JSON.stringify(fp.projects || []) === '["alpha"]',
+       `...and the projects it lists are its own (${JSON.stringify(fp.projects || [])})`);
+    // The same question of the poll, which carries its own copy of the counts.
+    const stat = await (await as('/api/status')).json();
+    ok(Object.keys(stat.findings_counts || {}).join(',') === 'alpha',
+       `the poll's finding counts are its project's alone (${
+         Object.keys(stat.findings_counts || {}).join(',') || 'none'})`);
+  }
+
   // The whole reason this exists: it is not the operator.
   for (const ep of ['/api/v1/nodes', '/api/packages', '/api/users']) {
     ok((await post(ep, { action: 'x' })).status === 403, `${ep} is closed to a session`);
@@ -1084,6 +1147,80 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     const asOwner = await (await bare('/api/status', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
     ok(plain.status === 200 && asUser.admin === false && asOwner.admin === true,
        `the status payload carries admin: ${asUser.admin} for a user, ${asOwner.admin} for the owner`);
+    // A plain account cannot queue a job with its password either: a job
+    // runs outside every view as the node's own account, in the docker
+    // group, which is what a session was already refused (R35).
+    for (const body of [{ action: 'run', project: 'alpha', argv: ['true'] },
+                        { action: 'emu', project: 'alpha', argv: ['emu', 'list'] }]) {
+      const r = await bare('/api/v1/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json',
+        Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') }, body: JSON.stringify(body) });
+      const why = r.status === 403 ? ((await r.json()).error || '') : '';
+      ok(r.status === 403 && /administrator's/.test(why),
+         `a plain account cannot queue a ${body.action} job, which would run outside every view (${r.status}: ${why.slice(0, 50)})`);
+    }
+    // ...nor stop or clear the project job (B171): a clone or a link is the
+    // create dialog's, and so is its Abort and its Dismiss.
+    const plainAuth = { 'Content-Type': 'application/json',
+      Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') };
+    for (const action of ['abort', 'dismiss']) {
+      const r = await bare('/api/project-job', { method: 'POST', headers: plainAuth, body: JSON.stringify({ action }) });
+      ok(r.status === 403, `a plain account cannot ${action} the project job somebody else started (${r.status})`);
+    }
+    ok(JSON.stringify(asUser.project_job) === '{}' && typeof asOwner.project_job?.running === 'boolean',
+       `...and its status carries no project job to draw, while an administrator's does (${JSON.stringify(asUser.project_job)})`);
+    // B172: a session is its owner's. The name says whose (u_<uid>~...),
+    // and the owner's own here keep bare names; nobody ends, keys or types
+    // into anybody else's. Decided before the session is looked up, so a
+    // name is enough to ask with.
+    const ownerAuth = { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const act = async (h, path, body) => {
+      const r = await bare(path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+      return { status: r.status, error: ((await r.json().catch(() => ({}))).error || '') };
+    };
+    for (const [path, body] of [['/api/keys', { session: 'claude-alpha', key: 'enter' }],
+                                ['/api/session', { action: 'kill', session: 'claude-alpha' }],
+                                ['/api/send', { session: 'shell-alpha-1', macro: 'status' }]]) {
+      const r = await act(plainAuth, path, body);
+      ok(r.status === 403 && /not yours/.test(r.error), `a plain account cannot use ${path} on the owner's session (${r.status})`);
+    }
+    const other = await act(ownerAuth, '/api/keys', { session: 'u_0badf00d~claude-alpha', key: 'enter' });
+    ok(other.status === 403, `...nor can the owner press a key in another account's session (${other.status})`);
+    const own = await act(ownerAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    ok(own.status !== 403, `...while the owner still reaches their own (${own.status}: ${own.error.slice(0, 40)})`);
+    const { execFileSync: ef } = await import('node:child_process');
+    const ownerUid = JSON.parse((await import('node:fs')).readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    const stok = ef('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${new globalThis.URL('..', import.meta.url).pathname}users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim();
+    const sessAuth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + stok };
+    const across = await act(sessAuth, '/api/keys', { session: 'claude-beta', key: 'enter' });
+    ok(across.status === 403, `a session's token cannot reach its own account's session on another project (${across.status})`);
+    const home = await act(sessAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    ok(home.status !== 403, `...and does reach its own project's (${home.status})`);
+    // B173-B175: what acts on a project by name asks the right as well as
+    // the name. A plain account given alpha cannot lock it, move the shared
+    // pins, read how its remote authenticates, or move its version; the
+    // version panel is closed to a session's token outright.
+    await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
+    for (const [path, body, why] of [
+        ['/api/lock', { name: 'alpha', locked: true }, /administrator's/],
+        ['/api/project-pin', { name: 'alpha', pinned: true }, /administrator's/],
+        ['/api/pin', { name: 'status', pinned: true }, /administrator's/],
+        ['/api/project-auth', { name: 'alpha' }, /administrator's|rename/],
+        ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /administrator's/],
+        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/]]) {
+      const r = await act(plainAuth, path, body);
+      ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
+    }
+    const lockBeta = await act(plainAuth, '/api/lock', { name: 'beta', locked: true });
+    ok(lockBeta.status === 400 && /not a project/.test(lockBeta.error),
+       `...nor lock a project it was not given, which it is not told exists (${lockBeta.status})`);
+    const vs = await act(sessAuth, '/api/version', { project: 'alpha', action: 'policy', policy: 'any' });
+    ok(vs.status === 403 && /bb version bump/.test(vs.error),
+       `a session's token cannot use the version panel, where it could loosen its own policy (${vs.status})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
     ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,

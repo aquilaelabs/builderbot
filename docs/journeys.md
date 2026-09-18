@@ -161,3 +161,131 @@ New project dialog has no node picker, so every project is born with
 settings dialog leads with rename; the Docker row stacks three settings
 pickers above its buttons; and the notebook foot's Save and Revert sit
 ghosted on views with nothing to save.
+
+## Several people on one controller, and what a walk actually proves (17 September 2026)
+
+Walked to answer one question before letting anybody else in: what does a
+second person see, and can they reach past what they were given. The dev pair
+already carried three accounts from the 16 September walk, so this needed no
+setup: `stencil` (owner), `dev2` (user, granted `hello` alone), `dev3`
+(admin).
+
+What was pressed, in order:
+
+1. **New project, from nothing.** `journey-scratch`, no git host, a sentence
+   of notes. It came back as a repository on `main` with CLAUDE.md written
+   from those notes, and its row said `no node: pick one in the project's
+   settings, or enroll one on the Nodes tab`. No snag: the row names the one
+   thing standing between it and a session, which is what the 16 September
+   walk asked for.
+2. **The same box as dev2.** The Projects card listed `hello` and nothing
+   else. `journey-scratch`, made a minute earlier, was not there.
+3. **Reaching past the grant, as a person does by pasting a link.** The Git
+   view, the roadmap, the changelog and the settings write, all named
+   `journey-scratch`, all answered 400 `not a project` rather than 403. That
+   is the design and it is the right one: a project somebody cannot see does
+   not exist for them, so the answer is the same one a typo gets and leaks
+   nothing. Creating a project at all was 403, which a plain user may not do.
+4. **...and doing the job they were given.** The other half, because a grant
+   that is too tight fails a tester as surely as one that leaks: on `hello`,
+   the Git view, the roadmap and the changelog all answered, the row said the
+   project was theirs to work in, and a session could start on
+   `bb-dev-sandbox`.
+5. **As dev3, the admin.** Every project listed, and none of them marked
+   theirs to work in. That is the seatbelt the code describes rather than a
+   wall: hiding a project from somebody who administers the box would only
+   send them looking for it.
+
+No snag in any of it. The isolation a second person meets holds at both
+edges, which is the half of "ready for testing" that cannot be argued from
+the code.
+
+**The snag was in the walk itself.** The dev instance's dashboard answers
+from the image it was last built from, and only its TEST runs use the live
+checkout. It was serving `f681c5d`, built twenty hours earlier and thirty
+commits behind the branch, so everything hardened that day (a session's
+findings scoped to its own project, the per-account model and commit author,
+B165's atomic fix) was not in what was walked. The walk proved yesterday's
+isolation.
+
+So the routine gains a first step, and it is not optional: **rebuild the dev
+instance before walking a journey on it, and record the build the walk was
+against.** A walk whose build is not written down says less than it appears
+to, which is the same fault as a green suite that ran somewhere else (R65).
+
+### Walked again on the build it was meant to prove (against `e8a6f5a`)
+
+`bb devapp rebuild` took 136 seconds and brought the dashboard up on the
+branch head, so the same ground was covered again with that day's work
+actually present. A session token was minted against the dev controller's own
+state, which is what stands in for a Claude session there.
+
+6. **A session sees its one project.** The token for `hello` listed `hello`
+   and nothing else, and the poll's finding counts were empty rather than the
+   box's.
+7. **Parking, and not un-parking.** The session added a roadmap step, shelved
+   it (`ok`), and was refused taking it back off: 403, *taking an item off the
+   shelf is the operator's*. The owner then unshelved it in one call. That is
+   the asymmetry the control was built for, proved from both sides rather than
+   from the tests alone.
+8. **Two people, one project, two models.** As the owner, `hello` was given a
+   model, an effort and a commit author. The owner's row carried them under
+   `yours`; `dev2`, who has the same project, carried none of them; and the
+   project's own settings carried no model at all. Asked the way a session is
+   asked (`bb settings --json` for each seat), the owner's session would
+   launch on `opus` at `high` and commit as `Stencil Alt`, while `dev2`'s on
+   the same project would launch on Claude's own default and commit as
+   themselves. That is the whole of what "yours, not the project's" was meant
+   to mean, seen from outside the code.
+
+No snag. Everything set during the walk was put back, and the box was left
+with the four projects it started with.
+
+- Alpha, new evidence: several accounts on one controller, each seeing only
+  what they were granted, proved from the outside rather than from the tests.
+- Still dev: nothing this walk touched.
+
+## Enrolling somebody's own machine as a guest node (18 September 2026)
+
+Walked against `e4f4fc1`, the branch head, on the dev pair. The point of a
+guest node is that the machine stays its owner's, so the walk is as much
+about what is NOT on it afterwards as what is.
+
+`labowner` on the bb-dev-sandbox VM stood in for somebody's laptop. That VM
+is already a MANAGED node, provisioned as a sandbox with the agent running as
+root, which made it a better test than a clean machine: a guest footprint is
+one account's, so the two had to coexist without touching each other.
+
+What was run, in order:
+
+1. **`--guest --check`** as an ordinary user. It answers whether the machine
+   can be one and changes nothing.
+2. **`--guest --controller ... --token ...`**, no sudo. It laid down
+   `~/.builderbot`, fetched the agent and checked it against the digest the
+   controller sent, enrolled as `labowner`, and wrote one systemd user unit.
+   *Snag:* the four store paths default to `/var/lib/builderbot` for the
+   managed shape, and the guest path read those defaults rather than its own
+   footprint, so the agent reported it could not create
+   `/var/lib/builderbot/artifacts`. Fixed: a guest keeps its stores in the
+   footprint unless a flag actually named one.
+3. **The row.** Online, and `sandbox` false: the managed marker is the thing
+   the per-verb gate reads, so its absence is what makes the class mean
+   something rather than a label. Storage and Network were both refused on it
+   with the reason, asked straight at the API rather than judged from the tab.
+4. **`--guest --remove --yes`.** *Snag:* it hit the MANAGED remove first and
+   demanded root, because that runs on the argument before the guest branch
+   is reached. So the instruction the script itself prints was wrong. Fixed
+   by skipping the managed remove for a guest.
+5. **What was left.** `~/.builderbot` gone, the unit gone and inactive. The
+   `builderbot-agent` still running on the box is the MANAGED node's own, at
+   `/usr/local/sbin`, untouched. Two agents on one machine, and taking the
+   guest away left the other one working.
+
+Two snags, both found by running it rather than reading it, both fixed in the
+same sitting. What this does not cover is a machine with no BuilderBot on it
+at all, and macOS, which is R23 step 3 and wants a Mac.
+
+- Alpha, new evidence: a guest node enrolled, refused the verbs its class
+  does not have, and removed itself completely, on a machine that was already
+  a managed node.
+- Still dev: the macOS half, which has never been run on a Mac.

@@ -12,6 +12,8 @@
 // the endpoint returns, byte for byte, rather than its own idea of it.
 import { URL, DIR, launch, newPage, ok, done, ready, sleep, patience } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
@@ -32,15 +34,19 @@ const read = (name) => {
 };
 
 // ---- nothing at all --------------------------------------------------------
-// A project with no rules, no open items and no open bugs adds nothing to any
-// prompt. The empty case is the one a new project is in, so it is the one the
-// tab shows most often.
+// A project with no rules, no open items and no open bugs still gets the
+// briefing: how this machine works is true of every project, and it is the
+// thing a new project's first session most needs (R63). What it does NOT get
+// is an empty rules, roadmap or bugs piece.
 put('rules.json', { projects: {} });
 put('todos.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok(p.text === '' && p.bytes === 0 && p.capped === false,
-   `a project with nothing set adds nothing to a prompt (${JSON.stringify(p.text)})`);
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules'
+   && /The toolchain is the store, not the machine/.test(p.text)
+   && /\(global\)/.test(p.text) && p.capped === false,
+   `a project with nothing set still gets the briefing and the shipped global rules (${
+     (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted
@@ -65,15 +71,15 @@ ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
 ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.capped === false,
    `...and the size is the block's own (${p.bytes} bytes)`);
-ok((p.parts || []).map(x => x.name).join(',') === 'rules,roadmap,bugs',
-   `...with the three named and measured separately (${
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
+   `...with each named and measured separately, the briefing first (${
      (p.parts || []).map(x => `${x.name} ${x.bytes}`).join(' · ')})`);
 
 // ---- a store that contributes nothing leaves no gap -------------------------
 put('bugs.json', { projects: {} });
 p = await pre();
 ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
-   && (p.parts || []).map(x => x.name).join(',') === 'rules,roadmap',
+   && (p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
 // ---- the cap ---------------------------------------------------------------
@@ -129,4 +135,47 @@ put('bugs.json', { projects: {} });
 
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+// ---- the briefing has to be where the IMAGE puts it -------------------------
+// The suite runs server.py from the checkout, so a path that is only right in a
+// checkout passes every test here and still ships a controller whose sessions
+// get no briefing at all. That is exactly what happened: the Dockerfile copies
+// config/templates/ to /opt/builderbot/templates/ and the first version of
+// preamble.py looked in /opt/builderbot/config/templates/. This asserts the two
+// agree by reading the Dockerfile, rather than trusting either.
+{
+  const root = join(import.meta.dirname, '..', '..', '..');
+  const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8');
+  const py = readFileSync(join(root, 'scripts', 'dashboard', 'preamble.py'), 'utf8');
+  const copy = (dockerfile.match(/^COPY config\/templates\/ (\S+)/m) || [])[1] || '';
+  const dest = copy.replace(/\/$/, '') + '/briefing.md';
+  ok(!!copy && py.includes(`Path("${dest}")`),
+     `preamble.py looks for the briefing where the image puts it (${dest})`);
+  ok(existsSync(join(root, 'config', 'templates', 'briefing.md')),
+     '...and the file it ships is in the tree');
+}
+
+// ---- bb status tells a refusal from a silence (R62) --------------------------
+// The first version reported an expired token as "the controller did not
+// answer", which is the mistake bbapi.request exists to prevent and that
+// bb-gate had already made once. A session sent chasing a network problem
+// when the answer is "open this session's tab" is the cost.
+{
+  const root = join(import.meta.dirname, '..', '..', '..');
+  const run = (env) => {
+    try {
+      return execFileSync('bash', [join(root, 'scripts', 'bb'), 'status'],
+        { encoding: 'utf8', cwd: root, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}` || `THREW ${e}`; }
+  };
+  const line = out => (out.split('\n').find(l => /^\s*controller /.test(l)) || out.split('\n').slice(0, 2).join(' | ')).trim();
+  const refused = line(run({ BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                             BB_TOKEN: 'bbs_nonsense', BB_PROJECT: 'alpha' }));
+  ok(/refused this session/.test(refused) && !/did not answer/.test(refused),
+     `a credential the controller rejects reads as a refusal, not as silence (${refused})`);
+  const away = line(run({ BUILDERBOT_ROLE: 'node', BB_CONTROLLER: 'https://127.0.0.1:59999',
+                          BB_TOKEN: 'bbs_nonsense', BB_PROJECT: 'alpha' }));
+  ok(/did not answer/.test(away),
+     `...and a controller that is really not there reads as silence (${away})`);
+}
+
 await done(browser);

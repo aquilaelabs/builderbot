@@ -10,13 +10,32 @@ await page.waitForFunction(() => document.querySelectorAll('#projects .row').len
 const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
 const side = () => page.$eval('.col.side', el => el.scrollTop);
 
+// A swipe can only be told from a drag on a sidebar that SCROLLS, and how
+// tall this one is was an accident of the fixture until it stopped being tall
+// enough: the projects each carried an issue line ("no environment block")
+// that went with the block itself (R63 step 3), and this assertion silently
+// became a measurement of nothing. So the overflow is made here and asserted,
+// rather than hoped for.
+await page.evaluate(() => {
+  const spacer = document.createElement('div');
+  spacer.id = 'touch-spacer';
+  spacer.style.minHeight = '900px';
+  spacer.style.flex = '0 0 900px';
+  document.querySelector('.col.side').append(spacer);
+});
+ok(await page.$eval('.col.side', el => el.scrollHeight > el.clientHeight + 200),
+   'the sidebar is taller than its column, which is what makes a swipe a scroll');
+
 const o0 = await order();
 let hb = await (await page.$('.card[data-card="projects"] h2')).boundingBox();
 await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, hb.y - 250, 0);
 ok((await side()) > 20, `quick swipe on a header scrolls the sidebar (${await side()}px)`);
 ok(JSON.stringify(await order()) === JSON.stringify(o0), '...and does not drag');
 
-await page.evaluate(() => document.querySelector('.col.side').scrollTop = 0); await sleep(100);
+await page.evaluate(() => {
+  document.getElementById('touch-spacer')?.remove();
+  document.querySelector('.col.side').scrollTop = 0;
+}); await sleep(100);
 hb = await (await page.$('.card[data-card="projects"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, top.y + 2, 650);

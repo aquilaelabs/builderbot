@@ -58,12 +58,13 @@ esac
 # is taken only in the shape it should have. The token is a credential for
 # one project with user rights and an expiry, which is exactly what the
 # launcher below would have minted; it is not the operator's password.
+url_tok=""
 for extra in "${@:2}"; do
     case "$extra" in
         tok:bbs_*)
             case "${extra#tok:}" in
                 *[!A-Za-z0-9_-]*) ;;
-                *) export BB_TOKEN="${extra#tok:}" ;;
+                *) url_tok="${extra#tok:}"; export BB_TOKEN="$url_tok" ;;
             esac ;;
         name:*)
             case "${extra#name:}" in
@@ -77,12 +78,75 @@ for extra in "${@:2}"; do
     esac
 done
 
+# ---- on a node, the controller says whose this is (B166) --------------------
+#
+# Everything above is what the URL claimed. On the controller that is the
+# account /term proved, because ttyd there is loopback-only and the proxy is
+# the one way in. A node's ttyd is on the node, and a session there reaches it
+# over loopback like any other process on the machine, so on a node the URL
+# proves nothing: u:<uid>, name: and owner:1 would open another account's home
+# and Claude login for whoever typed them. So the token that rode in is shown
+# to the controller, which alone can check its signature, and the account,
+# the name and ownership come from its answer. No answer, no terminal: a node
+# that cannot reach the controller cannot start a session anyway.
+if on_node; then
+    grant="$(BB_TTY_TARGET="$target" BB_URL_TOKEN="$url_tok" python3 - "$(dirname "$(readlink -f "$0")")/../lib" 2>&1 <<'GRANT'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import bbapi
+# Nothing is kept from this answer: the account in the environment is still
+# the URL's claim, and a renewed token must not be written under it.
+bbapi.keep_token = lambda _tok: None
+tok = os.environ.get("BB_URL_TOKEN", "")
+if not tok:
+    print("this terminal came without a session token, which only the controller's "
+          "proxy adds, so it was not opened through the dashboard", end="")
+    raise SystemExit(1)
+st, got = bbapi.request("/api/v1/tty-grant",
+                        {"arg": os.environ["BB_TTY_TARGET"], "ro": os.environ.get("BB_TTY_RO") == "1"},
+                        auth="Bearer " + tok, timeout=20)
+if st != 200 or not isinstance(got, dict) or not got.get("uid"):
+    why = (got or {}).get("error") if isinstance(got, dict) else ""
+    print(why or "the controller did not answer", end="")
+    raise SystemExit(1)
+print(json.dumps(got))
+GRANT
+)" || {
+        echo "BuilderBot: this terminal was refused: $grant" >&2
+        if [ -t 2 ]; then sleep 10; fi
+        exit 1
+    }
+    account="$(printf '%s' "$grant" | jq -r '.uid // empty')"
+    BB_ACCOUNT_NAME="$(printf '%s' "$grant" | jq -r '.name // empty')"
+    BB_ACCOUNT_UID="$account"
+    export BB_ACCOUNT_NAME BB_ACCOUNT_UID
+    if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
+        export BB_TREE_OWNER=1
+    else
+        unset BB_TREE_OWNER
+    fi
+fi
+
 # The account's own home: own shell history, own Claude login, own memories.
 # Exported before anything runs, because tmux hands its environment to the
 # shell it starts and there is no second chance once the session exists.
 if [ -n "$account" ]; then
     HOME="$(user_home "$account")"
     export HOME
+fi
+
+# On a node the packages store is read-only in a session's view (B163), and
+# two things a session does were writes into it. Rust's crate cache is
+# CARGO_HOME, which the store's layout puts at rust/cargo: it is the
+# account's own now, and the store's cargo/bin stays on PATH for the proxies,
+# which read the toolchains through RUSTUP_HOME. And Claude Code's own
+# updater, which could only ever fail in a view (the launcher and its
+# versions are the base home's, read-only there) and would otherwise fetch a
+# copy into every account's home that nothing runs: updating claude is the
+# provisioner's.
+if on_node && [ -n "$account" ]; then
+    [ -z "${CARGO_HOME:-}" ] || export CARGO_HOME="$HOME/.cargo"
+    export DISABLE_AUTOUPDATER=1
 fi
 
 # sess NAME — the session name for this account.
@@ -168,10 +232,15 @@ walls_around() {
 # project, made if it is missing: its launcher, its scope, its token and its
 # session's environment. A folder per project, so that a session's view can
 # keep its own and leave every other project's out (R35).
+# THE ACCOUNT IN THE PATH IS NOT DECORATION (B159). On a node every account's
+# ~/.cache is a symlink to the base home's (common.sh shares the tool folders),
+# so without the uid this is ONE folder for everybody: two accounts with a
+# session on one project shared a token file and the last to start owned it,
+# which is another account's identity for anything that reads it back.
 cache_project_dir() {
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
-    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/project/$1"
-    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)/project/$1"; mkdir -p "$dir"; }
+    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/u/${account:-_none}/project/$1"
+    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)/u/${account:-_none}/project/$1"; mkdir -p "$dir"; }
     chmod 700 "$dir" 2>/dev/null || true
     printf '%s' "$dir"
 }
@@ -281,10 +350,9 @@ claude_scope() {
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
     # Four hooks ride in the same file. bb-gate refuses EVERY tool call
-    # while the controller is not answering (restarting after an update) or
-    # this project's CLAUDE.md block is from another compatibility window,
-    # until a person has updated it — and, on a prompt, warns once when the
-    # block is merely behind inside the window, which stops nothing.
+    # while the controller is not answering, which is what a restart after an
+    # update looks like: there is nothing to do but wait, and working blind
+    # against a machine that is changing is worse than waiting.
     # bb-work-note records what this session
     # touches and says when another has the same file open — it does NOT
     # refuse, because each session is in a worktree of its own and two people
@@ -460,10 +528,14 @@ PY
         # it is not, and `bb settings` asks the controller for the same two
         # fields — still at exec time, so a respawn still picks up a change.
         printf 'if [ -r %q ]; then\n' "$PREFS_FILE"
-        printf '  m="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
-            "$proj" '.projects[$n].model // empty' "$PREFS_FILE"
-        printf '  e="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
-            "$proj" '.projects[$n].effort // empty' "$PREFS_FILE"
+        # Under the ACCOUNT, not the project: the pair is whoever is at the
+        # keyboard's, so two people on one project launch on their own (17
+        # Sep). No account is a terminal opened before accounts existed, and
+        # it gets nothing set, which is claude's own default.
+        printf '  m="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+            "$account" "$proj" '.users[$u][$n].model // empty' "$PREFS_FILE"
+        printf '  e="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+            "$account" "$proj" '.users[$u][$n].effort // empty' "$PREFS_FILE"
         printf 'else\n'
         printf '  s="$(BB_PROJECT=%q bb settings --json 2>/dev/null)"\n' "$proj"
         printf '  m="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.model // empty'
@@ -624,7 +696,7 @@ start() {
     # right — the session that exists already has its own.
     local -a envs=() v
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
-             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
     # The server is started on its own first. When new-session is what
@@ -646,7 +718,7 @@ start() {
     local kv
     while IFS= read -r -d '' kv; do
         case "$kv" in
-            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*) continue ;;
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*) continue ;;
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)
@@ -823,32 +895,6 @@ case "$target" in
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
         fi
-        # A session whose CLAUDE.md environment block is from ANOTHER
-        # compatibility window than this BuilderBot is a session being
-        # briefed on a container that no longer exists — it reads that the
-        # image carries an Android SDK, or that builds happen here, and acts
-        # on it. Drift inside the window is not that: the block goes stale
-        # every time the image gains a feature, the row offers the update,
-        # and a session may start meanwhile — the same promise the agent's
-        # window makes, that 0.4.anything works with 0.4.anything. Across a
-        # window the promise was never made, so the session waits for the
-        # click rather than starting on a wrong map. `--out-of-window`
-        # decides, and says why in its own comment: a project with no
-        # CLAUDE.md, or a block predating the window line, is not refused.
-        # The PROJECT's copy, not the worktree's, because that is the file
-        # the row's link updates and the one the ghosted button is reasoning
-        # about. An absolute path under the share also survives the relay: a
-        # node sends the words to the controller, which mounts the same tree
-        # at the same path, so the answer is about this project either way.
-        # Never fatal on its own account — a check that cannot answer must
-        # not stop a session.
-        if bb claude-md --out-of-window "$WORKSPACE/$proj/CLAUDE.md" 2>/dev/null; then
-            bad "'${proj}' has a CLAUDE.md whose environment block is from another" \
-                "compatibility window than this BuilderBot. A session started now" \
-                "would be told about a different container. The Projects card's" \
-                "'CLAUDE.md environment block ... update' link fixes it in one press;" \
-                "then open this again."
-        fi
         git_identity "$proj"
         need_author "a Claude session"
         cmd=(claude --remote-control "$proj")
@@ -879,17 +925,19 @@ case "$target" in
         #
         # Named rather than inferred: bb takes the project from the working
         # directory, and this is not run from one. A controller that is not
-        # answering makes this fail, which is caught here and simply means no
-        # block rather than no session.
+        # answering makes this fail, which is caught here so the session still
+        # starts; the else below is what says so, because an empty answer used
+        # to be an ordinary state (a project with nothing on its lists) and
+        # since the briefing joined it, empty means the fetch failed (B160).
         pre="$(BB_PROJECT="$proj" bb preamble --json 2>/dev/null || true)"
         todo_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
-        # One ceiling up from tmux's there is the kernel's: a single argument
-        # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured — and past it
-        # exec answers "Argument list too long" and the pane dies without
-        # saying why. preamble.py cuts it at a line boundary and says so in
-        # the text; this says so to whoever opened the terminal, because a
-        # list nobody can afford is worth hearing about once rather than
-        # meeting as a session that has read half of it.
+        # The block goes in a file now, so the kernel's argv ceiling is not
+        # the limit any more; what is left is what a session should be asked
+        # to read, since every conversation pays for all of it. preamble.py
+        # cuts it at a line boundary and says so in the text; this says so to
+        # whoever opened the terminal, because a list nobody can afford is
+        # worth hearing about once rather than meeting as a session that has
+        # read half of it.
         if [ "$(printf '%s' "$pre" | jq -r '.capped // false' 2>/dev/null)" = true ]; then
             echo "WARNING: this project's rules, roadmap and bugs are" >&2
             echo "too long to fit in a session's prompt; only the first" >&2
@@ -900,8 +948,29 @@ case "$target" in
         fi
         # Kept beside the command rather than in it: the fallback below starts
         # the session without this block, and cannot if the two are one array.
+        #
+        # In a FILE, not in the argument. A single argv entry cannot exceed
+        # MAX_ARG_STRLEN (131072 bytes on Linux), which is why preamble.py used
+        # to cut the block and why a project with a long roadmap was told its
+        # own list did not fit. `--append-system-prompt-file` has no such
+        # ceiling, so the list a project keeps is the list its sessions get.
+        # Beside session.env in this project's cache folder, which is the one
+        # place a session's view keeps (R35), written 0600 like the token.
         prompt=()
-        [ -z "$todo_block" ] || prompt=(--append-system-prompt "$todo_block")
+        if [ -n "$todo_block" ]; then
+            pref="$(cache_project_dir "$proj")/preamble.txt"
+            if ( umask 077; printf '%s\n' "$todo_block" > "$pref.new" ) && mv -f "$pref.new" "$pref"; then
+                prompt=(--append-system-prompt-file "$pref")
+            else
+                echo "WARNING: could not write this session's briefing to ${pref};" >&2
+                echo "it starts without the rules, roadmap and bugs." >&2
+            fi
+        else
+            echo "WARNING: could not fetch this session's briefing from the" >&2
+            echo "controller, so it starts with none: no house rules, no" >&2
+            echo "roadmap, no open bugs, and nothing about this machine." >&2
+            echo "\`bb status\` says whether the controller is answering." >&2
+        fi
         # Where this session works (roadmap #24). The owner gets the project
         # directory; anybody else gets a worktree of their own on a branch of
         # their own, so two people on one project cannot overwrite each other,

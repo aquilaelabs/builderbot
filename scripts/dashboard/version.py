@@ -964,7 +964,7 @@ def one(project, comp="", repo=None):
 
 
 def _running_here(project):
-    if not (root(project) / "config/templates/project-CLAUDE.md").is_file():
+    if not (root(project) / "config/templates/briefing.md").is_file():
         return None
     return os.environ.get("BB_VERSION", "").strip() or None
 
@@ -1116,19 +1116,20 @@ def ask(project, sessions=(), comp=""):
     # and the echo has to be seen before Enter can follow: the first cut ran
     # to 704 characters, which a TUI does not finish rendering inside the
     # window notify.tell waits, so it was left sitting in the input box
-    # unsent. The protocol it used to spell out lives in the project's
-    # CLAUDE.md now, which the session has already read.
+    # unsent. It used to point at the version section of the project's
+    # CLAUDE.md; that block went with R63 step 3, so it points at the verb
+    # that answers the same question wherever it is run.
     line = (f"From the operator, on the Artifacts tab: what version should "
-            f"{what} start at? See the version section of CLAUDE.md "
-            f"— propose and ask, do not apply.")
+            f"{what} start at? Read the code and `bb version policy`, then "
+            f"propose a number you derived here and ask; do not apply one.")
     if tgt:
         # A different question once a version exists: not "what should this
-        # start at" but "is {tgt} still where this is" — the judgment the
+        # start at" but "is {tgt} still where this is", the judgment the
         # operator says is hard precisely because most of the work here
         # happened through prompts. The session can read what actually landed.
         line = (f"From the operator, on the Artifacts tab: {what} is at "
-                f"{tgt} — is that still right? See the version section of "
-                f"CLAUDE.md — propose and ask, do not apply.")
+                f"{tgt}: is that still right? Read what has landed since, "
+                f"then propose and ask; do not apply.")
     # No switch ahead of it: a project's model and effort are launch flags now,
     # so the session this reaches is already running on them.
     session = claude_session(project)

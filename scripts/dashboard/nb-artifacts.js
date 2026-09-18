@@ -384,8 +384,8 @@ project can have several"
             `Bump the ${moves[1]}; this moves the compatibility window.\n\n`
             + `${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
             + `(${cost.projects.join(", ")}) will have their Claude sessions ended `
-            + `and held until each CLAUDE.md is updated. The bell offers that in `
-            + `one press afterwards.`)) return "";
+            + `and held until each one's node has its agent updated, which is one `
+            + `press on the Nodes tab.`)) return "";
       verPending = {}; verPolicyPending = null;
       const done = [];
       if (policy != null){

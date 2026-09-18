@@ -183,6 +183,10 @@ function nbBugsView({$, nb, project}){
     hint.textContent = rows.length
       ? `${open} open of ${rows.length}: sessions read these with bb bug`
       : "Nothing reported. What goes here reaches every Claude session in this project.";
+    // A sort over nothing is a control that does nothing: it arrives with
+    // the second bug, when there is an order to choose.
+    const sortBar = $("bugSortBar");
+    if (sortBar) sortBar.hidden = rows.length < 2;
     // Which were open before this redraw, so acting on one does not fold it.
     const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
     list.innerHTML = rows.map(b => `

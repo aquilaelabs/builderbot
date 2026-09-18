@@ -26,7 +26,7 @@ import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location('nodes',
   ${JSON.stringify(new globalThis.URL('../nodes.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-m.open_readonly(${JSON.stringify(DIR + '/state')})
+m.db.open_readonly(${JSON.stringify(DIR + '/state')})
 print(json.dumps(${py}))
 `], { encoding: 'utf8' }).trim());
 
@@ -169,7 +169,7 @@ print(json.dumps(out))
                            title: 'audit-canary-sekrit', severity: 'low' }),
   }));
   await sleep(300);
-  const tail = readStore('m.audit_tail(80)');
+  const tail = readStore('m.db.audit_tail(80)');
   const row = tail.find(r => r.action === '/api/bugs:add');
   // The principal names the ACCOUNT now, not the fact that somebody was
   // signed in: `operator` was a placeholder from when only one person could
@@ -183,7 +183,7 @@ print(json.dumps(out))
   // Asked for by name, not scanned for in a tail: in a full run this file
   // goes last, behind hundreds of audited mutations from every other suite.
   const seed = readStore(
-    `m._rows("SELECT principal FROM audit WHERE action = ?", ("node-seed",))`);
+    `m.db._rows("SELECT principal FROM audit WHERE action = ?", ("node-seed",))`);
   ok(seed.length === 1 && seed[0].principal === 'system',
      'the seed itself is on the record, once, as system');
 }
@@ -249,7 +249,8 @@ print(json.dumps(out))
     const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'buildbox' });
     await post('/api/v1/agent/enroll', {
       user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
-      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true,
+                git: 'git version 2.30.2' } },
       { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
   }
   const added = await page.evaluate(async () => {
@@ -260,6 +261,21 @@ print(json.dumps(out))
      'a machine is enrolled with a token, and arrives as an agent node');
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
+  // Nothing keeps the nodes and the controller on one git: it is installed
+  // once at enrollment from whatever the distribution packages, and on a
+  // guest node the machine is its owner's. So the row SAYS which one is
+  // there, and says plainly when it is below the floor the Git view's merge
+  // needs, rather than leaving a fleet of them unknowable.
+  ok(added.reported?.git === 'git version 2.30.2',
+     `a node's git reaches the controller through the census (${added.reported?.git})`);
+  const gitRow = await page.evaluate(() => nodeGit(
+    { kind: 'agent', reported: { git: 'git version 2.30.2' } }));
+  ok(/2\.30\.2/.test(gitRow) && /warn/.test(gitRow) && /older than 2\.38/.test(gitRow),
+     `...and one below the floor is flagged, saying whose job the upgrade is (${
+       gitRow.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)})`);
+  ok(!/warn/.test(await page.evaluate(() => nodeGit(
+       { kind: 'agent', reported: { git: 'git version 2.43.0' } }))),
+     '...while one that clears it is just stated');
   // The mechanism underneath is untouched (§15 door 7): a restricted node is
   // still expressible, it is just not something the UI makes.
   await page.evaluate(id => nodeAct({ action: 'update', id,
@@ -288,7 +304,7 @@ print(json.dumps(out))
   ok(true, 'Drain marks it draining');
   // the audit trail followed
   const acts = readStore(
-    `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
+    `m.db._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
   ok(acts.some(r => r.action === 'node-enroll-mint')
      && acts.some(r => r.action === 'node-update')
      && acts.some(r => r.principal === 'user:test'),
@@ -488,6 +504,41 @@ print(json.dumps(out))
     version: shipped.version, digest: shipped.digest, user: 'bb' },
     { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
   ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
+  // A session's token slides forward on every answer it gets, so one that is
+  // WORKING never runs out. One idle past twelve hours has nothing to slide
+  // it, and a dead token is deliberately never renewed, since that refusal is
+  // what makes the life mean anything for one that leaked. So the machine the
+  // session runs on is handed a fresh one on the beat it already has (R27).
+  {
+    const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    // The tmux sessions ride the heartbeat, so they are reported the way a
+    // node reports them and the hello that follows reads them back.
+    const beat = sessions => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 8192, mem_used_mb: 512, sessions },
+                             running: [], wait: 0 }) });
+    await beat([{ name: `${uid}~claude-alpha` }, { name: `${uid}~shell-3` }]);
+    const hello = await napi('/api/v1/agent/hello', {
+      census: CENSUS, version: shipped.version, digest: shipped.digest },
+      { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' });
+    const toks = hello.session_tokens || [];
+    ok(toks.length === 1 && toks[0].project === 'alpha' && toks[0].uid === uid,
+       `the heartbeat carries a fresh token for each Claude session on the node, and only those (${
+         JSON.stringify(toks.map(t => t.project))})`);
+    // Worth being a real credential rather than a shape: the whole point is
+    // that the session can go on using it.
+    const asSession = await (await fetch(URL.replace(/\/$/, '') + '/api/status',
+      { headers: { Authorization: 'Bearer ' + toks[0].token } })).json();
+    ok(JSON.stringify((asSession.projects || []).map(p => p.name)) === '["alpha"]',
+       `...and it is a working token for that project alone (${
+         (asSession.projects || []).map(p => p.name).join(',') || 'none'})`);
+    await beat([{ name: `${uid}~shell-3` }]);
+    const none = await napi('/api/v1/agent/hello', {
+      census: CENSUS, version: shipped.version, digest: shipped.digest },
+      { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' });
+    ok((none.session_tokens || []).length === 0,
+       '...while a node running no Claude session is handed none');
+  }
   // A heartbeat, in the shape the real one has: the sample flattens each
   // store to a bare free-space number while the census keeps the whole
   // record. Sent here because reading only the sample called four healthy
@@ -725,6 +776,72 @@ print(json.dumps(out))
      && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // A job's log is the only copy of what a node's job wrote, it lives in the
+  // controller's store, and until R17 step 1 nothing deleted one: a build's
+  // log runs to megabytes, so a busy project filled the database quietly. The
+  // ROW stays and only the chunks go, because a list that forgets a build ran
+  // is worse than one that cannot show its output.
+  {
+    const py = (code) => execFileSync('python3', ['-c', code],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }).trim();
+    const out = py(`
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+now = int(time.time())
+# One project, more finished jobs than the policy keeps, each with a log.
+for i in range(m.JOB_LOG_KEEP + 6):
+    jid = f"j_ret{i:04d}"
+    m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+            " spec, outputs, state, node, exit_code, queued, ended) VALUES"
+            " (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (jid, "exec", "retproj", "test", "{}", "{}", "{}", "[]", "succeeded",
+             "n_x", 0, now - (200 - i), now - (200 - i)))
+    m._exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?,?,?,?)",
+            (jid, 0, now, "x" * 32))
+# ...and one on ANOTHER project, old enough to be swept, to prove the sweep is
+# per project when it is asked for one.
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+        " spec, outputs, state, node, exit_code, queued, ended) VALUES"
+        " (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("j_other", "exec", "otherproj", "test", "{}", "{}", "{}", "[]", "succeeded",
+         "n_x", 0, now - 99 * 86400, now - 99 * 86400))
+m._exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?,?,?,?)", ("j_other", 0, now, "y"))
+before = len(m._rows("SELECT DISTINCT job_id FROM job_logs", ()))
+m.prune_job_logs("retproj")
+kept = len(m._rows("SELECT DISTINCT job_id FROM job_logs WHERE job_id LIKE 'j_ret%'", ()))
+rows = len(m._rows("SELECT id FROM jobs WHERE project = 'retproj'", ()))
+other = len(m._rows("SELECT 1 FROM job_logs WHERE job_id = 'j_other'", ()))
+m.prune_job_logs()
+other_after = len(m._rows("SELECT 1 FROM job_logs WHERE job_id = 'j_other'", ()))
+print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
+    const [before, kept, rows, other, otherAfter, keepN] = out.split(/\s+/).map(Number);
+    ok(kept === keepN && before > keepN,
+       `job logs past the count are dropped, the newest ${keepN} kept (${before} had logs, ${kept} left)`);
+    ok(rows === keepN + 6,
+       `...and every job ROW stays, so the list still says what ran (${rows} rows)`);
+    ok(other === 1 && otherAfter === 0,
+       'a sweep for one project leaves another alone, and the sweep for all of them takes the aged one');
+  }
+
+  // appdata is a store role like the other four (R17 step 2): where a node
+  // keeps a dev instance's databases is a fact about that node, so it is
+  // reported with its headroom and edited here, rather than being
+  // BB_DEV_DATA_DIR on the controller and an optional mount to go with it.
+  {
+    const saved = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...rec.config.desired, stores: { ...rec.config.desired.stores,
+                                                 appdata: '/scratch/appdata' } } });
+    const back = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(!saved.error && back.config.desired.stores.appdata === '/scratch/appdata',
+       `appdata is a store the config plane takes, like the other four (${
+         saved.error || back.config.desired.stores.appdata})`);
+    ok((await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+         config: { ...rec.config.desired, stores: { ...rec.config.desired.stores,
+                                                    appdata: '/etc' } } })).error,
+       '...and refused the same paths the others are, so it cannot be pointed at /etc');
+  }
   // Applying a config that keeps what the node already has asks nothing:
   // the editor was seeded from the node, so this adds a mount rather than
   // taking one away.

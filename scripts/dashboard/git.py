@@ -22,13 +22,15 @@ configure() only knows where the workspace and the worktrees are.
 """
 import os
 import re
+import secrets
 import shutil
+import hashlib
 import subprocess
-import tempfile
 from pathlib import Path
 
 WORKSPACE = None
 WORKTREES = None
+STATE = None
 TELL = None               # notify.tell: type a line into a session, injected
 TMUX_NAME = None
 
@@ -40,18 +42,344 @@ US = "\x1f"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
-def configure(*, workspace, worktrees=None, tell=None, tmux_name=None):
+def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
-                     TELL=tell, TMUX_NAME=tmux_name)
+                     TELL=tell, TMUX_NAME=tmux_name,
+                     STATE=Path(state) if state else None)
+
+
+# ---- reading a tree without running what it carries (B153) -----------------
+#
+# A session can write .git/config, .git/hooks and .gitattributes in its own
+# project, and git EXECUTES what those name: core.fsmonitor on status, a
+# textconv driver on diff, a hook on checkout. The controller ran
+# `git -C <tree>` as the dashboard's account whenever somebody opened the Git
+# view, so a session on a node could have code run here by waiting for that.
+# Measured, not supposed: all three fire.
+#
+# What stops it is that each of those is NAMED by the tree but DEFINED in
+# config. With a git dir of the controller's own the definitions are ours: an
+# attribute naming a driver we do not define is ignored, the hooks are ours,
+# fsmonitor is ours. The worktree is still attached, so status and diff read
+# the real tree and answer honestly. Measured too: none of the three runs, and
+# status still reports the dirty file.
+#
+# Objects are borrowed through alternates rather than copied, and refs are
+# mirrored by READING them off the filesystem rather than by asking git in the
+# tree, which would be the same exposure one step smaller. gitrelay owns that
+# reading already, for git's network half (B148).
+#
+# WRITES go the same way, with the parts of the tree that are DATA rather than
+# instructions kept: its objects, so a commit's objects land where the session
+# will look for them, and its index, so what somebody staged is what gets
+# committed. What the command moved in our refs is written back into the tree
+# afterwards, under compare-and-swap, and a merge left in conflict has its
+# state files carried across so the session can still finish it.
+#
+# One thing writes have that reads do not: a filter the tree names decides what
+# CONTENT git stores, so skipping it is not free the way skipping a textconv
+# driver is. The distinction that makes this safe is where the filter is
+# DEFINED. git-lfs is installed into the system config by the image, outside
+# any tree, so it still applies here and an LFS repository still commits
+# pointers. A filter in the tree's OWN config is the attacker-controlled one,
+# it does not apply, and rather than quietly commit raw bytes the controller
+# refuses the write and says a terminal has to do it.
+#
+# The write dir is a second directory, not the read one: reads run constantly
+# off the poll and rebuild the mirror as they go, and a mirror being rebuilt
+# under a commit is how the two would corrupt each other.
+
+# Keys copied out of the tree's config into ours: the ones the view reports
+# and the ones a fetch or a push needs. An allowlist rather than a prefix,
+# because `remote.<name>.uploadpack` and `receivepack` name a PROGRAM git runs
+# for a local-path remote and they sit under the same prefix as the address.
+CONFIG_KEEP = {"remote": ("url", "pushurl", "fetch", "push", "mirror", "prune", "tagopt"),
+               "branch": ("remote", "pushremote", "merge", "rebase")}
+# ext:: and fd:: are not addresses: they are commands git runs to reach one.
+RUNS_A_COMMAND = re.compile(r"^\s*(ext|fd)::", re.I)
+# What the tree's config may name that decides the CONTENT git writes, as
+# against the much longer list of what it may name that git merely runs. A
+# textconv is not here: it decides how a diff is shown and never what is
+# stored, so skipping it costs a prettier diff and nothing else.
+FILTERS = re.compile(r"^filter\.")
+MERGERS = re.compile(r"^merge\.[^.]+\.driver$")
+# A merge or a revert in progress is these files beside the refs. They are
+# per-operation state, mirrored in with the refs and back out with them, so a
+# conflict the dashboard started is one the session can finish.
+STATE_FILES = ("MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "ORIG_HEAD",
+               "CHERRY_PICK_HEAD", "REVERT_HEAD", "AUTO_MERGE")
+ZERO = "0" * 40
+
+
+def _own(repo, write=False):
+    """A git dir of the controller's for reading `repo`, or None.
+
+    None means "could not build one", and the caller falls back to the tree: a
+    Git view that goes blank is worse than one still doing what it always did.
+    The refusal says so in the log rather than passing quietly.
+    """
+    if STATE is None:
+        return None
+    try:
+        import gitrelay                                    # noqa: PLC0415
+        common = Path(repo) / ".git"
+        if common.is_symlink() or not common.is_dir():
+            return None
+        common = common.resolve()
+        d = (STATE / "gitview"
+             / (hashlib.sha256(str(common).encode()).hexdigest()[:16] + (".w" if write else "")))
+        for sub in ("refs/heads", "refs/tags", "objects/info", "hooks"):
+            (d / sub).mkdir(parents=True, exist_ok=True)
+        _atomic(d / "objects" / "info" / "alternates", f"{common / 'objects'}\n")
+        if write:
+            # A loose ref left by the last write would shadow the mirror below
+            # and the next one would read a branch the tree no longer has
+            # there. The mirror is the only truth in this directory.
+            for sub in ("heads", "tags", "remotes"):
+                shutil.rmtree(d / "refs" / sub, ignore_errors=True)
+            (d / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+            _carry(common, d)
+        # The tree's remotes and upstreams, which the view reports and which sit
+        # in config beside the dangerous keys. `git config --file` is a plain
+        # file read that runs nothing. Only these two prefixes: every other key
+        # in that file is one the tree wanted us to obey.
+        #
+        # Composed and written ONCE. Writing a base and then appending keys left
+        # a window in which a concurrent read saw a config with no remotes, and
+        # this runs on the poll path where there is always another read about
+        # to happen: the Git view lost its upstream at random.
+        got = subprocess.run(["git", "config", "--file", str(common / "config"),
+                              "--get-regexp", r"^(remote|branch)\."],
+                             capture_output=True, text=True, timeout=10, check=False)
+        sections = {}
+        for line in (got.stdout or "").splitlines():
+            key, _, val = line.partition(" ")
+            bits = key.split(".")
+            if len(bits) < 3 or bits[-1].lower() not in CONFIG_KEEP.get(bits[0], ()):
+                continue
+            if bits[-1].lower() in ("url", "pushurl") and RUNS_A_COMMAND.match(val):
+                continue
+            sections.setdefault((bits[0], ".".join(bits[1:-1])), []).append((bits[-1], val))
+        text = ["[core]", "\trepositoryformatversion = 0", "\tbare = false",
+                # Housekeeping in somebody else's repository is not ours to
+                # start: writes here land in the tree's object store, and an
+                # auto gc would repack and prune it on our schedule.
+                "[gc]", "\tauto = 0",
+                '[protocol "ext"]', "\tallow = never",
+                '[protocol "fd"]', "\tallow = never"]
+        for (kind, name), pairs in sorted(sections.items()):
+            text.append(f'[{kind} "{gitrelay._q(name)[1:-1]}"]')
+            text += [f"\t{k} = {gitrelay._q(v)}" for k, v in pairs]
+        _atomic(d / "config", "\n".join(text) + "\n")
+        tree_refs = gitrelay.refs(common)
+        _atomic(d / "packed-refs", "# pack-refs with: sorted \n"
+                + "".join(f"{tree_refs[n]} {n}\n" for n in sorted(tree_refs)))
+        # gitrelay's shape: a symbolic ref needs the `ref: ` prefix, and git
+        # rejects the whole directory without it.
+        h = gitrelay.head(common) or "refs/heads/main"
+        _atomic(d / "HEAD", f"ref: {h}\n" if h.startswith("refs/") else f"{h}\n")
+        return d
+    except Exception as e:                                  # noqa: BLE001
+        print(f"dashboard: reading {repo} through the controller's own git dir failed "
+              f"({e}); falling back to the tree, which runs what the tree carries (B153)",
+              flush=True)
+        return None
+
+
+def _atomic(path, text):
+    """Write `text` at `path`, all of it or none of it.
+
+    The temporary name is UNIQUE per call, which is the whole of it working.
+    A fixed `.new` raced with itself: the Git view polls, so two reads build
+    the mirror at once, both write the same temporary file and the second
+    rename finds it already moved. That surfaced as ENOENT, which _own catches
+    and answers by falling back to running git in the TREE, so the protection
+    this module exists for switched itself off for that request and said so
+    only in the log. gitrelay's _atomic already took a random suffix; this one
+    did not. git.mjs asserts the log carries no fallback, which is how it was
+    found at all.
+    """
+    tmp = Path(f"{path}.{secrets.token_hex(4)}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _carry(src, dst):
+    """The merge-in-progress files from one git dir to another, both ways round.
+
+    Absent in the source means absent in the destination: a merge finished in
+    the tree has to stop being a merge in our copy, and one we abandoned has to
+    stop being one in the tree.
+    """
+    for name in STATE_FILES:
+        a, b = Path(src) / name, Path(dst) / name
+        try:
+            if a.is_file() and not a.is_symlink():
+                shutil.copyfile(a, b)
+            elif b.exists():
+                b.unlink()
+        except OSError:
+            pass
+
+
+def _refs_of(d):
+    """{refname: object id} in a git dir of ours, by asking git in it.
+
+    Symbolic refs are left out, which is the mirror's rule too, so the before
+    and the after are the same shape. It matters: a fetch writes
+    refs/remotes/origin/HEAD pointing at origin/main, and carrying both across
+    is two updates for one ref, which git refuses as the contradiction it is.
+    """
+    out = {}
+    try:
+        got = subprocess.run(["git", f"--git-dir={d}", "for-each-ref",
+                              f"--format=%(refname){US}%(objectname){US}%(symref)"],
+                             capture_output=True, text=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return out
+    for line in (got.stdout or "").splitlines():
+        name, oid, symref = (line.split(US) + ["", ""])[:3]
+        if name and oid and not symref:
+            out[name] = oid
+    return out
+
+
+def _upstreams_of(d):
+    """{key: value} for the branch.* config in a git dir: what `push -u` sets.
+
+    The one thing a write puts in CONFIG rather than in a ref. Our config is a
+    mirror rebuilt from the tree every time, so an upstream set here would be
+    thrown away on the next write and the branch would ask to be pushed with
+    -u forever.
+    """
+    out = {}
+    try:
+        got = subprocess.run(["git", f"--git-dir={d}", "config", "--get-regexp", r"^branch\."],
+                             capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return out
+    for line in (got.stdout or "").splitlines():
+        key, _, val = line.partition(" ")
+        bits = key.split(".")
+        if len(bits) >= 3 and bits[-1].lower() in CONFIG_KEEP["branch"]:
+            out[key] = val
+    return out
+
+
+def _head_of(d):
+    """What HEAD names in a git dir of ours: a ref, or a commit when detached."""
+    for args in (["symbolic-ref", "-q", "HEAD"], ["rev-parse", "-q", "--verify", "HEAD"]):
+        try:
+            got = subprocess.run(["git", f"--git-dir={d}", *args], capture_output=True,
+                                 text=True, timeout=20, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        if got.returncode == 0 and got.stdout.strip():
+            return got.stdout.strip()
+    return ""
+
+
+def _in_tree(repo, hooks, *args, stdin=None):
+    """One ref command in the TREE's git dir; "" or what went wrong.
+
+    The only thing that runs there, and the narrowest command git has for it.
+    Hooks are pointed at an empty directory of ours because git runs a
+    `reference-transaction` hook on an update, and that hook is the tree's.
+    """
+    try:
+        r = subprocess.run(["git", f"--git-dir={Path(repo) / '.git'}",
+                            "-c", f"core.hooksPath={hooks}", *args],
+                           input=stdin, capture_output=True, text=True,
+                           timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return str(e)
+    return "" if r.returncode == 0 else ((r.stderr or r.stdout or "").strip() or "git failed")
+
+
+def _apply(repo, d, before, head_before, ups_before=None):
+    """Move into the tree whatever the command moved in our git dir.
+
+    Compare-and-swap on every ref: the old value is what the tree held when
+    the mirror was taken, so a transaction that would land on top of something
+    changed in the tree meanwhile fails rather than overwriting it.
+    """
+    said = []
+    for key, val in sorted(_upstreams_of(d).items()):
+        if (ups_before or {}).get(key) != val:
+            # `git config --file` edits a file and runs nothing, which is why
+            # the tree's config is safe to write even though it is not safe to
+            # obey.
+            subprocess.run(["git", "config", "--file", str(Path(repo) / ".git" / "config"),
+                            key, val], capture_output=True, timeout=10, check=False)
+    after = _refs_of(d)
+    lines = [f"update {n} {oid} {before.get(n, ZERO)}"
+             for n, oid in sorted(after.items()) if before.get(n) != oid]
+    lines += [f"delete {n} {before[n]}" for n in sorted(before) if n not in after]
+    if lines:
+        said.append(_in_tree(repo, d / "hooks", "update-ref", "--stdin",
+                             stdin="".join(f"{ln}\n" for ln in lines)))
+    head_after = _head_of(d)
+    if head_after and head_after != head_before:
+        said.append(_in_tree(repo, d / "hooks",
+                             *(["symbolic-ref", "HEAD", head_after] if head_after.startswith("refs/")
+                               else ["update-ref", "--no-deref", "HEAD", head_after])))
+    _carry(d, Path(repo) / ".git")
+    return "; ".join(s for s in said if s)
+
+
+def _tree_drivers(repo, merging=False):
+    """The keys in the TREE's own config that decide what content git writes.
+
+    Empty for almost every repository. A filter counts for anything that puts
+    bytes in or takes them out of the working tree; a merge driver counts only
+    for a merge. What the OPERATOR installed is not here and still applies:
+    git-lfs lives in the system config, which is not a tree's to write.
+    """
+    try:
+        got = subprocess.run(["git", "config", "--file", str(Path(repo) / ".git" / "config"),
+                              "--name-only", "--get-regexp", r"^(filter|merge)\."],
+                             capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return sorted({k for k in (got.stdout or "").split()
+                   if FILTERS.match(k) or (merging and MERGERS.match(k))})
+
+
+def _no_drivers(repo, merging=False):
+    """Why this repository's files are not the controller's to write, or None."""
+    keys = _tree_drivers(repo, merging)
+    if not keys or _own(repo) is None:
+        return None
+    named = ", ".join(keys[:3]) + (f" and {len(keys) - 3} more" if len(keys) > 3 else "")
+    return {"error": f"this repository defines {named} in its own .git/config. Git runs the "
+                     f"programs those name, the dashboard does not run a tree's own programs, "
+                     f"and what it stored would be the unfiltered bytes. Do this one from a "
+                     f"terminal, or ask Claude"}
 
 
 def _git(repo, *args, timeout=20):
-    """stdout of one git command in `repo`, or None when it failed."""
+    """stdout of one git READ in `repo`, or None when it failed.
+
+    Through the controller's own git dir where one can be built, so the tree's
+    hooks, fsmonitor and diff drivers are not this process's to run (B153).
+    """
+    own = _own(repo)
+    argv = (["git", f"--git-dir={own}", f"--work-tree={repo}", *args] if own
+            else ["git", "-C", str(repo), *args])
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    if own:
+        # The tree's index, so what somebody staged in their own checkout is
+        # what status reports. An index is data git reads, not a place it is
+        # told to run anything.
+        env["GIT_INDEX_FILE"] = str(Path(repo) / ".git" / "index")
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
-                           text=True, timeout=timeout, check=False,
-                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+        r = subprocess.run(argv, capture_output=True,
+                           text=True, timeout=timeout, check=False, env=env)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -348,17 +676,44 @@ BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
 NET_TIMEOUT = 120
 
 
-def _run(repo, *args, env=None, timeout=30):
-    """{code, out} of one git command, stderr folded into out."""
+def _run(repo, *args, env=None, timeout=30, index=True):
+    """{code, out} of one git command, stderr folded into out.
+
+    Through the controller's own git dir where one can be built, so what the
+    tree's config names is not this process's to run (B153). `index=False` for
+    a command that has no business with the working tree: plumbing that reads
+    objects and writes objects, where handing it the tree's index would let it
+    stage things under somebody who is working in that checkout.
+    """
+    own = _own(repo, write=True)
+    before, head_before, ups_before = {}, "", {}
+    if own:
+        before, head_before = _refs_of(own), _head_of(own)
+        ups_before = _upstreams_of(own)
+        argv = ["git", f"--git-dir={own}", f"--work-tree={repo}", *args]
+    else:
+        argv = ["git", "-C", str(repo), *args]
+    e = {**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
+    if own:
+        # The tree's object store, so a commit's objects land where the
+        # session looks for them rather than in a directory of ours.
+        e["GIT_OBJECT_DIRECTORY"] = str(Path(repo) / ".git" / "objects")
+        if index:
+            e["GIT_INDEX_FILE"] = str(Path(repo) / ".git" / "index")
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
-                           text=True, timeout=timeout, check=False,
-                           env={**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"})
+        r = subprocess.run(argv, capture_output=True,
+                           text=True, timeout=timeout, check=False, env=e)
     except subprocess.TimeoutExpired:
         return {"code": 124, "out": f"git {args[0]} took longer than {timeout}s"}
-    except OSError as e:
-        return {"code": 1, "out": str(e)}
-    return {"code": r.returncode, "out": ((r.stdout or "") + (r.stderr or "")).strip()[-4000:]}
+    except OSError as ex:
+        return {"code": 1, "out": str(ex)}
+    out = ((r.stdout or "") + (r.stderr or "")).strip()[-4000:]
+    if own:
+        said = _apply(repo, own, before, head_before, ups_before)
+        if said and not r.returncode:
+            return {"code": 1, "out": f"{args[0]} ran, but the tree still stands where it "
+                                      f"did: {said}"}
+    return {"code": r.returncode, "out": out}
 
 
 def _ok_branch(name):
@@ -382,6 +737,13 @@ def act(repo, action, args, env=None, may_push=True):
     args = args if isinstance(args, dict) else {}
     if not is_repo(repo):
         return {"error": "not a git repository"}
+    if action in ("pull", "switch", "revert", "commit", "discard"):
+        # Every one of these writes the working tree through git's filters.
+        # `merge` asks lower down, where it is known whether this one checks
+        # anything out; fetch, push and the branch verbs never touch a file.
+        no = _no_drivers(repo)
+        if no:
+            return no
     if action == "fetch":
         r = _run(repo, "fetch", "--prune", env=env, timeout=NET_TIMEOUT)
         return _done(r, "fetched")
@@ -450,27 +812,22 @@ def act(repo, action, args, env=None, may_push=True):
             # project directory sees nothing change under it. Only main: the
             # other direction, main into the branch you are on, is the
             # in-place merge below, and anything else is a shell's.
-            if into != _main_branch(repo):
-                return {"error": f"a merge from here lands on {here}, or on {_main_branch(repo)}: "
+            main = _main_branch(repo)
+            if into != main:
+                # No main at all (B164): a repository whose only branches
+                # are neither main nor master. The name was interpolated
+                # empty and the refusal read "or on :".
+                if not main:
+                    return {"error": f"this project has no main or master branch, so there is "
+                                     f"nothing to merge into: a merge from here lands on {here}"}
+                return {"error": f"a merge from here lands on {here}, or on {main}: "
                                  f"Switch to {into} to merge into it"}
             if not _has_branch(repo, into):
                 return {"error": "no such branch"}
-            tmp = tempfile.mkdtemp(prefix="bb-merge-")
-            try:
-                r = _run(repo, "worktree", "add", "--quiet", tmp, into, env=env)
-                if r["code"]:
-                    return {"error": r["out"] or f"could not stand on {into} to merge"}
-                r = _run(tmp, "merge", "--no-edit", name, env=env)
-                if r["code"]:
-                    _run(tmp, "merge", "--abort", env=env)
-                    return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
-                                     f"with merge into {into} picked, and it resolves the clash "
-                                     f"on its branch"}
-            finally:
-                _run(repo, "worktree", "remove", "--force", tmp, env=env)
-                shutil.rmtree(tmp, ignore_errors=True)
-                _run(repo, "worktree", "prune", env=env)
-            return {"ok": True, "out": f"merged {name} into {into}"}
+            return _merge_off_tree(repo, name, into, env)
+        no = _no_drivers(repo, merging=True)
+        if no:
+            return no
         if _dirty(repo):
             return {"error": "there are uncommitted changes — commit or discard them first, "
                              "so the merge is its own commit"}
@@ -547,6 +904,47 @@ def act(repo, action, args, env=None, may_push=True):
                     "unmerged": True}
         return _done(r, f"{name} deleted")
     return {"error": "unknown action"}
+
+
+def _merge_off_tree(repo, name, into, env):
+    """Merge `name` into `into` with nothing checked out; {ok, out} or {error}.
+
+    The pull request button's job, and nobody's checkout moves. This used to
+    stand on `into` in a temporary worktree; it is plumbing now, which is
+    better on every count that matters here. No files are written, so the tree
+    a session is working in is untouched and no content filter is involved,
+    which is what lets it run on a repository the controller will not commit
+    in. It is also the merge git itself does: the same three-way, the same
+    message, the same two parents in the same order.
+    """
+    a = (_git(repo, "rev-parse", "--verify", f"refs/heads/{into}") or "").strip()
+    b = (_git(repo, "rev-parse", "--verify", f"refs/heads/{name}") or "").strip()
+    if not a or not b:
+        return {"error": "no such branch"}
+    if _git(repo, "merge-base", "--is-ancestor", b, a) is not None:
+        return {"ok": True, "out": f"{name} is already in {into}"}
+    msg = f"Merge branch '{name}' into {into}"
+    if _git(repo, "merge-base", "--is-ancestor", a, b) is not None:
+        new, msg = b, f"{into}: fast-forward to {name}"
+    else:
+        # git 2.38 (Oct 2022) and the oldest thing this module requires of
+        # git; `bb doctor` checks for it by name, because the controller and
+        # a node are built from different Ubuntus and have differed by a
+        # release without anything saying so.
+        r = _run(repo, "merge-tree", "--write-tree", a, b, env=env, index=False)
+        first = ((r["out"] or "").splitlines() or [""])[0].strip()
+        if r["code"] or not SHA_RE.match(first):
+            return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
+                             f"with merge into {into} picked, and it resolves the clash "
+                             f"on its branch"}
+        r = _run(repo, "commit-tree", first, "-p", a, "-p", b, "-m", msg, env=env, index=False)
+        new = ((r["out"] or "").splitlines() or [""])[0].strip()
+        if r["code"] or not SHA_RE.match(new):
+            return {"error": r["out"] or "could not make the merge commit"}
+    r = _run(repo, "update-ref", "-m", msg, f"refs/heads/{into}", new, a, env=env, index=False)
+    if r["code"]:
+        return {"error": r["out"] or f"could not move {into}"}
+    return {"ok": True, "out": f"merged {name} into {into}"}
 
 
 def _done(r, said):

@@ -7,8 +7,8 @@
 
 This repository **is** BuilderBot — the source of the container you are running
 inside. `scripts/` becomes `/opt/builderbot/scripts`, `config/templates/` ships
-the CLAUDE.md template `bb claude-md` compares projects against, and the
-Dockerfile is the whole product. There is no application here; the deliverable
+the briefing every session on every project is handed, and the Dockerfile is
+the whole product. There is no application here; the deliverable
 is the environment.
 
 The consequence you hit first: **editing a file here does not change the
@@ -135,10 +135,10 @@ by hand cost four commands and still could not see the failed builds.
     configuration reference in `README.md`, and `docs/unraid.md` when it
     needs host-side setup. The README is the documentation surface and is
     expected to move with behavior.
-  - The environment block every *other* project gets comes from
-    `config/templates/project-CLAUDE.md`. That file is the source of truth;
-    this repo's own copy above the end marker is just its output, so edit the
-    template and let `bb claude-md --update` propagate it.
+  - What a session is briefed with comes from `config/templates/briefing.md`,
+    assembled per session by `preamble.py` with the project's rules, roadmap
+    and open bugs. Nothing is copied into a project, so editing that file is
+    the whole of changing what every session reads.
   - The weekly Monday build is uncached by design and is always a full pull;
     a manual dispatch is cached unless its `no_cache` box is ticked.
 

@@ -90,13 +90,13 @@ ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
 // debug mode is saved on: a draft tick is not debug mode.
 ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()
      && !!f.querySelector('[data-set="claude_shared_login"]')),
    '...and the shared-login switch is folded behind it, out of the way');
 await post('/api/settings', { set: { debug_mode: true } });
 await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
                            null, { timeout: 30000 });
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden),
+ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()),
    'debug mode on: the button is live, and the fold stays shut until it is pressed');
 await page.click('.settingstab [data-debugshow]');
 await page.waitForFunction(() => document.querySelector('.settingstab [data-debugfold]')?.checkVisibility(),
@@ -162,7 +162,79 @@ const bare = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'set
 ok(bare.git_name === 'T. Person', '...for a shell with no project too');
 await page.click('#projects [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
-ok(!(await page.$('#rnGitName')), 'the project dialog no longer asks for one');
-await page.click('#rnCancel');
+// The dialog asks again (17 Sep), but for a different thing: the old field
+// was the PROJECT's identity and wrote user.name into the repository, which
+// made two people on it one author. This one is the asking ACCOUNT's, on this
+// project, and lives in that account's record. The invariant the removal was
+// protecting still holds, and is what is asserted: nothing reaches the tree.
+ok(!!(await page.$('#rnGitName')) && !!(await page.$('#rnGitEmail')),
+   'the project dialog asks for a commit author again, as this account\'s own');
+await page.fill('#rnGitName', 'Alter Ego');
+await page.fill('#rnGitEmail', 'alter@example.invalid');
+await page.click('#rnGo');
+await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 15000 });
+ok(gitc('user.name') === 'dashboard test' && gitc('user.email') === 'test@example.invalid',
+   '...and saving it still writes nothing into the repository, which is what the old one got wrong');
+const over = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
+  { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha', BB_ACCOUNT_UID: owner } }));
+ok(over.git_name === 'Alter Ego' && over.git_email === 'alter@example.invalid',
+   `...and a session here is handed it instead of the Profile's (${over.git_name} <${over.git_email}>)`);
+const elsewhere = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],
+  { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+    DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'beta', BB_ACCOUNT_UID: owner } }));
+ok(elsewhere.git_name === 'T. Person',
+   `...on that project only, with every other one still the Profile's (${elsewhere.git_name})`);
+
+// ---- global rules (R63): set here, handed to every project's sessions -----
+// The point of the feature is that there is no copy to drift, so the proof is
+// that a rule typed here comes back out of a PROJECT's preamble.
+{
+  await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector('#setGlobalRules', { timeout: 15000 });
+  await page.click('#setGlobalRules');
+  await page.waitForSelector('#grmodal:not([hidden]) #grAdd', { timeout: 15000 });
+  ok(true, 'Controller settings opens a Global rules dialog');
+
+  await page.click('#grAdd');
+  await page.waitForSelector('#grBody .rulerow[data-own="1"] .grName');
+  await page.$eval('#grBody .rulerow[data-own="1"] .grName', e => { e.value = 'no-secrets'; });
+  await page.$eval('#grBody .rulerow[data-own="1"] .grText',
+    e => { e.value = 'Never write credentials into a repository.'; });
+  await page.click('#grSave');
+  // The dialog must come back showing what was saved. It did not: postJSON
+  // returns the Response and reading `.rules` off it emptied the list on every
+  // save, which only a look at the redrawn dialog catches.
+  await page.waitForFunction(
+    () => document.querySelector('#grBody .rulerow[data-own="1"] .grName')?.value === 'no-secrets',
+    null, { timeout: 15000 });
+  ok(await page.$eval('#grBody .rulerow[data-own="1"] .grText', e => /credentials/.test(e.value)),
+     '...and the dialog redraws with the rule it saved, not an empty list');
+
+  // The count on the tab behind must move too: saving one rule and being told
+  // "0 rules" is the sort of thing a person notices and nothing else catches.
+  await page.click('#grClose');
+  const count = await page.waitForFunction(
+    () => document.querySelector('#setGlobalRules')?.closest('.actbar')?.querySelector('.state')?.textContent?.trim(),
+    null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
+  // Built-ins count too: what the line says is how many rules reach a project,
+  // not how many the operator typed. Read from the API rather than hardcoded,
+  // so shipping one more built-in does not make this a lie.
+  const all = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  const n = (all.rules || []).length;
+  ok(count === `${n} rule${n === 1 ? '' : 's'}` && (all.rules || []).some(r => r.name === 'no-secrets'),
+     `the Settings section counts every global rule in effect, the one just saved included (${count})`);
+
+  const saved = await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok((saved.rules || []).some(r => r.name === 'no-secrets'),
+     `the rule is stored once, on the controller (${(saved.rules || []).map(r => r.name).join(', ')})`);
+
+  const pre = await (await fetch(URL.replace(/\/$/, '') + '/api/preamble?project=alpha',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(/Never write credentials/.test(pre.text || '') && /\(global\)/.test(pre.text || ''),
+     'and a project\'s sessions are handed it, marked global, with nothing pushed to the project');
+}
 
 await done(browser);

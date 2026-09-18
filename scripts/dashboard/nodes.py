@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""The node data plane: the database seam, the migrations, the node registry,
-the audit trail — and, from phase 3, the agent channel: enrollment tokens,
-node credentials, the heartbeat with its census, and the job rows an `exec`
-job rides in on (docs/nodes.md §4, §9).
+"""The node data plane: the node registry and, from phase 3, the agent
+channel (enrollment tokens, node credentials, the heartbeat with its census,
+and the job rows an `exec` job rides in on; docs/nodes.md §4, §9).
 
 Phase 1 seeded a `local` node for the container itself, answered a read-only
 list, stamped which node a piece of work ran on, and wrote an audit row for
@@ -15,24 +14,9 @@ node dials in with a bearer token, says what it is, asks for work, and
 reports what happened. Phase 4 made the job rows the queue: placement is a
 function (pick), a job may name a selector instead of a node and is frozen to
 the node that takes it, cancel is a flag the runner reads, and a node that
-stops answering loses its jobs rather than holding them forever. The one-way
-doors this module owns were paid in phase 1 so that could land without
-reshaping anything (docs/nodes.md §15):
-
-  * ids are minted, never addresses, never reused (door 1);
-  * every mutation is attributed and audited from the first day there is a
-    table to write it in (door 2);
-  * the SQL runs on two engines behind numbered migrations from 0001 —
-    parameters go through _q(), JSON is TEXT, ids and times are app-side
-    (door 6);
-  * nothing in the schema assumes one operator: pools, token kinds and
-    principals are data, not booleans (door 8).
-
-Storage is /config/builderbot.db unless DATABASE_URL says otherwise. SQLite
-is the homelab default; a postgres:// URL is the enterprise seam (E1) and is
-refused loudly until that phase is built, which beats accepting it and
-half-working. The notebook's JSON files are NOT this module's business —
-they are small, human-edited and read whole, and they stay where they are.
+stops answering loses its jobs rather than holding them forever. The store
+under all of it (the connection, the migrations, ids and the audit trail) is
+db.py's, and so are the one-way doors it was built to keep.
 """
 import contextlib
 import hashlib
@@ -50,154 +34,23 @@ import sys
 # doctor's probe load this module by path.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import names   # noqa: E402
+import db   # noqa: E402
+from db import _exec, _lock, _rows, audit, mint   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-MIGRATIONS = HERE / "migrations"
 
 # The controller's own node id. Well-known rather than minted, from the brief:
 # a single-container deployment must work with zero remote hosts, and `local`
 # is the one id that may exist before any enrollment has ever happened.
 LOCAL = "local"
 
-STATE = None
-_db = None
-# One connection, one lock. sqlite3 serializes on its own, but a lock makes
-# read-modify-write sequences whole — and it is the shape the postgres
-# implementation will keep, so callers never learn a difference.
-_lock = threading.RLock()
 
 
 def configure(*, state):
-    globals()["STATE"] = Path(state)
-    _open()
-    migrate()
+    """Open the store (db.py) and make sure the controller's own node is in
+    it: the one row the registry holds before any enrollment."""
+    db.configure(state=state)
     _seed_local()
-
-
-def open_readonly(state):
-    """Open the store to read it — no migration, no seeding, no writes.
-
-    For `bb nodes` and anything else that looks without being the boot: a
-    read-only caller mutating the store on its way in would make "look at
-    the list" a write, and two processes racing the seed.
-    """
-    globals()["STATE"] = Path(state)
-    _open()
-
-
-# ---------------------------------------------------------------------------
-# the engine seam
-
-def _url():
-    return (os.environ.get("DATABASE_URL") or "").strip()
-
-
-def _open():
-    global _db
-    url = _url()
-    if url and not url.startswith("sqlite:"):
-        # The seam exists so this becomes a config change (docs/nodes.md §5);
-        # accepting the URL before the engine is built would half-work, which
-        # is worse than refusing with the phase that fixes it named.
-        raise RuntimeError(
-            f"DATABASE_URL={url.split('://')[0]}://… is not supported yet — "
-            "SQLite is the built engine; Postgres is enterprise track E1")
-    path = url[len("sqlite:"):].lstrip("/") if url else ""
-    dbfile = Path("/" + path) if path else STATE / "builderbot.db"
-    dbfile.parent.mkdir(parents=True, exist_ok=True)
-    _db = sqlite3.connect(dbfile, check_same_thread=False)
-    _db.row_factory = sqlite3.Row
-    # WAL so the poll's reads never block a write; NORMAL is durable enough
-    # for state that can be re-derived, and it is what keeps the fsync cost
-    # off the request path.
-    _db.execute("PRAGMA journal_mode=WAL")
-    _db.execute("PRAGMA synchronous=NORMAL")
-
-
-def _q(sql):
-    """The paramstyle seam: written as `?`, translated per engine.
-
-    SQLite wants qmark and postgres wants format. Trivial today and the whole
-    point is that it stays trivial — every statement in this module goes
-    through here, so the day E1 lands, this function and _open() are the diff
-    rather than a hunt.
-    """
-    return sql
-
-
-def _exec(sql, args=()):
-    with _lock:
-        cur = _db.execute(_q(sql), args)
-        _db.commit()
-        return cur
-
-
-def _rows(sql, args=()):
-    with _lock:
-        return [dict(r) for r in _db.execute(_q(sql), args).fetchall()]
-
-
-# ---------------------------------------------------------------------------
-# migrations
-
-def migrate():
-    """Apply every migrations/NNNN_*.sql not yet applied, in order.
-
-    Numbered files, run inside one transaction each, recorded in a table of
-    their own — the same shape at both tiers, and the discipline door 6 hangs
-    on. A migration that half-applied would leave the version unrecorded and
-    the transaction rolled back, so boot either has a version or an error,
-    never something in between.
-    """
-    with _lock:
-        _db.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
-            version INTEGER PRIMARY KEY, name TEXT NOT NULL,
-            applied INTEGER NOT NULL)""")
-        done = {r[0] for r in _db.execute(
-            "SELECT version FROM schema_migrations").fetchall()}
-        for f in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-            version = int(f.name[:4])
-            if version in done:
-                continue
-            try:
-                for stmt in _statements(f.read_text(encoding="utf-8")):
-                    _db.execute(stmt)
-                _db.execute(
-                    "INSERT INTO schema_migrations (version, name, applied) "
-                    "VALUES (?, ?, ?)", (version, f.name, int(time.time())))
-                _db.commit()
-            except sqlite3.Error:
-                _db.rollback()
-                raise
-
-
-def _statements(text):
-    """Split a migration into statements on blank-line boundaries, comments
-    stripped — declared in 0001's header, so a migration that forgets reads
-    its own contract at the top of the file it copied."""
-    out, cur = [], []
-    for line in text.splitlines():
-        if line.strip().startswith("--"):
-            continue
-        if not line.strip():
-            if cur:
-                out.append("\n".join(cur))
-                cur = []
-            continue
-        cur.append(line)
-    if cur:
-        out.append("\n".join(cur))
-    return [s for s in out if s.strip()]
-
-
-# ---------------------------------------------------------------------------
-# ids
-
-def mint(prefix):
-    """n_9f2c41d7 — short, prefixed, unguessable enough to never collide in a
-    table this size, and never derived from anything (door 1: an id that
-    encodes a fact goes stale when the fact does)."""
-    return f"{prefix}_{secrets.token_hex(4)}"
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +843,7 @@ def _census(c):
     for k in ("cpu", "mem_mb"):
         with contextlib.suppress(TypeError, ValueError):
             out[k] = int(c.get(k) or 0)
-    for k in ("os", "docker", "docker_id", "gpu", "hostname"):
+    for k in ("os", "docker", "docker_id", "gpu", "hostname", "git"):
         if c.get(k):
             out[k] = str(c[k])[:120]
     # The two placement dimensions (door 9), as fields the agent reports.
@@ -1171,7 +1024,7 @@ def _census(c):
 # GUI and a rescue shell cannot disagree about what the node is meant to be.
 
 MOUNT_TYPES = ("nfs", "virtiofs")
-STORE_ROLES = ("data", "packages", "cache", "artifacts")
+STORE_ROLES = ("data", "packages", "cache", "artifacts", "appdata")
 # The same refusal the agent makes of a store path, made here so the tab says
 # no before anybody presses. Deliberately in both places: a store is a
 # directory this system creates, fills and — for the cache — empties, so one
@@ -1345,7 +1198,14 @@ def log_grants(node_id):
     return list(((n or {}).get("config") or {}).get("log_from") or [])
 
 
-def node_log_grant(principal, node_id, from_ids):
+def diag_granted(node_id):
+    """Whether a session on `node_id` may read the controller's diagnostics
+    (diag.py), which is a tick of its own beside the log grant."""
+    n = node(node_id)
+    return bool(((n or {}).get("config") or {}).get("diag"))
+
+
+def node_log_grant(principal, node_id, from_ids, diag=None):
     """Set that list. The operator's, and an administrator's: a session token
     is refused this endpoint the way it is refused the rest of the config
     plane, or the boundary would be one a session could open for itself."""
@@ -1361,10 +1221,13 @@ def node_log_grant(principal, node_id, from_ids):
         return {"error": f"no such node: {bad[0]}"}
     conf = dict(n.get("config") or {})
     conf["log_from"] = want
+    # The controller's diagnostics, when the form says (None leaves it).
+    if diag is not None:
+        conf["diag"] = bool(diag)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-log-grant",
-           {"from": want, "self": node_id in want})
-    return {"ok": True, "log_from": want}
+           {"from": want, "self": node_id in want, "diag": bool(conf.get("diag"))})
+    return {"ok": True, "log_from": want, "diag": bool(conf.get("diag"))}
 
 
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
@@ -1853,6 +1716,11 @@ def node_apply(principal, node_id, what):
 layout_of = lambda: []
 bundle_digest = lambda: ""
 idle_minutes = lambda: 0            # noqa: E731 — idle.minutes, injected by server.py
+# server.session_tokens_for: fresh credentials for the Claude sessions alive
+# on one node, so a session idle past its token's life is not locked out of
+# its own controller (R27). Injected, because minting is users.py's and the
+# project list is the server's, and neither is the node store's business.
+session_tokens_for = lambda nid, sessions: []   # noqa: E731
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -1876,6 +1744,10 @@ def hello(nid, census, addr, version="", digest="", running=None):
                "addr": addr, "last_seen": int(time.time()),
                })
     rep = n.get("reported") or {}
+    # The tmux sessions ride the HEARTBEAT, not the census, so the live set is
+    # what the last one recorded rather than anything hello was handed. Read
+    # before _census replaces the record below (R27).
+    live_sessions = rep.get("sessions") or []
     sample = rep.get("sample")
     # When this census was taken. The heartbeat is every 25 seconds but the
     # census only rides hello, every ten minutes, so "when did the node last
@@ -1906,7 +1778,16 @@ def hello(nid, census, addr, version="", digest="", running=None):
             "bundle": bundle_digest() or "",
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
-            "session_idle_minutes": idle_minutes()}
+            "session_idle_minutes": idle_minutes(),
+            # A fresh token for each Claude session alive on this node (R27).
+            # A session's token slides forward while it is TALKING, because
+            # every answer it gets carries a renewal; one that sits idle past
+            # twelve hours has nothing to slide it, and a dead token is never
+            # renewed, which is what makes the life mean anything for a leaked
+            # one. So the machine the session is on refreshes it instead, on
+            # the beat it already has. A token lives as long as its tmux
+            # session does, and none is ever accepted past its expiry.
+            "session_tokens": session_tokens_for(nid, live_sessions)}
 
 
 def heartbeat(nid, sample, addr, running=0):
@@ -2494,6 +2375,60 @@ def job(job_id, with_log=True):
     return j
 
 
+# ---- retention on the job logs (roadmap R17 step 1, R42) --------------------
+#
+# A job's log is the only copy of what a node's job wrote, and it lives in the
+# controller's store: nothing else has it, and until this there was no DELETE
+# for one anywhere in the tree. A build's log runs to megabytes, so a busy
+# project fills /config/builderbot.db and nothing says so.
+#
+# The ROW is kept and only the CHUNKS go. The job list, its state, its exit
+# code and what it produced are the history and stay; what is dropped is the
+# console output, which is the large part and the part nobody reads a month
+# later. A list that forgets a build ran is worse than one that cannot show
+# you its output.
+#
+# Hard-coded with a reason rather than a setting, per env-only-what-must: a
+# limit is a default with a reason in the code or a field on the Settings tab,
+# and that tab holds switches today. These two numbers are the same pair every
+# other store here uses, a count and an age, and the count wins where they
+# disagree: forty builds on a quiet project can be a year of history, and
+# thirty days on a busy one can be a thousand.
+JOB_LOG_KEEP = 40          # newest jobs per project whose logs are kept
+JOB_LOG_DAYS = 30          # ...and nothing older than this, however few there are
+
+
+def prune_job_logs(project=None):
+    """Drop the log chunks past the policy; how many jobs lost theirs.
+
+    Per project, because one project building all day should not age out
+    another's, and a controller serving several people is the case this
+    exists for.
+    """
+    where = "WHERE project = ?" if project else ""
+    args = (project,) if project else ()
+    gone = 0
+    for row in _rows(f"SELECT DISTINCT project FROM jobs {where}", args):
+        proj = row["project"]
+        # Beyond the newest N, by when they ended (a job still running has no
+        # `ended` and sorts first, which is right: it is the one being read).
+        old = _rows(
+            "SELECT id FROM jobs WHERE project = ? AND state IN "
+            "('succeeded', 'failed', 'canceled') "
+            "ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
+            (proj, JOB_LOG_KEEP))
+        cutoff = int(time.time()) - JOB_LOG_DAYS * 86400
+        aged = _rows(
+            "SELECT id FROM jobs WHERE project = ? AND state IN "
+            "('succeeded', 'failed', 'canceled') AND COALESCE(ended, queued) < ?",
+            (proj, cutoff))
+        for jid in {r["id"] for r in old} | {r["id"] for r in aged}:
+            if _rows("SELECT 1 FROM job_logs WHERE job_id = ? LIMIT 1", (jid,)):
+                _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
+                gone += 1
+    return gone
+
+
 def job_forget(job_id):
     """Drop a finished job and its log: only for a probe whose answer was
     read by the caller that queued it (run_wait's `forget`). A job somebody
@@ -2587,7 +2522,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
-    got = _rows("SELECT node, state, type FROM jobs WHERE id = ?", (job_id,))
+    got = _rows("SELECT node, state, type, project FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     if got[0]["state"] in JOB_END:
@@ -2606,6 +2541,13 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         keep = [o for o in outputs[:64] if isinstance(o, dict)]
         _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    # Swept here rather than on a timer: a job ending is exactly when a
+    # project gains a log, so it is when one of its old ones can go, and the
+    # work is bounded by that project's own history.
+    # Housekeeping never loses a result: whatever goes wrong in the sweep, the
+    # job that just finished is already recorded above.
+    with contextlib.suppress(Exception):        # noqa: BLE001
+        prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
     # An uninstall that ran retires the node: the agent is gone with it, so
     # the row leaves every list now rather than after a stale timeout.
     if got[0]["type"] == "system" and state == "succeeded":
@@ -2791,32 +2733,3 @@ def agent_file():
             "digest": "sha256:" + hashlib.sha256(body).hexdigest(),
             "version": m.group(1).decode() if m else "?"})
     return dict(_agent_cache)
-
-
-# ---------------------------------------------------------------------------
-# audit
-
-def audit(principal, action, target, params):
-    """One row per mutation: when, who, what, on what, and a digest of the
-    parameters — never the parameters themselves, which may carry tokens and
-    env text. History that was never written cannot be backfilled (door 2),
-    which is why this lands with the schema and not with the first screen
-    that displays it."""
-    blob = json.dumps(params, sort_keys=True, default=str) if params else ""
-    digest = (f"sha256:{hashlib.sha256(blob.encode()).hexdigest()[:12]}"
-              f"·{len(blob)}b" if blob else "")
-    try:
-        _exec("INSERT INTO audit (id, at, principal, action, target, params) "
-              "VALUES (?, ?, ?, ?, ?, ?)",
-              (mint("a"), int(time.time()), str(principal), str(action)[:200],
-               str(target)[:200], digest))
-    except sqlite3.Error as e:
-        # Bookkeeping must never break the mutation it records — a full disk
-        # mid-flight costs the row and says so, not the operator's action.
-        print(f"[nodes] audit write failed: {e}", flush=True)
-
-
-def audit_tail(n=50):
-    """The newest rows, for tests and a future view — not an endpoint yet."""
-    return _rows("SELECT * FROM audit ORDER BY at DESC, id DESC LIMIT ?",
-                 (int(n),))

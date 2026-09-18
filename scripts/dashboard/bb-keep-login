@@ -41,7 +41,11 @@ def cache_dir():
     home = os.environ.get("HOME", "")
     d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
         or f"/tmp/bb-scope-{os.getuid()}"
-    return os.path.join(d, "builderbot")
+    # This account's own corner of it (B159): the cache folder is shared
+    # between accounts on a node, so the login state of one must not be the
+    # login state of another.
+    return os.path.join(d, "builderbot", "u",
+                        os.environ.get("BB_ACCOUNT_UID") or "_none")
 
 
 def expires_in():

@@ -78,7 +78,7 @@ trap 'cleanup' EXIT
 # ---- a workspace worth photographing ---------------------------------------
 # Three invented projects that between them light up what the Projects card
 # can show: a clean GitHub-linked repo, a local one with no remote (the link
-# chain), and one with findings and no CLAUDE.md yet (the amber fix link).
+# chain), and one carrying static-analysis findings.
 mkdir -p "$S"/{state,reports,home}
 seed() { # seed NAME  — a small real repo with a plausible history
     local d="$W/$1"
@@ -93,28 +93,16 @@ seed meal-planner
   printf 'flask\nsqlalchemy\n' > requirements.txt
   git add -A && git commit -qm "Pin the web stack"
   git remote add origin git@github.com:acme/meal-planner.git
-  cp "$REPO/config/templates/project-CLAUDE.md" CLAUDE.md )
+  printf '# meal-planner\n\nFlask and SQLAlchemy. `flask run` for the dev server.\n' > CLAUDE.md
+  git add -A && git commit -qm "Note how to run it" )
 seed orbit                       # no remote: wears the link-to-GitHub chain
 ( cd "$W/orbit"
-  cp "$REPO/config/templates/project-CLAUDE.md" CLAUDE.md
+  printf '# orbit\n\nPure python, no dependencies. `pytest` is the suite.\n' > CLAUDE.md
   printf 'import math\n' > src/solver.py
   git add -A && git commit -qm "Add the two-body solver" )
-seed blog-engine                 # findings, and no CLAUDE.md yet
+seed blog-engine                 # the one the findings report covers
 ( cd "$W/blog-engine"
   git remote add origin git@github.com:acme/blog-engine.git )
-
-# The block, RENDERED. A raw copy of the template is not what a project's
-# block looks like any more — it carries conditional sections resolved per
-# project — so every seeded project wore "CLAUDE.md environment block is out
-# of date" in the picture that is supposed to show a healthy dashboard.
-# BB_RELAYED because this may be run from a session on a node, where the verb
-# would otherwise be answered by the real controller about the real projects.
-for proj in meal-planner orbit; do
-    ( cd "$W/$proj" && BB_RELAYED=1 WORKSPACE="$W" DASHBOARD_STATE="$S/state" \
-        TEMPLATE_MD="$REPO/config/templates/project-CLAUDE.md" \
-        bash "$REPO/scripts/bb" claude-md --update >/dev/null 2>&1 \
-      && git add -A && git commit -qm "Bring the environment block up to date" ) || true
-done
 
 # ---- the owner -------------------------------------------------------------
 # A fresh state directory serves the first-run screen, and without this every
@@ -216,7 +204,6 @@ chmod +x "$S/bin/claude"
 env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_PORT="$PORT" \
     BB_IMAGE_REV="$REV" BB_IMAGE_BUILT="$BUILT" \
     DASHBOARD_TTYD_PORT="$TTYD_PORT" BUILDER_HOME="$S/home" \
-    TEMPLATE_MD="$REPO/config/templates/project-CLAUDE.md" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH="$AUTH" \
     PATH="$S/bin:$PATH" \
     python3 "$REPO/scripts/dashboard/server.py" > "$S/server.log" 2>&1 &

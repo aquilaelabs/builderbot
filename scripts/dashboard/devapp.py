@@ -77,6 +77,13 @@ MAIN = "main"
 def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
+# Where a dev instance's data lives, when the node is too old to say. It is
+# a STORE now, reported per node with its path and its headroom and edited on
+# the node's own Storage section (R17 step 2), because where a node keeps a
+# container's databases is a fact about that node. This is the fallback for
+# an agent from before the store existed, and the default an unenrolled
+# controller uses; BB_DEV_DATA_DIR is honoured for the same reason and is on
+# its way out.
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # Injected rather than worked out here: three readers already answer "where do
 # the logs live" and a fourth copy of that rule is how they drift. None when
@@ -143,6 +150,69 @@ def _instance_node(project, instance):
     if not nid and project_node:
         nid = project_node(project) or ""
     return nid or (node_for() if node_for else "")
+
+
+def project_daemon(project):
+    """The node THIS project works on: its own, else the default docker host.
+
+    Which is where its session runs (a project with no node keeps its session
+    on the controller), and where a new instance of it would be built. The
+    same chain _instance_node ends with, minus the record, so "is this
+    instance on the machine this project works on" is one comparison.
+    """
+    return (project_node(project) if project_node else "") or _default_node()
+
+
+def instance_node(project, instance):
+    """Which node an instance is on, for a caller outside this module.
+
+    _instance_node is the rule; this is the name the server asks by, so the
+    fallback chain (the record's node, else the project's, else the default
+    docker host) stays written down in exactly one place.
+    """
+    return _instance_node(project, instance or only_instance(project))
+
+
+def pin_to_current_node(project):
+    """Fix this project's built instances to the node they are on, before the
+    project's node setting moves them somewhere they do not exist.
+
+    An instance with no node of its own follows the project's, which
+    _instance_node above is the whole of. So changing that setting pointed the
+    manager at a daemon holding none of this instance's containers, image or
+    data directory. The containers on the old node kept running, which is
+    right, and went invisible, which is not: the row that could stop or remove
+    them had moved, so the one control for the thing still running was gone.
+
+    Pinned at the moment the setting changes rather than worked out later, for
+    the same reason _stamp writes a build's ref: afterwards nothing is left to
+    say which node it meant.
+
+    Only instances that have been BUILT somewhere. A record that is settings
+    and nothing else has nothing on any daemon to strand, and belongs on
+    whichever node the project is moving to.
+
+    Returns the names pinned, oldest record first, for the caller to say so.
+    """
+    # What a record with no node of its own resolves to today, which is what
+    # it is about to stop resolving to. Read once: every record here answers
+    # the same way, by definition of having no node.
+    here = project_daemon(project)
+    if not here:
+        return []
+    pinned = []
+    with _lock:
+        d = _load()
+        for name, rec in (d.get(project) or {}).items():
+            if rec.get("node") or not rec.get("at"):
+                continue
+            _rec(d, project, name)["node"] = here
+            pinned.append(name)
+        if pinned:
+            write_json(FILE, d)
+    if pinned:
+        _bump()
+    return pinned
 
 
 def _on_instance(fn):
@@ -403,7 +473,7 @@ def _plan(project, instance, action, extra=None):
     pdir = (str(at) if at is not None
             else str(WORKSPACE / project) if _read_rec(project, instance).get("source") != "file"
             else (dev_data_dir(project, instance, make=False)
-                  or str(Path(DEVDATA) / pname)))
+                  or str(Path(appdata_root()) / pname)))
     base = [DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if env_path(project, instance).is_file():
@@ -439,7 +509,12 @@ def _plan(project, instance, action, extra=None):
         # otherwise. The first run of BuilderBot's suite inside its own
         # instance ran at / and found no scripts/ (15 Sep).
         wd = ["-w", extra["workdir"]] if extra.get("workdir") else []
-        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1", *wd, extra["service"],
+        # BB_IN_INSTANCE says this run IS the container's, which is the one
+        # thing a suite cannot work out for itself: the dev instance is a
+        # container like any other and the controller is one too. run.sh
+        # reads it to tell "tests run here" from "tests were run around me".
+        argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1",
+                       "-e", "BB_IN_INSTANCE=1", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
         test = [{"name": "testing", "argv": argv, "timeout": 3600}]
     return {"up": [up], "down": [down], "remove": [down],
@@ -1648,7 +1723,7 @@ def _compose(project, instance, *args):
         # against compose rather than assumed: `config -q`, `config --format
         # json` and `ps -aq` all exit 0 with the directory absent.
         pdir = (dev_data_dir(project, instance, make=False)
-                or str(Path(DEVDATA) / _pname(project, instance)))
+                or str(Path(appdata_root()) / _pname(project, instance)))
     else:
         # ...or the instance's own build tree, when it is pinned to a ref.
         # The SAME answer _plan gives, because the two are one command built
@@ -1902,7 +1977,7 @@ def _devdata_argv(op, *names, root=None):
     fails and takes the run down.
     """
     return [DOCKER, "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}",
-            "-v", f"{(root or DEVDATA).rstrip('/')}:/d", DEVDATA_IMAGE,
+            "-v", f"{(root or appdata_root()).rstrip('/')}:/d", DEVDATA_IMAGE,
             *_DEVDATA_OPS[op], *(f"/d/{n}" for n in names)]
 
 
@@ -1940,10 +2015,25 @@ def dev_data_dir(project, instance=MAIN, make=True):
     if not sandbox_daemon():
         if not _agent_docker():
             return None
-        return posixpath.join(DEVDATA, name)
+        return posixpath.join(appdata_root(), name)
     if make and not _devdata_run("mkdir", name):
         return None
-    return posixpath.join(DEVDATA, name)
+    return posixpath.join(appdata_root(), name)
+
+
+def appdata_root(node_id=None):
+    """Where THIS node keeps its dev instances' data.
+
+    The node's own `appdata` store where it reports one, and DEVDATA where it
+    does not: an agent from before the store says nothing about it, and within
+    a compatibility window a missing field is answered rather than refused.
+    """
+    nid = node_id or getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    st = ((n or {}).get("reported") or {}).get("stores")
+    rec = st.get("appdata") if isinstance(st, dict) else None
+    path = str((rec or {}).get("path") or "") if isinstance(rec, dict) else ""
+    return path or DEVDATA
 
 
 def _agent_docker():
@@ -2136,7 +2226,14 @@ def _build_env(project, instance=MAIN):
     # beside this one on the dashboard and absent in a module-level test.
     with contextlib.suppress(Exception):
         import version                                 # noqa: PLC0415
-        f = ((version.render(project) or {}).get("forms") or {}).get("file")
+        # The IDENTITY form, which is what tools/build-image-here.sh stamps a
+        # production image with, so one commit built either way answers with
+        # one string. It used to take `file`, the docker-tag-safe form, whose
+        # whole job is that it cannot carry `+`: the same build then read
+        # 0.5.0-dev.1633+8dfc0b2 on production and 0.5.0-dev.1633-8dfc0b2 on
+        # the dev instance, and the rule that makes this string the first
+        # thing anybody compares turned one build into two (B158).
+        f = ((version.render(project) or {}).get("forms") or {}).get("semver")
         if f:
             out["BB_BUILD_VERSION"] = str(f)
     return out

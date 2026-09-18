@@ -29,6 +29,11 @@ import os
 import subprocess
 import sys
 
+def _uid():
+    """This account's id, which is what separates one account's cache from
+    another's: on a node every account's ~/.cache is a symlink to the base
+    home's, so the uid in the path is the whole separation (B159)."""
+    return os.environ.get("BB_ACCOUNT_UID") or "_none"
 
 def tree():
     return (os.environ.get("BB_TREE")
@@ -60,7 +65,7 @@ def stamp_of(cwd, files):
 
 def stamp_file(project):
     d = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME", "/tmp"), ".cache")
-    return os.path.join(d, "builderbot", "project", project, "checked")
+    return os.path.join(d, "builderbot", "u", _uid(), "project", project, "checked")
 
 
 def main():

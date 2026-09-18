@@ -24,6 +24,7 @@ the lib directory beside bb (BB_LIB) so the checkout's copy runs with the
 checkout's bb.
 """
 import base64
+import secrets
 import hashlib
 import http.client
 import json
@@ -47,9 +48,16 @@ def keep_token(tok):
         home = os.environ.get("HOME", "")
         d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
             or f"/tmp/bb-scope-{os.getuid()}"
-        d = os.path.join(d, "builderbot", "project", project)
+        # Per account (B159): on a node the cache folder is shared, so without
+        # the uid this writes over another account's token.
+        d = os.path.join(d, "builderbot", "u",
+                         os.environ.get("BB_ACCOUNT_UID") or "_none", "project", project)
         os.makedirs(d, mode=0o700, exist_ok=True)
-        tmp = os.path.join(d, "token.new")
+        # A unique temporary name, not a fixed one: the agent refreshes this
+        # file for a session that is idle (R27) while the session's own bb may
+        # be writing it, and two writers sharing `token.new` is the race that
+        # cost B165 elsewhere in this tree.
+        tmp = os.path.join(d, f"token.{os.getpid()}.{secrets.token_hex(4)}.new")
         with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
             f.write(tok + "\n")
         os.replace(tmp, os.path.join(d, "token"))

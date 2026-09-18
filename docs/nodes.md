@@ -461,13 +461,10 @@ that node: the controller ends the running ones and ghosts each such
 project's Claude button until the node is updated, per project, so a
 project on a current node is untouched.
 
-The CLAUDE.md environment block is in the same window. The template carries
-a `BUILDERBOT:ENV:WINDOW` line under its begin marker, held to the project's
-minor by the same test that holds the agent's, and a project's copy from
-another window is treated the way an agent from one is: the block described
-a different BuilderBot, so sessions on that project are ended and refused
-until `bb claude-md --update` restamps it. A block merely behind inside the
-window is drift: the row offers the update and nothing stops.
+What a session is briefed with is no longer in this window, or in any
+window: it is assembled per session by the controller and handed to `claude`
+on the way in, so there is no copy of it on a node or in a project to be from
+another version (R63). The window is the agent's alone.
 
 `0.5.0` was such a boundary and is what it looks like in practice: the flat
 `protocol` integer both sides declared and neither ever compared went, along
@@ -506,6 +503,18 @@ the first migration:
 - Migrations as numbered files applied at boot, same files for both engines.
 - Log chunks batched on write (the one place SQLite's write rate is a real
   limit) and pruned by the retention job.
+
+*Amended 18 September:* the retention job exists (roadmap R17 step 1, R42).
+A job's log is the only copy of what a node's job wrote, and nothing deleted
+one: `nodes.prune_job_logs` keeps the newest `JOB_LOG_KEEP` per project and
+nothing older than `JOB_LOG_DAYS`, swept as each project's jobs end and once
+at boot for whatever ended while the controller was down. The job ROW stays
+and only the chunks go, because a list that forgets a build ran is worse than
+one that cannot show its output. Two constants with a reason rather than the
+controller-scoped setting described below: that scope is switches today, and
+`env-only-what-must` takes a default with a reason in the code as the other
+honest answer. Artifacts in `dist/` and a node's failed workspaces are still
+unswept.
 
 This is the Gitea/Grafana pattern and it is well-trodden: the homelab never
 learns Postgres exists; the enterprise gets real concurrency and a backup
@@ -605,6 +614,16 @@ and `bb packages`, operator-gated; that has to generalize without forking.
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is not offered at all (roadmap
   #26): it takes no packages, and its own record is registry plumbing.
+*Amended 18 September:* there are **five** stores, with `appdata` joining
+them (roadmap R17 step 2): what a dev instance KEEPS on this node, its
+databases and uploads and the caches its containers write, under
+`<appdata>/<project>/<instance>`. It was `BB_DEV_DATA_DIR` on the CONTROLLER
+with an optional `/devdata` mount beside it, which is a fact about a node
+kept on the wrong machine: the node reports its path and its headroom now,
+and the Storage section edits it there. An agent from before the store
+reports none, and the controller answers `/devdata` for it until that node
+is updated.
+
 *Amended 2 September:* there are **four** stores, not three, with `artifacts`
 joins data, packages and cache: this node's copy of what a project built,
 per project underneath, so a VM that is several projects' node keeps two
@@ -1729,7 +1748,13 @@ above, in order:
    hello), bound on the node's LAN address; the controller's `/term` proxy
    dials that instead of the loopback (phase 10b), stamping the account, its
    name and a session token into the URL exactly as it stamps the account
-   locally. The tmux server is the node's; a dropped browser detaches.
+   locally. On the node that URL is only a claim: a session there reaches
+   the same ttyd over loopback, so bb-tty shows the token to the controller
+   (`POST /api/v1/tty-grant`) before anything starts, and the account, its
+   name and whether it is the owner come from that answer, which also runs
+   the proxy's own checks (the project is the token's, the account may open
+   it, a writable terminal is for an account with a shell). No answer, no
+   terminal (B166). The tmux server is the node's; a dropped browser detaches.
 5. **bb's notebook verbs are relayed**: `POST /api/v1/bb` with the session's
    token carries the words (`roadmap add …`, `bug show 3`, `version --file`),
    the controller runs its own bb in that project's tree and returns what it
@@ -1765,7 +1790,9 @@ refused is neither: the agent tries an unmounted fstab entry when it takes
 the census and reports what mount said (`mounts[].error`), the row and the
 button repeat it, and Apply network asks each NFS server's exports
 (`showmount -e`) before moving to an address they do not admit. provision-linux.sh filters 7681/7682 to the controller's
-address with an nftables table of its own, re-applied at boot by a unit.
+address and loopback with an nftables table of its own, re-applied at boot by
+a unit. The filter keeps the LAN out; it cannot keep a session on the node
+out, which is why the grant above is the check and not the firewall.
 Addresses move, and the design survives it without anybody re-enrolling:
 the node dials out, so a node whose own address changes is reached by the
 controller at whatever address its next hello or work poll arrived from

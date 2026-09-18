@@ -397,22 +397,6 @@ bb git policy      what a session may push here (its branch, main) from the
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
-bb claude-md       is this project's environment block current? The block is
-                   `CLAUDE.local.md`, rendered by BuilderBot and kept out of
-                   git (`.git/info/exclude`); `CLAUDE.md` beside it is the
-                   project's own notes and is committed. `--update` rewrites
-                   the first and never touches the second.
-                   The block is rendered per project, not copied: the shipped
-                   template marks its Android and compose sections with the
-                   evidence that makes them apply, so a plain project's
-                   sessions start on about a thousand fewer words and a
-                   session is not told how to drive an emulator it has none of
-bb claude-md --update   refresh that block only
-bb claude-md --is-stale exit 0 when the block exists and has drifted
-bb claude-md --out-of-window  exit 0 when the block is from another compatibility
-                        window than the template: the gate the ghosted Claude
-                        button and bb-tty both ask; --window prints a block's window
-bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
@@ -460,6 +444,10 @@ bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
+bb findings sample [--remove]   write a clearly-fake report, so the Analysis
+                      surfaces can be worked on where no scanner runs
+bb token keep      store BB_TOKEN where this account's sessions on this
+                   machine read it; the agent runs it for an idle session
 bb roadmap            this project's roadmap: items are R1, R2, ...; bugs are B1, B2
 bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
@@ -547,6 +535,16 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
                    project, proved by its token, never the `BB_NODE` in its
                    environment. What can be read is a table of three streams;
                    anything else is refused, not run
+bb diag [--json] [SECTION...]
+                   the controller's diagnostics, read-only: its build and the
+                   images it ran, its switches, the doctor's every check, each
+                   node's agent and session half, the last day's jobs and the
+                   failures, error lines from its own logs and the audit
+                   trail, with anything shaped like a credential redacted. An
+                   administrator's. A session reads it only while **debug
+                   mode** is on, its node is ticked for **the controller's
+                   diagnostics** on its Debug settings, and its account is an
+                   administrator's, so a tester on the same node never gets it
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -1000,7 +998,25 @@ bb findings              # this project's findings
 bb findings --all        # every project the report covers
 bb findings x.sarif      # one file rather than all of /reports
 bb findings --level error --rule DL3008 --find "quote"   # narrow it
+bb findings sample       # a fake report, for a box with no scanner
+bb findings sample --remove
 ```
+
+The scanner is the host's and a development stack has none, so the Analysis
+tab, the card's counts and the findings log have nothing to show in a dev
+instance. `bb findings sample` writes one obviously-fake report, tool
+`builderbot-sample`, with a finding in each of the first few projects on the
+share and one on a path that places nowhere, so every shape those surfaces
+draw has something to draw. It refuses to sit beside a real report, and it
+refuses a read-only `/reports`, which is what a box with a real scanner has.
+Run it inside the instance you want it in: it is not relayed to the
+controller, because planting findings in somebody else's report directory is
+not a thing a session should do.
+
+A session reads its own project's findings and no others: not through the
+Analysis tab, not in the poll's counts, and `bb findings --all` is refused for
+one, since the report covers the whole share and the flag means every project
+in it.
 
 A scanner pointed at a directory of repos writes one report covering all of
 them, so `bb findings` filters to the project you run it from and says how many
@@ -1168,16 +1184,7 @@ lives in its body. The cards:
   **Show projects with errors**, in red, a directory the container user
   cannot read/write/enter (with the `chown` that fixes it) or one holding no
   valid git repository. Only errors are folded away: a **warning stays in the
-  list**, in amber, because it is asking for something: a repo with no
-  environment block yet, or one whose block has drifted from the image's.
-  Both are underlined links that fix themselves: `bb claude-md --init` and
-  `bb claude-md --update` on that project. What they write is the block for
-  *that* project: the Android section only where the tree carries a gradle
-  file, an `android/` directory or a manifest, and the dev-instance section
-  only where it carries a compose file. Both are read from the projects share,
-  so the controller and every node render the same answer; a project that
-  gains a compose file gains that section as ordinary drift, with the same
-  update link beside it. This is what
+  list**, in amber, because it is asking for something. This is what
   makes one mapping for the whole folder workable: a directory that is not a
   project says so instead of quietly not appearing. Hidden directories and the
   runner's `_work` are skipped outright, and empty
@@ -1191,8 +1198,8 @@ lives in its body. The cards:
   different promise.
   At the foot of the card, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
-  becomes its `CLAUDE.md`, with the environment block rendered from the
-  image's template into `CLAUDE.local.md` beside it. When nodes are
+  becomes its `CLAUDE.md`, which is the project's own from that moment
+  on. When nodes are
   enrolled it also asks which node the project runs on (the only one is
   picked for you; *none* is an option), the same setting the project's
   settings dialog changes later, so a new project can build and start a
@@ -1210,8 +1217,7 @@ lives in its body. The cards:
   section is drafted from the repo itself (the README's opening paragraph,
   plus build/test commands read off marker files like `package.json`,
   `gradlew`, `Cargo.toml`), marked as a draft for a session to verify. A
-  repo that already carries a `CLAUDE.md` keeps its own, and gets the
-  environment block beside it either way.
+  repo that already carries a `CLAUDE.md` keeps its own, untouched.
   For a private repo with its own deploy key, a **Deploy key** picker lists
   what the shielded agent holds (public halves only, via `ssh-add -L`) and
   shows the selected key for copying into the repo's GitHub deploy-key page.
@@ -1312,8 +1318,7 @@ lives in its body. The cards:
   and it is folded shut, because a handful of files nobody edits does not
   earn the top of a panel. Editing one arms the panel's single **Save**, the
   same button the roadmap uses.
-  **Edits land for the next session**, the same rule `bb claude-md` follows:
-  the index is read at startup, and a running session is holding what it read
+  **Edits land for the next session**: the index is read at startup, and a running session is holding what it read
   then, which is what Save tells it, in the one line it spends
 - **(node: name)** after every project's name, on the card and on the
   Projects tab: the node its work runs on, or *none*. A project with none
@@ -3285,8 +3290,16 @@ project, its worktrees and the account's Claude share (other projects'
 transcripts are empty); the account's home is the only home and its
 BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
 `/dev/shm` are the session's own; the agent's stores keep only the
-emulator's logs and the project's own CI logs and artifacts; and the
-process list and tmux server of other sessions are out of reach. The helper
+emulator's logs and the project's own CI logs and artifacts; the packages
+store and the base home are read-only, so nothing a session writes can reach
+a command another account or a job runs (Flutter's own tree is the one
+exception, since it writes there on every run, with its `bin` still
+read-only); and the process list and tmux server of other sessions are out of
+reach. Each account on a node keeps its own tool caches and dotfiles
+(`.gradle`, `.m2`, `.npm`, `.cache`, the Rust crate cache and the rest)
+rather than sharing the base home's, so a person's first build on a node
+downloads its own dependencies. Updating Claude Code on a node is the
+provisioner's; a session's own updater is off. The helper
 then drops to the session account with `no_new_privs`, so nothing inside
 can gain privilege again. The agent installs the helper, its layout file and
 the sudo rule from the bundle, and reports on the node's Sessions section
@@ -3652,80 +3665,32 @@ away and honest about being a shell.
 
 ## Telling a project's sessions about this environment
 
-**A session is held to the current environment.** A Claude session lives in
-tmux and outlives a container update, so the block in its project's
-CLAUDE.md can be a version old by its next tool call. A hook on every tool
-call (`bb-gate`, installed by the session launcher beside the other three)
-refuses to run anything while the controller is not answering: restarting
-after an update, or while the project's block is from another compatibility
-window, and says which. The first is waited out; the second is the operator's
-to fix, from the project's row or with `bb claude-md --update`, after which
-the session reads CLAUDE.md again and carries on. A block merely behind
-inside the window stops nothing: the same hook, on a prompt, tells the
-session once an hour that an update is waiting. The check costs one status
-request every twenty seconds while things are fine.
+Every session is handed one block of text before it types anything, assembled
+by the controller at the moment the session starts: how this machine works,
+then the house rules in effect, then the open roadmap and the open bugs. The
+Briefing tab shows a person exactly that string, byte for byte, because it is
+the same assembly rather than another rendering of it.
 
-A Claude session started in `/workspace/<project>` sees the project, not the
-container around it, so it does not know that `apt-get install` will not
-survive an update, that there is no display, or that ssh keys are deliberately
-unreadable. The image ships a template that explains all of it:
+None of it is copied into the project. There is no file to render, push, or
+keep in step, and nothing to go stale: the briefing is one file in the image
+(`config/templates/briefing.md`), the rules live in `/config`, and a project
+that has never heard of BuilderBot gets the same briefing as one that has.
+The parts that only apply to some projects are marked in that file with the
+evidence that decides them, matched as globs against the project's tree, so a
+project with no Android in it is not told how to drive an emulator.
 
-```bash
-bb claude-md --init      # from the project directory
-```
+`CLAUDE.md` in a project is the project's own notes, committed, and nobody's
+to generate. **A session is still held to the current environment**: a hook on
+every tool call (`bb-gate`) refuses to run anything while the controller is
+not answering, which is what a restart after an update looks like. That is
+waited out. The compatibility window still holds a project whose *node* runs
+an agent from another window, and the Nodes tab's Update is what clears it.
 
-Then fill in the project section at the bottom. Claude Code picks `CLAUDE.md`
-up from the project root automatically.
-
-**Keeping it current.** The environment half of that file goes stale every time
-the container gains a feature, while the project half is the expensive part
-nobody wants to risk. So the template wraps its own content in
-`BUILDERBOT:ENV:BEGIN` / `END` markers, and refreshing is a substitution rather
-than a merge:
-
-```bash
-bb claude-md             # does this copy differ from the image's template?
-bb claude-md --update    # replace just that block
-```
-
-Everything below the end marker is never read, compared or written. A file
-without markers is refused rather than guessed at: merge those once by hand,
-and every refresh after that is mechanical.
-
-The template also tells sessions to run the check at the start of a session and
-refresh if it reports drift, so a project's environment notes keep up with the
-container without you remembering to do it. It asks the session to say when it
-updates rather than doing it silently, because a modified tracked file that
-nobody mentioned is the kind of thing that gets swept into an unrelated commit.
-
-**The dashboard checks too.** A project whose block has drifted is flagged in
-amber on the Projects card, and that line is a link: clicking it runs the same
-`bb claude-md --update` against that project and the warning clears. It is the
-same comparison `bb claude-md` makes: the marked block against the image's
-template, and nothing below the end marker: done in-process rather than by
-shelling out once per project on every poll. A `CLAUDE.md` with no markers is
-named but *not* offered the link, because `--update` refuses that file too.
-
-**And a block from another window stops the project's sessions.** The block
-carries the compatibility window it was written for: the
-`BUILDERBOT:ENV:WINDOW` line under the begin marker, BuilderBot's minor, the
-same window the node agent promises. Drift *inside* the window is routine
-and stops nothing: the link waits, and a session may start meanwhile. A
-block from *another* window describes a different BuilderBot, so that
-project's **Claude button is ghosted**, saying which window against which;
-`bb-tty` refuses the same case, so the terminal URL is not a way around it;
-the bell pins it in red with the update beside it; and the sessions already
-running on that project (here or on its node) are **ended**, since the
-moment after a controller update is exactly when a conversation started
-under the old window is acting on a map that is now wrong. The same hold
-applies when the project's *own* node runs an agent from another window:
-the button waits for that node's Update as well as the block's. It is per
-project: another project's node being out of window is that row's hold.
-Pressing the update link clears the block's half in one go. Three states are
-*not* refused: a project with no `CLAUDE.md` (that is `--init`, and yours to
-decide), one predating the markers or the window line (no window to compare,
-and "cannot say" is never read as a gap), and one merely behind inside the
-window. `bb claude-md --out-of-window` is the predicate, exit code only.
+This used to be a 53KB block rendered into every project's `CLAUDE.local.md`
+and pushed again whenever the template moved, with a window gate that ended
+sessions when a copy fell behind. The copy was the problem: nothing kept it
+current, and the machinery that policed it was larger than the thing it
+policed.
 
 ## Playwright, Android, publishing
 
@@ -3903,7 +3868,6 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
-    claudemd.py                  a project's environment block: where it lives, what it should say, its window
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
@@ -3923,7 +3887,8 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     phone.py                     a paired handset on a node: install, push, and the asking
-    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
+    db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
+    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)
     workspace.py                 snapshots, the node bundle, and the artifact store
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it

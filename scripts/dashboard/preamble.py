@@ -14,20 +14,32 @@ So it is here, the launcher asks for it through `bb preamble`, and the tab
 renders exactly the string that goes in front of a session rather than an
 approximation of it.
 
-The cap is part of the answer, not a caller's business. A single argv entry
-cannot exceed MAX_ARG_STRLEN — 131072 bytes on Linux — and past it `exec`
-answers "Argument list too long" and the pane dies without saying why. 100000
-leaves room for the rest of the command line. When the block is cut, the cut
-is made at a line boundary and says so in the text, so a session is told that
-it is reading part of a list rather than all of one.
+The cap is part of the answer, not a caller's business. It used to be the
+kernel's: a single argv entry cannot exceed MAX_ARG_STRLEN, 131072 bytes on
+Linux, and past it `exec` answers "Argument list too long" and the pane dies
+without saying why. bb-tty writes this to a file now and passes
+--append-system-prompt-file, so that ceiling is gone and the number here is
+about what a session should be asked to read: every conversation pays for all
+of it, so a list that runs past this is one nobody has pruned. When the block
+is cut, the cut is made at a line boundary and says so in the text, so a
+session is told that it is reading part of a list rather than all of one.
 """
+
+import os
+import re
+from pathlib import Path
 
 # The three stores, set by configure(). Named here so the module reads as
 # what it is on its own, and so a typo is a lint finding rather than a
 # NameError on somebody's first session of the day.
 rules_mod = todo_mod = bugs_mod = None
 
-MAX = 100000
+# The projects share, for deciding which parts of the briefing apply to this
+# project. From the environment rather than configure(), because both readers
+# (the server and bb) already run with it set and neither has to be taught.
+WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
+
+MAX = 200000
 
 CUT = ("[the rest of this list did not fit in the prompt — `bb roadmap`"
        " and `bb bug` show all of it]")
@@ -42,15 +54,86 @@ def configure(*, rules_mod, todo_mod, bugs_mod):
     globals().update(rules_mod=rules_mod, todo_mod=todo_mod, bugs_mod=bugs_mod)
 
 
+# Where the environment briefing is written. The image puts config/templates/
+# at /opt/builderbot/templates/ (see the Dockerfile), which is NOT where it
+# sits in a checkout, and the first version of this looked only at the checkout
+# layout: every session on a real controller got no briefing at all and nothing
+# said so. So: the override first, then the installed path, then the checkout
+# beside this module, and a miss is said out loud rather than swallowed.
+BRIEFING_PATHS = [Path(os.environ["BRIEFING_MD"])] if os.environ.get("BRIEFING_MD") else [
+    Path("/opt/builderbot/templates/briefing.md"),
+    Path(__file__).resolve().parents[2] / "config" / "templates" / "briefing.md",
+]
+_IF = re.compile(r"<!-- BUILDERBOT:IF ([^>]*?) *-->")
+_END = "<!-- BUILDERBOT:END -->"
+
+
+def briefing(project):
+    """How this machine works, as every session on it is told (R63).
+
+    It used to be a 53KB block rendered into every project as CLAUDE.md and
+    pushed again whenever the template moved, which is drift by construction:
+    the copy is what a session reads and nothing keeps it current. Assembled
+    here instead, from one file, at the moment a session starts, so there is
+    no copy to be out of date and nothing to push.
+
+    What is in it is what would surprise somebody. The `bb` reference that
+    made up most of the old block is a `bb <verb> -h` away and does not need
+    paying for on every conversation.
+
+    The parts that only apply to some projects are marked in the file with
+    the evidence that decides them, the same way the template marks its own,
+    and the evidence is a glob against the project's tree because the tree is
+    what the controller and every node agree about.
+    """
+    text = None
+    for cand in BRIEFING_PATHS:
+        try:
+            text = cand.read_text()
+            break
+        except OSError:
+            continue
+    if text is None:
+        # Loud, and in the prompt: a session that is not told how this machine
+        # works should know that, and so should whoever reads the Briefing tab.
+        return ("[the environment briefing is missing from this image, so what "
+                "follows is the rules and the lists only. Say so in your reply.]")
+    tree = Path(WORKSPACE or "/workspace") / project
+    out, skip = [], False
+    for line in text.split("\n"):
+        m = _IF.search(line)
+        if m:
+            bits = m.group(1).split()
+            skip = not any(_has(tree, g) for g in bits[1:])
+            continue
+        if _END in line:
+            skip = False
+            continue
+        if not skip:
+            out.append(line)
+    return "\n".join(out).strip("\n")
+
+
+def _has(tree, pattern):
+    try:
+        return any(True for _ in tree.glob(pattern))
+    except (OSError, ValueError):
+        return False
+
+
 def parts(project):
-    """The three pieces, in the order a session reads them.
+    """The pieces, in the order a session reads them.
+
+    The briefing first, because it is what the rest is said in terms of; then
+    how the operator wants this worked on; then what there is to work on.
 
     Each store answers "" when it has nothing, and an empty piece contributes
     no blank line: a project with no bugs must not start its sessions with a
     gap where the tracker would have been.
     """
     out = []
-    for name, fn in (("rules", lambda: rules_mod.block(project)),
+    for name, fn in (("briefing", lambda: briefing(project)),
+                     ("rules", lambda: rules_mod.block(project)),
                      ("roadmap", lambda: todo_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):
         try:
