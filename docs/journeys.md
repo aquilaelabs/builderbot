@@ -213,6 +213,34 @@ instance before walking a journey on it, and record the build the walk was
 against.** A walk whose build is not written down says less than it appears
 to, which is the same fault as a green suite that ran somewhere else (R65).
 
+### Walked again on the build it was meant to prove (against `e8a6f5a`)
+
+`bb devapp rebuild` took 136 seconds and brought the dashboard up on the
+branch head, so the same ground was covered again with that day's work
+actually present. A session token was minted against the dev controller's own
+state, which is what stands in for a Claude session there.
+
+6. **A session sees its one project.** The token for `hello` listed `hello`
+   and nothing else, and the poll's finding counts were empty rather than the
+   box's.
+7. **Parking, and not un-parking.** The session added a roadmap step, shelved
+   it (`ok`), and was refused taking it back off: 403, *taking an item off the
+   shelf is the operator's*. The owner then unshelved it in one call. That is
+   the asymmetry the control was built for, proved from both sides rather than
+   from the tests alone.
+8. **Two people, one project, two models.** As the owner, `hello` was given a
+   model, an effort and a commit author. The owner's row carried them under
+   `yours`; `dev2`, who has the same project, carried none of them; and the
+   project's own settings carried no model at all. Asked the way a session is
+   asked (`bb settings --json` for each seat), the owner's session would
+   launch on `opus` at `high` and commit as `Stencil Alt`, while `dev2`'s on
+   the same project would launch on Claude's own default and commit as
+   themselves. That is the whole of what "yours, not the project's" was meant
+   to mean, seen from outside the code.
+
+No snag. Everything set during the walk was put back, and the box was left
+with the four projects it started with.
+
 - Alpha, new evidence: several accounts on one controller, each seeing only
   what they were granted, proved from the outside rather than from the tests.
 - Still dev: nothing this walk touched.
