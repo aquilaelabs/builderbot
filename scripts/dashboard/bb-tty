@@ -451,7 +451,11 @@ session_token() {
     local py="/opt/builderbot/scripts/dashboard/users.py"
     [ -f "$py" ] || py="$(dirname "$(readlink -f "$0")")/users.py"
     [ -f "$py" ] || return 0
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" <<'PY' 2>/dev/null || true
+    # Minted for the ACCOUNT as well as the project, the shape the controller
+    # mints for a node-bound terminal. Without it two people who opened a
+    # session on one project in the same second were handed the same token,
+    # byte for byte, and nothing it did said whose it was.
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" "${account:-}" <<'PY' 2>/dev/null || true
 import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", sys.argv[1])
 u = importlib.util.module_from_spec(spec)
@@ -466,7 +470,7 @@ def write_json(path, data):
 
 
 u.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
-print(u.mint_session(sys.argv[2]))
+print(u.mint_session(sys.argv[2], uid=sys.argv[3]))
 PY
 }
 

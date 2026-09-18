@@ -450,9 +450,14 @@ tmuxKill('claude-alpha');
       const tok = u => join(HOMEDIR, '.cache', 'builderbot', 'u', u, 'project', proj, 'token');
       const a = existsSync(tok(ownerUid)) ? readFileSync(tok(ownerUid), 'utf8').trim() : '';
       const b = existsSync(tok(other)) ? readFileSync(tok(other), 'utf8').trim() : '';
-      ok(a && b && a !== b,
-         `two accounts with a session on one project keep their own token, not one shared file (${
-           a.slice(0, 12)}… vs ${b.slice(0, 12)}…)`);
+      // Decoded and compared by the account each names: the head of every
+      // token for one project is the same (it is the project's name), so a
+      // prefix said nothing, and two minted in one second without an account
+      // were the same token (B176).
+      const whose = t => { try { return Buffer.from(t.slice(4), 'base64url').toString().split('|')[2] || ''; } catch { return ''; } };
+      ok(a && b && a !== b && whose(a) === ownerUid && whose(b) === other,
+         `two accounts with a session on one project keep their own token, each naming its account (${
+           whose(a) || 'none'} vs ${whose(b) || 'none'})`);
       ok(!existsSync(join(HOMEDIR, '.cache', 'builderbot', 'project', proj, 'token')),
          '...and nothing is left in the shared folder they used to share');
     }
