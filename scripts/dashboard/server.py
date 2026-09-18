@@ -2297,6 +2297,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 
 # The node data plane first, because devapp's job claim asks it which node
@@ -4200,7 +4201,7 @@ class Handler(BaseHTTPRequestHandler):
         if not NODES_OK:
             act = path + (":" + str(req["action"])[:40]
                           if isinstance(req.get("action"), str) else "")
-            nodes.audit(self._principal(), act,
+            db.audit(self._principal(), act,
                         str(req.get("project") or req.get("name")
                             or req.get("id") or "")[:120], req)
         for how, route, name in POST_ROUTES:
@@ -4464,7 +4465,7 @@ class Handler(BaseHTTPRequestHandler):
             devapp.forget_available()
             with devapp.on_node(nid):
                 got = devapp.available_cached()
-            nodes.audit(self._principal(), "node-test", nid,
+            db.audit(self._principal(), "node-test", nid,
                         {"on": got.get("on")})
             return self._json({"on": bool(got.get("on")),
                                "why": got.get("why") or ""})
@@ -4881,7 +4882,7 @@ class Handler(BaseHTTPRequestHandler):
             j = nodes.job(r["job"])
             if j and j["state"] in nodes.JOB_END:
                 out = (j.get("log") or "").strip()
-                nodes.audit(self._principal(), "node-test", n["id"],
+                db.audit(self._principal(), "node-test", n["id"],
                             {"on": j["state"] == "succeeded"})
                 return {"on": j["state"] == "succeeded",
                         "why": out or f"{j['state']} (exit {j['exit_code']})"}
@@ -4973,7 +4974,7 @@ class Handler(BaseHTTPRequestHandler):
                 length = 0
             r = workspace.artifact_put(j, q.get("name", [""])[0], self.rfile, length)
             if not r.get("error"):
-                nodes.audit(auth["principal"], "artifact", j["id"],
+                db.audit(auth["principal"], "artifact", j["id"],
                             {"path": r["path"], "sha256": r["sha256"]})
             return self._result(r)
         if verb == "download":
@@ -5046,7 +5047,7 @@ class Handler(BaseHTTPRequestHandler):
                 only = list(nodes.runners_of(nodes.node(nid) or {}))
                 slot = only[0] if len(only) == 1 else ""
             r = runners.mint(kind, nid, slot, field(req, "runner_id"))
-            nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
+            db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
             return self._result(r)
         if verb == "hello":
             r = nodes.hello(nid, req.get("census"), addr,
@@ -5705,7 +5706,7 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             if not NODES_OK:
-                nodes.audit(self._principal(), "version-release", name,
+                db.audit(self._principal(), "version-release", name,
                             {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
             return self._json(version_payload(name) | {"released": r})
         if act == "init":
@@ -6331,7 +6332,7 @@ class Handler(BaseHTTPRequestHandler):
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
                         may_push=projects.may_push(name))
         if r.get("ok") and not NODES_OK:
-            nodes.audit(self._principal(), "git-" + action, name,
+            db.audit(self._principal(), "git-" + action, name,
                         {k: v for k, v in (req.get("args") or {}).items()
                          if k in ("name", "sha", "path", "at")})
         return self._result(r)

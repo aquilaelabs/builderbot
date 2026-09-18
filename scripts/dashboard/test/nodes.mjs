@@ -26,7 +26,7 @@ import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location('nodes',
   ${JSON.stringify(new globalThis.URL('../nodes.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-m.open_readonly(${JSON.stringify(DIR + '/state')})
+m.db.open_readonly(${JSON.stringify(DIR + '/state')})
 print(json.dumps(${py}))
 `], { encoding: 'utf8' }).trim());
 
@@ -169,7 +169,7 @@ print(json.dumps(out))
                            title: 'audit-canary-sekrit', severity: 'low' }),
   }));
   await sleep(300);
-  const tail = readStore('m.audit_tail(80)');
+  const tail = readStore('m.db.audit_tail(80)');
   const row = tail.find(r => r.action === '/api/bugs:add');
   // The principal names the ACCOUNT now, not the fact that somebody was
   // signed in: `operator` was a placeholder from when only one person could
@@ -183,7 +183,7 @@ print(json.dumps(out))
   // Asked for by name, not scanned for in a tail: in a full run this file
   // goes last, behind hundreds of audited mutations from every other suite.
   const seed = readStore(
-    `m._rows("SELECT principal FROM audit WHERE action = ?", ("node-seed",))`);
+    `m.db._rows("SELECT principal FROM audit WHERE action = ?", ("node-seed",))`);
   ok(seed.length === 1 && seed[0].principal === 'system',
      'the seed itself is on the record, once, as system');
 }
@@ -304,7 +304,7 @@ print(json.dumps(out))
   ok(true, 'Drain marks it draining');
   // the audit trail followed
   const acts = readStore(
-    `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
+    `m.db._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
   ok(acts.some(r => r.action === 'node-enroll-mint')
      && acts.some(r => r.action === 'node-update')
      && acts.some(r => r.principal === 'user:test'),

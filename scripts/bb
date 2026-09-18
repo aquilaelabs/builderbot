@@ -4482,7 +4482,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
@@ -4540,7 +4540,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     jid = sys.argv[3] if len(sys.argv) > 3 else ""
     rows = ([nodes.job(jid)] if jid else nodes.jobs_for(n=int(sys.argv[2])))
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
@@ -4770,7 +4770,7 @@ import contextlib, importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
 with contextlib.suppress(Exception):
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     print("\n".join(nodes.runner_labels_known()))
 PY
         } | awk 'NF && !seen[$0]++')
@@ -5213,7 +5213,7 @@ import importlib.util, os, pathlib, re, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     label = nodes.node_runner_label(sys.argv[2])
 except Exception:
     label = ""
@@ -5821,7 +5821,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception:                                                # noqa: BLE001
     print("  [skip] no node store yet: the dashboard creates it on boot")

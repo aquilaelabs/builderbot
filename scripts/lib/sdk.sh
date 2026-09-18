@@ -243,7 +243,7 @@ spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
 try:
-    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     n = nodes.node(sys.argv[2])
 except Exception:
     raise SystemExit(1) from None

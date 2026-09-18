@@ -3869,7 +3869,8 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     phone.py                     a paired handset on a node: install, push, and the asking
-    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
+    db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
+    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)
     workspace.py                 snapshots, the node bundle, and the artifact store
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it

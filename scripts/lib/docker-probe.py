@@ -41,7 +41,7 @@ def _wire_nodes(m, path):
         spec = importlib.util.spec_from_file_location("nodes", npath)
         nodes = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(nodes)
-        nodes.open_readonly(state)
+        nodes.db.open_readonly(state)
     except Exception:                             # noqa: BLE001 - the probe still answers
         return
     m.queue = nodes
