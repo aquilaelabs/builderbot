@@ -58,12 +58,13 @@ esac
 # is taken only in the shape it should have. The token is a credential for
 # one project with user rights and an expiry, which is exactly what the
 # launcher below would have minted; it is not the operator's password.
+url_tok=""
 for extra in "${@:2}"; do
     case "$extra" in
         tok:bbs_*)
             case "${extra#tok:}" in
                 *[!A-Za-z0-9_-]*) ;;
-                *) export BB_TOKEN="${extra#tok:}" ;;
+                *) url_tok="${extra#tok:}"; export BB_TOKEN="$url_tok" ;;
             esac ;;
         name:*)
             case "${extra#name:}" in
@@ -76,6 +77,55 @@ for extra in "${@:2}"; do
         owner:1) [ -n "$account" ] && export BB_TREE_OWNER=1 BB_ACCOUNT_UID="$account" ;;
     esac
 done
+
+# ---- on a node, the controller says whose this is (B166) --------------------
+#
+# Everything above is what the URL claimed. On the controller that is the
+# account /term proved, because ttyd there is loopback-only and the proxy is
+# the one way in. A node's ttyd is on the node, and a session there reaches it
+# over loopback like any other process on the machine, so on a node the URL
+# proves nothing: u:<uid>, name: and owner:1 would open another account's home
+# and Claude login for whoever typed them. So the token that rode in is shown
+# to the controller, which alone can check its signature, and the account,
+# the name and ownership come from its answer. No answer, no terminal: a node
+# that cannot reach the controller cannot start a session anyway.
+if on_node; then
+    grant="$(BB_TTY_TARGET="$target" BB_URL_TOKEN="$url_tok" python3 - "$(dirname "$(readlink -f "$0")")/../lib" 2>&1 <<'GRANT'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import bbapi
+# Nothing is kept from this answer: the account in the environment is still
+# the URL's claim, and a renewed token must not be written under it.
+bbapi.keep_token = lambda _tok: None
+tok = os.environ.get("BB_URL_TOKEN", "")
+if not tok:
+    print("this terminal came without a session token, which only the controller's "
+          "proxy adds, so it was not opened through the dashboard", end="")
+    raise SystemExit(1)
+st, got = bbapi.request("/api/v1/tty-grant",
+                        {"arg": os.environ["BB_TTY_TARGET"], "ro": os.environ.get("BB_TTY_RO") == "1"},
+                        auth="Bearer " + tok, timeout=20)
+if st != 200 or not isinstance(got, dict) or not got.get("uid"):
+    why = (got or {}).get("error") if isinstance(got, dict) else ""
+    print(why or "the controller did not answer", end="")
+    raise SystemExit(1)
+print(json.dumps(got))
+GRANT
+)" || {
+        echo "BuilderBot: this terminal was refused: $grant" >&2
+        if [ -t 2 ]; then sleep 10; fi
+        exit 1
+    }
+    account="$(printf '%s' "$grant" | jq -r '.uid // empty')"
+    BB_ACCOUNT_NAME="$(printf '%s' "$grant" | jq -r '.name // empty')"
+    BB_ACCOUNT_UID="$account"
+    export BB_ACCOUNT_NAME BB_ACCOUNT_UID
+    if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
+        export BB_TREE_OWNER=1
+    else
+        unset BB_TREE_OWNER
+    fi
+fi
 
 # The account's own home: own shell history, own Claude login, own memories.
 # Exported before anything runs, because tmux hands its environment to the

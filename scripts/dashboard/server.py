@@ -2845,6 +2845,7 @@ POST_ROUTES = (
     ("exact", "/api/v1/bb", "_bb_relay"),
     ("exact", "/api/v1/claude-login", "_claude_login"),
     ("exact", "/api/v1/hook", "_hook"),
+    ("exact", "/api/v1/tty-grant", "_tty_grant"),
     ("prefix", "/api/lock", "_lock"),
     # NOT /api/pin, which is the command pin and has been since long before
     # this: startswith() means a route added above it silently takes every
@@ -3193,7 +3194,7 @@ class Handler(BaseHTTPRequestHandler):
         # nobody else's business to read off a row.
         return rows
 
-    def _term_refused(self, rest):
+    def _term_refused(self, rest, me=None):
         """A sentence when this account may not have the terminal it is asking
         for, and "" when it may.
 
@@ -3209,14 +3210,18 @@ class Handler(BaseHTTPRequestHandler):
         a shell, not somebody else's Claude, and not a project it cannot see.
         A read-only terminal pointed at another session is a way to WATCH one,
         which is the hole this closes rather than opens.
+
+        `me` is the account to ask about when it is not the request's own:
+        a node's bb-tty asking for the account a session token was minted
+        for (_tty_grant).
         """
-        me = self._who()
+        me = me or self._who()
         arg = _term_arg(rest)
         if arg.startswith("claude:"):
             return users.may(me, "claude", arg[len("claude:"):].split(":")[0])
         return users.may(me, "terminal")
 
-    def _claude_held(self, rest):
+    def _claude_held(self, rest, me=None):
         """A sentence when this account may not open the Claude session it is
         asking for, and "" when it may.
 
@@ -3234,7 +3239,7 @@ class Handler(BaseHTTPRequestHandler):
         suggestion, because the ttyd URL is reachable directly.
         """
         arg = _term_arg(rest)
-        me = self._who()
+        me = me or self._who()
         uid = users.uid_of(me)
         # No author, no terminal: every project is a repository, a commit
         # with no name and email behind it is one git refuses halfway through
@@ -4546,6 +4551,54 @@ class Handler(BaseHTTPRequestHandler):
                                signed_in=bool(req.get("signed_in", True)))
         _auth.clear()
         return self._result(r)
+
+    def _tty_grant(self, req):
+        """Whose terminal a node's bb-tty is about to start, answered here
+        (B166).
+
+        On this container ttyd is loopback-only and /term is the one way in,
+        so the account _scoped_arg stamps is the account that proved itself.
+        A node's ttyd is on the node, and a session there reaches it over
+        loopback like any other process on the machine: whatever the URL
+        says, bb-tty would have believed. So on a node bb-tty asks this, with
+        the token that rode in on the URL, and takes the account, its name
+        and whether it is the owner from the answer and never from the URL.
+
+        The token is the proof. It is signed with a key only this container
+        holds, names one project and one account, and expires; the proxy
+        mints a fresh one for every terminal it relays. What is asked of it
+        is what the proxy asked before relaying: the project the terminal is
+        for is the token's, the account is still there and may open it
+        (_term_refused, _claude_held), and a writable terminal is for an
+        account with a shell, since the proxy sends everybody else to the
+        read-only twin. A session holding its own token can therefore open
+        what its own account could open through the proxy, and nothing else.
+        """
+        who = self._who() or {}
+        if not who.get("session") or not users.uid_of(who):
+            return self._json({"error": "a terminal on a node is granted to a session token "
+                                        "minted for an account, and this is not one"}, 403)
+        me = users.account_of(who)
+        if me is who or not me.get("uid"):
+            return self._json({"error": "the account this token was minted for is gone"}, 403)
+        arg = str(req.get("arg") or "")
+        if _ARG_OWNER.match(arg):
+            return self._json({"error": "the argument names its account, which is this "
+                                        "answer's to say"}, 400)
+        project = _arg_project(arg)
+        if not project or project != who["session"]:
+            return self._json({"error": f"this token is for {who['session']}, and the terminal "
+                                        f"asked for is {'for ' + project if project else 'not a project'}"},
+                              403)
+        rest = "/?arg=" + urllib.parse.quote(arg, safe="")
+        refused = self._term_refused(rest, me) or self._claude_held(rest, me)
+        if refused:
+            return self._json({"error": refused}, 403)
+        if not req.get("ro") and users.may(me, "terminal"):
+            return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
+                                        "read-only one"}, 403)
+        return self._json({"uid": me["uid"], "name": me["name"], "project": project,
+                           "owner": me.get("role") == "owner"})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24).

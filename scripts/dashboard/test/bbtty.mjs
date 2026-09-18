@@ -359,9 +359,9 @@ tmuxKill('claude-alpha');
 {
   const HOMEDIR = join(DIR, 'home');
   const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
-  const shell = (arg, extra = {}) => {
+  const shell = (arg, extra = {}, more = []) => {
     try {
-      return execFileSync('bash', [BBTTY, arg], {
+      return execFileSync('bash', [BBTTY, arg, ...more], {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
                WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
@@ -574,25 +574,102 @@ tmuxKill('claude-alpha');
   // and no key to mint one with; and a project's directory is never worked
   // in directly — every session gets a worktree.
   {
-    const node = { BUILDERBOT_ROLE: 'node', BB_CI_LOG_DIR: '/x/ci-logs' };
+    const node = { BUILDERBOT_ROLE: 'node', BB_CI_LOG_DIR: '/x/ci-logs', BB_CONTROLLER: URL };
+    // A node's bb-tty asks the controller whose terminal it is (B166), so
+    // what rides in on these URLs is real: tokens minted by the harness's own
+    // server, for the owner and for two accounts made here and removed at the
+    // end of the block, so no file after this one meets them: an administrator
+    // (a shell, and not the owner) and a plain user (no shell at all).
+    const usersPy = code => execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", ${JSON.stringify(join(REPO, 'scripts', 'dashboard', 'users.py'))})
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state=${JSON.stringify(join(DIR, 'state'))}, write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+${code}`], { encoding: 'utf8' }).trim();
+    const tok = (project, uid = ownerUid) =>
+      usersPy(`print(u.mint_session(${JSON.stringify(project)}, uid=${JSON.stringify(uid)}))`);
+    const otherUid = usersPy(`
+d = u.load()
+uid = u.mint_uid()
+d["users"]["wt.user"] = {"uid": uid, "role": "admin", "projects": ["wtproj", "viewproj"],
+                         "prefs": {"full_name": "Worktree User", "email": "wt@example.invalid"},
+                         "password": u.hash_password("wt-user-pass"), "created": 0, "seen": 0}
+u._save(d)
+print(uid)`);
+    const plainUid = usersPy(`
+d = u.load()
+uid = u.mint_uid()
+d["users"]["plain.user"] = {"uid": uid, "role": "user", "projects": ["wtproj"],
+                            "prefs": {"full_name": "Plain User", "email": "plain@example.invalid"},
+                            "password": u.hash_password("plain-user-pass"), "created": 0, "seen": 0}
+u._save(d)
+print(uid)`);
+    const ownerTok = tok('wtproj');
     // Another account's transcripts on the share, for the walls below.
     mkdirSync(join(DIR, 'ws', '.claude', 'u_0badf00d', 'projects'), { recursive: true });
-    tmuxKill('shell-10'); tmuxKill(`${ownerUid}~shell-10`);
-    shell(`u:${ownerUid}:sh:10:`, node);
+    tmuxKill('shell-wtproj-10'); tmuxKill(`${ownerUid}~shell-wtproj-10`);
+    shell(`u:${ownerUid}:sh:10:wtproj`, node, [`tok:${ownerTok}`]);
     await sleep(300);
-    ok(alive(`${ownerUid}~shell-10`) && !alive('shell-10'),
+    ok(alive(`${ownerUid}~shell-wtproj-10`) && !alive('shell-wtproj-10'),
        'on a node the owner is prefixed like everybody else — there is no owner there');
     ok(existsSync(join(HOMEDIR, 'users', ownerUid)),
        '...and gets a home under users/ rather than the box\'s own');
-    tmuxKill(`${ownerUid}~shell-10`);
+    tmuxKill(`${ownerUid}~shell-wtproj-10`);
+
+    // B166: what the URL claims is not who the terminal is for. A session on
+    // a node reaches its ttyd over loopback, so these are the URLs it could
+    // type. The account, its name and ownership come from the controller's
+    // answer to the token, and a URL the controller will not vouch for opens
+    // nothing.
+    {
+      const shOut = (arg, extras) => shell(arg, node, extras);
+      tmuxKill(`${ownerUid}~shell-wtproj-12`); tmuxKill(`${otherUid}~shell-wtproj-12`);
+      const bare = shOut(`u:${ownerUid}:sh:12:wtproj`, ['name:the.owner', 'owner:1']);
+      await sleep(200);
+      ok(/was refused/.test(bare) && /without a session token/.test(bare)
+         && !alive(`${ownerUid}~shell-wtproj-12`),
+         `on a node, a terminal with no token is refused however much the URL claims (${bare.trim().slice(0, 90)})`);
+      const claimed = shOut(`u:${ownerUid}:sh:12:wtproj`,
+                            [`tok:${tok('wtproj', otherUid)}`, 'name:the.owner', 'owner:1']);
+      await sleep(300);
+      const envOf12 = k => { try {
+        return execFileSync('tmux', ['show-environment', '-t', `${otherUid}~shell-wtproj-12`, k],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env }).trim();
+      } catch { return ''; } };
+      ok(alive(`${otherUid}~shell-wtproj-12`) && !alive(`${ownerUid}~shell-wtproj-12`),
+         `...and one whose URL names the owner, with another account's token, opens as the token's account (${claimed.trim().slice(0, 60) || 'opened'})`);
+      ok(envOf12('BB_ACCOUNT_NAME') === 'BB_ACCOUNT_NAME=wt.user' && !/=1/.test(envOf12('BB_TREE_OWNER')),
+         `...named by the controller and not made the owner by owner:1 on the URL (${envOf12('BB_ACCOUNT_NAME')}, ${envOf12('BB_TREE_OWNER') || 'no owner'})`);
+      tmuxKill(`${otherUid}~shell-wtproj-12`);
+      const across = shOut(`u:${ownerUid}:sh:12:viewproj`, [`tok:${ownerTok}`]);
+      ok(/was refused/.test(across) && /this token is for wtproj/.test(across)
+         && !alive(`${ownerUid}~shell-viewproj-12`),
+         `...a token for one project does not open another (${across.trim().slice(0, 90)})`);
+      const nowhere = shOut(`u:${ownerUid}:sh:13:`, [`tok:${ownerTok}`]);
+      ok(/was refused/.test(nowhere) && !alive(`${ownerUid}~shell-13`),
+         '...and a shell that is no project\'s, which the proxy never sends to a node, is refused there');
+      // The proxy sends an account with no shell to the read-only twin; the
+      // writable ttyd, reached directly, does not take it either.
+      const plainOut = (() => { try {
+        return execFileSync('bash', [BBTTY, `u:${plainUid}:claude:wtproj:b:${boot}`, `tok:${tok('wtproj', plainUid)}`], {
+          encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+                 BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node } });
+      } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; } })();
+      ok(/was refused/.test(plainOut) && /has no shell/.test(plainOut) && !alive(`${plainUid}~claude-wtproj`),
+         `...and an account with no shell is refused the writable one, where the proxy would have sent it to the read-only twin (${plainOut.trim().slice(0, 80)})`);
+      const forged = shOut(`u:${ownerUid}:sh:12:wtproj`, [`tok:${ownerTok.slice(0, -4)}AAAA`]);
+      ok(/was refused/.test(forged) && !alive(`${ownerUid}~shell-wtproj-12`),
+         `...as is a token whose signature is not the controller's (${forged.trim().slice(0, 80)})`);
+    }
 
     const proj = 'wtproj';
-    tmuxKill(`${ownerUid}~claude-${proj}`);
+    tmuxKill(`${otherUid}~claude-${proj}`);
     // The two extra URL arguments the proxy will add (phase 10b): the name
     // and a session token. Passed the way ttyd passes them — one argv each.
     const out = (() => { try {
-      return execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`,
-        'tok:bbs_abc-DEF_123', 'name:the.owner'], {
+      return execFileSync('bash', [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`,
+        `tok:${tok(proj, otherUid)}`, 'name:the.owner'], {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
                WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
@@ -600,35 +677,35 @@ tmuxKill('claude-alpha');
       });
     } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; } })();
     await sleep(400);
-    ok(alive(`${ownerUid}~claude-${proj}`),
-       `on a node the owner's Claude session is prefixed too (${out.split('\n')[0].slice(0, 80)})`);
-    const wt = join(DIR, 'ws', '.worktrees', proj, ownerUid);
-    ok(tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pane_start_path}') === wt,
-       `...and, not told it is the owner, works in a worktree (${wt})`);
+    ok(alive(`${otherUid}~claude-${proj}`),
+       `on a node an account's Claude session is prefixed (${out.split('\n')[0].slice(0, 80)})`);
+    const wt = join(DIR, 'ws', '.worktrees', proj, otherUid);
+    ok(tmuxFmt(`${otherUid}~claude-${proj}`, '#{pane_start_path}') === wt,
+       `...and, not the owner, works in a worktree (${wt})`);
     const branches = execFileSync('git', ['-C', join(DIR, 'ws', proj), 'worktree', 'list', '--porcelain'],
       { encoding: 'utf8' });
-    ok(/branch refs\/heads\/claude\/the\.owner/.test(branches),
-       '...on a branch named for the account name that rode in on the URL');
+    ok(/branch refs\/heads\/claude\/wt\.user/.test(branches),
+       '...on a branch named for the account the controller named, not the URL\'s name');
     // The transcripts directory of the node's home is a link onto the
     // share, so a conversation here is one the controller can resume.
-    const nodeHome = join(HOMEDIR, 'users', ownerUid);
+    const nodeHome = join(HOMEDIR, 'users', otherUid);
     ok(lstatSync(join(nodeHome, '.claude', 'projects')).isSymbolicLink()
-       && readlinkSync(join(nodeHome, '.claude', 'projects')) === join(DIR, 'ws', '.claude', ownerUid, 'projects'),
+       && readlinkSync(join(nodeHome, '.claude', 'projects')) === join(DIR, 'ws', '.claude', otherUid, 'projects'),
        'the home\'s ~/.claude/projects is a link to the account\'s directory on the projects share');
     // ...and the walls: other accounts' transcripts denied, this one's not.
-    const scopeN = JSON.parse(readFileSync(join(nodeHome, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'claude-scope.json'), 'utf8'));
+    const scopeN = JSON.parse(readFileSync(join(nodeHome, '.cache', 'builderbot', 'u', otherUid, 'project', proj, 'claude-scope.json'), 'utf8'));
     const denyN = scopeN.permissions.deny.join(' ');
     ok(denyN.includes(`Edit(${join(DIR, 'ws', '.claude', 'u_0badf00d')}/**)`)
-       && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude', ownerUid)}/**)`)
+       && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude', otherUid)}/**)`)
        && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude')}/**)`),
        'another account\'s transcripts are walled off; this account\'s memories are not');
-    // Told it is the owner (owner:1 on the URL), it works in the project
+    // The owner (the controller says so; owner:1 on the URL no longer does), works in the project
     // directory itself — the same tree, and so the same transcript slug,
     // as the controller's own session.
     tmuxKill(`${ownerUid}~claude-${proj}`);
     try {
       execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`,
-                            'tok:bbs_abc-DEF_123', 'name:the.owner', 'owner:1'], {
+                            `tok:${ownerTok}`, 'name:the.owner', 'owner:1'], {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
                BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
@@ -641,10 +718,10 @@ tmuxKill('claude-alpha');
       return execFileSync('tmux', ['show-environment', '-t', `${ownerUid}~claude-${proj}`, k],
         { encoding: 'utf8', env: process.env }).trim();
     } catch { return ''; } };
-    ok(envOf('BB_TOKEN') === 'BB_TOKEN=bbs_abc-DEF_123',
+    ok(envOf('BB_TOKEN') === `BB_TOKEN=${ownerTok}`,
        'the session token from the URL is the session\'s BB_TOKEN');
-    ok(envOf('BB_ACCOUNT_NAME') === 'BB_ACCOUNT_NAME=the.owner',
-       '...and the name is in its environment for bb to use');
+    ok(envOf('BB_ACCOUNT_NAME') === 'BB_ACCOUNT_NAME=test',
+       '...and the name in its environment is the controller\'s for that account, not the one the URL said');
     // ...and nowhere ps can show it: a tmux server started by new-session
     // keeps that command's argv, -e list and all, for as long as it runs.
     const serverPid = tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pid}');
@@ -662,7 +739,7 @@ tmuxKill('claude-alpha');
        `the tmux server's environment is brought up to date before each session, the token excepted (${genv('BB_TOKEN') || 'no BB_TOKEN'})`);
     const launcher = readFileSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
                                        'u', ownerUid, 'project', proj, 'claude-run.sh'), 'utf8');
-    ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),
+    ok(/bb settings --json/.test(launcher) && launcher.includes(`BB_TOKEN=${ownerTok}`),
        'the launcher asks bb settings for the model when the prefs file is not here, and carries the token');
 
     // ---- a session's view (R35) ----------------------------------------------
@@ -682,8 +759,9 @@ tmuxKill('claude-alpha');
       const vproj = 'viewproj';
       mkdirSync(join(DIR, 'ws', vproj), { recursive: true });
       const vhome = join(HOMEDIR, 'users', ownerUid);
+      const viewTok = tok(vproj);
       const runView = target => { try {
-        return execFileSync('bash', [BBTTY, target, 'tok:bbs_view-TOKEN_1', 'name:the.owner'], {
+        return execFileSync('bash', [BBTTY, target, `tok:${viewTok}`, 'name:the.owner'], {
           encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
           env: { ...process.env, PATH: `${vb}:${bin}:${process.env.PATH}`, BB_SESSION_BIN: helper,
                  WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR, BUILDER_HOME: HOMEDIR,
@@ -700,7 +778,7 @@ tmuxKill('claude-alpha');
          && vcmd.endsWith(`${vcache}/claude-run.sh`),
          `on a node that builds a session's view, the Claude session starts inside it through sudo and bb-session (${vcmd.slice(0, 90)})`);
       const envRaw = existsSync(envf) ? readFileSync(envf, 'utf8') : '';
-      ok(envRaw.split('\0').includes('BB_TOKEN=bbs_view-TOKEN_1') && (statSync(envf).mode & 0o777) === 0o600
+      ok(envRaw.split('\0').includes(`BB_TOKEN=${viewTok}`) && (statSync(envf).mode & 0o777) === 0o600
          && /^check$/m.test(readFileSync(calls, 'utf8')) && new RegExp(`^plan --project ${vproj} `, 'm').test(readFileSync(calls, 'utf8')),
          '...having asked the helper whether this node builds one and planned it first, with the environment in a file only the account reads');
       tmuxKill(`${ownerUid}~claude-${vproj}`);
@@ -711,29 +789,30 @@ tmuxKill('claude-alpha');
       ok(/could not for this one/.test(refused) && /not this one/.test(refused) && !alive(`${ownerUid}~shell-${vproj}`),
          `...and a project shell the helper cannot plan a view for is refused with its reason, never opened without one (${refused.replace(/\s+/g, ' ').slice(0, 90)})`);
     }
+    const otherTok = tok(proj, otherUid);
     // Claude Code's first-run questions are answered before it asks them:
     // a home this dashboard made has never seen the theme picker, and an
     // account with no shell could not get past it.
-    const cj = JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'), 'utf8'));
+    const cj = JSON.parse(readFileSync(join(HOMEDIR, 'users', otherUid, '.claude.json'), 'utf8'));
     ok(cj.hasCompletedOnboarding === true && cj.theme === 'dark'
        && cj.projects?.[wt]?.hasTrustDialogAccepted === true,
        `a fresh home starts with onboarding done, the dark theme and its own tree trusted (${JSON.stringify(cj).slice(0, 80)})`);
     // ...and a theme somebody chose is not overwritten by the next start.
-    writeFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'),
+    writeFileSync(join(HOMEDIR, 'users', otherUid, '.claude.json'),
                   JSON.stringify({ ...cj, theme: 'light', projects: {} }));
-    tmuxKill(`${ownerUid}~claude-${proj}`);
+    tmuxKill(`${otherUid}~claude-${proj}`);
     try {
-      execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`, 'name:the.owner'], {
+      execFileSync('bash', [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`, `tok:${otherTok}`, 'name:the.owner'], {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
                BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
       });
     } catch { /* the attach fails without a terminal */ }
     await sleep(300);
-    const cj2 = JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'), 'utf8'));
+    const cj2 = JSON.parse(readFileSync(join(HOMEDIR, 'users', otherUid, '.claude.json'), 'utf8'));
     ok(cj2.theme === 'light' && cj2.projects?.[wt]?.hasTrustDialogAccepted === true,
        '...the theme a person set stays theirs, and the trust is put back for the tree');
-    tmuxKill(`${ownerUid}~claude-${proj}`);
+    tmuxKill(`${otherUid}~claude-${proj}`);
 
     // ---- and it says so when that flag does not land ----------------------
     // hasTrustDialogAccepted is the one answer here that is not cosmetic:
@@ -744,7 +823,7 @@ tmuxKill('claude-alpha');
     // permission setting being ignored, which is exactly how it was reported.
     // Every failure here used to be swallowed.
     {
-      const cjf = join(HOMEDIR, 'users', ownerUid, '.claude.json');
+      const cjf = join(HOMEDIR, 'users', otherUid, '.claude.json');
       const saved = readFileSync(cjf, 'utf8');
       const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`,
                     WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR, BUILDER_HOME: HOMEDIR,
@@ -752,7 +831,7 @@ tmuxKill('claude-alpha');
       const runTty = () => {
         try {
           return String(execFileSync('bash',
-            [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`, 'name:the.owner'],
+            [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`, `tok:${otherTok}`, 'name:the.owner'],
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env }) || '');
         } catch (e) { return String(e.stderr || '') + String(e.stdout || ''); }
       };
@@ -760,7 +839,7 @@ tmuxKill('claude-alpha');
       // The file cannot be written: a directory where the file goes, so the
       // read fails, the fallback writes its temp file and the move over it
       // cannot land. Nothing else in the home is disturbed.
-      tmuxKill(`${ownerUid}~claude-${proj}`);
+      tmuxKill(`${otherUid}~claude-${proj}`);
       rmSync(cjf, { force: true });
       mkdirSync(cjf, { recursive: true });
       const cried = runTty();
@@ -775,16 +854,16 @@ tmuxKill('claude-alpha');
       // and will go on asking until it restarts. That is the case somebody
       // actually meets, because /login rewrites this same file.
       writeFileSync(cjf, JSON.stringify({ hasCompletedOnboarding: true, projects: {} }));
-      tmuxKill(`${ownerUid}~claude-${proj}`);
+      tmuxKill(`${otherUid}~claude-${proj}`);
       // Started on a stand-in launcher, not a bare shell: a session under a
       // claude name whose pane is not running claude is replaced by the
       // launcher a few lines earlier, and there would be nothing left to
       // warn about.
-      const stand = join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
-                         'u', ownerUid, 'project', proj, 'claude-run.sh');
-      mkdirSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot', 'u', ownerUid, 'project', proj), { recursive: true });
+      const stand = join(HOMEDIR, 'users', otherUid, '.cache', 'builderbot',
+                         'u', otherUid, 'project', proj, 'claude-run.sh');
+      mkdirSync(join(HOMEDIR, 'users', otherUid, '.cache', 'builderbot', 'u', otherUid, 'project', proj), { recursive: true });
       writeFileSync(stand, '#!/usr/bin/env bash\nexec sleep 600\n', { mode: 0o755 });
-      tmuxNew(`${ownerUid}~claude-${proj}`, join(DIR, 'ws', proj), [stand]);
+      tmuxNew(`${otherUid}~claude-${proj}`, join(DIR, 'ws', proj), [stand]);
       const noted = runTty();
       ok(/was not trusted/.test(noted) && /until it is restarted/.test(noted),
          `...and when it puts the flag back under a session already running, it says that session must restart (${
@@ -798,7 +877,7 @@ tmuxKill('claude-alpha');
       const quiet = runTty();
       ok(!/was not trusted/.test(quiet) && !/could not record/.test(quiet),
          '...and says nothing at all when the tree was trusted already');
-      tmuxKill(`${ownerUid}~claude-${proj}`);
+      tmuxKill(`${otherUid}~claude-${proj}`);
       writeFileSync(cjf, saved);
     }
 
@@ -880,25 +959,21 @@ tmuxKill('claude-alpha');
   rmSync(hk, { recursive: true, force: true });
 }
 
-// A token or a name in the wrong shape is dropped, not trusted: the
-    // session made by this connection carries neither.
-    tmuxKill(`${ownerUid}~shell-11`);
+// A token or a name in the wrong shape is dropped, not trusted, and on a
+    // node a dropped token is no token, so nothing opens.
+    tmuxKill(`${ownerUid}~shell-wtproj-11`);
     try {
-      execFileSync('bash', [BBTTY, `u:${ownerUid}:sh:11:`, 'tok:bbs_x;rm -rf', 'name:../../etc'], {
+      execFileSync('bash', [BBTTY, `u:${ownerUid}:sh:11:wtproj`, 'tok:bbs_x;rm -rf', 'name:../../etc'], {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
                HOME: HOMEDIR, BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
       });
     } catch { /* the attach fails without a terminal, as everywhere in this file */ }
     await sleep(300);
-    const envOf11 = k => { try {
-      return execFileSync('tmux', ['show-environment', '-t', `${ownerUid}~shell-11`, k],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env }).trim();
-    } catch { return ''; } };
-    ok(alive(`${ownerUid}~shell-11`) && !/bbs_/.test(envOf11('BB_TOKEN'))
-       && !/etc/.test(envOf11('BB_ACCOUNT_NAME')),
-       'a token or a name in the wrong shape is dropped rather than exported');
-    tmuxKill(`${ownerUid}~shell-11`);
+    ok(!alive(`${ownerUid}~shell-wtproj-11`),
+       'a token in the wrong shape is dropped, and on a node that leaves no token, so nothing opens');
+    // (the name alone cannot open anything any more: it is the controller's to say)
+    tmuxKill(`${ownerUid}~shell-wtproj-11`);
 
     // The hooks a session is handed name its bundle through .bb/current, not
     // the digest it started from (B120). The settings file is read once, when
@@ -919,7 +994,7 @@ tmuxKill('claude-alpha');
       tmuxKill(`${ownerUid}~claude-${proj}`);
       try {
         execFileSync('bash', [join(digest, 'scripts', 'dashboard', 'bb-tty'), `u:${ownerUid}:claude:${proj}:b:${boot}`,
-                              'tok:bbs_abc-DEF_123', 'name:the.owner', 'owner:1'], {
+                              `tok:${ownerTok}`, 'name:the.owner', 'owner:1'], {
           encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
                  BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
@@ -934,6 +1009,13 @@ tmuxKill('claude-alpha');
       tmuxKill(`${ownerUid}~claude-${proj}`);
       rmSync(join(DIR, 'store'), { recursive: true, force: true });
     }
+    // The second account goes, with anything it left running.
+    tmuxKill(`${otherUid}~claude-${proj}`);
+    usersPy(`
+d = u.load()
+d["users"].pop("wt.user", None)
+d["users"].pop("plain.user", None)
+u._save(d)`);
   }
 }
 

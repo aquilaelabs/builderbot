@@ -1748,7 +1748,13 @@ above, in order:
    hello), bound on the node's LAN address; the controller's `/term` proxy
    dials that instead of the loopback (phase 10b), stamping the account, its
    name and a session token into the URL exactly as it stamps the account
-   locally. The tmux server is the node's; a dropped browser detaches.
+   locally. On the node that URL is only a claim: a session there reaches
+   the same ttyd over loopback, so bb-tty shows the token to the controller
+   (`POST /api/v1/tty-grant`) before anything starts, and the account, its
+   name and whether it is the owner come from that answer, which also runs
+   the proxy's own checks (the project is the token's, the account may open
+   it, a writable terminal is for an account with a shell). No answer, no
+   terminal (B166). The tmux server is the node's; a dropped browser detaches.
 5. **bb's notebook verbs are relayed**: `POST /api/v1/bb` with the session's
    token carries the words (`roadmap add …`, `bug show 3`, `version --file`),
    the controller runs its own bb in that project's tree and returns what it
@@ -1784,7 +1790,9 @@ refused is neither: the agent tries an unmounted fstab entry when it takes
 the census and reports what mount said (`mounts[].error`), the row and the
 button repeat it, and Apply network asks each NFS server's exports
 (`showmount -e`) before moving to an address they do not admit. provision-linux.sh filters 7681/7682 to the controller's
-address with an nftables table of its own, re-applied at boot by a unit.
+address and loopback with an nftables table of its own, re-applied at boot by
+a unit. The filter keeps the LAN out; it cannot keep a session on the node
+out, which is why the grant above is the check and not the firewall.
 Addresses move, and the design survives it without anybody re-enrolling:
 the node dials out, so a node whose own address changes is reached by the
 controller at whatever address its next hello or work poll arrived from
