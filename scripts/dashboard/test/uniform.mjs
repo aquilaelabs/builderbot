@@ -953,7 +953,7 @@ for (const kind of kinds){
      `...and every helper the document names is a real function on the page${unreal.length ? ` — not: ${unreal.join(', ')}` : ''}`);
   // By name, with or without the dot: the document writes a class as it
   // appears in markup as often as as a selector.
-  const classes = ['actbar', 'field', 'histbar', 'danger', 'state'];
+  const classes = ['actbar', 'field', 'histbar', 'danger', 'state', 'foot', 'modal', 'ndcap', 'setrow', 'prose'];
   const undocumented = classes.filter(c => !new RegExp(`\\b${c}\\b`).test(doc));
   ok(undocumented.length === 0,
      `...and names the classes the page is measured on${undocumented.length ? ` — not: ${undocumented.join(', ')}` : ''}`);
@@ -986,6 +986,96 @@ for (const kind of kinds){
   await focus();
   ok(await page.$eval(sel, d => d.open),
      `[${kind}] ...and a reload starts it from its default, open on a desktop`);
+}
+
+// ---- hidden means hidden (design language, Sections and action bars) -----
+// Every element carrying the attribute is out of the layout, whatever class
+// it wears. A class with a display once beat it: a fold that never closed.
+{
+  const shown = await page.evaluate(() => [...document.querySelectorAll('[hidden]')]
+    .filter(e => getComputedStyle(e).display !== 'none')
+    .map(e => e.id || e.className || e.tagName).slice(0, 5));
+  ok(shown.length === 0, `nothing carrying hidden is displayed${shown.length ? ': ' + shown.join(', ') : ''}`);
+}
+
+// ---- dialogs (design language, Dialogs) -----------------------------------
+// Opened one by one, and each held to the shape every dialog shares: its
+// lines in .field bands (text at box level draws flush against the edge),
+// groups headed by a label and never an h4, and the buttons in a .foot.
+// Discovered, like the tab kinds: every .modal in the page must be opened by
+// a driver here, so a new dialog with none FAILS by its id, which is the
+// price of adding one.
+const DIALOGS = {
+  about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
+  globalrules: () => openGlobalRules(), pending: () => openPending('alpha'),
+  newcontainer: () => openNewContainer(), custom: () => editCustom(),
+  senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
+  projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
+  enroll: async () => { openNodesTab();
+    for (let i = 0; i < 40 && !document.querySelector('.nodestab button'); i++) await new Promise(r => setTimeout(r, 250));
+    [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },
+};
+const opened = new Set();
+async function dialogShape(){
+  return page.evaluate(() => {
+    const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
+    if (!m) return { err: 'no dialog opened' };
+    const box = m.querySelector('.box');
+    const loose = [...box.querySelectorAll('*')].filter(e => {
+      if (e.offsetHeight === 0 || e.closest('h3, .field, .foot')) return false;
+      return [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+    }).map(e => `${e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`);
+    // A dialog of prose (About) may have headings; one of fields may not.
+    return { loose: loose.slice(0, 3), h4: box.classList.contains('prose') ? 0 : box.querySelectorAll('h4').length,
+             foot: !!box.querySelector('.foot') && box.querySelector('.foot').offsetHeight > 0 };
+  });
+}
+for (const [name, open] of Object.entries(DIALOGS)) {
+  await page.evaluate(open);
+  const seen = await page.waitForFunction(() => [...document.querySelectorAll('.modal')].some(m => !m.hidden),
+    null, { timeout: 10000 }).then(() => true).catch(() => false);
+  await sleep(600);
+  const d = seen ? await dialogShape() : { err: 'nothing opened' };
+  const id = await page.evaluate(() => [...document.querySelectorAll('.modal')].find(m => !m.hidden)?.id || '');
+  if (id) opened.add(id);
+  ok(!d.err && d.loose.length === 0 && d.h4 === 0 && d.foot,
+     `[dialog ${name}] its lines in .field bands, no h4, buttons in a .foot${
+       d.err ? ` (${d.err})` : d.loose.length ? `: loose ${d.loose.join(', ')}` : d.h4 ? `: ${d.h4} h4` : !d.foot ? ': no foot' : ''}`);
+  await page.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
+}
+{
+  const all = await page.evaluate(() => [...document.querySelectorAll('.modal[id]')].map(m => m.id));
+  const undriven = all.filter(x => !opened.has(x));
+  ok(undriven.length === 0, `every dialog in the page is measured${undriven.length
+    ? `: no driver opens ${undriven.join(', ')} (add one to DIALOGS in uniform.mjs)` : ''}`);
+}
+
+// ---- a finger, not a pointer (design language, Both sizes) ---------------
+// On a touch phone the controls a thumb meets are a thumb's size, and a bar
+// that spans the screen fits it even on a fold's 344px cover.
+{
+  const phone = await newPage(browser, { viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL); await ready(phone);
+  await phone.evaluate(() => { openNotebook('alpha', 'roadmap'); setView('terminal'); });
+  await phone.waitForSelector('.nb .nbview:not([hidden])', { timeout: 20000 });
+  await sleep(600);
+  const small = await phone.evaluate(() => [...document.querySelectorAll(
+      '.tabbar .tab .ic, .tabbar .newtab, .nb button, .mobar button')]
+    .filter(e => e.offsetHeight > 0)
+    .filter(e => { const r = e.getBoundingClientRect(); return r.height < 30 || r.width < 30; })
+    .map(e => `${e.className || e.tagName} "${e.textContent.trim().slice(0, 12)}" ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`));
+  ok(small.length === 0, `on a touch phone the tab strip, the notebook and the bar are a thumb's size${small.length ? ': ' + small.slice(0, 4).join(', ') : ''}`);
+  await phone.evaluate(() => openGlobalRules());
+  await phone.waitForSelector('#grmodal:not([hidden]) .foot button', { timeout: 10000 });
+  const shortFoot = await phone.$$eval('#grmodal .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);
+  ok(shortFoot === 0, `...and a dialog's buttons are the tap height (${shortFoot} short)`);
+  await phone.setViewportSize({ width: 344, height: 882 });
+  await phone.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
+  await sleep(400);
+  const cut = await phone.evaluate(() => [...document.querySelectorAll('.mobar button')]
+    .filter(b => b.offsetHeight > 0 && b.getBoundingClientRect().right > innerWidth + 1).map(b => b.textContent.trim()));
+  ok(cut.length === 0, `...and the bar fits a fold's 344px cover${cut.length ? `: cut off ${cut.join(', ')}` : ''}`);
+  await phone.context().close();
 }
 
 ok(page.errors.length === 0,

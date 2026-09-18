@@ -102,7 +102,10 @@ screen-reader semantics are still the browser's. It is all inside `@supports`,
 so a browser without it renders the native picker rather than nothing. The one
 thing to know when placing one: a base select wraps a label that will not fit
 where a native select truncated it, and `test/uniform.mjs` measures every
-select as one line high at phone width.
+select as one line high at phone width. The arrow owns the end padding of
+every base select (`padding-inline-end: 0` on the select, the padding on
+`::picker-icon`), or a long choice slides under the arrow and shows again in
+the strip beyond it.
 
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…": whether a dialog follows is not the reader's
@@ -200,6 +203,11 @@ arrangement the server holds, and on a phone on the device itself, so a
 card opened there stays open across a reload without reaching the desk.
 Reset opens every card on both.
 
+`hidden` means hidden. `[hidden]{display:none !important}` is global,
+because any class that sets `display` otherwise beats the attribute: a fold
+that never closed and a Select all with nothing to select were both that. To
+show something, take the attribute off; never give a hidden thing a display.
+
 Every set of two or more text buttons is an action bar (`.actbar`): the
 status on its own `.state` line, the buttons after it at the right, their
 own size at every width: a phone gives them the finger height, never the
@@ -207,6 +215,22 @@ row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
+
+## Dialogs
+
+A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
+`h3`. Every line of its body is a `.field` band, which is where the inset
+lives: a hint, a control, a list, never text at box level, which draws flush
+against the edge. A group of fields inside it is headed by a `label`, the dim
+small heading every dialog uses, never an `h4`; a dialog that is prose to
+read rather than fields to fill (About) says so with `.box.prose` and may use
+headings. The buttons are the `.foot`: a
+`.state` first when there is one, then `.sp`, then the verbs, the primary
+first and anything destructive last. A switch is a checkbox inside its label,
+beside the thing it names, the way the Settings tab draws them
+(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
+hidden rather than disabled: a dialog with an empty list says so in one
+sentence and offers Close.
 
 ## Rows you open
 
@@ -273,6 +297,16 @@ The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
 a phone, no control spans the screen at either, and controls are 16px on a
 phone so iOS does not zoom.
+
+A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
+every button in a dialog and in the notebook is `--tap` high, and the small
+controls a thumb meets (a tab's close and minimize, the new-tab button, the
+colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
+of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
+rather than each taking its text's, so the last one is never cut off: at
+344px, a folding phone's cover screen, four did not fit. "Both widths" means
+a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
+840, still the phone layout) and a desktop.
 
 ## Motion
 

@@ -1825,7 +1825,7 @@ pre.diff .d-ctx{color:var(--dim)}
    shape for a row you open, not two that drift. */
 #rlList{padding-top:0}
 .rulerow .rlName{width:100%;margin-bottom:6px}
-#grBody h4{margin:0 0 8px}
+#grBody .field>label{margin-bottom:6px}
 #grBody .rulerow+.rulerow{margin-top:12px}
 #grBody .rulerow .hint{margin-top:2px}
 .rulerow .two{display:flex;gap:6px;align-items:center}
@@ -3280,7 +3280,7 @@ body.booting .pane>.loading{margin:auto}
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
      aria-labelledby="aboutTitle">
-  <div class="box wide">
+  <div class="box wide prose">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
       <!-- Two pages behind one switch: how to start, and what changed. The
