@@ -812,8 +812,15 @@ def act(repo, action, args, env=None, may_push=True):
             # project directory sees nothing change under it. Only main: the
             # other direction, main into the branch you are on, is the
             # in-place merge below, and anything else is a shell's.
-            if into != _main_branch(repo):
-                return {"error": f"a merge from here lands on {here}, or on {_main_branch(repo)}: "
+            main = _main_branch(repo)
+            if into != main:
+                # No main at all (B164): a repository whose only branches
+                # are neither main nor master. The name was interpolated
+                # empty and the refusal read "or on :".
+                if not main:
+                    return {"error": f"this project has no main or master branch, so there is "
+                                     f"nothing to merge into: a merge from here lands on {here}"}
+                return {"error": f"a merge from here lands on {here}, or on {main}: "
                                  f"Switch to {into} to merge into it"}
             if not _has_branch(repo, into):
                 return {"error": "no such branch"}

@@ -698,4 +698,25 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
        fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
 }
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+// B164: a repository with no main and no master. Merge into main cannot
+// mean anything there, and the refusal said "or on :" with the name empty.
+{
+  const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, subprocess, tempfile
+spec = importlib.util.spec_from_file_location("git", "${REPO}/scripts/dashboard/git.py")
+g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+ws = tempfile.mkdtemp(dir="${DIR}")
+g.configure(workspace=ws, state="${DIR}/state")
+repo = os.path.join(ws, "nomain")
+run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True, capture_output=True)
+os.makedirs(repo)
+run("init", "-q", "-b", "trunk")
+run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "one")
+run("branch", "feat"); run("checkout", "-q", "feat")
+print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { encoding: 'utf8' }).trim();
+  const r = JSON.parse(said.split('\n').pop());   // the module may print a line of its own first
+  ok(/no main or master branch/.test(r.error || '') && !/or on :/.test(r.error || '') && !/Switch to/.test(r.error || ''),
+     `with no main or master, the merge refusal says so rather than naming an empty branch (${r.error})`);
+}
+
 await done(browser);
