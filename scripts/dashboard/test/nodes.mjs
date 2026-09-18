@@ -776,6 +776,23 @@ print(json.dumps(out))
      && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // appdata is a store role like the other four (R17 step 2): where a node
+  // keeps a dev instance's databases is a fact about that node, so it is
+  // reported with its headroom and edited here, rather than being
+  // BB_DEV_DATA_DIR on the controller and an optional mount to go with it.
+  {
+    const saved = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...rec.config.desired, stores: { ...rec.config.desired.stores,
+                                                 appdata: '/scratch/appdata' } } });
+    const back = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(!saved.error && back.config.desired.stores.appdata === '/scratch/appdata',
+       `appdata is a store the config plane takes, like the other four (${
+         saved.error || back.config.desired.stores.appdata})`);
+    ok((await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+         config: { ...rec.config.desired, stores: { ...rec.config.desired.stores,
+                                                    appdata: '/etc' } } })).error,
+       '...and refused the same paths the others are, so it cannot be pointed at /etc');
+  }
   // Applying a config that keeps what the node already has asks nothing:
   // the editor was seeded from the node, so this adds a mount rather than
   // taking one away.

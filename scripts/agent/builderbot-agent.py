@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.79"
+AGENT_VERSION = "0.5.80"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -108,7 +108,15 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   # is free on a LAN and is not on a node in somebody's
                   # cloud. Per project underneath (artifact_dir), because a
                   # VM may be several projects' node.
-                  "artifacts": "/var/lib/builderbot/artifacts"}
+                  "artifacts": "/var/lib/builderbot/artifacts",
+                  # What a dev instance KEEPS: the databases, the uploads, the
+                  # caches its containers write, under <appdata>/<project>/
+                  # <instance>. A store like the other four (R17 step 2), so
+                  # the node reports its path and its headroom and the config
+                  # plane edits it there. It used to be BB_DEV_DATA_DIR on the
+                  # CONTROLLER, which is a fact about a node kept on the wrong
+                  # machine, and an optional /devdata mount to go with it.
+                  "appdata": "/var/lib/builderbot/appdata"}
 
 # The session half (roadmap #24): the ttyd this node runs bb-tty under, the
 # ports it binds, and the address. Seams for the suite — which runs a ttyd

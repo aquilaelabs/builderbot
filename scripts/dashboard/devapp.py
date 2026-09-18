@@ -77,6 +77,13 @@ MAIN = "main"
 def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
+# Where a dev instance's data lives, when the node is too old to say. It is
+# a STORE now, reported per node with its path and its headroom and edited on
+# the node's own Storage section (R17 step 2), because where a node keeps a
+# container's databases is a fact about that node. This is the fallback for
+# an agent from before the store existed, and the default an unenrolled
+# controller uses; BB_DEV_DATA_DIR is honoured for the same reason and is on
+# its way out.
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # Injected rather than worked out here: three readers already answer "where do
 # the logs live" and a fourth copy of that rule is how they drift. None when
@@ -466,7 +473,7 @@ def _plan(project, instance, action, extra=None):
     pdir = (str(at) if at is not None
             else str(WORKSPACE / project) if _read_rec(project, instance).get("source") != "file"
             else (dev_data_dir(project, instance, make=False)
-                  or str(Path(DEVDATA) / pname)))
+                  or str(Path(appdata_root()) / pname)))
     base = [DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if env_path(project, instance).is_file():
@@ -1716,7 +1723,7 @@ def _compose(project, instance, *args):
         # against compose rather than assumed: `config -q`, `config --format
         # json` and `ps -aq` all exit 0 with the directory absent.
         pdir = (dev_data_dir(project, instance, make=False)
-                or str(Path(DEVDATA) / _pname(project, instance)))
+                or str(Path(appdata_root()) / _pname(project, instance)))
     else:
         # ...or the instance's own build tree, when it is pinned to a ref.
         # The SAME answer _plan gives, because the two are one command built
@@ -1970,7 +1977,7 @@ def _devdata_argv(op, *names, root=None):
     fails and takes the run down.
     """
     return [DOCKER, "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}",
-            "-v", f"{(root or DEVDATA).rstrip('/')}:/d", DEVDATA_IMAGE,
+            "-v", f"{(root or appdata_root()).rstrip('/')}:/d", DEVDATA_IMAGE,
             *_DEVDATA_OPS[op], *(f"/d/{n}" for n in names)]
 
 
@@ -2008,10 +2015,25 @@ def dev_data_dir(project, instance=MAIN, make=True):
     if not sandbox_daemon():
         if not _agent_docker():
             return None
-        return posixpath.join(DEVDATA, name)
+        return posixpath.join(appdata_root(), name)
     if make and not _devdata_run("mkdir", name):
         return None
-    return posixpath.join(DEVDATA, name)
+    return posixpath.join(appdata_root(), name)
+
+
+def appdata_root(node_id=None):
+    """Where THIS node keeps its dev instances' data.
+
+    The node's own `appdata` store where it reports one, and DEVDATA where it
+    does not: an agent from before the store says nothing about it, and within
+    a compatibility window a missing field is answered rather than refused.
+    """
+    nid = node_id or getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    st = ((n or {}).get("reported") or {}).get("stores")
+    rec = st.get("appdata") if isinstance(st, dict) else None
+    path = str((rec or {}).get("path") or "") if isinstance(rec, dict) else ""
+    return path or DEVDATA
 
 
 def _agent_docker():

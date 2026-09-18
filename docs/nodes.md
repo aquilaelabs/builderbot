@@ -602,6 +602,16 @@ and `bb packages`, operator-gated; that has to generalize without forking.
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is not offered at all (roadmap
   #26): it takes no packages, and its own record is registry plumbing.
+*Amended 18 September:* there are **five** stores, with `appdata` joining
+them (roadmap R17 step 2): what a dev instance KEEPS on this node, its
+databases and uploads and the caches its containers write, under
+`<appdata>/<project>/<instance>`. It was `BB_DEV_DATA_DIR` on the CONTROLLER
+with an optional `/devdata` mount beside it, which is a fact about a node
+kept on the wrong machine: the node reports its path and its headroom now,
+and the Storage section edits it there. An agent from before the store
+reports none, and the controller answers `/devdata` for it until that node
+is updated.
+
 *Amended 2 September:* there are **four** stores, not three, with `artifacts`
 joins data, packages and cache: this node's copy of what a project built,
 per project underneath, so a VM that is several projects' node keeps two

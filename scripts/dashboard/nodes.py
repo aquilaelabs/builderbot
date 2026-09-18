@@ -1171,7 +1171,7 @@ def _census(c):
 # GUI and a rescue shell cannot disagree about what the node is meant to be.
 
 MOUNT_TYPES = ("nfs", "virtiofs")
-STORE_ROLES = ("data", "packages", "cache", "artifacts")
+STORE_ROLES = ("data", "packages", "cache", "artifacts", "appdata")
 # The same refusal the agent makes of a store path, made here so the tab says
 # no before anybody presses. Deliberately in both places: a store is a
 # directory this system creates, fills and — for the cache — empties, so one

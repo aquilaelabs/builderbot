@@ -47,6 +47,10 @@ STORE_DATA=/var/lib/builderbot/data
 STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
+# What a dev instance KEEPS on this node: its databases, its uploads, the
+# caches its containers write. A store like the other four (R17 step 2), so
+# the node reports its headroom and the Storage section edits it here.
+STORE_APPDATA=/var/lib/builderbot/appdata
 # --remove and its --yes, off unless asked; read before the checks run.
 REMOVE=0; YES=""
 declare -a SHARES=() NFS=()
@@ -196,6 +200,7 @@ while [ $# -gt 0 ]; do
         --packages) STORE_PACKAGES="$2"; STORE_PACKAGES_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; STORE_ARTIFACTS_SET=1; shift 2 ;;
+        --appdata) STORE_APPDATA="$2"; STORE_APPDATA_SET=1; shift 2 ;;
         --guest) GUEST=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
         --remove) REMOVE=1; shift ;;
@@ -291,12 +296,13 @@ guest_run() {
     # which is what the _SET vars are for: `${STORE_X:-...}` never falls back
     # here, because the default is not empty. Found by running this for real,
     # where the agent said it could not create /var/lib/builderbot/artifacts.
-    local s_data s_cache s_art
+    local s_data s_cache s_art s_app
     s_data="${STORE_DATA_SET:+$STORE_DATA}";           s_data="${s_data:-$foot/data}"
     s_cache="${STORE_CACHE_SET:+$STORE_CACHE}";        s_cache="${s_cache:-$foot/cache}"
     s_art="${STORE_ARTIFACTS_SET:+$STORE_ARTIFACTS}";  s_art="${s_art:-$foot/artifacts}"
+    s_app="${STORE_APPDATA_SET:+$STORE_APPDATA}";      s_app="${s_app:-$foot/appdata}"
     packages="${STORE_PACKAGES_SET:+$STORE_PACKAGES}"; packages="${packages:-$foot/packages}"
-    mkdir -p "$packages" "$s_data" "$s_cache" "$s_art"
+    mkdir -p "$packages" "$s_data" "$s_cache" "$s_art" "$s_app"
     agent="$foot/bin/builderbot-agent"
     node_json="$foot/node.json"
 
@@ -325,6 +331,7 @@ guest_run() {
         --controller "$CONTROLLER" --token "$TOKEN" --user "$(id -un)" \
         --store "data=$s_data" --store "packages=$packages" \
         --store "cache=$s_cache" --store "artifacts=$s_art" \
+        --store "appdata=$s_app" \
         || { warn "enrolment failed: the token is good once and for a day, so mint a fresh one if this is a second try"; exit 1; }
 
     say "the user unit: $GUEST_UNIT_NAME"
@@ -1938,7 +1945,8 @@ if [ -n "$CONTROLLER" ]; then
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
         --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
-        --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}"
+        --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
+        --store "appdata=${STORE_APPDATA}"
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current —

@@ -252,7 +252,12 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     // this container cannot write, and the session half unpacks bb there.
     out = execFileSync('python3', [AGENT, 'enroll', '--controller', URL,
       '--token', minted.token, '--user', process.env.USER || 'builder',
-      '--store', `data=${DIR}/agentdata`, '--store', `packages=${DIR}/agentpackages`],
+      '--store', `data=${DIR}/agentdata`, '--store', `packages=${DIR}/agentpackages`,
+      // Where a dev instance's data goes on this node (R17 step 2). The same
+      // directory the suite blocks a bind in below, because it is now the
+      // NODE that says where that is rather than the controller's
+      // BB_DEV_DATA_DIR.
+      '--store', `appdata=${DIR}/devdata`],
       { env: agentEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { out = String(e.stdout) + String(e.stderr); }
   ok(/enrolled as node n_/.test(out) && existsSync(NODE_JSON)
