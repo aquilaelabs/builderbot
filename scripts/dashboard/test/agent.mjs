@@ -473,6 +473,37 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
       ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
          `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
     }
+    // B167: the distribution's own root ttyd is switched off by the agent on
+    // a managed node, not only by a provisioner run that may never come
+    // again; left alone when it is already off, and never on a guest.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, shutil, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.os.geteuid = lambda: 0
+m.shutil.which = lambda n: '/usr/bin/' + n
+stamp = tempfile.NamedTemporaryFile(delete=False).name
+def case(state, sandbox=True):
+    seen = []
+    def run(argv, timeout=5):
+        seen.append(argv)
+        return {'is-enabled': state[0], 'is-active': state[1]}.get(argv[1], '')
+    m.SANDBOX_BIN = stamp if sandbox else '/nonexistent/bb-sandbox'
+    acted = m.Agent.quiet_distro_ttyd(object.__new__(m.Agent), run)
+    return [acted, [a[1:] for a in seen if a[1] == 'disable']]
+print(json.dumps({'on': case(('enabled', 'active')), 'running': case(('disabled', 'active')),
+                  'off': case(('disabled', 'inactive')), 'guest': case(('enabled', 'active'), False)}))
+os.unlink(stamp)
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.on[0] === true && JSON.stringify(r.on[1]) === JSON.stringify([['disable', '--now', 'ttyd.service']])
+         && r.running[0] === true,
+         `the agent switches off the distribution's ttyd.service when it is enabled or running (${said.slice(0, 90)})`);
+      ok(r.off[0] === false && r.off[1].length === 0 && r.guest[0] === false && r.guest[1].length === 0,
+         '...and leaves it alone when it is already off, and on a guest, whose services are its owner\'s');
+    }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
     // respawn that runs again only a launcher it recognises.

@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.83"
+AGENT_VERSION = "0.5.84"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2934,10 +2934,12 @@ class Agent:
         # fetch and the hello alike, and the hello that eventually succeeds
         # starts the sessions then.
         self.refresh_session_tool()
+        self.quiet_distro_ttyd()
         self.session_try()
         while True:
             if time.time() - self.hello_at > 600:
                 self.refresh_session_tool()
+                self.quiet_distro_ttyd()
                 st, r = self.hello()
                 if st == 401:
                     log(f"refused: {r.get('error')} — this node's credential "
@@ -4183,6 +4185,28 @@ class Agent:
             job.say(f"could not refresh {SANDBOX_BIN} from the bundle: {e}\n")
             return
         job.say(f"{SANDBOX_BIN} refreshed from the bundle\n")
+
+    def quiet_distro_ttyd(self, run=_run):
+        """The distribution's own ttyd switched off, on a managed node (B167).
+
+        Debian's package enables ttyd.service: root, on lo:7681, serving a
+        login prompt, which nothing here asked for and which every session on
+        the machine can reach over loopback. The provisioner disables it, but
+        only when it runs, so a node provisioned before that fix kept it until
+        somebody re-provisioned. This is the process that is already on every
+        node, so it asks each time it does its upkeep and says so when it acts.
+        Not on a guest: that machine's services are its owner's (R23). The
+        agent's own ttyds are processes it started, not this unit."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("systemctl"):
+            return False
+        on = (run(["systemctl", "is-enabled", "ttyd.service"]) == "enabled"
+              or run(["systemctl", "is-active", "ttyd.service"]) == "active")
+        if not on:
+            return False
+        run(["systemctl", "disable", "--now", "ttyd.service"], timeout=30)
+        log("sessions: switched off the distribution's own ttyd.service (root, on lo:7681), "
+            "which every session on this machine could reach")
+        return True
 
     def refresh_session_tool(self):
         """The session's view kept installed (R35): bb-session from the bundle,
