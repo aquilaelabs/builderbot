@@ -3624,6 +3624,7 @@ class Handler(BaseHTTPRequestHandler):
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
+                    "/tab-packages.js", "/tab-docker.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
                     "/nb-memory.js", "/nb-history.js"):
