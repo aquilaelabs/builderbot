@@ -317,10 +317,12 @@ async function loadGlobalRules(){
 function globalRuleRow(r, i){
   const id = `gr${i}`;
   if (r.builtin) {
+    // A switch in its label, the way every setting on the Settings tab is
+    // (design language, Controls), with the rule's words under it.
     return `<div class="rulerow" data-builtin="${esc(r.name)}">
-      <label class="lbl"><input type="checkbox" class="grOn"${r.disabled ? "" : " checked"}>
-        <b>${esc(r.name)}</b> <span class="dim">ships with BuilderBot</span></label>
-      <div class="sub">${esc(r.text)}</div>
+      <div class="logdays setrow"><label class="ndcap">
+        <input type="checkbox" class="grOn"${r.disabled ? "" : " checked"}> <b>${esc(r.name)}</b></label></div>
+      <div class="hint">${esc(r.text)}</div>
     </div>`;
   }
   return `<div class="rulerow" data-own="1">
@@ -338,13 +340,15 @@ function drawGlobalRules(){
   const rs = globalRules || [];
   const shipped = rs.filter(r => r.builtin);
   const own = rs.filter(r => !r.builtin);
+  // Each part in a .field, where every other dialog's inset lives, and the
+  // buttons in the dialog's .foot: this one drew flush against the box.
   body.innerHTML = `
-    <div class="sub">Every session on every project is handed these. A session cannot add one.</div>
-    ${shipped.length ? `<h4>Shipped with BuilderBot</h4>${shipped.map(globalRuleRow).join("")}` : ""}
-    <h4>Yours</h4>
-    <div id="grOwn">${own.length ? own.map(globalRuleRow).join("") : `<div class="sub">none yet</div>`}</div>
-    <div class="actbar">
-      <span class="state" id="grState"></span>
+    <div class="field"><div class="hint">Every session on every project is handed these. A session cannot add one.</div></div>
+    ${shipped.length ? `<div class="field"><h4>Shipped with BuilderBot</h4>${shipped.map(globalRuleRow).join("")}</div>` : ""}
+    <div class="field"><h4>Yours</h4>
+      <div id="grOwn">${own.length ? own.map(globalRuleRow).join("") : `<div class="hint">none yet</div>`}</div></div>
+    <div class="foot">
+      <span class="state" id="grState"></span><span class="sp"></span>
       <button type="button" id="grAdd">Add a rule</button>
       <button type="button" id="grSave">Save</button>
       <button type="button" id="grClose">Close</button>
@@ -362,7 +366,7 @@ function wireGlobalRules(){
   const add = body.querySelector("#grAdd");
   if (add) add.onclick = () => {
     const own = body.querySelector("#grOwn");
-    const none = own.querySelector(".sub");
+    const none = own.querySelector(".hint");
     if (none) none.remove();
     own.insertAdjacentHTML("beforeend", globalRuleRow({}, Date.now()));
     wireGlobalRules();

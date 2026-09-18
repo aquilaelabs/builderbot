@@ -3465,7 +3465,7 @@ class Handler(BaseHTTPRequestHandler):
         target = session_target(_arg_project(arg0),
                                 claude=arg0.startswith("claude:"))
         if target["where"] == "refused":
-            return self._json({"error": target["why"]}, 503)
+            return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
@@ -3484,11 +3484,16 @@ class Handler(BaseHTTPRequestHandler):
             up = socket.create_connection(upstream, timeout=5)
         except OSError:
             if target["where"] == "node":
-                return self._json({"error": f"{target['name']} did not answer on "
-                                            f"{upstream[0]}:{upstream[1]} — its ttyd is "
-                                            "reported up, but this container could not "
-                                            "reach it. A firewall between the two?"}, 502)
-            return self._json({"error": "the terminal server is not running"}, 502)
+                return self._term_notice(f"{target['name']} did not answer on "
+                                         f"{upstream[0]}:{upstream[1]}: its terminal server is "
+                                         "reported up, but this controller could not reach "
+                                         "it. A firewall between the two?", 502)
+            # Through the notice, like a refusal (B141): the tab is an iframe
+            # navigating here, and raw JSON landed in it as the browser's JSON
+            # viewer, "Pretty-print" box and all.
+            return self._term_notice("The terminal server is not running on this "
+                                     "controller, so this terminal cannot open. "
+                                     "Restarting the container starts it again.", 502)
         # The connect timeout must not become a *relay* timeout: it stays on
         # the socket, and a sendall that blocks longer than it — a big paste
         # into a busy terminal, a slow reader — would raise and drop a live

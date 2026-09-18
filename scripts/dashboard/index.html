@@ -37,6 +37,12 @@
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
+/* hidden means hidden, whatever display a class gives the element. Without
+   this, any rule that sets display (.uadd's flex, .modal label's block) beats
+   the attribute: the Debug settings fold never closed and the approval
+   dialog's Select all showed with nothing to select. Everything here that
+   animates a fold already treats hidden as display:none. */
+[hidden]{display:none !important}
 /* The design language is docs/design-language.md, held by the house rule
    `design` and measured by test/uniform.mjs. */
 :root,.sw[data-theme="default"]{
@@ -459,9 +465,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   overflow-wrap:anywhere;box-shadow:0 6px 18px rgba(0,0,0,.5);
   display:block;opacity:1;pointer-events:none;z-index:90}
 .uadd{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
-/* display:flex outranks the hidden attribute, and the settings tab folds one of
-   these behind a button by hiding it: without this the fold never closed. */
-.uadd[hidden]{display:none}
 .uadd .setrow{flex:1 1 12em}
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
 .logset .setrow select{width:auto;flex:0 1 auto}
@@ -753,10 +756,16 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
      absolute for the arrow so it is pinned inside the clip instead of being
      clipped with the text, and it carries the field's own ground so what
      slides under it disappears rather than showing through. */
-  select{appearance:base-select;white-space:nowrap;overflow:hidden}
+  /* ...and the arrow owns the end padding. With the padding on the select,
+     text that slid under the pinned arrow showed again in the strip of
+     padding beyond it ("sessions until one is pic ▼ c" on a phone). The
+     !important is the point: every site gives its selects a padding, and on
+     a base select the end of it belongs to the arrow, whoever set it. */
+  select{appearance:base-select;white-space:nowrap;overflow:hidden;
+    padding-inline-end:0 !important}
   select:disabled{opacity:.5;cursor:default}
   select::picker-icon{position:sticky;inset-inline-end:0;background:inherit;
-    padding-inline-start:6px;color:var(--dim);transition:transform .14s}
+    padding-inline:6px 9px;color:var(--dim);transition:transform .14s}
   select:open::picker-icon{transform:rotate(180deg)}
   select::picker(select){appearance:base-select;background:var(--panel);
     border:1px solid var(--line);border-radius:8px;padding:5px;margin-top:4px;
@@ -1319,6 +1328,22 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .pcpick button[data-color=""]{background:transparent;
   background-image:linear-gradient(135deg, transparent 45%, var(--dim) 45%, var(--dim) 55%, transparent 55%)}
 .pcpick button[aria-checked="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ink)}
+/* A finger, not a pointer: the small controls that measured under 32px in the
+   polish tour (18 Sep, 344 to 840px wide) grow to a thumb's size on a touch
+   screen, and a desktop keeps its tighter strip. The bell stays bare (see its
+   own rule) and only its hit area widens. */
+@media(pointer:coarse){
+  .pcpick{gap:6px}
+  .pcpick button{width:30px;height:30px;min-height:30px}   /* nine in a row at 375px */
+  #bBell{padding:0 8px}
+  .tab .ic{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
+  .tabbar .newtab{min-width:36px;min-height:36px}
+  button.tscroll{padding:0 14px}
+  /* Every button in a dialog and in the notebook at the tap height, as the
+     tabs, bars and cards already are: their feet (Save, Approve, Link) and
+     History measured 30px. */
+  .modal button,.nb button{min-height:var(--tap)}
+}
 .tab.pc{border-left:3px solid var(--pc)}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
@@ -1518,7 +1543,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .histbar[hidden]{display:none}
 .histbar input{flex:1;min-width:0}
 .histbar select{flex:0 0 auto;width:auto}
-.histbar label{flex:0 0 auto;margin:0;color:var(--dim);font:var(--f-note)}
+.histbar label{flex:0 0 auto;margin:0;color:var(--dim);font:var(--f-note);align-self:center;line-height:1}
 @media(max-width:560px){ .histbar{flex-wrap:wrap} .histbar input{flex:1 1 100%} }
 /* The reason a line went, under the line it went with: indented, because it
    is a note about the event above it and not an event of its own. */
@@ -1800,6 +1825,9 @@ pre.diff .d-ctx{color:var(--dim)}
    shape for a row you open, not two that drift. */
 #rlList{padding-top:0}
 .rulerow .rlName{width:100%;margin-bottom:6px}
+#grBody h4{margin:0 0 8px}
+#grBody .rulerow+.rulerow{margin-top:12px}
+#grBody .rulerow .hint{margin-top:2px}
 .rulerow .two{display:flex;gap:6px;align-items:center}
 .rulerow .two>*{flex:1;min-width:0}
 .rulerow textarea{min-height:96px;white-space:pre-wrap;margin:0 0 6px;width:100%}
@@ -2836,6 +2864,10 @@ body.booting .pane>.loading{margin:auto}
 .keys.sliding,.mpanel.sliding{z-index:6}
 .mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
   color:var(--dim);padding:8px 10px 0}
+@media(max-width:380px){
+  .mobar{gap:4px;padding:5px}
+  .mobar button{padding-inline:4px}
+}
 @media(min-width:901px){
   /* A row of buttons at the bar's left edge, not a set of stretched thirds:
      on an ultrawide each third is several hundred pixels of empty button.
@@ -2849,6 +2881,10 @@ body.booting .pane>.loading{margin:auto}
   .tabbar .sep{display:none}
   .pill.att{display:none}   /* one pane on a phone: nothing to say */
   .mobar button{flex:1}     /* thumbs, and only three of them */
+  /* ...and they share the bar rather than each taking its text's width: on a
+     344px fold cover four of them did not fit and Chat was cut off at the
+     edge, inside a bar that clips. */
+  .mobar button{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .panes{min-height:90px}
 }
 
@@ -3527,11 +3563,11 @@ body.booting .pane>.loading{margin:auto}
          level the hint, the tick and the bordered list all sat flush against
          the edge while the title and the foot were padded: the same thing
          the trash dialog was doing. -->
-    <div class="field"><div class="hint" id="pendHint"></div></div>
-    <div class="field">
+    <div class="field" id="pendHintF"><div class="hint" id="pendHint"></div></div>
+    <div class="field" id="pendAllF">
       <label id="pendAll"><input type="checkbox" id="pendAllBox"> <span>Select all</span></label>
     </div>
-    <div class="field"><div id="pendList"></div></div>
+    <div class="field" id="pendListF"><div id="pendList"></div></div>
     <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
@@ -6882,7 +6918,8 @@ function logSection(){
     ? Math.max(0, Math.round((Date.now() / 1000 - L.oldest) / 86400)) : 0;
   return `<h4>Logs</h4>
     <div class="logset">
-      <div class="dim">${L.files} file(s), ${humanBytes(L.bytes)}${
+      <div class="dim">${!L.files ? "no logs yet"
+        : `${L.files} file${L.files === 1 ? "" : "s"}, ${humanBytes(L.bytes)}`}${
         L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
         L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
       <div class="logdays setrow col">
@@ -6927,7 +6964,7 @@ function wireLogSection(el){
       if (j.error) return notify(j.error, true);
       if (typeof settingsDraft === "object") delete settingsDraft.logDays;
       notify(j.removed
-        ? `keeping ${j.days} days: ${j.removed} file(s) removed`
+        ? `keeping ${j.days} days: ${j.removed} file${j.removed === 1 ? "" : "s"} removed`
         : `keeping ${j.days} days; nothing was past it`);
       refresh(); drawUiMenu();
     }catch(e){ notify("logs: " + e, true); }
@@ -6944,7 +6981,7 @@ function wireLogSection(el){
     try{
       const r = await postJSON("/api/logs", {action: "clear"});
       const j = await r.json();
-      notify(j.error || `${j.removed} file(s) removed`, !!j.error);
+      notify(j.error || `${j.removed} file${j.removed === 1 ? "" : "s"} removed`, !!j.error);
       refresh(); drawUiMenu();
     }catch(e){ notify("logs: " + e, true); }
   };
@@ -8338,8 +8375,12 @@ function drawPendingModal(j){
       + `Nothing lands until you approve it; denying drops it and anything that rode behind it.`
     : "";
   $("pendEmpty").hidden = !!rows.length;
-  $("pendAll").hidden = !rows.length;
+  // With nothing waiting, the empty list's border, a Select all over nothing
+  // and a blank hint were three bands of chrome around one sentence.
+  $("pendAllF").hidden = $("pendListF").hidden = !rows.length;
+  $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
   $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
+  $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
   const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`
