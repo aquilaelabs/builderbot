@@ -31,6 +31,7 @@
 - A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
 - bb diag: the controller's diagnostics (its build, the doctor, each node, failed jobs, error lines, the audit trail) with credentials redacted, readable by an administrator's session once debug mode is on and its node is ticked for it on Debug settings (96899bb)
 - Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
+- A polish pass on phones, foldables and desktop: dialogs that drew flush or showed controls with nothing to act on, dropdown text running past the arrow, a cut-off bottom bar on narrow phones, and small touch targets across the tab strip, dialogs and notebook (9da871c)
 
 ### Upgrading
 
