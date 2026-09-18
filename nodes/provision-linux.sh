@@ -85,6 +85,16 @@ it, which is a paste rather than a questionnaire.
                        the firewall rule, bb-sandbox itself. Docker and the
                        packages stay, so does everything on the shares. It
                        says what will go and asks; --remove --yes does not.
+  --guest              provision this machine as a GUEST node: somebody's own
+                       machine rather than a sandbox built to be a node.
+                       Everything BuilderBot puts here is one directory
+                       (~/.builderbot) and one systemd user unit, and the
+                       controller changes nothing outside them: no accounts,
+                       no docker, no fstab, no netplan, no firewall, and
+                       Storage and Network are not offered for it. Run it as
+                       yourself, with no sudo. --guest --remove takes exactly
+                       that away and nothing else, because nothing else was
+                       added.
   --check              only the pre-flight: say whether this machine is one
                        the script can provision — its family, its tools, its
                        init, a writable root — and change nothing. Exit 0 when
@@ -182,10 +192,11 @@ while [ $# -gt 0 ]; do
         --nfs)   NFS+=("$2"); shift 2 ;;
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
-        --data)  STORE_DATA="$2"; shift 2 ;;
-        --packages) STORE_PACKAGES="$2"; shift 2 ;;
-        --cache) STORE_CACHE="$2"; shift 2 ;;
-        --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
+        --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
+        --packages) STORE_PACKAGES="$2"; STORE_PACKAGES_SET=1; shift 2 ;;
+        --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
+        --artifacts) STORE_ARTIFACTS="$2"; STORE_ARTIFACTS_SET=1; shift 2 ;;
+        --guest) GUEST=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
         --remove) REMOVE=1; shift ;;
         --yes)   YES=1; shift ;;
@@ -194,7 +205,11 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
-remove_if_asked ${YES:+--yes}
+# ...but not a GUEST's: that footprint is one directory and one user unit in
+# somebody's own home, taken away by guest_run below without root. The managed
+# remove asks for root and would refuse here, which is what it did when this
+# was walked (R23 step 2).
+[ "${GUEST:-0}" = 1 ] || remove_if_asked ${YES:+--yes}
 # One without the other is a typo, and the enrollment would fail an hour of
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
@@ -207,6 +222,150 @@ esac
 
 say() { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
+
+# ---- a GUEST node: somebody's own machine (roadmap R23) ---------------------
+#
+# The managed shape below owns the box: it makes accounts, installs docker,
+# writes fstab and netplan and a firewall rule, and the controller edits all
+# of them afterwards through the config plane. That is right for a sandbox VM
+# built to be one and wrong for a laptop somebody also works on.
+#
+# A guest is the other class. Everything BuilderBot puts here lives in ONE
+# directory and ONE service unit, both removable in a line, and the controller
+# changes nothing outside them: Storage and Network refuse on a guest node and
+# say why (the per-verb gate, 6 Sep). No root is used or asked for, which is
+# also what stops this reaching anything it should not.
+#
+# Deliberately the same footprint provision-macos.sh lays down, in systemd's
+# words rather than launchd's, so "what is on my machine" has one answer
+# whichever kind of machine it is.
+guest_foot() { printf '%s' "${BUILDERBOT_HOME:-$HOME/.builderbot}"; }
+GUEST_UNIT_NAME="builderbot-agent.service"
+
+guest_unit() { printf '%s' "$HOME/.config/systemd/user/$GUEST_UNIT_NAME"; }
+
+guest_remove() {
+    local foot unit
+    foot="$(guest_foot)"; unit="$(guest_unit)"
+    if [ -z "${YES:-}" ]; then
+        printf 'This takes off %s (its stores included) and %s.\nNothing else was put on this machine. Continue? [y/N] ' \
+               "$foot" "$unit"
+        read -r a < /dev/tty || a=""
+        case "$a" in y|Y|yes|YES) ;; *) echo "nothing changed"; exit 0 ;; esac
+    fi
+    systemctl --user disable --now "$GUEST_UNIT_NAME" 2>/dev/null || true
+    rm -f "$unit"
+    systemctl --user daemon-reload 2>/dev/null || true
+    rm -rf "$foot"
+    say "gone: $foot and $unit"
+    echo "Nothing else was added, so nothing else has to be taken away."
+    exit 0
+}
+
+guest_run() {
+    local foot unit agent node_json packages py
+    foot="$(guest_foot)"; unit="$(guest_unit)"
+    [ "$(id -u)" != 0 ] || {
+        warn "do not run --guest as root: the whole point is a footprint your own account owns, in your own home. Run it as yourself, with no sudo."
+        exit 1; }
+    [ "${REMOVE:-0}" = 1 ] && guest_remove
+
+    say "checking this machine"
+    local bad=0
+    for t in python3 curl systemctl; do
+        command -v "$t" >/dev/null 2>&1 || { warn "$t is not on PATH, and a guest node needs it"; bad=1; }
+    done
+    systemctl --user show-environment >/dev/null 2>&1 \
+        || { warn "systemd --user is not running for this account, so there is nowhere to put the agent's unit. On a server, 'sudo loginctl enable-linger $(id -un)' and log in again."; bad=1; }
+    [ "$bad" = 0 ] || exit 1
+    [ "${CHECK_ONLY:-0}" = 0 ] || { say "this machine can be a guest node"; exit 0; }
+    [ -n "$CONTROLLER" ] && [ -n "$TOKEN" ] \
+        || { warn "--guest needs --controller and --token, from Enroll node on the Nodes tab"; exit 1; }
+
+    say "the footprint: $foot"
+    mkdir -p "$foot/bin" "$foot/log" "$foot/runner"
+    chmod 700 "$foot"
+    # The four store paths default to /var/lib/builderbot for the MANAGED
+    # shape, which a guest has no root to make and no business making. So a
+    # guest keeps them in the footprint unless a flag actually named one,
+    # which is what the _SET vars are for: `${STORE_X:-...}` never falls back
+    # here, because the default is not empty. Found by running this for real,
+    # where the agent said it could not create /var/lib/builderbot/artifacts.
+    local s_data s_cache s_art
+    s_data="${STORE_DATA_SET:+$STORE_DATA}";           s_data="${s_data:-$foot/data}"
+    s_cache="${STORE_CACHE_SET:+$STORE_CACHE}";        s_cache="${s_cache:-$foot/cache}"
+    s_art="${STORE_ARTIFACTS_SET:+$STORE_ARTIFACTS}";  s_art="${s_art:-$foot/artifacts}"
+    packages="${STORE_PACKAGES_SET:+$STORE_PACKAGES}"; packages="${packages:-$foot/packages}"
+    mkdir -p "$packages" "$s_data" "$s_cache" "$s_art"
+    agent="$foot/bin/builderbot-agent"
+    node_json="$foot/node.json"
+
+    say "the agent, from ${CONTROLLER}"
+    local hdr want got
+    hdr="$(mktemp)"
+    curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
+         "${CONTROLLER%/}/api/v1/agent/download" -o "${agent}.new" \
+        || { warn "could not download the agent from ${CONTROLLER}: is that the dashboard's address, and is the token unused?"
+             rm -f "$hdr" "${agent}.new"; exit 1; }
+    want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
+    got="sha256:$(sha256sum "${agent}.new" | cut -d' ' -f1)"
+    rm -f "$hdr"
+    if [ -n "$want" ] && [ "$want" != "$got" ]; then
+        warn "the agent that arrived does not match the digest the controller sent (${got} vs ${want})"
+        rm -f "${agent}.new"; exit 1
+    fi
+    chmod 755 "${agent}.new"; mv -f "${agent}.new" "$agent"
+
+    # Enrolled as this account, with every store under the footprint unless a
+    # flag pointed one somewhere else. The credential it keeps is this node's
+    # own row and nothing more.
+    say "enrolling as $(id -un)"
+    systemctl --user stop "$GUEST_UNIT_NAME" 2>/dev/null || true
+    BUILDERBOT_NODE_JSON="$node_json" python3 "$agent" enroll \
+        --controller "$CONTROLLER" --token "$TOKEN" --user "$(id -un)" \
+        --store "data=$s_data" --store "packages=$packages" \
+        --store "cache=$s_cache" --store "artifacts=$s_art" \
+        || { warn "enrolment failed: the token is good once and for a day, so mint a fresh one if this is a second try"; exit 1; }
+
+    say "the user unit: $GUEST_UNIT_NAME"
+    py="$(command -v python3)"
+    mkdir -p "$(dirname "$unit")"
+    cat > "$unit" <<EOF
+[Unit]
+Description=BuilderBot node agent (guest footprint)
+After=network-online.target
+
+[Service]
+ExecStart=${py} ${agent} run
+Environment=BUILDERBOT_NODE_JSON=${node_json}
+Environment=BUILDERBOT_RUNNER_DIR=${foot}/runner
+Restart=always
+RestartSec=5
+StandardOutput=append:${foot}/log/agent.log
+StandardError=append:${foot}/log/agent.log
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now "$GUEST_UNIT_NAME"
+    # Without lingering the unit stops at logout, which on a machine somebody
+    # uses is most of the time. Asked for, never forced: it wants root or a
+    # polkit rule, and a guest run has neither by design.
+    if ! loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q 'Linger=yes'; then
+        loginctl enable-linger "$(id -un)" 2>/dev/null \
+            || warn "this account does not linger, so the agent stops when you log out. 'sudo loginctl enable-linger $(id -un)' fixes that, and is the only root this ever wants."
+    fi
+
+    say "done"
+    echo "The whole of it is $foot and $unit."
+    echo "Take it away with: bash $0 --guest --remove"
+    echo "Storage and Network are not offered for a guest node: this machine's"
+    echo "mounts and addresses stay yours."
+    exit 0
+}
+
+[ "${GUEST:-0}" = 1 ] && guest_run
 
 # This is for a VM, and a container is not one. BuilderBot's own base is
 # Ubuntu and runs as root under `docker exec`, so both checks above pass there

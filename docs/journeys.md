@@ -244,3 +244,48 @@ with the four projects it started with.
 - Alpha, new evidence: several accounts on one controller, each seeing only
   what they were granted, proved from the outside rather than from the tests.
 - Still dev: nothing this walk touched.
+
+## Enrolling somebody's own machine as a guest node (18 September 2026)
+
+Walked against `e4f4fc1`, the branch head, on the dev pair. The point of a
+guest node is that the machine stays its owner's, so the walk is as much
+about what is NOT on it afterwards as what is.
+
+`labowner` on the bb-dev-sandbox VM stood in for somebody's laptop. That VM
+is already a MANAGED node, provisioned as a sandbox with the agent running as
+root, which made it a better test than a clean machine: a guest footprint is
+one account's, so the two had to coexist without touching each other.
+
+What was run, in order:
+
+1. **`--guest --check`** as an ordinary user. It answers whether the machine
+   can be one and changes nothing.
+2. **`--guest --controller ... --token ...`**, no sudo. It laid down
+   `~/.builderbot`, fetched the agent and checked it against the digest the
+   controller sent, enrolled as `labowner`, and wrote one systemd user unit.
+   *Snag:* the four store paths default to `/var/lib/builderbot` for the
+   managed shape, and the guest path read those defaults rather than its own
+   footprint, so the agent reported it could not create
+   `/var/lib/builderbot/artifacts`. Fixed: a guest keeps its stores in the
+   footprint unless a flag actually named one.
+3. **The row.** Online, and `sandbox` false: the managed marker is the thing
+   the per-verb gate reads, so its absence is what makes the class mean
+   something rather than a label. Storage and Network were both refused on it
+   with the reason, asked straight at the API rather than judged from the tab.
+4. **`--guest --remove --yes`.** *Snag:* it hit the MANAGED remove first and
+   demanded root, because that runs on the argument before the guest branch
+   is reached. So the instruction the script itself prints was wrong. Fixed
+   by skipping the managed remove for a guest.
+5. **What was left.** `~/.builderbot` gone, the unit gone and inactive. The
+   `builderbot-agent` still running on the box is the MANAGED node's own, at
+   `/usr/local/sbin`, untouched. Two agents on one machine, and taking the
+   guest away left the other one working.
+
+Two snags, both found by running it rather than reading it, both fixed in the
+same sitting. What this does not cover is a machine with no BuilderBot on it
+at all, and macOS, which is R23 step 3 and wants a Mac.
+
+- Alpha, new evidence: a guest node enrolled, refused the verbs its class
+  does not have, and removed itself completely, on a machine that was already
+  a managed node.
+- Still dev: the macOS half, which has never been run on a Mac.
