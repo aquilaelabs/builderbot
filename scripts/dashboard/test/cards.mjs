@@ -165,6 +165,23 @@ await page.waitForFunction(() => document.getElementById('docDot').className.inc
 ok(await page.$eval('.card[data-card="doctor"]', el => el.classList.contains('closed')), 'a FAIL leaves a collapsed doctor card collapsed');
 ok(await page.$eval('#doctor', el => !el.hidden), '...but opens the detail behind it');
 ok(await page.$eval('#docBar', el => getComputedStyle(el).display === 'none'), 'collapsed card hides the status row too');
+// A problem reads as one: its line takes the level's colour, and what the
+// check said after its first line is on the card, not only in a title a phone
+// never shows. They rendered as plain body text once, under a red dot.
+const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => {
+  const root = getComputedStyle(document.documentElement);
+  const tok = el.classList.contains('bad') ? '--bad' : '--warn';
+  const want = document.createElement('i');
+  want.style.color = root.getPropertyValue(tok).trim();
+  document.body.append(want);
+  const same = getComputedStyle(want).color === getComputedStyle(el).color;
+  want.remove();
+  return { text: el.textContent, same, why: el.querySelector('.why')?.textContent || '' };
+}));
+ok(probLines.length === 2 && probLines.every(l => l.same),
+   `each problem line is drawn in its level's colour (${JSON.stringify(probLines.map(l => l.same))})`);
+ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(l.why)),
+   '...and carries the rest of what the check said under it');
 doctorFixture('ok');
 await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));

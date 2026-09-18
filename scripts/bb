@@ -5836,9 +5836,9 @@ if live:
     print(f"  [ok]   {len(live)} node{'' if len(live) == 1 else 's'} can run a session "
           f"({', '.join(live[:4])})")
 else:
-    print("  [warn] no node can run a session: Claude runs on one and this")
-    print("         container carries none. Enroll one on the Nodes tab, or")
-    print("         wait for one to come back")
+    print("  [warn] no node can run a session, and this container carries no Claude Code")
+    print("         enroll one on the Nodes tab, or wait for one to come back: a node")
+    print("         that has just restarted or updated its agent is back in a minute")
 NODEPY
     fi
     # The daemon the dashboard's dev instances are built and run on: the

@@ -753,7 +753,7 @@ chmod +x "$S/bin/web-ext"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
 chmod +x "$S/bin/gh"
 printf '  [ok]   claude on PATH\n  [ok]   github reachable\n  [ok]   disk space\n  [skip] gpu (no device)\n' > "$S/doctor-ok.txt"
-{ cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; } > "$S/doctor-fail.txt"
+{ cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; echo '         diagnose with: bb logs --runner'; } > "$S/doctor-fail.txt"
 cp "$S/doctor-ok.txt" "$S/doctor.txt"
 python3 - "$S/reports/test.sarif" <<'EOF'
 import json, sys

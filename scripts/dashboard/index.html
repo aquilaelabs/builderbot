@@ -2498,6 +2498,12 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .doctor .probs:empty{display:none}
 .doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px}
 .doctor .probs:not(:empty)+.chips{border-top:1px solid var(--line)}
+.doctor .probs .sub.bad{color:var(--bad)}
+.doctor .probs .sub.warn{color:var(--warn)}
+/* What the check says after its first line: under it, not only in a title a
+   phone never shows. */
+.doctor .probs .why{display:block;color:var(--dim);font:var(--f-note);white-space:pre-line;
+  overflow-wrap:anywhere;margin-top:2px}
 .doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:100%}
 
@@ -7617,7 +7623,8 @@ function drawDoctor(){
   el.hidden = !open;
   paint(el,
     `<div class="probs">${probs.map(c =>
-       `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}</div>`
+       `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}${
+          c.detail ? `<span class="why">${esc(c.detail)}</span>` : ""}</div>`
      ).join("")}</div>` +
     `<div class="chips">${
        fine.map(c => `<span class="pill ok" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("") +
