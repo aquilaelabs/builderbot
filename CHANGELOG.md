@@ -26,6 +26,7 @@
 - Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
 - The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
 - A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
+- A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
 
 ### Upgrading
 
