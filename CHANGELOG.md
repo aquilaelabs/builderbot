@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)
+
 ## 0.6.0: 2026-09-19
 
 - The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
