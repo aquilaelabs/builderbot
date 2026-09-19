@@ -6,7 +6,7 @@
 // browser would never send — wrong types, missing fields, absurd numbers —
 // because the checks are written against each field being the thing it is
 // supposed to be.
-import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
 
 // ---- the app's own files carry a validator --------------------------------
 // index.html IS the application, and it went out with no ETag and no cache
@@ -146,7 +146,13 @@ await page.route('**/api/status*', r => r.abort());
 // Two failures in a row, however the page's own poll interleaves: a
 // refresh() asked while another is out only queues behind it, so asking
 // twice could count once (B146). Asked until it has counted two, bounded.
-for (let i = 0; i < 40 && await page.evaluate(async () => { await refresh(); return pollFails; }) < 2; i++);
+// Bounded by time, not by a count: a status poll this page sent before the
+// route went in can still be out (a status walks every project's git, and
+// the checks above just made it slow), and while it is, refresh() only queues
+// and returns at once, so forty asks spent themselves in milliseconds and the
+// late poll then landed and cleared the light (B176, 19 Sep).
+for (const until = Date.now() + 20000; Date.now() < until
+     && await page.evaluate(async () => { await refresh(); return pollFails; }) < 2;) await sleep(100);
 const dead = await page.evaluate(() => ({
   red: !!document.getElementById('dot')?.classList.contains('off'),
   title: document.getElementById('dot')?.getAttribute('title') || '',
