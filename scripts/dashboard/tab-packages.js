@@ -188,7 +188,11 @@ function pkgRow(p, busy, job){
         p.wrong_platform ? `packaged for ${esc(p.wrong_platform)}, and this node is not`
         : p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
                       : "not installed"}</span>`}
-      ${upd}${err}
+      ${upd}${err}${
+        // Sessions that started before this landed still have the old PATH
+        // (packages.py counts them); one line, and only while there are any.
+        p.reopen && !mine ? `<span class="sub warn pkgreopen">${p.reopen === 1 ? "1 session" : `${p.reopen} sessions`}
+          open here started before this was installed: reopen ${p.reopen === 1 ? "it" : "them"} to use it</span>` : ""}
     </span>
     ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
       busy ? ` disabled title="another package operation is running"`

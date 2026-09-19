@@ -934,12 +934,29 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
     ok(await page.$('.pkgtab #pkgSysdeps') !== null,
        '...with one press to install them on a node the agent administers');
+    // Nobody has to press it on a node BuilderBot manages: the census that
+    // named them queued the job itself, for exactly those recipes.
+    const pkgJobs = async () => ((await pj(`/api/v1/jobs?node=${minted.id}&type=package&n=20`)).jobs || []);
+    const auto = (await pkgJobs()).filter(j => j.spec?.action === 'sysdeps');
+    ok(auto.length === 1 && JSON.stringify(auto[0].spec?.names) === '["dotnet"]' && auto[0].requested_by === 'system',
+       `a managed node installs what it lacks by itself, for the recipes that need it (${auto.map(j => `${j.requested_by}: ${j.spec?.names}`).join(', ') || 'no job'})`);
+    await pj('/api/v1/jobs', { action: 'cancel', id: auto[0]?.id });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+    ok((await pkgJobs()).filter(j => j.spec?.action === 'sysdeps').length === 1,
+       '...once: the same lack said again is not a job every hello, so a failing install is not retried forever');
     const sj = await pj('/api/packages', { action: 'sysdeps', names: [], node: minted.id });
-    ok(sj.ok && /^j_/.test(sj.job), `pressing it queues a package job of the sysdeps kind (${sj.job || sj.error})`);
+    ok(sj.ok && /^j_/.test(sj.job), `pressing it still queues a package job of the sysdeps kind (${sj.job || sj.error})`);
     const sjob = await pj(`/api/v1/jobs?id=${sj.job}`);
     ok(sjob.type === 'package' && sjob.spec?.action === 'sysdeps',
        '...carrying the action and no recipe names: every held one');
     await pj('/api/v1/jobs', { action: 'cancel', id: sj.job });
+    // Locked to its console: its root is its administrator's, so nothing is
+    // installed by itself, whatever goes missing.
+    await pj('/api/v1/nodes', { action: 'lock', id: minted.id });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'], playwright: ['libgbm'] } });
+    ok((await pkgJobs()).filter(j => j.spec?.action === 'sysdeps').length === 2,
+       'a node whose system changes are locked to its console installs nothing by itself');
+    await pj('/api/v1/nodes', { action: 'unlock', id: minted.id });
     await page.evaluate(() => openNodesTab());
     await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
       .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
@@ -949,6 +966,40 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.evaluate(() => loadPackages());
     await page.waitForFunction(() => !document.querySelector('.pkgtab .pkgsys'), null, { timeout: 15000 });
     ok(true, '...and both go quiet once the census says nothing is missing');
+  }
+  // ---- sessions a fresh install has not reached ---------------------------
+  // A package on PATH reaches a session when the session starts, so one open
+  // since before the install still says "not found". The row counts them,
+  // from when each session started (the agent reports it) and when a job
+  // last put the package on the store.
+  {
+    const now = Math.floor(Date.now() / 1000);
+    execFileSync('python3', ['-c', `
+import importlib.util, sys, json
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+        " spec, outputs, state, node, exit_code, queued, ended) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("j_landnode", "package", "", "user:test", "{}", "{}",
+         json.dumps({"action": "install", "names": ["node"]}), "[]", "succeeded",
+         "${minted.id}", 0, ${now} - 200, ${now} - 100))
+`], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [
+        { name: `${uid}~claude-alpha`, created: now - 3600, title: '✳ Claude Code' },
+        { name: `${uid}~shell-2`, created: now - 10, title: 'bash' }] }, running: 0, wait: 0 }) });
+    await page.evaluate(() => loadPackages());
+    await page.waitForSelector('.pkgtab .pkgreopen', { timeout: 15000 });
+    const rows = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+    const nodeRow = rows.find(t => /Node\.js/.test(t)) || '';
+    ok(/1 session open here started before this was installed: reopen it to use it/.test(nodeRow),
+       `a row that changes PATH counts the sessions that started before it landed, and only those (${
+         (nodeRow.match(/\d+ sessions? open[^:]*/) || ['none'])[0]})`);
+    ok(!rows.some(t => /Flutter/.test(t) && /reopen/.test(t)),
+       '...and says nothing on a row no job has put there since they started');
   }
   // ---- one store, two machines (roadmap #18) ------------------------------
   // The controller reaches the package store through Unraid's FUSE layer and a

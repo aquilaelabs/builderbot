@@ -1278,9 +1278,15 @@ lives in its body. The cards:
   is a bin on the row. A recipe's system libraries are each machine's own
   while the store is shared, so when a node lacks some for a package the
   store already holds (a node enrolled after dotnet went in, with no
-  libicu), the tab says which and **Install system packages** puts them on
-  that node without reinstalling the package; the node's row says the same,
-  before a build fails on it. Beside it, **Docker manager…**, **Static analysis**
+  libicu), a node BuilderBot manages installs them by itself the next time it
+  reports in, once per missing set, and never while its system changes are
+  locked to its console. Anywhere it cannot (a guest node, a locked one, an
+  install that failed) the tab says which and **Install system packages**
+  puts them on that node without reinstalling the package; the node's row
+  says the same, before a build fails on it. A package that puts something on
+  PATH reaches a session when the session starts, so its row says how many
+  sessions open on that node started before it was installed, and to reopen
+  them. Beside it, **Docker manager…**, **Static analysis**
   and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the

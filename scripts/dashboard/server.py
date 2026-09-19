@@ -5267,6 +5267,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.hello(nid, req.get("census"), addr,
                             field(req, "version"), field(req, "digest"),
                             req.get("running"))
+            # A managed node whose store holds a package it lacks the
+            # system libraries for installs them itself (packages.py).
+            with contextlib.suppress(Exception):
+                packages.auto_sysdeps(nid)
         elif verb == "work":
             # The heartbeat and the long-poll in one: the sample is recorded
             # first, so a node that is only ever waiting still reads as

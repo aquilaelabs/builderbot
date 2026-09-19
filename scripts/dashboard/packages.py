@@ -877,6 +877,20 @@ def payload_for_node(nid):
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
     items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
+    # A package that puts something on PATH (or sets a variable) reaches a
+    # session only when the session starts: one open since before the
+    # install still has the old PATH, and the plugin or build that wanted
+    # the new tool says "not found" with nothing on screen saying why. So a
+    # row that changes a session's environment counts this node's sessions
+    # that started before it last landed on the store.
+    landed = _landed_at(nid)
+    started = [int(x.get("created") or 0) for x in rep.get("sessions") or [] if isinstance(x, dict)]
+    shapes = {p["name"]: p.get("layout") or {} for p in PACKAGES}
+    for i in items:
+        lay = shapes.get(i["name"]) or {}
+        at = landed.get(i["name"], 0)
+        if i["installed"] and at and (lay.get("bin") or lay.get("env")):
+            i["reopen"] = sum(1 for c in started if 0 < c < at)
     job = None
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
@@ -978,6 +992,23 @@ def _store_share(n):
     if not best or not best[1]:
         return None                      # a path of the node's own
     return (best[1], path[len(best[0]):])
+
+
+def _landed_at(nid):
+    """{package: when a job last installed or updated it} on this node's
+    store, which is also every node sharing it: installed from one, it is on
+    all of them, and so are the sessions it has not reached."""
+    out = {}
+    if not nodes:
+        return out
+    for x in [nid] + [o["id"] for o in store_sharers(nid)]:
+        for j in nodes.jobs_for(node_id=x, type="package", n=50):
+            sp = j.get("spec") or {}
+            if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+                continue
+            for name in sp.get("names") or []:
+                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+    return out
 
 
 def store_sharers(node_id):
@@ -1210,6 +1241,49 @@ def node_job(principal, nid, action, names):
                       {"action": action, "names": names, "timeout": 3600})
     if r.get("ok") and added:
         r["added"] = added
+    return r
+
+
+# The unmet set each node was last sent a system-packages job for, so one
+# that did not fix it is not sent again every hello: a failing apt would
+# otherwise be retried every ten minutes forever. In memory: a restart is
+# one more try, which is the right amount.
+_auto_sysdeps = {}
+
+
+def auto_sysdeps(nid):
+    """Install the system packages a node lacks for what its store holds,
+    without anybody pressing Install system packages.
+
+    The store is shared, so a package installed from one node is on every
+    node that mounts it, while the libraries it needs are each machine's
+    own: the install job installs them only on the node it ran on, and every
+    other one showed a banner asking for a second press. Those packages were
+    already chosen when the recipe was installed, so a node BuilderBot
+    manages (the sandbox stamp) installs them itself when its census says
+    they are missing. Not on a guest node, whose system is its owner's, and
+    not while the node's system changes are locked to its console. The
+    banner stays for those, and for a job that did not fix it.
+
+    Called on every hello; a no-op unless something is missing. The queued
+    job, or None."""
+    if not nodes:
+        return None
+    n = nodes.node(nid)
+    if not n or n["kind"] != "agent" or n.get("state") != "online":
+        return None
+    rep = n.get("reported") or {}
+    unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+    if not unmet or not rep.get("sandbox") or nodes.node_locked(n):
+        return None
+    sig = json.dumps(unmet, sort_keys=True)
+    if _auto_sysdeps.get(nid) == sig:
+        return None
+    r = node_job("system", nid, "sysdeps", sorted(unmet)[:8])
+    # Only a job actually queued counts as tried: one refused because
+    # another package job holds the store is tried again on a later hello.
+    if r.get("ok"):
+        _auto_sysdeps[nid] = sig
     return r
 
 

@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.84"
+AGENT_VERSION = "0.5.85"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3507,15 +3507,19 @@ class Agent:
         attached, the active pane's directory and title. Empty when the
         server is not up, which is the normal state of a node nobody has
         opened a terminal on yet."""
+        # When each session started, too: a toolchain installed after that
+        # is not on its PATH until it is reopened, and the Tools tab says so
+        # on the row. Before the title, which is free text and goes last.
         out = self._tmux(["list-panes", "-a", "-F",
                           "#{session_name}\t#{pane_active}\t#{session_attached}\t"
-                          "#{pane_current_path}\t#{pane_title}"])
+                          "#{pane_current_path}\t#{session_created}\t#{pane_title}"])
         rows = []
         for line in (out or "").splitlines():
-            parts = line.split("\t", 4)
-            if len(parts) == 5 and parts[1] == "1":
+            parts = line.split("\t", 5)
+            if len(parts) == 6 and parts[1] == "1":
                 rows.append({"name": parts[0], "attached": parts[2].strip() not in ("", "0"),
-                             "cwd": parts[3], "title": parts[4]})
+                             "cwd": parts[3], "created": int(parts[4]) if parts[4].isdigit() else 0,
+                             "title": parts[5]})
         return rows[:64]
 
     # What each account on this machine is signed in to Claude as, refreshed

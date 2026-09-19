@@ -1855,6 +1855,9 @@ def heartbeat(nid, sample, addr, running=0):
             rep["sessions"].append({
                 "name": name, "attached": bool(row.get("attached")),
                 "cwd": str(row.get("cwd") or "")[:300],
+                # When it started (an agent from 0.5.85 on; 0 before), so a
+                # toolchain installed since can say it is not on its PATH.
+                "created": _mb(row.get("created")) or 0,
                 "title": str(row.get("title") or "")[:200]})
     for role, free in clean["stores"].items():
         if role in rep.get("stores", {}):
