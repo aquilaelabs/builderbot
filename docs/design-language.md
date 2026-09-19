@@ -8,7 +8,9 @@ fails by name; the house rule `design` points here and runs it.
 ## Colour
 
 Colour comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
-`--sunk` (page, raised box, set-into-the-panel), edge `--line`, text `--ink`
+`--sunk` / `--flyout` (page, raised box, set-into-the-panel, and what the
+terminal's bottom bar opens: tinted towards the accent, with an accent edge
+and a shadow, so it never reads as part of the bar or the page), edge `--line`, text `--ink`
 and `--dim`, status `--accent` / `--warn` / `--bad` / `--note`, buttons
 `--btn` / `--btn-hi`. Twelve schemes repaint the page by swapping nine of
 them, so a hardcoded hex is a spot the schemes cannot reach.

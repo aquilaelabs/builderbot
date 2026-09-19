@@ -75,6 +75,14 @@
      of the page changed colour. Twelve percent of black against the panel is
      what that hex was, to the byte. */
   --sunk:#161b22;       --sunk:color-mix(in srgb, var(--panel), #000000 12%);
+  /* The flyout: what the terminal's bottom bar opens (Keys, Commands,
+     Sessions, Chat). It was --panel, the colour of the bar under it, the
+     cards beside it and the tab strip above, so on a phone, where it sits in
+     the flow between the terminal and the bar, nothing said where it ended
+     (19 Sep). Tinted a tenth towards the scheme's accent, the colour of the
+     button that opened it: measured across the twelve schemes, --dim on it
+     stays at 5.0:1 or better and --ink at 9.6. */
+  --flyout:#243633;     --flyout:color-mix(in srgb, var(--panel), var(--accent) 10%);
   /* The tail matters on Android: none of the named desktop faces exist
      there, and bare `monospace` lets Chrome and Firefox each pick their own
      default: the same page in two fonts. Roboto/Noto/Droid Mono are what
@@ -2861,9 +2869,15 @@ body.booting .pane>.loading{margin:auto}
    body cannot scroll, whatever overflowed was simply gone: the bar included,
    with no way to close what had opened. The flyout scrolls inside itself
    instead, and the terminal keeps a strip of screen. */
-.mpanel.show{display:block;flex:0 1 auto;max-height:45vh;overflow:auto;
-  background:var(--panel);border:1px solid var(--line);border-top:0}
+.mpanel.show{display:block;flex:0 1 auto;max-height:45vh;overflow:auto}
 .keys.show{flex:0 1 auto;overflow:auto;max-height:45vh}
+/* A flyout is its own surface, at both sizes: the tinted --flyout, an accent
+   edge where it meets the terminal, and a shadow cast up onto it, so where
+   it stops is plain on a phone as much as over a desktop's terminal. The bar
+   below keeps --panel: the flyout is what it opened, not part of it. */
+.mpanel.show,.keys.show{background:var(--flyout);border:1px solid var(--line);
+  border-top:2px solid var(--accent-mid);box-shadow:0 -6px 18px rgba(0,0,0,.35);
+  position:relative;z-index:1}
 /* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
    inline to the bar's height), so the terminal under it holds still until the
    slide lands and the panel drops back into the flow. */
