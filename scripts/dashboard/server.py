@@ -2503,7 +2503,10 @@ def wait_for_nodes(limit=NODE_WAIT):
         try:
             owed = [n for n in nodes.node_list()
                     if n.get("kind") == "agent" and not (n.get("agent") or {}).get("revoked")
-                    and STARTED - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < STARTED]
+                    # Whole seconds: last_seen is stamped as an int, so a node
+                    # that dialed in the same second this started (48 against
+                    # 48.6) is back, not owed until its next heartbeat.
+                    and STARTED - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < int(STARTED)]
         except Exception:                                        # noqa: BLE001
             return
         if not owed:
@@ -2545,11 +2548,22 @@ def _container_age():
 
     Not /proc/uptime — under Docker that is the HOST's, four days here on a
     container three minutes old, so it answers a different question entirely.
-    A /proc/<pid> directory carries the process's start time as its mtime.
+    And not the mtime of /proc/1, which this used to read: that is when the
+    kernel made the directory's inode, and it makes it again whenever it is
+    evicted, so a process twenty minutes old read as two. Then the doctor
+    waited out the boot, three minutes, and the suite's first page timed out
+    on a Doctor card that had not come (19 Sep, in a session's view, where
+    pid 1 is bb-session and there is no ready marker to end the wait early).
+    The start time itself: /proc/1/stat's 22nd field, in clock ticks since
+    the machine booted, on top of /proc/stat's btime.
     """
     try:
-        return max(0.0, time.time() - os.path.getmtime("/proc/1"))
-    except OSError:
+        with open("/proc/1/stat") as f:
+            ticks = int(f.read().rsplit(")", 1)[1].split()[19])
+        with open("/proc/stat") as f:
+            btime = next(int(line.split()[1]) for line in f if line.startswith("btime "))
+        return max(0.0, time.time() - (btime + ticks / os.sysconf("SC_CLK_TCK")))
+    except (OSError, ValueError, IndexError, StopIteration):
         return float("inf")     # cannot tell: treat it as "not booting"
 
 
