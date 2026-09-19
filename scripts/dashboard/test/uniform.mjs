@@ -1016,8 +1016,8 @@ const DIALOGS = {
     [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },
 };
 const opened = new Set();
-async function dialogShape(){
-  return page.evaluate(() => {
+async function dialogShape(pg = page){
+  return pg.evaluate(() => {
     const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
     if (!m) return { err: 'no dialog opened' };
     const box = m.querySelector('.box');
@@ -1025,8 +1025,17 @@ async function dialogShape(){
       if (e.offsetHeight === 0 || e.closest('h3, .field, .foot')) return false;
       return [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
     }).map(e => `${e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`);
+    // One scroller, not two: a box that scrolls around a part that scrolls
+    // too is the half-a-line wobble About had on every size (18 Sep).
+    const scrolls = e => e.scrollHeight > e.clientHeight + 1;
+    // A text box scrolling its own text is an editor doing its job, not a
+    // second scroller in the dialog's layout.
+    const inner = [...box.querySelectorAll('*')].filter(e => e.offsetHeight && scrolls(e)
+      && e.tagName !== 'TEXTAREA' && /auto|scroll/.test(getComputedStyle(e).overflowY));
+    const nested = scrolls(box) && inner.length
+      ? `the box scrolls ${box.scrollHeight - box.clientHeight}px around ${inner[0].id || inner[0].className || inner[0].tagName}, which scrolls too` : '';
     // A dialog of prose (About) may have headings; one of fields may not.
-    return { loose: loose.slice(0, 3), h4: box.classList.contains('prose') ? 0 : box.querySelectorAll('h4').length,
+    return { nested, loose: loose.slice(0, 3), h4: box.classList.contains('prose') ? 0 : box.querySelectorAll('h4').length,
              foot: !!box.querySelector('.foot') && box.querySelector('.foot').offsetHeight > 0 };
   });
 }
@@ -1041,7 +1050,26 @@ for (const [name, open] of Object.entries(DIALOGS)) {
   ok(!d.err && d.loose.length === 0 && d.h4 === 0 && d.foot,
      `[dialog ${name}] its lines in .field bands, no h4, buttons in a .foot${
        d.err ? ` (${d.err})` : d.loose.length ? `: loose ${d.loose.join(', ')}` : d.h4 ? `: ${d.h4} h4` : !d.foot ? ': no foot' : ''}`);
+  ok(!d.nested, `[dialog ${name}] scrolls in one place${d.nested ? `: ${d.nested}` : ''}`);
   await page.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
+}
+// ...and again on a small phone, where the room runs out first: every dialog
+// still scrolls in one place.
+{
+  const phone = await newPage(browser, { viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL); await ready(phone);
+  const twice = [];
+  for (const [name, open] of Object.entries(DIALOGS)) {
+    await phone.evaluate(open);
+    await phone.waitForFunction(() => [...document.querySelectorAll('.modal')].some(m => !m.hidden),
+      null, { timeout: 10000 }).catch(() => {});
+    await sleep(600);
+    const d = await dialogShape(phone);
+    if (d.nested) twice.push(`${name}: ${d.nested}`);
+    await phone.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
+  }
+  ok(twice.length === 0, `on a 360px phone every dialog scrolls in one place${twice.length ? ': ' + twice.join(' | ') : ''}`);
+  await phone.close();
 }
 {
   const all = await page.evaluate(() => [...document.querySelectorAll('.modal[id]')].map(m => m.id));

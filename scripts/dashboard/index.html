@@ -548,7 +548,18 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .abswitch{display:flex;gap:6px;margin:10px 0 6px}
 .abswitch button{flex:0 1 auto}
 .abswitch button.on{border-color:var(--accent);color:var(--accent)}
-.abpage{max-height:52vh;overflow:auto;padding-right:4px}
+/* One scroller, not two. The page used to be capped at 52vh on its own while
+   the box capped itself at 90vh, and the lines under the page did not fit in
+   the difference, so the box scrolled a little around a page that scrolled
+   too (18 Sep, on every size measured). A column instead: the title, the
+   switch, the build lines and the foot keep their height, and the page takes
+   what is left and is the only thing that scrolls. */
+.modal .box.prose{display:flex;flex-direction:column}
+.modal .box.prose>*{flex:none}
+.modal .box.prose>.about{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}
+.about>*{flex:none}
+.about>.abpage{flex:0 1 auto;min-height:0}
+.abpage{overflow:auto;padding-right:4px}
 .abpage h4{margin:12px 0 4px;font:var(--f-ui);font-weight:600}
 .abpage p,.abpage li{font:var(--f-ui);color:var(--fg);line-height:1.5}
 .abpage ul{margin:4px 0 8px 18px;padding:0}
