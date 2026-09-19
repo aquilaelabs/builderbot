@@ -40,6 +40,7 @@
 - Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
 - The Tools tab names the system packages each tool puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
 - System packages now install on Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9 and 10, Fedora, Arch and openSUSE: Playwright's list was apt-only and broke on Ubuntu 24.04, and a list can name a library that was renamed between releases (1912a29)
+- A mistyped controller address in BB_CONTROLLER is reported as what it is, not a crash, and two node reports that could crash the controller's handling of them are taken safely (b9f2cf5)
 
 ### Upgrading
 
