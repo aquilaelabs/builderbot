@@ -107,6 +107,12 @@ function renderProfileInto(i){
     </div>
     <div class="row stack2">
       <div class="grow">
+        <h4>Claude plugins</h4>
+        <div class="logset">${profilePlugins(profile.plugins || [])}</div>
+      </div>
+    </div>
+    <div class="row stack2">
+      <div class="grow">
         <h4>Password</h4>
         <div class="logset">
           <div class="logdays setrow col">
@@ -130,6 +136,18 @@ function renderProfileInto(i){
     </div>`;
   d.setFoot(`Your commits carry the git name and email above in every session and shell you open, whichever project: the account name stays what you sign in with.`);
   wireProfile(d.el);
+}
+
+// What you installed with /plugin in your own sessions, per node, as each
+// node last said (plugins.py): read here, changed only in a session, where
+// a plugin takes effect.
+function profilePlugins(rows){
+  if (!rows.length) return `<div class="dim">None installed. <code>/plugin</code> in a Claude session adds one, for you alone.</div>`;
+  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${
+    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project || "a project")})` : ""}${
+    p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
+  return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
+    + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
 }
 
 function wireProfile(root){

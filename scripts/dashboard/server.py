@@ -2168,6 +2168,8 @@ chat.configure(state=STATE, write_json=write_json)
 # note here because the node has no /config to write (roadmap #24).
 import overlap                                                   # noqa: E402
 overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
+import plugins                                                   # noqa: E402
+plugins.configure(state=STATE, write_json=write_json)
 
 
 # ---- the test registry ------------------------------------------------------
@@ -2580,7 +2582,8 @@ doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes
 import diag                                                      # noqa: E402
 
 diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
-               settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir)
+               settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir,
+               plugins=plugins, users=users)
 
 
 # ---- revisions -------------------------------------------------------------
@@ -5271,6 +5274,10 @@ class Handler(BaseHTTPRequestHandler):
             nodes.heartbeat(nid, req.get("sample"), addr, req.get("running"))
             self._node_logins(nid, (req.get("sample") or {}).get("logins")
                               if isinstance(req.get("sample"), dict) else None)
+            # ...and the Claude plugins each account there installed, which
+            # ride the same rows (plugins.py).
+            plugins.report(nid, (req.get("sample") or {}).get("logins")
+                           if isinstance(req.get("sample"), dict) else None)
             try:
                 wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
             except (TypeError, ValueError):
@@ -6478,7 +6485,11 @@ class Handler(BaseHTTPRequestHandler):
                                "profile": users.profile(me),
                                "git": users.git_identity(me),
                                "git_ready": users.git_ready(me),
-                               "claude": claude_auth(home=home_for(users.uid_of(me))).get("email") or ""})
+                               "claude": claude_auth(home=home_for(users.uid_of(me))).get("email") or "",
+                               # The Claude plugins this account installed, per
+                               # node, as the nodes last said (plugins.py).
+                               "plugins": plugins.of(users.uid_of(me), {
+                                   n["id"]: n["name"] for n in ([] if NODES_OK else nodes.node_list())})})
         act = field(req, "action")
         if act == "password":
             r = users.change_password(me["name"], str(req.get("current") or ""),

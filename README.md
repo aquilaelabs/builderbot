@@ -535,7 +535,8 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
 bb diag [--json] [SECTION...]
                    the controller's diagnostics, read-only: its build and the
                    images it ran, its switches, the doctor's every check, each
-                   node's agent and session half, the last day's jobs and the
+                   node's agent and session half, the Claude plugins each
+                   account installed on each node, the last day's jobs and the
                    failures, error lines from its own logs and the audit
                    trail, with anything shaped like a credential redacted. An
                    administrator's. A session reads it only while **debug
@@ -3714,7 +3715,7 @@ sessions when a copy fell behind. The copy was the problem: nothing kept it
 current, and the machinery that policed it was larger than the thing it
 policed.
 
-## Playwright, Android, publishing
+## Playwright, Android, plugins, publishing
 
 - **Playwright**: the browsers are a package on the store (the Tools tab's
   playwright), so `npx playwright test` runs headless in a session on any
@@ -3724,6 +3725,17 @@ policed.
   emulator is that node's too, `bb emu start`. See
   [Multiple Android versions](#multiple-android-versions) to emulate more
   than one API level.
+- **Claude Code plugins**: `/plugin` inside a session installs one for that
+  person alone, in their own `~/.claude` on the node; a project's committed
+  `.claude/settings.json` can name plugins everybody on it is offered. Each
+  person's are listed on their **Profile** tab and every account's in
+  `bb diag plugins`, since a plugin adds its own hooks and instructions beside
+  BuilderBot's and a session that behaves oddly may be carrying one. The
+  language-server plugins run a server a session cannot `npm install -g`
+  into the store, so the Tools tab carries them: **language-servers** (pyright
+  and typescript-language-server, for pyright-lsp and typescript-lsp) and
+  **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
+  already come with the rust and swift packages.
 - **Publishing**: from a session, whatever the project's own credentials
   allow on its node (`gh release create`, Gradle publish tasks); from a shell
   on the controller, `npm publish` with `NPM_TOKEN`. Signing keys belong in CI
