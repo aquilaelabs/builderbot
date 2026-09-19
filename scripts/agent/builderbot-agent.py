@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.86"
+AGENT_VERSION = "0.5.87"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -344,6 +344,9 @@ PACMAN_BIN = os.environ.get("BUILDERBOT_PACMAN_BIN", "pacman")
 ZYPPER_BIN = os.environ.get("BUILDERBOT_ZYPPER_BIN", "zypper")
 APK_BIN = os.environ.get("BUILDERBOT_APK_BIN", "apk")
 XBPS_QUERY_BIN = os.environ.get("BUILDERBOT_XBPS_QUERY_BIN", "xbps-query")
+# What apt's repositories carry, as opposed to what dpkg has installed: asked
+# only to pick among a recipe's alternatives ("libasound2t64|libasound2").
+APT_CACHE_BIN = os.environ.get("BUILDERBOT_APT_CACHE_BIN", "apt-cache")
 XBPS_INSTALL_BIN = os.environ.get("BUILDERBOT_XBPS_INSTALL_BIN", "xbps-install")
 EMERGE_BIN = os.environ.get("BUILDERBOT_EMERGE_BIN", "emerge")
 BREW_BIN = os.environ.get("BUILDERBOT_BREW_BIN", "brew")
@@ -1011,6 +1014,31 @@ def read_catalog(into):
         return {}
 
 
+def pkg_available(fam, name):
+    """Whether this machine's repositories carry `name`: how a recipe entry
+    naming alternatives picks the one this release has. A library renamed
+    between releases (libasound2 became libasound2t64 in Ubuntu 24.04 and
+    Debian 13) is one entry, "libasound2t64|libasound2", rather than a list
+    that fails the whole install on every release but one: apt refuses the
+    lot when one name is unknown. True when it cannot tell, so the first
+    alternative is tried and its failure is the package manager's to say."""
+    argv = {"apt": [APT_CACHE_BIN, "show", "-q", name],
+            "dnf": [DNF_BIN, "-q", "info", name],
+            "zypper": [ZYPPER_BIN, "-q", "-n", "search", "-x", name],
+            "pacman": [PACMAN_BIN, "-Si", name],
+            "apk": [APK_BIN, "search", "-x", name],
+            "xbps": [XBPS_QUERY_BIN, "-R", name]}.get(fam)
+    if not argv or not _have(argv[0]):
+        return True
+    try:
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if fam == "apk":                    # exits 0 either way; found is output
+        return p.returncode == 0 and bool(p.stdout.strip())
+    return p.returncode == 0
+
+
 def sysdeps_missing(cat, name, fam, query):
     """(the recipe's system packages missing on this machine, and (family,
     names) when its recipe lists them for another family only). Asked by
@@ -1024,17 +1052,24 @@ def sysdeps_missing(cat, name, fam, query):
         other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
                       if k != fam and system.get(k)), "")
         return [], ((other, [str(x) for x in system[other][:64]]) if other else None)
-    missing = []
-    for x in want:
-        if not query:
-            missing.append(x)          # emerge: no query, --noreplace skips the installed
-            continue
+    def installed(x):
         try:
-            p = subprocess.run(query + [x], capture_output=True, timeout=30, check=False)
-            if p.returncode != 0:
-                missing.append(x)
+            return subprocess.run(query + [x], capture_output=True, timeout=30,
+                                  check=False).returncode == 0
         except (OSError, subprocess.SubprocessError):
-            missing.append(x)
+            return False
+    missing = []
+    for entry in want:
+        # "a|b": met by whichever is installed, and when neither is, the
+        # first this machine's repositories carry is the one to install.
+        alts = [a for a in entry.split("|") if a] or [entry]
+        if not query:
+            missing.append(alts[0])    # emerge: no query, --noreplace skips the installed
+            continue
+        if any(installed(a) for a in alts):
+            continue
+        missing.append(next((a for a in alts if pkg_available(fam, a)), alts[0])
+                       if len(alts) > 1 else alts[0])
     return missing, None
 
 

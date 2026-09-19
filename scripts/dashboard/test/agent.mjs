@@ -2686,4 +2686,36 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
      'the agent cancels its running jobs on SIGTERM, since systemd no longer does it');
 }
 
+// ---- a recipe entry naming alternatives -------------------------------------
+// A library renamed between releases (libasound2 became libasound2t64) is one
+// entry, "new|old": met by whichever is installed, and when neither is, the
+// first this machine's repositories carry is the one to install. A list of
+// plain names failed the whole apt install on every release but the one it
+// was written for. Stubbed: dpkg knows what is installed, apt-cache what the
+// repositories carry.
+{
+  const alt = `${DIR}/altbin`; mkdirSync(alt, { recursive: true });
+  const stub = (name, ok) => writeFileSync(`${alt}/${name}`,
+    `#!/bin/sh\nfor a; do last="$a"; done\ncase " ${ok} " in *" $last "*) exit 0 ;; esac\nexit 100\n`, { mode: 0o755 });
+  const run = (installed, carried) => {
+    stub('dpkg', installed); stub('apt-cache', carried);
+    return JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("agent", ${JSON.stringify(`${REPO}/scripts/agent/builderbot-agent.py`)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+cat = {"packages": [{"name": "r", "system": {"apt": ["libnew|libold", "libplain"]}}]}
+print(json.dumps(m.sysdeps_missing(cat, "r", "apt", [m.DPKG_BIN, "-s"])[0]))`],
+      { encoding: 'utf8', env: { ...process.env, BUILDERBOT_DPKG_BIN: `${alt}/dpkg`,
+                                 BUILDERBOT_APT_CACHE_BIN: `${alt}/apt-cache` } }).trim().split('\n').pop());
+  };
+  const a = run('libold libplain', 'libold libplain');
+  const b = run('', 'libold libplain');
+  const c = run('', 'libnew libold libplain');
+  ok(a.length === 0, `an entry is met by whichever alternative is installed (${JSON.stringify(a)})`);
+  ok(JSON.stringify(b) === '["libold","libplain"]',
+     `...and when none is, the one this release's repositories carry is installed (${JSON.stringify(b)})`);
+  ok(JSON.stringify(c) === '["libnew","libplain"]',
+     `...the first of them when it carries both (${JSON.stringify(c)})`);
+}
+
 await done(browser);

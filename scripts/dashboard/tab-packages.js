@@ -118,7 +118,9 @@ function pkgSystemLine(p, managed){
   if (!sys?.names?.length) return "";
   const n = sys.names.length, plural = n === 1 ? "" : "s";
   const miss = sys.missing || [];
-  const show = miss.length ? miss : sys.names;
+  // An entry naming alternatives ("libasound2t64|libasound2") is whichever
+  // this machine's release carries; a missing one is already the one it takes.
+  const show = (miss.length ? miss : sys.names).map(x => x.split("|").join(" or "));
   const list = show.length <= 6 ? esc(show.join(", "))
     : `${esc(show.slice(0, 4).join(", "))}<details class="pkgsysl"><summary> and ${show.length - 4} more</summary>, ${
         esc(show.slice(4).join(", "))}</details>`;

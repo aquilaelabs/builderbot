@@ -1279,7 +1279,11 @@ lives in its body. The cards:
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may
-  use the same library. A recipe's system libraries are each machine's own
+  use the same library. Each list is written per package manager (apt, dnf,
+  pacman, zypper, apk) and may name alternatives for a library renamed
+  between releases; `tools/check-sysdeps.py` checks every name against the
+  real package indexes of Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9
+  and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own
   while the store is shared, so when a node lacks some for a package the
   store already holds (a node enrolled after dotnet went in, with no
   libicu), a node BuilderBot manages installs them by itself the next time it
@@ -3960,6 +3964,7 @@ config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
+tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
                                  window in the agent and the template with it, or refuses
 docs/unraid.md                   step-by-step Unraid walkthrough
