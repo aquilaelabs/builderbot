@@ -1,0 +1,16 @@
+{
+  "include": ["scripts/dashboard", "scripts/lib", "scripts/agent", "tools"],
+  "exclude": ["**/__pycache__", "scripts/dashboard/test"],
+  "typeCheckingMode": "standard",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalCall": "none",
+  "reportOptionalSubscript": "none",
+  "reportOptionalIterable": "none",
+  "reportOptionalOperand": "none",
+  "executionEnvironments": [
+    {"root": "scripts/agent", "pythonVersion": "3.9"},
+    {"root": "scripts/dashboard", "pythonVersion": "3.12", "extraPaths": ["scripts/lib"]},
+    {"root": "scripts/lib", "pythonVersion": "3.12"},
+    {"root": "tools", "pythonVersion": "3.14"}
+  ]
+}

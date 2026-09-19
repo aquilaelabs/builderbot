@@ -3965,6 +3965,8 @@ config/packages.json             the packages the Tools tab offers, and how to i
 config/templates/                project CLAUDE.md template (shipped in the image)
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
+pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
+                                 version, with the None checks off, since a module's configure() fills what it declares as None
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
                                  window in the agent and the template with it, or refuses
 docs/unraid.md                   step-by-step Unraid walkthrough
