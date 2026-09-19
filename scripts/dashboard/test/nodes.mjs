@@ -1245,6 +1245,28 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(/system images are the emulator's, not a toolchain: bb emu images/.test(said),
        `bb toolchains images points at bb emu images (${said.trim()})`);
 
+    // A node whose platform the Android recipes are not packaged for can
+    // never hold an image, which is a different thing from not having the
+    // tools yet: it is said, and the add is refused, rather than pointing at
+    // a Toolchains tab that keeps both rows behind "Not for this node".
+    {
+      await hello({ ...ANDROID, system: 'darwin', arch: 'arm64', os: 'macOS 15.1' });
+      const mac = await emuApi();
+      ok(mac.wrong_platform === 'linux/*' && mac.missing.length === 0,
+         `a Mac node says the tools are packaged for linux, rather than offering an install (${
+           mac.wrong_platform} / ${JSON.stringify(mac.missing)})`);
+      const no = await napi('/api/emulator', { action: 'add', node: minted.id,
+        image: 'system-images;android-31;google_apis;x86_64' });
+      ok(/no system image can run there/.test(no.error || ''),
+         `...and an add there is refused with the platform (${no.error})`);
+      await page.evaluate(() => { emu = null; loadEmulator(); });
+      await page.waitForFunction(() => /no system image can run there/.test(
+        document.querySelector('.emutab .emneed')?.textContent || ''), null, { timeout: 15000 });
+      ok(await page.$('.emutab #imgAdd') === null,
+         '...and the tab offers no picker at all there, rather than a dead one');
+      await hello(ANDROID);
+    }
+
     // An agent too old to report the field at all is not a node with no
     // images: the tab would otherwise say "no image" for a node never asked.
     const noField = { ...ANDROID }; delete noField.images;

@@ -127,9 +127,26 @@ def is_node_image(n, image_id):
     return any(r["id"] == image_id for r in node_images(n))
 
 
+def wrong_platform(n):
+    """What the Android tools are packaged for, when this node is not one of
+    them: a machine that can NEVER hold a system image, as against one that
+    has simply not been given the tools yet. A Mac node is the live case (the
+    recipes are linux/*), and on it Toolchains keeps both rows behind "Not for
+    this node", so pointing at that tab would be pointing at nothing."""
+    plat = toolchains.platform_of(n)
+    by = {p["name"]: p for p in toolchains.TOOLCHAINS}
+    for name in NEEDS:
+        tc = by.get(name)
+        if tc and not toolchains.supports(tc, plat):
+            return ", ".join(tc.get("platforms") or ["linux/amd64"])
+    return ""
+
+
 def missing(n):
     """The catalog labels of what this node lacks for the tab: empty when it
     has both, or when it has not reported its store (not evidence of absence)."""
+    if wrong_platform(n):
+        return []                       # nothing to install there, ever
     have = toolchains.node_has(n)
     if not have:
         return []
@@ -143,14 +160,23 @@ def _agent_nodes():
 
 
 def ready():
-    """For the Tools card's button: whether any node has what the tab needs.
-    The reason when none does, which is what the ghosted button says."""
+    """For the Tools card's button: whether any node has what the tab needs,
+    the reason when none does (which is what the ghosted button says), and
+    which node the tab should open on, so it does not land on a Mac while the
+    Linux box beside it is the one with an emulator."""
     agents = _agent_nodes()
-    if any(toolchains.node_has(n) and not missing(n) for n in agents):
-        return {"ready": True, "why": ""}
+    fit = [n for n in agents
+           if toolchains.node_has(n) and not missing(n) and not wrong_platform(n)]
+    if fit:
+        return {"ready": True, "why": "", "node": fit[0]["id"]}
     if not agents:
         return {"ready": False, "why": "no node is enrolled: the Nodes tab enrolls one"}
-    return {"ready": False,
+    can = [n for n in agents if not wrong_platform(n)]
+    if not can:
+        return {"ready": False,
+                "why": "no node runs a platform the Android tools are packaged for "
+                       f"({wrong_platform(agents[0])}): an emulator needs one that does"}
+    return {"ready": False, "node": can[0]["id"],
             "why": "needs Android command-line tools and the emulator on a node: "
                    "install them from Toolchains"}
 
@@ -195,6 +221,11 @@ def payload(nid):
             # An agent too old to report its images is not a node with none.
             "known": "images" in rep,
             "missing": missing(n),
+            # A node that can never have them, and what they are packaged for:
+            # said instead of a link to Toolchains, where both rows sit behind
+            # "Not for this node".
+            "wrong_platform": wrong_platform(n),
+            "platform": toolchains.platform_of(n),
             # Adding or removing an image needs sdkmanager and nothing else;
             # the emulator is only for booting one.
             "sdkmanager": "android-tools" in toolchains.node_has(n)
@@ -211,6 +242,11 @@ def node_job(principal, nid, action, image_id):
     n = nodes.node(nid)
     if not n or n["kind"] != "agent":
         return {"error": "no such node"}
+    wrong = wrong_platform(n)
+    if wrong:
+        return {"error": f"{n['name']} is {toolchains.platform_of(n)}, and the Android "
+                         f"command-line tools and the emulator are packaged for {wrong}: "
+                         "no system image can run there"}
     have = toolchains.node_has(n)
     if have and "android-tools" not in have:
         return {"error": f"{n['name']} has no Android command-line tools, and sdkmanager "

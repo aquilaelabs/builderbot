@@ -27,6 +27,11 @@ function emuPick(){
   if (!live.some(n => n.id === want)){
     try{ want = localStorage.getItem("bb.emunode") || ""; }catch(e){ want = ""; }
   }
+  // The server names the node this tab is FOR: one that can hold an image,
+  // and the one that already does when there is one. Which platforms the
+  // Android recipes are packaged for is the catalog's answer, not a rule to
+  // keep a second copy of here.
+  if (!live.some(n => n.id === want)) want = state?.emulator?.node || "";
   if (!live.some(n => n.id === want)) want = live[0]?.id || "";
   emuNode = want;
   return emuNode;
@@ -123,7 +128,8 @@ function renderEmulatorInto(i){
   const stale = nodeStale(pnode);
   const job = d.job || {};
   // Why nothing can be added or removed right now, said on the ghosted control.
-  const held = job.running ? "another job is writing to this store"
+  const held = d.wrong_platform ? `${d.name} is ${d.platform}, and the Android tools are packaged for ${d.wrong_platform}`
+    : job.running ? "another job is writing to this store"
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
   surf.setBar(`<label class="pick">Images on <select id="emuNodeSel" aria-label="node">
@@ -135,19 +141,25 @@ function renderEmulatorInto(i){
   const free = typeof d.free_mb === "number"
     ? `, ${d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : "";
   surf.list.innerHTML = `
-    <div class="tchead">${d.root
+    <div class="tchead">${d.wrong_platform
+      ? `System images are what an emulator boots, and they live on the node that runs it.`
+      : d.root
       ? `System images in <code>${esc(d.root)}</code> on ${esc(d.name)}${free}: what its emulator can boot.`
       : `${esc(d.name)} reports no toolchain store yet.`}</div>
     ${stale ? `<div class="tchead warn">${esc(staleWhy(pnode))}. Nothing changes here until it is.</div>` : ""}
-    ${(d.missing || []).length ? `<div class="tchead warn emneed">${esc(d.name)} has no ${
+    ${d.wrong_platform ? `<div class="tchead warn emneed">${esc(d.name)} is ${esc(d.platform)},
+      and the Android command-line tools and the emulator are packaged for ${
+      esc(d.wrong_platform)}: no system image can run there.</div>`
+      : (d.missing || []).length ? `<div class="tchead warn emneed">${esc(d.name)} has no ${
       esc(d.missing.join(" or "))} yet: <a href="#" id="emuToTc">install ${
       d.missing.length === 1 ? "it" : "them"} from Toolchains</a>.</div>` : ""}
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}
-    ${emuAdder(d, held)}
+    ${d.wrong_platform ? "" : emuAdder(d, held)}
     ${(d.images || []).length
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
+      : d.wrong_platform ? ""
       : `<div class="tchead">${d.known === false
           ? `${esc(d.name)}'s agent is too old to report its system images: update it from the Nodes tab.`
           : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`}
