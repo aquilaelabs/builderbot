@@ -40,12 +40,17 @@ strip_code () {
 
 base=$(git merge-base HEAD origin/main 2>/dev/null) || base=$(git rev-parse HEAD)
 bad=0
+# A file this branch renamed is diffed against the name it had, or every line
+# of it reads as added: renaming todo.py to roadmap.py failed the gate on 84
+# lines nobody wrote. `git diff -M --name-status` says which paths were which.
+renamed=$(git diff -M --name-status "$base" 2>/dev/null | awk -F'\t' '$1 ~ /^R/ {print $3 "\t" $2}')
 # Tracked files: only the lines this branch adds. Untracked: all of it, since
 # every line of a new file is one this branch adds.
-for f in $(git diff --name-only "$base" 2>/dev/null; git ls-files --others --exclude-standard); do
+for f in $(git diff -M --name-only "$base" 2>/dev/null; git ls-files --others --exclude-standard); do
     [ -f "$f" ] || continue
     if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-        n=$(git diff -U0 "$base" -- "$f" | grep -I '^+' | grep -Iv '^+++' | strip_code | grep -c "$em" || true)
+        was=$(printf '%s\n' "$renamed" | awk -F'\t' -v f="$f" '$1 == f {print $2; exit}')
+        n=$(git diff -M -U0 "$base" -- ${was:+"$was"} "$f" | grep -I '^+' | grep -Iv '^+++' | strip_code | grep -c "$em" || true)
     else
         n=$(strip_code < "$f" | grep -cI "$em" 2>/dev/null || true)
     fi
