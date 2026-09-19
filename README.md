@@ -3321,7 +3321,10 @@ read-only); and the process list and tmux server of other sessions are out of
 reach. Each account on a node keeps its own tool caches and dotfiles
 (`.gradle`, `.m2`, `.npm`, `.cache`, the Rust crate cache and the rest)
 rather than sharing the base home's, so a person's first build on a node
-downloads its own dependencies. Updating Claude Code on a node is the
+downloads its own dependencies. Java tools take their home from the session
+user rather than `$HOME`, so a session points Gradle, the Android tools and
+the Kotlin compile daemon at the account's home by the variables they read
+(`GRADLE_USER_HOME`, `ANDROID_USER_HOME`, `XDG_DATA_HOME`). Updating Claude Code on a node is the
 provisioner's; a session's own updater is off. The helper
 then drops to the session account with `no_new_privs`, so nothing inside
 can gain privilege again. The agent installs the helper, its layout file and

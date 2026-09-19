@@ -144,8 +144,20 @@ fi
 # versions are the base home's, read-only there) and would otherwise fetch a
 # copy into every account's home that nothing runs: updating claude is the
 # provisioner's.
+#
+# Java's home is not $HOME. It is the passwd entry's, and every account's
+# session runs as the one session user, so Gradle, the Android tools and the
+# Kotlin compile daemon all wrote under the base home, which the view makes
+# read-only: an Android build in a session died on Gradle's wrapper lock
+# (B182). Each is pointed at the account's own home by the variable it
+# honours: GRADLE_USER_HOME for Gradle's caches and wrapper, ANDROID_USER_HOME
+# for the debug keystore and the SDK tools' settings, and XDG_DATA_HOME,
+# which is where the Kotlin daemon keeps its run files on Linux. Per account,
+# as the crate cache is: the operator's call for B157.
 if on_node && [ -n "$account" ]; then
     [ -z "${CARGO_HOME:-}" ] || export CARGO_HOME="$HOME/.cargo"
+    export GRADLE_USER_HOME="$HOME/.gradle" ANDROID_USER_HOME="$HOME/.android" \
+           XDG_DATA_HOME="$HOME/.local/share"
     export DISABLE_AUTOUPDATER=1
 fi
 
@@ -707,7 +719,8 @@ start() {
     # right — the session that exists already has its own.
     local -a envs=() v
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
-             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME; do
+             GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
+             GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
     # The server is started on its own first. When new-session is what
@@ -729,7 +742,7 @@ start() {
     local kv
     while IFS= read -r -d '' kv; do
         case "$kv" in
-            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*) continue ;;
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*|GRADLE_USER_HOME=*|ANDROID_USER_HOME=*|XDG_DATA_HOME=*) continue ;;
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)

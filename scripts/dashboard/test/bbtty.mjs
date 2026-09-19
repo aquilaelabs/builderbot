@@ -1062,6 +1062,14 @@ print(uid)`);
          `...after the base home's launcher, which reached its binary through that account's link, is pointed at the base home's own copy (${readlinkSync(join(HOMEDIR, '.local', 'bin', 'claude')).replace(DIR, '…')})`);
       ok(env14('CARGO_HOME') === `CARGO_HOME=${join(ah, '.cargo')}` && !genv14('CARGO_HOME').includes(ah),
          `...the crate cache is the account's, and never in the tmux server's shared environment (${env14('CARGO_HOME').replace(DIR, '…')})`);
+      // Java takes its home from the passwd entry, the one session user's, so
+      // Gradle, the Android tools and the Kotlin daemon are each pointed at the
+      // account's home by the variable they read (B182).
+      const javaHomes = { GRADLE_USER_HOME: '.gradle', ANDROID_USER_HOME: '.android', XDG_DATA_HOME: '.local/share' };
+      const wrong = Object.entries(javaHomes).filter(([k, d]) =>
+        env14(k) !== `${k}=${join(ah, d)}` || genv14(k).includes(ah)).map(([k]) => k);
+      ok(wrong.length === 0,
+         `...and Gradle's, the Android tools' and the Kotlin daemon's folders are the account's too, never shared (${wrong.join(', ') || 'all three'})`);
       ok(env14('DISABLE_AUTOUPDATER') === 'DISABLE_AUTOUPDATER=1' || genv14('DISABLE_AUTOUPDATER') === 'DISABLE_AUTOUPDATER=1',
          '...and Claude\'s own updater is off: updating claude on a node is the provisioner\'s');
       tmuxKill(`${otherUid}~shell-wtproj-14`);
