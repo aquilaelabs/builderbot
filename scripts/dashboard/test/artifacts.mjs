@@ -49,7 +49,7 @@ await page.goto(URL);
 await ready(page);
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
 await page.click(`${row('alpha')} [data-m]`);
-await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
 

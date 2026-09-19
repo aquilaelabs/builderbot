@@ -95,12 +95,12 @@ await page.fill(`${two} .rlPaths`, 'scripts/agent');
 await page.fill(`${two} .rlWords`, 'agent, protocol');
 ok((await page.$eval(`${two} .rlkind`, e => e.textContent)).includes('on its triggers'),
    '...and one with a trigger says so the moment the trigger is typed');
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'a written rule arms the panel\'s one Save, like everything else here');
 ok(read().length === 0, '...and nothing is on disk until it is pressed');
 
-await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+await page.click('#roadmapSaveQuiet');
+await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true', { timeout: 15000 });
 const saved = read();
 ok(saved.length === 2 && saved[0].name === 'voice',
@@ -134,13 +134,13 @@ await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
 await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'typing into a rule arms the panel\'s Save');
 await page.click('#rulesBox .rulerow[data-i="1"] .rlCancel');
 await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .rlBody', e => e.textContent)),
    '...and Cancel puts them away, reading what was there before Edit');
-ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...with nothing left staged, so the Save goes quiet again');
 // A row Add made has nothing to go back to: cancelling it is removing it.
 await page.click('#rlAdd');
@@ -148,7 +148,7 @@ await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow')
 await page.click('#rulesBox .rulerow[data-i="2"] .rlCancel');
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
-ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'cancelling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------

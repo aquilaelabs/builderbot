@@ -239,7 +239,7 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
 # {file: [the keys inside it whose sub-dicts are keyed by project]}. None means
 # the file's own top level is the keyed dict.
 _KEYED = {
-    "todos.json":         ["projects", "unsaved", "history", "batch"],
+    "roadmap.json":         ["projects", "unsaved", "history", "batch"],
     "bugs.json":          ["projects", "history", "batch"],
     "versions.json":      ["projects"],
     "findings-log.json":  ["projects"],
@@ -310,7 +310,7 @@ def _rename_tabs(old, new):
         if not isinstance(t, dict):
             keep.append(t)
             continue
-        if t.get("kind") == "todo" and t.get("arg") == old:
+        if t.get("kind") == "notebook" and t.get("arg") == old:
             t["arg"] = new
             t["label"] = "Notebook: " + new
             rewritten += 1

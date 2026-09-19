@@ -1534,28 +1534,28 @@ pre.diff .d-ctx{color:var(--dim)}
 /* Adding goes at the top: the control that adds to a view is the first band
    under its head row, one shape on every view, and its form unrolls in its
    place: never at the foot, where a phone scrolls past the list to find it. */
-.addbar,.todoadd{display:flex;gap:8px;align-items:center}
+.addbar,.roadmapadd{display:flex;gap:8px;align-items:center}
 .addbar button{flex:0 0 auto;min-height:var(--tap)}
 /* display:flex beats the hidden attribute; the log hides this row. */
-.todoadd[hidden]{display:none}
-.todoadd input{flex:1 1 auto;min-width:0}
-.todoadd button{flex:0 0 auto;min-height:var(--tap)}
+.roadmapadd[hidden]{display:none}
+.roadmapadd input{flex:1 1 auto;min-width:0}
+.roadmapadd button{flex:0 0 auto;min-height:var(--tap)}
 /* On a phone the field and its buttons cannot share a line: at 393px with
    Add and Reorder beside it the input was eleven characters wide, showing
    "something for the roa" and then nothing anybody typed. Same shape the
    action bars take: the thing first, on a line of its own, the buttons
    under it sharing the width. */
 @media(max-width:600px){
-  .todoadd{flex-wrap:wrap}
-  .todoadd input{flex:1 1 100%}
-  .todoadd button{flex:0 0 auto}
+  .roadmapadd{flex-wrap:wrap}
+  .roadmapadd input{flex:1 1 100%}
+  .roadmapadd button{flex:0 0 auto}
 }
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
-.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
+.roadmap{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
 /* A group's steps sit under its title, indented and hairlined, so the shape
    of "these go in this order" is visible without reading them. */
-.todo.step{padding:5px 0 5px 26px;border-top:1px dashed var(--btn)}
+.roadmap.step{padding:5px 0 5px 26px;border-top:1px dashed var(--btn)}
 /* The log. One line per change, newest first, and deliberately plain: it is
    read when something is not where it was left, which is a moment for facts
    and not for decoration. */
@@ -1580,7 +1580,7 @@ pre.diff .d-ctx{color:var(--dim)}
    the log's verb, the who-mark, a memory's type, a bug's severity and
    status. They were four hand-copied rules before, which is how "the same
    design language" quietly stops being the same. */
-.hist .act,.todo .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
+.hist .act,.roadmap .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
   font:var(--f-tag);text-transform:uppercase;letter-spacing:.4px;
   padding:3px 5px;border-radius:4px;border:1px solid var(--line);
   color:var(--dim);white-space:nowrap}
@@ -1594,36 +1594,36 @@ pre.diff .d-ctx{color:var(--dim)}
 .hist .was{color:var(--dim);text-decoration:line-through}
 @media(max-width:560px){ .hist{display:block}
   .hist .when{display:inline;margin-right:6px} }
-.todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
+.roadmap .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
   min-width:1.2em;text-align:right}
 /* An item's own number, in the column its steps number themselves in. It is
    the id, not the position; it does not change when the list is rearranged,
    which is what makes it worth quoting in a conversation. */
-.todo .n.id{min-width:2.2em;opacity:.75}
+.roadmap .n.id{min-width:2.2em;opacity:.75}
 /* An item the server has never heard of has no number to show. It gets one
    from Save, which is also the moment it becomes something a session can be
    told about. */
-.todo .n.id.new{font:600 10px/1.5 system-ui,sans-serif;color:var(--accent);
+.roadmap .n.id.new{font:600 10px/1.5 system-ui,sans-serif;color:var(--accent);
   opacity:.9}
 /* The words and their labels are one column, so a pill sits above the line
    instead of eating a third of it, on a phone that difference is the whole
    readability of the row. */
-.todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+.roadmap .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.roadmap .tags{display:flex;gap:5px;flex-wrap:wrap}
 /* The details fold under a line: the row's words are the decision, this is
    the workings (files, functions, approach) wanted when the work starts
    and noise until then. */
-.todo .dtog{background:none;border:0;color:var(--dim);padding:2px 0;
+.roadmap .dtog{background:none;border:0;color:var(--dim);padding:2px 0;
   font:11px/1.4 system-ui,sans-serif;align-self:flex-start;min-height:0}
-@media(hover:hover){ .todo .dtog:hover{color:var(--ink)} }
-.todo .dinfo{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);
+@media(hover:hover){ .roadmap .dtog:hover{color:var(--ink)} }
+.roadmap .dinfo{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);
   font:12px/1.5 var(--mono);border-left:2px solid var(--line);
   padding:3px 0 3px 9px;margin-top:2px}
 .editbox .qd{margin-top:8px}
 /* pre-wrap, because a step may be written across a few lines: one step is one
    message the operator sends by hand, so the cheap unit has to be able to hold
    a paragraph rather than pushing a plan into more steps than it needs. */
-.todo .txt{min-width:0;font:var(--f-row);
+.roadmap .txt{min-width:0;font:var(--f-row);
   overflow-wrap:anywhere;cursor:text;white-space:pre-wrap}
 /* A step is one of these, not a smaller kind of one: it was 12.5 against the
    item's 13, which reads as a rendering accident rather than a hierarchy.
@@ -1631,41 +1631,41 @@ pre.diff .d-ctx{color:var(--dim)}
 /* Struck through means *sent*, not done. It stays where it was: the order is
    the record, so that a step that was handed over and quietly not carried out
    is still there to send again. */
-.todo.sent .txt{color:var(--dim);text-decoration:line-through}
+.roadmap.sent .txt{color:var(--dim);text-decoration:line-through}
 /* Done is a session's mark, not the dashboard's: struck the same way, because
    it needs no sending either, but the number becomes a tick so the two are
    not confused: a line that went and a line that is finished are different
    claims, and only the second one comes from whoever did the work. */
-.todo.done .txt{color:var(--dim);text-decoration:line-through}
-.todo .n.tick{color:var(--accent)}
+.roadmap.done .txt{color:var(--dim);text-decoration:line-through}
+.roadmap .n.tick{color:var(--accent)}
 /* Shelved: parked, at the bottom, and visibly not asking for anything. Dark
    rather than struck: struck already means "this went", and a shelf is the
    opposite claim. The whole row dims, steps included, because a shelved plan
    is shelved entire. */
 .grp.shelved{opacity:.45}
-.grp.shelved .todo .txt{font-style:italic}
+.grp.shelved .roadmap .txt{font-style:italic}
 .grp.shelved .who{opacity:.7}
-.todo .go,.todo .x,.todo .rm,.todo .ed{flex:0 0 auto;align-self:flex-start}
-.todo .ed{color:var(--dim)}
-@media(hover:hover){ .todo .ed:hover{color:var(--ink)} }
-.todo .go{color:var(--accent)}
+.roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{flex:0 0 auto;align-self:flex-start}
+.roadmap .ed{color:var(--dim)}
+@media(hover:hover){ .roadmap .ed:hover{color:var(--ink)} }
+.roadmap .go{color:var(--accent)}
 /* Crossing out by hand: dim until it is on, then the same green as a line
    that went, because the two mean the same thing to the group behind them. */
-.todo .x{color:var(--dim)}
-.todo .x.on{color:var(--accent)}
-@media(hover:hover){ .todo .x:hover{color:var(--ink)} }
-.todo .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
-@media(hover:hover){ .todo .go:not([disabled]):hover{
+.roadmap .x{color:var(--dim)}
+.roadmap .x.on{color:var(--accent)}
+@media(hover:hover){ .roadmap .x:hover{color:var(--ink)} }
+.roadmap .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
+@media(hover:hover){ .roadmap .go:not([disabled]):hover{
   color:color-mix(in srgb, var(--accent), #ffffff 34%);border-color:var(--accent-mid)} }
 /* Items a session raised, marked so the operator can see what was flagged at
    them rather than by them: the reason the list exists at all. */
-.todo .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
-.todo .rm{color:var(--dim)}
-@media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#94423d} }
+.roadmap .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
+.roadmap .rm{color:var(--dim)}
+@media(hover:hover){ .roadmap .rm:hover{color:var(--bad);border-color:#94423d} }
 /* Four controls and a number on one line is tight on a phone; the buttons
    lose their padding before the words lose their width. */
-@media(max-width:620px){ .todo .go,.todo .x,.todo .rm,.todo .ed{padding:5px 4px}
-  .todo{gap:5px} }
+@media(max-width:620px){ .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{padding:5px 4px}
+  .roadmap{gap:5px} }
 /* The notebook's own tab strip: three views under one roof. Underlined, not
    boxed; these switch what the page shows, they do not open anything. */
 /* Scrolls sideways rather than spilling. Five labels are 404px of content in
@@ -1710,9 +1710,9 @@ pre.diff .d-ctx{color:var(--dim)}
    History, the Analysis tab. */
 .nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
   border-bottom:1px solid var(--line)}
-.nb.ro #todoSaveQuiet,.nb.ro #todoAdd,.nb.ro #todoText,
+.nb.ro #roadmapSaveQuiet,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
-.nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .todo .go,.nb.ro .todo .mv,
+.nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .roadmap .go,.nb.ro .roadmap .mv,
 .nb.ro .vbar .sp ~ button:not(#nbHistory){
   opacity:.4;pointer-events:none}
 .nb.ro textarea,.nb.ro input:not([type="checkbox"]){pointer-events:none;opacity:.6}
@@ -1735,8 +1735,8 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A control that is not offered still holds its place, so the words in a row
    line up with the words in the row above it. Measured against the button
    rather than guessed: 16px of icon inside the same padding and border. */
-.todo .ph{display:inline-block;width:32px;height:1px;flex:0 0 auto}
-@media(max-width:620px){ .todo .ph{width:26px} }
+.roadmap .ph{display:inline-block;width:32px;height:1px;flex:0 0 auto}
+@media(max-width:620px){ .roadmap .ph{width:26px} }
 /* The send strip: always there once there is a list, everything on it dead
    until an arrow is armed. */
 /* The hint and the Reorder toggle share a line: the toggle belongs to the
@@ -1775,9 +1775,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ .addstep textarea{font-size:16px} }
 /* Moving things about: dim until it can, like every other row control. */
-.todo .mv{color:var(--dim)}
-.todo .mv[disabled]{opacity:.3}
-@media(hover:hover){ .todo .mv:not([disabled]):hover{color:var(--ink)} }
+.roadmap .mv{color:var(--dim)}
+.roadmap .mv[disabled]{opacity:.3}
+@media(hover:hover){ .roadmap .mv:not([disabled]):hover{color:var(--ink)} }
 /* The send box, under the step it would send: the same shape as the drop box
    and the edit box beside it, because it answers the same kind of question
    about the same row. It used to be a bar pinned at the foot of the panel: on
@@ -1798,9 +1798,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .sendbox .acts button{flex:0 0 auto;min-height:var(--tap)}
 /* The armed arrow. Filled rather than outlined: it is the one control on the
    panel that is about to do something outside it. */
-.todo .go.sel{background:color-mix(in srgb, var(--accent), #000000 49%);
+.roadmap .go.sel{background:color-mix(in srgb, var(--accent), #000000 49%);
   border-color:var(--accent-mid);color:color-mix(in srgb, var(--accent), #ffffff 72%)}
-#todoList,#memList{max-height:min(46vh,420px);overflow:auto;
+#roadmapList,#memList{max-height:min(46vh,420px);overflow:auto;
   overscroll-behavior:contain}
 #memList{max-height:min(38vh,340px)}
 
@@ -1943,7 +1943,7 @@ pre.diff .d-ctx{color:var(--dim)}
    once. Both of those are the same rule reaching one child too far. */
 .nb > .nbsheet{max-width:none}
 .nb h3{display:none}
-.nb #todoList,.nb #memList{max-height:none;overflow:visible;
+.nb #roadmapList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}
 /* No inset and no ceiling: a document is the pane's whole content, not a box
    floating in it. The padding and the darker ground behind it read as a window
@@ -1980,8 +1980,8 @@ pre.diff .d-ctx{color:var(--dim)}
 /* Which daemon, in the quiet voice the notebook uses for the same job: a
    statement of fact above the list, not a warning about one. */
 .dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
-#todoBatch{padding:0 14px 8px}
-#todoBatch button{margin-top:6px}
+#roadmapBatch{padding:0 14px 8px}
+#roadmapBatch button{margin-top:6px}
 /* What a session has waiting for approval (roadmap #27): the same band as
    the batch note (it holds nothing, it asks) with its one verb beside the
    sentence rather than under it, because "Review" is the whole point of the
@@ -2012,7 +2012,7 @@ pre.diff .d-ctx{color:var(--dim)}
 #pendAll span{flex:0 0 auto;white-space:nowrap}
 #pendEmpty{color:var(--dim);font:var(--f-ui)}
 /* The padding went with the band: #memDrift is a section now and .sect>.body
-   carries its own. #todoBatch still wears .mdrift as a plain .field band. */
+   carries its own. #roadmapBatch still wears .mdrift as a plain .field band. */
 .mdrift div{color:var(--warn);font:var(--f-ui);margin-bottom:4px}
 /* Two writers, one thing (roadmap #26). A band rather than a modal: the
    typing it is about is still on screen behind it, and covering that up to
@@ -2294,7 +2294,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
@@ -2314,7 +2314,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2327,7 +2327,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.todoadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
+  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2982,7 +2982,7 @@ body.booting .pane>.loading{margin:auto}
          and every write-through control on the other views. It only ever
          blocks the operator; nothing here stops a session, which cannot see
          this panel and should not be waiting on it. -->
-    <div class="field mdrift" id="todoBatch" hidden></div>
+    <div class="field mdrift" id="roadmapBatch" hidden></div>
     <!-- What a session has waiting for the operator's approval (roadmap
          #27). Above the strip like the batch note, because it is about the
          notebook and not one tab of it: the modal it opens lists every tab's. -->
@@ -3016,9 +3016,9 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="hint" id="todoHint"></span>
+    <div class="field nbhead vbar"><span class="hint" id="roadmapHint"></span>
       <span class="sp"></span>
-      <button id="todoLog" type="button"
+      <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
         >History</button>
     </div>
@@ -3026,11 +3026,11 @@ body.booting .pane>.loading{margin:auto}
       <!-- One row: type it, add it, or rearrange what is already there. They
            are the three things you do TO the list, as against the History
            above, which only reads it. -->
-      <div class="todoadd" data-add="roadmap">
-        <textarea id="todoText" class="proseline" rows="1" maxlength="500"
+      <div class="roadmapadd" data-add="roadmap">
+        <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
-        <button id="todoAdd" class="primary" type="button">Add</button>
-        <button id="todoOrder" type="button" hidden
+        <button id="roadmapAdd" class="primary" type="button">Add</button>
+        <button id="roadmapOrder" type="button" hidden
           title="move things up and down: the send controls come back when you are done"
           >Reorder</button>
       </div>
@@ -3038,7 +3038,7 @@ body.booting .pane>.loading{margin:auto}
     <!-- Somebody else wrote this item while it was being edited here. Above
          the list rather than in a toast: the typing it is about is still on
          screen and the choice is not one to make in seven seconds. -->
-    <div class="field clash" id="todoClash" hidden></div>
+    <div class="field clash" id="roadmapClash" hidden></div>
     <!-- Only while the log is up. A search box over the list itself would be
          a different feature answering a different question. -->
     <div class="field histbar" id="histBar" hidden>
@@ -3057,10 +3057,10 @@ body.booting .pane>.loading{margin:auto}
       </select>
     </div>
     <!-- Its own pane rather than the list's. The log used to be written into
-         #todoList, which is why reading it meant the list going away; both
+         #roadmapList, which is why reading it meant the list going away; both
          are on screen at once now, one of them in the sheet. -->
-    <div class="field" id="todoHist" hidden></div>
-    <div class="field" id="todoField"><div id="todoList"></div></div>
+    <div class="field" id="roadmapHist" hidden></div>
+    <div class="field" id="roadmapField"><div id="roadmapList"></div></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -3247,14 +3247,14 @@ body.booting .pane>.loading{margin:auto}
            next look up, and that is not a difference worth a permanent
            control: the session's own tab is one tap away for the rare case
            where a minute matters. -->
-      <button id="todoSaveQuiet" type="button" disabled>Save</button>
+      <button id="roadmapSaveQuiet" type="button" disabled>Save</button>
       <span class="sp"></span>
       <!-- Where Close used to be. The tab does not go away when something is
            saved, so the question this button answers is no longer "am I done
            looking at this"; it is "throw the unsaved changes away", which is
            the other half of a Save button and dead whenever there is nothing
            to throw. -->
-      <button id="todoRevert" class="caution" type="button" disabled>Revert</button>
+      <button id="roadmapRevert" class="caution" type="button" disabled>Revert</button>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
          and they were opening in place of whatever you were looking at: the
@@ -4416,7 +4416,7 @@ const TOOL_BUTTONS = {bPkgs: "packages", bDocker: "docker", bJobs: "jobs",
 
 const TABKINDS = {
   term:     { multi: true },
-  todo:     { multi: true, label: t => "Notebook: " + t.arg,
+  notebook:     { multi: true, label: t => "Notebook: " + t.arg,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
   packages: { multi: false, label: () => "Packages",
               icon: TOOL_ICONS.packages,
@@ -4698,7 +4698,7 @@ function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t) return;
-  if (t.kind === "todo"){
+  if (t.kind === "notebook"){
     // Closing a notebook's tab ends its instance: whatever was staged in it
     // was just answered for, and reopening reads fresh from disk.
     const nb = notebooks.get(t.arg);
@@ -5414,7 +5414,7 @@ function drawPanes(){
     // that replaced it, so coming back to it is instant. Two panes must never
     // hold the same one: a second live client on a session is the size fight
     // pinTo exists to avoid.
-    if (t.kind === "term" || t.kind === "todo") dropElsewhere(i, key);
+    if (t.kind === "term" || t.kind === "notebook") dropElsewhere(i, key);
     // Same tab, different argument: a dead session's tab taking a Resume's
     // transcript id: is a different frame, and the old one is nobody's now.
     [...st.children].filter(c => c.dataset.key !== key
@@ -5692,7 +5692,7 @@ const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
 // The project a tab is about, for its colour: a notebook's, or the project
 // whose Claude session a terminal tab holds. A plain shell has none.
-const tabProject = t => t.kind === "todo" ? t.arg
+const tabProject = t => t.kind === "notebook" ? t.arg
   : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
 const rnColorNow = () =>
   $("rnColor").querySelector('[aria-checked="true"]')?.dataset.color || "";
@@ -7162,7 +7162,7 @@ function hiddenLabel(flagged){
          .filter(Boolean).join(" / ");
 }
 
-const nbOpen = name => tabs.some(t => t.kind === "todo" && t.arg === name);
+const nbOpen = name => tabs.some(t => t.kind === "notebook" && t.arg === name);
 
 // The first clause of a refusal: what is wrong, without what to do about it.
 // Every sentence session_target() writes is shaped "<this> is wrong; <do
@@ -8394,7 +8394,7 @@ function getNotebook(project){
 }
 
 function openNotebook(name, view){
-  openTab({kind: "todo", arg: name, label: "Notebook: " + name});
+  openTab({kind: "notebook", arg: name, label: "Notebook: " + name});
   if (view) getNotebook(name).view(view);
 }
 
@@ -8568,7 +8568,7 @@ function makeNotebook(project){
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
   const {loadPending, drawPending} = Object.assign(nb, nbPendingView({$, nb, project, root}));
-  const {cancelSend, flushPending, loadTodo, postTodo, redrawTodo, revertPending} = Object.assign(nb, nbRoadmapView({$, nb}));
+  const {cancelSend, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending} = Object.assign(nb, nbRoadmapView({$, nb}));
   const {briefingHead, loadMemory, memDirty, saveMemory} = Object.assign(nb, nbMemoryView({$, nb}));
   Object.assign(nb, nbHistoryView({$, nb, project}));
 
@@ -8628,7 +8628,7 @@ function makeNotebook(project){
   // one of the four that noticed: the Roadmap and Memory views loaded once when
   // the tab opened and then held that drawing until it was closed and reopened,
   // which is a long time to be looking at a list a session has moved on from.
-  nb.todoRev = null; nb.memRev = null;
+  nb.roadmapRev = null; nb.memRev = null;
 
   async function openMemory(name){
     nb.memProj = name;
@@ -8636,44 +8636,44 @@ function makeNotebook(project){
     $("memTitle").textContent = "Notebook: " + name;
     nb.memN = null; briefingHead();
     $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
-    $("todoSaveQuiet").disabled = true;
-    nb.todoSel = null;                 // the send box lives on the row, and the
-    nb.todoOrdering = false;           // rows are about to be replaced wholesale
-    nb.todoPending = []; nb.todoWas = null;
-    nb.todoBatch = null; nb.todoStale = false;
-    nb.todoRev = nb.memRev = null;
+    $("roadmapSaveQuiet").disabled = true;
+    nb.roadmapSel = null;                 // the send box lives on the row, and the
+    nb.roadmapOrdering = false;           // rows are about to be replaced wholesale
+    nb.roadmapPending = []; nb.roadmapWas = null;
+    nb.roadmapBatch = null; nb.roadmapStale = false;
+    nb.roadmapRev = nb.memRev = null;
     nb.clash = nb.memClash = null; nb.clashResume = null;
     nb.nbHere = []; nb.nbRead = 0; nb.nbWhere = "briefing"; drawHere();
     nb.tests = null; nb.testsRev = null;
     nb.tstSuite = ""; nb.tstFlagged = nb.tstUndoc = false;
-    nb.todoLogOn = false;
-    nb.todoLog = null;
+    nb.roadmapLogOn = false;
+    nb.roadmapLog = null;
     $("histFind").value = "";
     cancelSend();
-    $("todoText").value = "";
-    $("todoList").innerHTML = `<div class="loading">loading…</div>`;
+    $("roadmapText").value = "";
+    $("roadmapList").innerHTML = `<div class="loading">loading…</div>`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
     // the one from the last poll.
-    await Promise.all([loadTodo(gen), loadMemory(gen), refresh()]);
+    await Promise.all([loadRoadmap(gen), loadMemory(gen), refresh()]);
   }
 
   // A batch opening is news; a batch closing is news of a different kind: the
   // list on screen is now a copy of something that has changed, so it is marked
   // stale and stays that way until it is re-read.
   function noteBatch(b){
-    if (nb.todoBatch && !b){
-      nb.todoStale = true;
+    if (nb.roadmapBatch && !b){
+      nb.roadmapStale = true;
       // Nothing staged and nothing half-typed: the fresh list can simply be
       // taken, and the banner never has to ask for a click it does not need.
-      if (!nb.todoPending.length && !memDirty()){
-        nb.todoStale = false;
-        nb.todoBatch = null;
+      if (!nb.roadmapPending.length && !memDirty()){
+        nb.roadmapStale = false;
+        nb.roadmapBatch = null;
         reloadViews();
         return;
       }
     }
-    nb.todoBatch = b || null;
+    nb.roadmapBatch = b || null;
   }
 
   // Is the notebook held against operator writes? While a session's batch is
@@ -8681,26 +8681,26 @@ function makeNotebook(project){
   // everything: the Saves, and the write-through controls on the memory and
   // bug views, because "a session is mid-change here" is a fact about the
   // notebook, not about one of its tabs.
-  function nbHeld(){ return !!nb.todoBatch || nb.todoStale; }
+  function nbHeld(){ return !!nb.roadmapBatch || nb.roadmapStale; }
 
   function drawBatchNote(){
-    const el = $("todoBatch");
+    const el = $("roadmapBatch");
     if (!el) return;
     root.classList.toggle("held", nbHeld());
-    el.hidden = !nb.todoBatch && !nb.todoStale;
+    el.hidden = !nb.roadmapBatch && !nb.roadmapStale;
     if (el.hidden){ el.innerHTML = ""; return; }
-    const n = nb.todoBatch?.changes || 0;
-    el.innerHTML = nb.todoBatch
-      ? `<div>${esc(nb.todoBatch.by || "a session")} is part-way through changing this
+    const n = nb.roadmapBatch?.changes || 0;
+    el.innerHTML = nb.roadmapBatch
+      ? `<div>${esc(nb.roadmapBatch.by || "a session")} is part-way through changing this
          notebook${n ? `: ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving
          and reporting are held until it commits; your own edits are safe where
-         they are. <button type="button" id="todoRecheck">Check now</button></div>`
+         they are. <button type="button" id="roadmapRecheck">Check now</button></div>`
       : `<div>A session finished changing this notebook. What is on screen was
          read before that, so saving over it would undo the change.
-         <button type="button" id="todoReread">Reload the list</button></div>`;
-    const rr = $("todoReread");
-    if (rr) rr.onclick = rereadTodo;
-    const rc = $("todoRecheck");
+         <button type="button" id="roadmapReread">Reload the list</button></div>`;
+    const rr = $("roadmapReread");
+    if (rr) rr.onclick = rereadRoadmap;
+    const rc = $("roadmapRecheck");
     // The link is the answer to "is it done yet?" without waiting for the next
     // poll. If it is, and nothing local is at stake, the reload happens by
     // itself: the guard should only demand a click when a click would cost.
@@ -8722,21 +8722,21 @@ function makeNotebook(project){
   // cover what it held. Reloading only the list is how the Bugs tab could sit
   // there showing what a session had already changed.
   async function reloadViews(){
-    await loadTodo(nb.memGen);
+    await loadRoadmap(nb.memGen);
     if (nb.bugs) await loadBugs();
     await loadMemory(nb.memGen);
     if (!root.querySelector('[data-view="analysis"]').hidden) await loadAnalysis();
   }
 
-  async function rereadTodo(){
-    if (nb.todoPending.length
-        && !confirm(`Reload? ${nb.todoPending.length} unsaved change`
-                    + `${nb.todoPending.length === 1 ? "" : "s"} of yours would go: `
+  async function rereadRoadmap(){
+    if (nb.roadmapPending.length
+        && !confirm(`Reload? ${nb.roadmapPending.length} unsaved change`
+                    + `${nb.roadmapPending.length === 1 ? "" : "s"} of yours would go: `
                     + "the notebook is being replaced with what is on disk."))
       return;
     revertPending();
-    nb.todoOrdering = false;
-    nb.todoStale = false;
+    nb.roadmapOrdering = false;
+    nb.roadmapStale = false;
     await reloadViews();
   }
 
@@ -8744,27 +8744,27 @@ function makeNotebook(project){
   // memory editor's are not, and either way this is what tells a session. Dead
   // rather than absent, so the footer does not move about under a thumb.
   function syncSave(){
-    const q = $("todoSaveQuiet");
+    const q = $("roadmapSaveQuiet");
     if (!q) return;
-    const dirty = nb.todoUnsaved.todo || nb.todoUnsaved.memory || memDirty()
-                  || nb.todoPending.length > 0 || nb.verStagedCount() > 0
+    const dirty = nb.roadmapUnsaved.roadmap || nb.roadmapUnsaved.memory || memDirty()
+                  || nb.roadmapPending.length > 0 || nb.verStagedCount() > 0
                   || nb.ruleStagedCount() > 0;
     // Held while a session is mid-batch, and again until the list is re-read
     // after one finishes. Reverting is still allowed either way: throwing away
     // your own unsaved work never depends on what anybody else is doing.
-    const held = !!nb.todoBatch || nb.todoStale;
+    const held = !!nb.roadmapBatch || nb.roadmapStale;
     q.disabled = !dirty || held;
     // Revert answers the same question the Saves do, from the other side.
-    const rv = $("todoRevert");
+    const rv = $("roadmapRevert");
     if (rv){
-      rv.disabled = !(nb.todoPending.length || memDirty() || nb.verStagedCount()
+      rv.disabled = !(nb.roadmapPending.length || memDirty() || nb.verStagedCount()
                       || nb.ruleStagedCount());
       rv.title = rv.disabled ? "nothing unsaved to throw away"
         : "throw away what has not been saved: the list and the memory editors "
           + "go back to what is on disk";
     }
     q.title = held
-      ? (nb.todoBatch ? "a session is part-way through changing this list"
+      ? (nb.roadmapBatch ? "a session is part-way through changing this list"
                    : "a session changed this list: reload it before saving over it")
       : "write any memory edits and settle the panel: a session running here "
         + "is told what moved on the next prompt it is given";
@@ -8824,7 +8824,7 @@ function makeNotebook(project){
   // What is unsaved here, in the words the buttons use. Both halves, because
   // both Saves write both and a Revert that left one behind would be a trap.
   function nbUnsaved(){
-    const n = nb.todoPending.length;
+    const n = nb.roadmapPending.length;
     const v = nb.verStagedCount();
     return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
             memDirty() ? "an edited memory" : "",
@@ -8851,8 +8851,8 @@ function makeNotebook(project){
     revertPending();
     nb.verClearStaged();
     nb.ruleClearStaged();
-    nb.todoOrdering = false;
-    redrawTodo();
+    nb.roadmapOrdering = false;
+    redrawRoadmap();
     nb.memEditing.clear();
     await loadMemory(nb.memGen);       // drops whatever the editors were holding
   }
@@ -8867,7 +8867,7 @@ function makeNotebook(project){
     if (!what){ beat(true); return true; }
     if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
     revertPending();
-    nb.todoOrdering = false;
+    nb.roadmapOrdering = false;
     beat(true);
     nb.memGen++; nb.memProj = null;
     return true;
@@ -8877,7 +8877,7 @@ function makeNotebook(project){
   // session and does not need to: the hook every session runs under carries the
   // news back on the next prompt it is given (roadmap #27).
   async function saveAll(){
-    const b = $("todoSaveQuiet"), was = b.textContent;
+    const b = $("roadmapSaveQuiet"), was = b.textContent;
     busy(b, "Saving");
     // Everything staged, replayed in the order it was made, which is what makes
     // the server arrive at what is on screen.
@@ -8888,7 +8888,7 @@ function makeNotebook(project){
     // top, so nothing further here should run in the meantime: writing the
     // memories and settling the panel while a roadmap change is still unwritten
     // would report "saved" over work that is not.
-    if (nb.todoPending.length){ unbusy(b, was); syncSave(); return; }
+    if (nb.roadmapPending.length){ unbusy(b, was); syncSave(); return; }
     nb.clashResume = null;
     // Before the memory write and the settle: a bump is a git commit, and if it
     // is going to refuse (a staged VERSION, a hand edit in the worktree) the
@@ -8896,7 +8896,7 @@ function makeNotebook(project){
     const verMsg = await nb.verCommitStaged();
     await nb.ruleCommitStaged();
     if (memDirty()) await saveMemory(true);
-    const j = await postTodo({action: "save"});
+    const j = await postRoadmap({action: "save"});
     await loadMemory(nb.memGen);
     // Out of the busy state, and no further: the button stays disabled, which
     // is what a finished save leaves. Asking syncSave here instead re-enabled
@@ -8905,12 +8905,12 @@ function makeNotebook(project){
     b.removeAttribute("aria-busy");
     b.textContent = was;
     // Committed, so there is nothing left for a Cancel to go back to.
-    nb.todoWas = null;
+    nb.roadmapWas = null;
     if (j) notify([verMsg, "saved: the session reads it on its next prompt"]
                   .filter(Boolean).join(" · "));
   }
-  $("todoSaveQuiet").onclick = () => saveAll();
-  $("todoRevert").onclick = revertNotebook;
+  $("roadmapSaveQuiet").onclick = () => saveAll();
+  $("roadmapRevert").onclick = revertNotebook;
 
   // ---- the four views ------------------------------------------------------
   function setNbView(v){
@@ -8981,8 +8981,8 @@ function makeNotebook(project){
     revertPending();
     nb.verClearStaged();
     nb.ruleClearStaged();
-    nb.todoOrdering = false;
-    redrawTodo();
+    nb.roadmapOrdering = false;
+    redrawRoadmap();
     nb.memEditing.clear();
     await loadMemory(nb.memGen);     // drops whatever the editors were holding
     return true;
@@ -9064,10 +9064,10 @@ function makeNotebook(project){
   // poll, and the moment a write of this panel's own settles. They have to
   // ask the same ones.
   const HALVES = [
-    [() => `todo:${project}`,
-     k => nb.todoRev !== null && revs[k] > nb.todoRev
-          && !nb.todoPending.length && !nb.clash && !nbHeld(),
-     () => loadTodo(nb.memGen)],
+    [() => `roadmap:${project}`,
+     k => nb.roadmapRev !== null && revs[k] > nb.roadmapRev
+          && !nb.roadmapPending.length && !nb.clash && !nbHeld(),
+     () => loadRoadmap(nb.memGen)],
     [() => `mem:${project}`,
      k => nb.memRev !== null && revs[k] && revs[k] !== nb.memRev
           && !memDirty() && !nb.memClash && !nbHeld(),
@@ -9092,7 +9092,7 @@ function makeNotebook(project){
   // somebody is looking at it: it is a fold that is shut by default, and
   // fetching a few kilobytes for a closed fold on every roadmap edit is the
   // kind of cost nobody chooses.
-  for (const half of ["rules", "todo", "bug"])
+  for (const half of ["rules", "roadmap", "bug"])
     watch(() => `${half}:${project}`,
           () => { if (showing("briefing")) loadPreamble(); });
 
@@ -9130,7 +9130,7 @@ function makeNotebook(project){
     // First show loads; later shows are just the pane coming back.
     shown(){ if (!nb.loaded){ nb.loaded = true; openMemory(project); loadPending(); } },
     reloadPending: loadPending,
-    reload(){ return loadTodo(nb.memGen); },
+    reload(){ return loadRoadmap(nb.memGen); },
     reloadMemory(){ return loadMemory(nb.memGen); },
     reloadBugs(){ return loadBugs(); },
     reloadTests(){ return loadTests(); },
@@ -9156,7 +9156,7 @@ function makeNotebook(project){
       // and a refetch here would quietly throw them away.
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
-      if (now !== nb.todoSession){ nb.todoSession = now; redrawTodo(); }
+      if (now !== nb.roadmapSession){ nb.roadmapSession = now; redrawRoadmap(); }
       // The Docker view follows a running job the way the tab does.
       if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
       // What this notebook re-reads and when is declared once, up where the
@@ -9170,7 +9170,7 @@ function makeNotebook(project){
         loadAnalysis();
 
     },
-    escape(){ if (nb.todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
+    escape(){ if (nb.roadmapSel){ cancelSend(); redrawRoadmap(); return true; } return false; },
     // Says this tab has left the notebook without taking the notebook down:
     // the page is going (see the pagehide listener by getNotebook).
     leave(){ return beat(true, true); },
@@ -10944,7 +10944,7 @@ async function pollRevs(){
     // whole share's would be a directory walk per project per second and a
     // half for panes nobody has open. Always sent, empty included: an absent
     // `p` means "all of them", which is what `bb` and the tests want.
-    const ps = [...new Set(tabs.filter(t => t.kind === "todo").map(t => t.arg))];
+    const ps = [...new Set(tabs.filter(t => t.kind === "notebook").map(t => t.arg))];
     const r = await fetch("/api/revs?p=" + encodeURIComponent(ps.join(",")));
     if (!r.ok) return;
     now = await r.json();

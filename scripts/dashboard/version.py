@@ -105,7 +105,7 @@ write_json = None
 # Injected rather than imported, the way notebook.py takes them: the CLI loads
 # these modules by path, and importing them again here would make a second
 # copy with its own configuration and its own idea of where the state lives.
-todo = None
+roadmap = None
 bugs = None
 changelog = None
 tell = None
@@ -146,10 +146,10 @@ PARTS = ("major", "minor", "patch")
 _lock = statefile.on(lambda: FILE)
 
 
-def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None,
+def configure(*, workspace, state, write_json, roadmap_mod=None, bugs_mod=None,
               changelog_mod=None, tell_fn=None, tmux_name_fn=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, todo=todo_mod, bugs=bugs_mod,
+                     write_json=write_json, roadmap=roadmap_mod, bugs=bugs_mod,
                      changelog=changelog_mod, tell=tell_fn,
                      tmux_name=tmux_name_fn)
     globals()["FILE"] = Path(state) / "versions.json"
@@ -895,8 +895,8 @@ def evidence(project, comp=""):
         # over. None rather than 0: "nothing happened" and "there is nothing
         # to measure from" are different answers.
         return e
-    if todo is not None:
-        e["done"] = sum(1 for x in todo.history(project, since=at)
+    if roadmap is not None:
+        e["done"] = sum(1 for x in roadmap.history(project, since=at)
                         if x.get("act") == "done")
     if bugs is not None:
         e["fixed"] = sum(1 for x in bugs.history(project, since=at)

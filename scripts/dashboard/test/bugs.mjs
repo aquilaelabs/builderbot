@@ -13,7 +13,7 @@ const BB = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bb');
 const bbBug = (...a) => execFileSync(BB, ['bug', ...a],
   { env: { ...process.env, BB_BUG_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
-const bbTodoBatch = (...a) => execFileSync(BB, ['roadmap', ...a],
+const bbRoadmapBatch = (...a) => execFileSync(BB, ['roadmap', ...a],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 const FILE = `${DIR}/state/bugs.json`;
@@ -348,15 +348,15 @@ ok(true, '...and a delete, which is the case a revision catches and a count does
 // ---- Check now answers about the batch, not about one view -----------------
 // It used to reload the roadmap, which refreshed one tab of four and left the
 // other three showing what the session had already changed.
-bbTodoBatch('begin');
+bbRoadmapBatch('begin');
 bbBug('add', 'filed mid-batch, from a session', '--sev', 'high');
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => !document.getElementById('todoBatch').hidden,
+await page.waitForFunction(() => !document.getElementById('roadmapBatch').hidden,
                            { timeout: 20000 });
 ok(await page.evaluate(() => nbHeldFor('alpha')), 'the notebook is held');
-bbTodoBatch('commit');
-await page.click('#todoRecheck');
-await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
+bbRoadmapBatch('commit');
+await page.click('#roadmapRecheck');
+await page.waitForFunction(() => document.getElementById('roadmapBatch').hidden,
                            { timeout: 20000 });
 // Waited for rather than read straight off. A batch now covers the tracker
 // too, so a bug filed inside one does not move the tracker's revision until
@@ -488,7 +488,7 @@ ok(await page.$('#sendModelSel') === null && await page.$('#sendMore') !== null,
 ok(await page.$eval('#sendMore', e => e.value) === '',
    '...and the note starts empty, never carrying words written for something else');
 await page.fill('#sendMore', 'it happens on the second run, not the first');
-await page.click('#todoGo');
+await page.click('#roadmapGo');
 await page.waitForFunction(() => !document.querySelector('.sendbox'),
                            null, { timeout: 20000 });
 const sent = tmuxCapture('claude-alpha');

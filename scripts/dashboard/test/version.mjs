@@ -852,7 +852,7 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } })
 await page.goto(DURL);
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
-await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
 await page.waitForSelector('#verBox .verln', { timeout: 20000 });
 
@@ -925,7 +925,7 @@ await page.click(`${NB} #verBox [data-verbump="minor"]`);
 ok(!/staged:/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
    '...and pressing it again unstages, no dialog needed');
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
-await page.click(`${NB} #todoSaveQuiet`);
+await page.click(`${NB} #roadmapSaveQuiet`);
 await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
    'Save commits the staged bump — the operator can, whatever the policy');
@@ -944,7 +944,7 @@ await page.waitForFunction(() => [...document.querySelectorAll('.nb #verBox .ver
   .some(e => /staged: on Save/.test(e.textContent)), null, { timeout: 10000 });
 ok((await page.evaluate(async () => (await (await fetch('/api/version?project=alpha')).json()).policy)) !== 'minor',
    'picking a policy stages it and writes nothing yet');
-await page.click(`${NB} #todoSaveQuiet`);
+await page.click(`${NB} #roadmapSaveQuiet`);
 await page.waitForFunction(async () => {
   const r = await fetch('/api/version?project=alpha');
   return (await r.json()).policy === 'minor';

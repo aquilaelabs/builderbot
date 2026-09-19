@@ -79,17 +79,17 @@ const ODD = [null, 0, -1, 1e9, '', 'x', [], {}, true, '../etc', ' ', 'a'.repeat(
 
 const cases = [];
 for (const v of ODD){
-  cases.push(['/api/todo', { project: v, action: 'add', text: 'x' }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'add', text: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'add', text: 'x', steps: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'send', id: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'send', id: 1, step: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'move', id: 1, step: v, dir: 1 }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'move', id: 1, dir: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'cross', id: v, on: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'remove', id: 1, step: v }]);
-  cases.push(['/api/todo', { project: 'alpha', action: 'add-step', id: v, text: 'x' }]);
-  cases.push(['/api/todo', { project: 'alpha', action: v }]);
+  cases.push(['/api/roadmap', { project: v, action: 'add', text: 'x' }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'add', text: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'add', text: 'x', steps: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'send', id: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'send', id: 1, step: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'move', id: 1, step: v, dir: 1 }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'move', id: 1, dir: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'cross', id: v, on: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'remove', id: 1, step: v }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: 'add-step', id: v, text: 'x' }]);
+  cases.push(['/api/roadmap', { project: 'alpha', action: v }]);
   cases.push(['/api/memory', { project: v, action: 'save', file: 'MEMORY.md', text: 'x' }]);
   cases.push(['/api/memory', { project: 'alpha', action: 'save', file: v, text: 'x' }]);
   cases.push(['/api/memory', { project: 'alpha', action: 'delete', file: v }]);
@@ -97,7 +97,7 @@ for (const v of ODD){
   cases.push(['/api/project-job', { action: v }]);
   cases.push(['/api/signout', { anything: v }]);
 }
-cases.push(['/api/todo', {}]);
+cases.push(['/api/roadmap', {}]);
 cases.push(['/api/memory', {}]);
 cases.push(['/api/login-code', {}]);
 cases.push(['/api/signin', {}]);
@@ -116,7 +116,7 @@ const gets = ['', '?project=', '?project=nosuch', '?project=../etc',
               '?project=' + 'a'.repeat(3000), '?project=a&project=b'];
 const badGet = [];
 for (const q of gets)
-  for (const p of ['/api/memory', '/api/todo']){
+  for (const p of ['/api/memory', '/api/roadmap']){
     const s = await page.evaluate(async u => (await fetch(u)).status, p + q);
     if (s >= 500) badGet.push(p + q + ' -> ' + s);
   }

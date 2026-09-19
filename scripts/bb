@@ -1636,7 +1636,7 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
   end'
 
 # The shared to-do list, from a session's side. Same file the dashboard writes
-# (/config/todos.json) and the same module reads it — one implementation, so a
+# (/config/roadmap.json) and the same module reads it: one implementation, so a
 # list edited from a phone and a list edited from a terminal cannot disagree.
 #
 # The project is the directory this is run in, not an argument: a session is
@@ -1644,12 +1644,12 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
 # wrong.
 cmd_roadmap() {
     local py
-    # todo.py, still: the file is where the roadmap has always been implemented
+    # roadmap.py, still: the file is where the roadmap has always been implemented
     # and renaming it would move code the running image serves by absolute
     # path. The command is what the operator reads, and that is `bb roadmap`.
-    py="$(dirname "$(readlink -f "$0")")/dashboard/todo.py"
-    [ -f "$py" ] || die "todo.py is missing from this image"
-    local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
+    py="$(dirname "$(readlink -f "$0")")/dashboard/roadmap.py"
+    [ -f "$py" ] || die "roadmap.py is missing from this image"
+    local proj="${BB_ROADMAP_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE} — cd into one first"
@@ -1685,9 +1685,9 @@ def _wrote(e):
 
 import importlib.util, json, sys, time
 
-spec = importlib.util.spec_from_file_location("todo", sys.argv[1])
-todo = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(todo)
+spec = importlib.util.spec_from_file_location("roadmap", sys.argv[1])
+roadmap = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(roadmap)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
 # There were five, all still using a fixed <name>.tmp — the exact collision the
@@ -1707,11 +1707,11 @@ write_json = statefile.write_json
 
 import os
 _state = os.environ.get("DASHBOARD_STATE", "/config")
-todo.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
+roadmap.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 
 # The tracker's half of a notebook batch. A batch spans both files, so the
 # roadmap's begin/commit/revert have to reach the tracker as well — loaded
-# beside todo.py rather than imported, for the same reason todo.py is: this
+# beside roadmap.py rather than imported, for the same reason roadmap.py is: this
 # has to be the copy sitting next to the script that was actually run.
 _here = os.path.dirname(sys.argv[1])
 _bugs = importlib.util.module_from_spec(
@@ -1721,15 +1721,15 @@ _bugs.configure(write_json=write_json, state=_state, actor=lambda: _account_name
 _nb = importlib.util.module_from_spec(
     importlib.util.spec_from_file_location("notebook", os.path.join(_here, "notebook.py")))
 _nb.__loader__.exec_module(_nb)
-_nb.configure(todo_mod=todo, bugs_mod=_bugs)
+_nb.configure(roadmap_mod=roadmap, bugs_mod=_bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
 rest = argv[1:]
 
-# todo.py put its own directory on sys.path, so the id module beside it is
+# roadmap.py put its own directory on sys.path, so the id module beside it is
 # importable here the way it is inside the dashboard — and the approval
-# queue (roadmap #27), which todo.configure already set up.
+# queue (roadmap #27), which roadmap.configure already set up.
 import ids  # noqa: E402
 import pending  # noqa: E402
 
@@ -1766,7 +1766,7 @@ def behind(n, verb, args, summary):
 
 
 def R(n):
-    return ids.label("todo", n) if n is not None else ""
+    return ids.label("roadmap", n) if n is not None else ""
 
 
 def ident(word):
@@ -1777,7 +1777,7 @@ def ident(word):
     a check, not decoration (ids.py). The number goes on as an int so every
     module call and every message below prints it the same way.
     """
-    n, err = ids.parse("todo", word)
+    n, err = ids.parse("roadmap", word)
     if err:
         print(f"[builderbot] ERROR: {err}", file=sys.stderr)
         sys.exit(1)
@@ -1789,7 +1789,7 @@ def ident(word):
 
 
 def show():
-    rows = todo.items(proj)
+    rows = roadmap.items(proj)
     # The whole notebook's count, not the roadmap's: one batch covers both,
     # and a banner reporting half of it would read as "nothing much staged"
     # while a dozen tracker changes sat unrecorded.
@@ -1846,7 +1846,7 @@ def fresh():
     command and clears the block, which makes the honest path the short one;
     a flag would make the dishonest path shorter.
     """
-    if todo.stale(proj, _who):
+    if roadmap.stale(proj, _who):
         print("[builderbot] ERROR: the roadmap has changed since you last read "
               "it — run `bb roadmap` and make this change against what it says "
               "now", file=sys.stderr)
@@ -1857,7 +1857,7 @@ if op in ("list", "ls"):
     show()
     # Read, so what arrives on the next prompt is what has moved SINCE this —
     # and so the guard above stops holding a session that has just looked.
-    todo.mark_seen(proj, _who, "todo")
+    roadmap.mark_seen(proj, _who, "roadmap")
 elif op == "show":
     # One item in full: its details, its steps and theirs. `list` cannot carry
     # this without becoming unreadable, and a session working item N wants
@@ -1865,7 +1865,7 @@ elif op == "show":
     if not rest:
         print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0])
-    r = next((x for x in todo.items(proj) if x.get("id") == n), None)
+    r = next((x for x in roadmap.items(proj) if x.get("id") == n), None)
     if r is None:
         print(f"[builderbot] ERROR: no item {R(n)} here", file=sys.stderr)
         sys.exit(1)
@@ -1879,9 +1879,9 @@ elif op == "show":
               + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
         if st.get("info"):
             print("       details: " + st["info"].replace("\n", "\n                "))
-    todo.mark_seen(proj, _who, "todo")
+    roadmap.mark_seen(proj, _who, "roadmap")
 elif op == "--prompt":
-    sys.stdout.write(todo.prompt(proj))
+    sys.stdout.write(roadmap.prompt(proj))
 elif op == "add":
     # `bb roadmap add "title" --step "..." --step "..."` — a change that needs
     # things done in an order is one item with steps, not several items that
@@ -1899,7 +1899,7 @@ elif op == "add":
             steps.append(rest[i + 1]); i += 2
         else:
             words.append(rest[i]); i += 1
-    r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps,
+    r = roadmap.add(proj, " ".join(words).strip(), by="claude", steps=steps,
                  who=_who); bail(r)
     if r.get("held"):
         print(held_line(r)); sys.exit(0)
@@ -1913,7 +1913,7 @@ elif op == "done":
     if not rest:
         print("usage: bb roadmap done <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None); fresh()
-    r = todo.tick(proj, n, by="claude", who=_who); bail(r)
+    r = roadmap.tick(proj, n, by="claude", who=_who); bail(r)
     print(f"done {R(n)}: {r['item']['text']}")
 elif op in ("rm", "remove"):
     # For work that is abandoned — a finished plan is ticked, not dropped.
@@ -1923,7 +1923,7 @@ elif op in ("rm", "remove"):
     if not rest:
         print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None); fresh()
-    r = todo.remove(proj, n, by="claude", why=" ".join(rest[1:]),
+    r = roadmap.remove(proj, n, by="claude", why=" ".join(rest[1:]),
                     who=_who); bail(r)
     print(f"removed {R(n)} — bb roadmap restore {R(n)} puts it back")
 elif op == "restore":
@@ -1932,7 +1932,7 @@ elif op == "restore":
     if not rest:
         print("usage: bb roadmap restore <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); fresh()
-    r = todo.restore(proj, n, by="claude", who=_who); bail(r)
+    r = roadmap.restore(proj, n, by="claude", who=_who); bail(r)
     print(f"put back {R(n)}: {r['item']['text']}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
@@ -1964,7 +1964,7 @@ elif op in ("mv", "move"):
     if len(rest) < 2 or rest[1] not in ("up", "down"):
         print("usage: bb roadmap mv <n> up|down", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
-    r = todo.move(proj, n, dir=-1 if rest[1] == "up" else 1, by="claude",
+    r = roadmap.move(proj, n, dir=-1 if rest[1] == "up" else 1, by="claude",
                   who=_who)
     bail(r)
     print(f"moved {R(n)} {rest[1]}")
@@ -1978,7 +1978,7 @@ elif op == "shelve":
     if not rest:
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
-    r = todo.shelve(proj, n, True, by="claude", who=_who); bail(r)
+    r = roadmap.shelve(proj, n, True, by="claude", who=_who); bail(r)
     print(f"shelved {R(n)} — say in your reply why, the operator unshelves it")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
@@ -1991,7 +1991,7 @@ elif op == "edit":
               f"reword {R(n)}: {' '.join(rest[1:])}"):
         sys.exit(0)
     fresh()
-    r = todo.edit(proj, n, " ".join(rest[1:]), by="claude", who=_who); bail(r)
+    r = roadmap.edit(proj, n, " ".join(rest[1:]), by="claude", who=_who); bail(r)
     print(f"reworded {R(n)}")
 elif op == "info":
     # The technical half, attached where the work is: which files, which
@@ -2011,7 +2011,7 @@ elif op == "info":
                   f"details on step {n} of {R(item)}: {' '.join(rest[2:])}"):
             sys.exit(0)
         fresh()
-        r = todo.set_info(proj, item, " ".join(rest[2:]),
+        r = roadmap.set_info(proj, item, " ".join(rest[2:]),
                           step=n - 1, by="claude", who=_who); bail(r)
         print(f"details on step {rest[1]} of {R(item)}")
     else:
@@ -2019,7 +2019,7 @@ elif op == "info":
                   f"details on {R(item)}: {' '.join(rest[1:])}"):
             sys.exit(0)
         fresh()
-        r = todo.set_info(proj, item, " ".join(rest[1:]), by="claude",
+        r = roadmap.set_info(proj, item, " ".join(rest[1:]), by="claude",
                           who=_who); bail(r)
         print(f"details on {R(item)}")
 elif op == "step":
@@ -2034,7 +2034,7 @@ elif op == "step":
         fell through to editing the item and renamed it. Every step verb had
         its own copy of that.
         """
-        n = todo._int(word)
+        n = roadmap._int(word)
         if n is None or n < 1:
             print(f"[builderbot] ERROR: step numbers start at 1 (got {word!r})",
                   file=sys.stderr)
@@ -2045,34 +2045,34 @@ elif op == "step":
         if behind(item, "step-add", {"item_id": item, "text": " ".join(srest[1:]), "who": _who},
                   f"a step on {R(item)}: {' '.join(srest[1:])}"):
             sys.exit(0)
-        r = todo.add_step(proj, item, " ".join(srest[1:]), by="claude",
+        r = roadmap.add_step(proj, item, " ".join(srest[1:]), by="claude",
                           who=_who); bail(r)
         print(f"added a step to {R(item)}")
     elif sub == "edit" and len(srest) >= 3:
         # 1-based on the way in, because that is how the step is numbered
         # everywhere a human reads it.
         behind(item, None, None, None); fresh()
-        r = todo.edit(proj, item, " ".join(srest[2:]),
+        r = roadmap.edit(proj, item, " ".join(srest[2:]),
                       step=step_index(srest[1]),
                       by="claude", who=_who); bail(r)
         print(f"reworded step {srest[1]} of {R(item)}")
     elif sub in ("rm", "remove") and len(srest) >= 2:
         behind(item, None, None, None); fresh()
-        r = todo.remove(proj, item,
+        r = roadmap.remove(proj, item,
                         step=step_index(srest[1]),
                         by="claude", why=" ".join(srest[2:]), who=_who); bail(r)
         print(f"removed step {srest[1]} of {R(item)}")
     elif sub == "info" and len(srest) >= 2:
         behind(item, None, None, None); fresh()
-        r = todo.set_info(proj, item, " ".join(srest[2:]),
+        r = roadmap.set_info(proj, item, " ".join(srest[2:]),
                           step=step_index(srest[1]),
                           by="claude", who=_who); bail(r)
         print(f"details on step {srest[1]} of {R(item)}")
     elif sub == "done" and len(srest) >= 2:
         # A session's own mark, distinct from the dashboard's "sent": this
-        # step is finished, whether or not anybody sent it. See todo.step_done.
+        # step is finished, whether or not anybody sent it. See roadmap.step_done.
         behind(item, None, None, None)
-        r = todo.step_done(proj, item, step_index(srest[1]),
+        r = roadmap.step_done(proj, item, step_index(srest[1]),
                            by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
         print(f"step {srest[1]} of {R(item)} done"
               + (f" — the last one, so {R(item)} is done and off the list"
@@ -2082,7 +2082,7 @@ elif op == "step":
         # finds two steps in the wrong order can only delete and retype them,
         # which loses both their words and the record of what really changed.
         behind(item, None, None, None)
-        r = todo.move(proj, item,
+        r = roadmap.move(proj, item,
                       step=step_index(srest[1]),
                       dir=-1 if srest[2] == "up" else 1, by="claude",
                       who=_who); bail(r)
@@ -2114,14 +2114,14 @@ elif op in ("history", "log"):
     while i < len(rest):
         a = rest[i]
         if a in ("-n", "--last") and i + 1 < len(rest):
-            limit = todo._int(rest[i + 1]); i += 2
+            limit = roadmap._int(rest[i + 1]); i += 2
         elif a == "--all":
             limit = None; i += 1
         elif a == "--since" and i + 1 < len(rest):
             # A day count, or a date. Both are things somebody types from
             # memory; neither needs a library to read.
             v = rest[i + 1]
-            n = todo._int(v.rstrip("d")) if v.rstrip("d").isdigit() else None
+            n = roadmap._int(v.rstrip("d")) if v.rstrip("d").isdigit() else None
             if n is not None:
                 since = int(time.time()) - n * 86400
             else:
@@ -2137,7 +2137,7 @@ elif op in ("history", "log"):
             print("usage: bb roadmap history [-n N|--all] [--since 7d|YYYY-MM-DD] "
                   "[--find TEXT]", file=sys.stderr)
             sys.exit(1)
-    h = todo.history(proj, limit=limit, since=since, find=find)
+    h = roadmap.history(proj, limit=limit, since=since, find=find)
     if not h:
         print(f"nothing on {proj}'s list matches that")
     for e in h:
@@ -2169,7 +2169,7 @@ cmd_history() {
     # the notebook and not about a tab of it.
     local dir
     dir="$(dirname "$(readlink -f "$0")")/dashboard"
-    local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
+    local proj="${BB_ROADMAP_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE} — cd into one first"
@@ -2221,9 +2221,9 @@ state = os.environ.get("DASHBOARD_STATE", "/config")
 statefile = load_mod(dirname, "statefile")
 sys.modules["statefile"] = statefile
 write_json = statefile.write_json
-todo = load_mod(dirname, "todo")
-todo.configure(write_json=write_json, state=state, actor=lambda: _account_name(state))
-import ids  # noqa: E402 — todo.py put its directory on sys.path
+roadmap = load_mod(dirname, "roadmap")
+roadmap.configure(write_json=write_json, state=state, actor=lambda: _account_name(state))
+import ids  # noqa: E402  (roadmap.py put its directory on sys.path)
 bugs = load_mod(dirname, "bugs")
 bugs.configure(write_json=write_json, state=state, actor=lambda: _account_name(state))
 memory = load_mod(dirname, "memory")
@@ -2265,7 +2265,7 @@ rows = []
 # the operator decided — the one place "denied" is written down.
 pending = load_mod(dirname, "pending")
 pending.configure(write_json=write_json, state=state)
-for tag, mod in (("roadmap", todo), ("bugs", bugs), ("memory", memory),
+for tag, mod in (("roadmap", roadmap), ("bugs", bugs), ("memory", memory),
                  ("scanner", findings), ("waiting", pending)):
     for e in mod.history(proj, since=since, find=find):
         rows.append((tag, e))
@@ -2279,10 +2279,10 @@ for tag, e in rows:
     where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
     # The tab's own letter on the number — R12, B62 — because a merged log is
     # exactly where a bare number could be read against the wrong list.
-    kind = {"roadmap": "todo"}.get(tag, tag)
+    kind = tag
     if tag == "waiting":
         # The queue's rows carry which tab and that tab's number.
-        k2 = {"roadmap": "todo"}.get(e.get("kind"), e.get("kind"))
+        k2 = e.get("kind")
         ident = (f" {ids.label(k2, e['number'])}" if e.get("number") is not None
                  and k2 in ids.LETTERS else
                  f" rule {e['number']}" if e.get("number") else "")
@@ -2320,14 +2320,14 @@ cmd_preamble() {
 import json, os, sys
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, d)
-import statefile, rules, todo, bugs, preamble
+import statefile, rules, roadmap, bugs, preamble
 state = os.environ.get("DASHBOARD_STATE", "/config")
 # Reading only: none of the callbacks a write would need are passed, and the
 # three stores take them as optional for exactly this case.
 rules.configure(write_json=statefile.write_json, state=state)
-todo.configure(write_json=statefile.write_json, state=state)
+roadmap.configure(write_json=statefile.write_json, state=state)
 bugs.configure(write_json=statefile.write_json, state=state)
-preamble.configure(rules_mod=rules, todo_mod=todo, bugs_mod=bugs)
+preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
 p = preamble.payload(proj)
 if op == "--json":
     print(json.dumps(p))
@@ -2394,17 +2394,17 @@ def covers(r, path):
     return False
 
 
-todo = [r for r in rules if r.get("check") and (want is None or r.get("name") == want)]
-if want is not None and not todo:
+due = [r for r in rules if r.get("check") and (want is None or r.get("name") == want)]
+if want is not None and not due:
     sys.exit(f"[builderbot] ERROR: no rule called {want} carries a check")
 if not everything:
     files = changed()
-    todo = [r for r in todo if not r.get("paths") or any(covers(r, f) for f in files)]
-    if not todo:
+    due = [r for r in due if not r.get("paths") or any(covers(r, f) for f in files)]
+    if not due:
         print("nothing changed here that a rule's check covers")
         sys.exit(0)
 rc = 0
-for r in todo:
+for r in due:
     print(f"== {r['name']}: {r['check']}")
     sys.stdout.flush()
     try:
@@ -3215,10 +3215,10 @@ def _load(name):
     return m
 
 
-_todo = _load("todo")
-_todo.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
+_roadmap = _load("roadmap")
+_roadmap.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 _nb = _load("notebook")
-_nb.configure(todo_mod=_todo, bugs_mod=bugs)
+_nb.configure(roadmap_mod=_roadmap, bugs_mod=bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"

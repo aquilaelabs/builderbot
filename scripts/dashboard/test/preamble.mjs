@@ -39,7 +39,7 @@ const read = (name) => {
 // thing a new project's first session most needs (R63). What it does NOT get
 // is an empty rules, roadmap or bugs piece.
 put('rules.json', { projects: {} });
-put('todos.json', { projects: {}, unsaved: {} });
+put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
 ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules'
@@ -57,15 +57,15 @@ put('rules.json', { projects: { alpha: { rules: [
 put('bugs.json', { projects: { alpha: [
   { id: 1, title: 'BUGMARK something is wrong', severity: 'high',
     status: 'open', at: 1750000000, by: 'you' }] } });
-const todos = read('todos.json');
-todos.projects = { alpha: [{ id: 1, text: 'TODOMARK a thing to do', by: 'you' }] };
-put('todos.json', todos);
+const roadmapFile = read('roadmap.json');
+roadmapFile.projects = { alpha: [{ id: 1, text: 'ROADMAPMARK a thing to do', by: 'you' }] };
+put('roadmap.json', roadmapFile);
 
 p = await pre();
 const at = s => p.text.indexOf(s);
-ok(at('RULESMARK') >= 0 && at('TODOMARK') >= 0 && at('BUGMARK') >= 0,
+ok(at('RULESMARK') >= 0 && at('ROADMAPMARK') >= 0 && at('BUGMARK') >= 0,
    'the rules, the roadmap and the bugs are all in the block');
-ok(at('RULESMARK') < at('TODOMARK') && at('TODOMARK') < at('BUGMARK'),
+ok(at('RULESMARK') < at('ROADMAPMARK') && at('ROADMAPMARK') < at('BUGMARK'),
    '...in that order: how to work on it, then what there is, then what is broken');
 ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
@@ -91,9 +91,9 @@ const many = [];
 for (let i = 0; i < 3000; i++)
   many.push({ id: i + 1, by: 'you',
               text: `item ${i} with enough words on it to be a real line of about fifty bytes` });
-const big = read('todos.json');
+const big = read('roadmap.json');
 big.projects = { alpha: many };
-put('todos.json', big);
+put('roadmap.json', big);
 p = await pre();
 ok(p.capped === true && p.bytes > p.max,
    `a list past the limit is reported as cut, with its real size (${p.bytes} of ${p.max})`);
@@ -130,7 +130,7 @@ ok(await page.$eval('[data-sect="briefing:preamble"]', el => !el.open),
 
 // Put the fixture back for whatever runs next.
 put('rules.json', { projects: {} });
-put('todos.json', { projects: {}, unsaved: {} });
+put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 
 ok(page.errors.length === 0,

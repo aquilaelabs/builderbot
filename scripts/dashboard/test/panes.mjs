@@ -131,9 +131,9 @@ for (const k of ['projects', 'docker', 'packages']){
                                 openTab({kind: kk, arg: 'two', label: kk}); }, k);
   ok(await kindCount(k) === 1, `only one ${k} tab, whatever it is opened with`);
 }
-await page.evaluate(() => { openTab({kind: 'todo', arg: 'alpha', label: 'a'});
-                            openTab({kind: 'todo', arg: 'beta', label: 'b'}); });
-ok(await kindCount('todo') >= 2,
+await page.evaluate(() => { openTab({kind: 'notebook', arg: 'alpha', label: 'a'});
+                            openTab({kind: 'notebook', arg: 'beta', label: 'b'}); });
+ok(await kindCount('notebook') >= 2,
    '...while notebooks are one per project, which is the whole point of them');
 
 // Every tab kind the page knows must be one the SERVER will keep. A kind

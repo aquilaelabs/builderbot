@@ -66,6 +66,10 @@ TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 # challenge is precisely what made browsers pop their own dialog.
 SESSION_DAYS = 30
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+# State an earlier build wrote under names this one no longer uses, moved
+# before anything below opens it (renames.py).
+import renames                                                   # noqa: E402
+renames.run(STATE)
 
 
 def _session_secret():
@@ -491,7 +495,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
+TAB_KINDS = {"term", "packages", "notebook", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users", "phone", "profile"}
 
 
@@ -1153,17 +1157,17 @@ def project_list(who):
                              "text": f"cannot list this directory as uid {uid}:{gid}"
                                      " — chown it to PUID:PGID on the host"}]}]
     cloning = projects.busy_name()
-    open_todo = todo.counts()
+    open_roadmap = roadmap.counts()
     # One batch spans the notebook, so the count the panel shows has to be
     # both halves added up — a banner reporting only the roadmap's would read
     # as "nothing much" while a dozen tracker changes sat unrecorded.
-    todo_batches = todo.batches()
+    roadmap_batches = roadmap.batches()
     for name, b in bugs.batches().items():
-        if name in todo_batches:
-            todo_batches[name]["changes"] += b.get("changes", 0)
-            todo_batches[name]["at"] = min(todo_batches[name]["at"], b["at"])
+        if name in roadmap_batches:
+            roadmap_batches[name]["changes"] += b.get("changes", 0)
+            roadmap_batches[name]["at"] = min(roadmap_batches[name]["at"], b["at"])
         else:
-            todo_batches[name] = b
+            roadmap_batches[name] = b
     # Counts only. The notebook's six revisions used to ride here, which put
     # half of one tab on this fifteen-second poll while the other half rode
     # /api/revs at a second and a half; they are all on /api/revs now (see
@@ -1323,10 +1327,10 @@ def project_list(who):
                     "memories": mem_census["count"],
                     # ...and what is still to do, which is the number on the row
                     # actually worth glancing at.
-                    "todo": open_todo.get(d.name, 0),
+                    "roadmap": open_roadmap.get(d.name, 0),
                     # So the open notebook learns a session has started one
                     # without waiting for the operator to touch something.
-                    "todo_batch": todo_batches.get(d.name),
+                    "todo_batch": roadmap_batches.get(d.name),
                     "bugs": bug_counts.get(d.name, 0),
                     "tests": test_counts.get(d.name, 0),
                     "rules": rule_counts.get(d.name, 0),
@@ -1979,7 +1983,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together — the app, the file, this.
-APP_API = 1
+APP_API = 2
 
 
 def app_apk():
@@ -2325,9 +2329,9 @@ memory.configure_log(write_json=write_json, state=STATE, actor=writer_name)
 # The one surface both sides write: the operator adds an item, a session adds
 # one and ticks it off. bb-tty puts the open items in front of every Claude
 # session it starts, which is the whole reason it is worth having.
-import todo                                                      # noqa: E402
+import roadmap                                                   # noqa: E402
 
-todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
+roadmap.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name, settle=notify.settle, actor=writer_name)
 
 # ---- what a session is handed ----------------------------------------------
@@ -2335,7 +2339,7 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # join them itself in shell; it asks for this now, and the Briefing tab draws
 # the same string rather than its own idea of it.
 import preamble                                                  # noqa: E402
-preamble.configure(rules_mod=rules, todo_mod=todo, bugs_mod=bugs)
+preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring
@@ -2444,7 +2448,7 @@ import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                  todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
+                  roadmap_mod=roadmap, bugs_mod=bugs, changelog_mod=changelog,
                   tell_fn=notify.tell, tmux_name_fn=tmux_name,
                   )
 
@@ -2665,7 +2669,7 @@ def revisions(who=None, projects=None):
     # asked about.
     nb_revs = bug_revs = test_revs = rule_revs = pend_revs = {}
     if names:
-        nb_revs = _cached(STATE / "todos.json", todo.revisions)
+        nb_revs = _cached(STATE / "roadmap.json", roadmap.revisions)
         bug_revs = _cached(STATE / "bugs.json", bugs.revisions)
         test_revs = _cached(STATE / "tests.json", testreg.revisions)
         rule_revs = _cached(STATE / "rules.json", rules.revisions)
@@ -2714,7 +2718,7 @@ def revisions(who=None, projects=None):
         # glob of one directory. Which is what `projects` is for — one open
         # notebook's worth rather than the whole share's, every second and a
         # half. home_for is memoised, so none of this shells out.
-        revs[f"todo:{n}"] = (nb_revs.get(n) or {}).get("todo", 0)
+        revs[f"roadmap:{n}"] = (nb_revs.get(n) or {}).get("roadmap", 0)
         revs[f"bug:{n}"] = bug_revs.get(n, 0)
         revs[f"tests:{n}"] = test_revs.get(n, 0)
         revs[f"rules:{n}"] = rule_revs.get(n, 0)
@@ -2948,7 +2952,7 @@ GET_ROUTES = (
     ("prefix", "/api/project-job", "_get_project_job"),
     ("prefix", "/api/trash", "_get_trash"),
     ("prefix", "/api/claude-now", "_get_claude_now"),
-    ("prefix", "/api/todo", "_get_todo"),
+    ("prefix", "/api/roadmap", "_get_todo"),
     ("prefix", "/api/rules", "_get_rules"),
     ("prefix", "/api/global-rules", "_get_global_rules"),
     ("prefix", "/api/preamble", "_get_preamble"),
@@ -3000,7 +3004,7 @@ POST_ROUTES = (
     ("prefix", "/api/unlink", "_unlink"),
     ("prefix", "/api/link", "_link"),
     ("prefix", "/api/project-job", "_project_job"),
-    ("prefix", "/api/todo", "_todo"),
+    ("prefix", "/api/roadmap", "_roadmap"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/packages", "_packages"),
     ("prefix", "/api/logs", "_logs"),
@@ -4186,13 +4190,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"model": claude_model_now(WORKSPACE / name)})
 
     def _get_todo(self):
-        """GET /api/todo."""
+        """GET /api/roadmap."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
         live = sessions_anywhere()
-        return self._json({"project": name} | self._todo_state(name, live))
+        return self._json({"project": name} | self._roadmap_state(name, live))
 
     def _get_rules(self):
         """GET /api/rules."""
@@ -4798,7 +4802,7 @@ class Handler(BaseHTTPRequestHandler):
             # the hook is already in, so nothing is spent on saying it.
             # ...and what the operator decided about anything it had waiting
             # for approval, which is the other half of #27.
-            line = " ".join(x for x in (todo.catchup(project, uid),
+            line = " ".join(x for x in (roadmap.catchup(project, uid),
                                         pending.settled_line(project)) if x)
             return self._json({"ok": True, "line": line})
         if kind in ("turn", "turn-done"):
@@ -5490,7 +5494,7 @@ class Handler(BaseHTTPRequestHandler):
                                      for i in r["nodes"]] if not NODES_OK else [],
                            "auth": claude_auth(home=home)})
 
-    def _todo(self, req):
+    def _roadmap(self, req):
         """Add, send, edit or drop one item on a project's list.
 
         The project is checked against the real list for the same reason every
@@ -5533,35 +5537,35 @@ class Handler(BaseHTTPRequestHandler):
             # (roadmap #27), so the panel has one button and this has one
             # action. `announce` is still live — the send path below carries
             # the same line on a message that was going anyway.
-            todo.mark_told(name)
-            return self._json({"ok": True} | self._todo_state(name, live))
+            roadmap.mark_told(name)
+            return self._json({"ok": True} | self._roadmap_state(name, live))
         if act == "add":
-            r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"),
+            r = roadmap.add(name, field(req, "text"), steps=field_list(req, "steps"),
                          who=who)
         elif act == "send":
-            r = todo.send(name, req.get("id"), req.get("step"), live,
-                          also_told=todo.unsaved(name) if req.get("tell") else False,
+            r = roadmap.send(name, req.get("id"), req.get("step"), live,
+                          also_told=roadmap.unsaved(name) if req.get("tell") else False,
                           note=field(req, "note"))
             if r.get("sent") and req.get("tell"):
-                todo.mark_told(name)
+                roadmap.mark_told(name)
         elif act == "edit":
-            r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"),
+            r = roadmap.edit(name, req.get("id"), field(req, "text"), req.get("step"),
                           was=was, who=who)
         elif act == "move":
-            r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
+            r = roadmap.move(name, req.get("id"), req.get("step"), req.get("dir"))
         elif act == "info":
-            r = todo.set_info(name, req.get("id"), field(req, "text"),
+            r = roadmap.set_info(name, req.get("id"), field(req, "text"),
                               step=req.get("step"), was=was, who=who)
         elif act == "add-step":
-            r = todo.add_step(name, req.get("id"), field(req, "text"))
+            r = roadmap.add_step(name, req.get("id"), field(req, "text"))
         elif act == "cross":
-            r = todo.cross(name, req.get("id"), req.get("step"),
+            r = roadmap.cross(name, req.get("id"), req.get("step"),
                            bool(req.get("on", True)))
         elif act == "remove":
-            r = todo.remove(name, req.get("id"), req.get("step"),
+            r = roadmap.remove(name, req.get("id"), req.get("step"),
                             why=field(req, "why"), was=was, who=who)
         elif act == "restore":
-            r = todo.restore(name, req.get("id"), at=req.get("at"), who=who)
+            r = roadmap.restore(name, req.get("id"), at=req.get("at"), who=who)
         elif act == "shelve":
             # One direction for a session, the way `bb roadmap shelve` is on
             # the command line: parking something is a thing a session knows
@@ -5576,14 +5580,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "taking an item off the shelf is the operator's: a "
                                             "session can park one and say why, and one tap in "
                                             "the roadmap panel is what brings it back"}, 403)
-            r = todo.shelve(name, req.get("id"), on,
+            r = roadmap.shelve(name, req.get("id"), on,
                             by="claude" if me.get("session") else "you", who=who)
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for
             # every project, forever. Narrowed server-side for the same
             # reason: the panel asks for a window, not for everything.
-            return self._json({"history": todo.history(
+            return self._json({"history": roadmap.history(
                 name, limit=req.get("limit"), since=req.get("since"),
                 find=field(req, "find"))})
         else:
@@ -5598,29 +5602,29 @@ class Handler(BaseHTTPRequestHandler):
             # It answers with the item as it now stands so the panel can show
             # both, and with the fresh list so nothing else on screen is stale.
             if r.get("conflict"):
-                return self._json(r | self._todo_state(name, live))
+                return self._json(r | self._roadmap_state(name, live))
             return self._json(r, 400)
-        return self._json(r | self._todo_state(name, live))
+        return self._json(r | self._roadmap_state(name, live))
 
-    def _todo_state(self, name, live):
+    def _roadmap_state(self, name, live):
         """What the panel needs after any change: the list, whether there is
         anywhere to send, and whether a session has been told about it yet."""
-        session = todo.claude_session(name)
-        return {"items": todo.items(name),
+        session = roadmap.claude_session(name)
+        return {"items": roadmap.items(name),
                 # What the poll compares against, handed back with every read
                 # AND every write — so this panel's own change never reads as
                 # somebody else's on the next poll, and a change that lands
                 # between opening the tab and the first poll is not missed
                 # (roadmap #26).
-                "rev": (todo.revisions().get(name) or {}).get("todo", 0),
+                "rev": (roadmap.revisions().get(name) or {}).get("roadmap", 0),
                 "session": session if session in set(live) else None,
-                "unsaved": todo.unsaved(name),
+                "unsaved": roadmap.unsaved(name),
                 # A session part-way through a batch. The panel refuses to save
                 # over one: the list on screen is a copy taken before the
                 # session started, and replaying edits onto a list that has
                 # moved underneath is how two people writing one file lose
                 # each other's work.
-                "batch": todo.batch(name)}
+                "batch": roadmap.batch(name)}
 
     def _phone_payload(self, node="", probe=False):
         """The tab's data for this account, plus this browser's own address
@@ -6302,7 +6306,7 @@ class Handler(BaseHTTPRequestHandler):
             # channel and arrives on the session's next prompt; this is the
             # act of going and reading, which is what the operator is
             # actually asking about after changing something.
-            "read": max(todo.readers(name).values(), default=0)})
+            "read": max(roadmap.readers(name).values(), default=0)})
 
     def _bugs(self, req):
         """Report, edit, or close one bug. The fields go through bugs.py's own
@@ -6352,7 +6356,7 @@ class Handler(BaseHTTPRequestHandler):
             # Somebody else edited this report first: answered with what it
             # now says and the fresh tracker, so the tab can offer the choice
             # rather than only refusing (roadmap #26). 200 for the same
-            # reason as _todo above.
+            # reason as _roadmap above.
             if r.get("conflict"):
                 return self._json(r | bugs.payload(name))
             return self._json(r, 400)
@@ -6401,8 +6405,8 @@ class Handler(BaseHTTPRequestHandler):
         # edit marks the same flag the list does, and the one button spends the
         # one line telling a session about all of it.
         if not r.get("error") and act in ("save", "index", "create", "delete"):
-            todo.mark_unsaved(proj, "memory")
-        # A conflict answers 200 — see _todo. The whole file as it now stands
+            roadmap.mark_unsaved(proj, "memory")
+        # A conflict answers 200 (see _roadmap). The whole file as it now stands
         # rides back in it, which is what lets the editor show both versions
         # instead of just losing the typing.
         return self._json(r, 400 if r.get("error") and not r.get("conflict") else 200)

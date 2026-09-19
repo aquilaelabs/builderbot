@@ -32,7 +32,7 @@ from pathlib import Path
 # The three stores, set by configure(). Named here so the module reads as
 # what it is on its own, and so a typo is a lint finding rather than a
 # NameError on somebody's first session of the day.
-rules_mod = todo_mod = bugs_mod = None
+rules_mod = roadmap_mod = bugs_mod = None
 
 # The projects share, for deciding which parts of the briefing apply to this
 # project. From the environment rather than configure(), because both readers
@@ -45,13 +45,13 @@ CUT = ("[the rest of this list did not fit in the prompt — `bb roadmap`"
        " and `bb bug` show all of it]")
 
 
-def configure(*, rules_mod, todo_mod, bugs_mod):
+def configure(*, rules_mod, roadmap_mod, bugs_mod):
     """The three stores, injected rather than imported.
 
     Same shape as every other module here: server.py owns configuring them,
     and `bb` hands in the same three after configuring them itself.
     """
-    globals().update(rules_mod=rules_mod, todo_mod=todo_mod, bugs_mod=bugs_mod)
+    globals().update(rules_mod=rules_mod, roadmap_mod=roadmap_mod, bugs_mod=bugs_mod)
 
 
 # Where the environment briefing is written. The image puts config/templates/
@@ -134,7 +134,7 @@ def parts(project):
     out = []
     for name, fn in (("briefing", lambda: briefing(project)),
                      ("rules", lambda: rules_mod.block(project)),
-                     ("roadmap", lambda: todo_mod.prompt(project)),
+                     ("roadmap", lambda: roadmap_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):
         try:
             text = (fn() or "").strip("\n")

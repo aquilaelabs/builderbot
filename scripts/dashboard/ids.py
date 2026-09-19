@@ -18,8 +18,8 @@ refusal is the whole reason for the letter existing.
 """
 import re
 
-LETTERS = {"todo": "R", "bugs": "B"}
-NAMES = {"todo": "a roadmap item", "bugs": "a bug"}
+LETTERS = {"roadmap": "R", "bugs": "B"}
+NAMES = {"roadmap": "a roadmap item", "bugs": "a bug"}
 # The lower-case forms and a leading '#' are accepted because they are what
 # somebody types from memory; only what is printed is canonical.
 _RE = re.compile(r"^#?([A-Za-z]?)0*(\d+)$")

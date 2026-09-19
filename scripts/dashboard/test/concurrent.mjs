@@ -68,7 +68,7 @@ for (const [who, t] of sessions) {
 }
 // ...and somebody at the Roadmap tab, adding through the panel meanwhile.
 for (let i = 0; i < ROADMAP; i++)
-  jobs.push(req('POST', '/api/todo', { project: 'alpha', action: 'add', text: `cc panel item ${i}` })
+  jobs.push(req('POST', '/api/roadmap', { project: 'alpha', action: 'add', text: `cc panel item ${i}` })
     .then(r => ({ who: 'panel', kind: 'roadmap', i, r })));
 const t0 = Date.now();
 const results = await Promise.all(jobs);
@@ -78,15 +78,15 @@ ok(failed.length === 0,
      failed.length ? failed.slice(0, 3).map(x => `${x.who} ${x.kind}: ${(x.r.error || x.r.out || x.r.raw || '').trim().slice(0, 60)}`).join(' | ') : `${Date.now() - t0}ms`})`);
 
 // The roadmap: every item exactly once, numbers unique.
-const todo = await req('GET', '/api/todo?project=alpha');
-const items = JSON.stringify(todo);
+const roadmap = await req('GET', '/api/roadmap?project=alpha');
+const items = JSON.stringify(roadmap);
 const want = [...sessions.flatMap(([who]) => [...Array(ROADMAP).keys()].map(i => `cc ${who} item ${i}`)),
               ...[...Array(ROADMAP).keys()].map(i => `cc panel item ${i}`)];
 const count = s => items.split(JSON.stringify(s).slice(1, -1)).length - 1;
 const lost = want.filter(s => count(s) === 0), twice = want.filter(s => count(s) > 1);
 ok(!lost.length && !twice.length,
    `every roadmap item landed exactly once (${want.length} written${lost.length ? `, lost: ${lost.slice(0, 3).join(', ')}` : ''}${twice.length ? `, twice: ${twice.slice(0, 3).join(', ')}` : ''})`);
-const nums = (todo.items || todo.todos || []).map(x => x.number ?? x.id).filter(x => x !== undefined);
+const nums = (roadmap.items || []).map(x => x.number ?? x.id).filter(x => x !== undefined);
 ok(new Set(nums).size === nums.length, `...and their numbers are unique (${nums.length})`);
 
 // The bugs: every report exactly once, ids unique.

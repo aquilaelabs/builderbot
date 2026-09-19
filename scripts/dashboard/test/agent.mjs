@@ -945,7 +945,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         JSON.stringify({ prompt: 'carry on' }));
       ok(ask().trim() === '',
          'the first prompt of a session is told nothing — it was handed the whole list a moment ago');
-      await api('/api/todo', { project: 'alpha', action: 'add', text: 'something the operator added' });
+      await api('/api/roadmap', { project: 'alpha', action: 'add', text: 'something the operator added' });
       const told = ask();
       ok(/just changed/.test(told) && /to-do list/.test(told),
          `...and a change made since then arrives on the next prompt, naming which half moved (${told.trim().slice(0, 60)})`);
@@ -2157,13 +2157,13 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ((await api('/api/status')).sessions || []).find(
         s => s.node === 'agentbox' && s.name === 'claude-alpha'), 45000, 500);
     ok(!!listed, 'a shell standing in for the session is listed on the node');
-    const st = await api('/api/todo?project=alpha');
+    const st = await api('/api/roadmap?project=alpha');
     ok(st.session === 'claude-alpha',
        'the roadmap panel sees somewhere to send when the session is on a node');
-    const added = await api('/api/todo', { action: 'add', project: 'alpha',
+    const added = await api('/api/roadmap', { action: 'add', project: 'alpha',
                                            text: 'a step handed to the session on the node' });
     const id = Number(added.item?.id);
-    const sent = await api('/api/todo', { action: 'send', project: 'alpha', id });
+    const sent = await api('/api/roadmap', { action: 'send', project: 'alpha', id });
     ok(sent.sent === true && !sent.error,
        `Send to Claude hands the step to the session on the node (${JSON.stringify(sent).slice(0, 120)})`);
     const typed = await until(async () =>
@@ -2171,7 +2171,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     ok(typed === true, '...and the line really went into the pane there');
     ok((sent.items || []).find(i => Number(i.id) === id)?.sent > 0,
        '...and the item is crossed as sent, since it went');
-    await api('/api/todo', { action: 'remove', project: 'alpha', id, why: 'test' });
+    await api('/api/roadmap', { action: 'remove', project: 'alpha', id, why: 'test' });
     tmuxKill(real);
   }
 

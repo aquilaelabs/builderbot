@@ -68,19 +68,19 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun pendingAct(project: String, allow: Boolean, ids: List<String>) =
         post("/api/pending", json("project" to project, "action" to (if (allow) "approve" else "deny"),
                                   "ids" to JSONArray(ids)))
-    suspend fun todo(project: String) = get("/api/todo?project=${enc(project)}")
-    suspend fun todoAdd(project: String, text: String) =
-        post("/api/todo", json("project" to project, "action" to "add", "text" to text))
-    suspend fun todoShelve(project: String, id: Any) =
-        post("/api/todo", json("project" to project, "action" to "shelve", "id" to id))
-    suspend fun todoRemove(project: String, id: Any, why: String) =
-        post("/api/todo", json("project" to project, "action" to "remove", "id" to id, "why" to why))
+    suspend fun roadmap(project: String) = get("/api/roadmap?project=${enc(project)}")
+    suspend fun roadmapAdd(project: String, text: String) =
+        post("/api/roadmap", json("project" to project, "action" to "add", "text" to text))
+    suspend fun roadmapShelve(project: String, id: Any) =
+        post("/api/roadmap", json("project" to project, "action" to "shelve", "id" to id))
+    suspend fun roadmapRemove(project: String, id: Any, why: String) =
+        post("/api/roadmap", json("project" to project, "action" to "remove", "id" to id, "why" to why))
     // A step, into the session's own input. `step` null means the next one
     // that has not gone, which is what the panel sends and what somebody on a
     // phone means by "send the next bit". The answer says whether the line
     // actually landed — a step is marked sent only when it did.
-    suspend fun todoSend(project: String, id: Any, step: Int?, note: String) =
-        post("/api/todo", json("project" to project, "action" to "send", "id" to id,
+    suspend fun roadmapSend(project: String, id: Any, step: Int?, note: String) =
+        post("/api/roadmap", json("project" to project, "action" to "send", "id" to id,
                                "step" to step, "note" to note))
     suspend fun bugs(project: String) = get("/api/bugs?project=${enc(project)}")
     suspend fun bugAdd(project: String, title: String, severity: String, area: String, repro: String) =

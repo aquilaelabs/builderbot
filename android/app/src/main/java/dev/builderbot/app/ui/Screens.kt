@@ -189,7 +189,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
                     }
                     val bits = mutableListOf<String>()
                     if (p.str("git").isNotBlank()) bits += p.str("git")
-                    if (p.int("todo") > 0) bits += "${p.int("todo")} on the roadmap"
+                    if (p.int("roadmap") > 0) bits += "${p.int("roadmap")} on the roadmap"
                     if (p.int("bugs") > 0) bits += "${p.int("bugs")} open bug${if (p.int("bugs") == 1) "" else "s"}"
                     if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
                     Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })

@@ -19,7 +19,7 @@ pane, and press Enter only if the line is now on the screen. A dialog swallows
 stray characters, so nothing appears, so nothing is sent — and the line is
 left where the operator can see it and deal with it themselves.
 
-The server imports this and hands it `run`; memory.py and todo.py are handed
+The server imports this and hands it `run`; memory.py and roadmap.py are handed
 this module's `tell`.
 """
 import time

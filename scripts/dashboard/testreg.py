@@ -31,7 +31,7 @@ went is what is left, and that is the drift report — which is the failure mode
 this whole file exists to catch, because a registry that has quietly stopped
 describing the code is worse than no registry.
 
-Same arrangement as todo.py and bugs.py: the server or the `bb` CLI hands over
+Same arrangement as roadmap.py and bugs.py: the server or the `bb` CLI hands over
 write_json and the state directory; nothing here reaches back.
 """
 import difflib

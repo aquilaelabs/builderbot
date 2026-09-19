@@ -520,7 +520,7 @@ ${code}`], { encoding: 'utf8' });
        '...while a user is still shown only what it was given');
 
     // Read-only means it: the writes refuse, by name, with the remedy.
-    const r = await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' });
+    const r = await post(adm, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' });
     ok(r.status === 403 && /taken this project on/.test((await r.json()).error || ''),
        'an admin cannot edit the notebook of a project it has not taken on');
     ok((await post(adm, '/api/bugs', { project: 'alpha', action: 'add', title: 'x' })).status === 403,
@@ -567,7 +567,7 @@ ${code}`], { encoding: 'utf8' });
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
     ok((await term(adm, 'claude:alpha')).status === 403,
        '...nor start a Claude session in it, which is the most write-shaped thing here');
-    ok((await bare('/api/todo?project=alpha', { headers: adm })).status === 200,
+    ok((await bare('/api/roadmap?project=alpha', { headers: adm })).status === 200,
        '...but reading it is fine, which is what read-only means');
 
     // ...and the remedy is theirs to apply, which is the whole difference
@@ -575,7 +575,7 @@ ${code}`], { encoding: 'utf8' });
     ok((await post(adm, '/api/users', { action: 'projects', name: 'second',
                                         projects: ['alpha'] })).status === 200,
        'an admin can add a project to its own list — a seatbelt, not a wall');
-    ok((await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' })).status === 200,
+    ok((await post(adm, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' })).status === 200,
        '...and then it works on it');
     ok((await post(other, '/api/users', { action: 'projects', name: 'sharer',
                                           projects: ['alpha'] })).status === 403,
@@ -741,7 +741,7 @@ ${code}`], { encoding: 'utf8' }).trim();
 
   // A project they were not given does not exist, and says so in the words a
   // typo gets — never "forbidden", which would confirm it is there.
-  const hidden = await (await post('/api/todo', { action: 'save', project: 'ep.silon', items: [] })).json();
+  const hidden = await (await post('/api/roadmap', { action: 'save', project: 'ep.silon', items: [] })).json();
   ok(/not a project/.test(hidden.error || ''),
      `a project they cannot see reads as absent, not refused (${hidden.error})`);
 
@@ -948,7 +948,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   ok(JSON.stringify((seen.projects || []).map(p => p.name)) === '["alpha"]',
      `a session token sees its own project and no other (${
        (seen.projects || []).map(p => p.name).join(', ')})`);
-  ok(/not a project/.test(((await (await post('/api/todo',
+  ok(/not a project/.test(((await (await post('/api/roadmap',
        { action: 'save', project: 'ep.silon', items: [] })).json()).error) || ''),
      '...and another project reads as absent, not refused');
 
@@ -958,13 +958,13 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   // only ever passed on=true, and this door used to take whatever it was
   // handed.
   {
-    const added = await (await post('/api/todo',
+    const added = await (await post('/api/roadmap',
       { action: 'add', project: 'alpha', text: 'something to park' })).json();
     const id = (added.items || []).slice(-1)[0]?.id ?? added.id;
-    const on = await (await post('/api/todo',
+    const on = await (await post('/api/roadmap',
       { action: 'shelve', project: 'alpha', id, on: true })).json();
     ok(!on.error, `a session may park a roadmap item (${on.error || 'shelved'})`);
-    const off = await post('/api/todo', { action: 'shelve', project: 'alpha', id, on: false });
+    const off = await post('/api/roadmap', { action: 'shelve', project: 'alpha', id, on: false });
     const why = (await off.json()).error || '';
     ok(off.status === 403 && /operator/.test(why),
        `...and may not take it back off, which is the operator's (${why.slice(0, 60)})`);

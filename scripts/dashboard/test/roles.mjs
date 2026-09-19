@@ -87,7 +87,7 @@ for (const who of CAST) {
   // A project not granted is not there for a user, by any door.
   if (!isAdmin) {
     const other = ALL.find(p => !who.projects.includes(p));
-    const r = await api(page, `/api/todo?project=${other}`);
+    const r = await api(page, `/api/roadmap?project=${other}`);
     ok(r.status === 400 && /not a project/.test(r.error || ''), `${tag} ${other}'s notebook answers "not a project", as if it did not exist (${r.status})`);
   }
 
@@ -113,7 +113,7 @@ for (const who of CAST) {
   if (mine.length) {
     const yours = await api(page, '/api/prefs', { project: mine[0], model: 'sonnet' });
     ok(yours.status === 200 && !yours.error, `${tag} sets their own model on ${mine[0]} (${yours.status}${yours.error ? ': ' + yours.error.slice(0, 50) : ''})`);
-    const added = await api(page, '/api/todo', { project: mine[0], action: 'add', text: `walked by ${who.name}` });
+    const added = await api(page, '/api/roadmap', { project: mine[0], action: 'add', text: `walked by ${who.name}` });
     ok(added.status === 200 && !added.error, `${tag} adds to ${mine[0]}'s roadmap from the notebook (${added.status})`);
   }
 
@@ -149,7 +149,7 @@ for (const who of CAST) {
   await user3.page.reload(); await ready(user3.page);
   ok(await user3.page.evaluate(() => (state.projects || []).some(p => p.name === 'alpha')),
      '...and w.user3 sees alpha after a reload');
-  const road = JSON.stringify(await api(user2.page, '/api/todo?project=alpha'));
+  const road = JSON.stringify(await api(user2.page, '/api/roadmap?project=alpha'));
   ok(['test', 'w.admin1', 'w.admin2', 'w.user1', 'w.user2'].every(n => road.includes(`walked by ${n}`)),
      'everybody on alpha reads the items the others added to its roadmap');
   const colour = await api(owner.page, '/api/prefs', { project: 'alpha', color: 'teal' });

@@ -20,7 +20,7 @@ HOLD THE INTENT, NOT THE CHANGE. A record is the call that would have been
 made — verb and arguments — plus one line describing it. Approval replays the
 call, in order; denial applies nothing. So there is no undo to write, and a
 list never shows an entry that was not agreed to. This is the opposite of a
-notebook batch (todo.py), which lands changes as they happen and defers only
+notebook batch (roadmap.py), which lands changes as they happen and defers only
 the record of them.
 
 THE NUMBER IS RESERVED WHEN THE RECORD IS HELD, not when it lands. A session
@@ -30,7 +30,7 @@ keeps that number out of anyone else's hands until the record is settled. A
 denied add leaves a gap in the numbering, which the roadmap already documents
 as normal. Rules are keyed by name and reserve nothing.
 
-WHERE THE GATE SITS: in todo.add, bugs.add and rules.add, keyed on
+WHERE THE GATE SITS: in roadmap.add, bugs.add and rules.add, keyed on
 by == "claude" — not in bb and not in the server. bb imports those modules
 directly on the controller, and a node's verbs relay through the server into
 the same bb, so the module is the one chokepoint that covers both. The
@@ -91,7 +91,7 @@ def configure(*, write_json, state):
 _lock = statefile.on(lambda: FILE)
 
 # Replay, per tab: kind -> callable(project, verb, args) -> the module's
-# result. Registered by todo/bugs/rules.configure, so nothing here imports
+# result. Registered by roadmap/bugs/rules.configure, so nothing here imports
 # them (they import this).
 _apply = {}
 

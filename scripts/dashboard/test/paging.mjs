@@ -26,7 +26,7 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } })
 await page.goto(URL);
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
-await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="bugs"]:visible');
 await page.waitForSelector('#bugList .bug', { timeout: 20000 });
 
@@ -92,7 +92,7 @@ const src = ['../index.html', ...readdirSync(new globalThis.URL('..', import.met
     .filter(f => /^nb-.*\.js$/.test(f)).map(f => '../' + f)]
   .map(f => readFileSync(new globalThis.URL(f, import.meta.url), 'utf8')).join('\n');
 for (const [what, call] of [
-  ['the roadmap', 'paginate($("todoList"), ":scope > .grp"'],
+  ['the roadmap', 'paginate($("roadmapList"), ":scope > .grp"'],
   ['memory', 'paginate($("memList"), ":scope > .mem"'],
   ['bugs', 'paginate(list, ":scope > .bug"'],
   ['artifacts', 'paginate(list, ":scope > .artrow"'],

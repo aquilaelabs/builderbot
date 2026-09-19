@@ -22,7 +22,7 @@ somebody reports the wrong project. Closing those as "wontfix" lies about
 them, and leaving them on the list is the noise a tracker is supposed to
 remove. So a delete takes the row and leaves the reason in the log.
 
-Same arrangement as todo.py: the server or the bb CLI hands over write_json
+Same arrangement as roadmap.py: the server or the bb CLI hands over write_json
 and the state directory; nothing here reaches back.
 """
 import os as _os
@@ -72,7 +72,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None,
                      WORKSPACE=Path(workspace or os.environ.get("BB_WORKSPACE")
                                     or os.environ.get("WORKSPACE") or "/workspace"))
     globals()["FILE"] = Path(state) / "bugs.json"
-    # The approval queue (roadmap #27) — see todo.configure.
+    # The approval queue (roadmap #27): see roadmap.configure.
     pending.configure(write_json=write_json, state=state)
     pending.applier("bugs", replay)
 
@@ -150,7 +150,7 @@ def save(d):
 
 
 def _int(v):
-    """12 or "B12" — see todo._int, and ids.py for why there is a letter."""
+    """12 or "B12": see roadmap._int, and ids.py for why there is a letter."""
     n, _err = ids.parse("bugs", v)
     return n
 
@@ -306,7 +306,7 @@ def commit(project):
 
 
 def revert_blocked(project):
-    """Why a revert would refuse, or None — see todo.revert_blocked."""
+    """Why a revert would refuse, or None. See roadmap.revert_blocked."""
     with _lock:
         d = load()
         b = d.get("batch", {}).get(project)
@@ -404,7 +404,7 @@ def add(project, title, by="you", severity="medium", **fields):
     # rather than the one it was approved under. A replay carries it back in.
     seen_in = fields.pop("seen_in", None) or _stamp(project)
     seen_on = fields.pop("seen_on", None) or _image()
-    # The gate (roadmap #27), the same shape as todo.add's: a session's report
+    # The gate (roadmap #27), the same shape as roadmap.add's: a session's report
     # may be held or refused per project, and a held one keeps its number.
     if by == "claude" and not pending.replaying():
         g = pending.mode(project, "bugs")
@@ -484,7 +484,7 @@ def _image():
 
 
 def _next_id(d, project):
-    """One above the highest number ever handed out — see todo._next_id.
+    """One above the highest number ever handed out: see roadmap._next_id.
     `reserved` is the high-water mark: held, filed, or deleted since."""
     rows = d["projects"].get(project) or []
     top = max((int(b.get("id", 0)) for b in rows), default=0)

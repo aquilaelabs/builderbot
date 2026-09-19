@@ -2891,7 +2891,7 @@ of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
 fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
 
-The list lives in `/config/todos.json`, beside the tab strip and the locked
+The list lives in `/config/roadmap.json`, beside the tab strip and the locked
 projects: deliberately **not** in the repository. A list like this churns far
 faster than commits, and a checkbox tapped on a phone should not turn into an
 uncommitted change. Anything that deserves to be permanent graduates out of it:
@@ -3924,7 +3924,7 @@ scripts/
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
-    todo.py                      the roadmap; `bb roadmap` drives the same file
+    roadmap.py                   the roadmap; `bb roadmap` drives the same file
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     pending.py                   what a session wants to add to the notebook, held for the operator

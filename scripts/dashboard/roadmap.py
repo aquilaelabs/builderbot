@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The per-project roadmap — the one thing here that both sides write.
 
-Named todo.py because that is what the list was called when it was written,
+Named roadmap.py because that is what the list was called when it was written,
 and the file is served from an absolute path by the running image; the
 command, the tab and the words everywhere else are "roadmap".
 
@@ -75,7 +75,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
                      # and with two people on a project that is not enough to
                      # answer "who dropped the third one?".
                      actor=actor)
-    globals()["FILE"] = Path(state) / "todos.json"
+    globals()["FILE"] = Path(state) / "roadmap.json"
     # The approval queue (roadmap #27): the gate in add() reads it, and the
     # replay of an approved record comes back through `replay` below.
     pending.configure(write_json=write_json, state=state)
@@ -163,7 +163,7 @@ def save(d):
 # The two things in the panel that can move. Tracked apart so that the line
 # spent telling a session can say which of them did — "something changed" is a
 # sentence that makes somebody go and look at both.
-KINDS = ("todo", "memory")
+KINDS = ("roadmap", "memory")
 
 
 def unsaved(project):
@@ -186,7 +186,7 @@ def _kinds(got):
     return {k: bool(got.get(k)) for k in KINDS}
 
 
-def _touch(d, project, kind="todo", on=True):
+def _touch(d, project, kind="roadmap", on=True):
     cur = _kinds(d.setdefault("unsaved", {}).get(project))
     if kind is None:
         cur = dict.fromkeys(KINDS, bool(on))
@@ -206,7 +206,7 @@ def _touch(d, project, kind="todo", on=True):
             b[k] = int(b.get(k, 0)) + 1
 
 
-def _credit(d, project, who, kind="todo"):
+def _credit(d, project, who, kind="roadmap"):
     """Move one seat's watermark up by the change it just made itself.
 
     Without this, a session that adds an item is immediately behind the
@@ -483,7 +483,7 @@ def _int(v):
     bb checks the letter before it gets here so the refusal can say why; the
     dashboard sends bare ints and never trips it.
     """
-    n, _err = ids.parse("todo", v)
+    n, _err = ids.parse("roadmap", v)
     return n
 
 
@@ -1054,7 +1054,7 @@ def restore(project, item_id, at=None, by="you", who=""):
         d = load()
         rows = d["projects"].get(project) or []
         if _find(rows, item_id) is not None:
-            return {"error": f"{ids.label("todo", item_id)} is on the list"}
+            return {"error": f"{ids.label("roadmap", item_id)} is on the list"}
         if len(rows) >= MAX_OPEN:
             return {"error": f"{MAX_OPEN} open items is the limit — this list "
                              "goes in front of every session, so it has to stay "
@@ -1065,7 +1065,7 @@ def restore(project, item_id, at=None, by="you", who=""):
                and _int(e.get("id")) == item_id and isinstance(e.get("row"), dict)
                and (want is None or e.get("at") == want)]
         if not evs:
-            return {"error": f"nothing dropped as {ids.label("todo", item_id)} "
+            return {"error": f"nothing dropped as {ids.label("roadmap", item_id)} "
                              "is in the history to put back"}
         row = copy.deepcopy(max(evs, key=lambda e: e.get("at", 0))["row"])
         row["id"] = item_id
@@ -1127,13 +1127,13 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
         text = (f"This is step {step + 1} of {len(steps)} in a plan "
-                f"({ids.label('todo', item_id)} on the roadmap). "
+                f"({ids.label('roadmap', item_id)} on the roadmap). "
                 f"The plan: {_flat(row['text'])}. "
                 f"Step {step + 1}: {_flat(steps[step]['text'])}")
         if steps[step].get("info"):
             text += f" Details: {_flat(steps[step]['info'])}"
     else:
-        text = f"{_flat(row['text'])}  ({ids.label('todo', item_id)} on the roadmap)"
+        text = f"{_flat(row['text'])}  ({ids.label('roadmap', item_id)} on the roadmap)"
         if row.get("info"):
             text += f"  (Details: {_flat(row['info'])})"
     # One message, not two. Saving the list and sending a step both want to
@@ -1185,7 +1185,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
 # session is mid-task all the time, and a session that downed tools to go and
 # read them every time would be worse than one that never read them at all.
 LOOK = {
-    "todo": "the shared to-do list for this project (`bb roadmap`)",
+    "roadmap": "the shared to-do list for this project (`bb roadmap`)",
     "memory": ("my notes about how you work here "
                "(`cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md`)"),
 }
@@ -1210,7 +1210,7 @@ def changed_line(kinds):
             "what you are doing unless I ask for one of those.")
 
 
-def mark_unsaved(project, kind="todo"):
+def mark_unsaved(project, kind="roadmap"):
     """Something in the panel moved. The Save buttons cover all of it, and the
     kind is what lets the message name which half."""
     with _lock:
@@ -1244,7 +1244,7 @@ def revisions():
     return {p: {k: int((v or {}).get(k, 0)) for k in KINDS} for p, v in b.items()}
 
 
-def stale(project, who, kind="todo"):
+def stale(project, who, kind="roadmap"):
     """Has this half moved since this seat last saw it?
 
     What it is for is a session about to write over words it read a while
@@ -1369,7 +1369,7 @@ def prompt(project):
         # Numbered, because a session that wants to talk about one of these
         # has to be able to name it — and the name has to be the one the
         # operator sees on the row and the one `bb roadmap done` takes.
-        lines.append(f"- {ids.label('todo', r['id'])}  {r['text']}"
+        lines.append(f"- {ids.label('roadmap', r['id'])}  {r['text']}"
                      + ("  (shelved — the operator has parked this; do not "
                         "pick it up unless they say so)" if r.get("shelved")
                         else "  (you added this in an earlier session)"

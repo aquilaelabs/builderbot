@@ -54,7 +54,7 @@ The honest limit, which the tab states rather than implying otherwise: this is
 not the sibling-project deny list. That one is a refusal from the file tools.
 A rule is a request the model can still fumble.
 
-Same arrangement as todo.py and bugs.py: the server or the bb CLI hands over
+Same arrangement as roadmap.py and bugs.py: the server or the bb CLI hands over
 write_json and the state directory; nothing here reaches back.
 """
 import fnmatch
@@ -83,7 +83,7 @@ FILE = None
 def configure(*, write_json, state, actor=None):
     globals().update(write_json=write_json, STATE=Path(state), actor=actor)
     globals()["FILE"] = Path(state) / "rules.json"
-    # The approval queue (roadmap #27) — see todo.configure.
+    # The approval queue (roadmap #27): see roadmap.configure.
     pending.configure(write_json=write_json, state=state)
     pending.applier("rules", replay)
 
@@ -348,7 +348,7 @@ MAX_HISTORY = 300
 def _log(d, project, by, ev):
     """Record one change, inside the lock and before the save it describes, so
     the record and the change land together or neither does. Same shape as
-    todo.py's — one merged history is what `bb history` reads."""
+    roadmap.py's, since one merged history is what `bb history` reads."""
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append({"at": int(time.time()),
               "by": "claude" if by == "claude" else "you",

@@ -47,7 +47,7 @@ const DRIVERS = {
     open: () => page.evaluate(() => openProjectsTab()),
     readyWhen: '.projtab .row',
   },
-  todo: {
+  notebook: {
     open: () => page.evaluate(() => openNotebook('alpha', 'roadmap')),
     readyWhen: '.nb .nbview:not([hidden]) .field',
   },
@@ -296,7 +296,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .todoadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
+    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
@@ -485,7 +485,7 @@ for (const kind of kinds){
 // scrolled past every row to find it. Measured on each view that has one,
 // against its head row and the first row of its list.
 {
-  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'todo');
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'notebook');
                               if (t) focusTab(t.id); });
   const misplaced = [];
   for (const v of ['roadmap', 'bugs', 'briefing']){
@@ -502,7 +502,7 @@ for (const kind of kinds){
         const list = a.dataset.add === 'rule' ? view.querySelector('#rlList')
                    : a.dataset.add === 'memory' ? view.querySelector('#memList')
                    : a.dataset.add === 'bug' ? view.querySelector('#bugList')
-                   : view.querySelector('#todoList');
+                   : view.querySelector('#roadmapList');
         const row = list?.firstElementChild?.getBoundingClientRect();
         return { add: a.dataset.add, belowHead: box.top >= head.bottom - 1,
                  aboveList: !row || box.bottom <= row.top + 1,
@@ -537,7 +537,7 @@ for (const kind of kinds){
 // markup, because the Briefing tab once put a section above its head and
 // every other rule here still passed.
 {
-  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'todo');
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'notebook');
                               if (t) focusTab(t.id); });
   await page.waitForSelector('.nb .nbview:not([hidden]) .field', { timeout: 20000 });
   const views = await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view));
@@ -912,7 +912,7 @@ for (const kind of kinds){
   // The notebook is six views behind one tab, and each has its own layout;
   // the Tests view is the one that scrolled sideways while the Roadmap, the
   // one this check used to look at, did not.
-  const views = kind === 'todo'
+  const views = kind === 'notebook'
     ? await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view)) : [''];
   for (const v of views){
     if (v){

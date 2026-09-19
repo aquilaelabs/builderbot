@@ -32,16 +32,16 @@ state that cannot be reached through the front door.
 # running image serves them from /opt while a checkout may be the one under
 # test — and importing them again here would produce a second copy with its
 # own configuration and its own idea of where the state lives.
-todo = None
+roadmap = None
 bugs = None
 
 
-def configure(*, todo_mod, bugs_mod):
-    globals().update(todo=todo_mod, bugs=bugs_mod)
+def configure(*, roadmap_mod, bugs_mod):
+    globals().update(roadmap=roadmap_mod, bugs=bugs_mod)
 
 
 def _parts():
-    return (("roadmap", todo), ("tracker", bugs))
+    return (("roadmap", roadmap), ("tracker", bugs))
 
 
 def begin(project, by="claude"):
@@ -52,12 +52,12 @@ def begin(project, by="claude"):
     straight back rather than left holding the notebook against a batch the
     session does not think it has.
     """
-    r = todo.begin(project, by)
+    r = roadmap.begin(project, by)
     if r.get("error"):
         return r
     r2 = bugs.begin(project, by)
     if r2.get("error"):
-        todo.revert(project)
+        roadmap.revert(project)
         return r2
     return {"ok": True}
 
@@ -69,7 +69,7 @@ def state(project):
     door cannot do; it is there so that if it ever happens the panel and the
     CLI say so instead of quietly reporting the half they happened to ask.
     """
-    a, b = todo.batch(project), bugs.batch(project)
+    a, b = roadmap.batch(project), bugs.batch(project)
     if not a and not b:
         return None
     return {"at": min(x["at"] for x in (a, b) if x),

@@ -108,7 +108,7 @@ the requesting principal and three things happen at once.
 - The GUI stops listing what the person cannot see, everywhere, because
   everywhere reads the same list.
 - **The existence check becomes the permission check.** Somebody asking
-  `/api/todo?project=payroll` gets *not a project*: the same answer a typo
+  `/api/roadmap?project=payroll` gets *not a project*: the same answer a typo
   gets. No separate `may()` call at those seventeen sites, and no way to probe
   which projects exist by comparing error messages.
 - Anything added later that lists projects is covered on the day it is

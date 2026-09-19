@@ -29,7 +29,7 @@ await ready(page);
 const watched = () => page.evaluate(() => [...new Set(revWatch
   .map(w => (typeof w.key === 'function' ? w.key() : w.key)).filter(Boolean))]);
 const served = () => page.evaluate(async () => {
-  const ps = [...new Set(tabs.filter(t => t.kind === 'todo').map(t => t.arg))];
+  const ps = [...new Set(tabs.filter(t => t.kind === 'notebook').map(t => t.arg))];
   const r = await fetch('/api/revs?p=' + encodeURIComponent(ps.join(',')));
   return Object.keys(await r.json());
 });
@@ -74,7 +74,7 @@ ok(per.length > 0 && per.every(k => k.endsWith(':alpha')),
 
 // The six halves, named, because "the notebook re-reads" is the claim and a
 // list of six is what makes it checkable.
-const HALVES = ['todo:alpha', 'mem:alpha', 'bug:alpha',
+const HALVES = ['roadmap:alpha', 'mem:alpha', 'bug:alpha',
                 'tests:alpha', 'rules:alpha', 'pending:alpha'];
 const missing = HALVES.filter(k => !open.watched.includes(k));
 ok(missing.length === 0,
@@ -98,20 +98,20 @@ ok(onStatus.length === 0,
 // The token has to have reached this page at least once, or what follows is
 // testing the poll that first names the project rather than the one that
 // notices it moving. Both work; only one of them is this test.
-await page.waitForFunction(() => revs['todo:alpha'] !== undefined,
+await page.waitForFunction(() => revs['roadmap:alpha'] !== undefined,
                            null, { timeout: 15000 });
 const other = await newPage(browser);
 await other.goto(URL);
 await ready(other);
 const mark = 'a line written from the other window ' + Date.now();
 await other.evaluate(async text => {
-  await fetch('/api/todo', { method: 'POST',
+  await fetch('/api/roadmap', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', action: 'add', text }) });
 }, mark);
 const began = Date.now();
 await page.waitForFunction(
-  t => [...document.querySelectorAll('#todoList')]
+  t => [...document.querySelectorAll('#roadmapList')]
          .some(el => el.textContent.includes(t)),
   mark, { timeout: 9000 });
 const took = Date.now() - began;
@@ -125,7 +125,7 @@ ok(took < patience(9000),
 // its artifacts and its version, once per token that moved, forever.
 const before = await page.evaluate(() => revWatch.length);
 await page.evaluate(() => {
-  const t = tabs.find(x => x.kind === 'todo' && x.arg === 'alpha');
+  const t = tabs.find(x => x.kind === 'notebook' && x.arg === 'alpha');
   if (t) hideTab(t.id);          // the ✕: it is what ends a notebook's instance
 });
 await sleep(patience(600));

@@ -687,7 +687,7 @@ ok(scan.box && !scan.content,
 // scheme's blue-grey through the first twelve because their colour was typed
 // in rather than named. A field is the cheapest one to keep honest.
 // The notebook's add field, open just above: the sidebar has no text field now that the phone is a tab.
-const fieldBg = () => page.$eval('.pane .nb #todoText', e => getComputedStyle(e).backgroundColor);
+const fieldBg = () => page.$eval('.pane .nb #roadmapText', e => getComputedStyle(e).backgroundColor);
 const nosField = await fieldBg();
 
 await page.click('#uiMenu .sw[data-theme="default"]');
@@ -1721,7 +1721,7 @@ ok(await page.$(`${dRow} [data-m]`) !== null && await page.$(`${dRow} [data-s]`)
 // The refusal is the server's. A read-only state enforced by a dimmed button
 // is a suggestion, and the endpoint behind it is reachable without the page.
 const refused = await page.evaluate(async () => {
-  const r = await fetch('/api/todo', { method: 'POST',
+  const r = await fetch('/api/roadmap', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
   return { status: r.status, error: (await r.json()).error || '' };

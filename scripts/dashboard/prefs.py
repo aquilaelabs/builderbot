@@ -30,7 +30,7 @@ from pathlib import Path
 
 write_json = None
 FILE = None
-# The canonical tables. todo.py and bugs.py carry copies for their own
+# The canonical tables. roadmap.py and bugs.py carry copies for their own
 # switching; a value stored here must satisfy theirs, so keep them equal.
 MODELS = ("opus", "sonnet", "haiku", "fable")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")

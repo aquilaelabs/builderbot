@@ -4117,31 +4117,31 @@ class Agent:
         if names and not want:
             job.say(f"none of {' '.join(names)} is on this node's store, so nothing here needs anything\n")
             return "succeeded", 0
-        todo = {}
+        needed = {}
         for name in want:
             missing, other = sysdeps_missing(cat, name, fam, query)
             if other:
                 job.say(f"{name}: its recipe names packages for {other[0]} only, not {fam}; "
                         f"the {other[0]} names: {' '.join(other[1])}\n")
             if missing:
-                todo[name] = missing
-        if not todo:
+                needed[name] = missing
+        if not needed:
             job.say(f"every system package the held recipes need is installed here ({fam})\n")
             return "succeeded", 0
         if not self.administers():
             job.say("refused: this agent does not administer the machine, so its owner "
                     "installs these: "
-                    + "; ".join(f"{n}: {' '.join(m)}" for n, m in todo.items()) + "\n")
+                    + "; ".join(f"{n}: {' '.join(m)}" for n, m in needed.items()) + "\n")
             return "failed", 77
         bad = 0
-        for name, missing in todo.items():
+        for name, missing in needed.items():
             job.step(name)
             job.say(f"== system packages for {name}: {' '.join(missing)}\n")
             if not self._install_system(job, name, fam, install, missing):
                 bad += 1
         self.hello()
         if bad:
-            job.say(f"{bad} of {len(todo)} did not install\n")
+            job.say(f"{bad} of {len(needed)} did not install\n")
             return "failed", 1
         return "succeeded", 0
 

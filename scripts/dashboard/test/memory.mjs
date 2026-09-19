@@ -17,7 +17,7 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the way in --------------------------------------------------------
-// The icon carries the to-do count (todo.mjs covers that); memory rides in
+// The icon carries the to-do count (roadmap.mjs covers that); memory rides in
 // the same panel, folded under it.
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
 // A locked project keeps its notebook — that is the whole difference from
@@ -37,9 +37,9 @@ ok(await page.$eval('.pane .nb .nbtabs button', b => b.classList.contains('on'))
    '...on the first of its tabs, which is what Claude remembers here');
 // And with the cursor nowhere: focusing the add-a-line field would raise a
 // phone's keyboard over the list the panel just opened to show.
-ok(await page.evaluate(() => document.activeElement?.id !== 'todoText'),
+ok(await page.evaluate(() => document.activeElement?.id !== 'roadmapText'),
    '...without putting the cursor in the field and the keyboard over it');
-ok(!await page.$eval('#todoList', el => el.checkVisibility()),
+ok(!await page.$eval('#roadmapList', el => el.checkVisibility()),
    '...with the roadmap on its own tab, not in the way of it');
 await page.waitForFunction(() => document.getElementById('memList').checkVisibility(),
                            { timeout: 5000 });
@@ -122,7 +122,7 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 await page.click('#memList .mem[open] .mCancel');
 await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
 ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice')
-   && await page.$eval('#todoSaveQuiet', b => b.disabled),
+   && await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...and Cancel puts it away, reading what is on disk, with nothing left to save');
 await page.click('#memList .mem[open] .mEdit');
 await page.waitForSelector('#memList .mem[open] textarea[data-file]');
@@ -135,10 +135,10 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 // editor's, written together. There were two, and the second typed the change
 // into a running session — which stopped being the only way anything reached
 // one when the prompt hook got a free channel back (roadmap #27).
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'typing in a memory arms the panel\'s one Save button');
-await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+await page.click('#roadmapSaveQuiet');
+await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('tabs.md').includes('asked for it three times'),
@@ -172,10 +172,10 @@ await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
   i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
   i.value = 'only recall ever surfaced this one'; i.dispatchEvent(new Event('input')); });
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'typing an index line arms the same Save as everything else');
-await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+await page.click('#roadmapSaveQuiet');
+await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
@@ -334,7 +334,7 @@ page.errors = [];
 // line has to be able to name.
 ok(!/notes about how you work here/.test(tmuxCapture('claude-alpha')),
    'saving a memory spends no line of the session\'s conversation');
-ok((JSON.parse(readFileSync(`${DIR}/state/todos.json`, 'utf8'))
+ok((JSON.parse(readFileSync(`${DIR}/state/roadmap.json`, 'utf8'))
       .bump?.alpha?.memory || 0) > 0,
    '...and the memory half of the notebook is marked moved, which is what the '
    + 'session is told on its next prompt');
@@ -370,7 +370,7 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 // that passes through nothing this module could count.
 writeFileSync(`${MEM}/clash.md`,
   '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nwhat the session wrote\n');
-await page.click('#todoSaveQuiet');
+await page.click('#roadmapSaveQuiet');
 await page.waitForFunction(() => !document.getElementById('memClash').hidden,
                            { timeout: 15000 });
 const memBand = () => page.$eval('#memClash', el => el.textContent.replace(/\s+/g, ' '));
@@ -439,7 +439,7 @@ ok(nbTab >= 0, 'it is on the tab strip, named for its project');
 // seconds of the suite.
 await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`,
                  { timeout: 1500 })
-  .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id)));
+  .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id)));
 await nbGone(page);
 ok(true, '...and closing that tab puts it away');
 

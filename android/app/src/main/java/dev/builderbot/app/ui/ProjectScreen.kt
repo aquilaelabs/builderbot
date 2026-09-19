@@ -97,7 +97,7 @@ private fun sent(r: Result<org.json.JSONObject>): String {
 @Composable
 private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
     val scope = rememberCoroutineScope()
-    val (td, reload) = load("todo-$project") { api.todo(project) }
+    val (td, reload) = load("roadmap-$project") { api.roadmap(project) }
     var text by remember { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
     val items = td.value?.arr("items") ?: emptyList()
@@ -110,7 +110,7 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                 if (live) Dim("a Claude session is open on this project")
                 OutlinedTextField(text, { text = it }, label = { Text("Add to the roadmap") }, modifier = Modifier.fillMaxWidth())
                 Row { Spacer(Modifier.weight(1f)); Button(enabled = text.isNotBlank(), onClick = { scope.launch {
-                    said = try { api.todoAdd(project, text.trim()); text = ""; "added" } catch (e: Exception) { e.message ?: "" }
+                    said = try { api.roadmapAdd(project, text.trim()); text = ""; "added" } catch (e: Exception) { e.message ?: "" }
                     reload()
                 } }) { Text("Add") } }
                 if (said.isNotBlank()) Text(said, color = Accent)
@@ -131,10 +131,10 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                 Row {
                     Spacer(Modifier.weight(1f))
                     if (!shelved && live) TextButton(onClick = { scope.launch {
-                        said = sent(runCatching { api.todoSend(project, it.opt("id"), null, "") })
+                        said = sent(runCatching { api.roadmapSend(project, it.opt("id"), null, "") })
                         reload()
                     } }) { Text("Send to Claude") }
-                    if (!shelved) TextButton(onClick = { scope.launch { runCatching { api.todoShelve(project, it.opt("id")) }; reload() } }) { Text("Shelve") }
+                    if (!shelved) TextButton(onClick = { scope.launch { runCatching { api.roadmapShelve(project, it.opt("id")) }; reload() } }) { Text("Shelve") }
                 }
             }
             HorizontalDivider()

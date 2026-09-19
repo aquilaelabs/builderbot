@@ -941,7 +941,7 @@ case "$target" in
         # to be an ordinary state (a project with nothing on its lists) and
         # since the briefing joined it, empty means the fetch failed (B160).
         pre="$(BB_PROJECT="$proj" bb preamble --json 2>/dev/null || true)"
-        todo_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
+        roadmap_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
         # The block goes in a file now, so the kernel's argv ceiling is not
         # the limit any more; what is left is what a session should be asked
         # to read, since every conversation pays for all of it. preamble.py
@@ -968,9 +968,9 @@ case "$target" in
         # Beside session.env in this project's cache folder, which is the one
         # place a session's view keeps (R35), written 0600 like the token.
         prompt=()
-        if [ -n "$todo_block" ]; then
+        if [ -n "$roadmap_block" ]; then
             pref="$(cache_project_dir "$proj")/preamble.txt"
-            if ( umask 077; printf '%s\n' "$todo_block" > "$pref.new" ) && mv -f "$pref.new" "$pref"; then
+            if ( umask 077; printf '%s\n' "$roadmap_block" > "$pref.new" ) && mv -f "$pref.new" "$pref"; then
                 prompt=(--append-system-prompt-file "$pref")
             else
                 echo "WARNING: could not write this session's briefing to ${pref};" >&2

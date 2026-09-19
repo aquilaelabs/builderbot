@@ -36,7 +36,7 @@ await page.waitForFunction(
   // "loading…" placeholder, so it was satisfied the instant the panel opened
   // and said nothing about the list arriving; that only came to light when
   // the placeholder stopped sharing a class with the empty state.
-  () => { const l = document.querySelector('#todoList');
+  () => { const l = document.querySelector('#roadmapList');
           return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
 await page.click('#bPkgs');

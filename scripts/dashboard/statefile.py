@@ -14,7 +14,7 @@ renamed first published a torn file. That was fixed in the server and NOT in
 the five copies inside `bb`, which is the ordinary fate of a function that
 exists six times.
 
-**The lock.** todo.py and bugs.py already wrap every read-modify-write in
+**The lock.** roadmap.py and bugs.py already wrap every read-modify-write in
 `with _lock:`, which was a threading.Lock — and a threading lock guards the
 threads of ONE process. The notebook has two writers: the dashboard, and a
 `bb roadmap`/`bb bug` invocation, which is a separate short-lived process. Both

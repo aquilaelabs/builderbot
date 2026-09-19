@@ -54,7 +54,7 @@ android {
         targetSdk = 35
         versionCode = bbCode
         versionName = bbVersion
-        buildConfigField("int", "TARGET_API", "1")
+        buildConfigField("int", "TARGET_API", "2")
     }
     buildTypes {
         release {

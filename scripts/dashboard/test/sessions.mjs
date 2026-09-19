@@ -223,7 +223,7 @@ await page.waitForFunction(() => document.getElementById('anaHist').hidden,
                            null, { timeout: 15000 });
 // A notebook tab survives the reload and loads itself — the restore story
 // the findings tab used to carry, now the notebook's.
-await layoutSettled(l => l.tabs.some(t => t.kind === 'todo'));
+await layoutSettled(l => l.tabs.some(t => t.kind === 'notebook'));
 await page.reload();
 await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
                            { timeout: 30000 });
@@ -231,7 +231,7 @@ ok(true, 'a notebook tab restored from the layout loads itself');
 // A reload closes the flyout, the way it always has on a phone — the panel
 // is a toggle, not a card that is simply there. Open it again for the rest.
 await page.click('#mSessions');
-await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id));
+await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
 
 // The rest needs shell-9 on the strip; reopen it if the restore above failed.
 await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
@@ -549,7 +549,7 @@ ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sess
 
 // Keys over a document tab: the toggle is disabled and says why.
 await phone.evaluate(() => openNotebook('alpha'));
-await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'todo');
+await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'notebook');
 ok(await phone.$eval('#mKeys', b => b.disabled && /not one/.test(b.title)), 'Keys is disabled over a document tab');
 ok(await phone.$eval('#mMacros', b => b.disabled), '...and so is Commands');
 // A Claude tab is a terminal, but not one to type keys or macros into: they
