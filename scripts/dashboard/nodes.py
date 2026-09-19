@@ -21,6 +21,7 @@ db.py's, and so are the one-way doors it was built to keep.
 import contextlib
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -831,7 +832,9 @@ def _mb(v):
         return None
     try:
         return max(0, int(v))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: json.loads takes Infinity, and int() of it raises
+        # (B180). A number no disk has is no number.
         return 0
 
 
@@ -997,7 +1000,10 @@ def _census(c):
             # Seconds since the machine booted, from an agent that reports
             # it: a missing /workspace on a node up for a minute is a mount
             # still landing, and the gate says so instead of "add it".
-            "up_s": max(-1, int(se.get("up_s"))) if isinstance(se.get("up_s"), (int, float)) else None}
+            # Finite: json.loads takes Infinity and NaN, and int() of either
+            # raised, failing the node's whole hello (B180).
+            "up_s": max(-1, int(se["up_s"])) if isinstance(se.get("up_s"), (int, float))
+                    and math.isfinite(se["up_s"]) else None}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],

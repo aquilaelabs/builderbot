@@ -842,6 +842,21 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
                                                     appdata: '/etc' } } })).error,
        '...and refused the same paths the others are, so it cannot be pointed at /etc');
   }
+  // json.loads takes Infinity, and int() of it raised, failing the node's
+  // whole hello (B180): a non-finite number in a census is no number.
+  {
+    const body = JSON.stringify({ census: { ...CENSUS, session: { up: true, up_s: '__INF__' },
+        stores: { ...CENSUS.stores, data: { ...CENSUS.stores.data, free_mb: '__INF__' } } },
+      version: shipped.version, digest: shipped.digest }).replaceAll('"__INF__"', 'Infinity');
+    const r = await fetch(base + '/api/v1/agent/hello', { method: 'POST', body,
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' } });
+    const back = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(r.status === 200 && back.reported.session?.up_s === null,
+       `a node reporting Infinity is heard, the number taken as absent (${r.status}, up_s ${back.reported.session?.up_s})`);
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
+  }
   // Applying a config that keeps what the node already has asks nothing:
   // the editor was seeded from the node, so this adds a mount rather than
   // taking one away.
