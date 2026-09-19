@@ -1129,8 +1129,10 @@ def _clean_config(cfg):
             return None, f"a static address is written with its prefix, like 10.0.0.12/24 — not {addr!r}"
         if gw and not _IP.match(gw):
             return None, f"the gateway is an address, not {gw!r}"
-        dns = [d.strip() for d in (net.get("dns") if isinstance(net.get("dns"), list)
-                                   else str(net.get("dns") or "").split(",")) if d.strip()]
+        # str(): a hand-made request's [1] raised on .strip() instead of
+        # being told a resolver is an address (B181).
+        dns = [str(d).strip() for d in (net.get("dns") if isinstance(net.get("dns"), list)
+                                        else str(net.get("dns") or "").split(",")) if str(d).strip()]
         for d in dns:
             if not _IP.match(d):
                 return None, f"a resolver is an address, not {d!r}"

@@ -842,6 +842,13 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
                                                     appdata: '/etc' } } })).error,
        '...and refused the same paths the others are, so it cannot be pointed at /etc');
   }
+  // A hand-made request's resolver that is not text is told what a resolver
+  // is, rather than raising on .strip() (B181).
+  {
+    const r = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...rec.config.desired, network: { mode: 'static', address: '10.0.0.40/24', dns: [1] } } });
+    ok(/a resolver is an address/.test(r.error || ''), `a resolver that is not text is refused in words (${r.error})`);
+  }
   // json.loads takes Infinity, and int() of it raised, failing the node's
   // whole hello (B180): a non-finite number in a census is no number.
   {
