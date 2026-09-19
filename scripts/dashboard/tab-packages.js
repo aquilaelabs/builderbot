@@ -381,7 +381,7 @@ function renderPackagesInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
     <div class="pkgs">${(d.items || []).filter(i => !i.wrong_platform)
-      .map(i => pkgRow(i, busy || pstale, job, !!d.sandbox && !d.locked)).join("")}</div>
+      .map(i => pkgRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
     ${(() => {
       // Behind a fold rather than in the list. A recipe this node's platform
       // cannot have is a row that can never be pressed, and on a Mac that is

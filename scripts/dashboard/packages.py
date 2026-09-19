@@ -955,6 +955,8 @@ def payload_for_node(nid):
             "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
             # Locked to its console: nothing on it is installed by itself.
             "locked": bool((n.get("config") or {}).get("lock")),
+            # Whether the agent there installs system packages itself.
+            "administers": bool(rep.get("administers")),
             # The node's own scope under the store (roadmap R19), where its
             # packages actually are. The share itself where the node has not
             # reported one yet.
@@ -1295,7 +1297,10 @@ def auto_sysdeps(nid):
         return None
     rep = n.get("reported") or {}
     unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
-    if not unmet or not rep.get("sandbox") or nodes.node_locked(n):
+    # The agent's own word that it may (root and the stamp), not the stamp
+    # alone: a stamped node whose agent is not root refuses the job, and
+    # queueing it anyway held the store against the next real install.
+    if not unmet or not rep.get("administers") or nodes.node_locked(n):
         return None
     sig = json.dumps(unmet, sort_keys=True)
     if _auto_sysdeps.get(nid) == sig:

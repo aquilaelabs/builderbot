@@ -906,6 +906,9 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # Whether the agent may install system packages there (from 0.5.86):
+    # the stamp and root. Absent from an older agent, which reads as no.
+    out["administers"] = bool(c.get("administers"))
     # Whether a session there sees only its own project (R35), in the
     # helper's own answer, and why not. An agent from before it reports
     # nothing, which the row says as unknown rather than as a no.

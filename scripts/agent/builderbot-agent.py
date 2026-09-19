@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.5.85"
+AGENT_VERSION = "0.5.86"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1338,6 +1338,11 @@ def census(state):
         # is mounted and from where, and the address this machine is on.
         # The row draws the operator's desired config against these.
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
+        # ...and whether this agent may install the machine's own packages
+        # here: the stamp AND root, which is what administers() asks. The
+        # stamp alone said yes for an agent that could not, and the
+        # controller queued system packages it was bound to refuse.
+        "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         "mounts": mounts_now(),
