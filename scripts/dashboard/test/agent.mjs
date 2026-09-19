@@ -1687,6 +1687,20 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
     ok(/queued on agentbox/.test(out) && /hi from bb run/.test(out) && /succeeded/.test(out),
        'bb run queues on the named node, streams the log and says how it ended');
+    // On a node, bb run with no --node (or its own name) runs right here;
+    // naming ANOTHER node used to be dropped without a word and run here
+    // too, printing this machine's answer to a question about that one.
+    {
+      const onNode = { ...env, BUILDERBOT_ROLE: 'node', BB_NODE: 'agentbox', BB_CONTROLLER: URL.replace(/\/$/, '') };
+      const here = execFileSync('bash', [`${REPO}/scripts/bb`, 'run', '--', 'sh', '-c', 'echo ran on this node'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' });
+      let other = '';
+      try { other = execFileSync('bash', [`${REPO}/scripts/bb`, 'run', '--node', 'elsewhere', '--', 'sh', '-c', 'echo ran on this node'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' }); }
+      catch (e) { other = String(e.stdout) + String(e.stderr); }
+      ok(/ran on this node/.test(here) && !/ran on this node/.test(other) && /no node called elsewhere/.test(other),
+         `on a node, bb run runs here, and --node naming another machine goes to the controller instead of running here (${other.trim().split('\n').pop().slice(0, 90)})`);
+    }
     const built = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
     ok(/hi from the tree/.test(built) && /into dist\/: app-1.0.apk/.test(built),

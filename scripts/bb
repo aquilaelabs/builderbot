@@ -4771,7 +4771,13 @@ cmd_run() {
     # in this tree, and what --out names is copied into dist/ the way a job's
     # outputs would have come back. No job row — this is a build, and the
     # queue is for work that has to travel.
-    if on_node; then
+    #
+    # ...unless --node names ANOTHER machine. That used to be dropped here
+    # without a word and the command ran on this one, which is a wrong answer
+    # that looks like an answer: asked to check a package on the Red Hat node,
+    # it printed Ubuntu's os-release. Another node goes through the
+    # controller as a job, which is what --node means everywhere else.
+    if on_node && { [ -z "$node" ] || [ "$node" = "${BB_NODE:-}" ]; }; then
         run_here "$role" "${outs[@]}" -- "$@"
         return
     fi
@@ -4790,7 +4796,9 @@ if node:
     got = call("/api/v1/nodes").get("nodes") or []
     hit = [n for n in got if n["id"] == node or n["name"] == node]
     if not hit:
-        sys.exit(f"[builderbot] ERROR: no node called {node} (bb nodes lists them)")
+        sys.exit(f"[builderbot] ERROR: no node called {node}"
+                 + (" that this session may use: a session sees only the nodes its project builds on"
+                    if os.environ.get("CLAUDECODE") else " (bb nodes lists them)"))
     nid = hit[0]["id"]
 r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node": nid,
                           "argv": argv, "outputs": outs, "timeout": int(timeout),
