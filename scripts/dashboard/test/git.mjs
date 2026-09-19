@@ -636,11 +636,20 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // A row that is not already picked: a click on the picked row puts it
   // away, and which row that is depends on what the tests above committed.
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:not(.on)');
-  await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitaskcommit]', { timeout: 10000 });
-  const v = await page.$eval('.nb .nbview[data-view="git"]', el => ({
-    file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('[data-gitaskcommit]'),
+  // Read in one look, and waited for as one: the view repaints on the poll,
+  // and a wait for the commit's button followed by a second read of the
+  // view could land either side of a repaint (it did, twice in one run).
+  const look = () => page.$eval('.nb .nbview[data-view="git"]', el => ({
+    file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('#gitDetail [data-gitaskcommit]'),
     branch: el.querySelectorAll('[data-gitaskbranch]').length,
     pol: el.querySelectorAll('[data-gitpol]').length, apply: el.querySelector('#gitPolApply')?.disabled }));
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.nb .nbview[data-view="git"]');
+    return el && el.querySelector('[data-gitaskfile]') && el.querySelector('#gitDetail [data-gitaskcommit]')
+      && el.querySelectorAll('[data-gitaskbranch]').length >= 1 && el.querySelectorAll('[data-gitpol]').length === 2
+      && el.querySelector('#gitPolApply')?.disabled === true;
+  }, null, { timeout: 10000 }).catch(() => {});
+  const v = await look();
   ok(v.file && v.commit && v.branch >= 1 && v.pol === 2 && v.apply === true,
      `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
   // The policy is a section shut by default: open it to reach the pickers.
