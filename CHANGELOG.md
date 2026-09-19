@@ -38,6 +38,7 @@
 - Two people who open a Claude session on one project at the same moment each get a credential of their own, naming who they are (33ae896)
 - An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
 - Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
+- The Tools tab names the system packages each tool puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
 
 ### Upgrading
 
