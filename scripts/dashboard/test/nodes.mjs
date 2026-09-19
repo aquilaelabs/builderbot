@@ -934,6 +934,12 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
     ok(await page.$('.pkgtab #pkgSysdeps') !== null,
        '...with one press to install them on a node the agent administers');
+    // What each tool pulls onto this machine is on its own row, named in the
+    // node's package manager, before Install rather than in a job log after.
+    const dotnetRow = (await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' '))))
+      .find(t => /\.NET/.test(t)) || '';
+    ok(/Installs 1 system package with it here \(dnf\): libicu/.test(dotnetRow),
+       `a row names the system packages its tool installs on this node (${(dotnetRow.match(/Installs[^.]*libicu/) || ['none'])[0]})`);
     // Nobody has to press it on a node BuilderBot manages: the census that
     // named them queued the job itself, for exactly those recipes.
     const pkgJobs = async () => ((await pj(`/api/v1/jobs?node=${minted.id}&type=package&n=20`)).jobs || []);
@@ -961,6 +967,27 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
       .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
     ok(true, 'the node\'s row says the same before a build fails on it');
+    // Held: the row says which of them are missing here, and who installs them.
+    {
+      const held = (sd) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd, store_dirs: { top: ['flutter', 'node', 'dotnet'], android: [] } },
+                               version: shipped.version, digest: shipped.digest }) });
+      await held({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+      await page.evaluate(() => openPackages());
+      await page.evaluate(() => loadPackages());
+      await page.waitForFunction(() => /missing here/.test(document.querySelector('.pkgtab')?.textContent || ''), null, { timeout: 15000 });
+      const row = (await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')))).find(t => /\.NET/.test(t)) || '';
+      ok(/1 of its 1 system package missing here \(dnf\), installed by itself: libicu/.test(row),
+         `an installed tool's row says which of its system packages this node lacks (${(row.match(/\d of its[^:]*: \S+/) || ['none'])[0]})`);
+      await held({ family: 'dnf', unmet: {} });
+      await page.evaluate(() => loadPackages());
+      await page.waitForFunction(() => /all installed/.test(document.querySelector('.pkgtab')?.textContent || ''), null, { timeout: 15000 });
+      ok(true, '...and that they are all there once they are');
+      await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
+    }
     await sysCensus({ family: 'dnf', unmet: {} });
     await page.evaluate(() => openPackages());
     await page.evaluate(() => loadPackages());

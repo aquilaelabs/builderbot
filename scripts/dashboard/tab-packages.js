@@ -110,7 +110,26 @@ function pkgTickDots(){
   spans.forEach(e => e.textContent = ".".repeat(pkgDots));
 }
 
-function pkgRow(p, busy, job){
+// What a row pulls onto the picked machine from its own package manager,
+// named, so which tool needed which library is on the row before Install
+// rather than in a job log after it. Held ones say which are missing here.
+function pkgSystemLine(p, managed){
+  const sys = p.system;
+  if (!sys?.names?.length) return "";
+  const n = sys.names.length, plural = n === 1 ? "" : "s";
+  const miss = sys.missing || [];
+  const show = miss.length ? miss : sys.names;
+  const list = show.length <= 6 ? esc(show.join(", "))
+    : `${esc(show.slice(0, 4).join(", "))}<details class="pkgsysl"><summary> and ${show.length - 4} more</summary>, ${
+        esc(show.slice(4).join(", "))}</details>`;
+  const head = !p.installed ? `Installs ${n} system package${plural} with it here (${esc(sys.manager)})`
+    : miss.length ? `${miss.length} of its ${n} system package${plural} missing here (${esc(sys.manager)})${
+        managed ? ", installed by itself" : ", for this machine's owner to install"}`
+    : `Uses ${n} system package${plural} here (${esc(sys.manager)}), all installed`;
+  return `<span class="sub pkgsysd${miss.length ? " warn" : ""}">${head}: ${list}</span>`;
+}
+
+function pkgRow(p, busy, job, managed){
   // The row the job is *writing*. Mid-install its directory exists and every
   // probe here calls a non-empty directory installed, so it wears none of the
   // furniture that means "this is here": no ticked box, no uninstall control,
@@ -180,6 +199,7 @@ function pkgRow(p, busy, job){
       <span class="sub">${esc(p.about)}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
         p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
+      ${pkgSystemLine(p, managed)}
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
         // The path is the store's, and the head of the tab already says where
         // that is, so naming it per row was a repetition, and on a node,
@@ -361,7 +381,7 @@ function renderPackagesInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
     <div class="pkgs">${(d.items || []).filter(i => !i.wrong_platform)
-      .map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
+      .map(i => pkgRow(i, busy || pstale, job, !!d.sandbox && !d.locked)).join("")}</div>
     ${(() => {
       // Behind a fold rather than in the list. A recipe this node's platform
       // cannot have is a row that can never be pressed, and on a Mac that is

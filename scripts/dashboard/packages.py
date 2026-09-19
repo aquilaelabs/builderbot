@@ -107,6 +107,13 @@ def load_packages():
                 # installed, when the directory alone does not prove it.
                 "needs": str(lay.get("needs") or ""),
             }
+        # The machine's own packages it needs, per package manager: said on
+        # the row, so what a tool pulls onto a node is known before Install,
+        # not discovered in a job log.
+        sysd = r.get("system")
+        if isinstance(sysd, dict):
+            row["system"] = {str(k)[:12]: [str(x)[:80] for x in (v or [])][:64]
+                             for k, v in sysd.items() if isinstance(v, list)}
         out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
     # end of the catalog still lands where somebody would look for it. Leading
@@ -883,6 +890,18 @@ def payload_for_node(nid):
     # the new tool says "not found" with nothing on screen saying why. So a
     # row that changes a session's environment counts this node's sessions
     # that started before it last landed on the store.
+    # What each row pulls onto THIS machine, in its package manager's names,
+    # and for one the store already holds, which of those are missing here.
+    # Known per family from the census; a node that has not said its family
+    # gets no list rather than another family's.
+    fam = str((rep.get("sysdeps") or {}).get("family") or "")
+    unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+    sysl = {p["name"]: (p.get("system") or {}).get(fam) or [] for p in PACKAGES} if fam else {}
+    for i in items:
+        names = sysl.get(i["name"]) or []
+        if names:
+            i["system"] = {"manager": fam, "names": names,
+                           "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
     landed = _landed_at(nid)
     started = [int(x.get("created") or 0) for x in rep.get("sessions") or [] if isinstance(x, dict)]
     shapes = {p["name"]: p.get("layout") or {} for p in PACKAGES}
@@ -934,6 +953,8 @@ def payload_for_node(nid):
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
             "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
+            # Locked to its console: nothing on it is installed by itself.
+            "locked": bool((n.get("config") or {}).get("lock")),
             # The node's own scope under the store (roadmap R19), where its
             # packages actually are. The share itself where the node has not
             # reported one yet.

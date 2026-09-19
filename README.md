@@ -1275,7 +1275,11 @@ lives in its body. The cards:
   every toolchain on the [package store](#the-package-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. A recipe's system libraries are each machine's own
+  is a bin on the row. Each row also names the system packages its tool puts
+  on the picked machine, in that machine's package manager's names, and for
+  one already installed which of them are missing there. They install with
+  the tool and only then; uninstalling a tool leaves them, since another may
+  use the same library. A recipe's system libraries are each machine's own
   while the store is shared, so when a node lacks some for a package the
   store already holds (a node enrolled after dotnet went in, with no
   libicu), a node BuilderBot manages installs them by itself the next time it

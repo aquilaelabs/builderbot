@@ -66,7 +66,7 @@ const SURFACE = [
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
   'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
-  'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgTickDots', 'placeCard',
+  'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgSystemLine', 'pkgTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
