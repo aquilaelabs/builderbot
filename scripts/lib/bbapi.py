@@ -72,7 +72,17 @@ def url():
 
 def _conn(timeout):
     u = urllib.parse.urlsplit(url())
-    port = u.port or (443 if u.scheme == "https" else 80)
+    # A setting typed by hand with no scheme ("controller.lan:7680") parses
+    # with no host at all, and a port that is not a number raises: both used
+    # to escape as a TypeError traceback from every bb verb (B179). As OSError
+    # they are what the callers already turn into {"error": ...}, naming it.
+    try:
+        port = u.port or (443 if u.scheme == "https" else 80)
+    except ValueError:
+        port = 0
+    if not u.hostname or not port or u.scheme not in ("http", "https"):
+        raise OSError(f"BB_CONTROLLER {url()!r} is not an address: it wants "
+                      "http://HOST:PORT or https://HOST:PORT")
     if u.scheme != "https":
         return http.client.HTTPConnection(u.hostname, port, timeout=timeout), u.path.rstrip("/")
     ctx = ssl.create_default_context()

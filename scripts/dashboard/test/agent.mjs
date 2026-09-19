@@ -829,6 +829,15 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         r = gate({ BB_TOKEN: 'bbs_bm90LWEtcmVhbC10b2tlbg' });
         ok(r.code === 0 && !/not answering/.test(r.err),
            `a token the controller refuses is not a controller that is down (${r.code}: ${r.err.slice(0, 50)})`);
+        // A controller address typed by hand without its scheme parses with
+        // no host at all, and every bb verb died on a TypeError traceback
+        // (B179). It is an answer now, naming the setting.
+        {
+          const said = execFileSync('python3', ['-c', 'import sys; sys.path.insert(0, sys.argv[1]); import bbapi, json; print(json.dumps(bbapi.call("/api/status")))',
+            `${REPO}/scripts/lib`], { encoding: 'utf8', env: { ...process.env, BB_CONTROLLER: 'controller.lan:7680' } });
+          ok(/BB_CONTROLLER 'controller.lan:7680' is not an address/.test(said),
+             `a controller address with no scheme is an error naming the setting, not a traceback (${said.trim().slice(0, 70)})`);
+        }
         // --prompt is kept as a no-op: the hook line naming it is written
         // into settings files that outlive this change, so it has to stay
         // callable and has to say nothing.
