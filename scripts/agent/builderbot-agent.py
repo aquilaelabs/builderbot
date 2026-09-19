@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.88"
+AGENT_VERSION = "0.6.89"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2217,19 +2217,6 @@ def load_state():
                          "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
-
-
-def rename_store_roles(state):
-    """Rename a store role this node's state keeps under an earlier name;
-    True if it did. Runs before fill_default_stores, which would otherwise
-    see the role missing and make a new, empty store beside the data one: a
-    node whose toolchains were on a share would lose track of the share.
-    The toolchain store was the packages store before 0.6."""
-    stores = state.get("stores")
-    if isinstance(stores, dict) and "packages" in stores and "toolchains" not in stores:
-        stores["toolchains"] = stores.pop("packages")
-        return True
-    return False
 
 
 def fill_default_stores(state):
@@ -5278,7 +5265,7 @@ def cmd_run():
     # A store role added since this node enrolled: adopted here, once, so a
     # machine that is already out there gains it on its next start rather
     # than only on a re-enrolment nobody is going to do.
-    if rename_store_roles(state) | fill_default_stores(state):
+    if fill_default_stores(state):
         save_state(state)
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")

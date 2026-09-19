@@ -66,10 +66,6 @@ TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 # challenge is precisely what made browsers pop their own dialog.
 SESSION_DAYS = 30
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
-# State an earlier build wrote under names this one no longer uses, moved
-# before anything below opens it (renames.py).
-import renames                                                   # noqa: E402
-renames.run(STATE)
 
 
 def _session_secret():
