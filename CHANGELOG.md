@@ -1,14 +1,14 @@
 # Changelog
 
-## 0.6.0 — 2026-09-19
+## 0.6.0: 2026-09-19
 
-- The companion app has a Tools screen: what each node's packages store holds, with Install and Remove on a package, so a missing toolchain can be fixed from a phone (87ad70b)
+- The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
 - The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
 - The buttons on the Tools card carry icons, and the tab each opens wears the same one (47c9aa3)
 - A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
 - Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
 - A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
-- The Tools tab says when a node lacks the system libraries a package on the shared store needs, and one press installs them there without reinstalling the package; the node's row says the same (bf01db5)
+- The Toolchains tab says when a node lacks the system libraries a toolchain on the shared store needs, and one press installs them there without reinstalling the toolchain; the node's row says the same (bf01db5)
 - The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
 - The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
 - A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
@@ -38,7 +38,7 @@
 - Two people who open a Claude session on one project at the same moment each get a credential of their own, naming who they are (33ae896)
 - An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
 - Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
-- The Tools tab names the system packages each tool puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
+- The Toolchains tab names the system packages each toolchain puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
 - System packages now install on Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9 and 10, Fedora, Arch and openSUSE: Playwright's list was apt-only and broke on Ubuntu 24.04, and a list can name a library that was renamed between releases (1912a29)
 - A mistyped controller address in BB_CONTROLLER is reported as what it is, not a crash, and two node reports that could crash the controller's handling of them are taken safely (b9f2cf5)
 - The flyouts the terminal's bottom bar opens (Keys, Commands, Sessions, Chat) are tinted, edged and shadowed, so where they end is plain on a phone and on a desktop (54afb55)
@@ -157,7 +157,7 @@
 - A dev instance that is not bound to a node goes to a node that runs docker, instead of simply the newest node, which could be a machine with no docker at all (f68041f)
 - The Git view says how old each commit and branch really is, instead of just now for all of them, and no longer lists origin/HEAD as a branch called origin (96e5966)
 - Reinstalling a runner whose token cannot register leaves the working runner as it was, and the row says which permission the token lacks (97c1edd)
-- bb projects and bb status no longer list the package store or a dev instance's build tree as projects, and name a worktree's branch (2ea5bd5)
+- bb projects and bb status no longer list the toolchain store or a dev instance's build tree as projects, and name a worktree's branch (2ea5bd5)
 - On a phone the sidebar cards you opened stay open across a reload, and Reset from the gear opens every card there as it does at a desk (2ea5bd5)
 - Send to Claude from the roadmap and the bug tracker reaches a session running on a node, and says whether the line went or was left in the box unsent (47c9aa3)
 - The Tests view no longer loses a test's description when tests are inserted above one whose name carries a run-specific value (47c9aa3)
@@ -186,7 +186,7 @@
 - An admin can take a project on from the Users tab: the editor shows the project list for admins and the row says which projects they work on (e61b013)
 - Provisioning a Debian or Ubuntu node no longer leaves apt's own ttyd running as root on the loopback: the unit is switched off, and only the agent's ttyd serves sessions (d140829)
 - A user without a shell who is not yet signed in to Claude is told to sign in from the Doctor card instead of being shown a code prompt in a console they cannot type into (3386d1d)
-- A console shell on a node keeps bb on its PATH after the packages store is moved from the Nodes tab (3386d1d)
+- A console shell on a node keeps bb on its PATH after the toolchain store is moved from the Nodes tab (3386d1d)
 - The Tools tab no longer asks to install the emulator's libraries on a node that only has the Android command-line tools (3386d1d)
 - A fresh node without adb no longer collects a failed 'adb devices' job on every poll (3386d1d)
 - A test run made inside the project's dev instance is recorded in the Tests view; it used to end in 'nothing in that looks like a test run' (6829ba9)
