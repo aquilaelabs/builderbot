@@ -1308,6 +1308,16 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
                            nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
     }
+    // ...and the name under Advanced: without it a heartbeat's repaint
+    // between typing a new name and pressing Rename put the old one back,
+    // and Rename said to type one (B176: nodes.mjs's rename wait timed out
+    // on exactly that, now and then).
+    const ni = box.querySelector('.ndname [data-k="name"]');
+    if (ni){
+      ni.onfocus = () => { nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
+      ni.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.nameText = ni.value;
+                           nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
+    }
     // The same for the limit on sessions working at once, in the Sessions
     // section: a number is typed across a heartbeat as easily as a path.
     const ti = box.querySelector('[data-k="turns"]');

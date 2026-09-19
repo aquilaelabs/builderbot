@@ -1566,6 +1566,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     const loc = await papi({ action: 'update', id: 'local', fields: { name: 'box' } });
     ok(/not a node to rename/.test(loc.error || ''), 'the controller\'s own row is not renamed');
     await page.fill(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, 'sandbox-two');
+    // A heartbeat repaints the tab; the name being typed survives it (B176).
+    await page.evaluate(() => loadNodes());
+    await page.waitForTimeout(300);
+    ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, e => e.value) === 'sandbox-two',
+       'a new name being typed survives the repaint a heartbeat brings');
     await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="rename"]`);
     await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox-two', sb.id, { timeout: 15000 });
     ok(true, 'Rename on the row renames the node');
