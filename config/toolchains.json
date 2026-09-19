@@ -1,13 +1,13 @@
 {
   "_comment": [
-    "Everything the container needs in order to offer, fetch and install a package.",
-    "The dashboard's Tools tab renders it and `bb packages` acts on it; adding a package",
+    "Everything the container needs in order to offer, fetch and install a toolchain.",
+    "The dashboard's Tools tab renders it and `bb toolchains` acts on it; adding a toolchain",
     "here is the whole job, as long as it fits one of the five kinds below.",
     "",
-    "  name     what `bb packages install|remove` is called with.",
+    "  name     what `bb toolchains install|remove` is called with.",
     "  probe    where it lands, so the page can tell installed from not: a bare",
-    "           name is a directory under the package store root, android:<pkg> a package",
-    "           directory under ANDROID_HOME. System images are not packages;",
+    "           name is a directory under the toolchain store root, android:<pkg> a package",
+    "           directory under ANDROID_HOME. System images are not toolchains;",
     "           they have a section of their own, above.",
     "  platforms  which <os>/<arch> this recipe actually works on. Seven of these",
     "           name linux-x86_64 in their URL, and swift names ubuntu24.04, so",
@@ -16,22 +16,22 @@
     "           a tool that resolves its own platform. An install onto a node",
     "           outside the list is refused by name rather than downloading a",
     "           couple of hundred megabytes and failing on exec.",
-    "  requires   other packages this one needs in order to work. Installed",
+    "  requires   other toolchains this one needs in order to work. Installed",
     "           first, and only when missing. android-tools drives sdkmanager,",
     "           which is a Java program, and without this it failed inside",
-    "           sdkmanager with a message naming neither Java nor the package",
+    "           sdkmanager with a message naming neither Java nor the toolchain",
     "           that supplies it.",
-    "  layout     where this package lands, once, for everybody who needs to",
+    "  layout     where this toolchain lands, once, for everybody who needs to",
     "           know. `bin` are directories under it to put on PATH, `env` the",
     "           variables it sets (valued as a path under it, \"\" meaning the",
-    "           package directory itself), `tool` the file whose presence",
+    "           toolchain directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
     "           places — sdk_env_snippet, the agent's STORE_TOOLS and",
     "           STORE_PATHS, and sdk_check_one — and they drifted three times",
     "           in one day.",
     "           A path may start `root:` to mean relative to the store rather",
-    "           than to this package — the android packages share one tree,",
+    "           than to this toolchain; the android toolchains share one tree,",
     "           since sdkmanager installs into <root>/android whatever the",
     "           package is called.",
     "  system   the machine's own packages this one needs at runtime, by",
@@ -62,7 +62,7 @@
     "  verify       run after installing, so a broken unpack fails the install",
     "               rather than waiting to fail the first time somebody uses it.",
     "",
-    "time upstream ships: what a package weighs is measured from the disk once it",
+    "time upstream ships: what a toolchain weighs is measured from the disk once it",
     "is installed, remembered after it is removed, and read from the download's",
     "own Content-Length before that when the URL is the payload itself.",
     "",
@@ -74,7 +74,7 @@
     "             and the row shows no size until it has been installed once.",
     "",
     "No size is written down here. One typed into a file is wrong the next time",
-    "upstream ships: a row shows what the package takes on this disk once it is",
+    "upstream ships: a row shows what the toolchain takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
     "before that — never a number somebody guessed.",
     "             \"url-matches\" fetches a file upstream publishes and matches the",
@@ -88,7 +88,7 @@
   ],
   "android_images": {
     "_comment": [
-      "System images, which are not packages. A package is one thing at one",
+      "System images, which are not toolchains. A toolchain is one thing at one",
       "version; a system image exists at every API level at once, and which of",
       "them you want is a question about what you are testing, not about the",
       "catalog. So the flavors live here as data, and the Tools tab offers an",
@@ -124,7 +124,7 @@
       }
     }
   },
-  "packages": [
+  "toolchains": [
     {
       "name": "jdk",
       "label": "JDK 21 (Temurin)",
@@ -145,7 +145,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's packages store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
+      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's toolchain store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -187,7 +187,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager: the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager: the bootstrap every other android:* toolchain installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -209,7 +209,7 @@
           "JAVA_HOME": "{dir}/../jdk"
         },
         "after": [
-          "system images and the emulator install through it: bb packages install android:emulator, bb packages images"
+          "system images and the emulator install through it: bb toolchains install android:emulator, bb toolchains images"
         ],
         "download": {
           "resolver": "approximate",
@@ -944,7 +944,7 @@
         ],
         "after": [
           "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
-          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb packages install zig + cargo-zigbuild"
+          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb toolchains install zig + cargo-zigbuild"
         ],
         "download": {
           "resolver": "url-matches",

@@ -141,7 +141,7 @@ async function loadDocker(){
   dockerList = got;
   dockerRev++;
   // drawPanes rather than reaching into a pane by index: which pane holds this
-  // tab is the layout's business, and packages already refreshes this way.
+  // tab is the layout's business, and toolchains already refreshes this way.
   drawPanes();
 }
 
@@ -824,7 +824,7 @@ function dmRowsHtml(ins, job, blind){
           // spending its time on, which for a pull is the only way to tell a
           // slow download from a hang. Raw, and deliberately not parsed into a
           // bar: docker rewrites a line per layer per tick, and turning that
-          // into a percentage is the thing the packages tab gave up on.
+          // into a percentage is the thing the toolchains tab gave up on.
           // Tailed whether or not it is still running. The row only
           // repaints when something moved, so this is not a fight with the
           // reader's scrolling, and the end is where the reason is: a failed

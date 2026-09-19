@@ -435,7 +435,7 @@ ${code}`], { encoding: 'utf8' });
   {
     const st = await (await bare('/api/status', { headers: other })).json();
     ok(st.can && st.can.terminal === false && st.can['docker-write'] === false
-       && st.can['packages-write'] === false && st.can['git-auth'] === false,
+       && st.can['toolchains-write'] === false && st.can['git-auth'] === false,
        `the payload says what this account may do, by capability (${
           JSON.stringify(st.can)})`);
     const mine = await (await bare('/api/status', { headers: owner })).json();
@@ -472,7 +472,7 @@ ${code}`], { encoding: 'utf8' });
        'a user CAN rebuild — that is how you see what you just committed');
     ok((await post(other, '/api/devapp', { project: 'beta', action: 'abort' })).status !== 403,
        '...and stop one, since whoever may start a build may stop it');
-    ok((await post(other, '/api/packages', { action: 'install', names: ['jdk'] })).status === 403,
+    ok((await post(other, '/api/toolchains', { action: 'install', names: ['jdk'] })).status === 403,
        '...nor install gigabytes onto a shared node');
     // ...but the registry it is shown is its own projects' machines only,
     // because the whole list is otherwise an inventory of the box.
@@ -490,7 +490,7 @@ ${code}`], { encoding: 'utf8' });
     const body = await peek.json();
     ok(/not a node one of your projects builds on|none of your projects/.test(body.error || ''),
        `a node no project of theirs builds on is refused, not listed (${body.error})`);
-    const pk = await (await bare('/api/packages?node=' + encodeURIComponent(nodeId),
+    const pk = await (await bare('/api/toolchains?node=' + encodeURIComponent(nodeId),
                                  { headers: other })).json();
     ok(/not a node one of your projects builds on|none of your projects/.test(pk.error || ''),
        '...and the same for what that node has installed');
@@ -760,7 +760,7 @@ ${code}`], { encoding: 'utf8' }).trim();
 
   // The machinery is not a project and is not theirs at all.
   for (const [path, body] of [['/api/v1/nodes', { action: 'enroll', name: 'zzprobe' }],
-                              ['/api/packages', { action: 'install', names: ['jdk'] }]]) {
+                              ['/api/toolchains', { action: 'install', names: ['jdk'] }]]) {
     const r3 = await post(path, body);
     ok(r3.status === 403, `${path} is an administrator's`);
   }
@@ -924,7 +924,7 @@ ${code}`], { encoding: 'utf8' }).trim();
 
 // ---- what a session holds (roadmap #22 step 4, bug #16) -----------------
 // A Claude session used to inherit DASHBOARD_AUTH, so "only the operator may
-// install a package" was a rule the code asked nicely about. It gets a token
+// install a toolchain" was a rule the code asked nicely about. It gets a token
 // scoped to its own project instead.
 {
   const { execFileSync } = await import('node:child_process');
@@ -1002,7 +1002,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   }
 
   // The whole reason this exists: it is not the operator.
-  for (const ep of ['/api/v1/nodes', '/api/packages', '/api/users']) {
+  for (const ep of ['/api/v1/nodes', '/api/toolchains', '/api/users']) {
     ok((await post(ep, { action: 'x' })).status === 403, `${ep} is closed to a session`);
   }
   // A session works on its project and its project's node, and changes

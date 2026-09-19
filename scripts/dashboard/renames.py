@@ -1,14 +1,20 @@
 """State this controller wrote under names it no longer uses, moved once.
 
 The notebook's roadmap was called "todo" in its file, its keys and its tab,
-and the operator asked for one name everywhere. The code says roadmap now;
-what an earlier build already wrote to /config is the operator's roadmap and
-their open tabs, and it has to come across rather than be left behind under
-a name nothing reads. So at startup, before anything opens these files:
+and the toolchains were "packages" in theirs, and the operator asked for one
+name for each everywhere. The code says roadmap and toolchains now; what an
+earlier build already wrote to /config is the operator's roadmap, their open
+tabs and the toolchain versions last checked, and it has to come across
+rather than be left behind under a name nothing reads. So at startup, before
+anything opens these files:
 
   * todos.json becomes roadmap.json, and inside it the per-project "todo"
     keys of `unsaved`, `bump` and `seen` become "roadmap";
-  * a saved tab of kind "todo" (the notebook) becomes kind "notebook".
+  * pkg-versions.json becomes toolchain-versions.json;
+  * a saved tab of kind "todo" (the notebook) becomes kind "notebook", and
+    one of kind "packages" becomes kind "toolchains".
+
+The node store's half is migrations/0004_toolchains.sql.
 
 Each step does nothing when there is nothing to move, so this runs on every
 start at the cost of a stat. It exists for the one controller that ran a
@@ -20,7 +26,7 @@ import os
 from pathlib import Path
 
 # The tab kinds that were renamed: {old: new}.
-TAB_KINDS = {"todo": "notebook"}
+TAB_KINDS = {"todo": "notebook", "packages": "toolchains"}
 # The roadmap's own kind key inside its file.
 ROADMAP_KIND = ("todo", "roadmap")
 
@@ -62,6 +68,14 @@ def _roadmap(state):
     return moved
 
 
+def _versions(state):
+    old, new = state / "pkg-versions.json", state / "toolchain-versions.json"
+    if old.exists() and not new.exists():
+        os.replace(old, new)
+        return True
+    return False
+
+
 def _tabs(state):
     p = state / "tabs.json"
     d = _read(p)
@@ -82,7 +96,7 @@ def run(state):
     """Move whatever is still under an old name. The names of what moved."""
     state = Path(state)
     done = []
-    for name, step in (("roadmap", _roadmap), ("tabs", _tabs)):
+    for name, step in (("roadmap", _roadmap), ("versions", _versions), ("tabs", _tabs)):
         try:
             if step(state):
                 done.append(name)

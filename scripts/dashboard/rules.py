@@ -152,7 +152,7 @@ BUILTIN = [
              " something seems to be missing, ask."},
     {"name": "ask-do-not-install",
      "text": "Never install a tool with a system package manager. It lands on"
-             " that machine only, is invisible to `bb packages`, and is gone"
+             " that machine only, is invisible to `bb toolchains`, and is gone"
              " when the node is rebuilt. Say what is missing: installing is"
              " the operator's."},
     {"name": "no-credentials-in-the-repo",
@@ -415,7 +415,7 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
     return {"ok": True, "rule": r}
 
 
-# Said the way `bb packages install` says its refusal: a sentence a session
+# Said the way `bb toolchains install` says its refusal: a sentence a session
 # can quote back, naming who does it and where, rather than a door that looks
 # like a fault.
 _NOT_YOURS = ("a global rule reaches every project on this BuilderBot, so only "

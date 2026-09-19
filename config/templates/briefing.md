@@ -4,7 +4,7 @@ notebook and the record. `bb status` names this machine and the controller's
 build.
 
 Three things here are not this machine's and survive it being rebuilt: this
-project, on the projects share at /workspace; the toolchains, on the packages
+project, on the projects share at /workspace; the toolchains, on the toolchain
 store; and the notebook, the controller's, through `bb`. Everything else,
 including /tmp and your home, is this machine's own disk and nobody's backup.
 Uncommitted work is on the share, so a restart cannot eat it.
@@ -19,8 +19,8 @@ $PLAYWRIGHT_BROWSERS_PATH.
 ## The toolchain is the store, not the machine
 
 This node carries git, tmux, jq, python3 and curl by itself. Everything else
-lives on the packages store, so what exists here is a runtime fact, not
-something to assume: `bb packages` says what is installed and where.
+lives on the toolchain store, so what exists here is a runtime fact, not
+something to assume: `bb toolchains` says what is installed and where.
 
 ## Building
 

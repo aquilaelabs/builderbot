@@ -10,7 +10,7 @@ set -euo pipefail
 # commands with the installed image's older helpers.
 # shellcheck source=lib/common.sh
 . "$(dirname "$(readlink -f "$0")")/lib/common.sh"
-# The package manager — `bb packages` and everything the Tools tab drives — is a
+# The toolchain manager (`bb toolchains` and everything the Tools tab drives) is a
 # third of this script's length and none of its subject, so it lives next door.
 # shellcheck source=lib/sdk.sh
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
@@ -178,7 +178,7 @@ bb — BuilderBot helper
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
-  bb packages            the toolchains kept outside the image: status, install X, remove X
+  bb toolchains            the toolchains kept outside the image: status, install X, remove X
 EOF
 }
 
@@ -250,9 +250,9 @@ cmd_status() {
     version pw     playwright --version
     echo
     # What is installed beyond the image, and where. Here rather than only in
-    # `bb packages` because this is the command a session runs first, and "is
+    # `bb toolchains` because this is the command a session runs first, and "is
     # flutter on this box" should not need a second guess.
-    echo "== packages =="
+    echo "== toolchains =="
     local root have=""
     root="$(sdk_root)"
     for t in $SDK_TOOLCHAINS; do
@@ -261,7 +261,7 @@ cmd_status() {
     done
     printf '  %-8s %s%s\n' root "$root" \
         "$(is_mountpoint "$root" && printf ' (share)' || printf ' (home volume)')"
-    printf '  %-8s %s\n' installed "${have:-none — see: bb packages}"
+    printf '  %-8s %s\n' installed "${have:-none (see: bb toolchains)}"
     echo
     # CI runs on nodes (docs/nodes.md phase 7); `bb ci-labels` lists their
     # runners' labels and the Nodes tab shows each one's state.
@@ -275,7 +275,7 @@ cmd_projects() {
         [ -d "$d" ] || continue
         case "$(basename "$d")" in _work) continue ;; esac
         # Not a project, by the same mark the dashboard's list honours: the
-        # package store, a dev instance's build tree, anything the operator
+        # toolchain store, a dev instance's build tree, anything the operator
         # chose to hide.
         [ -f "$d/.bbignore" ] && continue
         found=1
@@ -725,8 +725,8 @@ PY
 }
 
 # bb emu on the project's node (docs/nodes.md phase 9): the same verb becomes
-# a job there — the node runs this very bb from the bundle, with its own
-# packages store as the SDK — and what it writes (a screenshot, a gfxinfo)
+# a job there (the node runs this very bb from the bundle, with its own
+# toolchain store as the SDK), and what it writes (a screenshot, a gfxinfo)
 # comes back into dist/. `install FILE` sends the APK along from dist/.
 emu_via_node() {
     local -a argv=("emu") files=()
@@ -780,7 +780,7 @@ cmd_emu() {
     # On the project's node when it has one (docs/nodes.md phase 9) — the
     # emulator, the images and the GPU are that machine's. BB_EMU_LOCAL=1
     # keeps a verb here, for the box that still carries an emulator itself.
-    if [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_PACKAGES:-}" ] && [ -n "$(project_node)" ]; then
+    if [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ] && [ -n "$(project_node)" ]; then
         emu_via_node "$@"
         return
     fi
@@ -788,7 +788,7 @@ cmd_emu() {
     # SDK, and a project with no node has nowhere to run one. Said plainly,
     # before `emulator: not found` could say it badly. BB_EMU_LOCAL=1 is
     # the escape hatch for a box that still carries one.
-    if ! on_node && [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_PACKAGES:-}" ]; then
+    if ! on_node && [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ]; then
         die "this project has no node, and the controller runs no emulator — bind a node in the project's settings dialog, and bb emu runs there"
     fi
     case "${1:-status}" in
@@ -841,7 +841,7 @@ cmd_emu() {
             ;;
         start)
             command -v emulator >/dev/null 2>&1 \
-                || die "no emulator in this node's packages store — tick android:emulator on the Tools tab with this node picked"
+                || die "no emulator in this node's toolchain store: tick android:emulator on the Tools tab with this node picked"
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
@@ -4167,7 +4167,7 @@ PY
 # the state is; the token decides which project it may be about.
 #
 # What is NOT relayed is what belongs to the machine the session is on:
-# `bb packages` answers for this node's store, `bb emu` drives this node's
+# `bb toolchains` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
 # One list, lib/relay-verbs, read here and by the server: a verb added to
 # one side only was either refused on arrival or never sent.
@@ -4632,7 +4632,7 @@ except Exception as e:
     raise SystemExit(0) from None
 # Enrolled machines only. The controller's own record is registry plumbing —
 # it is how a share it mounts is recognized as a node's store — and never a
-# machine anybody lists: it runs no work and takes no packages.
+# machine anybody lists: it runs no work and takes no toolchains.
 rows = [n for n in rows if n["kind"] != "local"]
 if not rows:
     print("no node is enrolled — the dashboard's Nodes tab mints a token for one")
@@ -4707,7 +4707,7 @@ for j in rows:
             "agent self-update" if j["type"] == "self-update" else
             f'apply {s.get("apply") or "config"} on the node' if j["type"] == "system" else
             f'{s.get("action") or "install"} {", ".join(s.get("names") or [])}'
-            if j["type"] == "package" else
+            if j["type"] == "toolchain" else
             ("clear " + (f'{s["project"]}\'s caches' if s.get("project") else "every cache"))
             if j["type"] == "cache-clear" else
             "exec " + " ".join(s.get("argv") or [])[:60])
@@ -4774,7 +4774,7 @@ cmd_run() {
     #
     # ...unless --node names ANOTHER machine. That used to be dropped here
     # without a word and the command ran on this one, which is a wrong answer
-    # that looks like an answer: asked to check a package on the Red Hat node,
+    # that looks like an answer: asked to check a system package on the Red Hat node,
     # it printed Ubuntu's os-release. Another node goes through the
     # controller as a job, which is what --node means everywhere else.
     if on_node && { [ -z "$node" ] || [ "$node" = "${BB_NODE:-}" ]; }; then
@@ -5446,7 +5446,7 @@ except xml.parsers.expat.ExpatError as e:
 
     # Only where both halves exist, which is this repo: `bb help` and the
     # README's command list are two copies of one thing, and the copy nobody
-    # runs is the one that goes stale — `bb packages migrate` outlived its code in
+    # runs is the one that goes stale: `bb toolchains migrate` outlived its code in
     # the README because nothing compared them.
     if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
         section "docs (bb help vs README)"
@@ -5671,7 +5671,7 @@ cmd_drift() {
 
 # Where Chromium actually is, in the order the answers can be trusted:
 # PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honors), then
-# the package store directly, then the historical /opt path. Resolved rather than
+# the toolchain store directly, then the historical /opt path. Resolved rather than
 # hardcoded because the browsers moved out of the image: the /opt entry is a
 # symlink the startup hook makes, and a hook that could not make it — /opt is
 # root-owned — used to leave every screenshot command dead with the bytes
@@ -5700,7 +5700,7 @@ find_chromium() {
         fi
         printf '%s' "$exe"; return 0
     done
-    die "no Playwright chromium found — install the browsers with: bb packages install playwright"
+    die "no Playwright chromium found; install the browsers with: bb toolchains install playwright"
 }
 
 # bb shot — headless screenshots, for showing the operator visual state from
@@ -6766,7 +6766,7 @@ case "${1:-help}" in
     drift)    shift; cmd_drift "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
     favicon)  shift; cmd_favicon "$@" ;;
-    packages) shift; cmd_packages "$@" ;;
+    toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac

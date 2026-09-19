@@ -127,7 +127,7 @@ by hand cost four commands and still could not see the failed builds.
     whose data arrives on its own schedule), and `open` for whatever its
     first draw has to fetch.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
-    `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
+    `TMUX_LITERALS`, `TOOLCHAINS`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
     shape — the terminal is one port over for anything else.
   - A setting that has to be in the environment lands in five places:

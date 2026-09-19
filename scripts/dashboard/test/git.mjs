@@ -679,7 +679,7 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
    `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
 
 // bb projects lists what the dashboard lists: a directory carrying .bbignore
-// (the fixture's package store) is not a project, and a worktree, whose .git
+// (the fixture's toolchain store) is not a project, and a worktree, whose .git
 // is a file naming its repository, is one and has a branch (B122).
 {
   git('worktree', 'add', '-q', `${DIR}/ws/beta-wt`, '-b', 'wtcheck');

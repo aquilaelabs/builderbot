@@ -1248,12 +1248,12 @@ const spread = await ultra.evaluate(() => {
 });
 ok(spread.pane > 1500 && spread.nb <= 1100,
    `the notebook keeps a reading width in a ${spread.pane}px pane (${spread.nb}px)`);
-await ultra.evaluate(() => openPackages());
-await ultra.waitForSelector('.doc .pkg', { timeout: 20000 });
+await ultra.evaluate(() => openToolchains());
+await ultra.waitForSelector('.doc .tc', { timeout: 20000 });
 ok(await ultra.evaluate(() => {
-     const p = document.querySelector('.doc.on .pkg');
+     const p = document.querySelector('.doc.on .tc');
      return p && p.getBoundingClientRect().width <= 1100; }),
-   '...and so does the packages tab, where the bin was furthest from its row');
+   '...and so does the Toolchains tab, where the bin was furthest from its row');
 await closePage(ultra);
 
 // ---- one Save, and what it does NOT do ----------------------------------

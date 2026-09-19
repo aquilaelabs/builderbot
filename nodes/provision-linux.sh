@@ -44,7 +44,7 @@ SSH_KEY=""
 CONTROLLER=""
 TOKEN=""
 STORE_DATA=/var/lib/builderbot/data
-STORE_PACKAGES=/var/lib/builderbot/packages
+STORE_TOOLCHAINS=/var/lib/builderbot/toolchains
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
 # What a dev instance KEEPS on this node: its databases, its uploads, the
@@ -139,7 +139,7 @@ it, which is a paste rather than a questionnaire.
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
   --data PATH          the four stores, all defaulting under
-  --packages PATH      /var/lib/builderbot/: a job's working tree and AVDs,
+  --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
   --artifacts PATH     caches, and this node's copy of what projects built
                        (per project underneath, so one VM can be several
@@ -197,7 +197,7 @@ while [ $# -gt 0 ]; do
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
-        --packages) STORE_PACKAGES="$2"; STORE_PACKAGES_SET=1; shift 2 ;;
+        --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; STORE_ARTIFACTS_SET=1; shift 2 ;;
         --appdata) STORE_APPDATA="$2"; STORE_APPDATA_SET=1; shift 2 ;;
@@ -268,7 +268,7 @@ guest_remove() {
 }
 
 guest_run() {
-    local foot unit agent node_json packages py
+    local foot unit agent node_json toolchains py
     foot="$(guest_foot)"; unit="$(guest_unit)"
     [ "$(id -u)" != 0 ] || {
         warn "do not run --guest as root: the whole point is a footprint your own account owns, in your own home. Run it as yourself, with no sudo."
@@ -301,8 +301,8 @@ guest_run() {
     s_cache="${STORE_CACHE_SET:+$STORE_CACHE}";        s_cache="${s_cache:-$foot/cache}"
     s_art="${STORE_ARTIFACTS_SET:+$STORE_ARTIFACTS}";  s_art="${s_art:-$foot/artifacts}"
     s_app="${STORE_APPDATA_SET:+$STORE_APPDATA}";      s_app="${s_app:-$foot/appdata}"
-    packages="${STORE_PACKAGES_SET:+$STORE_PACKAGES}"; packages="${packages:-$foot/packages}"
-    mkdir -p "$packages" "$s_data" "$s_cache" "$s_art" "$s_app"
+    toolchains="${STORE_TOOLCHAINS_SET:+$STORE_TOOLCHAINS}"; toolchains="${toolchains:-$foot/toolchains}"
+    mkdir -p "$toolchains" "$s_data" "$s_cache" "$s_art" "$s_app"
     agent="$foot/bin/builderbot-agent"
     node_json="$foot/node.json"
 
@@ -329,7 +329,7 @@ guest_run() {
     systemctl --user stop "$GUEST_UNIT_NAME" 2>/dev/null || true
     BUILDERBOT_NODE_JSON="$node_json" python3 "$agent" enroll \
         --controller "$CONTROLLER" --token "$TOKEN" --user "$(id -un)" \
-        --store "data=$s_data" --store "packages=$packages" \
+        --store "data=$s_data" --store "toolchains=$toolchains" \
         --store "cache=$s_cache" --store "artifacts=$s_art" \
         --store "appdata=$s_app" \
         || { warn "enrolment failed: the token is good once and for a day, so mint a fresh one if this is a second try"; exit 1; }
@@ -605,7 +605,7 @@ is_vm() {
 # What a package is called here, for the handful this script installs
 # itself: the family's name for the NFS client, GnuPG, python, and what a
 # session needs. A recipe's system packages are the recipe's business, per
-# family, in config/packages.json.
+# family, in config/toolchains.json.
 pkg_names() {
     case "$1:$FAMILY" in
         base:deb)     echo "ca-certificates curl gnupg nfs-common" ;;
@@ -730,9 +730,9 @@ if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/
 else chk warn "the overlay filesystem is not available — Docker will fall back to a slower storage driver"; fi
 if [ -e /dev/kvm ]; then chk ok "/dev/kvm: the emulator can be accelerated"
 else chk warn "no /dev/kvm: the Android emulator would run unaccelerated (a VM needs nested virtualization on its host)"; fi
-# 8. room: Docker images, the packages store and a build all land on / by default
+# 8. room: Docker images, the toolchain store and a build all land on / by default
 avail_mb="$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')"
-if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the packages store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
+if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the toolchain store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
 elif [ -n "$avail_mb" ]; then chk ok "$((avail_mb / 1024))G free on /"; fi
 # 9. the network: Docker's repository and the controller, if one was named.
 #    Warnings, not failures — an offline node is still a node, but every
@@ -777,10 +777,10 @@ fi
 say "packages"
 pkg_refresh
 # Only what the agent, Docker and the mounts need. The NFS client matters if
-# --nfs is used and costs nothing if not. What a PACKAGE needs from the
-# machine — Chromium's forty libraries, say — is that package's business:
-# its recipe in config/packages.json names them under `system`, per family,
-# and the agent installs them when the package is.
+# --nfs is used and costs nothing if not. What a TOOLCHAIN needs from the
+# machine (Chromium's forty libraries, say) is that toolchain's business:
+# its recipe in config/toolchains.json names them under `system`, per family,
+# and the agent installs them when the toolchain is.
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
 command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install — every download below will fail"
@@ -1091,8 +1091,8 @@ else
     fi
     # A login shell as this account gets what a dashboard session gets: the
     # role, the controller's address, and bb from the bundle the agent keeps
-    # current under the packages store. That is what makes proving the node
-    # by hand — ssh in, run bb-tty, run bb roadmap — the same path the
+    # current under the toolchain store. That is what makes proving the node
+    # by hand (ssh in, run bb-tty, run bb roadmap) the same path the
     # dashboard takes, rather than a second one.
     cat > /etc/profile.d/builderbot-session.sh <<EOF
 # Written by BuilderBot's provision-linux.sh. A session on this node, at a console.
@@ -1101,8 +1101,8 @@ case "\$(id -un)" in
         export BUILDERBOT_ROLE=node WORKSPACE=/workspace
         export BB_NODE="\$(hostname)"
         ${CONTROLLER:+export BB_CONTROLLER="${CONTROLLER%/}"}
-        [ -d "${STORE_PACKAGES}/.bb/current/scripts" ] \\
-            && PATH="${STORE_PACKAGES}/.bb/current/scripts:\$PATH"
+        [ -d "${STORE_TOOLCHAINS}/.bb/current/scripts" ] \\
+            && PATH="${STORE_TOOLCHAINS}/.bb/current/scripts:\$PATH"
         PATH="\$HOME/.local/bin:\$PATH"
         ;;
 esac
@@ -1146,7 +1146,7 @@ cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 # of docs/nodes.md — by the node agent, which applies the Nodes tab's desired
 # mounts and stores through these same verbs as audited `system` jobs, so the
 # GUI and this menu can never disagree about what the machine is configured
-# to be. `sdk` is the exception to all of that: it reads the packages store
+# to be. `sdk` is the exception to all of that: it reads the toolchain store
 # through the controller's own bb and needs no privilege. Still deliberately NOT reachable by a session: the agent is offered
 # system jobs only because it enrolled as a sandbox, and `list --json` is the
 # whole of what it reads back. The docker account cannot run this at all.
@@ -1167,7 +1167,7 @@ say()  { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
 die()  { warn "$*"; exit 1; }
 # Everything here writes to the machine — fstab, netplan, /etc — except `sdk`,
-# which only reads the packages store and needs no privilege to do it.
+# which only reads the toolchain store and needs no privilege to do it.
 case "${1-}" in
     sdk) ;;
     *) [ "$(id -u)" -eq 0 ] || die "run this as root: sudo bb-sandbox" ;;
@@ -1458,7 +1458,7 @@ cmd_remove() {
 # sense on this machine.
 #
 # Not a second copy of anything. The agent unpacks the controller's bb into
-# the packages store to run jobs with, and it has been sitting there
+# the toolchain store to run jobs with, and it has been sitting there
 # unreachable: a person at this console could not ask what toolchains the
 # store holds, though the tool that answers was already on the disk. This
 # hands it over, with the same environment a job gets.
@@ -1480,19 +1480,19 @@ cmd_sdk() {
     esac
     [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable) — there is no store to read"
     store="$(python3 -c 'import json,sys
-print(((json.load(open(sys.argv[1])).get("stores") or {}).get("packages")) or "")' "$NODE_JSON" 2>/dev/null)"
+print(((json.load(open(sys.argv[1])).get("stores") or {}).get("toolchains")) or "")' "$NODE_JSON" 2>/dev/null)"
     user="$(python3 -c 'import json,sys
 print(json.load(open(sys.argv[1])).get("user") or "")' "$NODE_JSON" 2>/dev/null)"
-    [ -n "$store" ] || die "this node has no packages store"
+    [ -n "$store" ] || die "this node has no toolchain store"
     # The newest bundle the agent has unpacked. It appears the first time a
-    # package job runs here, so before that there is honestly nothing to run.
+    # toolchain job runs here, so before that there is honestly nothing to run.
     newest="$(ls -1dt "$store"/.bb/*/scripts/bb 2>/dev/null | head -1 || true)"
-    [ -n "$newest" ] || die "no bb on this machine yet — the controller unpacks one into
-   ${store}/.bb the first time a package job runs on this node. Install
+    [ -n "$newest" ] || die "no bb on this machine yet: the controller unpacks one into
+   ${store}/.bb the first time a toolchain job runs on this node. Install
    something from the dashboard's Tools tab and it will be here."
     bb="$newest"
     local -a env=(env
-        "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_PACKAGES=1"
+        "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_TOOLCHAINS=1"
         "ANDROID_HOME=$store/android" "ANDROID_SDK_ROOT=$store/android"
         "JAVA_HOME=$store/jdk"
         "PATH=$store/jdk/bin:$store/android/cmdline-tools/latest/bin:$store/android/platform-tools:$store/android/emulator:$PATH")
@@ -1944,7 +1944,7 @@ if [ -n "$CONTROLLER" ]; then
     svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
-        --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
+        --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
@@ -2148,7 +2148,7 @@ to Claude once, from a shell here:
   su - ${SESSION_NAME}              then: claude login
 
 bb itself is not on this account's PATH: it is the controller's, fetched
-into the packages store by the agent (<store>/<scope>/.bb/current/scripts/bb)
+into the toolchain store by the agent (<store>/<scope>/.bb/current/scripts/bb)
 and put on PATH for ${USER_NAME} and ${SESSION_NAME} by
 /etc/profile.d/builderbot-session.sh. A shell as either account has it;
 this one does not, and needs none.

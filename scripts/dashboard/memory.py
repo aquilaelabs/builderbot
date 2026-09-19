@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 # The server's, injected rather than imported: importing the server from a
-# module the server imports is a circle. Same shape as packages.py.
+# module the server imports is a circle. Same shape as toolchains.py.
 run = None
 WORKSPACE = None
 CLAUDE_PROJECTS = None

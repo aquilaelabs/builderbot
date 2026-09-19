@@ -70,7 +70,7 @@ ok(!rows.some(r => r.key?.startsWith(ids[1] + '|')),
 
 // A document tab is not kept: it redraws from state instantly, and one #docN
 // per pane is what renders into it.
-await page.evaluate(() => openTab({kind: 'packages', arg: '__packages', label: 'packages'}));
+await page.evaluate(() => openTab({kind: 'toolchains', arg: '__toolchains', label: 'toolchains'}));
 await page.waitForSelector('#pane0 .doc.on');
 ok(await page.$$eval('#pane0 .stack > .doc', d => d.length === 1
      && d[0].id === 'doc0'),
@@ -126,7 +126,7 @@ if (page.errors.length) console.log(page.errors);
 // whatever argument it carries — enforced by the kind's own entry rather than
 // by every caller remembering to pass the same magic arg.
 const kindCount = (k) => page.evaluate((kk) => tabs.filter(t => t.kind === kk).length, k);
-for (const k of ['projects', 'docker', 'packages']){
+for (const k of ['projects', 'docker', 'toolchains']){
   await page.evaluate((kk) => { openTab({kind: kk, arg: 'one', label: kk});
                                 openTab({kind: kk, arg: 'two', label: kk}); }, k);
   ok(await kindCount(k) === 1, `only one ${k} tab, whatever it is opened with`);

@@ -187,8 +187,8 @@ function renderPhoneInto(i){
   d.setFoot(`A session reaches this phone only through its project's node, and only
     by asking: bb phone run --why "…" puts the reason and the command here, in
     front of whoever connected it.`);
-  if (!pkgDotsTimer && d.list.querySelector(".dots"))
-    pkgDotsTimer = setInterval(pkgTickDots, 400);
+  if (!tcDotsTimer && d.list.querySelector(".dots"))
+    tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);
 }
 

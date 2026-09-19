@@ -276,7 +276,7 @@ function wireIdleSection(el){
 // on a project's Briefing tab: one reaches projects the person setting it may
 // not work on, so it is an administrator's. A session may not add one at all
 // and is told to say what it would add instead, the way it is told about a
-// package it cannot install.
+// toolchain it cannot install.
 //
 // The shipped ones are read-only. An edit would be undone by the next image,
 // and a change nobody can see reverted is worse than no change, so the only

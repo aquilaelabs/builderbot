@@ -18,7 +18,7 @@
 # One run at a time: a second one is refused while the first is alive.
 #
 # Playwright comes from the image (/usr/lib/node_modules); the browsers live
-# on the package store and are found the way bb finds them. Missing either, the
+# on the toolchain store and are found the way bb finds them. Missing either, the
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -79,9 +79,9 @@ NODE_PATH="$(bash "$DASH/../bb" shot --print-node-path 2>/dev/null \
             || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
 export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
-    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH) — on a node they are the playwright recipe in the packages store, installed from the Tools tab"
+    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Tools tab"
 CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
-[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb packages install playwright"
+[ -x "${CHROME:-}" ] || die "no Playwright chromium: install it with: bb toolchains install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
 
 # The port is picked, not fixed. It was 8093 for everybody, which meant a run
@@ -219,7 +219,7 @@ unset BB_TOKEN
 # own server; the tests that mean a node say so in their own env.
 unset BUILDERBOT_ROLE BB_CONTROLLER BB_CONTROLLER_PIN BB_NODE BUILDERBOT_NODE \
       BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_TREE_OWNER BB_CI_LOG_DIR \
-      BB_NODE_PACKAGES BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
+      BB_NODE_TOOLCHAINS BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
 # git's global and system config are the suite's own, not the machine's. The
@@ -293,7 +293,7 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
 # its own that land in the projects share, and an operator can write one by
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
-# ...and one with no marker at all, the shape the package store actually has when
+# ...and one with no marker at all, the shape the toolchain store actually has when
 # somebody maps a share inside the projects folder and nothing has told the
 # container about it. It is not a project because the Projects card did not
 # accept it, which is the only test that matters now.
@@ -394,12 +394,12 @@ agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, and an `bb packages` that makes and removes
+# Stub: deterministic `bb doctor`, and an `bb toolchains` that makes and removes
 # directories instead of downloading gigabytes — enough for the Tools card to
-# watch a package appear and disappear.
+# watch a toolchain appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
-if [ "${1:-}" = packages ]; then
-    # Where this stub pretends a package lives. Shared by every verb, so
+if [ "${1:-}" = toolchains ]; then
+    # Where this stub pretends a toolchain lives. Shared by every verb, so
     # check and versions answer for what install and remove actually did —
     # a stub that claimed 1.0 for everything let a bug through where the page
     # showed an installed version on a row that had nothing installed.
@@ -434,7 +434,7 @@ if [ "${1:-}" = packages ]; then
                  # answer too — what they would install is the other half of
                  # what the button is for.
                  # A fifth column on the absent rows: what an install would
-                 # download, which is the only size a package this box has
+                 # download, which is the only size a toolchain this box has
                  # never had can honestly show.
                  if [ ! -d "$(_d "$3")" ];  then printf '%s\t-\t9.9\tabsent\t123456789\n' "$3"
                  elif [ "$3" = flutter ];   then printf '%s\t1.0\t2.0\tupdate\n' "$3"
@@ -443,11 +443,11 @@ if [ "${1:-}" = packages ]; then
         install|remove)
                  d="$(_d "$3")"
                  if [ "${2}" = install ]; then
-                     # One package takes its time and draws a bar, with the
+                     # One toolchain takes its time and draws a bar, with the
                      # carriage returns a real tool uses, so a test can watch
                      # the progress reach the row through the whole path:
                      # streamed output, parser, payload, poll, render. Every
-                     # other package installs instantly, as before.
+                     # other toolchain installs instantly, as before.
                      # One that fails, loudly and then quietly: a real
                      # install writes pages of progress and one useful line,
                      # and what reaches the operator has to be the line.
@@ -878,7 +878,7 @@ PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
 start_server() {
 ( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
-    PKG_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
+    TC_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \

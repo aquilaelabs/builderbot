@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Playwright's browsers live on the package store, not in the image.
+# Playwright's browsers live on the toolchain store, not in the image.
 #
 # They are 1.3GB of pure download and /opt is discarded on every image
 # update, so baking them in meant re-fetching them weekly forever. The image
@@ -61,7 +61,7 @@ relink_chromium() {
 # lasted until the next restart and no further — which is not an uninstall.
 if [ -e "$(sdk_removed_marker playwright)" ]; then
     log "playwright browsers: removed by the operator — leaving them out"
-    log "  put them back with: bb packages install playwright"
+    log "  put them back with: bb toolchains install playwright"
 elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
     log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
     if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
@@ -69,7 +69,7 @@ elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | gre
         log "playwright browsers ready"
     else
         warn "could not install the playwright browsers — bb shot and the dashboard"
-        warn "tests will not work until: bb packages install playwright"
+        warn "tests will not work until: bb toolchains install playwright"
     fi
 fi
 

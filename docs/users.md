@@ -11,7 +11,7 @@ dashboard has no idea who you are once you are in: every button is available to
 whoever opened the page. Three things follow.
 
 - There is no way to let somebody work on one project without handing them
-  every project, the Nodes tab, the package installer and the phone.
+  every project, the Nodes tab, the toolchain installer and the phone.
 - A Claude session is given that same credential, so "the operator only" is a
   convention rather than a mechanism (bug #16).
 - It is the last big thing hardwired into the template. Everything else the
@@ -87,7 +87,7 @@ and should keep working unchanged.
 ## What a Claude session gets, and bug #16
 
 Today a session inherits the operator's credential, which is why "only the
-operator can install a package" is a rule the code asks nicely about.
+operator can install a toolchain" is a rule the code asks nicely about.
 
 Under this model a session is given **a scoped token**: one project, `user`
 rights, revocable, and never a person's password. That is the actual fix for

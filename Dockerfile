@@ -174,7 +174,7 @@ RUN set -eux; \
 
 # ---------------------------------------------------------------------------
 # Playwright: the module and the system libraries here, the browsers on the
-# package store.
+# toolchain store.
 #
 # The three browsers are 1.3GB of pure download — the largest thing left that
 # /opt would throw away on every image update — so `install-deps` (apt
@@ -239,7 +239,7 @@ RUN set -eux; \
 #
 # web-ext (MPL) is here: the controller carries what it needs in the image,
 # and there is no package list at boot (R29, then the operator's call:
-# everything else comes from the package manager on a node).
+# everything else is a toolchain installed on a node).
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     npm install -g --foreground-scripts web-ext; \
@@ -266,10 +266,11 @@ RUN set -eux; \
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
 COPY config/templates/ /opt/builderbot/templates/
-# The package catalog the Tools tab renders and `bb packages` walks. Under config/
-# so that the path relative to both bb and server.py is the same here as it is
-# in a checkout, which is what lets `bb dashboard dev` and the tests read it.
-COPY config/packages.json /opt/builderbot/config/packages.json
+# The toolchain catalog the Toolchains tab renders and `bb toolchains` walks.
+# Under config/ so that the path relative to both bb and server.py is the same
+# here as it is in a checkout, which is what lets `bb dashboard dev` and the
+# tests read it.
+COPY config/toolchains.json /opt/builderbot/config/toolchains.json
 # What a sandbox VM is made from, one per hypervisor, which the Nodes tab
 # renders with an identity per VM (vmtemplate.py). Two levels above
 # server.py, where a checkout keeps them too.
@@ -316,7 +317,7 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# Where the package store is. Runtime-only, so it lives down here: an ENV in the
+# Where the toolchain store is. Runtime-only, so it lives down here: an ENV in the
 # top block invalidates every layer below it, and the host then re-pulls the lot.
 ENV SDK_ROOT=/sdk
 

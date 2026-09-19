@@ -495,7 +495,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "packages", "notebook", "projects", "docker", "findings",
+TAB_KINDS = {"term", "toolchains", "notebook", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users", "phone", "profile"}
 
 
@@ -757,7 +757,7 @@ def locked_out(name):
     return None
 
 
-# `bb packages install|update|remove` refuses when CLAUDECODE is set, and the
+# `bb toolchains install|update|remove` refuses when CLAUDECODE is set, and the
 # message it prints tells the session to ask the operator to use this page.
 # So this page must never carry that variable — and it can: `bb dashboard dev`
 # is normally run *by* a session, and the server it starts inherits whatever
@@ -1192,8 +1192,8 @@ def project_list(who):
         # .bbignore is the general form of the same idea, and the one thing
         # here an operator can drive: a directory holding that file is not a
         # project and is not listed. The container drops it into any path of
-        # its own that lands inside the projects share — the package store, when
-        # someone maps it inside the projects folder rather than beside it —
+        # its own that lands inside the projects share (the toolchain store, when
+        # someone maps it inside the projects folder rather than beside it),
         # and anyone can create one by hand for a directory they would rather
         # not see. It hides; locking a project is the thing that *blocks*, and
         # that is a different control with a different guarantee.
@@ -2123,13 +2123,13 @@ def _read_auth(home=""):
     return state
 
 
-# ---- additional packages ---------------------------------------------------
-# All of it — the catalog, the probes, the sizes, the versions and the worker
-# that installs — lives in packages.py, which is handed the two helpers it
+# ---- toolchains ------------------------------------------------------------
+# All of it (the catalog, the probes, the sizes, the versions and the worker
+# that installs) lives in toolchains.py, which is handed the two helpers it
 # needs and otherwise knows nothing about this file.
-import packages                                                  # noqa: E402
+import toolchains                                                  # noqa: E402
 
-packages.configure(run=run, write_json=write_json, state=STATE)
+toolchains.configure(run=run, write_json=write_json, state=STATE)
 
 # ---- reaching a running Claude session -------------------------------------
 # One door, one rule about Enter, used by both the to-do list and the memory
@@ -2317,7 +2317,7 @@ def artifacts_of(name):
 
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
-# card. Same arrangement as packages above: its own file, handed what it needs.
+# card. Same arrangement as toolchains above: its own file, handed what it needs.
 import memory                                                    # noqa: E402
 
 memory.configure(run=run, workspace=WORKSPACE,
@@ -2379,10 +2379,10 @@ import turns                                                     # noqa: E402
 # and audit already no-op when it never came up.
 try:
     nodes.configure(state=STATE)
-    # The registry answers hello; the catalog is packages.py's. Joined here
+    # The registry answers hello; the catalog is toolchains.py's. Joined here
     # rather than by one importing the other, which is the same seam every
     # other module pair uses.
-    nodes.layout_of = packages.layout_for_node
+    nodes.layout_of = toolchains.layout_for_node
     # ...and the digest of the bb bundle, so a node can tell from hello alone
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
@@ -2418,7 +2418,7 @@ import jobs                                                      # noqa: E402
 
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
-    packages.nodes = nodes
+    toolchains.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
@@ -2684,7 +2684,7 @@ def revisions(who=None, projects=None):
         # In memory, free to read.
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
-        "packages": packages.job_rev(),
+        "toolchains": toolchains.job_rev(),
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
@@ -2882,7 +2882,7 @@ def snapshot(who):
         # this is what stops a dead control being drawn, not what stops the
         # action (roadmap #27).
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "packages-write", "git-auth", "admin")},
+                ("terminal", "docker-write", "toolchains-write", "git-auth", "admin")},
         # Projects whose Claude session belongs to somebody else, by NAME —
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -2942,7 +2942,7 @@ GET_ROUTES = (
     ("prefix", "/api/source?", "_get_source"),
     ("prefix", "/logs/download", "_get_logs_download"),
     ("prefix", "/api/phone", "_get_phone"),
-    ("prefix", "/api/packages", "_get_packages"),
+    ("prefix", "/api/toolchains", "_get_toolchains"),
     ("prefix", "/api/users", "_get_users"),
     ("exact", "/api/v1/claude-login", "_claude_login"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
@@ -3006,7 +3006,7 @@ POST_ROUTES = (
     ("prefix", "/api/project-job", "_project_job"),
     ("prefix", "/api/roadmap", "_roadmap"),
     ("prefix", "/api/users", "_users"),
-    ("prefix", "/api/packages", "_packages"),
+    ("prefix", "/api/toolchains", "_toolchains"),
     ("prefix", "/api/logs", "_logs"),
     ("prefix", "/api/idle", "_idle"),
     ("prefix", "/api/settings", "_settings_post"),
@@ -3769,7 +3769,7 @@ class Handler(BaseHTTPRequestHandler):
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
-                    "/tab-packages.js", "/tab-docker.js",
+                    "/tab-toolchains.js", "/tab-docker.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
                     "/nb-memory.js", "/nb-history.js"):
@@ -3824,7 +3824,7 @@ class Handler(BaseHTTPRequestHandler):
         it was minted for: a finding in anybody else's code attributes to
         IGNORED and never reaches the payload. The count of what was
         attributed away does not go either. For the operator it means "the
-        package store and the vendored trees"; for a session it would be every
+        toolchain store and the vendored trees"; for a session it would be every
         other project on the share, and a number that moves when somebody
         else's code changes is a fact about their code.
         """
@@ -4039,18 +4039,18 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
                                               probe=bool(q.get("probe")) and not (self._who() or {}).get("session")))
 
-    def _get_packages(self):
-        """GET /api/packages."""
-        # ?node= asks about another node's packages store: what its
-        # census says it has, and the package job in flight there. The
+    def _get_toolchains(self):
+        """GET /api/toolchains."""
+        # ?node= asks about another node's toolchain store: what its
+        # census says it has, and the toolchain job in flight there. The
         # catalog is the same; the state is the node's (docs/nodes.md §6).
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         nid, why = self._node_asked(q.get("node", [""])[0])
         if why:
-            return self._json({"error": why, "packages": []})
+            return self._json({"error": why, "toolchains": []})
         if nid and nid != "local" and not NODES_OK:
-            return self._json(packages.payload_for_node(nid))
-        return self._json(packages.payload())
+            return self._json(toolchains.payload_for_node(nid))
+        return self._json(toolchains.payload())
 
     def _get_users(self):
         """GET /api/users."""
@@ -5026,7 +5026,7 @@ class Handler(BaseHTTPRequestHandler):
         if not argv:
             return {"error": "argv is empty"}, 400
         # `emu` (docs/nodes.md phase 9): a bb verb the node runs from the
-        # bundle with its own packages store as the SDK — no snapshot, since
+        # bundle with its own toolchain store as the SDK: no snapshot, since
         # the emulator is not the tree's; inputs come from dist/ by name and
         # what it writes comes back the same way.
         emu = field(req, "action") == "emu"
@@ -5138,7 +5138,7 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         if verb == "download" and q.get("what", [""])[0] == "bundle":
             # bb, its library and the catalog, for a node installing a
-            # toolchain into its own packages store (docs/nodes.md §6).
+            # toolchain into its own store (docs/nodes.md §6).
             if auth.get("error") or auth.get("kind") != "node":
                 return self._json({"error": auth.get("error") or "a node's token"}, 401)
             b = workspace.bundle()
@@ -5285,10 +5285,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.hello(nid, req.get("census"), addr,
                             field(req, "version"), field(req, "digest"),
                             req.get("running"))
-            # A managed node whose store holds a package it lacks the
-            # system libraries for installs them itself (packages.py).
+            # A managed node whose store holds a toolchain it lacks the
+            # system libraries for installs them itself (toolchains.py).
             with contextlib.suppress(Exception):
-                packages.auto_sysdeps(nid)
+                toolchains.auto_sysdeps(nid)
         elif verb == "work":
             # The heartbeat and the long-poll in one: the sample is recorded
             # first, so a node that is only ever waiting still reads as
@@ -6724,10 +6724,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         return self._result(r)
 
-    def _packages(self, req):
-        """Queue installs or removals of the packages the Tools card offers.
+    def _toolchains(self, req):
+        """Queue installs or removals of the toolchains the Tools card offers.
 
-        Names are checked against PACKAGES rather than passed through: what
+        Names are checked against TOOLCHAINS rather than passed through: what
         reaches a command line is a string this server chose, which is the
         rule every other executing endpoint here follows.
         """
@@ -6737,7 +6737,7 @@ class Handler(BaseHTTPRequestHandler):
         nid = field(req, "node")
         if nid and nid != "local":
             # On another node the install is a job against that node's
-            # packages store (docs/nodes.md §6): same catalog, same names,
+            # toolchain store (docs/nodes.md §6): same catalog, same names,
             # audited, one at a time there — and gated on the store's
             # headroom before a byte is downloaded.
             if NODES_OK:
@@ -6747,13 +6747,13 @@ class Handler(BaseHTTPRequestHandler):
             node = nodes.node(nid)
             if not node:
                 return self._json({"error": "no such node"}, 400)
-            known = {p["name"] for p in packages.PACKAGES}
+            known = {p["name"] for p in toolchains.TOOLCHAINS}
             if action == "sysdeps":
                 # The system packages the held recipes need, installed
                 # without the recipes (roadmap R51): named ones, or every
                 # held one when none are named.
                 names = [n for n in (req.get("names") or []) if n in known][:8]
-                r = packages.node_job(self._principal(), nid, action, names)
+                r = toolchains.node_job(self._principal(), nid, action, names)
                 return self._result(r)
             # ...or an android system image. Same rule as the local endpoint:
             # what reaches a command line is a string this server handed out —
@@ -6761,38 +6761,38 @@ class Handler(BaseHTTPRequestHandler):
             # removal, one THIS node reported having (roadmap #20).
             names = [n for n in (req.get("names") or [])
                      if n in known
-                     or (action == "install" and packages.is_choosable_image(n))
-                     or (action == "remove" and packages.is_node_image(node, n))][:8]
+                     or (action == "install" and toolchains.is_choosable_image(n))
+                     or (action == "remove" and toolchains.is_node_image(node, n))][:8]
             if not names:
                 return self._json({"error": "nothing selected"}, 400)
-            r = packages.node_job(self._principal(), nid, action, names)
+            r = toolchains.node_job(self._principal(), nid, action, names)
             return self._result(r)
         if action == "abort":
-            return self._json({"ok": packages.abort_job()})
+            return self._json({"ok": toolchains.abort_job()})
         if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
-        known = {p["name"] for p in packages.PACKAGES}
+        known = {p["name"] for p in toolchains.TOOLCHAINS}
         # ...or an android image this server listed a moment ago. Those are not
         # catalog rows — which exist depends on what has been installed — so
         # they are checked against the list rather than against a table.
         names = [n for n in (req.get("names") or [])
                  if n in known
-                 or (action == "remove" and packages.is_installed_image(n))
-                 or (action == "install" and packages.is_choosable_image(n))]
+                 or (action == "remove" and toolchains.is_installed_image(n))
+                 or (action == "install" and toolchains.is_choosable_image(n))]
         # Checking is about everything, not a selection: the question it
         # answers is "is any of this out of date, and what would the rest of
         # it install". The uninstalled rows are half the reason to press it —
         # a version you can read before spending the gigabytes.
         if action == "check" and not names:
-            names = [p["name"] for p in packages.PACKAGES]
+            names = [p["name"] for p in toolchains.TOOLCHAINS]
         if not names:
             return self._json({"error": "nothing selected"}, 400)
-        if not packages.start_job(action, names):
+        if not toolchains.start_job(action, names):
             # Which one, because the automatic version check holds the queue
             # too and being told "an install is already running" when nobody
             # started an install is the kind of answer that wastes an evening.
             return self._json({"error": "a version check is running — try again in a moment"
-                               if packages.job_is_automatic()
+                               if toolchains.job_is_automatic()
                                else "an install is already running"}, 409)
         return self._json({"ok": True, "queued": names})
 
@@ -7455,8 +7455,8 @@ def main():
     doctor.start()
     idle.start()
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
-    if packages.AUTOCHECK:
-        threading.Thread(target=packages.versions_loop, daemon=True).start()
+    if toolchains.AUTOCHECK:
+        threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 

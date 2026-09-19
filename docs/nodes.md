@@ -67,7 +67,7 @@ the parts that decide the phasing.
   one-shot `docker run` shapes, and a guard rebuilds each argv and compares it
   whole.
 - Work is not scheduled. There is one job at a time in `devapp.py` (`_job`, a
-  module global) and another in `packages.py`. Nothing queues, nothing is
+  module global) and another in `toolchains.py`. Nothing queues, nothing is
   placed, nothing retries.
 - `/workspace` is a mounted share holding every project. Sessions, builds, the
   Actions runner and the emulator all run in the controller container against
@@ -114,9 +114,9 @@ somewhere-elses.
     "docker": "27.3.1", "gpu": "nvidia GeForce RTX 3070 Ti",
     "toolchains": { "java": "21", "android-sdk": "35.0.2", "flutter": null },
     "stores": {                // each ROLE's location and headroom, see §6
-      "packages": { "path": "/var/lib/builderbot/toolchains", "free_mb": 118000 },
-      "data":     { "path": "/appdata",                       "free_mb": 800000 },
-      "cache":    { "path": "/var/lib/builderbot/cache",      "free_mb": 118000 }
+      "toolchains": { "path": "/var/lib/builderbot/toolchains", "free_mb": 118000 },
+      "data":       { "path": "/appdata",                       "free_mb": 800000 },
+      "cache":      { "path": "/var/lib/builderbot/cache",      "free_mb": 118000 }
     }
   },
   "routing": { "public_ip": false, "tailscale": "", "wildcard": "" }
@@ -146,7 +146,7 @@ setting.** A node is not "for" docker or for building; a project names ONE
 node and that node does everything the project needs, so nobody is asked
 which. Every node enrols with the full set, and what a project can actually
 DO on its node is what is INSTALLED there: the census's `toolchains`, which
-the node's row now shows in place of the toggles, and which the Tools tab
+the node's row now shows in place of the toggles, and which the Toolchains tab
 adds to. Three projects on three VMs keeps them apart; three projects on one
 VM shares it; the choice is the project's node, and nothing else.
 
@@ -337,11 +337,11 @@ moves the row.
 is always newer than or equal to its nodes; it is where the agent file comes
 from, so a digest mismatch means the node may not understand a job this
 version would send it. Job types and spec fields have been added on nearly
-every phase (`system`, `package`, `cache-clear`, compose plans, `bb` verbs,
+every phase (`system`, `toolchain`, `cache-clear`, compose plans, `bb` verbs,
 store listings), and an older agent meets an unknown one with a shrug rather
 than an error, which is the worst of the three possible answers. So
 `job_add` refuses and `fits` declines every job whose runner is the node,
-`self-update` excepted; the Nodes tab and the Tools tab ghost the buttons and
+`self-update` excepted; the Nodes tab and the Toolchains tab ghost the buttons and
 say why before the press. It is one rule in `nodes.agent_stale` and the UI
 only mirrors it.
 
@@ -533,10 +533,10 @@ every project on the box: the thing the sandbox VM exists to prevent. At
 enterprise scale every one of these gets worse, and the fourth becomes a
 finding in somebody's report.
 
-### The packages store, scoped by platform
+### The toolchain store, scoped by platform
 
-A node's packages store is the operator's setting: a share, or a directory
-of the node's own, and the node's packages live one level down, under
+A node's toolchain store is the operator's setting: a share, or a directory
+of the node's own, and the node's toolchains live one level down, under
 `<store>/<os>-<arch>` (`pkg_scope()` in the agent, `sdk_scope` in
 `scripts/lib/common.sh`, both spelled as uname does: `linux-x86_64`,
 `darwin-arm64`). Everything else: the layout, the probes, the census, the
@@ -592,28 +592,28 @@ cache size per node with a button to drop it, because the first thing that
 goes wrong with caches is a full disk, and at fleet scale the second thing is
 "which of forty nodes has the poisoned one".
 
-### Toolchains and the package store
+### Toolchains and the toolchain store
 
 Caches answered "how does a node avoid re-downloading what a build pulls";
 this answers the question above it, which the plan had not: **how do the
 toolchains themselves (a JDK, the Android SDK, Flutter) get onto a node at
-all, and where do they live?** Today the answer is the controller's package store
-and `bb packages`, operator-gated; that has to generalize without forking.
+all, and where do they live?** Today the answer is the controller's toolchain
+store and `bb toolchains`, operator-gated; that has to generalize without forking.
 
-- **One catalog, per-node state.** `config/packages.json` stays the single
+- **One catalog, per-node state.** `config/toolchains.json` stays the single
   description of what is installable and how. What becomes per-node is the
   *state*: the census reports which toolchains a node has and at what version
-  (`reported.toolchains`), probed by the agent the same way `bb packages` probes
+  (`reported.toolchains`), probed by the agent the same way `bb toolchains` probes
   locally. The controller never guesses from what it asked for; it reads what
   the node says it has.
-- **Installing is a job.** A package install on a node is an ordinary job
+- **Installing is a job.** A toolchain install on a node is an ordinary job
   (`type: exec`, spec from the catalog) placed on that node, with the same
   logs, audit and one-at-a-time-per-node rule as everything else, which also
   keeps the existing gate: sessions cannot trigger it, operators can, and now
-  the audit row says who did. The Tools tab's installer gains the same node
+  the audit row says who did. The Toolchains tab's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is not offered at all (roadmap
-  #26): it takes no packages, and its own record is registry plumbing.
+  #26): it takes no toolchains, and its own record is registry plumbing.
 *Amended 18 September:* there are **five** stores, with `appdata` joining
 them (roadmap R17 step 2): what a dev instance KEEPS on this node, its
 databases and uploads and the caches its containers write, under
@@ -625,7 +625,7 @@ reports none, and the controller answers `/devdata` for it until that node
 is updated.
 
 *Amended 2 September:* there are **four** stores, not three, with `artifacts`
-joins data, packages and cache: this node's copy of what a project built,
+joins data, toolchains and cache: this node's copy of what a project built,
 per project underneath, so a VM that is several projects' node keeps two
 `app-release.apk` apart. It exists for the node that is not on the LAN: an
 emulator or a container on a cloud node should start from a copy beside it
@@ -650,15 +650,15 @@ already has. A node therefore needs no network of its own to be offered one,
 and the size on the row is the download size from that index rather than a
 `du`: measuring tens of gigabytes over an NFS-mounted store every ten
 minutes would be minutes of stat traffic for a number already known. Adding
-one is the ordinary package job with `android-tools` (and its JDK) put in
+one is the ordinary toolchain job with `android-tools` (and its JDK) put in
 front of it, since the install is sdkmanager's.
 
 - **The store is a role with a location, not a mount.** Each node has a
-  `packages` store: default an internal path
+  `toolchains` store: default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should
   not need NFS to hold a JDK. A share is allowed as the location where that
-  is what the operator wants (the controller's own package store is exactly this
-  case, so the local node needs nothing migrated). **Sharing one store
+  is what the operator wants (the controller's own toolchain store is exactly
+  this case, so the local node needs nothing migrated). **Sharing one store
   between several nodes is the trap to name**: two agents installing into one
   NFS directory at once, or one upgrading under another mid-build, is version
   skew nobody can debug: the default is one store per node, and a shared
@@ -666,19 +666,19 @@ front of it, since the install is sdkmanager's.
   one-install-at-a-time rule enforced across them or not at all.
 
   *Where it landed (2 Sep):* enforced. Reading is automatic and always was:
-  a node's `toolchains` are a live probe of its packages store at every
+  a node's `toolchains` are a live probe of its toolchain store at every
   census, so a node whose neighbour installed something on the shared export
   reports it at its next `hello` (ten minutes, or at once after any job that
-  ends in one). Writing is what needed the rule: `packages.store_sharers`
+  ends in one). Writing is what needed the rule: `toolchains.store_sharers`
   identifies the nodes that share a store, by the census's mount SOURCE
   under the store path, never by the path string, since
-  `/var/lib/builderbot/packages` is every node's default and a different disk
-  on each, and a package job is refused while one is running on any of them,
-  naming the node that holds it. The Tools tab says a store is shared, and
+  `/var/lib/builderbot/toolchains` is every node's default and a different disk
+  on each, and a toolchain job is refused while one is running on any of them,
+  naming the node that holds it. The Toolchains tab says a store is shared, and
   with whom, before anybody presses Install.
 - **Disk is checked before, not discovered after.** The catalog already knows
-  each package's size; the census reports each store's headroom. A
-  package-install job is refused at placement when the store cannot hold it,
+  each toolchain's size; the census reports each store's headroom. A
+  toolchain-install job is refused at placement when the store cannot hold it,
   named, with numbers, rather than failing at 91% of a 12GB download. The
   same check gates a job's workspace materialization against the node's cache
   store. This is most of what "any size of VM" means in practice: nothing in
@@ -705,11 +705,11 @@ under the cache store, uploads what the outputs globs match through the
 command, sha256), and deletes the workspace; a failed job keeps it and
 replaces the previous kept failure of that project. The census reports the
 cache store's size and *Clear cache* on the row is a `cache-clear` job. A
-toolchain install on a node is a `package` job: the agent fetches the
-bundle (bb, its library, the catalog) by digest into the packages store
-and runs `bb packages install` from it with `SDK_ROOT` at the store, gated on the
-store's headroom when this controller has measured the package before; the
-Tools tab's node picker shows what the node's census says it has. Not
+toolchain install on a node is a `toolchain` job: the agent fetches the
+bundle (bb, its library, the catalog) by digest into the toolchain store
+and runs `bb toolchains install` from it with `SDK_ROOT` at the store, gated on the
+store's headroom when this controller has measured the toolchain before; the
+Toolchains tab's node picker shows what the node's census says it has. Not
 landed: the node browser is the kept-workspace path in the job's log and
 `bb run`'s last line, not a file view; and an APK has not yet compiled on a
 real node: the mechanism is complete, the proof needs a node with a JDK.
@@ -948,7 +948,7 @@ each taking either an internal path or a mount the script sets up:
 
 ```
 --data      PATH | nfs:HOST:EXPORT[:opts]     where containers keep state
---packages  PATH | nfs:HOST:EXPORT[:opts]     the toolchain store (§6)
+--toolchains PATH | nfs:HOST:EXPORT[:opts]     the toolchain store (§6)
 --cache     PATH                              build caches; internal by default
 ```
 
@@ -972,7 +972,7 @@ plane like any other mount; that is the session's tree, not a job's.
 sizes: every role defaults to the node's own filesystem, a role can be pointed
 anywhere, and the script's only size opinion is a *warning* when a requested
 role's filesystem is visibly too small for what was asked (a `package-build`
-node whose packages store has 8GB free will not fit an Android SDK, and
+node whose toolchain store has 8GB free will not fit an Android SDK, and
 hearing that at provision time beats hearing it from a dying download). The
 running system's size decisions all live controller-side against the census
 (§6), so a small VM is a valid node that simply qualifies for less, not a
@@ -1027,7 +1027,7 @@ split capabilities use:
   path parity with the controller, so anything that matters is typed.
 - The controller stores a node's **desired config**: mount entries (NFS or
   virtiofs, with options and read-only flags), the role assignments from §6
-  (which path is `data`, `packages`, `cache`), and network settings (static
+  (which path is `data`, `toolchains`, `cache`), and network settings (static
   address, gateway, DNS, static routes).
 - A change is a **`system` job**: audited like any mutation, run by the
   agent as the one root-privileged thing it does, applied idempotently
@@ -1124,7 +1124,7 @@ census reports both with the init system (`distro`), so the row says what
 a change would go through. The store is shared and those libraries are
 not, so the census also reports `sysdeps`: for every recipe the store
 holds, the system packages this machine still lacks for its family. The
-Tools tab shows them with one press, a package job of action `sysdeps`,
+Toolchains tab shows them with one press, a toolchain job of action `sysdeps`,
 which installs the libraries and leaves the recipes alone (roadmap R51);
 a node the agent does not administer refuses it and names them for the
 owner, as an install there does.
@@ -1369,7 +1369,7 @@ it; `/api/v1/healthz` answers without a credential, `/metrics` with one.
 Storage roles, mounts and network editable from the Nodes tab (§12), applied
 by the agent as `system` jobs (which is why this sits after phase 4) with
 the commit/confirm rollback for network changes. Deliberately **before** the
-package store and caches: they consume the roles this phase makes editable,
+toolchain store and caches: they consume the roles this phase makes editable,
 and building them against provision-time-only roles would bake the ssh-to-fix
 workflow in for another year.
 
@@ -1377,16 +1377,16 @@ workflow in for another year.
 `system` job type and three census fields (`sandbox`, `mounts`, `network`);
 the protocol's verbs are unchanged.
 
-**Phase 6: workspace, caches, artifacts, and the package store.**
+**Phase 6: workspace, caches, artifacts, and the toolchain store.**
 Dirty-tree snapshots, per-node caches with size/clear, artifact upload +
-provenance chain, the read-only workspace browser. The Tools installer gains
-its node picker; toolchain installs become jobs against each node's packages
-store, gated on reported headroom. `package-build` becomes real: an APK
+provenance chain, the read-only workspace browser. The toolchain installer
+gains its node picker; toolchain installs become jobs against each node's
+toolchain store, gated on reported headroom. `package-build` becomes real: an APK
 compiles elsewhere and lands in the Artifacts tab.
 
 *Where phase 6 landed it:* §6's closing paragraph. Agent 4 adds the
-`package` and `cache-clear` job types, workspaces for jobs with a source,
-`used_mb` on the stores and toolchains found in the packages store.
+`toolchain` and `cache-clear` job types, workspaces for jobs with a source,
+`used_mb` on the stores and toolchains found in the toolchain store.
 
 **Phase 7: services.**
 The Actions runner as a per-node managed service with per-node labels,
@@ -1548,7 +1548,7 @@ what it costs.
    behind one platform seam so a darwin or windows agent is another
    implementation of that seam, not a fork; "jobs never run as root"
    becoming "the service runs as the enrolled account, never an
-   administrator" where there is no setuid; a per-OS key in the package
+   administrator" where there is no setuid; a per-OS key in the toolchain
    catalog; simulators and Windows apps as device-host capabilities of their
    own OS. Enrollment being the sandbox recognition already means a Mac
    needs no daemon stamp.
@@ -1606,7 +1606,7 @@ Actions runner and emulation on nodes. Only then does the image drop the
 JDK, the Android SDK and emulator, .NET, Flutter and Swift, and only then
 does the local node lose `package-build`. The other order strands every
 project between a container that cannot build and a node that cannot yet.
-`bb packages` shrinks to what a session and the dashboard actually use here:
+`bb toolchains` shrinks to what a session and the dashboard actually use here:
 node, Python, and the Playwright browsers for `bb shot` against a URL.
 
 **Then the session's tools close.** The settings file `claude_scope()`
@@ -1649,10 +1649,10 @@ Why it beats §18, in one line: §18 spends a lot of machinery teaching a
 session on the wrong machine to act on the right one: a job per build, a job
 per emulator verb, snapshots in both directions, a lockdown to stop it doing
 otherwise. Put the session on the node and most of that is simply not needed.
-`bb packages` on the node already answers for the node. `bb build` is a build.
+`bb toolchains` on the node already answers for the node. `bb build` is a build.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
-this box's package store and bb-sandbox's packages store are **one store under two
+this box's toolchain store and bb-sandbox's are **one store under two
 names**: `/sdk` here through Unraid's FUSE layer, `/mnt/SDK` there over NFS,
 store id identical, so "the container has Flutter" and "the node has Flutter"
 were one fact, and nothing could be taken off the container without taking it
@@ -1835,7 +1835,7 @@ Android SDK, no emulator runtime and no X server, and the startup hook that
 built AVDs from `ANDROID_SYSTEM_IMAGES` is gone: an API level is what a
 store holds an image for, and `bb emu create` fetches one. A node is a
 MACHINE: the toolchains, the card and `/dev/kvm` are its own, from
-`nodes/provision-linux.sh` and the packages store. `bb emu` on a
+`nodes/provision-linux.sh` and the toolchain store. `bb emu` on a
 controller with no node for the project refuses and says where it runs.
 A node's sessions outlive a controller restart on purpose (the tmux is the
 node's) and, since B107, an AGENT restart too: the unit is installed with
@@ -1875,7 +1875,7 @@ Nodes exist for resource management: a sandbox on this server or another,
 a cloud box, a Mac, a Windows machine, and the controller exists so all of
 that is configured, enrolled and updated from one place. So the toolchain,
 the lint tools, the browser module, the session half: fine on a node, *as
-long as they arrive from the controller*: the Tools tab, the catalog, the
+long as they arrive from the controller*: the Toolchains tab, the catalog, the
 bundle, the agent's self-update, and never by somebody logging in and
 setting them up. A new node is a provisioner run and a few clicks, not a
 checklist.

@@ -116,7 +116,7 @@ await beat([{ ...mine, email: '' }]);
 
 // ---- what the language-server plugins run -----------------------------------
 {
-  const cat = JSON.parse(readFileSync(join(HERE, '..', '..', 'config', 'packages.json'), 'utf8')).packages;
+  const cat = JSON.parse(readFileSync(join(HERE, '..', '..', 'config', 'toolchains.json'), 'utf8')).toolchains;
   const ls = cat.find(p => p.name === 'language-servers'), kt = cat.find(p => p.name === 'kotlin-lsp');
   const run = ls?.source?.run?.join(' ') || '';
   ok(ls && ls.layout.bin.includes('node_modules/.bin') && ls.requires.includes('node')
@@ -131,8 +131,8 @@ await beat([{ ...mine, email: '' }]);
   writeFileSync(answer, '{\n  "url": "x",\n  "tag_name": "kotlin-lsp/v263.4702.0",\n  "name": "v263.4702.0"\n}\n');
   const v = execFileSync('sed', ['-n', sed, answer], { encoding: 'utf8' }).trim();
   ok(v === '263.4702.0', `...whose version is read out of GitHub's latest-release answer (${v})`);
-  const plan = execFileSync('bash', [BB, 'packages', 'plan', 'language-servers'], { encoding: 'utf8' });
-  ok(/kind\s+command/.test(plan) && /npm install --prefix/.test(plan), 'bb packages plan shows what an install would run');
+  const plan = execFileSync('bash', [BB, 'toolchains', 'plan', 'language-servers'], { encoding: 'utf8' });
+  ok(/kind\s+command/.test(plan) && /npm install --prefix/.test(plan), 'bb toolchains plan shows what an install would run');
 }
 
 await done();

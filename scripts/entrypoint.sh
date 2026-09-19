@@ -382,7 +382,7 @@ seed_home() {
 # symlinked back into place, so sdkmanager, Gradle and Android Studio all
 # install to the store without knowing it.
 #
-# Which store: the package store when one is mapped, the home volume otherwise.
+# Which store: the toolchain store when one is mapped, the home volume otherwise.
 # The choice is made per directory, and deliberately conservative — a
 # directory that already holds gigabytes on the home volume keeps pointing
 # there, because silently retargeting the link would make an existing 30GB
@@ -403,7 +403,7 @@ persist_android_downloads() {
     # emulator alone is 800MB of every pull.
     for sub in system-images platforms build-tools emulator ndk cmake \
                extras add-ons sources skins; do
-        # The share first, then the home volume's own package store root (where packages
+        # The share first, then the home volume's own toolchain store root (where packages
         # land when no share is mapped). Whichever actually holds packages
         # wins, so a library that exists is never hidden behind an empty
         # directory somewhere else — the one failure mode that matters here,
@@ -449,12 +449,12 @@ persist_android_downloads() {
     if [ "$nudge" -eq 1 ]; then
         # Nothing is broken — the links point at the packages wherever they
         # are — so this is information, not an instruction. Moving them is a
-        # host-side `mv` into the package store and a restart; the container has
+        # host-side `mv` into the toolchain store and a restart; the container has
         # no better way to do it than the operator does, and doing tens of GB
         # of copying from in here without being asked would be worse.
         log "some SDK packages still live on the home volume rather than the share."
         log "They work as they are. To consolidate: stop the container, move"
-        log "them into the package store on the host, and start it again."
+        log "them into the toolchain store on the host, and start it again."
     fi
 
     chown -R "$PUID:$PGID" "$share" 2>/dev/null || true

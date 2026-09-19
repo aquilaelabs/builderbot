@@ -726,12 +726,12 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
 }
 button:disabled{opacity:.5;cursor:default}
 /* Every box and radio the page has, not just the one tab that remembered to
-   ask. The packages list set accent-color and nothing else did, so a checkbox
+   ask. The toolchains list set accent-color and nothing else did, so a checkbox
    in a dialog stayed the browser's own blue under every scheme.
 
    accent-color only paints a box that is TICKED. An empty one is drawn by the
    browser, which without being told otherwise draws it for a light page: a
-   white square on a dark panel, which is what the unticked packages looked
+   white square on a dark panel, which is what the unticked toolchains looked
    like. color-scheme says which set of native controls to use; it belongs on
    the root and it is every scheme's answer, since all twelve are dark. It also
    darkens the scrollbars, which were the same tell.
@@ -814,7 +814,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
-/* The packages document. One row per package: a checkbox that owns the whole
+/* The toolchains document. One row per toolchain: a checkbox that owns the whole
    row (the label wraps it), the size beside the name, and the resolved
    install path underneath, "where did that actually go" is the question a
    share full of SDKs invites. */
@@ -827,30 +827,30 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    had a gutter of its own: 12px, applied to a wrapper instead of to the rows,
    which put this tab a couple of pixels out of step with every other one and
    left the bin against the right edge with nothing beyond it. */
-.pkghead{margin:0;padding:11px 14px;color:var(--dim);
+.tchead{margin:0;padding:11px 14px;color:var(--dim);
   font:var(--f-ui);border-bottom:1px solid var(--line)}
-.pkghead code{font-family:var(--mono);color:var(--ink)}
-.pkgs{padding:0}
-.pkg{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;margin:0;
+.tchead code{font-family:var(--mono);color:var(--ink)}
+.tcs{padding:0}
+.tc{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
-.pkg:last-child{border-bottom:0}
-.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
-.pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
-.pkg .sub{display:block;color:var(--dim);font:var(--f-note)}
-.pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+.tc:last-child{border-bottom:0}
+.tc input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
+.tc .nm{font:600 13px/1.35 system-ui,sans-serif}
+.tc .sub{display:block;color:var(--dim);font:var(--f-note)}
+.tc .where{font-family:var(--mono);overflow-wrap:anywhere}
 /* An image row has no checkbox, so the text starts where the others' does. */
-.pkg.img{padding-left:40px}
+.tc.img{padding-left:40px}
 .imghead{margin-top:18px}
-.pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
+.tc .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
 /* An image nothing is built on: said, but quietly. It is the answer to "can
    this go", not a warning. */
-.pkg .sub.dim{opacity:.6}
+.tc .sub.dim{opacity:.6}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
    thing that quietly goes stale. */
 /* A word and an ellipsis, never a bar: no percentage is read out of a
    job any more, so there is nothing for one to show. */
-.pkg .prog.plain{display:block}
+.tc .prog.plain{display:block}
 /* The ellipsis is ticked by a timer rather than a CSS animation: the row is
    rebuilt every second while a job runs, which restarts any animation on it,
    and dots that stutter once a second read as broken. The timer writes into
@@ -859,20 +859,20 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The row's and the button's alike: three characters of reserved width so the
    line does not twitch as the dots come and go. */
 .doc .dots,.row .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
-.pkg .where.on{color:var(--accent)}
-.pkg .sub.bad{color:var(--bad);overflow-wrap:anywhere}
-.pkg .sub.warn{color:var(--warn)}
-.pkg .pkgsysl{display:inline}
-.pkg .pkgsysl summary{display:inline;cursor:pointer;text-decoration:underline dotted}
-.pkg .pkgsysl[open] summary{display:none}
-.pkg .upd{color:var(--warn)}
+.tc .where.on{color:var(--accent)}
+.tc .sub.bad{color:var(--bad);overflow-wrap:anywhere}
+.tc .sub.warn{color:var(--warn)}
+.tc .tcsysl{display:inline}
+.tc .tcsysl summary{display:inline;cursor:pointer;text-decoration:underline dotted}
+.tc .tcsysl[open] summary{display:none}
+.tc .upd{color:var(--warn)}
 /* Installed and current: the row is done, and says so with a ticked box that
    cannot be unticked: the tick reads as "this one is here", the fading as
    "and there is nothing to do to it". Knowing a thing is present is the
    point; an empty dead box said only the second half. */
-.pkg.done input{opacity:.5}
-.pkg .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
-@media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:var(--red2-edge)} }
+.tc.done input{opacity:.5}
+.tc .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
+@media(hover:hover){ .tc .rm:hover{color:var(--bad);border-color:var(--red2-edge)} }
 /* The image picker. Three controls that fit on one line on a desktop and wrap
    to two on a phone: the level and its Add button staying together, because
    they are one action. min-width:0 is the load-bearing part: a select is as
@@ -890,13 +890,13 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:var(--f-ui);max-width:70ch}
 /* The one job at a time, said beside the button that started it rather than
-   written into the button: a package id is longer than any button should be,
+   written into the button: a toolchain id is longer than any button should be,
    and as a label it turned Install into a green banner across the tab. */
-.pkgworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
+.tcworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
   overflow-wrap:anywhere}
-.macros .pkgworking{flex:1 1 100%}
+.macros .tcworking{flex:1 1 100%}
 /* Bigger tap targets where a finger is doing the ticking. */
-@media(max-width:900px){ .pkg input{width:20px;height:20px} }
+@media(max-width:900px){ .tc input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one
    at a time left a lone eye stranded under the name (the link chain made
    four possible). Together they either fit beside the name or drop below it
@@ -3880,19 +3880,19 @@ body.booting .pane>.loading{margin:auto}
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <!-- What this container can install. Its own card rather than a corner
-         of the findings one: a scanner report and a package manager answer
+         of the findings one: a scanner report and a toolchain installer answer
          different questions, and only one of them depends on /reports being
          mounted. -->
     <div class="card" data-card="tools">
       <h2>Tools</h2>
       <div class="macros">
         <!-- Alphabetical, so a new one has one place to go. -->
-        <button id="bPkgs" onclick="openPackages()">Additional packages</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
+        <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
     </div>
     <!-- What only an administrator touches: the controller's own settings
@@ -3977,7 +3977,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
 <script src="tab-profile.js"></script>
-<script src="tab-packages.js"></script>
+<script src="tab-toolchains.js"></script>
 <script src="tab-docker.js"></script>
 <script src="nb-git.js"></script>
 <script src="nb-artifacts.js"></script>
@@ -4139,7 +4139,7 @@ const NOT_MINE_WHY = "read-only; you have not taken this project on. Add it "
 // DRAWN; every one of these is refused again on the server.
 const mayShell = () => state?.can?.terminal !== false;
 const mayDocker = () => state?.can?.["docker-write"] !== false;
-const mayPackages = () => state?.can?.["packages-write"] !== false;
+const mayToolchains = () => state?.can?.["toolchains-write"] !== false;
 const mayGitAuth = () => state?.can?.["git-auth"] !== false;
 // THIS account's Claude session on a project. Prefixed like a shell since
 // roadmap #24: more than one person may work a project at once, each in a
@@ -4387,7 +4387,7 @@ function viewAfterRestart(){
 // beside the row icons, which come ten thousand lines later (bug #27).
 const TOOL_ICONS = {
   // A box, for what gets installed.
-  packages: `<svg viewBox="0 0 16 16" aria-hidden="true">
+  toolchains: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/>
     <path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/></svg>`,
   // Stacked containers.
@@ -4411,17 +4411,17 @@ const TOOL_ICONS = {
 };
 // Which button on the Tools card opens which kind, so the card can be
 // stamped with the icons once at load and the tab strip can look them up.
-const TOOL_BUTTONS = {bPkgs: "packages", bDocker: "docker", bJobs: "jobs",
+const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bJobs: "jobs",
                       bNodes: "nodes", bPhone: "phone", bFindings: "findings"};
 
 const TABKINDS = {
   term:     { multi: true },
   notebook:     { multi: true, label: t => "Notebook: " + t.arg,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
-  packages: { multi: false, label: () => "Packages",
-              icon: TOOL_ICONS.packages,
-              render: (i) => renderPackagesInto(i), live: () => pkgRev,
-              open: () => loadPackages() },
+  toolchains: { multi: false, label: () => "Toolchains",
+              icon: TOOL_ICONS.toolchains,
+              render: (i) => renderToolchainsInto(i), live: () => tcRev,
+              open: () => loadToolchains() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from
@@ -5237,7 +5237,7 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
-  // Only the kinds that still declare it. Packages moved its own into the tab
+  // Only the kinds that still declare it. Toolchains moved its own into the tab
   // beside the node picker, where a control belongs: this bar is the tab's
   // name and its close button everywhere else, and a third thing in it was a
   // shape one tab had and no other.
@@ -5433,7 +5433,7 @@ function drawPanes(){
     // The id names "the document being shown in pane i", so it must name one
     // node. A hidden document left in the stack (the notebook parks there)
     // used to keep it, and getElementById returns the first in DOM order,
-    // so packages and findings rendered into a node nobody could see and the
+    // so toolchains and findings rendered into a node nobody could see and the
     // pane sat blank.
     if (t.kind !== "term"){
       [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
@@ -7386,7 +7386,7 @@ function drawProjects(all){
   // one state where the empty message is the whole point of the card.
   // A clone or a first push, drawn where its result will appear. An ellipsis
   // rather than a percentage: git's progress is a carriage-return animation
-  // on stderr, and parsing one to redraw it is the thing the packages tab
+  // on stderr, and parsing one to redraw it is the thing the toolchains tab
   // gave up on. What it *is* doing is a phrase from the server.
   const jobHtml = pJob?.running
     ? `<div class="row job">
@@ -7475,11 +7475,11 @@ function pJobWire(){
   const stop = $("bJobStop"), okd = $("bJobOk");
   if (stop) stop.onclick = () => pJobAct("abort");
   if (okd)  okd.onclick  = () => pJobAct("dismiss");
-  // The packages tab owns the timer; starting it here too means the Projects
+  // The toolchains tab owns the timer; starting it here too means the Projects
   // card animates whether or not that tab has ever been opened.
-  if (stop && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+  if (stop && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
   // While a job runs the two things that would start another are dead, the
-  // same rule the package buttons follow: the server answers 409 anyway,
+  // same rule the toolchain buttons follow: the server answers 409 anyway,
   // and a button that earns an error is worse than one that waits.
   const busy = !!pJob?.running;
   const nb = $("bNewProj"); if (nb) nb.disabled = busy;
@@ -7883,7 +7883,7 @@ function editCustom(id){
 function closeEditor(){ $("modal").hidden = true; editing = null; }
 
 // A trash can, for the one control that is per-row: uninstalling is about
-// a particular package, never a selection, and a bulk Remove button beside a
+// a particular toolchain, never a selection, and a bulk Remove button beside a
 // bulk Install was one mis-click away from being expensive.
 // ---- the bin ------------------------------------------------------------
 // Deleting a project moves it to .trash and the wording everywhere says so.
@@ -10512,7 +10512,7 @@ function wireMacros(el){
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
 // output belongs where the operator can scroll it, page it, and follow a
-// `bb packages install` that takes minutes: none of which a one-shot text box did.
+// `bb toolchains install` that takes minutes: none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
   if (!t) return;                        // grayed out; a stray tap does nothing
@@ -11035,12 +11035,12 @@ onRev("prefs", () => refresh());
 // since the store was built and nothing watched it, so the tab that owns the
 // setting was the one place a change took fifteen seconds to show.
 onRev("settings", () => refresh());
-// The package store: an install or an uninstall finishing, the daily version
+// The toolchain store: an install or an uninstall finishing, the daily version
 // check, or the image index landing. The tab used to keep a timer of its own
 // for this (half a second while a job ran, eight seconds otherwise) which
 // is a third clock for a fact the poll already carries.
-onRev("packages", () => {
-  if (tabs.some(t => t.kind === "packages")) loadPackages();
+onRev("toolchains", () => {
+  if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
 });
 // The node registry moved: a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
@@ -11330,7 +11330,7 @@ function busy(btn, word){
   btn.innerHTML = `${esc(word)}<span class="dots"></span>`;
   // The one ticker every .dots on the page shares; it stops itself when
   // the last one is repainted away.
-  if (!pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+  if (!tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
 }
 
 // ...and the other half, for a press that can fail without a repaint behind

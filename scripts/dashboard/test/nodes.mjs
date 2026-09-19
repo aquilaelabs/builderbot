@@ -479,19 +479,19 @@ print(json.dumps(out))
   // further down.
   const CENSUS = { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, administers: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
-                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
+                                       toolchains: { path: '/var/lib/builderbot/toolchains', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
-              // What `bb packages versions` says on the node — the controller's
+              // What `bb toolchains versions` says on the node: the controller's
               // own generator, run there. The toolchains dict above is a
               // placement summary and describes the same store differently,
               // which is the disparity this replaces.
-              packages_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
-              // What the packages store actually holds, which is what the
+              toolchain_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
+              // What the toolchain store actually holds, which is what the
               // Tools tab decides `installed` from — the census summary
               // above is a placement hint, not an inventory.
               store_dirs: { top: ['flutter', 'node'], android: [] },
-              // The android system images in the node's own packages store,
+              // The android system images in the node's own toolchain store,
               // and the AVDs built on them. Walked there; the size is joined
               // here from Google's index, because an image is a guest
               // artifact and weighs the same on every host (roadmap #20).
@@ -550,7 +550,7 @@ print(json.dumps(out))
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample: { cpu_pct: 3.5, mem_mb: 8192, mem_used_mb: 2048,
       stores: { data: { free_mb: 5000, total_mb: 9000 },
-                packages: { free_mb: 40000, total_mb: 90000 },
+                toolchains: { free_mb: 40000, total_mb: 90000 },
                 artifacts: { free_mb: 30000, total_mb: 90000 } } }, running: 0, wait: 0 }) });
   const lst = await napi('/api/v1/nodes');
   ok(lst.agent?.digest && lst.agent.digest === shipped.digest,
@@ -579,7 +579,7 @@ print(json.dumps(out))
     label: m.querySelector('.lbl').textContent,
     val: m.querySelector('.val').textContent,
     width: m.querySelector('.fill').style.width })));
-  ok(meters.some(m => m.label === 'packages' && /GB free/.test(m.val))
+  ok(meters.some(m => m.label === 'toolchains' && /GB free/.test(m.val))
      && meters.some(m => m.label === 'data') && meters.some(m => m.label === 'artifacts')
      && !meters.some(m => /missing/.test(m.val))
      && meters.some(m => m.label === 'cpu') && meters.some(m => m.label === 'memory')
@@ -919,22 +919,22 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
-  await page.evaluate(() => openPackages());
-  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
-  ok(await page.$$eval('.pkgtab #pkgNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
+  await page.evaluate(() => openToolchains());
+  await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
+  ok(await page.$$eval('.tctab #tcNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
-  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
-  await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
+  await page.selectOption('.tctab #tcNodeSel', minted.id);
+  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tchead:not(.tcnode)')?.textContent || ''),
                              null, { timeout: 15000 });
-  const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+  const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
      && !tools.some(t => /3\.24\.0/.test(t)),
-     'a node\'s versions come from its own bb packages versions, not the census summary');
-  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+     'a node\'s versions come from its own bb toolchains versions, not the census summary');
+  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
-       await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
-  ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
-     'an installed package on a node reads "installed", not "installed at" with nothing after it');
+       await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
+     'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
   // ---- system packages a held recipe needs (roadmap R51) ------------------
   // The store is a share, so a recipe installed from one node is on every
   // node, while the libraries it needs are each machine's own. The census
@@ -949,40 +949,40 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd },
                              version: shipped.version, digest: shipped.digest }) });
     await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
-    await page.evaluate(() => loadPackages());
-    await page.waitForSelector('.pkgtab .pkgsys', { timeout: 15000 });
-    const line = await page.$eval('.pkgtab .pkgsys', e => e.textContent.replace(/\s+/g, ' '));
+    await page.evaluate(() => loadToolchains());
+    await page.waitForSelector('.tctab .tcsys', { timeout: 15000 });
+    const line = await page.$eval('.tctab .tcsys', e => e.textContent.replace(/\s+/g, ' '));
     ok(/lacks for what its store holds \(dnf\): dotnet: libicu/.test(line),
        `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
-    ok(await page.$('.pkgtab #pkgSysdeps') !== null,
+    ok(await page.$('.tctab #tcSysdeps') !== null,
        '...with one press to install them on a node the agent administers');
     // What each tool pulls onto this machine is on its own row, named in the
     // node's package manager, before Install rather than in a job log after.
-    const dotnetRow = (await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' '))))
+    const dotnetRow = (await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' '))))
       .find(t => /\.NET/.test(t)) || '';
     ok(/Installs 1 system package with it here \(dnf\): libicu/.test(dotnetRow),
        `a row names the system packages its tool installs on this node (${(dotnetRow.match(/Installs[^.]*libicu/) || ['none'])[0]})`);
     // Nobody has to press it on a node BuilderBot manages: the census that
     // named them queued the job itself, for exactly those recipes.
-    const pkgJobs = async () => ((await pj(`/api/v1/jobs?node=${minted.id}&type=package&n=20`)).jobs || []);
-    const auto = (await pkgJobs()).filter(j => j.spec?.action === 'sysdeps');
+    const tcJobs = async () => ((await pj(`/api/v1/jobs?node=${minted.id}&type=toolchain&n=20`)).jobs || []);
+    const auto = (await tcJobs()).filter(j => j.spec?.action === 'sysdeps');
     ok(auto.length === 1 && JSON.stringify(auto[0].spec?.names) === '["dotnet"]' && auto[0].requested_by === 'system',
        `a managed node installs what it lacks by itself, for the recipes that need it (${auto.map(j => `${j.requested_by}: ${j.spec?.names}`).join(', ') || 'no job'})`);
     await pj('/api/v1/jobs', { action: 'cancel', id: auto[0]?.id });
     await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
-    ok((await pkgJobs()).filter(j => j.spec?.action === 'sysdeps').length === 1,
+    ok((await tcJobs()).filter(j => j.spec?.action === 'sysdeps').length === 1,
        '...once: the same lack said again is not a job every hello, so a failing install is not retried forever');
-    const sj = await pj('/api/packages', { action: 'sysdeps', names: [], node: minted.id });
-    ok(sj.ok && /^j_/.test(sj.job), `pressing it still queues a package job of the sysdeps kind (${sj.job || sj.error})`);
+    const sj = await pj('/api/toolchains', { action: 'sysdeps', names: [], node: minted.id });
+    ok(sj.ok && /^j_/.test(sj.job), `pressing it still queues a toolchain job of the sysdeps kind (${sj.job || sj.error})`);
     const sjob = await pj(`/api/v1/jobs?id=${sj.job}`);
-    ok(sjob.type === 'package' && sjob.spec?.action === 'sysdeps',
+    ok(sjob.type === 'toolchain' && sjob.spec?.action === 'sysdeps',
        '...carrying the action and no recipe names: every held one');
     await pj('/api/v1/jobs', { action: 'cancel', id: sj.job });
     // Locked to its console: its root is its administrator's, so nothing is
     // installed by itself, whatever goes missing.
     await pj('/api/v1/nodes', { action: 'lock', id: minted.id });
     await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'], playwright: ['libgbm'] } });
-    ok((await pkgJobs()).filter(j => j.spec?.action === 'sysdeps').length === 2,
+    ok((await tcJobs()).filter(j => j.spec?.action === 'sysdeps').length === 2,
        'a node whose system changes are locked to its console installs nothing by itself');
     await pj('/api/v1/nodes', { action: 'unlock', id: minted.id });
     await page.evaluate(() => openNodesTab());
@@ -996,31 +996,31 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
         body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd, store_dirs: { top: ['flutter', 'node', 'dotnet'], android: [] } },
                                version: shipped.version, digest: shipped.digest }) });
       await held({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
-      await page.evaluate(() => openPackages());
-      await page.evaluate(() => loadPackages());
-      await page.waitForFunction(() => /missing here/.test(document.querySelector('.pkgtab')?.textContent || ''), null, { timeout: 15000 });
-      const row = (await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')))).find(t => /\.NET/.test(t)) || '';
+      await page.evaluate(() => openToolchains());
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /missing here/.test(document.querySelector('.tctab')?.textContent || ''), null, { timeout: 15000 });
+      const row = (await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')))).find(t => /\.NET/.test(t)) || '';
       ok(/1 of its 1 system package missing here \(dnf\), installed by itself: libicu/.test(row),
          `an installed tool's row says which of its system packages this node lacks (${(row.match(/\d of its[^:]*: \S+/) || ['none'])[0]})`);
       await held({ family: 'dnf', unmet: {} });
-      await page.evaluate(() => loadPackages());
-      await page.waitForFunction(() => /all installed/.test(document.querySelector('.pkgtab')?.textContent || ''), null, { timeout: 15000 });
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /all installed/.test(document.querySelector('.tctab')?.textContent || ''), null, { timeout: 15000 });
       ok(true, '...and that they are all there once they are');
       await fetch(base + '/api/v1/agent/hello', { method: 'POST',
         headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
     }
     await sysCensus({ family: 'dnf', unmet: {} });
-    await page.evaluate(() => openPackages());
-    await page.evaluate(() => loadPackages());
-    await page.waitForFunction(() => !document.querySelector('.pkgtab .pkgsys'), null, { timeout: 15000 });
+    await page.evaluate(() => openToolchains());
+    await page.evaluate(() => loadToolchains());
+    await page.waitForFunction(() => !document.querySelector('.tctab .tcsys'), null, { timeout: 15000 });
     ok(true, '...and both go quiet once the census says nothing is missing');
   }
   // ---- sessions a fresh install has not reached ---------------------------
-  // A package on PATH reaches a session when the session starts, so one open
+  // A toolchain on PATH reaches a session when the session starts, so one open
   // since before the install still says "not found". The row counts them,
   // from when each session started (the agent reports it) and when a job
-  // last put the package on the store.
+  // last put the toolchain on the store.
   {
     const now = Math.floor(Date.now() / 1000);
     execFileSync('python3', ['-c', `
@@ -1030,7 +1030,7 @@ m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader
 m.configure(state="${DIR}/state")
 m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
         " spec, outputs, state, node, exit_code, queued, ended) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("j_landnode", "package", "", "user:test", "{}", "{}",
+        ("j_landnode", "toolchain", "", "user:test", "{}", "{}",
          json.dumps({"action": "install", "names": ["node"]}), "[]", "succeeded",
          "${minted.id}", 0, ${now} - 200, ${now} - 100))
 `], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
@@ -1040,9 +1040,9 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [
         { name: `${uid}~claude-alpha`, created: now - 3600, title: '✳ Claude Code' },
         { name: `${uid}~shell-2`, created: now - 10, title: 'bash' }] }, running: 0, wait: 0 }) });
-    await page.evaluate(() => loadPackages());
-    await page.waitForSelector('.pkgtab .pkgreopen', { timeout: 15000 });
-    const rows = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+    await page.evaluate(() => loadToolchains());
+    await page.waitForSelector('.tctab .tcreopen', { timeout: 15000 });
+    const rows = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
     const nodeRow = rows.find(t => /Node\.js/.test(t)) || '';
     ok(/1 session open here started before this was installed: reopen it to use it/.test(nodeRow),
        `a row that changes PATH counts the sessions that started before it landed, and only those (${
@@ -1051,7 +1051,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        '...and says nothing on a row no job has put there since they started');
   }
   // ---- one store, two machines (roadmap #18) ------------------------------
-  // The controller reaches the package store through Unraid's FUSE layer and a
+  // The controller reaches the toolchain store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be
   // derived from the other and the pair was invisible. A marker file inside
   // the store answers exactly, whatever the transport — and once the pair is
@@ -1063,7 +1063,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     const withId = (arch, token) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census: { ...CENSUS, arch, stores: { ...CENSUS.stores,
-          packages: { ...CENSUS.stores.packages, id: ID } } },
+          toolchains: { ...CENSUS.stores.toolchains, id: ID } } },
         version: shipped.version, digest: shipped.digest }) });
     await withId('x86_64', en.token);
     // A second machine on the same store, of another architecture.
@@ -1071,7 +1071,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     const oen = await napi('/api/v1/agent/enroll', {
       user: 'bb', version: shipped.version, digest: shipped.digest,
       census: { ...CENSUS, arch: 'aarch64', stores: { ...CENSUS.stores,
-        packages: { ...CENSUS.stores.packages, id: ID } } } },
+        toolchains: { ...CENSUS.stores.toolchains, id: ID } } } },
       { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
     ok(oen.ok, '(a second node enrolled on the same store)');
     // ...and the catalog says which platform each recipe is for, so an
@@ -1080,11 +1080,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // Linux needs no new agent to reach this (roadmap #18).
     // swift: an x86-64 tarball, and the catalog says so. (jdk used to be
     // the example; Temurin packages arm64 and the recipe resolves it now.)
-    const wrong = await napi('/api/packages', { action: 'install', names: ['swift'], node: other.id });
+    const wrong = await napi('/api/toolchains', { action: 'install', names: ['swift'], node: other.id });
     ok(/packaged for linux\/amd64/.test(wrong.error || ''),
        `an install onto the wrong platform is refused by name (${
          (wrong.error || 'no error').slice(0, 100)})`);
-    const fine = await napi('/api/packages', { action: 'install', names: ['flutter'], node: other.id });
+    const fine = await napi('/api/toolchains', { action: 'install', names: ['flutter'], node: other.id });
     ok(!/packaged for/.test(fine.error || ''),
        `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
     if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
@@ -1092,7 +1092,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // machine installs under its own <os>-<arch> scope (roadmap R19), so
     // the x86_64 node's install is queued while the arm64 node shares the
     // share. Cancelled at once, so the one-at-a-time rule below starts clean.
-    const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    const clash = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     ok(clash.job && !clash.error,
        `a store shared across architectures takes the install — each machine has its own scope in it (${
          clash.job || clash.error})`);
@@ -1101,25 +1101,25 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + oen.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census: { ...CENSUS, arch: 'x86_64', stores: { ...CENSUS.stores,
-          packages: { ...CENSUS.stores.packages, id: ID } } },
+          toolchains: { ...CENSUS.stores.toolchains, id: ID } } },
         version: shipped.version, digest: shipped.digest }) });
-    const first = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
-    const second = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
-    ok(first.job && /shares this packages store/.test(second.error || ''),
+    const first = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+    const second = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: other.id });
+    ok(first.job && /shares this toolchain store/.test(second.error || ''),
        `...and one install at a time across the pair, naming why (${
          (second.error || 'no error').slice(0, 90)})`);
     if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
     await napi('/api/v1/nodes', { action: 'retire', id: other.id });
     await withId('x86_64', en.token);
-    // A package that needs another pulls it in, ahead of itself. Before
+    // A toolchain that needs another pulls it in, ahead of itself. Before
     // this, android-tools with no jdk failed inside sdkmanager with a
-    // message naming neither Java nor the package that supplies it.
-    const dep = await napi('/api/packages', { action: 'install',
+    // message naming neither Java nor the toolchain that supplies it.
+    const dep = await napi('/api/toolchains', { action: 'install',
                                               names: ['android-tools'], node: minted.id });
     const depjob = dep.job ? await napi(`/api/v1/jobs?id=${dep.job}`) : null;
     ok(depjob && JSON.stringify(depjob.spec.names) === JSON.stringify(['jdk', 'android-tools'])
        && JSON.stringify(dep.added) === JSON.stringify(['jdk']),
-       `a package that needs another installs it first, and says so (${
+       `a toolchain that needs another installs it first, and says so (${
          JSON.stringify(depjob?.spec?.names)} added=${JSON.stringify(dep.added)})`);
     if (dep.job) await napi('/api/v1/jobs', { action: 'cancel', id: dep.job });
     // ...and a bare directory does not count as having it. The operator's
@@ -1133,7 +1133,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ census: { ...CENSUS, toolchains: { java: '21' },
         store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
         version: shipped.version, digest: shipped.digest }) });
-    const hollow = await napi('/api/packages', { action: 'install',
+    const hollow = await napi('/api/toolchains', { action: 'install',
                                                  names: ['android:ndk'], node: minted.id });
     const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
     ok(hj && (hj.spec.names || []).includes('android-tools'),
@@ -1146,13 +1146,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // What a FINISHED job on a node reports. It used to report nothing — the
   // row vanished the moment the job ended, with done and failed hardcoded
   // empty — so the tab never cleared what the operator had ticked and the
-  // next press re-sent packages that had already landed.
+  // next press re-sent toolchains that had already landed.
   {
-    const j = await napi('/api/packages', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
+    const j = await napi('/api/toolchains', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
     if (j.job) await napi('/api/v1/jobs', { action: 'cancel', id: j.job });
     let seen = null;
     for (let t = 0; t < 60 && !seen; t++){
-      const p = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
+      const p = await (await fetch(base + '/api/toolchains?node=' + minted.id, { headers: H })).json();
       if (p.job && p.job.running === false && p.job.action) seen = p.job;
       else await sleep(250);
     }
@@ -1167,24 +1167,24 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // guest artifact, identical on every host, so the index is read here and
   // the node needs no network of its own to be offered one.
   {
-    await page.evaluate(() => { packages = null; loadPackages(); });
-    await page.waitForFunction(() => (packages?.images || []).length > 0,
+    await page.evaluate(() => { toolchains = null; loadToolchains(); });
+    await page.waitForFunction(() => (toolchains?.images || []).length > 0,
                                null, { timeout: 15000 });
-    const imgs = await page.$$eval('.pkgtab .pkg.img',
+    const imgs = await page.$$eval('.tctab .tc.img',
       ls => ls.map(l => l.textContent.replace(/\s+/g, ' ').trim()));
     ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
        && /AVD: fb30-node/.test(imgs[0]),
        `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
-    const apis = await page.$$eval('.pkgtab #imgApi option', o => o.map(x => x.value));
+    const apis = await page.$$eval('.tctab #imgApi option', o => o.map(x => x.value));
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
        `...and the picker offers what the NODE does not have (${JSON.stringify(apis)})`);
-    ok(/sdkmanager, which is part of/.test(await page.$eval('.pkgtab', e => e.textContent)),
+    ok(/sdkmanager, which is part of/.test(await page.$eval('.tctab', e => e.textContent)),
        'a node with no android-tools is told images are installed by sdkmanager');
     // An image is installed BY sdkmanager, so the command-line tools have to
     // be there first — and they need a JDK in turn. with_requires walks the
     // catalog and an image id is not a catalog row, so the head of that chain
     // is named rather than discovered inside a failing job.
-    const add = await napi('/api/packages', { action: 'install', node: minted.id,
+    const add = await napi('/api/toolchains', { action: 'install', node: minted.id,
       names: ['android:system-images;android-31;google_apis;x86_64'] });
     const aj = add.job ? await napi(`/api/v1/jobs?id=${add.job}`) : null;
     ok(aj && JSON.stringify(aj.spec.names) === JSON.stringify(
@@ -1194,11 +1194,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     if (add.job) await napi('/api/v1/jobs', { action: 'cancel', id: add.job });
     // The same rule every executing endpoint here follows, asked of the
     // node's own inventory: a removal names an image THIS node reported.
-    const badrm = await napi('/api/packages', { action: 'remove', node: minted.id,
+    const badrm = await napi('/api/toolchains', { action: 'remove', node: minted.id,
       names: ['android:system-images;android-31;google_apis;x86_64'] });
     ok(/nothing selected/.test(badrm.error || ''),
        `an image the node never reported cannot be removed from it (${badrm.error})`);
-    const rm = await napi('/api/packages', { action: 'remove', node: minted.id,
+    const rm = await napi('/api/toolchains', { action: 'remove', node: minted.id,
       names: ['android:system-images;android-30;google_apis;x86_64'] });
     ok(rm.job, 'one it did report can be');
     if (rm.job) await napi('/api/v1/jobs', { action: 'cancel', id: rm.job });
@@ -1210,14 +1210,14 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census: noField, version: shipped.version, digest: shipped.digest }) });
-    const old = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
+    const old = await (await fetch(base + '/api/toolchains?node=' + minted.id, { headers: H })).json();
     ok(old.images_known === false && old.images.length === 0,
        `an agent that does not report images says so, rather than reporting none (${
          old.images_known})`);
     await runnerCensus({});     // put the fixture's census back
   }
 
-  const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local' });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
@@ -1373,14 +1373,14 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        JSON.stringify(off).slice(0, 120)})`);
   // The button is a courtesy; the rule is the server's.
   const refused = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
-  const refusedPkg = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
-  ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedPkg.error || ''),
+  const refusedTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+  ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedTc.error || ''),
      `...and the server refuses the same jobs, not only the buttons (${(refused.error || 'no error').slice(0, 60)})`);
-  await page.evaluate(() => openPackages());
-  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
-  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
-  await page.waitForSelector('.pkgtab .pkgstale', { timeout: 15000 });
-  ok(await page.$eval('.pkgtab [data-pkg="install"]', b => b.disabled),
+  await page.evaluate(() => openToolchains());
+  await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
+  await page.selectOption('.tctab #tcNodeSel', minted.id);
+  await page.waitForSelector('.tctab .tcstale', { timeout: 15000 });
+  ok(await page.$eval('.tctab [data-tc="install"]', b => b.disabled),
      'the Tools tab says so too, and installs nothing onto a node that is behind');
   // Its own update is the way out and is never held.
   const upd = await napi('/api/v1/nodes', { action: 'update-agent', id: minted.id });

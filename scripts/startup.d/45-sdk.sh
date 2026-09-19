@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Put whatever `bb packages install` has put on the package store onto every shell's
+# Put whatever `bb toolchains install` has put on the toolchain store onto every shell's
 # PATH.
 #
-# The toolchains live outside the image on purpose — see `bb packages` — which
+# The toolchains live outside the image on purpose (see `bb toolchains`), which
 # means the image cannot bake their PATH entries in: what is installed is
 # only known at runtime, and changes without a rebuild. So this regenerates
 # one small file on every start and makes sure the user's shell reads it.
@@ -22,7 +22,7 @@ ROOT="$(sdk_root)"
 mkdir -p "$ROOT" 2>/dev/null || true
 [ -d "$ROOT" ] || exit 0
 
-# Not $ROOT/env.sh: the package store root is a share the sandbox mounts too, at its
+# Not $ROOT/env.sh: the toolchain store root is a share the sandbox mounts too, at its
 # own path, and every line generated here is absolute — so a copy in the
 # store is wrong for whichever machine did not write it last. Container-local
 # instead; sdk.sh's sdk_env_file() is the same answer, one generator — and
@@ -31,9 +31,9 @@ mkdir -p "$ROOT" 2>/dev/null || true
 # written).
 ENV_FILE="$(run_as_builder bash -c '. /opt/builderbot/scripts/lib/common.sh; . /opt/builderbot/scripts/lib/sdk.sh; sdk_env_file')"
 mkdir -p "$(dirname "$ENV_FILE")" 2>/dev/null || true
-# Written by bb so the file and `bb packages env` can never disagree — one
+# Written by bb so the file and `bb toolchains env` can never disagree: one
 # generator, two ways of asking for it.
-if run_as_builder bb packages env > "$ENV_FILE.new" 2>/dev/null; then
+if run_as_builder bb toolchains env > "$ENV_FILE.new" 2>/dev/null; then
     mv -f "$ENV_FILE.new" "$ENV_FILE"
 else
     rm -f "$ENV_FILE.new"

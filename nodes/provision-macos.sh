@@ -5,8 +5,8 @@
 # its owner's machine: no accounts made, no daemon, no root, nothing in
 # /etc, and --remove takes exactly what this put there back out again.
 #
-# What a Mac node is for: building what only a Mac builds — iOS, macOS, the
-# Apple half of a Flutter app — with Xcode, and a packages store of its own
+# What a Mac node is for: building what only a Mac builds (iOS, macOS, the
+# Apple half of a Flutter app) with Xcode, and a toolchain store of its own
 # scope (darwin-arm64 or darwin-x86_64) under the same share the Linux
 # nodes use, so nothing lands on top of theirs (roadmap R19).
 #
@@ -24,11 +24,11 @@ set -eu
 FOOT="${BUILDERBOT_HOME:-$HOME/.builderbot}"
 PLIST="$HOME/Library/LaunchAgents/dev.builderbot.agent.plist"
 LABEL="dev.builderbot.agent"
-CONTROLLER=""; TOKEN=""; PACKAGES=""; REMOVE=0; CHECK_ONLY=0
+CONTROLLER=""; TOKEN=""; TOOLCHAINS=""; REMOVE=0; CHECK_ONLY=0
 
 usage() {
     cat <<'EOF'
-usage: bash provision-macos.sh --controller URL --token bbe_… [--packages PATH]
+usage: bash provision-macos.sh --controller URL --token bbe_… [--toolchains PATH]
        bash provision-macos.sh --check
        bash provision-macos.sh --remove
 
@@ -38,11 +38,11 @@ token and prints this line with the address and the token in it.
 
   --controller URL     the dashboard's address, as you open it in a browser
   --token bbe_…        an enrollment token from the Nodes tab (good once, for a day)
-  --packages PATH      where this Mac's packages store is. Point it at the same
+  --toolchains PATH      where this Mac's toolchain store is. Point it at the same
                        share the Linux nodes use, mounted over SMB (say
-                       /Volumes/SDK): this machine's packages land under
+                       /Volumes/SDK): this machine's toolchains land under
                        <path>/darwin-<arch> and nobody else's are touched.
-                       Default: ~/.builderbot/packages, on this disk.
+                       Default: ~/.builderbot/toolchains, on this disk.
   --check              only the pre-flight: say whether this Mac can be a
                        node, change nothing, exit 0 or 1.
   --remove             take the footprint away: the launchd agent, the
@@ -65,7 +65,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
-        --packages) PACKAGES="$2"; shift 2 ;;
+        --toolchains) TOOLCHAINS="$2"; shift 2 ;;
         --check) CHECK_ONLY=1; shift ;;
         --remove) REMOVE=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -116,9 +116,9 @@ else chk fail "no git"; fi
 xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' 2>/dev/null | head -1)"
 if [ -n "$xcode" ]; then chk ok "Xcode: $xcode"
 else chk warn "no Xcode.app: iOS and macOS apps need it — the App Store, or the xcodes recipe from the Tools tab once enrolled"; fi
-if [ -n "$PACKAGES" ]; then
-    if [ -d "$PACKAGES" ] && [ -w "$PACKAGES" ]; then chk ok "packages store at $PACKAGES (this Mac's scope: darwin-$(uname -m))"
-    else chk fail "$PACKAGES is not a writable directory — mount the share first (Finder: Go > Connect to Server, smb://…), or use a directory of this Mac's"; fi
+if [ -n "$TOOLCHAINS" ]; then
+    if [ -d "$TOOLCHAINS" ] && [ -w "$TOOLCHAINS" ]; then chk ok "toolchain store at $TOOLCHAINS (this Mac's scope: darwin-$(uname -m))"
+    else chk fail "$TOOLCHAINS is not a writable directory: mount the share first (Finder: Go > Connect to Server, smb://…), or use a directory of this Mac's"; fi
 fi
 avail="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print int($4/1024/1024)}')"
 if [ -n "$avail" ]; then
@@ -141,7 +141,7 @@ fi
 # ---- the footprint ---------------------------------------------------------
 say "the footprint: $FOOT"
 mkdir -p "$FOOT/bin" "$FOOT/data" "$FOOT/cache" "$FOOT/artifacts" "$FOOT/log"
-[ -n "$PACKAGES" ] || { PACKAGES="$FOOT/packages"; mkdir -p "$PACKAGES"; }
+[ -n "$TOOLCHAINS" ] || { TOOLCHAINS="$FOOT/toolchains"; mkdir -p "$TOOLCHAINS"; }
 AGENT="$FOOT/bin/builderbot-agent"
 NODE_JSON="$FOOT/node.json"
 
@@ -160,13 +160,13 @@ fi
 chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
 
 # Enrolled as this account, with the stores under the footprint (the
-# packages store wherever --packages said). The credential it keeps is this
+# toolchain store wherever --toolchains said). The credential it keeps is this
 # node's own row and nothing else.
 say "enrolling as $(id -un)"
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 BUILDERBOT_NODE_JSON="$NODE_JSON" "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" \
     --user "$(id -un)" \
-    --store "data=$FOOT/data" --store "packages=$PACKAGES" \
+    --store "data=$FOOT/data" --store "toolchains=$TOOLCHAINS" \
     --store "cache=$FOOT/cache" --store "artifacts=$FOOT/artifacts"
 
 # ---- the launchd agent -----------------------------------------------------
@@ -209,8 +209,8 @@ cat <<EOF
 
 Done. This Mac is a GUEST node: the dashboard's Nodes tab shows it live
 within a minute, with Storage and Network not offered (they are yours), and
-the Tools tab installs into its own scope of the packages store,
-$PACKAGES/darwin-$(uname -m). Root is never asked for here.
+the Tools tab installs into its own scope of the toolchain store,
+$TOOLCHAINS/darwin-$(uname -m). Root is never asked for here.
 
   launchctl print gui/$(id -u)/$LABEL     is it running
   tail -f $FOOT/log/agent.log             what it is doing

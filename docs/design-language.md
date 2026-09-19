@@ -115,14 +115,14 @@ problem, and the dots are not a word.
 
 **A list of choices is in ALPHABETICAL order unless something says
 otherwise, and what says otherwise says why in place.** The colour schemes,
-the git hosts, the hypervisors and the package catalog were each in the order
+the git hosts, the hypervisors and the toolchain catalog were each in the order
 somebody happened to write them in; this box's own hypervisor first, then
 whatever was added next, which is an order only that person can predict, and
 a reader ends up scanning the whole list twice. Alphabetical is the default
 because it needs no explanation and a new entry has one place to go. Three
 exceptions exist and each is a sentence in the code: `Default` leads the
 schemes because it is what you get having made no choice, *Another git host*
-trails the hosts because it is not a host, and the package list puts what is
+trails the hosts because it is not a host, and the toolchain list puts what is
 installed first because that is the half you came to act on.
 
 **A value that is one line of PROSE is a `textarea.proseline`, never an
@@ -185,7 +185,7 @@ it at the right, where a row's buttons and a section's status already sit, so
 every tab's Refresh is in one place and lines up with the column of actions
 under it. The band spans the tab; the controls in it are capped one by one
 like any other. A tab that builds its own chrome instead misses all of this:
-the Packages tab kept its picker in a band of its own and its Refresh landed
+the Toolchains tab kept its picker in a band of its own and its Refresh landed
 somewhere no other tab's does.
 
 A new tab lands as: its own classic script file beside `index.html`, an entry
@@ -262,7 +262,7 @@ the work has to happen in, so "page 4" names nothing.
 
 Two judgements are yours. A list that only just crosses the line is left
 whole, which `paginate` does for you. And a list somebody SCANS for a name
-rather than reads in order (the package catalog) is not paged at all,
+rather than reads in order (the toolchain catalog) is not paged at all,
 because hiding half of it behind a button is worse than a long page.
 
 The state is per list and per notebook. A notebook is a clone of one
@@ -383,8 +383,8 @@ the doctor. A revision does not belong on it.
 
 **A timer of a view's own is for watching something in flight, never for
 noticing a change.** Noticing is the revisions poll's job, always. The
-Packages tab is the one that keeps a timer, and only while a job is running:
-an install of a small package starts and finishes inside one revision poll,
+Toolchains tab is the one that keeps a timer, and only while a job is running:
+an install of a small toolchain starts and finishes inside one revision poll,
 so the tab would go from idle to done having never said "installing". It
 stops when the job does. Anything else with a clock of its own is a tab that
 notices things sooner than the tab beside it for no reason anybody chose,

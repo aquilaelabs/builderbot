@@ -100,7 +100,7 @@ AGENT_VERSION = "0.5.87"
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
 DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
-                  "packages": "/var/lib/builderbot/packages",
+                  "toolchains": "/var/lib/builderbot/toolchains",
                   "cache": "/var/lib/builderbot/cache",
                   # What this node keeps of a project's built artifacts, so
                   # an emulator or a container here starts from a local copy
@@ -197,7 +197,7 @@ def make_store(path):
     """Create a store directory, and say which directories that actually
     brought into being.
 
-    The list is the whole point. A store at /mnt/tank/bb/packages may have
+    The list is the whole point. A store at /mnt/tank/bb/toolchains may have
     made two directories or none, and there is no way to tell afterwards —
     an empty /mnt/tank/bb could be ours or could be the operator's. So it is
     recorded at the moment of creation, and nothing outside that record is
@@ -242,7 +242,7 @@ def prune_made(made):
 def mount_covering(path, mounts):
     """The bb-sandbox mount this path would live inside, or None.
 
-    The deepest match wins, so /mnt/tank/builderbot/packages is answered by
+    The deepest match wins, so /mnt/tank/builderbot/toolchains is answered by
     /mnt/tank rather than by /mnt if both are configured. This is what makes
     an unmounted share detectable: the mount is in fstab, the directory
     under it is not, and mkdir would quietly make a local one.
@@ -622,7 +622,7 @@ def _probe(argv, timeout=5):
     printed something odd, and _clean_version called that "present". The node
     then advertised a toolchain it cannot run, and the controller placed work
     there that could only fail on arrival. Measured on bb-sandbox-redhat,
-    where the packages store's dotnet dies every census while the row said
+    where the toolchain store's dotnet dies every census while the row said
     the node had .NET.
 
     Death by SIGNAL, or a probe that never comes back, is the line. A
@@ -705,7 +705,7 @@ STORE_ID_FILE = ".bb-store-id"
 
 
 # ---------------------------------------------------------------------------
-# the package store, scoped by platform (roadmap R19)
+# the toolchain store, scoped by platform (roadmap R19)
 #
 # One share can serve a Linux box, a Mac and a Windows machine only if their
 # binaries do not land on top of each other: the store's root is therefore
@@ -719,16 +719,16 @@ STORE_ID_FILE = ".bb-store-id"
 # flat store into its scope ran on 9 Sep 2026 and was taken out again.)
 
 
-def pkg_scope():
+def tc_scope():
     """This machine's scope directory name: <os>-<arch> as uname spells them."""
     return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
 
 
-def pkg_root(state):
-    """Where THIS machine's packages live: the packages store's scope
-    directory, or "" when the node has no packages store."""
-    store = (state.get("stores") or {}).get("packages") or ""
-    return os.path.join(store, pkg_scope()) if store else ""
+def tc_root(state):
+    """Where THIS machine's toolchains live: the toolchain store's scope
+    directory, or "" when the node has no toolchain store."""
+    store = (state.get("stores") or {}).get("toolchains") or ""
+    return os.path.join(store, tc_scope()) if store else ""
 
 
 def share_images(store, say=None):
@@ -742,7 +742,7 @@ def share_images(store, say=None):
     say = say or (lambda t: log(t))
     if not store or not os.path.isdir(store):
         return
-    scoped = os.path.join(store, pkg_scope())
+    scoped = os.path.join(store, tc_scope())
     mine = os.path.join(scoped, "android", "system-images")
     shared = os.path.join(store, "shared", "android", "system-images")
     if os.path.islink(mine):
@@ -758,13 +758,13 @@ def share_images(store, say=None):
                     if not os.path.exists(os.path.join(shared, e)):
                         os.rename(os.path.join(mine, e), os.path.join(shared, e))
                 if os.listdir(mine):
-                    say(f"packages store: {mine} still holds images the shared copy also has — "
+                    say(f"toolchain store: {mine} still holds images the shared copy also has: "
                         "remove it by hand and the link is made on the next start")
                     return
                 os.rmdir(mine)
-            say("packages store: the android system images are shared across platforms")
+            say("toolchain store: the android system images are shared across platforms")
         except OSError as ex:
-            say(f"packages store: could not share the system images: {ex}")
+            say(f"toolchain store: could not share the system images: {ex}")
             return
     if os.path.isdir(shared) and os.path.isdir(os.path.join(scoped, "android")) and not os.path.lexists(mine):
         with contextlib.suppress(OSError):
@@ -776,7 +776,7 @@ def store_id(path):
     controller reads for its own (nodes.store_id).
 
     Two machines mounting one share cannot recognize each other by path: the
-    controller reaches the package store through Unraid's FUSE layer while this
+    controller reaches the toolchain store through Unraid's FUSE layer while this
     node reaches the same bytes over NFS, and neither mount string can be
     derived from the other. The file answers exactly, whatever the transport.
     Read-only here: the controller creates it, so a node with a read-only
@@ -797,8 +797,8 @@ def _stores(stores, used=False):
             out[role] = {"path": path, "id": store_id(path),
                          "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
                          "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
-            if role == "packages":
-                out[role]["scope"] = pkg_scope()      # where THIS machine's packages are, under path
+            if role == "toolchains":
+                out[role]["scope"] = tc_scope()      # where THIS machine's toolchains are, under path
         except OSError:
             # Not there is a different fact from full: reported as null so
             # the row says "missing" rather than "0MB free".
@@ -813,12 +813,12 @@ def _stores(stores, used=False):
     return out
 
 
-# Where a toolchain installed into the packages store keeps its command,
-# relative to the store (bb packages's layout), for the census to find without
+# Where a toolchain installed into the toolchain store keeps its command,
+# relative to the store (bb toolchains's layout), for the census to find without
 # PATH knowing about it. `android` is a directory, not a command.
 def _lay_path(store, entry, rel):
     """A layout path against the store. `root:` means the store itself;
-    anything else is under the package's own directory."""
+    anything else is under the toolchain's own directory."""
     if rel.startswith("root:"):
         return os.path.join(store, rel[5:])
     return os.path.join(store, entry["dir"], rel) if rel else \
@@ -826,7 +826,7 @@ def _lay_path(store, entry, rel):
 
 
 def store_layout(state):
-    """What the controller last told us about where packages land, or the
+    """What the controller last told us about where toolchains land, or the
     built-in answer for a controller too old to say.
 
     The fallback is deliberately the old tables: a node whose controller
@@ -887,10 +887,10 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
 
 
 def _toolchains(state):
-    """What this node can build with: on PATH, or in its packages store.
+    """What this node can build with: on PATH, or in its toolchain store.
     The census's `toolchains` is what package-build placement selects on."""
     tc = {}
-    store = pkg_root(state)
+    store = tc_root(state)
     by_report = {}
     for entry in store_layout(state):
         if entry.get("reports") and entry.get("tool"):
@@ -972,7 +972,7 @@ def session_conf(state, user):
             f"WORKSPACE=/workspace\n"
             f"DATA_STORE={stores.get('data') or ''}\n"
             f"ARTIFACTS_STORE={stores.get('artifacts') or ''}\n"
-            f"PACKAGES_STORE={pkg_root(state)}\n"
+            f"TOOLCHAINS_STORE={tc_root(state)}\n"
             f"RUNNER_DIR={RUNNER_DIR}\n"
             f"HIDE=/devdata\n")
 
@@ -1008,7 +1008,7 @@ def extract_sandbox_tool(text):
 def read_catalog(into):
     """The catalog the bundle carries, or {} when it cannot be read."""
     try:
-        with open(os.path.join(into, "config", "packages.json")) as f:
+        with open(os.path.join(into, "config", "toolchains.json")) as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
@@ -1045,8 +1045,8 @@ def sysdeps_missing(cat, name, fam, query):
     exit code, never by output: dpkg -s and pacman -Q both print a sentence
     on stderr for a missing package, which read as "installed" when the
     text was the test, and rpm -q prints "not installed" on stdout."""
-    pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
-    system = pkg.get("system") or {}
+    recipe = next((p for p in cat.get("toolchains") or [] if p.get("name") == name), {})
+    system = recipe.get("system") or {}
     want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
     if not want:
         other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
@@ -1077,12 +1077,12 @@ def held_recipes(state, cat):
     """The catalog recipes with system packages whose directory the store
     holds, complete or not: browsers from before the module still need the
     libraries."""
-    store = pkg_root(state)
+    store = tc_root(state)
     if not store:
         return []
     lay = {e["name"]: e for e in store_layout(state) if e.get("name")}
     out = []
-    for p in cat.get("packages") or []:
+    for p in cat.get("toolchains") or []:
         name = p.get("name")
         if not name or not p.get("system"):
             continue
@@ -1105,7 +1105,7 @@ def held_recipes(state, cat):
 def sysdeps_now(state):
     """The census's answer (roadmap R51): {family, unmet: {recipe: [pkg]}},
     from the bundle the store already holds; nothing until one is there."""
-    store = pkg_root(state)
+    store = tc_root(state)
     into = os.path.join(store, ".bb", "current") if store else ""
     if not into or not os.path.isdir(into):
         return {}
@@ -1122,16 +1122,16 @@ def sysdeps_now(state):
 
 
 def store_dirs(state):
-    """What is actually IN the packages store, as directory names.
+    """What is actually IN the toolchain store, as directory names.
 
     The census's `toolchains` above is a placement summary — six names, so a
     job can select on them — and it was being read as an inventory of the
-    whole catalog, which called four installed packages missing on a store
-    the controller could see for itself. `bb packages` puts each package in
+    whole catalog, which called four installed toolchains missing on a store
+    the controller could see for itself. `bb toolchains` puts each toolchain in
     <root>/<name>, and android's parts under <root>/android/, so the names
     ARE the inventory and this is one listdir.
     """
-    store = pkg_root(state)
+    store = tc_root(state)
     out = {"top": [], "android": []}
     if not store:
         return out
@@ -1139,7 +1139,7 @@ def store_dirs(state):
         out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
     with contextlib.suppress(OSError):
         out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
-    # A directory is not a package: an install that stopped part-way leaves
+    # A directory is not a toolchain: an install that stopped part-way leaves
     # one without the file that completes it (playwright's module beside its
     # browsers). A layout that names that file (`needs`) is checked here, and
     # the controller reads a name in this list as not installed.
@@ -1154,12 +1154,12 @@ def store_dirs(state):
 
 
 def sdk_images(state):
-    """The android system images in this node's packages store, and which of
+    """The android system images in this node's toolchain store, and which of
     its AVDs are built on each.
 
-    A directory walk, deliberately — not `bb packages images`, which is the same
+    A directory walk, deliberately, and not `bb toolchains images`, which is the same
     listing plus a `du -sk` per image. The controller's own copy can afford
-    that; a node cannot. The packages store is commonly an NFS export here
+    that; a node cannot. The toolchain store is commonly an NFS export here
     and the tree runs to tens of gigabytes, so a size measured every census
     would be minutes of stat traffic every ten minutes for a number the
     catalog already knows: an image is a guest artifact, identical on every
@@ -1171,7 +1171,7 @@ def sdk_images(state):
     of the answer to "can this one go?".
     """
     stores = state.get("stores") or {}
-    store = pkg_root(state)
+    store = tc_root(state)
     if not store:
         return []
     base = os.path.join(store, "android", "system-images")
@@ -1218,8 +1218,8 @@ def _listdir(path):
 
 
 def sdk_env(state, who=None):
-    """The environment a job runs with on this node: the packages store as
-    the package store root, its android/ directory as ANDROID_HOME, its jdk as
+    """The environment a job runs with on this node: the toolchain store as
+    the toolchain store root, its android/ directory as ANDROID_HOME, its jdk as
     JAVA_HOME, every toolchain it holds on PATH, and AVDs under the data
     store. What the image gets from its Dockerfile, a node gets from here.
 
@@ -1231,11 +1231,11 @@ def sdk_env(state, who=None):
     find a compiler (bug #45).
     """
     stores = state.get("stores") or {}
-    store = pkg_root(state)
+    store = tc_root(state)
     env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
     if store:
         android = os.path.join(store, "android")
-        env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_PACKAGES": "1",
+        env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_TOOLCHAINS": "1",
                     "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
         front = []
         for entry in store_layout(state):
@@ -1281,21 +1281,21 @@ def runner_env_text(state):
 
 
 def sdk_versions(state):
-    """What `bb packages versions` reports on this node: {name: version}.
+    """What `bb toolchains versions` reports on this node: {name: version}.
 
     The SAME generator the controller runs for its own list, so the two
     describe one store the same way. Before this, a node's versions came
     from _toolchains() — a six-name placement summary with crude parsing —
-    and the Tools tab showed "present" beside a package the controller could
+    and the Tools tab showed "present" beside a toolchain the controller could
     name a version for, an unstripped "go version go1.27.0 linux/amd64", and
     nothing at all for the NDK. One store, two descriptions of it.
 
-    Run from a bundle already cached in the packages store, which a package
-    job puts there: no round trip, no second copy of the probe logic, and
-    nothing reported at all until a job has run — which is the honest answer
-    rather than a summary standing in for an inventory.
+    Run from a bundle already cached in the toolchain store, which a
+    toolchain job puts there: no round trip, no second copy of the probe
+    logic, and nothing reported at all until a job has run, which is the
+    honest answer rather than a summary standing in for an inventory.
     """
-    store = pkg_root(state)
+    store = tc_root(state)
     if not store:
         return {}
     bbdir = os.path.join(store, ".bb")
@@ -1311,7 +1311,7 @@ def sdk_versions(state):
         if not os.path.isfile(bb):
             continue
         try:
-            p = subprocess.run(["bash", bb, "packages", "versions"], capture_output=True,
+            p = subprocess.run(["bash", bb, "toolchains", "versions"], capture_output=True,
                                text=True, timeout=120, check=False, env=env)
         except (OSError, subprocess.SubprocessError):
             return {}
@@ -1386,7 +1386,7 @@ def census(state):
         "distro": distro_now(),
         # The same report the controller makes for itself, so one store is
         # not described two ways (roadmap #19).
-        "packages_versions": sdk_versions(state),
+        "toolchain_versions": sdk_versions(state),
         "services": services_now(),
         # The session half (roadmap #24), as this process is holding it.
         "session": session_now(state),
@@ -2219,6 +2219,19 @@ def load_state():
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
 
 
+def rename_store_roles(state):
+    """Rename a store role this node's state keeps under an earlier name;
+    True if it did. Runs before fill_default_stores, which would otherwise
+    see the role missing and make a new, empty store beside the data one: a
+    node whose toolchains were on a share would lose track of the share.
+    The toolchain store was the packages store before 0.6."""
+    stores = state.get("stores")
+    if isinstance(stores, dict) and "packages" in stores and "toolchains" not in stores:
+        stores["toolchains"] = stores.pop("packages")
+        return True
+    return False
+
+
 def fill_default_stores(state):
     """Give an already-enrolled node a store role it predates; True if it
     gained one.
@@ -2394,8 +2407,8 @@ class Job(threading.Thread):
                 state, code = self.agent.system(self, spec)
             elif self.job.get("type") == "compose":
                 state, code = self.agent.compose(self, spec)
-            elif self.job.get("type") == "package":
-                state, code = self.agent.package(self, spec)
+            elif self.job.get("type") == "toolchain":
+                state, code = self.agent.toolchain(self, spec)
                 # A recipe landed or left: the session environment is built
                 # from the store's layout at ttyd's start, so a session
                 # opened after this would still not find the new tool on
@@ -2769,7 +2782,7 @@ class Agent:
         # this runs on the heartbeat, and `bundle()` pulls from the controller
         # every time it is called. `.bb/current` is what a shell here puts on
         # its PATH, so it is the same bb the session itself runs.
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         bb = os.path.join(store, ".bb", "current", "bb") if store else ""
         if not bb or not os.access(bb, os.X_OK):
             return
@@ -2805,9 +2818,9 @@ class Agent:
         # The layout's one standing rule, kept by the running agent (never
         # by `enroll`, which may run with a store it cannot write yet).
         try:
-            share_images((self.state.get("stores") or {}).get("packages") or "")
+            share_images((self.state.get("stores") or {}).get("toolchains") or "")
         except OSError as e:
-            log(f"packages store: could not share the images ({e})")
+            log(f"toolchain store: could not share the images ({e})")
         c = census(self.state)
         se = c.get("session") or {}
         self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
@@ -2819,7 +2832,7 @@ class Agent:
             self.hello_at = time.time()
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
-            # Where packages land, from the controller's catalog. Kept on the
+            # Where toolchains land, from the controller's catalog. Kept on the
             # record so a job started before the next hello still has it, and
             # only replaced when the controller actually sends one — an older
             # controller says nothing and this node keeps its built-in answer.
@@ -2865,7 +2878,7 @@ class Agent:
             # when that moves, fetch it and restart the ttyds onto it. The
             # running sessions are tmux's and survive the restart — only the
             # next connection runs the new bb-tty. Never fatal: the session
-            # half must not take the job half down with it — a packages
+            # half must not take the job half down with it: a toolchain
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
             before = self.session_bundle
@@ -3208,16 +3221,16 @@ class Agent:
 
     def bundle(self, job, who):
         """bb, its library and the catalog, from the controller by digest
-        into the packages store; the directory it runs from, or '' when it
-        could not be fetched. Shared by package jobs, bb verbs, and — with
-        no job, so `job` may be None and the log is this process's — the
+        into the toolchain store; the directory it runs from, or '' when it
+        could not be fetched. Shared by toolchain jobs, bb verbs, and (with
+        no job, so `job` may be None and the log is this process's) the
         sessions this node runs (roadmap #24). `.bb/current` points at the
         newest unpacked copy, which is what a shell on this node puts on its
         PATH."""
         say = job.say if job else (lambda t: log(t.rstrip("\n")))
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         if not store:
-            say("refused: this node has no packages store\n")
+            say("refused: this node has no toolchain store\n")
             return ""
         self.own_dir(store, who)
         bbdir = os.path.join(store, ".bb")
@@ -3331,7 +3344,7 @@ class Agent:
         # there is nothing to restart and nothing to keep in step; `into` is
         # still the resolved path everywhere else, because the census has to
         # report the digest actually running rather than a symlink.
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         link = os.path.join(store, ".bb", "current") if store else ""
         bbdir = link if link and os.path.isdir(link) else into
         env["PATH"] = ":".join([os.path.join(bbdir, "scripts"),
@@ -3487,7 +3500,7 @@ class Agent:
 
     def session_try(self, digest=None):
         """session_refresh, never fatal: the session half must not take the
-        job half down with it — a packages store this process cannot write
+        job half down with it: a toolchain store this process cannot write
         is a node with no sessions, not a node with no agent."""
         try:
             self.session_refresh(digest)
@@ -3589,7 +3602,7 @@ class Agent:
         if now - getattr(self, "_logins_at", 0) < self.LOGINS_EVERY:
             return None
         self._logins_at = now
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
         if not (bb and os.path.isfile(bb)):
             return None
@@ -3727,7 +3740,7 @@ class Agent:
         """Ask the loop to restart the ttyds onto the current bundle with a
         freshly built environment — from a job's thread, so only the flag
         is set here."""
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into) and self.ttyd:
             self.session_stale = into
@@ -3848,7 +3861,7 @@ class Agent:
         if self.ttyd and self.session_bound and not SESSION_BIND and not self.session_stale:
             now = self.session_bind()
             if now != self.session_bound:
-                store = pkg_root(self.state)
+                store = tc_root(self.state)
                 into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
                 if into and os.path.isdir(into):
                     log(f"sessions: this node's address moved ({self.session_bound} -> {now}); "
@@ -3866,7 +3879,7 @@ class Agent:
             return
         log("sessions: a ttyd exited; starting again")
         self.session_tried = time.time()
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into):
             # .bb/current is whatever was fetched last, so the census names
@@ -4012,20 +4025,20 @@ class Agent:
         return "succeeded", 0
 
     # -- toolchains (docs/nodes.md §6) --------------------------------------------
-    def package(self, job, spec):
-        """`bb packages install|remove NAME` against this node's packages store,
+    def toolchain(self, job, spec):
+        """`bb toolchains install|remove NAME` against this node's toolchain store,
         with the bb the controller ships: the bundle (bb, its library, the
         catalog) is fetched by digest into the store and run from there as
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
         per-node state — the census reports what landed."""
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         if not store:
-            job.say("refused: this node has no packages store\n")
+            job.say("refused: this node has no toolchain store\n")
             return "failed", 78
         action = spec.get("action")
         names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
         if action not in ("install", "remove", "sysdeps") or (not names and action != "sysdeps"):
-            job.say("refused: a package job installs or removes named packages, "
+            job.say("refused: a toolchain job installs or removes named toolchains, "
                     "or installs the system packages the held ones need\n")
             return "failed", 64
         who = self.drop_privileges({})
@@ -4037,16 +4050,16 @@ class Agent:
         bad = 0
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
-            # jobs set this before, so a package job on a node drew the verb
+            # jobs set this before, so a toolchain job on a node drew the verb
             # with nothing after it — and the image picker, which draws its
             # own progress only when the step names an image, drew none.
             job.step(name)
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue
-            job.say(f"== bb packages {action} {name}\n")
+            job.say(f"== bb toolchains {action} {name}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                            "packages", action, name],
+                                            "toolchains", action, name],
                                    "cwd": store, "timeout": spec.get("timeout") or 3600,
                                    "env": sdk_env(self.state)})
             if st_ != "succeeded":
@@ -4102,7 +4115,7 @@ class Agent:
     def sysdeps(self, job, names, into):
         """Install the system packages the recipes already on the store need
         here, without touching the recipes (roadmap R51). The store is a
-        share, so a package installed from one node is on every node that
+        share, so a toolchain installed from one node is on every node that
         mounts it, while the libraries it needs are each machine's own: a
         node enrolled afterwards has dotnet and not libicu, and the only
         gesture that installed libicu was reinstalling dotnet onto the share
@@ -4206,7 +4219,7 @@ class Agent:
         copy and gets none."""
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
             return
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         src = os.path.join(store, ".bb", "current", "nodes", "provision-linux.sh") if store else ""
         if not src or not os.path.isfile(src):
             return
@@ -4263,7 +4276,7 @@ class Agent:
         user = self.session_account()
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not user:
             return
-        store = pkg_root(self.state)
+        store = tc_root(self.state)
         src = os.path.join(store, ".bb", "current", "nodes", "bb-session") if store else ""
         try:
             with open(src, encoding="utf-8") as f:
@@ -4456,7 +4469,7 @@ class Agent:
     SESSION_PROFILE = "/etc/profile.d/builderbot-session.sh"
 
     def write_session_profile(self, job=None):
-        """The console shell's PATH line, from where the packages store IS.
+        """The console shell's PATH line, from where the toolchain store IS.
         The provisioner writes this file once, naming the store it was
         given; a Storage apply that moves the store left it naming the old
         one, so a shell as the session account had no bb (B135). Rewritten
@@ -4465,7 +4478,7 @@ class Agent:
         if os.geteuid() != 0 or not os.path.isfile(self.SESSION_PROFILE):
             return
         who = self.session_account()
-        root = pkg_root(self.state)
+        root = tc_root(self.state)
         ctl = (self.ctl.url or "").rstrip("/")
         text = (
             "# Written by BuilderBot's agent. A session on this node, at a console.\n"
@@ -4639,7 +4652,7 @@ class Agent:
             job.say(f"{role}: bringing {old} across (size unknown)\n")
         # cp -a, not shutil: it keeps ownership, times and links, and one C
         # process beats a per-file round trip over NFS. Six hours, because
-        # a packages store is tens of gigabytes and this is the one system
+        # a toolchain store is tens of gigabytes and this is the one system
         # job that can legitimately take that long.
         #
         # ...but not ownership where ownership is not the mover's to keep. A
@@ -5265,7 +5278,7 @@ def cmd_run():
     # A store role added since this node enrolled: adopted here, once, so a
     # machine that is already out there gains it on its next start rather
     # than only on a re-enrolment nobody is going to do.
-    if fill_default_stores(state):
+    if rename_store_roles(state) | fill_default_stores(state):
         save_state(state)
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")

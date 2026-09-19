@@ -1467,7 +1467,7 @@ def _run_streamed(argv, timeout, env, sink, hold):
     would interleave by luck rather than by time.
 
     Its own process group, so a kill reaches what the CLI is waiting on rather
-    than only the CLI: the packages installer learned this against a `bb` that
+    than only the CLI: the toolchain installer learned this against a `bb` that
     was itself waiting on a curl, and a compose call waiting on a pull is the
     same shape.
     """

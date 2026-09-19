@@ -105,7 +105,7 @@ Create the appdata directories:
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
-# The package store: Android platforms/emulator/system images and any toolchain
+# The toolchain store: Android platforms/emulator/system images and any toolchain
 # you install later. On a normal share rather than appdata; it is bulk data,
 # it is not written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/sdk
@@ -239,11 +239,12 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 ### Android emulator (on a node)
 
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
-on a project runs on that project's node, whose packages store holds the
-emulator and its images (Tools tab, node picked) and whose own `/dev/kvm` and
-card do the work. A node is a machine you enroll from the Nodes tab:
-`nodes/provision-linux.sh` on a VM or a spare box, `provision-macos.sh` on a
-Mac. Nothing here needs a device or a runtime flag for it.
+on a project runs on that project's node, whose toolchain store holds the
+emulator and its images (Toolchains tab, node picked) and whose own
+`/dev/kvm` and card do the work. A node is a machine you enroll from the
+Nodes tab: `nodes/provision-linux.sh` on a VM or a spare box,
+`provision-macos.sh` on a Mac. Nothing here needs a device or a runtime flag
+for it.
 
 ### Web dashboard
 
@@ -278,7 +279,7 @@ are underlined links that fix themselves in place. A row with an error carries
 no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project: the
-container marks its own paths that way (the package store, if you put it inside
+container marks its own paths that way (the toolchain store, if you put it inside
 the projects share, as the default does), and you can drop the same file into
 anything you would rather the card ignored.
 
@@ -541,8 +542,8 @@ Headless works out of the box; there is no display server in the container.
 
 Nothing Android is in the image. A project builds on its node: the JDK, the
 SDK (`android-tools`, platforms, build-tools) and the emulator are recipes in
-the node's packages store, installed from the dashboard's Tools tab with that
-node picked. From a session:
+the node's toolchain store, installed from the dashboard's Toolchains tab
+with that node picked. From a session:
 
 ```bash
 bb build            # the project's build command, on its node
@@ -552,7 +553,7 @@ bb emu stop
 
 AVDs live in the node's home; the images and platforms in its store, so an
 update never re-downloads them. Need another level? `bb emu create 34` on the
-node, or tick the image on the Tools tab.
+node, or tick the image on the Toolchains tab.
 
 ### Publishing packages
 
@@ -621,5 +622,5 @@ SIGTERM; the emulator is powered down and Claude sessions close their turn.
 A node's runner is unaffected: nodes do not stop with this container.
 
 **Image size.** Nothing large is baked in any more: no JDK, no Android SDK,
-and the Playwright browsers live on the package store, so a pull is well under
+and the Playwright browsers live on the toolchain store, so a pull is well under
 a gigabyte. Updates are layer-diffed, so routine updates move far less data.

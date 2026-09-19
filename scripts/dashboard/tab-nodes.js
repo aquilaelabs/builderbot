@@ -121,7 +121,7 @@ function nodeTools(n){
   const sys = unmet.length
     ? `<div class="sub ndsys warn">system packages missing here for ${unmet.map(([r, ps]) =>
         `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: the Tools tab installs them on this
-        node without reinstalling the package</div>` : "";
+        node without reinstalling the toolchains</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -558,10 +558,10 @@ function nodeConfSections(n){
     </div>`;
   }).join("");
   const STORE_ABOUT = {
-    data: "job workspaces and AVDs", packages: "toolchains installed here",
+    data: "job workspaces and AVDs", toolchains: "toolchains installed here",
     cache: "build caches, per project", artifacts: "what projects built, per project",
   };
-  const stores = ["data", "packages", "cache", "artifacts"].map(role => {
+  const stores = ["data", "toolchains", "cache", "artifacts"].map(role => {
     const r = rep.stores?.[role];
     const now = r ? (r.free_mb === null ? `${r.path}: missing` : `${r.path}, ${
       r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
@@ -719,7 +719,7 @@ function nodeConfSections(n){
       : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
          provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}), so its mounts
          and its address are its own to change.${rep.system === "darwin"
-           ? " Its packages land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
+           ? " Its toolchains land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -794,7 +794,7 @@ function renderNodesInto(i){
   // that is how a share it mounts is recognized as the same store a node
   // mounts, and how install arbitration works across the pair, but it is
   // not a machine anybody configures from here: it runs no work (roadmap
-  // #16), takes no packages (#26), and every section on this tab is about
+  // #16), takes no toolchains (#26), and every section on this tab is about
   // something it does not have. So it is registry plumbing, not a row.
   const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local");
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";

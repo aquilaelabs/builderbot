@@ -52,8 +52,8 @@ private tmux server and photographs it with `bb shot`: the pattern the
 | **Claude Code** | Not in the image: a session runs on a node, and the node installs it |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
-| **Playwright** | CLI + the system deps; the browsers themselves install to the [package store](#the-package-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its packages store: the JDK, the SDK, the emulator and the system images are recipes on the Tools tab, installed with the node picked |
+| **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
+| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK, the emulator and the system images are recipes on the Toolchains tab, installed with the node picked |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
@@ -65,8 +65,8 @@ private tmux server and photographs it with `bb shot`: the pattern the
 
 Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`.
 The heavyweight toolchains (Flutter, .NET, Swift, extra Android packages)
-are never in the image at all; `bb packages install` puts them on a share that an
-update cannot touch. See [the package store lives outside the image](#the-package-store-lives-outside-the-image).
+are never in the image at all; `bb toolchains install` puts them on a share that an
+update cannot touch. See [the toolchain store lives outside the image](#the-toolchain-store-lives-outside-the-image).
 
 ---
 
@@ -112,7 +112,7 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 The dashboard starts early in the boot, before any project's own `setup.sh`
 and the SDK/Playwright hooks, so the web UI is reachable in seconds rather
 than after the whole start-up. For a few of those seconds it knows less than
-it will: the package store is listed as a project until the hook that marks
+it will: the toolchain store is listed as a project until the hook that marks
 it runs, and git columns are blank. All of that corrects itself on the next
 poll. `bb logs` now times each
 hook and prints how far into the boot it started, so "what is the wait" is a
@@ -186,7 +186,7 @@ Everything else has sane defaults: full reference below.
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field: **off by default; this is root-equivalent on the host**, read the warning in the docs first |
-| Extra tools | the package manager on the Tools tab, per node; the controller carries what it needs in the image |
+| Extra tools | the Toolchains tab, per node; the controller carries what it needs in the image |
 
 ### 7. First boot
 
@@ -264,7 +264,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its logs and file names. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab's On this browser, kept in a cookie there |
-| `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the package store lives outside the image](#the-package-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
+| `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the toolchain store lives outside the image](#the-toolchain-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `NPM_TOKEN` | *(none)* | `npm publish` auth for a shell on the controller (lands in its `~/.npmrc`). A Claude session runs on a node, with that node's home, and does not get it |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `BUILDERBOT_PULL` | `missing` | compose's pull policy for the image: `missing` pulls (an install); `build` builds this checkout, which is what BuilderBot's own dev instance sets, with `BUILDERBOT_TAG=dev` |
@@ -552,7 +552,7 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
-bb packages             SDKs kept outside the image: status, check, install X, update X, remove X
+bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
@@ -584,57 +584,57 @@ The dashboard's own tab icon is this command's output, from
 would break file ownership. A bare `docker exec -it BuilderBot bash` is still
 root; use `bb shell` for the normal user.
 
-## The package store lives outside the image
+## The toolchain store lives outside the image
 
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs: the JDK, the Android SDK, the emulator,
-Flutter, .NET: is a recipe installed into a **node's packages store**, from
-the Tools tab with that node picked; the tab lists nodes and nothing else,
+Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
+the Toolchains tab with that node picked; the tab lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
 only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
 
-**One store, scoped by platform.** A machine's packages live under
+**One store, scoped by platform.** A machine's toolchains live under
 `<store>/<os>-<arch>`: `linux-x86_64` for this container and the sandbox,
 `darwin-arm64` for a Mac, so one share can serve every node whatever it
 runs, and a Linux box's binaries never land on top of a Mac's. The Android
 system images, the same bytes on every host and tens of gigabytes, live once
 under `<store>/shared/android/system-images` with each platform's
-`android/system-images` a link to them, and `bb packages root` names the scoped
+`android/system-images` a link to them, and `bb toolchains root` names the scoped
 directory.
 
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
-update, and the update is weekly, so a package baked into the image is
+update, and the update is weekly, so a toolchain baked into the image is
 re-downloaded forever: the Android emulator alone is 800MB, a system image
 about 2GB. On the share they are downloaded once and the update walks past
 them. Map no share and everything falls back to the home volume, which also
 persists, but mixes 30GB of system images in with your shell history.
 
 ```bash
-bb packages                     # what is installed, where, and how much room is left
-bb packages install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
-bb packages install android:tv         # or wear · playstore · ndk · cmake · emulator
-bb packages install android:"system-images;android-35;google_apis;x86_64"
-bb packages list                # every package the catalog offers
-bb packages images              # the android system images on disk, with sizes
-bb packages images --available  # ...and every one that could be installed
-bb packages flavors             # google_apis · +playstore · tv · wear, and which to pick
-bb packages plan swift          # what installing it would fetch and run, exactly
-bb packages versions            # what is installed, asking nobody
-bb packages check               # ...and whether anything newer exists
-bb packages update flutter      # each the way its own tooling expects
-bb packages remove flutter
-bb packages env                 # the PATH lines; new shells get them automatically
+bb toolchains                     # what is installed, where, and how much room is left
+bb toolchains install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
+bb toolchains install android:tv         # or wear · playstore · ndk · cmake · emulator
+bb toolchains install android:"system-images;android-35;google_apis;x86_64"
+bb toolchains list                # every toolchain the catalog offers
+bb toolchains images              # the android system images on disk, with sizes
+bb toolchains images --available  # ...and every one that could be installed
+bb toolchains flavors             # google_apis · +playstore · tv · wear, and which to pick
+bb toolchains plan swift          # what installing it would fetch and run, exactly
+bb toolchains versions            # what is installed, asking nobody
+bb toolchains check               # ...and whether anything newer exists
+bb toolchains update flutter      # each the way its own tooling expects
+bb toolchains remove flutter
+bb toolchains env                 # the PATH lines; new shells get them automatically
 ```
 
 **The recipes are a file, not code.**
-[`config/packages.json`](config/packages.json) holds everything the container
-needs in order to offer, fetch and install a package: the URL, the branch, the
+[`config/toolchains.json`](config/toolchains.json) holds everything the container
+needs in order to offer, fetch and install a toolchain: the URL, the branch, the
 installer's arguments, the environment it wants, how many directory levels to
 strip out of the archive, what to run afterwards to prove it worked. Both the
-dashboard and `bb packages` read it, so adding a package is one edit: as long as
+dashboard and `bb toolchains` read it, so adding a toolchain is one edit: as long as
 it fits one of five shapes:
 
 | kind | what it does |
@@ -646,13 +646,13 @@ it fits one of five shapes:
 | `sdkmanager` | an Android package, or an image flavor by kind |
 
 The shapes stay in `bb` because they are genuinely different jobs, and a
-table that could express all five would be a programming language. **`bb packages
-plan <package>`** prints what a recipe resolves to: version, URL, the exact
+table that could express all five would be a programming language. **`bb toolchains
+plan <toolchain>`** prints what a recipe resolves to: version, URL, the exact
 commands, without downloading anything, which is how a catalog edit gets
 checked before it is trusted.
 
 **No size is written down anywhere.** A size typed into a file is wrong the
-next time upstream ships. A row shows the footprint once the package is
+next time upstream ships. A row shows the footprint once the toolchain is
 installed (measured, and remembered after it is removed) and before that
 what an install would *download*, which is a different number and is labelled
 as one: Swift arrives as a gigabyte and unpacks to three.
@@ -683,36 +683,36 @@ component, and the three a minimal profile installs add up to what `rustup` is
 about to fetch. Only Flutter cannot be asked at all: a git clone has no
 content length, so it carries the one approximation in the catalog, marked
 with a `~` everywhere it appears and replaced by a measurement the moment the
-package has been installed here once.
+toolchain has been installed here once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
-you.** `bb packages install|update|remove` refuses to run when `CLAUDECODE` is in
+you.** `bb toolchains install|update|remove` refuses to run when `CLAUDECODE` is in
 the environment; that variable is in everything a Claude session runs, and
 the dashboard drops it at startup precisely so that this page is never
 mistaken for one, and tells the session to ask instead. It is a guardrail
 rather than a boundary (a session has a shell, and could call `sdkmanager`
 directly), and it says how the human at the keyboard overrides it:
-`env -u CLAUDECODE bb packages install …`.
+`env -u CLAUDECODE bb toolchains install …`.
 
 **A removal sticks.** The Playwright browsers are fetched on the first boot
 of a fresh share, because a container that comes up "ready" with `bb shot`
 broken is worse than a slow first start. A share somebody has just cleared looks
-identical to a fresh one from a startup hook, so `bb packages remove` leaves a
+identical to a fresh one from a startup hook, so `bb toolchains remove` leaves a
 marker under `.removed/` on the share and the hooks respect it; installing
-the package again clears it. Without that, an uninstall lasted until the next
+the toolchain again clears it. Without that, an uninstall lasted until the next
 restart, which is not an uninstall.
 
 In the tab, one button does it: **Install selected** installs what is not
 there and updates what is, so there is no second verb to choose between. A
-package that is installed and current has a **dead checkbox**; there is
+toolchain that is installed and current has a **dead checkbox**; there is
 nothing to do to it, and gets its tick back the moment a check finds an
 update, with the version it would move to in amber beside the installed one.
 Uninstalling is a **bin icon on the row itself**, with a confirmation,
-because it is about one package and a bulk Remove button beside a bulk
+because it is about one toolchain and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
 **A job can be stopped.** **Abort** empties the queue and interrupts the
-package being worked on: the whole process group, so the download it is
+toolchain being worked on: the whole process group, so the download it is
 waiting on goes too, and `bb` removes the half-installed directory on its way
 out, the same cleanup a failed install gets. Everything already installed
 stays; the abort is for the rest of the queue, not for undoing what worked.
@@ -737,7 +737,7 @@ the state volume rather than only in memory. That is what makes the tab open
 at once after a container restart instead of sitting on "loading…" while the
 same unchanged answer is worked out again. It is keyed by what it is an answer
 *about*: the set of installed paths, so installing or removing something drops
-it, and a digest of `config/packages.json`, so editing a recipe does too.
+it, and a digest of `config/toolchains.json`, so editing a recipe does too.
 
 Whether a newer one exists is a network round trip to a different upstream per
 toolchain, so that one is a slow background errand rather than something the
@@ -766,7 +766,7 @@ install carries the estimate and the real number arrives a moment later.
 a network round trip to a different upstream: the Flutter branch head, the
 .NET installer's own dry run, Swift's release redirect, the browser revisions
 Playwright's module wants, sdkmanager's update table, so nothing is checked
-until `bb packages check` or the tab's **Check for updates** asks. An unchecked
+until `bb toolchains check` or the tab's **Check for updates** asks. An unchecked
 row says nothing rather than implying it is current. Updates then run through
 each toolchain's own mechanism rather than a delete-and-reinstall: Flutter
 moves to the branch head, .NET installs the current LTS beside what is there,
@@ -777,7 +777,7 @@ they now want.
 location (whatever `/sdk` is mapped to), so relocating that directory on the
 server and re-pointing the mapping is invisible from inside: stop the
 container, move the folder, start it again. There is deliberately no command
-for it. (Packages left on the home volume from an older image keep working
+for it. (Toolchains left on the home volume from an older image keep working
 where they are: the startup wiring points at whichever location actually
 holds them, and says so.)
 
@@ -788,7 +788,7 @@ controller has no Android SDK at all since it stopped building; see
 [CI runs on a node](#ci-runs-on-a-node).) The other toolchains land in their
 own directory under the
 share and are put on `PATH` by a generated `env.sh` that every shell sources;
-`bb packages remove` is `rm -rf` of one directory, because nothing was installed
+`bb toolchains remove` is `rm -rf` of one directory, because nothing was installed
 anywhere else.
 
 | Toolchain | Size | What it gets you |
@@ -797,22 +797,22 @@ anywhere else.
 | `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
 | `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 800MB emulator, 3GB NDK | Platforms, build-tools, emulator, NDK, CMake |
-| Android system images | 1–2GB each | One per API level per flavor; see [below](#the-package-store-lives-outside-the-image) |
+| Android system images | 1–2GB each | One per API level per flavor; see [below](#the-toolchain-store-lives-outside-the-image) |
 | `playwright` | ~1.3GB | Chromium, Firefox and WebKit: fetched on a fresh share, since `bb shot` and the dashboard's tests need them; removing it stays removed |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
-| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb packages install tizen` prints the steps and is not in the dashboard's list; everything there installs |
+| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb toolchains install tizen` prints the steps and is not in the dashboard's list; everything there installs |
 
-**From the dashboard.** The sidebar's **Tools** card holds **Additional
-packages…**, which opens as a **tab** the way the findings report does: a list of
+**From the dashboard.** The sidebar's **Tools** card holds **Toolchains…**,
+which opens as a **tab** the way the findings report does: a list of
 everything above with a checkbox each, the size it will take, and, once
 installed, the path it actually landed on. Tick several and install or remove
 them in one go. If one fails, its row says why: the sentence, not the
 several hundred lines of progress frames that came with it.
 
 System images sit below in a section of their own, because they are not
-packages: a picker for the API level and flavor with the download size on
+toolchains: a picker for the API level and flavor with the download size on
 each option, and the ones already on disk listed under it with what they take
 and a bin each. Each one also says **which AVDs are built on it**, which is
 what "can this go?" actually means: an AVD names one image exactly and will
@@ -837,7 +837,7 @@ and MSIX packaging need Windows itself.
 **Tizen is Samsung's, and where it runs decides whether you care.** TVs,
 signage and appliances still run it and Samsung still ships it; that is the
 reason to install it. Watches are not: Galaxy Watch moved to Wear OS with the
-Watch 4 in 2021, so a watch app is `bb packages install android:wear`. Phones ended
+Watch 4 in 2021, so a watch app is `bb toolchains install android:wear`. Phones ended
 in 2017. There is no headless installer, so it is a CLI pointer rather than a
 row in the dashboard's list, where everything installs.
 
@@ -847,7 +847,7 @@ and no vendor emulator image to download: Samsung's Galaxy skins are
 cosmetic, and the vendor libraries (Samsung IAP or Health, Oppo/Xiaomi push)
 are Gradle dependencies a project declares, not toolchains a container holds.
 What genuinely differs is the *system image* you emulate against, which is
-why those are not packages. A package is one thing at one version; a system
+why those are not toolchains. A toolchain is one thing at one version; a system
 image exists at **every API level at once**, so the question is which level
 and which flavor, never whether. The four flavors, and why you would pick one:
 
@@ -871,7 +871,7 @@ one if something has to talk to Play; take the plain one if you want
 against. Rarely both, and the image list says which AVDs are built on each,
 so the one that is actually spare is visible rather than guessed at.
 
-The Tools tab offers a level and a flavor and installs it; `bb packages images
+The Toolchains tab offers a level and a flavor and installs it; `bb toolchains images
 --available` is the same list on the command line, sizes and all. Real Samsung
 or Oppo hardware is an `adb connect` away over the network, and Samsung's
 Remote Test Lab rents you real devices, but neither is something to install
@@ -884,7 +884,7 @@ engine, with iPhone device profiles. For a native iOS build you need a Mac.
 
 **CI's toolchains are not these.** A workflow that runs `actions/setup-node`
 downloads its own copy into its runner's tool cache on the node, versioned by
-whatever that workflow asked for. The package store is the other thing entirely:
+whatever that workflow asked for. The toolchain store is the other thing entirely:
 what you installed, versioned by when you installed it. They are kept apart on
 purpose: a workflow bumping a version must not move the ground under a Claude
 session.
@@ -906,8 +906,8 @@ once per share; from then on updates cost nothing.
 ## Multiple Android versions
 
 Nothing Android is in the image: the SDK, the emulator and the system images
-are a node's, in its packages store. An API level exists where that store
-holds a system image for it: tick one on the Tools tab with the node picked,
+are a node's, in its toolchain store. An API level exists where that store
+holds a system image for it: tick one on the Toolchains tab with the node picked,
 or let `bb emu create <api>` fetch it on demand. Each is given an AVD named
 `builderbot-<api>`:
 
@@ -924,7 +924,7 @@ below stopped receiving security patches in March 2026.
 
 **Where the space goes.** Nothing Android lives in the image at all: the SDK,
 the platforms, the build-tools, the emulator and the system images are
-installed into the node's [packages store](#the-package-store-lives-outside-the-image), so
+installed into the node's [toolchain store](#the-toolchain-store-lives-outside-the-image), so
 each is downloaded **once** and a weekly `:latest` rebuild re-fetches none of
 them. Budget roughly **2 GB per API level**. If that is tight, pick the plain
 **AOSP** flavor in the image picker instead of Google APIs: smaller, at the
@@ -1190,7 +1190,7 @@ lives in its body. The cards:
   content is not a fault to report.
   A directory holding a **`.bbignore`** file is not a project and is not
   listed: the container writes one into any path of its own that lands in
-  the projects share (the package store, if you map it inside the projects
+  the projects share (the toolchain store, if you map it inside the projects
   folder rather than beside it), and you can create one by hand for anything else
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
@@ -1271,8 +1271,8 @@ lives in its body. The cards:
   passing through a toast you may not have been there to see. `git init` is
   the exception and stays synchronous; it is done before a spinner would
   render, and a row that flashes up for one frame is worse than none
-- **Tools**: **Additional packages**, which opens the installer as a tab:
-  every toolchain on the [package store](#the-package-store-lives-outside-the-image) with its
+- **Tools**: **Toolchains**, which opens the installer as a tab:
+  every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row. Each row also names the system packages its tool puts
@@ -1284,14 +1284,14 @@ lives in its body. The cards:
   between releases; `tools/check-sysdeps.py` checks every name against the
   real package indexes of Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9
   and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own
-  while the store is shared, so when a node lacks some for a package the
+  while the store is shared, so when a node lacks some for a toolchain the
   store already holds (a node enrolled after dotnet went in, with no
   libicu), a node BuilderBot manages installs them by itself the next time it
   reports in, once per missing set, and never while its system changes are
   locked to its console. Anywhere it cannot (a guest node, a locked one, an
   install that failed) the tab says which and **Install system packages**
-  puts them on that node without reinstalling the package; the node's row
-  says the same, before a build fails on it. A package that puts something on
+  puts them on that node without reinstalling the toolchain; the node's row
+  says the same, before a build fails on it. A toolchain that puts something on
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
   them. Beside it, **Docker manager…**, **Static analysis**
@@ -1443,7 +1443,7 @@ directory's one-shot containers: addresses that node's daemon.
 ### The Nodes tab
 
 **Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
-on. This container is not among them; it runs no work, takes no packages,
+on. This container is not among them; it runs no work, takes no toolchains,
 and has nothing any section here configures, so with nothing enrolled the tab
 says so and offers the one thing there is to do. (It does keep a node record
 of its own, which is how a share it mounts is recognized as the same store a
@@ -1518,7 +1518,7 @@ what moved to a node is Claude and not the terminal. A node's sessions ride its
 heartbeat onto the Sessions card with an "on <node>" pill, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
-and the Tools tab's node picker is where more are added. (Underneath, the
+and the Toolchains tab's node picker is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enrol with: the
 enforcement of docs/nodes.md §15 door 7, but every node now enrols with the
 full set, so it is a mechanism rather than a setting.)
@@ -1567,7 +1567,7 @@ where the agent file comes from, so it is always the newer of the two, and a
 job it queues may name something the older agent does not know: a job type,
 a field in the spec, which an older agent meets with a shrug rather than an
 error. So while *update available* is showing, Apply storage, Apply network,
-Install runner, Clear cache and installing a package onto that node are all
+Install runner, Clear cache and installing a toolchain onto that node are all
 refused, with the reason on the button; the self-update itself is the one
 thing that still goes through. Nodes running the shipped agent are unaffected.
 
@@ -1584,7 +1584,7 @@ that holds stores, and a share that fails to mount says which store is
 stranded in it.
 
 **Repointing a store moves what is in it.** The contents are copied to the
-new path before the switch, and the tab asks first, because a packages store
+new path before the switch, and the tab asks first, because a toolchain store
 is tens of gigabytes and the job waits for the copy. Nothing is deleted: the
 old copy stays where it was for you to remove once you are satisfied, so a
 move that fails half way leaves the node still able to work. `cache` is the
@@ -1600,7 +1600,7 @@ set to `dhcp` keeps Apply network live and says so.
 
 An agent node's row is *live* when a poll has arrived within the last 75
 seconds, and the poll carries the numbers: CPU, memory, jobs running and
-free space per store (`data`, `packages`, `cache`), so the row shows them
+free space per store (`data`, `toolchains`, `cache`), so the row shows them
 and `bb nodes` marks liveness (`●` live, `○` quiet, `✗` revoked). Test runs
 `uname` there through the channel and shows the answer. Jobs run as the
 account the node enrolled (`bb`, the docker account), never as root, and a
@@ -1610,17 +1610,17 @@ travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
 
-Two nodes may point `packages` at the same NFS export deliberately, and then
+Two nodes may point `toolchains` at the same NFS export deliberately, and then
 they are one store, and what is installed on either is installed for both: a
 node's toolchains are read from the store at every census, so its neighbour's
 install shows up within the census interval. What that arrangement needs is a
-lock, and it has one: an install is refused while a package job is running on
-any node sharing that store, naming which, and the Tools tab says the store
+lock, and it has one: an install is refused while a toolchain job is running on
+any node sharing that store, naming which, and the Toolchains tab says the store
 is shared before you press. Sharing is recognised by the mount's source, not
 by the path, since every node's default path is the same string.
 
 **Four stores per node**, each a directory of its own: `data` (job
-workspaces and AVDs), `packages` (the toolchains installed there: what a
+workspaces and AVDs), `toolchains` (the toolchains installed there: what a
 project bound to that node can build), `cache` (build caches, per project)
 and `artifacts` (that node's copy of what its projects built, per project).
 The artifacts store is what makes a node off the LAN reasonable: an emulator
@@ -1632,7 +1632,7 @@ the node.
 
 **Storage & network, from the row.** A node that enrolled as a sandbox (it
 carries `bb-sandbox`) folds open an editor for what it should mount (NFS or
-virtiofs, read-only or not), where the agent keeps its data, packages and
+virtiofs, read-only or not), where the agent keeps its data, toolchain and
 cache stores, and how it is addressed (DHCP, or a static address with gateway
 and resolvers). **Save** keeps that on the node's record; **Apply storage**
 and **Apply network** each queue a `system` job the agent runs as root
@@ -1674,9 +1674,9 @@ source** hands over the code base itself as a zip through the browser: what
 git tracks and would track, under one directory named for the project, never
 `.git`, `dist/` or what `.gitignore` hides. A failed build keeps its
 workspace on the node for a look, and says where. The census reports each
-node's cache size beside **Clear cache**, and the Tools tab gains a node
+node's cache size beside **Clear cache**, and the Toolchains tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
-catalog to the node's own packages store.
+catalog to the node's own toolchain store.
 
 **Compose runs on the node, not from here.** A dev instance's Up, Down,
 Rebuild and Remove are executed by the agent with the node's own docker: the
@@ -1697,22 +1697,22 @@ and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.
 
-**A package that needs another says so, and the missing one is installed
+**A toolchain that needs another says so, and the missing one is installed
 first.** `android-tools` drives `sdkmanager`, which is a Java program:
 without a JDK it failed inside sdkmanager with a message naming neither Java
-nor the package that supplies it. The catalog carries `requires` now, the
+nor the toolchain that supplies it. The catalog carries `requires` now, the
 install pulls in what is missing (never what is already there) and the tab
-says what it added. Node.js is a package like any other for the same reason:
+says what it added. Node.js is a toolchain like any other for the same reason:
 it is not needed to *be* a node (the agent is Python, and the provisioner
 installs that), but a project built with npm needs it, and so does anything
 driving a browser through Playwright, which declares it.
 
-**Two machines may share one packages store, and BuilderBot recognises the
+**Two machines may share one toolchain store, and BuilderBot recognises the
 pair.** An NFS export mounted by the controller and by a node is one
 directory, and installing into it from both at once is version skew nobody
-can debug, so a package job waits for any other on a machine that shares
+can debug, so a toolchain job waits for any other on a machine that shares
 the store, in both directions. What identifies the pair is a marker file
-inside the store itself, not the mount: this container reaches the package store
+inside the store itself, not the mount: this container reaches the toolchain store
 through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
@@ -1875,7 +1875,7 @@ exits, so a `compose build` spending four minutes pulling layers is not four
 minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
-per tick, and turning that into a percentage is the thing the packages tab
+per tick, and turning that into a percentage is the thing the Toolchains tab
 already gave up on.
 
 **Abort** sits beside it while a job runs, and asks nothing first. Stopping a
@@ -2694,14 +2694,14 @@ place nowhere, which is the case worth a look.
 That rule is a subtraction, and deliberately so: rather than recognising each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
-It matters because of how the package store is mapped here, beside the projects
+It matters because of how the toolchain store is mapped here, beside the projects
 folder in the same development share, so the host's scanner walks it like
 anything else and one report grew nine thousand findings for a pile of
 downloaded toolchains.
 
 **The subtraction alone stopped being enough when `/workspace` stopped being
 the whole share.** Pointing it at the projects folder: a better arrangement,
-and the one that cut most of this noise; put the package store *outside* the
+and the one that cut most of this noise; put the toolchain store *outside* the
 directory being subtracted from, and 267 trivy findings about vendored
 Flutter, Go and Android toolchains went straight to "unattributed": improving
 the layout regressed the classifier. So the wider question is asked as well.
@@ -3033,7 +3033,7 @@ and the desktop's cards for as long as it did.
 The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
-output is then somewhere you can scroll it, a slow one like `bb packages install` is
+output is then somewhere you can scroll it, a slow one like `bb toolchains install` is
 watchable while it runs, and one that asks a question (`bb login`) or follows
 (`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
 to the tab you are looking at, and only if that is a plain shell: with a
@@ -3096,7 +3096,7 @@ dashboard's own process.
 ### A phone, and asking before touching it
 
 The container carries no adb and holds no phone. A handset is driven from a
-**node** (whichever one has adb in its packages store) and the **Phone**
+**node** (whichever one has adb in its toolchain store) and the **Phone**
 tab (from the Tools card) picks the node, pairs and connects there over
 Android's wireless debugging, and lists what a session is waiting to do.
 Several nodes can each hold their own phone; a project's sessions reach the
@@ -3313,7 +3313,7 @@ project, its worktrees and the account's Claude share (other projects'
 transcripts are empty); the account's home is the only home and its
 BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
 `/dev/shm` are the session's own; the agent's stores keep only the
-emulator's logs and the project's own CI logs and artifacts; the packages
+emulator's logs and the project's own CI logs and artifacts; the toolchain
 store and the base home are read-only, so nothing a session writes can reach
 a command another account or a job runs (Flutter's own tree is the one
 exception, since it writes there on every run, with its `bin` still
@@ -3665,7 +3665,7 @@ gets no terminal tab, and their Claude session opens as a **console** instead:
 the real interface, rendered by a `ttyd` started without `--writable`, with
 a box to type a message and a button to end the conversation. The proxy
 refuses anything else they ask a terminal for, so a read-only window cannot be
-pointed at somebody else's session. They see Docker and the package manager
+pointed at somebody else's session. They see Docker and the Toolchains tab
 for their own projects' nodes: the scoping is on the answer, not just the
 picker, so a node none of their projects builds on is refused rather than
 listed, and change neither, with one exception: **Rebuild**, and Abort with
@@ -3731,11 +3731,11 @@ policed.
 
 ## Playwright, Android, plugins, publishing
 
-- **Playwright**: the browsers are a package on the store (the Tools tab's
-  playwright), so `npx playwright test` runs headless in a session on any
+- **Playwright**: the browsers are a toolchain on the store (the Toolchains
+  tab's playwright), so `npx playwright test` runs headless in a session on any
   node that has it installed.
 - **Android**: `./gradlew assembleRelease` runs on the project's node once
-  the Tools tab has installed the JDK and the Android tools there; the
+  the Toolchains tab has installed the JDK and the Android tools there; the
   emulator is that node's too, `bb emu start`. See
   [Multiple Android versions](#multiple-android-versions) to emulate more
   than one API level.
@@ -3746,10 +3746,10 @@ policed.
   `bb diag plugins`, since a plugin adds its own hooks and instructions beside
   BuilderBot's and a session that behaves oddly may be carrying one. The
   language-server plugins run a server a session cannot `npm install -g`
-  into the store, so the Tools tab carries them: **language-servers** (pyright
+  into the store, so the Toolchains tab carries them: **language-servers** (pyright
   and typescript-language-server, for pyright-lsp and typescript-lsp) and
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
-  already come with the rust and swift packages.
+  already come with the rust and swift toolchains.
 - **Publishing**: from a session, whatever the project's own credentials
   allow on its node (`gh release create`, Gradle publish tasks); from a shell
   on the controller, `npm publish` with `NPM_TOKEN`. Signing keys belong in CI
@@ -3827,10 +3827,10 @@ Linux provisioner. `--check` runs only the pre-flight: the command line
 tools, python3, Homebrew, Xcode, room, and whether the controller answers.
 
 What a Mac node is for is what only a Mac builds: iOS, macOS, the Apple
-half of a Flutter app. `--packages /Volumes/SDK` points its packages store at
-the same share the Linux nodes use, mounted over SMB; its packages land under
+half of a Flutter app. `--toolchains /Volumes/SDK` points its toolchain store at
+the same share the Linux nodes use, mounted over SMB; its toolchains land under
 `darwin-arm64` (or `darwin-x86_64`) in it and nobody else's are touched. The
-Tools tab shows the node as a Mac and offers what the catalog packages for
+Toolchains tab shows the node as a Mac and offers what the catalog packages for
 `darwin`: the JDK, Node, Go and Flutter resolve their macOS downloads
 through the same recipes, and `xcodes` installs and switches Xcode versions
 from Apple's own downloads (Xcode itself is Apple's to serve and needs an
@@ -3874,7 +3874,7 @@ BuilderBot's own Artifacts tab. Moving the surface means moving all three
 together: the file, the constant, the app.
 
 **Building it.** `.github/workflows/android-app.yml` builds the debug APK on
-a node's runner: the JDK and the Android SDK come from the node's packages
+a node's runner: the JDK and the Android SDK come from the node's toolchain
 store, the same environment every `bb` job gets, on a push to `main` that
 touches `android/`, names it by `bb version --file`, drops it into
 BuilderBot's `dist/` where the runner's machine mounts the projects share,
@@ -3897,9 +3897,9 @@ scripts/
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
   lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
-  lib/sdk.sh                     the package manager: `bb packages`, sourced by bb
+  lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
-  lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
+  lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
@@ -3914,7 +3914,7 @@ scripts/
     prefs.py                     which model and effort a project's Claude session runs on
     settings.py                  controller settings, the things that used to be environment variables
     statefile.py                 writing a state file, and holding it while you read-modify-write one
-    packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
+    toolchains.py                everything behind the Toolchains tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
@@ -3961,7 +3961,7 @@ nodes/provision-linux.sh                  turns a Linux machine into a node (the
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 config/skel/                     home directory skeleton
-config/packages.json             the packages the Tools tab offers, and how to install each
+config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index

@@ -253,8 +253,8 @@ def _insert_node(rec):
 
 STORE_ID_FILE = ".bb-store-id"
 
-# Where this container keeps its toolchains. `bb packages root` is the authority
-# and packages.py asks it, but nodes.py is imported at boot before any of
+# Where this container keeps its toolchains. `bb toolchains root` is the authority
+# and toolchains.py asks it, but nodes.py is imported at boot before any of
 # that and must not shell out on the seed path — so the same two answers bb
 # itself resolves between, in the same order.
 def sdk_root_of_controller():
@@ -268,7 +268,7 @@ def store_id(path, make=True):
     """A stable id for the store at `path`, from a marker inside it.
 
     Two machines mounting one share have no way to recognize each other by
-    path: this container reaches the package store through Unraid's FUSE layer
+    path: this container reaches the toolchain store through Unraid's FUSE layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (192.168.1.10:/mnt/user/development/SDK). Neither string can be
     derived from the other without knowing it is Unraid, so pairing on the
@@ -321,10 +321,10 @@ def _seed_local():
         "mem_mb": _mem_mb(),
         "os": f"{platform.system().lower()} {platform.machine()}",
     }
-    # This container's own packages store, reported like any node's — without
+    # This container's own toolchain store, reported like any node's. Without
     # it the controller could not be recognized as sharing a store with a
     # node, so the "one install at a time across all of them" arbitration
-    # never engaged for the pair that most obviously needs it: the package store,
+    # never engaged for the pair that most obviously needs it: the toolchain store,
     # mounted here and on the sandbox at once.
     root = sdk_root_of_controller()
     if root:
@@ -333,7 +333,7 @@ def _seed_local():
             u = os.statvfs(root)
             st["free_mb"] = int(u.f_bavail * u.f_frsize / 1048576)
             st["total_mb"] = int(u.f_blocks * u.f_frsize / 1048576)
-        reported["stores"] = {"packages": st}
+        reported["stores"] = {"toolchains": st}
     system, arch = platform.system().lower(), platform.machine()
     if node(LOCAL):
         _exec("UPDATE nodes SET reported = ?, os = ?, arch = ? WHERE id = ?",
@@ -874,17 +874,17 @@ def _census(c):
                 # The node's own directory in the store — linux-x86_64,
                 # darwin-arm64 (roadmap R19).
                 "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
-    # {name: version} from `bb packages versions` on the node — the controller's
+    # {name: version} from `bb toolchains versions` on the node: the controller's
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does
     # not exist.
-    pv = c.get("packages_versions") if isinstance(c.get("packages_versions"), dict) else {}
-    out["packages_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
+    pv = c.get("toolchain_versions") if isinstance(c.get("toolchain_versions"), dict) else {}
+    out["toolchain_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                          for k in ("top", "android", "incomplete")}
-    # The android system images in the packages store, and the AVDs built on
-    # each (roadmap #20). Whitelisted like store_dirs and packages_versions,
+    # The android system images in the toolchain store, and the AVDs built on
+    # each (roadmap #20). Whitelisted like store_dirs and toolchain_versions,
     # and for the same reason: a field the agent reports and this drops is a
     # field that does not exist. Absent rather than empty when the agent did
     # not send it at all: a node that has not answered is not a node with
@@ -1034,7 +1034,7 @@ def _census(c):
 # GUI and a rescue shell cannot disagree about what the node is meant to be.
 
 MOUNT_TYPES = ("nfs", "virtiofs")
-STORE_ROLES = ("data", "packages", "cache", "artifacts", "appdata")
+STORE_ROLES = ("data", "toolchains", "cache", "artifacts", "appdata")
 # The same refusal the agent makes of a store path, made here so the tab says
 # no before anybody presses. Deliberately in both places: a store is a
 # directory this system creates, fills and — for the cache — empties, so one
@@ -1478,7 +1478,7 @@ def agent_stale(n):
     A controller is always newer than or equal to its nodes — it is where
     the agent file comes from — so a mismatch means the node may not
     understand a job this version would send it. Job types and spec fields
-    have been added on nearly every phase (system, package, cache-clear,
+    have been added on nearly every phase (system, toolchain, cache-clear,
     compose plans, bb verbs, store listings), and an older agent meets an
     unknown one with a shrug rather than an error. So the rule is: an agent
     that is behind takes nothing but its own update.
@@ -1730,7 +1730,7 @@ def node_apply(principal, node_id, what):
         return {"error": "a system job is already in flight on this node — one at a time"}
     cfg = apply_cfg(desired, what)
     # A storage apply that repoints a store copies what is in it first, and a
-    # packages store is tens of gigabytes: fifteen minutes is the right ceiling
+    # toolchain store is tens of gigabytes: fifteen minutes is the right ceiling
     # for mounting a share and the wrong one for moving one. `cache` is not
     # copied (the agent says why), so it does not buy the longer clock.
     timeout = 900
@@ -1747,7 +1747,7 @@ def node_apply(principal, node_id, what):
     return r
 
 
-# Set by server.py at boot, because packages.py imports this one and the
+# Set by server.py at boot, because toolchains.py imports this one and the
 # catalog is its business, not the registry's. Absent (an older controller,
 # or a store that did not open) simply means the node keeps its built-in
 # answer.
@@ -1807,7 +1807,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
                                      "capabilities": n["capabilities"],
                                      "concurrency": n["concurrency"]},
             "agent": {"digest": ours["digest"], "version": ours["version"]},
-            # Where every package lands, from the catalog — the node has no
+            # Where every toolchain lands, from the catalog: the node has no
             # catalog of its own, and this is what stops it keeping a second
             # copy of the answer that drifts from ours.
             "layout": layout_of() or None,
@@ -1900,9 +1900,9 @@ def samples(nid):
 # concurrency is counted here from the rows rather than trusted from either.
 
 # exec runs argv; compose is the controller's docker; self-update, system
-# (phase 5), package (a toolchain install against the node's packages store)
+# (phase 5), toolchain (an install against the node's toolchain store)
 # and cache-clear (drop the node's build caches) are the agent's own.
-JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear",
+JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear",
              # The sign-in flow, on the machine Claude is installed on: a job
              # of its own because it opens a PTY and drops to the SESSION
              # account, not the job one (R47). Both matter — the flow prints a

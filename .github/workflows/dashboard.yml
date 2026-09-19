@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   dashboard:
-    # A node: Playwright and Chromium are its packages store's, on the PATH
+    # A node: Playwright and Chromium are its toolchain store's, on the PATH
     # the runner's .env carries (the agent writes the same environment every
     # bb job gets). The harness FAILS by name when they are missing rather
     # than passing by omission — it skipped with exit 0 until 8 Sep, and every

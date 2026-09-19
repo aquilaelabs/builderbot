@@ -5,7 +5,7 @@ Named roadmap.py because that is what the list was called when it was written,
 and the file is served from an absolute path by the running image; the
 command, the tab and the words everywhere else are "roadmap".
 
-Everything else the dashboard holds is one-way. The package list is the
+Everything else the dashboard holds is one-way. The toolchain list is the
 container's; a memory is Claude's; the project list is the filesystem's. This
 is shared: the operator adds "make the picker wrap properly", a session adds
 "a project can be created in one click and only deleted from a shell", and
@@ -53,7 +53,7 @@ import pending  # noqa: E402
 import time
 from pathlib import Path
 
-# The server's, injected rather than imported — same shape as packages.py.
+# The server's, injected rather than imported: the same shape as toolchains.py.
 # `tell` is notify.tell: the one way a line reaches a running Claude session.
 write_json = None
 actor = None

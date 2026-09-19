@@ -409,7 +409,7 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
 USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
-               "docker-write", "packages-write", "jobs", "lock", "pin", "version")
+               "docker-write", "toolchains-write", "jobs", "lock", "pin", "version")
 
 
 def sees_all(u):
@@ -465,7 +465,7 @@ def may_see(u, name):
 
 
 def is_admin(u):
-    """Whether this account owns the machinery: nodes, packages, settings,
+    """Whether this account owns the machinery: nodes, toolchains, settings,
     other accounts. Everything that is not a project.
 
     A session token is never one, whatever it says: session_principal builds
@@ -550,7 +550,7 @@ def may(u, action, project=None):
                 "docker-write": "starting and stopping containers is an "
                                 "administrator's — you can see what is "
                                 "running and open it",
-                "packages-write": "installing on a node is an administrator's "
+                "toolchains-write": "installing on a node is an administrator's "
                                   "— these are gigabytes on shared disk"}[action]
     if action == "admin":
         return "that is an administrator's"
@@ -560,10 +560,10 @@ def may(u, action, project=None):
 # --- what a session gets instead of the operator's password --------------
 #
 # A Claude session used to inherit DASHBOARD_AUTH, which is how "only the
-# operator may install a package" ended up being a rule the code asked nicely
+# operator may install a toolchain" ended up being a rule the code asked nicely
 # about (bug #16). It gets one of these instead: one project, `user` rights,
 # and an expiry. Whoever holds it can do what a user can do on that project
-# and nothing else — no other project, no nodes, no packages, no accounts.
+# and nothing else: no other project, no nodes, no toolchains, no accounts.
 #
 # Stateless, signed with a key kept in the store. That buys revocation without
 # a table to keep: rotating the key invalidates every session token at once,

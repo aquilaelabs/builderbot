@@ -135,7 +135,7 @@ if [ -n "$account" ]; then
     export HOME
 fi
 
-# On a node the packages store is read-only in a session's view (B163), and
+# On a node the toolchain store is read-only in a session's view (B163), and
 # two things a session does were writes into it. Rust's crate cache is
 # CARGO_HOME, which the store's layout puts at rust/cargo: it is the
 # account's own now, and the store's cargo/bin stays on PATH for the proxies,
@@ -503,7 +503,7 @@ PY
         #
         # It used to inherit DASHBOARD_AUTH — the operator's own password —
         # from the container environment, which made "only the operator can
-        # install a package" a rule the code asked nicely about (bug #16). It
+        # install a toolchain" a rule the code asked nicely about (bug #16). It
         # gets a token scoped to THIS project with `user` rights instead, and
         # the password is removed from the environment it runs in.
         #

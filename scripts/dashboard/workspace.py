@@ -22,9 +22,9 @@ What this module owns:
   - artifact_put(job, name, body): a file a job uploaded, into dist/ under a
     name the node chose and this side sanitized, plus dist/.provenance/ with
     the chain (job, node, source digest, command, sha256).
-  - bundle(): bb and its library plus the package catalog as one tar, which
-    is what a node needs to run `bb packages install` against its own packages
-    store — the toolchain recipes stay in one catalog (§6) and travel to the
+  - bundle(): bb and its library plus the toolchain catalog as one tar, which
+    is what a node needs to run `bb toolchains install` against its own toolchain
+    store: the toolchain recipes stay in one catalog (§6) and travel to the
     node by digest, like the agent itself does.
 """
 
@@ -258,7 +258,7 @@ def provenance(project, rel):
 # rest of scripts/dashboard — the notebook modules, users.py, server.py —
 # because a node has no /config for them to read; the verbs that need them
 # are relayed back here (server._bb_relay).
-BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json", "nodes/provision-linux.sh",
+BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/provision-linux.sh",
                 # The root helper that builds a session's view, which the
                 # agent installs from here on a sandbox node (R35).
                 "nodes/bb-session",

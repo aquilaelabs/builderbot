@@ -10,7 +10,7 @@
 //
 // What this file measures is the join between the two halves, because that is
 // where it drifted: the server published a token for the Settings tab and for
-// the package store and NOTHING watched either, so those two waited on the
+// the toolchain store and NOTHING watched either, so those two waited on the
 // fifteen-second poll while the tab beside them woke in a second; and five of
 // the notebook's six halves rode a counter on the status payload while the
 // sixth rode this one. Both are the same failure — a view whose clock nobody

@@ -189,7 +189,7 @@ def _field(req, key):
 
 
 # The server's. Injected rather than imported, because importing the server
-# from a module the server imports is a circle — same shape as packages.py.
+# from a module the server imports is a circle. The same shape as toolchains.py.
 run = None
 WORKSPACE = None
 agent_keys = None
@@ -1061,11 +1061,11 @@ def _git_env():
 
 
 # ---- the one job ----------------------------------------------------------
-# One at a time, like the package worker and for the same reason: these are
+# One at a time, like the toolchain worker and for the same reason: these are
 # minutes long, and a queue that did not survive a page reload would be a
 # promise the page could not keep. `step` is a phrase, not a percentage —
 # git's progress is a carriage-return animation on stderr, and parsing it to
-# redraw it was rejected once already on the packages tab. The page draws an
+# redraw it was rejected once already on the toolchains tab. The page draws an
 # ellipsis after whatever this says.
 # What each kind is called while it is happening, for the one message that
 # has to name it. The page has its own copy for the row it draws.

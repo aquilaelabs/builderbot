@@ -103,8 +103,8 @@
     <!-- The disk. qcow2 so it grows rather than being claimed up front, and
          discard='unmap' so the file SHRINKS again when Docker prunes images —
          without it a sandbox only ever gets bigger. Make it 200G, not the
-         64G a Docker sandbox got by with: the packages store lands here
-         (/var/lib/builderbot/packages — the Android SDK's system images
+         64G a Docker sandbox got by with: the toolchain store lands here
+         (/var/lib/builderbot/toolchains: the Android SDK's system images
          alone are tens of gigabytes, the JDK, Flutter and the Playwright
          browsers on top) unless provision-linux.sh points the stores at a share
          instead. The guest grows into it; the file only takes what is used. -->

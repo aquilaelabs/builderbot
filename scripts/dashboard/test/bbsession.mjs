@@ -16,9 +16,9 @@ const STAGE = '/run/bb-session';
 const L = join(DIR, 'viewlayout');
 const ws = join(L, 'workspace'), homeRoot = join(L, 'home'), users = join(homeRoot, 'users');
 const data = join(L, 'data'), art = join(L, 'artifacts'), runner = join(L, 'runner'), devdata = join(L, 'devdata');
-// The scoped packages store: the .bb bundle a session and the agent run, and a
+// The scoped toolchain store: the .bb bundle a session and the agent run, and a
 // toolchain beside it a build writes to (B157).
-const pkg = join(L, 'packages', 'linux-x86_64');
+const pkg = join(L, 'toolchains', 'linux-x86_64');
 const me = 'u_0000abcd', other = 'u_1111abcd';
 const myHome = join(users, me);
 // Claude Code's transcript folder for a path: every other character a dash.
@@ -57,7 +57,7 @@ symlinkSync(join(homeRoot, '.local', 'share', 'claude', 'versions', '2.1.273'),
 symlinkSync(join(ws, 'beta'), join(ws, 'linked'));
 const conf = join(L, 'bb-session.conf');
 writeFileSync(conf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
-  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `PACKAGES_STORE=${pkg}`,
+  `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `TOOLCHAINS_STORE=${pkg}`,
   `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n',
   { mode: 0o644 });
 
@@ -100,7 +100,7 @@ ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(dat
    && bound(join(art, 'alpha')) && !bound(join(art, 'beta')) && hidden(runner) && hidden(devdata),
    'the agent\'s stores keep the emulator, its own CI logs and artifacts; jobs, compose files, the runner and dev data are gone');
 ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
-   'the whole packages store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
+   'the whole toolchain store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
 const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
 const fl = join(pkg, 'flutter');
 ok(at('bindro', pkg, pkg) < at('bindrw', fl, fl) && at('bindrw', fl, fl) < at('bindro', join(fl, 'bin'), join(fl, 'bin'))
@@ -124,7 +124,7 @@ ok(has('bindro', versions, versions),
   const altConf = join(L, 'bb-session-plainclaude.conf');
   writeFileSync(altConf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`,
     `HOME_ROOT=${alt}`, `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`,
-    `PACKAGES_STORE=${pkg}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
+    `TOOLCHAINS_STORE=${pkg}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`].join('\n') + '\n', { mode: 0o644 });
   const g2 = JSON.parse(execFileSync(HELPER,
     ['plan', '--project', 'alpha', '--account', me, '--home', join(alt, 'users', me),
      '--cwd', join(ws, 'alpha')],
@@ -133,7 +133,7 @@ ok(has('bindro', versions, versions),
      'a node whose claude is a plain wrapper script has that file made read-only instead');
 }
 {
-  // No PACKAGES_STORE (an older agent's conf, before B157): no bundle bind at
+  // No TOOLCHAINS_STORE (an older agent's conf, before B157): no bundle bind at
   // all, which leaves the store as it was rather than failing the view.
   const noStore = join(L, 'bb-session-nostore.conf');
   writeFileSync(noStore, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
@@ -146,7 +146,7 @@ ok(has('bindro', versions, versions),
   // home root, which every conf carries, so an older agent's node gets that
   // half of B157 without being updated.
   ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1].startsWith(pkg)),
-     '...and a conf without PACKAGES_STORE (an agent from before B157) plans no bundle bind rather than failing');
+     '...and a conf without TOOLCHAINS_STORE (an agent from before B157) plans no bundle bind rather than failing');
   ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === versions),
      '...while the shared launcher is still made read-only there, since that is read off the home root');
 }

@@ -39,9 +39,9 @@ const DRIVERS = {
     open: () => page.evaluate(() => openDocker()),
     readyWhen: '.dmtab .macros',
   },
-  packages: {
-    open: () => page.evaluate(() => openPackages()),
-    readyWhen: '.pkgtab .pkg',
+  toolchains: {
+    open: () => page.evaluate(() => openToolchains()),
+    readyWhen: '.tctab .tc',
   },
   projects: {
     open: () => page.evaluate(() => openProjectsTab()),
@@ -102,8 +102,8 @@ ok(undriven.length === 0,
 // different ways before it was a rule. Indented-by-design rows opt out by
 // class, and the list of those is deliberately short.
 const BANDS = '.field, .row, .rule, .empty, .loading, .fnote, .dmsrc, ' +
-              '.macros, .fxproj, .pkghead, .pkg, .sect>summary';
-const INDENTED = ['img'];        // .pkg.img — a child row, indented on purpose
+              '.macros, .fxproj, .tchead, .tc, .sect>summary';
+const INDENTED = ['img'];        // .tc.img: a child row, indented on purpose
 
 async function measure(kind){
   return page.evaluate(({ BANDS, INDENTED }) => {
@@ -296,7 +296,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .pkgnode, .ndpaths, .ndrunner, .ndconfacts';
+    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .tcnode, .ndpaths, .ndrunner, .ndconfacts';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).

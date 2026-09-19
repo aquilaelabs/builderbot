@@ -618,7 +618,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
 
 // ---- tools: what a node carries, and adding to it -------------------------------
 // The dashboard's Tools tab, as much of it as a phone is the right shape for:
-// which packages a store holds, and Install or Remove on one of them. The
+// which toolchains a store holds, and Install or Remove on one of them. The
 // listing is everybody's — what a node carries decides whether a build can run
 // there — and the two buttons are an administrator's, which is the server's
 // rule and not this screen's opinion.
@@ -635,7 +635,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
     var said by remember { mutableStateOf("") }
     var ask by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
     val (nd, _) = load("tools-nodes") { api.nodes() }
-    val (pk, reload) = load("tools-$node") { api.packages(node) }
+    val (pk, reload) = load("tools-$node") { api.toolchains(node) }
     val nodes = nd.value?.arr("nodes")
         ?.filter { it.str("kind") == "agent" && it.str("state") != "retired" } ?: emptyList()
     val job = pk.value?.obj("job")
@@ -648,7 +648,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
         ask = null
         scope.launch {
             said = try {
-                api.packageAct(node, action, listOf(name))
+                api.toolchainAct(node, action, listOf(name))
                 if (action == "install") "installing $name…" else "removing $name…"
             } catch (e: Exception) { e.message ?: e.toString() }
             reload()

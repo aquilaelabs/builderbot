@@ -85,7 +85,7 @@ is_mountpoint() {
 #
 # The image is the wrong home for them: /opt is discarded on every update, so
 # anything installed there is downloaded again on a weekly schedule, and the
-# packages are large enough (a system image is a couple of GB, the emulator
+# toolchains are large enough (a system image is a couple of GB, the emulator
 # 800MB) for that to be the dominant cost of an update. A mounted share keeps
 # them outside the image entirely — installed once, kept forever, shared by
 # every toolchain that can be told where to unpack.
@@ -93,8 +93,8 @@ is_mountpoint() {
 # SDK_ROOT is that share, /sdk by default. Without one — nobody mapped it —
 # this falls back to the home volume, which also persists but is the
 # operator's own directory rather than a place to put 30GB.
-# sdk_store_root — the package store as the operator mapped it: the share,
-# or the home volume's .sdk. What the marker and the settings name.
+# sdk_store_root: the toolchain store as the operator mapped it (the share,
+# or the home volume's .sdk). What the marker and the settings name.
 sdk_store_root() {
     local root="${SDK_ROOT:-/sdk}"
     # ...and the one place the name means something else. The agent on a node
@@ -133,7 +133,7 @@ sdk_store_root() {
 # R19); the agent on a node keeps the same rule, in the same words.
 sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"; }
 
-# sdk_root — where THIS machine's packages are: the store's scope directory.
+# sdk_root: where THIS machine's toolchains are, the store's scope directory.
 # Every install, probe and PATH entry is relative to this.
 sdk_root() { printf '%s/%s' "$(sdk_store_root)" "$(sdk_scope)"; }
 
@@ -152,13 +152,13 @@ sdk_share_images() {
     if [ -d "$mine" ] && [ ! -L "$mine" ]; then
         if [ ! -d "$shared" ]; then
             mkdir -p "$(dirname "$shared")" && mv "$mine" "$shared" \
-                && log "package store: the android system images are shared across platforms"
+                && log "toolchain store: the android system images are shared across platforms"
         else
             for e in "$mine"/*; do
                 [ -e "$e" ] || continue
                 [ -e "$shared/$(basename "$e")" ] || mv "$e" "$shared/"
             done
-            rmdir "$mine" 2>/dev/null || log "package store: $mine still holds images the shared copy also has — remove it by hand"
+            rmdir "$mine" 2>/dev/null || log "toolchain store: $mine still holds images the shared copy also has; remove it by hand"
         fi
     fi
     if [ -d "$shared" ] && [ -d "$scoped/android" ] && [ ! -e "$mine" ] && [ ! -L "$mine" ]; then
@@ -167,7 +167,7 @@ sdk_share_images() {
     return 0
 }
 
-# sdk_have ROOT NAME — is a toolchain installed under the package store root?
+# sdk_have ROOT NAME: is a toolchain installed under the toolchain store root?
 sdk_have() {
     [ -d "$1/$2" ] && [ -n "$(ls -A "$1/$2" 2>/dev/null)" ]
 }
@@ -182,14 +182,14 @@ sdk_have() {
 # for the same reason: a thing that exists is never hidden behind an empty
 # directory somewhere else. Installs still go to the share; this is only
 # about finding what is already there.
-# A package the operator deliberately removed.
+# A toolchain the operator deliberately removed.
 #
 # Two startup hooks fetch things on a fresh share — the browsers, the
 # emulator — because a container that comes up "ready" with `bb shot` broken
 # is worse than a slow first boot. But a fresh share and a share somebody just
 # cleared look identical, so an uninstall used to last until the next restart
-# and no further. This is how the intent outlives it: `bb packages remove` leaves a
-# marker, `bb packages install` clears it, and a hook that finds one keeps its
+# and no further. This is how the intent outlives it: `bb toolchains remove` leaves a
+# marker, `bb toolchains install` clears it, and a hook that finds one keeps its
 # hands off. On the share, because an image update must not forget it.
 sdk_removed_marker() {
     printf '%s/.removed/%s' "$(sdk_root)" "$(printf '%s' "$1" | tr ':/' '--')"

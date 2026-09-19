@@ -2,7 +2,7 @@
 """Check every system package a recipe names against the distributions' own
 package indexes.
 
-config/packages.json lists, per recipe and per package manager, the machine's
+config/toolchains.json lists, per recipe and per package manager, the machine's
 own packages the recipe needs (`system.apt`, `system.dnf`, ...), and the agent
 installs them on a node it administers. A name that does not exist on that
 node's release fails the install with the package manager's own complaint,
@@ -156,7 +156,7 @@ def index(manager, urls, fresh):
 def main(argv):
     fresh = "--fresh" in argv
     only = [a for a in argv if not a.startswith("-")]
-    cat = json.loads((ROOT / "config" / "packages.json").read_text())["packages"]
+    cat = json.loads((ROOT / "config" / "toolchains.json").read_text())["toolchains"]
     recipes = [p for p in cat if p.get("system") and (not only or p["name"] in only)]
     bad = 0
     for manager, releases in RELEASES.items():

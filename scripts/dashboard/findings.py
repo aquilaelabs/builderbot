@@ -251,7 +251,7 @@ def _project_of(uri, known, nonproject=frozenset()):
     matches a directory in the workspace.
 
     A component that matches a directory in the share that is NOT a project
-    (the package store, the runner's tree, anything else living in there)
+    (the toolchain store, the runner's tree, anything else living in there)
     attributes to IGNORED rather than to nothing. The host scanner sweeps the
     whole share, so the flutter checkout alone lands thousands of findings,
     and filing those as "unattributed" buried the handful of genuinely
@@ -281,9 +281,9 @@ def share_siblings():
 
     The subtraction below derives "not a project" from what sits INSIDE
     /workspace, which worked while /workspace was the whole development share:
-    the package store was a directory in it, so it fell out for free. Pointing
+    the toolchain store was a directory in it, so it fell out for free. Pointing
     /workspace at the projects folder (a better arrangement, and the one that
-    cut most of this noise) took the package store outside it, and 267 findings
+    cut most of this noise) took the toolchain store outside it, and 267 findings
     about downloaded Flutter, Go and Android toolchains went straight to
     "unattributed", which is the label meant for a path that is genuinely
     wrong. Improving the layout regressed the classifier.
@@ -354,7 +354,7 @@ def nonproject_dirs(valid):
     away only the listed names and its thousands of findings stay in play; take
     away the valid ones and it falls out with the rest.
 
-    That width is the point. The package store is the case that made it matter: on
+    That width is the point. The toolchain store is the case that made it matter: on
     this box it lives *inside* the development share, so the host's scanner
     walks it like anything else and a report grew nine thousand findings
     attributed to a "project" that is a pile of downloaded toolchains. Those
@@ -468,7 +468,7 @@ def payload(ps):
     files = [f for f in files if f.name not in dropped]
     # Only the projects worth reading findings for get attributed to: listed,
     # no error-level issue. Everything else under the share
-    # (a project shut out, one that is broken, the package store, a directory
+    # (a project shut out, one that is broken, the toolchain store, a directory
     # nobody has explained) attributes to IGNORED and is counted aside.
     #
     # Counted rather than silently dropped: a report that quietly shrinks
@@ -605,7 +605,7 @@ def counts(ps):
             good += 0 if rep.get("error") else 1
             for row in rep["findings"]:
                 if row["project"] == IGNORED:
-                    continue        # the package store et al: see _project_of
+                    continue        # the toolchain store et al: see _project_of
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
                 rows_by.setdefault(row["project"] or "", []).append(row)

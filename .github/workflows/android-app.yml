@@ -1,6 +1,6 @@
 # The companion app, built on a node. The node's runner carries the JDK and
-# the Android SDK from its packages store — the same environment every bb
-# job gets — so the build is `gradlew` and nothing else. The APK lands in
+# the Android SDK from its toolchain store (the same environment every bb
+# job gets), so the build is `gradlew` and nothing else. The APK lands in
 # BuilderBot's own dist/ on the projects share when the runner's machine
 # mounts it (the sandbox does, at /workspace), which is where the Artifacts
 # tab lists it and where /api/meta points an app that finds itself behind;
