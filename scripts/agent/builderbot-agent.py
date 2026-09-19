@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.89"
+AGENT_VERSION = "0.6.90"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1157,7 +1157,7 @@ def sdk_images(state):
     """The android system images in this node's toolchain store, and which of
     its AVDs are built on each.
 
-    A directory walk, deliberately, and not `bb toolchains images`, which is the same
+    A directory walk, deliberately, and not `bb emu images`, which is the same
     listing plus a `du -sk` per image. The controller's own copy can afford
     that; a node cannot. The toolchain store is commonly an NFS export here
     and the tree runs to tens of gigabytes, so a size measured every census
@@ -2402,6 +2402,8 @@ class Job(threading.Thread):
                 # PATH (lint-tools on bb-sandbox, measured). The loop
                 # restarts the ttyds; tmux sessions survive it.
                 self.agent.session_renew()
+            elif self.job.get("type") == "image":
+                state, code = self.agent.image(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
@@ -4038,8 +4040,7 @@ class Agent:
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
             # jobs set this before, so a toolchain job on a node drew the verb
-            # with nothing after it — and the image picker, which draws its
-            # own progress only when the step names an image, drew none.
+            # with nothing after it.
             job.step(name)
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
@@ -4058,6 +4059,34 @@ class Agent:
             job.say(f"{bad} of {len(names)} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
+
+    def image(self, job, spec):
+        """`bb emu image add|remove ID`: an Android system image onto this
+        node's toolchain store, or off it. Not a toolchain (it exists at
+        every API level at once), but it lives on the same store and goes
+        through the same bundle, account and one-at-a-time rule, so this is
+        toolchain() for one id. Nothing on PATH moves, so no session renew."""
+        store = tc_root(self.state)
+        if not store:
+            job.say("refused: this node has no toolchain store, which is where images live\n")
+            return "failed", 78
+        action = spec.get("action")
+        iid = re.sub(r"[^A-Za-z0-9;._-]", "", str(spec.get("image") or ""))
+        if action not in ("add", "remove") or not iid:
+            job.say("refused: an image job adds or removes one named system image\n")
+            return "failed", 64
+        who = self.drop_privileges({})
+        into = self.bundle(job, who)
+        if not into:
+            return "failed", 69
+        job.step(iid)
+        job.say(f"== bb emu image {action} {iid}\n")
+        st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                        "emu", "image", action, iid],
+                               "cwd": store, "timeout": spec.get("timeout") or 3600,
+                               "env": sdk_env(self.state)})
+        self.hello()
+        return st_, code
 
     def _system_deps(self, job, name, into):
         """A recipe's `system.apt` (or `system.dnf`, on the RHEL family)

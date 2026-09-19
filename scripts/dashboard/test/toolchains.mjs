@@ -54,7 +54,7 @@ await page.waitForSelector('.doc .tctab .tcnone', { timeout: 20000 });
 ok(await page.evaluate(() => !document.querySelector('.doc .tc') && !document.querySelector('#tcNodeSel')),
    '...and with no node enrolled it says to enroll one, and offers nothing to install here');
 await page.evaluate(() => { nodesList = null; tcNode = 'local'; toolchains = null; loadToolchains(); });
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc:not(.img)').length > 0);
+await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
 // Structural, not painted: under a loaded box checkVisibility can sample a
 // frame mid-layout. The claim is that the rows are in the document being
 // shown, not in a parked one.
@@ -77,7 +77,7 @@ ok(await page.$eval('.doc .docbarrow', el => {
             && kids.indexOf(el.querySelector('#tcNodeSel').closest('.pick')) === 0;
    }),
    '...at its right end, with the node picker at the left');
-const rows = () => page.$$eval('.doc .tc:not(.img)', ls => ls.map(l => ({
+const rows = () => page.$$eval('.doc .tc', ls => ls.map(l => ({
   name: l.querySelector('input').value,
   installed: !!l.querySelector('.where.on'),
   // Null while a job is on this row: it shows what it is doing in place of
@@ -89,7 +89,7 @@ ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.
    'the tab lists the toolchains and the android packages');
 ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
    'a scratch root starts with nothing installed');
-ok(await page.$$eval('.doc .tc:not(.img) .nm .pill', ps => ps.length === 0),
+ok(await page.$$eval('.doc .tc .nm .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
 ok((await page.$eval('.tchead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
@@ -117,13 +117,13 @@ ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent
    'the Tools tab says that Install accepts Google\'s Android SDK terms, with the terms linked');
 
 // ---- install two, watch them land --------------------------------------
-await page.check('.doc .tc:not(.img) input[value="flutter"]');
-await page.check('.doc .tc:not(.img) input[value="android:emulator"]');
+await page.check('.doc .tc input[value="flutter"]');
+await page.check('.doc .tc input[value="android:emulator"]');
 // The ticks live outside the DOM, so a redraw — one arrives every two
 // seconds while a job runs — must not quietly clear the selection.
 await page.evaluate(() => loadToolchains());
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc:not(.img)').length > 0);
-ok(await page.$$eval('.doc .tc:not(.img) input:checked', is => is.length === 2),
+await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
+ok(await page.$$eval('.doc .tc input:checked', is => is.length === 2),
    'a redraw keeps what was ticked');
 await page.click('.doc [data-tc="install"]');
 // More than two land: android:emulator is installed BY sdkmanager, which
@@ -141,7 +141,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
   && ['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
        .every(n => (toolchains.items || []).find(i => i.name === n)?.installed),
   { timeout: 30000 });
-const landed = await page.$$eval('.doc .tc:not(.img)', rs =>
+const landed = await page.$$eval('.doc .tc', rs =>
   rs.filter(r => r.querySelector('.where')?.classList.contains('on'))
     .map(r => r.querySelector('input')?.value));
 ok(['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
@@ -165,7 +165,7 @@ ok(await page.$('.pkglog') === null,
 // what was just dealt with — Remove especially.
 // Enabled boxes only: an installed-and-current row is ticked on purpose now,
 // and that tick is a statement about the toolchain rather than a selection.
-ok(await page.$$eval('.doc .tc:not(.img) input:not(:disabled)', is => is.every(i => !i.checked)),
+ok(await page.$$eval('.doc .tc input:not(:disabled)', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
 // ...but only when it is finished. Through the job the tick stays put, which
 // is what says which toolchains the job is for.
@@ -175,7 +175,7 @@ const held = await page.evaluate(() => {
   toolchains.job = {running: true, action: 'install', current: 'swift',
                   queue: [], log: [], done: [], failed: []};
   tcRev++; drawPanes();
-  const box = document.querySelector('.doc .tc:not(.img) input[value="swift"]');
+  const box = document.querySelector('.doc .tc input[value="swift"]');
   const out = { checked: box.checked, ghosted: box.disabled };
   tcTicked.delete('swift');
   toolchains.job = saved; tcRev++; drawPanes(); clearTimeout(tcPoll);
@@ -183,7 +183,7 @@ const held = await page.evaluate(() => {
 });
 ok(held.checked && held.ghosted,
    '...while a toolchain being installed stays ticked, and ghosted with it');
-ok(await page.$$eval('.doc .tc:not(.img) input:disabled', is => is.length > 0 && is.every(i => i.checked)),
+ok(await page.$$eval('.doc .tc input:disabled', is => is.length > 0 && is.every(i => i.checked)),
    '...and what is installed and current shows a ticked box that cannot be changed');
 
 // ---- what a row says while the job is on it -----------------------------
@@ -196,7 +196,7 @@ const during = (job) => page.evaluate(j => {
   const saved = toolchains.job;
   toolchains.job = {running: true, queue: [], log: [], done: [], failed: [], ...j};
   tcRev++; drawPanes();
-  const row = [...document.querySelectorAll('.doc .tc:not(.img)')]
+  const row = [...document.querySelectorAll('.doc .tc')]
     .find(l => l.querySelector('input').value === 'flutter');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
                 bar: !!row.querySelector('.prog .bar'),
@@ -225,7 +225,7 @@ ok(d.text.startsWith('removing') && !d.bar,
 d = await during({ action: 'check', current: 'flutter' });
 ok(d.text === undefined && d.where !== null,
    'a check leaves the row it is reading exactly as it was');
-ok((await page.$$eval('.doc .tc:not(.img) .where', ws => ws.length)) > 0,
+ok((await page.$$eval('.doc .tc .where', ws => ws.length)) > 0,
    'and the paths come back when the job is over');
 // The dots are ticked by a timer, so a redraw must not reset them.
 const dots = await page.evaluate(async () => {
@@ -250,20 +250,20 @@ ok(dots.later !== dots.first && dots.after === dots.later,
 // The installed version is local knowledge and shows without being asked;
 // whether something newer exists is a network question, and until it is asked
 // no row claims anything.
-ok((await page.$$eval('.doc .tc:not(.img) .nm .pill', ps => ps.map(p => p.textContent)))
+ok((await page.$$eval('.doc .tc .nm .pill', ps => ps.map(p => p.textContent)))
      .some(t => t === '1.0'), 'installed versions show without a check');
-ok(await page.$$eval('.doc .tc:not(.img) .upd', us => us.length === 0),
+ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
    'no update claims before a check');
 // No size is typed into the catalog — a typed one is wrong the next time
 // upstream ships — so a row carries one only once this box has weighed it,
 // measured by a worker and arriving a moment after the row does.
-const pill = (name, n = 0) => page.$$eval('.doc .tc:not(.img)', (ls, [v, i]) => {
+const pill = (name, n = 0) => page.$$eval('.doc .tc', (ls, [v, i]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
   const ps = l ? l.querySelectorAll('.nm .pill') : [];
   return ps[i] ? { text: ps[i].textContent, title: ps[i].title } : null;
 }, [name, n]);
 await page.waitForFunction(() => {
-  const l = [...document.querySelectorAll('.doc .tc:not(.img)')]
+  const l = [...document.querySelectorAll('.doc .tc')]
     .find(x => x.querySelector('input').value === 'flutter');
   return l && /measured/.test(l.querySelector('.nm .pill').title);
 }, { timeout: 30000 });
@@ -273,27 +273,27 @@ ok((await pill('swift')) === null,
    '...and one this box has never had shows no size at all rather than a guess');
 // A check spends no selection — it asks about every row regardless — so
 // whatever was ticked before it must survive it.
-await page.check('.doc .tc:not(.img) input[value="swift"]');
+await page.check('.doc .tc input[value="swift"]');
 await page.click('.doc [data-tc="check"]');
 // The whole catalog, not just what is installed, so wait for the job to end
 // rather than for the first row to answer: asserting on a toolchain further
 // down the list while its check was still queued passed only by luck.
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-                             && document.querySelector('.doc .tc:not(.img) .upd') !== null,
+                             && document.querySelector('.doc .tc .upd') !== null,
                            { timeout: 30000 });
-ok(await page.$eval('.doc .tc:not(.img) input[value="swift"]', i => i.checked),
+ok(await page.$eval('.doc .tc input[value="swift"]', i => i.checked),
    'a check leaves the selection alone — it consumed nothing');
-await page.uncheck('.doc .tc:not(.img) input[value="swift"]');
-const upd = await page.$$eval('.doc .tc:not(.img)', ls => ls
+await page.uncheck('.doc .tc input[value="swift"]');
+const upd = await page.$$eval('.doc .tc', ls => ls
   .filter(l => l.querySelector('.upd'))
   .map(l => l.querySelector('input').value));
 ok(upd.length === 1 && upd[0] === 'flutter',
    'the check marks exactly the toolchain whose upstream moved');
-ok(await page.$eval('.doc .tc:not(.img) input[value="android:emulator"]', i => i.disabled),
+ok(await page.$eval('.doc .tc input[value="android:emulator"]', i => i.disabled),
    'installed and current: the tick is dead, there is nothing to do');
-ok(!(await page.$eval('.doc .tc:not(.img) input[value="flutter"]', i => i.disabled)),
+ok(!(await page.$eval('.doc .tc input[value="flutter"]', i => i.disabled)),
    '...but an update brings its tick back');
-ok(!(await page.$eval('.doc .tc:not(.img) input[value="swift"]', i => i.disabled)),
+ok(!(await page.$eval('.doc .tc input[value="swift"]', i => i.disabled)),
    'and something not installed at all is always tickable');
 ok((await pill('flutter', 2)) === null,
    '...and an installed row carries no second version: the words below say it');
@@ -349,12 +349,12 @@ print(json.dumps({"at": m._tc_checked, "local": bool(m._tc_local.get("versions")
   ok(moved.at === 0,
      '...and an edited catalog resets it, because the answers describe recipes');
 }
-ok(await page.$$eval('.doc .tc:not(.img)', ls => ls
+ok(await page.$$eval('.doc .tc', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
      .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
    '...and says it plainly: only an actual update is amber');
 // Update runs like the others: a job, and the ticks it consumed.
-await page.check('.doc .tc:not(.img) input[value="flutter"]');
+await page.check('.doc .tc input[value="flutter"]');
 await page.click('.doc [data-tc="install"]');
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
   && (toolchains.job.done || []).includes('flutter'), { timeout: 30000 });
@@ -368,12 +368,12 @@ ok(await page.$$eval('.doc [data-tc]', bs => bs.every(b => b.textContent.indexOf
 // seconds. None of it should reach the row: the point of this tab is that a
 // job says what it is doing and nothing else, however much the tool underneath
 // is counting.
-await page.check('.doc .tc:not(.img) input[value="go"]');
+await page.check('.doc .tc input[value="go"]');
 await page.click('.doc [data-tc="install"]');
 const seen = new Set(), bars = [];
 for (let i = 0; i < 20; i++){
   const s = await page.evaluate(() => {
-    const row = [...document.querySelectorAll('.doc .tc:not(.img)')]
+    const row = [...document.querySelectorAll('.doc .tc')]
       .find(l => l.querySelector('input').value === 'go');
     return { t: row?.querySelector('.prog')?.textContent.trim() || null,
              bar: !!row?.querySelector('.prog .bar'),
@@ -395,7 +395,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
 
 // ---- uninstall is per row, and asks ------------------------------------
 // One control per installed row, whatever that number happens to be.
-ok(await page.$$eval('.doc .tc:not(.img)', ls => {
+ok(await page.$$eval('.doc .tc', ls => {
      const on = ls.filter(l => l.querySelector('.where')?.classList.contains('on'));
      return on.length > 0 && on.every(l => l.querySelector('[data-rm]'))
             && ls.filter(l => l.querySelector('[data-rm]')).length === on.length;
@@ -421,8 +421,8 @@ const ghosted = await page.evaluate(() => {
     buttons: all('.doc [data-tc]:not([data-tc="abort"])').every(b => b.disabled),
     abort: all('.doc [data-tc="abort"]').length === 1
            && !all('.doc [data-tc="abort"]')[0].disabled,
-    boxes: all('.doc .tc:not(.img) input').length > 0
-           && all('.doc .tc:not(.img) input').every(i => i.disabled),
+    boxes: all('.doc .tc input').length > 0
+           && all('.doc .tc input').every(i => i.disabled),
   };
   toolchains.job.running = was; tcRev++; drawPanes(); clearTimeout(tcPoll);
   return r;
@@ -449,7 +449,7 @@ ok(/^Checking for updates/.test(checking),
    `...and the check button says what it is doing (${checking.trim()})`);
 await page.evaluate(() => { toolchains.job.running = false; tcRev++; drawPanes(); });
 ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
-   && await page.$$eval('.doc .tc:not(.img) input:not(:disabled)', is => is.length > 0),
+   && await page.$$eval('.doc .tc input:not(:disabled)', is => is.length > 0),
    '...and live again when it finishes');
 const nd = page.dialogs.length;
 await page.click('.doc [data-rm="android:emulator"]');
@@ -488,7 +488,7 @@ ok(await page.evaluate(() => {
 // into a green banner across the tab. It is green text beside the button now
 // — and beside *whichever* button started it, because on a phone the picker
 // is a screenful above the Install row.
-await page.check('.doc .tc:not(.img) input[value="go"]');
+await page.check('.doc .tc input[value="go"]');
 await page.click('.doc [data-tc="install"]');
 await page.waitForFunction(() => toolchains?.job?.running);
 ok(await page.$eval('.doc [data-tc="install"]',
@@ -497,45 +497,33 @@ ok(await page.$eval('.doc [data-tc="install"]',
 ok(await page.$eval('.doc .macros .tcworking', e => /Installing go/.test(e.textContent))
    && await page.$('.doc .macros .tcworking .dots') !== null,
    '...with what it is doing beside it, and an ellipsis');
-ok(await page.$('.doc .imgadd .tcworking') === null,
-   '...and not up at the picker, which did not start this');
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
                            { timeout: 60000 });
 
-// An image install came from Add, so that is where it is reported.
-await page.click('#imgAdd');
-await page.waitForFunction(() => toolchains?.job?.running);
-ok(await page.$eval('.doc .imgadd .tcworking',
-     e => /Installing system-images/.test(e.textContent)),
-   'an image install reports at the picker that started it');
-ok(await page.$('.doc .macros .tcworking') === null,
-   '...and only there');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
-                           { timeout: 60000 });
 
 // ---- a failure, where the failure happened ------------------------------
 // There used to be a scrolling log at the foot of the tab holding every line
 // every command printed. What anybody ever wanted out of it was which toolchain
 // failed and why, so that is what is kept now, on that toolchain's own row.
-await page.check('.doc .tc:not(.img) input[value="rust"]');
+await page.check('.doc .tc input[value="rust"]');
 await page.click('.doc [data-tc="install"]');
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
   && (toolchains.job.failed || []).includes('rust'), { timeout: 30000 });
-const rustErr = await page.$eval('.doc .tc:not(.img):has(input[value="rust"]) .sub.bad',
+const rustErr = await page.$eval('.doc .tc:has(input[value="rust"]) .sub.bad',
                                  e => e.textContent).catch(() => "");
 ok(/could not download file/.test(rustErr),
    `the failing row says what went wrong (${rustErr.slice(0, 52)})`);
 ok(!/\[====\]/.test(rustErr), '...without the progress frames that filled the old log');
 ok(/exit 1/.test(rustErr),
    '...and the exit code, since a killed tool prints nothing at all');
-ok(await page.$$eval('.doc .tc:not(.img) .sub.bad', e => e.length === 1),
+ok(await page.$$eval('.doc .tc .sub.bad', e => e.length === 1),
    'and no other row is wearing it');
 // Trying again is what clears it: by then it describes a state that is over.
-await page.check('.doc .tc:not(.img) input[value="rust"]');
+await page.check('.doc .tc input[value="rust"]');
 await page.click('.doc [data-tc="install"]');
 await page.waitForFunction(() => toolchains?.job?.running
   && toolchains.job.current === 'rust', { timeout: 30000 });
-ok(await page.$$eval('.doc .tc:not(.img) .sub.bad', e => e.length === 0),
+ok(await page.$$eval('.doc .tc .sub.bad', e => e.length === 0),
    '...and asking again clears it, because it is no longer the answer');
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
                            { timeout: 30000 });
@@ -546,7 +534,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
 // to update and die on its usage line, naming five toolchains nobody asked
 // about. The row says so instead, before the press.
 {
-  const rows = await page.$$eval('.doc .tc:not(.img)', ls => ls.map(l => ({
+  const rows = await page.$$eval('.doc .tc', ls => ls.map(l => ({
     name: l.querySelector('input')?.value,
     disabled: !!l.querySelector('input')?.disabled,
     title: l.querySelector('input')?.title || '',
@@ -565,81 +553,6 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
      && !seen.includes('go') && !seen.includes('jdk'),
      `the catalog says which recipes update in place (${seen.join(', ')})`);
 }
-
-// ---- android images, which are not catalog rows -------------------------
-// They are discovered, not listed: which exist depends on what has been
-// installed, and one exists at every API level at once — so the question is
-// which level and which flavor, not whether. That is a picker, not a row per
-// flavor: there are forty-odd of them upstream.
-const imgOpts = sel => page.$$eval(sel, o => o.map(x => ({
-  value: x.value, text: x.textContent.trim() })));
-const flavors = await imgOpts('#imgFlavor option');
-ok(flavors.length === 2 && flavors[0].text === 'Google APIs'
-   && flavors[1].text.includes('Play Store'),
-   'the picker offers the flavors the catalog names, by their labels');
-ok((await page.$eval('.imgabout', e => e.textContent)).includes('Rootable'),
-   '...with the line saying which one to pick, beside the picking');
-
-let apis = await imgOpts('#imgApi option');
-ok(apis.length === 1 && apis[0].value === 'system-images;android-31;google_apis;x86_64'
-   && /API 31 · 1\.\d GB/.test(apis[0].text),
-   `an API level that is not installed is offered, with what it weighs (${apis[0]?.text})`);
-ok(!apis.some(o => o.value.includes('android-30')),
-   '...and one that is already here is not offered again');
-
-await page.selectOption('#imgFlavor', 'google_apis_playstore');
-await page.waitForFunction(() => document.querySelector('#imgApi option')
-  ?.value.includes('playstore'));
-apis = await imgOpts('#imgApi option');
-ok(apis.length === 1 && apis[0].value.includes('android-30;google_apis_playstore'),
-   'switching flavor switches the levels — API 30 has no plain image left but does have a Play Store one');
-ok((await page.$eval('.imgabout', e => e.textContent)).includes('not rootable'),
-   '...and the line about it changes too');
-
-// Install goes through the same job as everything else, by the id the picker
-// gave out — which is the only id the server will take.
-await page.click('#imgAdd');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && [...(toolchains.job.done || []), ...(toolchains.job.failed || [])]
-       .some(n => n.includes('google_apis_playstore')), { timeout: 30000 });
-ok(true, 'Add installs the picked image through the ordinary job');
-const badAdd = await page.evaluate(async () => {
-  const r = await fetch('/api/toolchains', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'install',
-      names: ['android:system-images;android-99;google_apis;x86_64'] }) });
-  return r.status;
-});
-ok(badAdd === 400, 'an image id the picker never offered cannot be installed');
-
-// ...and what is on disk is listed below the picker: forty-four gigabytes of
-// them had accumulated here with no way to see or remove one.
-const imgs = await page.$$eval('.doc .tc.img', ls => ls.map(l => ({
-  text: l.textContent.replace(/\s+/g, ' ').trim(),
-  bin: !!l.querySelector('[data-rmimg]'),
-  box: !!l.querySelector('input') })));
-ok(imgs.length === 1 && /android-30/.test(imgs[0].text) && /3\.1 GB|3\.\d GB/.test(imgs[0].text),
-   `an installed system image is listed with its size (${imgs[0]?.text || 'none'})`);
-ok(imgs[0].bin && !imgs[0].box,
-   '...with a way to remove it, and no checkbox: there is nothing to select it for');
-ok(/AVD: fb30/.test(imgs[0].text),
-   '...and which AVD is built on it, since that is what "can this go?" means');
-// The same answer in the confirmation, because that is where it is asked.
-const ndImg = page.dialogs.length;
-await page.click('.doc .tc.img [data-rmimg]');
-ok(page.dialogs.length > ndImg && /fb30 is built on it/.test(page.dialogs[ndImg]),
-   'removing one says what it would stop from booting');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
-                           { timeout: 30000 });
-// The id goes back to the server, which checks it against the list it gave
-// out — the same rule every executing endpoint here follows.
-const badImg = await page.evaluate(async () => {
-  const r = await fetch('/api/toolchains', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'remove', names: ['android:system-images;made;up;x86_64'] }) });
-  return r.status;
-});
-ok(badImg === 400, 'an image id the server never listed is refused');
 
 // ---- what the endpoint refuses ----------------------------------------
 const post = body => page.evaluate(async b => {
@@ -672,14 +585,14 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'toolchains').id));
 ok(await page.evaluate(() => !tabs.some(t => t.kind === 'toolchains')), 'the tab minimizes away');
 await page.click('#bToolchains');
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc:not(.img)').length > 0);
+await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
 ok(true, 'and reopens from the card');
 // The strip lives on the server and is handed to every browser, so a tab kind
 // the store does not recognise is dropped on every read — which is why this
 // one came back from a reload, or a container restart, missing.
 await page.reload();
 await ready(page);
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc:not(.img)').length > 0,
+await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0,
                            { timeout: 30000 });
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')),
    '...and survives a reload, the way the findings tab does');
@@ -687,7 +600,7 @@ ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')),
 // the rest of this file reads are the local installer's, so ask for them.
 await page.evaluate(() => { tcNode = 'local'; toolchains = null; loadToolchains(); });
 await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains.name
-                                 && document.querySelectorAll('.doc .tc:not(.img)').length > 0,
+                                 && document.querySelectorAll('.doc .tc').length > 0,
                            { timeout: 30000 });
 
 // ---- a recipe this node's platform cannot have ---------------------------

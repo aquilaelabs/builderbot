@@ -62,9 +62,6 @@ let tcDots = 0, tcDotsTimer = null;
 // Every animated ellipsis on the page, not just the toolchains tab's: the
 // Projects card grew one when clones moved to a background job, and two
 // tickers running at different phases would read as a fault.
-// Which flavor the picker is showing. Page state, not the server's: it is a
-// question being asked, not a fact about the box.
-let tcFlavor = "";
 // Which node the Tools tab is showing (docs/nodes.md §6): an agent node's
 // toolchain store, where an install is a job. Empty until tcPick() chooses
 // one, and empty when there is none to choose: toolchains are installed on
@@ -92,12 +89,9 @@ function tcPick(){
   return tcNode;
 }
 
-// What the one job is doing, said next to the control that started it: Add
-// for a system image, Install selected for anything else, rather than
-// written into that button. A toolchain id is longer than any button should be,
-// and using it as a label turned Install into a green banner across the tab.
-const tcWorkingIsImage = job =>
-  (job?.current || "").includes("system-images;");
+// What the one job is doing, said next to Install selected rather than
+// written into it. A toolchain id is longer than any button should be, and
+// using it as a label turned Install into a green banner across the tab.
 const tcWorking = job => `<span class="tcworking">${
   {install: "Installing", remove: "Removing", update: "Updating",
    check: "Checking"}[job.action] || "Working on"} ${
@@ -222,67 +216,11 @@ function tcRow(p, busy, job, managed){
   </label>`;
 }
 
-// One installed android image. No checkbox: there is nothing to select it
-// for; it is here, and the only thing to decide is whether it stays.
-// Adding an image is a pick, not a tick. There are forty-odd of them: every
-// API level Google still ships, times four flavors, and a checkbox list that
-// long would bury the ten that are actually installed. The sizes come from
-// sdkmanager's own index, which is the only place they exist before the
-// download.
-function imgAdder(d, busy){
-  const rows = d.addable || [], flavors = d.flavors || [];
-  // Google's index is read off the request, so the first draw of the tab does
-  // not wait for it. Saying so beats the picker popping into existence a
-  // second later with no explanation.
-  if (!rows.length) return d.images_loading
-    ? `<div class="imgadd"><span class="sub">reading the list of available
-         images<span class="dots"></span></span></div>`
-    : "";
-  const chosen = tcFlavor && flavors.some(f => f.kind === tcFlavor)
-    ? tcFlavor : (flavors[0]?.kind || "");
-  const mine = rows.filter(r => r.kind === chosen);
-  const about = flavors.find(f => f.kind === chosen)?.about || "";
-  return `<div class="imgadd">
-    <select id="imgFlavor"${busy ? " disabled" : ""} aria-label="image flavor">${
-      flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
-        >${esc(f.label)}</option>`).join("")}</select>
-    <select id="imgApi"${busy ? " disabled" : ""} aria-label="API level">${
-      mine.map(r => `<option value="${esc(r.id)}">API ${esc(r.api)} · ${esc(r.size)}</option>`)
-          .join("") || `<option value="">none left to add</option>`}</select>
-    <button id="imgAdd"${busy || !mine.length ? " disabled" : ""}>Add</button>
-    ${busy && tcWorkingIsImage(d.job) ? tcWorking(d.job) : ""}
-    ${about ? `<div class="sub imgabout">${esc(about)}</div>` : ""}
-  </div>`;
-}
-
-function imgRow(im, busy){
-  // Which AVDs are built on it, because that is the question anybody asking
-  // "can this go?" is really asking. An AVD names one image exactly, and two
-  // flavors at the same API level are not interchangeable: one asking for
-  // google_apis will not boot on google_apis_playstore, alike as they look.
-  const avds = (im.avds || []).length
-    ? `<span class="sub">${im.avds.length === 1 ? "AVD" : "AVDs"}: ${
-        esc(im.avds.join(", "))}</span>`
-    : `<span class="sub dim">no AVD uses it</span>`;
-  return `<label class="tc img">
-    <span class="grow">
-      <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
-        ${im.size ? `<span class="pill"${im.size_from
-          ? ` title="${esc(im.size_from)}"` : ""}>${esc(im.size)}</span>` : ""}</span>
-      <span class="sub where on">installed at ${esc(im.id)}</span>
-      ${avds}
-    </span>
-    <button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
-      busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="remove this system image"`}>${BIN}</button>
-  </label>`;
-}
-
 function renderToolchainsInto(i){
   const el = $("doc" + i);
   if (!el) return;
   // The pane is redrawn whole on every change, and a redraw put the
-  // reader at the foot (the images block) the moment Install was pressed,
+  // reader at the foot the moment Install was pressed,
   // with the row that was installing off screen. Where they were, kept.
   const keepScroll = el.scrollTop;
   queueMicrotask(() => { if (el.isConnected) el.scrollTop = keepScroll; });
@@ -396,29 +334,7 @@ function renderToolchainsInto(i){
           <span class="sst">${no.length}</span></summary>
         <div class="tcs">${no.map(i => tcRow(i, true, job)).join("")}</div></details>`;
     })()}
-    <div class="tchead imghead">Android system images. Not toolchains: one exists at
-      every API level at once, so the question is which level and which flavor
-      rather than whether. ${onNode
-      ? `These are the ones in ${esc(d.name || "the node")}'s toolchain store: what its
-         emulator can boot. The list of what exists is read here, from Google's index; an
-         image is the same bytes on every host, so the node needs no network of its own to
-         be offered one.`
-      : `This container boots no emulator (the image carries no SDK): an image installed
-         here sits in the store for a node that shares it.`}
-      Nothing is removed except by asking.</div>
-    ${onNode && d.images_need ? `<div class="tchead sub">Images are installed by
-      sdkmanager, which is part of <code>${esc(d.images_need)}</code>, not on this node
-      yet, so it will be installed first.</div>` : ""}
-    ${imgAdder(d, busy || pstale)}
-    ${(d.images || []).length
-      ? `<div class="tcs">${d.images.map(im => imgRow(im, busy || pstale)).join("")}</div>`
-      : `<div class="tchead">${onNode && d.images_known === false
-          ? `${esc(d.name || "This node")}'s agent is too old to report its system images:
-             update it from the Nodes tab. Its emulator may well have one.`
-          : `Nothing installed: ${onNode
-             ? esc(d.name || "the node") + "'s emulator has no image to boot."
-             : "the emulator has no image to boot."}`}</div>`}
-    <div class="hint tcterms">Installing an android package, image or tool accepts
+    <div class="hint tcterms">Installing an android package or tool accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
       Android SDK terms</a> for this store: pressing Install is that acceptance, made by you.</div>
     <div class="actbar macros">
@@ -428,7 +344,7 @@ function renderToolchainsInto(i){
         >Install selected</button>`}
       ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      ${busy && !tcWorkingIsImage(job) ? tcWorking(job) : ""}
+      ${busy ? tcWorking(job) : ""}
       <button data-tc="check"${busy || onNode || !mayToolchains() ? " disabled" : ""}
         ${onNode ? `title="a node says what it has installed; asking upstream what is newer
           is a round trip per toolchain and is not something a node does yet"` : ""}>${
@@ -449,23 +365,6 @@ function renderToolchainsInto(i){
   if (pre) pre.onclick = () => loadToolchains();
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
-  const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
-  if (fl) fl.onchange = () => { tcFlavor = fl.value; tcRev++; drawPanes(); };
-  if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
-    if (!api?.value) return;
-    // Straight in, no confirmation: it is a download into free space, and the
-    // size is on the option that was just picked.
-    tcAct("install", ["android:" + api.value]);
-  };
-  el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = e => {
-    e.preventDefault(); e.stopPropagation();
-    const id = b.dataset.rmimg;
-    const users = (toolchains?.images || []).find(im => im.id === id)?.avds || [];
-    if (confirm(`Remove ${id}?\n\n${users.length
-      ? `${users.join(", ")} ${users.length === 1 ? "is" : "are"} built on it and will not boot until it is installed again.`
-      : "No AVD is built on it."}`))
-      tcAct("remove", ["android:" + id]);
-  });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
@@ -476,8 +375,8 @@ function renderToolchainsInto(i){
   });
 
   // No idle clock. Everything this tab draws that can move while nothing is
-  // happening: the daily version check, a toolchain installed from a
-  // terminal, the image index landing: is in the `toolchains` token now, and
+  // happening: the daily version check, or a toolchain installed from a
+  // terminal: is in the `toolchains` token now, and
   // the revisions poll asks for that every second and a half along with the
   // rest of the page. The eight-second timer that used to cover it was one
   // tab noticing things sooner than the tab beside it for no reason anybody
@@ -490,10 +389,9 @@ function renderToolchainsInto(i){
   // "installing". Half a second is how often that is worth looking at, and it
   // stops the moment the job does.
   clearTimeout(tcPoll);
-  if (busy || d.images_loading)
-    tcPoll = setTimeout(loadToolchains, busy ? 500 : 1000);
-  // The ellipsis animates for the index read too, not only for a job.
-  const ticking = busy || d.images_loading;
+  if (busy)
+    tcPoll = setTimeout(loadToolchains, 500);
+  const ticking = busy;
   if (ticking && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
   if (!ticking && tcDotsTimer){ clearInterval(tcDotsTimer); tcDotsTimer = null; }
   else if (!busy && (job.done || []).length) refresh();

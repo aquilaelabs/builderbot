@@ -53,7 +53,7 @@ private tmux server and photographs it with `bb shot`: the pattern the
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK, the emulator and the system images are recipes on the Toolchains tab, installed with the node picked |
+| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains tab, installed with the node picked, and the system images the emulator boots are on the Emulator tab |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
@@ -435,6 +435,13 @@ bb emu shot [FILE] screenshot the emulator into dist/emu/
 bb emu gfx PKG     a package's per-frame timings (gfxinfo framestats) into
                    dist/emu/, and every emu verb runs on the project's node
                    when it has one, its output coming back into dist/
+bb emu images [--available]
+                   the system images on this machine's toolchain store, or
+                   every one there is; `bb emu flavors` says what each is for
+bb emu image add|remove ID
+                   put a system image on this machine's store, or take one
+                   off: a full id or a flavor's short name (tv, wear,
+                   playstore). The operator's, like bb toolchains install
 bb ci-labels       the runner labels the registry knows; this box's and every
                    node runner's; `--write` regenerates .github/actionlint.yaml
 bb findings        this project's scanner findings (--all for every project)
@@ -615,18 +622,26 @@ persists, but mixes 30GB of system images in with your shell history.
 ```bash
 bb toolchains                     # what is installed, where, and how much room is left
 bb toolchains install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
-bb toolchains install android:tv         # or wear · playstore · ndk · cmake · emulator
-bb toolchains install android:"system-images;android-35;google_apis;x86_64"
+bb toolchains install android:ndk        # or cmake · emulator · platform-tools
 bb toolchains list                # every toolchain the catalog offers
-bb toolchains images              # the android system images on disk, with sizes
-bb toolchains images --available  # ...and every one that could be installed
-bb toolchains flavors             # google_apis · +playstore · tv · wear, and which to pick
 bb toolchains plan swift          # what installing it would fetch and run, exactly
 bb toolchains versions            # what is installed, asking nobody
 bb toolchains check               # ...and whether anything newer exists
 bb toolchains update flutter      # each the way its own tooling expects
 bb toolchains remove flutter
 bb toolchains env                 # the PATH lines; new shells get them automatically
+```
+
+The Android system images live on the same store without being toolchains
+(one exists at every API level at once), so they have verbs of their own:
+
+```bash
+bb emu images                     # the system images on this machine's store, with sizes
+bb emu images --available         # ...and every one that could be added
+bb emu flavors                    # google_apis · +playstore · tv · wear, and which to pick
+bb emu image add tv               # the newest of a flavor, or a full id:
+bb emu image add "system-images;android-35;google_apis;x86_64"
+bb emu image remove "system-images;android-35;google_apis;x86_64"
 ```
 
 **The recipes are a file, not code.**
@@ -837,7 +852,7 @@ and MSIX packaging need Windows itself.
 **Tizen is Samsung's, and where it runs decides whether you care.** TVs,
 signage and appliances still run it and Samsung still ships it; that is the
 reason to install it. Watches are not: Galaxy Watch moved to Wear OS with the
-Watch 4 in 2021, so a watch app is `bb toolchains install android:wear`. Phones ended
+Watch 4 in 2021, so a watch app is `bb emu image add wear`. Phones ended
 in 2017. There is no headless installer, so it is a CLI pointer rather than a
 row in the dashboard's list, where everything installs.
 
@@ -871,8 +886,8 @@ one if something has to talk to Play; take the plain one if you want
 against. Rarely both, and the image list says which AVDs are built on each,
 so the one that is actually spare is visible rather than guessed at.
 
-The Toolchains tab offers a level and a flavor and installs it; `bb toolchains images
---available` is the same list on the command line, sizes and all. Real Samsung
+The Emulator tab offers a level and a flavor and adds it to the picked node;
+`bb emu images --available` is the same list on the command line, sizes and all. Real Samsung
 or Oppo hardware is an `adb connect` away over the network, and Samsung's
 Remote Test Lab rents you real devices, but neither is something to install
 here.
@@ -907,7 +922,7 @@ once per share; from then on updates cost nothing.
 
 Nothing Android is in the image: the SDK, the emulator and the system images
 are a node's, in its toolchain store. An API level exists where that store
-holds a system image for it: tick one on the Toolchains tab with the node picked,
+holds a system image for it: add one on the Emulator tab with the node picked,
 or let `bb emu create <api>` fetch it on demand. Each is given an AVD named
 `builderbot-<api>`:
 
@@ -1294,8 +1309,10 @@ lives in its body. The cards:
   says the same, before a build fails on it. A toolchain that puts something on
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
-  them. Beside it, **Docker manager…**, **Static analysis**
-  and **Nodes**, each a tab of its own
+  them. Beside it, **Docker manager…**, **Emulator** (a node's Android
+  system images: which it has, which AVDs are built on each, and adding or
+  removing one; ghosted until some node has the command-line tools and the
+  emulator), **Static analysis** and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens

@@ -240,7 +240,7 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose toolchain store holds the
-emulator and its images (Toolchains tab, node picked) and whose own
+emulator (Toolchains tab) and its images (Emulator tab) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
 Nodes tab: `nodes/provision-linux.sh` on a VM or a spare box,
 `provision-macos.sh` on a Mac. Nothing here needs a device or a runtime flag
@@ -553,7 +553,7 @@ bb emu stop
 
 AVDs live in the node's home; the images and platforms in its store, so an
 update never re-downloads them. Need another level? `bb emu create 34` on the
-node, or tick the image on the Toolchains tab.
+node, or add the image on the Emulator tab.
 
 ### Publishing packages
 

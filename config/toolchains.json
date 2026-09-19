@@ -91,7 +91,7 @@
       "System images, which are not toolchains. A toolchain is one thing at one",
       "version; a system image exists at every API level at once, and which of",
       "them you want is a question about what you are testing, not about the",
-      "catalog. So the flavors live here as data, and the Tools tab offers an",
+      "catalog. So the flavors live here as data, and the Emulator tab offers an",
       "API level and a flavor rather than a row per flavor that could only",
       "ever install the newest one.",
       "",
@@ -209,7 +209,7 @@
           "JAVA_HOME": "{dir}/../jdk"
         },
         "after": [
-          "system images and the emulator install through it: bb toolchains install android:emulator, bb toolchains images"
+          "system images and the emulator install through it: bb toolchains install android:emulator, bb emu image add ID"
         ],
         "download": {
           "resolver": "approximate",

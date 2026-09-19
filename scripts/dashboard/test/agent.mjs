@@ -1492,7 +1492,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       mkdirSync(`${PK}/go/bin`, { recursive: true });
       // An android system image in the node's own store, and an AVD in the
       // data store built on it (roadmap #20). The agent walks for these
-      // rather than running `bb toolchains images`, which is the same listing plus
+      // rather than running `bb emu images`, which is the same listing plus
       // a du over tens of gigabytes of NFS every ten minutes.
       const IMG = `${PK}/android/system-images`;
       mkdirSync(`${IMG}/android-34/google_apis/x86_64`, { recursive: true });
@@ -1796,6 +1796,38 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        '...and one that is not there reads as absent, not as unknown');
     ok(view && view.items.find(i => i.name === 'playwright')?.installed === false,
        '...and a playwright directory without its module reads as not installed, so Install is offered (the row said installed and offered nothing)');
+    // An Android system image is its own job (the Emulator tab), run as
+    // `bb emu image` from the same bundle. sdkmanager is a stub that says
+    // what it was asked, so this proves the path and not a download.
+    {
+      const SM = `${PK}/android/cmdline-tools/latest/bin`;
+      mkdirSync(SM, { recursive: true });
+      writeFileSync(`${SM}/sdkmanager`, '#!/bin/sh\necho "sdkmanager $*"\n', { mode: 0o755 });
+      const poke2 = await api('/api/v1/nodes', { action: 'cache-clear', id: minted.id });
+      await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${poke2.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      const IMG34 = 'system-images;android-34;google_apis;x86_64';
+      const em = await until(async () => {
+        const v = await api(`/api/emulator?node=${minted.id}`);
+        return v.sdkmanager && (v.images || []).some(i => i.id === IMG34) ? v : null;
+      }, 30000);
+      ok(em && em.images.find(i => i.id === IMG34)?.avds.includes('fbnode'),
+         `the Emulator tab reads the node's images and the AVD built on each (${JSON.stringify(em?.images)})`);
+      const rj = await api('/api/emulator', { action: 'remove', node: minted.id, image: IMG34 });
+      ok(rj.ok && /^j_/.test(rj.job), `removing one queues an image job on the node (${rj.job || rj.error})`);
+      const rf = rj.job ? await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${rj.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 60000) : null;
+      ok(rf && rf.type === 'image' && rf.state === 'succeeded'
+         && /== bb emu image remove system-images;android-34;google_apis;x86_64/.test(rf.log)
+         && /sdkmanager .*--uninstall system-images;android-34;google_apis;x86_64/.test(rf.log),
+         `...which runs bb emu image there, and sdkmanager uninstalls it (${rf?.state}: ${
+           (rf?.log || '').slice(-400).replace(/\n/g, ' / ')})`);
+      rmSync(`${PK}/android/cmdline-tools`, { recursive: true, force: true });
+    }
     // A recipe's system packages (the catalog's `system.apt`). This agent is
     // not root and has no sandbox stamp, so it is not the one to install
     // them: it names them and carries on to the recipe — which the stub npm

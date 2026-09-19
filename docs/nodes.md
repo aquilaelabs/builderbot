@@ -653,6 +653,14 @@ minutes would be minutes of stat traffic for a number already known. Adding
 one is the ordinary toolchain job with `android-tools` (and its JDK) put in
 front of it, since the install is sdkmanager's.
 
+*Amended 19 September:* images left the Toolchains tab for an **Emulator**
+tab of their own, and the toolchain job for an `image` job (`bb emu image
+add|remove ID` on the node, through the same bundle). The two job types take
+turns on a store. An image add on a node without `android-tools` is refused
+with the reason rather than having the tools put in front of it: the Emulator
+tab says what is missing and links to the Toolchains tab, and its button on
+the Tools card is ghosted until some node has the tools and the emulator.
+
 - **The store is a role with a location, not a mount.** Each node has a
   `toolchains` store: default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should

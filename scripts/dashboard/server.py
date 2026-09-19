@@ -491,7 +491,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "toolchains", "notebook", "projects", "docker", "findings",
+TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users", "phone", "profile"}
 
 
@@ -2126,6 +2126,9 @@ def _read_auth(home=""):
 import toolchains                                                  # noqa: E402
 
 toolchains.configure(run=run, write_json=write_json, state=STATE)
+# The Android system images on each node's store, behind the Emulator tab:
+# kept on the toolchain store without being toolchains (emulator.py).
+import emulator                                                  # noqa: E402
 
 # ---- reaching a running Claude session -------------------------------------
 # One door, one rule about Enter, used by both the to-do list and the memory
@@ -2415,6 +2418,7 @@ import jobs                                                      # noqa: E402
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     toolchains.nodes = nodes
+    emulator.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
@@ -2681,6 +2685,9 @@ def revisions(who=None, projects=None):
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
         "toolchains": toolchains.job_rev(),
+        # Google's image index landing; the images themselves ride the node
+        # and job tokens, which the Emulator tab watches as well.
+        "emulator": f"{emulator._choices['at']}:{emulator._choices['loading']}",
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
@@ -2877,6 +2884,10 @@ def snapshot(who):
         # decided today. Every one of these is refused again on the server —
         # this is what stops a dead control being drawn, not what stops the
         # action (roadmap #27).
+        # Whether any node has what the Emulator tab needs, and why not: the
+        # Tools card ghosts its button on this.
+        "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
+                    else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
                 ("terminal", "docker-write", "toolchains-write", "git-auth", "admin")},
         # Projects whose Claude session belongs to somebody else, by NAME —
@@ -2939,6 +2950,7 @@ GET_ROUTES = (
     ("prefix", "/logs/download", "_get_logs_download"),
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
+    ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/users", "_get_users"),
     ("exact", "/api/v1/claude-login", "_claude_login"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
@@ -3003,6 +3015,7 @@ POST_ROUTES = (
     ("prefix", "/api/roadmap", "_roadmap"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
+    ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
     ("prefix", "/api/idle", "_idle"),
     ("prefix", "/api/settings", "_settings_post"),
@@ -3765,7 +3778,7 @@ class Handler(BaseHTTPRequestHandler):
         # never grows into a general file server by accident.
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
-                    "/tab-toolchains.js", "/tab-docker.js",
+                    "/tab-toolchains.js", "/tab-emulator.js", "/tab-docker.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
                     "/nb-memory.js", "/nb-history.js"):
@@ -4047,6 +4060,17 @@ class Handler(BaseHTTPRequestHandler):
         if nid and nid != "local" and not NODES_OK:
             return self._json(toolchains.payload_for_node(nid))
         return self._json(toolchains.payload())
+
+    def _get_emulator(self):
+        """GET /api/emulator?node=ID: that node's system images, what could be
+        added, and the image job there. The same node scope as Toolchains."""
+        if NODES_OK:
+            return self._json({"error": "the node store did not open"})
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why or not nid:
+            return self._json({"error": why or "no node named"})
+        return self._json(emulator.payload(nid))
 
     def _get_users(self):
         """GET /api/users."""
@@ -6751,14 +6775,7 @@ class Handler(BaseHTTPRequestHandler):
                 names = [n for n in (req.get("names") or []) if n in known][:8]
                 r = toolchains.node_job(self._principal(), nid, action, names)
                 return self._result(r)
-            # ...or an android system image. Same rule as the local endpoint:
-            # what reaches a command line is a string this server handed out —
-            # for an install, one of the ids the picker was drawn from; for a
-            # removal, one THIS node reported having (roadmap #20).
-            names = [n for n in (req.get("names") or [])
-                     if n in known
-                     or (action == "install" and toolchains.is_choosable_image(n))
-                     or (action == "remove" and toolchains.is_node_image(node, n))][:8]
+            names = [n for n in (req.get("names") or []) if n in known][:8]
             if not names:
                 return self._json({"error": "nothing selected"}, 400)
             r = toolchains.node_job(self._principal(), nid, action, names)
@@ -6768,13 +6785,7 @@ class Handler(BaseHTTPRequestHandler):
         if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
         known = {p["name"] for p in toolchains.TOOLCHAINS}
-        # ...or an android image this server listed a moment ago. Those are not
-        # catalog rows — which exist depends on what has been installed — so
-        # they are checked against the list rather than against a table.
-        names = [n for n in (req.get("names") or [])
-                 if n in known
-                 or (action == "remove" and toolchains.is_installed_image(n))
-                 or (action == "install" and toolchains.is_choosable_image(n))]
+        names = [n for n in (req.get("names") or []) if n in known]
         # Checking is about everything, not a selection: the question it
         # answers is "is any of this out of date, and what would the rest of
         # it install". The uninstalled rows are half the reason to press it —
@@ -6791,6 +6802,20 @@ class Handler(BaseHTTPRequestHandler):
                                if toolchains.job_is_automatic()
                                else "an install is already running"}, 409)
         return self._json({"ok": True, "queued": names})
+
+    def _emulator(self, req):
+        """Add or remove one system image on a node: a job there, against its
+        toolchain store. The id must be one the picker was drawn from (add)
+        or one the node reported (remove): what reaches a command line is a
+        string this server handed out."""
+        if self._refused("admin"):
+            return
+        if NODES_OK:
+            return self._json({"error": "the node store did not open"}, 500)
+        action, nid, iid = req.get("action"), field(req, "node"), field(req, "image")
+        if action not in ("add", "remove"):
+            return self._json({"error": "an image is added or removed"}, 400)
+        return self._result(emulator.node_job(self._principal(), nid, action, iid))
 
     def _changelog(self, req):
         """Write back the Unreleased section a person rearranged.

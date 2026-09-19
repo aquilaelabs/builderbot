@@ -1161,60 +1161,99 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        `a finished node job says what actually landed, read from the census (${
          JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
   }
-  // ---- android system images on a node (roadmap #20) ---------------------
-  // The node walks its own store for the ids and the AVDs built on them.
-  // What COULD be added is not a per-node question at all: an image is a
-  // guest artifact, identical on every host, so the index is read here and
-  // the node needs no network of its own to be offered one.
+  // ---- the Emulator tab: a node's android system images -------------------
+  // Not toolchains: one exists at every API level at once. The node walks its
+  // own store for the ids and the AVDs built on them; which could be ADDED is
+  // Google's index, read here, so a node needs no network of its own.
   {
-    await page.evaluate(() => { toolchains = null; loadToolchains(); });
-    await page.waitForFunction(() => (toolchains?.images || []).length > 0,
+    const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
+    const emuApi = async () => (await fetch(base + '/api/emulator?node=' + minted.id, { headers: H })).json();
+    // The Tools card ghosts the button until some node has sdkmanager and
+    // the emulator, and says why on it.
+    await page.evaluate(() => refresh());
+    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === true,
                                null, { timeout: 15000 });
-    const imgs = await page.$$eval('.tctab .tc.img',
+    ok(/command-line tools and the emulator/.test(
+         await page.$eval('#bEmulator', b => b.dataset.tip || '')),
+       'the Emulator button is ghosted while no node has sdkmanager and the emulator, saying so');
+    // No sdkmanager here yet: the tab says what is missing, and the server
+    // refuses an add rather than letting it die inside the job.
+    const bare = await emuApi();
+    ok(bare.sdkmanager === false && bare.missing.length === 2,
+       `a node without them is told which (${JSON.stringify(bare.missing)})`);
+    const noSm = await napi('/api/emulator', { action: 'add', node: minted.id,
+      image: 'system-images;android-31;google_apis;x86_64' });
+    ok(/command-line tools/.test(noSm.error || ''),
+       `...and adding an image there is refused, naming them (${noSm.error})`);
+
+    const ANDROID = { ...CENSUS, toolchains: { ...CENSUS.toolchains, 'android-sdk': 'present', emulator: 'present' },
+                      store_dirs: { top: ['flutter', 'node'], android: ['cmdline-tools', 'platform-tools', 'emulator'] } };
+    await hello(ANDROID);
+    await page.evaluate(() => refresh());
+    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === false,
+                               null, { timeout: 15000 });
+    ok(true, '...and live once one has');
+
+    await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
+    // The rows and the picker both wait on Google's index (the size is
+    // joined from it), which is read off the request.
+    await page.waitForFunction(() => document.querySelector('.emutab #imgApi option')
+      && /GB/.test(document.querySelector('.emutab .tc.emimg')?.textContent || ''),
+      null, { timeout: 15000 });
+    const imgs = await page.$$eval('.emutab .tc.emimg',
       ls => ls.map(l => l.textContent.replace(/\s+/g, ' ').trim()));
     ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
        && /AVD: fb30-node/.test(imgs[0]),
        `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
-    const apis = await page.$$eval('.tctab #imgApi option', o => o.map(x => x.value));
+    const apis = await page.$$eval('.emutab #imgApi option', o => o.map(x => x.value));
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
        `...and the picker offers what the NODE does not have (${JSON.stringify(apis)})`);
-    ok(/sdkmanager, which is part of/.test(await page.$eval('.tctab', e => e.textContent)),
-       'a node with no android-tools is told images are installed by sdkmanager');
-    // An image is installed BY sdkmanager, so the command-line tools have to
-    // be there first — and they need a JDK in turn. with_requires walks the
-    // catalog and an image id is not a catalog row, so the head of that chain
-    // is named rather than discovered inside a failing job.
-    const add = await napi('/api/toolchains', { action: 'install', node: minted.id,
-      names: ['android:system-images;android-31;google_apis;x86_64'] });
+    ok(await page.evaluate(async id => !('images' in await (await fetch('/api/toolchains?node=' + id)).json()),
+                           minted.id),
+       'the Toolchains tab no longer carries images: they are the Emulator tab\'s');
+
+    // An add is an `image` job, and it holds the store the way a toolchain
+    // job does: the two write into one directory tree.
+    const add = await napi('/api/emulator', { action: 'add', node: minted.id,
+      image: 'system-images;android-31;google_apis;x86_64' });
     const aj = add.job ? await napi(`/api/v1/jobs?id=${add.job}`) : null;
-    ok(aj && JSON.stringify(aj.spec.names) === JSON.stringify(
-         ['jdk', 'android-tools', 'android:system-images;android-31;google_apis;x86_64']),
-       `installing an image on a node pulls sdkmanager and its jdk in front of it (${
-         JSON.stringify(aj?.spec?.names)})`);
+    ok(aj && aj.type === 'image' && aj.spec.action === 'add'
+       && aj.spec.image === 'system-images;android-31;google_apis;x86_64',
+       `adding an image queues an image job for exactly that id (${JSON.stringify(aj?.spec)})`);
+    const clash = await napi('/api/toolchains', { action: 'install', names: ['zig'], node: minted.id });
+    ok(/image job is already running/.test(clash.error || ''),
+       `...and a toolchain install waits for it on the same store (${clash.error})`);
     if (add.job) await napi('/api/v1/jobs', { action: 'cancel', id: add.job });
-    // The same rule every executing endpoint here follows, asked of the
-    // node's own inventory: a removal names an image THIS node reported.
-    const badrm = await napi('/api/toolchains', { action: 'remove', node: minted.id,
-      names: ['android:system-images;android-31;google_apis;x86_64'] });
-    ok(/nothing selected/.test(badrm.error || ''),
-       `an image the node never reported cannot be removed from it (${badrm.error})`);
-    const rm = await napi('/api/toolchains', { action: 'remove', node: minted.id,
-      names: ['android:system-images;android-30;google_apis;x86_64'] });
+    // What reaches a command line is a string this server handed out: an add
+    // names one the picker offered, a removal one THIS node reported.
+    const bogus = await fetch(base + '/api/emulator', { method: 'POST', headers: H,
+      body: JSON.stringify({ action: 'add', node: minted.id, image: 'system-images;android-99;google_apis;x86_64' }) });
+    ok(bogus.status === 400, 'an image id the picker never offered cannot be added');
+    const badrm = await fetch(base + '/api/emulator', { method: 'POST', headers: H,
+      body: JSON.stringify({ action: 'remove', node: minted.id, image: 'system-images;android-31;google_apis;x86_64' }) });
+    ok(badrm.status === 400, 'an image the node never reported cannot be removed from it');
+    const rm = await napi('/api/emulator', { action: 'remove', node: minted.id,
+      image: 'system-images;android-30;google_apis;x86_64' });
     ok(rm.job, 'one it did report can be');
     if (rm.job) await napi('/api/v1/jobs', { action: 'cancel', id: rm.job });
+    // The same in a terminal: bb toolchains says where images went.
+    let said = '';
+    try { execFileSync('bash', [`${REPO}/scripts/bb`, 'toolchains', 'images'], { stdio: 'pipe' }); }
+    catch (e) { said = String(e.stderr); }
+    ok(/system images are the emulator's, not a toolchain: bb emu images/.test(said),
+       `bb toolchains images points at bb emu images (${said.trim()})`);
 
     // An agent too old to report the field at all is not a node with no
-    // images. Without the distinction the tab says "nothing installed" on
-    // behalf of a node the controller has not asked.
-    const noField = { ...CENSUS }; delete noField.images;
-    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
-      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ census: noField, version: shipped.version, digest: shipped.digest }) });
-    const old = await (await fetch(base + '/api/toolchains?node=' + minted.id, { headers: H })).json();
-    ok(old.images_known === false && old.images.length === 0,
-       `an agent that does not report images says so, rather than reporting none (${
-         old.images_known})`);
+    // images: the tab would otherwise say "no image" for a node never asked.
+    const noField = { ...ANDROID }; delete noField.images;
+    await hello(noField);
+    const old = await emuApi();
+    ok(old.known === false && old.images.length === 0,
+       `an agent that does not report images says so, rather than reporting none (${old.known})`);
     await runnerCensus({});     // put the fixture's census back
+    await page.evaluate(() => { const t = tabs.find(t => t.kind === 'emulator'); if (t) dropTab(t.id); });
   }
 
   const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local' });

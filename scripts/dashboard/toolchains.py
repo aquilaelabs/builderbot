@@ -377,153 +377,6 @@ def human_kb(kb):
     return f"{kb} KB"
 
 
-# The android system images on disk, cached like the sizes are: `du` over
-# forty gigabytes is not something to do on a poll.
-_images = {"at": 0.0, "rows": []}
-IMAGES_TTL = 300
-
-
-def installed_images(refresh=True):
-    """One row per android system image actually installed here.
-
-    Not catalog toolchains: which exist depends on what has been installed, and
-    a system image lands there by a choice on the Tools tab or bb emu create, never by a baseline
-    them one at a time. They accumulate — several API levels' worth were on
-    this box, most of them for versions nobody had configured in months — and
-    until now the tab could neither show nor remove one.
-
-    refresh=False serves what is cached without going back to disk, which is
-    what a running job wants: the tree is being written to and a size read
-    from it mid-install describes the moment rather than the toolchain. The
-    first version of this returned nothing at all while a job ran, and since
-    the section is only rebuilt when the tab redraws, the images stayed gone
-    afterwards until something unrelated forced one.
-    """
-    if not refresh or time.monotonic() - _images["at"] < IMAGES_TTL:
-        return _images["rows"]
-    rows = []
-    r = run([BB, "toolchains", "images"], timeout=300)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip("\n").split("\t")
-            if len(f) >= 4 and f[0].startswith("system-images;") and f[3].isdigit():
-                rows.append({"id": f[0], "api": f[1], "kind": f[2],
-                             "size": human_kb(int(f[3])),
-                             # Which AVDs are built on it. An image nothing
-                             # names is one that can go; an image an AVD names
-                             # is one that AVD cannot boot without.
-                             "avds": [a for a in (f[4].split(",") if len(f) > 4 else [])
-                                      if a]})
-    _images.update(at=time.monotonic(), rows=rows)
-    return rows
-
-
-_choices = {"at": 0.0, "rows": [], "flavors": [], "loading": False}
-_choices_lock = threading.Lock()
-CHOICES_TTL = 3600            # the index changes when Google ships a level
-
-
-def image_choices():
-    """Every system image that could be installed, and what each flavor is for.
-
-    Two questions the operator cannot answer from here otherwise: which API
-    levels exist, and what one weighs before it is fetched. Both come out of
-    sdkmanager's own index, which is the only place a download size lives
-    before the download — bb reads it, this asks bb.
-
-    An hour's cache. The answer changes when Google ships an API level, and
-    the rows are also what the picker is drawn from, so it must not be a
-    network round trip per redraw.
-    """
-    if time.monotonic() - _choices["at"] < CHOICES_TTL and _choices["rows"]:
-        return _choices
-    # Off the request. Four XML indexes on a cold cache is a second or two of
-    # network, and doing it inline made the first draw of the whole tab wait
-    # for Google — for a picker most visits never touch. The tab says it is
-    # reading, and the picker arrives on the next poll.
-    with _choices_lock:
-        if _choices["loading"]:
-            return _choices
-        _choices["loading"] = True
-    threading.Thread(target=_load_choices, daemon=True).start()
-    return _choices
-
-
-def _load_choices():
-    rows, flavors = [], []
-    r = run([BB, "toolchains", "images", "--available"], timeout=120)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip().split("\t")
-            if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
-                rows.append({"id": f[0], "api": f[1], "kind": f[2],
-                             # The rendered size for the picker, and the raw
-                             # kilobytes beside it: a node's headroom check
-                             # needs a number, and this index is the only
-                             # place an image's size exists before it is
-                             # fetched.
-                             "kb": int(f[3]) // 1024,
-                             "size": human_kb(int(f[3]) // 1024)})
-    r = run([BB, "toolchains", "flavors"], timeout=30)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip().split("\t")
-            if len(f) >= 3:
-                flavors.append({"kind": f[0], "label": f[2],
-                                "about": f[3] if len(f) > 3 else ""})
-    with _choices_lock:
-        if rows:
-            _choices.update(at=time.monotonic(), rows=rows, flavors=flavors)
-        _choices["loading"] = False
-
-
-def image_kb(image_id):
-    """What the index says this image weighs, in KB, or 0."""
-    for r in image_choices()["rows"]:
-        if r["id"] == image_id:
-            return int(r.get("kb") or 0)
-    return 0
-
-
-def node_images(n):
-    """The system images a node reports, in the shape the tab draws.
-
-    The node walks its store for the ids and the AVDs built on them; the size
-    is joined here, from Google's index. That split is deliberate: an image is
-    a guest artifact, identical on every host, so the controller already knows
-    what one weighs — and `du` over a tens-of-gigabytes tree on an NFS-mounted
-    store is not something to do on every census for a number that is already
-    known. It is the DOWNLOAD size rather than the footprint, so the row says
-    where it came from.
-    """
-    idx = {r["id"]: r for r in image_choices()["rows"]}
-    rows = []
-    for im in (n.get("reported") or {}).get("images") or []:
-        c = idx.get(im.get("id")) or {}
-        rows.append({"id": im.get("id", ""), "api": im.get("api", ""),
-                     "kind": im.get("kind", ""), "size": c.get("size", ""),
-                     "size_from": "the download size, from Google's index — a node does not "
-                                  "measure its image tree" if c.get("size") else "",
-                     "avds": list(im.get("avds") or [])})
-    rows.sort(key=lambda r: (r["kind"], r["api"]))
-    return rows
-
-
-def is_node_image(n, name):
-    """Whether a name is one of the images THIS node just reported. The same
-    rule the local endpoint follows, asked of the node's own inventory: what
-    reaches a command line is a string this server handed out."""
-    return name.startswith("android:") and any(
-        r["id"] == name[len("android:"):] for r in node_images(n))
-
-
-def is_choosable_image(name):
-    """Is this one of the image ids the picker offered? Same rule as every
-    executing endpoint here: the server acts only on names it handed out."""
-    want = name.removeprefix("android:")
-    return any(r["id"] == want for r in image_choices()["rows"])
-
-
 def payload():
     items = []
     with _tc_lock:
@@ -600,14 +453,7 @@ def payload():
     with _tc_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _tc_job.items()}
-    choices = image_choices()
-    here = {i["id"] for i in installed_images(refresh=not busy)}
-    return {"images": installed_images(refresh=not busy),
-            # What could be added, minus what is already here.
-            "addable": [c for c in choices["rows"] if c["id"] not in here],
-            "flavors": choices["flavors"],
-            "images_loading": bool(choices["loading"]),
-            "root": sdk_root_path(),
+    return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _tc_checked,
             "sizing": _tc_sizing[0],
@@ -646,10 +492,9 @@ def job_rev():
 
     Everything the Toolchains tab used to keep its own timer for. It polled at
     half a second while a job ran and at eight seconds otherwise, and the
-    eight-second half was there for the two facts this used to leave out: the
-    daily version check, and the image index still being read. They are in
-    memory here and cost nothing to report, so the tab watches this instead of
-    holding a third clock.
+    eight-second half was there for the one fact this used to leave out: the
+    version check. It is in memory here and costs nothing to report, so the
+    tab watches this instead of holding a third clock.
 
     The store root's mtime is the one stat, and it is the case none of the
     in-memory state can see: `bb toolchains install` run in a terminal is
@@ -662,7 +507,7 @@ def job_rev():
     except (OSError, TypeError, ValueError):
         store = 0
     return (f"{j['running']}:{j['action']}:{j['current']}:{len(j['done'])}"
-            f":{len(j['failed'])}:{_choices['at']}:{_choices['loading']}"
+            f":{len(j['failed'])}"
             f":{_tc_checked}:{_tc_sizing[0]}:{store}")
 
 
@@ -756,7 +601,6 @@ def _tc_worker():
                     said + [f"{verb} failed (exit {r['code']})"])[-400:]
             (_tc_job["done"] if r["code"] == 0 else _tc_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
-            _images["at"] = 0.0           # an image may have just gone
             _tc_local["key"] = None      # whatever just happened moved a version
             _tc_sized_at[0] = 0.0        # ...and changed what is on the disk
             # ...and made the last check's answer about this toolchain a
@@ -777,17 +621,6 @@ _tc_child = [None]
 def _hold_child(proc):
     with _tc_lock:
         _tc_child[0] = proc
-
-
-def is_installed_image(name):
-    """Whether a name is one of the images this server just listed.
-
-    The rule everything executing here follows: what reaches a command line is
-    a string this server chose. The page posts back an id out of the list it
-    was given, and it is checked against that list again before it is used.
-    """
-    return name.startswith("android:") and any(
-        r["id"] == name[len("android:"):] for r in installed_images())
 
 
 def abort_job():
@@ -941,14 +774,6 @@ def payload_for_node(nid):
                        "done": done, "failed": [x for x in names if x not in done],
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
-    # The images are the node's — it walks its own store for them — but which
-    # ones COULD be added is not a per-node question at all: an image is a
-    # guest artifact and the index that lists them is Google's, read here.
-    # So the picker is the controller's list minus what this node already has,
-    # and a node needs no network of its own to be offered one (roadmap #20).
-    imgs = node_images(n)
-    choices = image_choices()
-    here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
@@ -963,20 +788,6 @@ def payload_for_node(nid):
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
-            "images": imgs,
-            "addable": [c for c in choices["rows"] if c["id"] not in here],
-            "flavors": choices["flavors"],
-            "images_loading": bool(choices["loading"]),
-            # Whether the node has answered the question at all. An agent too
-            # old to report its images is not a node with none — the same
-            # distinction `unknown` draws on a toolchain row, and without it the
-            # empty state claims something the controller does not know.
-            "images_known": "images" in (n.get("reported") or {}),
-            # An image install is sdkmanager's, so it needs the command-line
-            # tools there first. Said on the tab rather than discovered when
-            # the job dies inside sdkmanager naming neither.
-            "images_need": "" if not known or "android-tools" in node_has(n)
-                           else "android-tools",
             "items": items, "job": job or {"running": False}}
 
 
@@ -1173,20 +984,43 @@ def unsupported(names, plat):
             for x in names if x in by and not supports(by[x], plat)]
 
 
-def is_image_name(name):
-    """A full sdkmanager system-image id, as the picker hands one back."""
-    return str(name).startswith("android:system-images;")
-
-
 def _need_kb(name):
-    """What installing this will cost the store, in KB. Measured here the
-    last time it was installed, for a catalog toolchain; from Google's index,
-    for a system image — which is the only place an image's size exists
-    before the download, and the reason an image can be gated on headroom
-    even on a node this controller has never installed one for."""
-    if is_image_name(name):
-        return image_kb(name[len("android:"):])
+    """What installing this will cost the store, in KB: measured here the
+    last time it was installed, or 0 for one this controller never had."""
     return _tc_remembered.get(name, 0)
+
+
+# The jobs that write into a toolchain store: a toolchain's, and an Android
+# system image's (emulator.py), which lives there without being one.
+STORE_JOBS = ("toolchain", "image")
+
+
+def _store_job_on(node_id):
+    return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
+
+
+def store_busy(nid):
+    """Why this node's toolchain store cannot take another job now, or "".
+
+    One at a time across every node that shares the store, not just this
+    one. docs/nodes.md section 6 names the trap: two agents unpacking into
+    one NFS directory, or one upgrading a toolchain under another mid-build,
+    is version skew nobody can debug. The rule is enforced across a shared
+    store or it is not enforced at all."""
+    n = nodes.node(nid)
+    sharers = store_sharers(nid)
+    for other in [n] + sharers:
+        if _store_job_on(other["id"]):
+            where = ("" if other["id"] == nid
+                     else f"; it shares this toolchain store with {n['name']}")
+            return f"a toolchain or image job is already running on {other['name']}{where}. One at a time."
+    # ...and this container's own installer, which is not a job and so is
+    # invisible to the loop above. It is the sharer that matters most here:
+    # the toolchain store is mounted by the controller and by the sandbox at once.
+    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
+        return ("this container is installing into the same toolchain store "
+                f"right now; it shares it with {n['name']}. One at a time.")
+    return ""
 
 
 def node_job(principal, nid, action, names):
@@ -1209,15 +1043,7 @@ def node_job(principal, nid, action, names):
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
         have = node_has(n)
-        # A system image is installed BY sdkmanager, so the command-line tools
-        # have to be on the node first — and they need a JDK in turn.
-        # with_requires walks the catalog, and an image id is not a catalog
-        # row (which images exist is not a fixed list), so the head of that
-        # chain is named here rather than discovered inside a failing job.
-        pre = ["android-tools"] if (any(is_image_name(x) for x in names)
-                                    and "android-tools" not in have) else []
-        want = pre + [x for x in names if x not in pre]
-        ordered, _ = with_requires(want, have)
+        ordered, _ = with_requires(names, have)
         names, added = ordered, [x for x in ordered if x not in names]
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
@@ -1238,24 +1064,9 @@ def node_job(principal, nid, action, names):
             return {"error": f"{n['name']}'s toolchain store has {human_kb(free * 1024)} free "
                              f"and this needs about {human_kb(int(need_kb * 1.2))} — "
                              "point the store somewhere bigger first"}
-    # One install at a time — across every node that shares this store, not
-    # just this one. docs/nodes.md §6 names the trap: two agents unpacking
-    # into one NFS directory, or one upgrading a toolchain under another
-    # mid-build, is version skew nobody can debug. The rule is enforced
-    # across a shared store or it is not enforced at all.
-    sharers = store_sharers(nid)
-    for other in [n] + sharers:
-        if nodes.jobs_for(node_id=other["id"], type="toolchain", active=True, n=1):
-            where = ("" if other["id"] == nid
-                     else f"; it shares this toolchain store with {n['name']}")
-            return {"error": f"a toolchain job is already running on {other['name']}"
-                             f"{where}. One at a time."}
-    # ...and this container's own installer, which is not a job and so is
-    # invisible to the loop above. It is the sharer that matters most here:
-    # the toolchain store is mounted by the controller and by the sandbox at once.
-    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
-        return {"error": "this container is installing into the same toolchain store "
-                         f"right now — it shares it with {n['name']}. One at a time."}
+    busy = store_busy(nid)
+    if busy:
+        return {"error": busy}
     # Two architectures on one store used to be refused here, because a flat
     # store could not hold both. It is scoped by platform now — each machine
     # installs under <store>/<os>-<arch> (roadmap R19) — so a Mac and a Linux
@@ -1324,7 +1135,7 @@ def start_job(action, names, auto=False):
         if nodes:
             with contextlib.suppress(Exception):
                 for other in store_sharers(nodes.LOCAL):
-                    if nodes.jobs_for(node_id=other["id"], type="toolchain", active=True, n=1):
+                    if _store_job_on(other["id"]):
                         return False
         if action == "install":
             here = {p["name"] for p in TOOLCHAINS if _tc_path(p["probe"])}

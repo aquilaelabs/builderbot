@@ -394,26 +394,17 @@ agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, and an `bb toolchains` that makes and removes
-# directories instead of downloading gigabytes — enough for the Tools card to
-# watch a toolchain appear and disappear.
+# Stub: deterministic `bb doctor`, the emulator's image listings, and a
+# `bb toolchains` that makes and removes directories instead of downloading
+# gigabytes, which is enough for the Toolchains tab to watch a toolchain
+# appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
-if [ "${1:-}" = toolchains ]; then
-    # Where this stub pretends a toolchain lives. Shared by every verb, so
-    # check and versions answer for what install and remove actually did —
-    # a stub that claimed 1.0 for everything let a bug through where the page
-    # showed an installed version on a row that had nothing installed.
-    _d() {
-        local n="${1#android:}"
-        if [ "$n" != "$1" ]; then printf '%s/%s' "${ANDROID_HOME:?}" "$n"
-        else printf '%s/%s' "${SDK_TEST_ROOT:?}" "$n"; fi
-    }
+# The emulator's system images: the index of what could be added (with
+# --available) and what is on disk, one of each plus one that is both, so the
+# picker has something to leave out.
+if [ "${1:-}" = emu ]; then
     case "${2:-}" in
-        root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
-        images)  # --available is the index of what could be installed; bare is
-                 # what is on disk. One of each, plus one that is both, so the
-                 # picker has something to leave out.
-                 if [ "${3:-}" = --available ]; then
+        images)  if [ "${3:-}" = --available ]; then
                      printf 'system-images;android-31;google_apis;x86_64\t31\tgoogle_apis\t1470822277\n'
                      printf 'system-images;android-30;google_apis;x86_64\t30\tgoogle_apis\t1438186618\n'
                      printf 'system-images;android-30;google_apis_playstore;x86_64\t30\tgoogle_apis_playstore\t1404405641\n'
@@ -424,6 +415,20 @@ if [ "${1:-}" = toolchains ]; then
                  fi ;;
         flavors) printf 'google_apis\tx86_64\tGoogle APIs\tPlay services, no Play Store app. Rootable.\n'
                  printf 'google_apis_playstore\tx86_64\tGoogle APIs + Play Store\tThe Play Store app itself; not rootable.\n' ;;
+    esac
+fi
+if [ "${1:-}" = toolchains ]; then
+    # Where this stub pretends a toolchain lives. Shared by every verb, so
+    # check and versions answer for what install and remove actually did:
+    # a stub that claimed 1.0 for everything let a bug through where the page
+    # showed an installed version on a row that had nothing installed.
+    _d() {
+        local n="${1#android:}"
+        if [ "$n" != "$1" ]; then printf '%s/%s' "${ANDROID_HOME:?}" "$n"
+        else printf '%s/%s' "${SDK_TEST_ROOT:?}" "$n"; fi
+    }
+    case "${2:-}" in
+        root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
         versions) # local only: installed version, no upstream asked. Called
                   # with no names by the server, which wants the lot.
                  for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
@@ -463,9 +468,6 @@ if [ "${1:-}" = toolchains ]; then
                          printf 'error: could not download file from upstream\n' >&2
                          exit 1
                      fi
-                     # A system image takes its time too, so a test can see
-                     # where a job started from Add reports itself.
-                     case "$3" in *system-images*) sleep 1.5 ;; esac
                      if [ "$3" = go ]; then
                          # Takes a while, and counts loudly while it does —
                          # shaped like sdkmanager, whose meter runs one fraction

@@ -838,9 +838,6 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}
-/* An image row has no checkbox, so the text starts where the others' does. */
-.tc.img{padding-left:40px}
-.imghead{margin-top:18px}
 .tc .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
 /* An image nothing is built on: said, but quietly. It is the answer to "can
    this go", not a warning. */
@@ -2162,7 +2159,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    the bar had no padding at all and its controls sat against the edge.) */
 .fxtab .fxbar{border-bottom:1px solid var(--line)}
 .fxtab .fxbar select{flex:0 1 auto;min-width:0}
-.fxtab .hint{padding:var(--row-y) var(--row-x)}
+/* A hint in a document tab is a band like any other: it was the Analysis
+   tab's own rule, so the same line on the Toolchains tab sat flush against
+   the edge with every band beside it indented. */
+.doctab .hint{padding:var(--row-y) var(--row-x)}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
   padding:var(--row-y) var(--row-x) 3px;
   border-top:1px solid var(--line);font-weight:600}
@@ -3888,6 +3888,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="macros">
         <!-- Alphabetical, so a new one has one place to go. -->
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
+        <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
@@ -3978,6 +3979,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-users.js"></script>
 <script src="tab-profile.js"></script>
 <script src="tab-toolchains.js"></script>
+<script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="nb-git.js"></script>
 <script src="nb-artifacts.js"></script>
@@ -4053,6 +4055,11 @@ function proseline(el){
   // a hidden or just-inserted parent measures zero and would stay one line.
   fit();
   requestAnimationFrame(fit);
+  // ...and again whenever its WIDTH changes: one drawn while its view was
+  // hidden (a notebook opened on a phone, behind the terminal) measured zero
+  // both times and stayed two pixels tall until somebody typed in it.
+  let w = el.offsetWidth;
+  new ResizeObserver(() => { if (el.offsetWidth !== w){ w = el.offsetWidth; fit(); } }).observe(el);
 }
 // Every proseline in `root`, and `root` itself if it is one.
 function proselines(root){
@@ -4390,6 +4397,9 @@ const TOOL_ICONS = {
   toolchains: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/>
     <path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/></svg>`,
+  // A handset with a play mark on its screen: a phone that is software.
+  emulator: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 6.2v3.6l2.8-1.8z"/></svg>`,
   // Stacked containers.
   docker: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="2.4" y="8.4" width="3.4" height="3.4"/><rect x="6.3" y="8.4" width="3.4" height="3.4"/>
@@ -4411,7 +4421,7 @@ const TOOL_ICONS = {
 };
 // Which button on the Tools card opens which kind, so the card can be
 // stamped with the icons once at load and the tab strip can look them up.
-const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bJobs: "jobs",
+const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "emulator", bJobs: "jobs",
                       bNodes: "nodes", bPhone: "phone", bFindings: "findings"};
 
 const TABKINDS = {
@@ -4422,6 +4432,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderToolchainsInto(i), live: () => tcRev,
               open: () => loadToolchains() },
+  // nodesRev and jobsRev as well as its own: a node's images arrive on its
+  // census, and an image job moves the queue.
+  emulator: { multi: false, label: () => "Emulator",
+              icon: TOOL_ICONS.emulator,
+              render: (i) => renderEmulatorInto(i), live: () => `${emuRev}/${nodesRev}`,
+              open: () => loadEmulator() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from
@@ -10821,6 +10837,14 @@ async function refresh(){
     // The Administration card is an administrator's: to anybody else it is
     // not there, rather than there with dead buttons.
     drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });
+    // The Emulator button, ghosted until some node has what the tab needs,
+    // with the reason as its tip.
+    drawCard(null, () => {
+      const b = $("bEmulator"), e = state?.emulator;
+      if (!b || !e) return;
+      b.disabled = !e.ready;
+      if (e.ready) b.removeAttribute("data-tip"); else b.dataset.tip = e.why;
+    });
     drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
     // its Analysis view re-reads on its poll below.
@@ -11035,18 +11059,24 @@ onRev("prefs", () => refresh());
 // since the store was built and nothing watched it, so the tab that owns the
 // setting was the one place a change took fifteen seconds to show.
 onRev("settings", () => refresh());
-// The toolchain store: an install or an uninstall finishing, the daily version
-// check, or the image index landing. The tab used to keep a timer of its own
+// The toolchain store: an install or an uninstall finishing, or the version
+// check. The tab used to keep a timer of its own
 // for this (half a second while a job ran, eight seconds otherwise) which
 // is a third clock for a fact the poll already carries.
 onRev("toolchains", () => {
   if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
+});
+// Google's image index landing, for the Emulator tab's picker.
+onRev("emulator", () => {
+  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
 });
 // The node registry moved: a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
 // (docs/nodes.md §13).
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
+  // A node's census carries its images.
+  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
   // ...and the Runner card, which is drawn off the status poll: a job on a
   // node moves this rev, so the card says "installing now" and then the
   // result inside a second or two instead of at the next fifteen-second poll.
@@ -11056,6 +11086,7 @@ onRev("nodes", () => {
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
   if (tabs.some(t => t.kind === "jobs")) loadJobs();
+  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
 });
 // The Phone tab's data (tab-phone.js): fetched here too, because the bell
 // carries the same asks whether or not the tab is open.

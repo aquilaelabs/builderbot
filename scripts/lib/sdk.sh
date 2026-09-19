@@ -211,7 +211,7 @@ sdk_write_env() {
 # been. `bb toolchains --local` is this container's own store, and BB_NODE_TOOLCHAINS
 # means we ARE the node, where local is the right answer.
 #
-# Only the bare status routes. `bb toolchains images|versions|check|root|env` are
+# Only the bare status routes. `bb toolchains versions|check|root|env` are
 # what the dashboard shells out to for its own store, and a node's answer
 # there would be a silent wrong one.
 sdk_status() {
@@ -924,7 +924,7 @@ sdk_image_flavor() {
 
 sdk_android_id() {
     local pkg="${1#android:}" kind
-    # A full sdkmanager id, the shape `bb toolchains images` prints. No catalog row
+    # A full sdkmanager id, the shape `bb emu images` prints. No catalog row
     # names one, because which images exist is not a fixed list, so the id is
     # its own answer.
     case "$1" in android:*\;*) printf '%s' "$pkg"; return 0 ;; esac
@@ -1126,11 +1126,11 @@ sdk_install() {
     [ -n "$what" ] || die "usage: bb toolchains install <toolchain> (bb toolchains list names them)"
     if [ "$what" = tizen ]; then sdk_install_tizen; return 0; fi
     kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
-    # The same full-id escape hatch removal has: `bb toolchains images` prints ids the
+    # The same full-id escape hatch removal has: `bb emu images` prints ids the
     # catalog does not list, and what can be removed by id has to be
-    # reinstallable by id — otherwise the warning a removal prints names a
-    # command that does not work. An image flavor by name lands here too, now
-    # that the flavors are a section rather than three catalog rows.
+    # reinstallable by id, or the warning a removal prints names a command
+    # that does not work. An image flavor by name lands here too. Both reach
+    # this through `bb emu image add`; `bb toolchains` refuses them first.
     [ -n "$kind" ] || case "$what" in android:*\;*) kind=sdkmanager ;; esac
     [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     [ -n "$kind" ] || die "unknown toolchain: ${what} (bb toolchains list names them)"
@@ -1171,7 +1171,7 @@ Tizen is Samsung's OS, and where it runs decides whether you want it:
                                 makers. This is the reason to install it.
   Watches                       over. Samsung moved Galaxy Watch to Wear OS
                                 with the Watch 4 in 2021, so for a watch app:
-                                    bb toolchains install android:wear
+                                    bb emu image add wear
   Phones                        discontinued in 2017.
 
 There is no headless installer worth automating (Samsung ships a GUI Java
@@ -1194,10 +1194,10 @@ sdk_remove() {
     [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     if [ -z "$kind" ]; then
         case "$what" in
-            # A full sdkmanager id — system-images;android-30;google_apis;x86_64
-            # and the like. No catalog row names one, because they are not a
+            # A full sdkmanager id (system-images;android-30;google_apis;x86_64
+            # and the like). No catalog row names one, because they are not a
             # fixed list: which exist here depends on what has been installed.
-            # `bb toolchains images` lists them.
+            # `bb emu images` lists them.
             android:*\;*)
                 kind=sdkmanager
                 # A typo'd id would otherwise reach sdkmanager, which fetches
@@ -1205,7 +1205,7 @@ sdk_remove() {
                 # uninstall — a minute of network for a misspelling. Every id
                 # of this shape maps to a directory, so ask the disk first.
                 [ -d "${ANDROID_HOME:-/opt/android-sdk}/$(printf '%s' "${what#android:}" | tr ';' '/')" ] \
-                    || die "${what} is not installed (bb toolchains images lists what is)"
+                    || die "${what} is not installed (bb emu images lists what is)"
                 ;;
             # tizen is not in the catalog — nothing there can install it — but
             # it is a directory on the share like any other, so it comes off
@@ -1306,13 +1306,13 @@ sdk_remove() {
     esac
 }
 
-# bb toolchains images: the android system images actually installed here.
+# bb emu images: the android system images actually installed here.
 #
-# Not a catalog matter: which exist depends on what has been installed, and the
-# image lands there by a choice on the Tools tab or bb emu create, never by a baseline
-# them one at a time. One TSV line each — id, API level, flavor, size — so
-# the tab can offer to remove the ones nobody is using. Forty-four gigabytes of
-# them accumulated here before there was any way to see them.
+# Not a catalog matter: which exist depends on what has been installed, and an
+# image lands there by a choice on the Emulator tab or bb emu create, never by
+# a baseline. One TSV line each (id, API level, flavor, size, the AVDs built
+# on it) so the tab can offer to remove the ones nobody is using. Forty-four
+# gigabytes of them accumulated here before there was any way to see them.
 # Which AVDs are built on a given image. An AVD names one exactly — a line
 # like `image.sysdir.1=system-images/android-36/google_apis/x86_64/` — and
 # will not boot without it, which is the difference between an image that is
@@ -1360,16 +1360,63 @@ cmd_toolchains() {
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
         list)       sdk_meta names ;;
-        images)     if [ "${1:-}" = --available ]; then sdk_meta images
-                    else sdk_images; fi ;;
-        flavors)    sdk_meta flavors ;;
         plan)       sdk_plan "$@" ;;
-        install)    sdk_install "$@"; sdk_write_env ;;
+        install)    sdk_not_image install "$@"; sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
         versions)   sdk_versions "$@" ;;
         relink)     sdk_relink_android ;;
-        update)     sdk_update "$@"; sdk_write_env ;;
-        remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb toolchains [status [--local]|root|env|list|images [--available]|flavors|plan X|versions|check|relink|install X|update X|remove X]" ;;
+        update)     sdk_not_image update "$@"; sdk_update "$@"; sdk_write_env ;;
+        remove)     sdk_not_image remove "$@"; sdk_remove "$@"; sdk_write_env ;;
+        images|flavors)
+            die "system images are the emulator's, not a toolchain: bb emu ${sub} $*" ;;
+        *) die "usage: bb toolchains [status [--local]|root|env|list|plan X|versions|check|relink|install X|update X|remove X]" ;;
+    esac
+}
+
+# Whether a name is a system image: a full sdkmanager id, or a flavor by its
+# catalog key or its short name (tv, wear, playstore).
+sdk_is_image() {
+    case "${1#android:}" in system-images\;*) return 0 ;; esac
+    sdk_image_flavor "$1" >/dev/null
+}
+
+# A system image is not a toolchain: it exists at every API level at once, and
+# which one to have is a question about what is being tested. So it has a
+# verb of its own under bb emu, and this one says where that is rather than
+# quietly doing the same thing under a second name.
+sdk_not_image() {
+    local verb="$1" x; shift
+    for x in "$@"; do
+        sdk_is_image "$x" || continue
+        case "$verb" in
+            remove) die "${x#android:} is a system image, not a toolchain: bb emu image remove ${x#android:}" ;;
+            *)      die "${x#android:} is a system image, not a toolchain: bb emu image add ${x#android:}" ;;
+        esac
+    done
+}
+
+# bb emu images|flavors|image add|remove: the system images on this machine's
+# toolchain store, which is where they live even though they are not
+# toolchains. The operator's, like bb toolchains install: sdk_install and
+# sdk_remove refuse inside a Claude session on their own.
+cmd_emu_images() {
+    local sub="$1"; shift || true
+    case "$sub" in
+        images)
+            if [ "${1:-}" = --available ]; then sdk_meta images; else sdk_images; fi ;;
+        flavors) sdk_meta flavors ;;
+        image)
+            local verb="${1:-}" id="${2:-}"
+            [ -n "$id" ] || die "usage: bb emu image add|remove ID (bb emu images --available lists them, bb emu flavors names the short ones)"
+            sdk_is_image "$id" || die "${id} is not a system image: bb emu images --available lists them"
+            [ -z "${CLAUDECODE:-}" ] || die "a system image is the operator's to add or remove, and this is a Claude session.
+Ask them to do it from the dashboard's Emulator tab, or to
+run: bb emu image ${verb} ${id}
+If you ARE the operator at this keyboard: env -u CLAUDECODE bb emu image ${verb} ${id}"
+            case "$verb" in
+                add)    sdk_install "android:${id#android:}"; sdk_write_env ;;
+                remove) sdk_remove "android:${id#android:}"; sdk_write_env ;;
+                *) die "usage: bb emu image add|remove ID" ;;
+            esac ;;
     esac
 }

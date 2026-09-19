@@ -72,6 +72,9 @@ bb — BuilderBot helper
   bb emu install APK     install an APK on the running emulator
   bb emu shot [FILE]     screenshot the emulator into dist/emu/
   bb emu gfx PKG [FILE]  a package's per-frame timings (gfxinfo framestats) into dist/emu/
+  bb emu images [--available]  the system images on this machine's store, or every one there is
+  bb emu flavors         google_apis, +playstore, tv, wear: what each is for
+  bb emu image add|remove ID  put a system image on this machine's store, or take one off
                          — every emu verb runs on the project's node when it has one
   bb ci-labels [--write] the runner labels the registry knows; --write regenerates
                          .github/actionlint.yaml from them
@@ -777,6 +780,10 @@ PY
 
 cmd_emu() {
     local avd
+    # The system images on THIS machine's toolchain store, like bb toolchains:
+    # a console on a node sees that node's, and nothing routes. The Emulator
+    # tab is where a node is picked.
+    case "${1:-}" in images|flavors|image) cmd_emu_images "$@"; return ;; esac
     # On the project's node when it has one (docs/nodes.md phase 9) — the
     # emulator, the images and the GPU are that machine's. BB_EMU_LOCAL=1
     # keeps a verb here, for the box that still carries an emulator itself.
@@ -796,7 +803,7 @@ cmd_emu() {
             # An AVD for an API level: the system image and platform through
             # sdkmanager if they are not here, then avdmanager — on demand,
             # for a node whose store starts empty. The only way an image
-            # arrives besides the Tools tab, since the baseline hook went.
+            # arrives besides the Emulator tab, since the baseline hook went.
             local api="${2:-}" pkg name
             [ -n "$api" ] || die "bb emu create <api> — the API level to build the AVD for"
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — install android-tools first"
@@ -841,7 +848,7 @@ cmd_emu() {
             ;;
         start)
             command -v emulator >/dev/null 2>&1 \
-                || die "no emulator in this node's toolchain store: tick android:emulator on the Tools tab with this node picked"
+                || die "no emulator in this node's toolchain store: tick android:emulator on the Toolchains tab with this node picked"
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
@@ -4708,6 +4715,8 @@ for j in rows:
             f'apply {s.get("apply") or "config"} on the node' if j["type"] == "system" else
             f'{s.get("action") or "install"} {", ".join(s.get("names") or [])}'
             if j["type"] == "toolchain" else
+            f'{s.get("action") or "add"} image {s.get("image") or ""}'
+            if j["type"] == "image" else
             ("clear " + (f'{s["project"]}\'s caches' if s.get("project") else "every cache"))
             if j["type"] == "cache-clear" else
             "exec " + " ".join(s.get("argv") or [])[:60])

@@ -43,6 +43,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openToolchains()),
     readyWhen: '.tctab .tc',
   },
+  emulator: {
+    // The harness's sandbox node reports a store, so the tab draws its head.
+    open: () => page.evaluate(() => openEmulator()),
+    readyWhen: '.emutab .tchead, .emutab .empty',
+  },
   projects: {
     open: () => page.evaluate(() => openProjectsTab()),
     readyWhen: '.projtab .row',
@@ -103,7 +108,7 @@ ok(undriven.length === 0,
 // class, and the list of those is deliberately short.
 const BANDS = '.field, .row, .rule, .empty, .loading, .fnote, .dmsrc, ' +
               '.macros, .fxproj, .tchead, .tc, .sect>summary';
-const INDENTED = ['img'];        // .tc.img: a child row, indented on purpose
+const INDENTED = [];             // no band is indented on purpose any more
 
 async function measure(kind){
   return page.evaluate(({ BANDS, INDENTED }) => {
@@ -154,9 +159,31 @@ async function measure(kind){
   }, { BANDS, INDENTED });
 }
 
+// The page holds twelve tabs, and there are more document kinds than that
+// with the terminal beside them. So a kind is brought up by focusing its tab
+// when one is open, and otherwise opened, after closing the oldest other
+// document when the strip is full.
+async function bring(kind){
+  const had = await page.evaluate(k => {
+    const t = tabs.find(x => x.kind === k);
+    if (t){ focusTab(t.id); return true; }
+    if (tabs.length >= 11){
+      const old = tabs.find(x => x.kind !== 'term' && x.kind !== k);
+      if (old) dropTab(old.id);
+    }
+    return false;
+  }, kind);
+  if (had) return;
+  // A fresh open settles before it is measured: a proseline sizes itself to
+  // its text once the view's data has landed, a beat after the band shows.
+  await DRIVERS[kind].open();
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  await sleep(500);
+}
+
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await DRIVERS[kind].open();
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   await sleep(150);                       // entrance animation settles
   const m = await measure(kind);
@@ -254,8 +281,7 @@ async function language(){
 const seenBars = new Set(), seenSects = new Set(), seenReds = new Set();
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   await sleep(200);
   const L = await language();
@@ -332,8 +358,7 @@ async function spanning(){
 }
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
@@ -424,8 +449,7 @@ async function unwrapped(){
 }
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   await sleep(250);              // the last band to arrive is part of the row
   const L = await lineup();
@@ -470,8 +494,7 @@ async function writesOnPick(){
 }
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   const W = await writesOnPick();
   ok(!W.err && W.wrote.length === 0,
@@ -485,8 +508,7 @@ for (const kind of kinds){
 // scrolled past every row to find it. Measured on each view that has one,
 // against its head row and the first row of its list.
 {
-  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'notebook');
-                              if (t) focusTab(t.id); });
+  await bring('notebook');
   const misplaced = [];
   for (const v of ['roadmap', 'bugs', 'briefing']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
@@ -537,8 +559,7 @@ for (const kind of kinds){
 // markup, because the Briefing tab once put a section above its head and
 // every other rule here still passed.
 {
-  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'notebook');
-                              if (t) focusTab(t.id); });
+  await bring('notebook');
   await page.waitForSelector('.nb .nbview:not([hidden]) .field', { timeout: 20000 });
   const views = await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view));
   const heads = {};
@@ -645,8 +666,7 @@ ok(seenReds.size <= 1,
 // this suite — which is the reason it is here.
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 }).catch(() => {});
   await sleep(200);
   const skewed = await page.evaluate(() => {
@@ -751,8 +771,7 @@ await sleep(400);
 // 88%), and 88% is what bites here.
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
@@ -906,8 +925,7 @@ const sideways = () => page.evaluate(() => {
 });
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
-  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                             if (t) focusTab(t.id); }, kind);
+  await bring(kind);
   await sleep(250);
   // The notebook is six views behind one tab, and each has its own layout;
   // the Tests view is the one that scrolled sideways while the Roadmap, the

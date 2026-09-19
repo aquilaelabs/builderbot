@@ -1903,6 +1903,9 @@ def samples(nid):
 # (phase 5), toolchain (an install against the node's toolchain store)
 # and cache-clear (drop the node's build caches) are the agent's own.
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear",
+             # An Android system image onto a node's toolchain store, or off
+             # it: there without being a toolchain (emulator.py).
+             "image",
              # The sign-in flow, on the machine Claude is installed on: a job
              # of its own because it opens a PTY and drops to the SESSION
              # account, not the job one (R47). Both matter — the flow prints a

@@ -383,7 +383,7 @@ the doctor. A revision does not belong on it.
 
 **A timer of a view's own is for watching something in flight, never for
 noticing a change.** Noticing is the revisions poll's job, always. The
-Toolchains tab is the one that keeps a timer, and only while a job is running:
+Toolchains and Emulator tabs are the ones that keep a timer, and only while a job is running:
 an install of a small toolchain starts and finishes inside one revision poll,
 so the tab would go from idle to done having never said "installing". It
 stops when the job does. Anything else with a clock of its own is a tab that
