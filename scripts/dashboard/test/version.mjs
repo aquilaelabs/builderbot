@@ -341,7 +341,7 @@ ok(yb('changelog', 'add', 'Worked before any version existed').code === 0,
 setPolicyFor('young', 'open');
 yb('version', 'init', '0.1.0');
 const born = yb('changelog').out;
-ok(/## 0\.1\.0 — \d{4}-\d{2}-\d{2}/.test(born) && !/## Unreleased/.test(born),
+ok(/## 0\.1\.0: \d{4}-\d{2}-\d{2}/.test(born) && !/## Unreleased/.test(born),
    '...and init dates the accrued entries as the first version\u2019s section');
 rmSync(Y, { recursive: true, force: true });
 
@@ -633,8 +633,8 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 // The bump dates the section, in the same commit that moves VERSION.
 mb('bump', 'patch');
 const rolled = cl().out;
-ok(/## 2\.2\.1 — \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
-   === false && /## 0\.4\.1 — \d{4}-\d{2}-\d{2}/.test(rolled)
+ok(/## 2\.2\.1: \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
+   === false && /## 0\.4\.1: \d{4}-\d{2}-\d{2}/.test(rolled)
    && /- Pairing works/.test(rolled) && !/## Unreleased/.test(rolled),
    "the project's bump dates its Unreleased section");
 ok(/## Unreleased/.test(cl('--for', 'extension').out),

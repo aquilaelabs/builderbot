@@ -17,7 +17,7 @@ record.
 
 **Shape.** CHANGELOG.md, one per versioned thing: the project's beside its
 VERSION, a component's beside its own. `## Unreleased` on top while anything
-is unreleased, dated `## X.Y.Z — YYYY-MM-DD` sections below, newest first.
+is unreleased, dated `## X.Y.Z: YYYY-MM-DD` sections below, newest first.
 Close enough to the Keep a Changelog convention to be read by anyone who has
 seen one, without promising conformance this module does not check.
 
@@ -506,8 +506,10 @@ def unroll(d, version):
         return False
     lines = text.splitlines()
     # The section: its heading, and its entry lines up to the next heading.
-    start = next((i for i, ln in enumerate(lines)
-                  if ln.startswith(f"## {version} —")), None)
+    # By the version alone: an older build wrote a dash where this one
+    # writes a colon, and either is the release being taken back.
+    head = re.compile(rf"## {re.escape(version)}(?![\w.])")
+    start = next((i for i, ln in enumerate(lines) if head.match(ln)), None)
     if start is None:
         return False
     end = next((i for i in range(start + 1, len(lines))
@@ -562,7 +564,7 @@ def roll(d, version, date):
             # Only the first: unreleased() counted entries from the first
             # heading, and a hand-edited file with a stray duplicate must not
             # gain two identical version sections in one roll.
-            out.append(f"## {version} — {date}")
+            out.append(f"## {version}: {date}")
             renamed = True
         else:
             out.append(ln)
