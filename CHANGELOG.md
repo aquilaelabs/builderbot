@@ -39,6 +39,7 @@
 - An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
 - Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
 - The Tools tab names the system packages each tool puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
+- System packages now install on Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9 and 10, Fedora, Arch and openSUSE: Playwright's list was apt-only and broke on Ubuntu 24.04, and a list can name a library that was renamed between releases (1912a29)
 
 ### Upgrading
 
