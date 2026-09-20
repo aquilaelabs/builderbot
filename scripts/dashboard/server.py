@@ -5679,7 +5679,15 @@ class Handler(BaseHTTPRequestHandler):
         Its own endpoint rather than an action on _devapp, because _devapp
         starts by insisting the caller names a project and this one has none:
         that is the whole of what it is.
+
+        An administrator's, like every other write here that is configuration
+        rather than a run of the code. It was the page alone that knew that
+        (mayDocker hides the buttons), and a hidden button is not a refusal:
+        writing a compose file and building from it is root-shaped power on
+        the node, so the endpoint says no itself.
         """
+        if self._refused("docker-write"):
+            return
         act = field(req, "action")
         name = field(req, "name")
         if act == "read":

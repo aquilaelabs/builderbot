@@ -127,7 +127,13 @@ for (const who of CAST) {
     for (const [path, body] of [['/api/users', { action: 'add', name: 'x.nope', password: 'nopenope1', role: 'user' }],
                                 ['/api/lock', { name: mine[0] || 'alpha', locked: true }],
                                 ['/api/prefs', { project: mine[0] || 'alpha', node: 'n_x' }],
-                                ['/api/v1/jobs', { action: 'run', project: mine[0] || 'alpha', argv: ['true'] }]]) {
+                                ['/api/v1/jobs', { action: 'run', project: mine[0] || 'alpha', argv: ['true'] }],
+                                // Writing a compose file and building from it is
+                                // root-shaped power on the node. The page hid the
+                                // buttons and the endpoint let anybody through.
+                                ['/api/container', { action: 'create', name: 'x.nope',
+                                                     compose: 'services:\n  a:\n    image: alpine\n' }],
+                                ['/api/container', { action: 'save', name: 'x.nope', compose: '', env: '' }]]) {
       const r = await api(page, path, body);
       ok(r.status === 403 || r.status === 400, `${tag} is refused ${path} (${r.status}: ${(r.error || '').slice(0, 50)})`);
     }
