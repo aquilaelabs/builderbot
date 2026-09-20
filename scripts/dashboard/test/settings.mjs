@@ -86,39 +86,41 @@ ok(groups.join('|') === 'What is offered|Debugging|Reset',
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
    'debug mode is off until somebody turns it on');
 // The settings a developer of BuilderBot reaches for sit behind a Debug
-// settings button in the same group, which is a real control only once
-// debug mode is saved on: a draft tick is not debug mode.
+// settings button in the same group, which is a real control only once debug
+// mode is saved on: a draft tick is not debug mode. It opens a DIALOG, the
+// way the node row's Debug settings does: as a fold inside the group its
+// fields were saved by the group's Apply, so ticking one and pressing the
+// Apply in front of you saved a debug setting without a word about it.
 ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()
-     && !!f.querySelector('[data-set="claude_shared_login"]')),
-   '...and the shared-login switch is folded behind it, out of the way');
+ok(await page.$('.settingstab [data-set="claude_shared_login"]') === null
+   && await page.$eval('#setdbgmodal', m => m.hidden),
+   '...and the shared-login switch is not in the group at all, nor its dialog open');
 await post('/api/settings', { set: { debug_mode: true } });
 await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
                            null, { timeout: 30000 });
-ok(await page.$eval('.settingstab [data-debugfold]', f => f.hidden && !f.checkVisibility()),
-   'debug mode on: the button is live, and the fold stays shut until it is pressed');
+ok(await page.$eval('#setdbgmodal', m => m.hidden),
+   'debug mode on: the button is live, and nothing opens until it is pressed');
 await page.click('.settingstab [data-debugshow]');
-await page.waitForFunction(() => document.querySelector('.settingstab [data-debugfold]')?.checkVisibility(),
+await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.checkVisibility(),
                            null, { timeout: 8000 });
-ok(await page.$eval('.settingstab [data-debugshow]', b => b.getAttribute('aria-expanded') === 'true'),
-   'pressing it unfolds the debug settings');
-ok(await page.$eval('.settingstab [data-set="claude_shared_login"]', e => e.type === 'checkbox'
+ok(await page.$eval('#setdbgBody [data-dbgset="claude_shared_login"]', e => e.type === 'checkbox'
      && !e.checked && e.closest('label') !== null),
-   'the shared-login switch is a checkbox in its label, off by default');
+   'pressing it opens the dialog, with the shared-login switch a checkbox in its label, off by default');
+ok(await page.$eval('#setdbgmodal .box .foot', f => !!f.querySelector('.primary')
+     && f.querySelectorAll('button').length === 2),
+   '...and the dialog saves or cancels on its own foot, rather than riding the group\'s Apply');
 ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e => /now/.test(e.textContent)),
    'the section says a change takes now, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
-await page.check('.settingstab [data-set="claude_shared_login"]');
-await page.click('.settingstab [data-group="Debugging"] .setApply');
+await page.check('#setdbgBody [data-dbgset="claude_shared_login"]');
+await page.click('#setdbgSave');
 await page.waitForFunction(() => state?.settings?.settings?.claude_shared_login?.value === true, null, { timeout: 30000 });
 ok(read().claude_shared_login === true,
-   'Apply writes it under /config and the poll carries it');
-await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugfold] .pill'), null, { timeout: 30000 });
-ok(true, '...and the field is then the owner: no default pill');
-ok(await page.$eval('.settingstab [data-debugfold]', f => !f.hidden),
-   '...and the fold is still open after the repaint the save caused');
+   'Save writes it under /config and the poll carries it');
+await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.hidden, null, { timeout: 8000 });
+ok(true, '...and the dialog shuts on the save, the way every dialog here does');
 const bad = await post('/api/settings', { set: { claude_shared_login: 'maybe' } });
 ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
 ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400,

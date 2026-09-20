@@ -191,6 +191,47 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
   git('remote', 'set-url', 'origin', 'https://github.com/example/beta.git');
   const named = await api('what=all');
   git('remote', 'set-url', 'origin', origin);
+
+  // The credential the CONTROLLER holds, not the one the tree's config names:
+  // the mirror copies remote.* and branch.* and nothing else, because a
+  // credential helper is a command the tree names (B153), so before this the
+  // view could read everything and reach nothing: Fetch on an https remote
+  // died on "could not read Username", which is git saying it had no
+  // credential and no terminal to ask at. Asked of the composed command
+  // rather than of a host: git connects before it authenticates, so an
+  // unreachable address fails the same way with a token and without one.
+  {
+    const argvFor = (withToken) => execFileSync('python3', ['-c', `
+import sys, json, subprocess
+sys.path.insert(0, ${JSON.stringify(`${DIR}/../scripts/dashboard`)})
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+from pathlib import Path
+import projects, git as g
+projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+seen = []
+class R:
+    returncode, stdout, stderr = 0, "", ""
+def fake(argv, **kw):
+    seen.append(list(argv))
+    return R()
+subprocess.run = fake
+g._run(${JSON.stringify(`${DIR}/ws/beta`)}, "fetch", "--prune")
+# The fetch itself, not the reads the mirror does around it.
+print(json.dumps(next((a for a in seen if "fetch" in a), [])))
+`], { encoding: 'utf8' }).trim();
+    const plain = JSON.parse(argvFor(false));
+    ok(!plain.some(a => String(a).startsWith('credential.helper=')),
+       `a project with no stored token names no helper (${plain.slice(0, 3).join(' ')})`);
+    mkdirSync(`${DIR}/state/gitcreds`, { recursive: true });
+    writeFileSync(`${DIR}/state/gitcreds/beta`, 'https://oauth2:tok@example.invalid\n', { mode: 0o600 });
+    const withTok = JSON.parse(argvFor(true));
+    ok(withTok.includes(`credential.helper=store --file=${DIR}/state/gitcreds/beta`)
+       && withTok[withTok.indexOf('-c') + 1].startsWith('credential.helper='),
+       `...and one that has it runs git with the controller's own store (${
+         withTok.filter(a => String(a).includes('credential')).join(' ') || 'none'})`);
+    rmSync(`${DIR}/state/gitcreds/beta`, { force: true });
+  }
   ok(named.host?.name === 'GitHub' && named.host?.kind === 'github',
      `the payload names the host from the remote's address, so the view can say GitHub and not origin (${JSON.stringify(named.host)})`);
   // origin/HEAD is a pointer, not a branch: its short name is "origin", and

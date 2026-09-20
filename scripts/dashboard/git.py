@@ -676,6 +676,30 @@ BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
 NET_TIMEOUT = 120
 
 
+def _creds(repo):
+    """The credential helper for this project, out of the CONTROLLER's own
+    record rather than out of the tree's config.
+
+    B153 is why this is needed at all: the mirror copies `remote.*` and
+    `branch.*` from the tree and nothing else, because a credential helper is
+    a command the tree names and this process is not going to run what a
+    checkout asks it to. The consequence was a Git view that could read
+    everything and reach nothing: Fetch and Pull on an https remote died on
+    "could not read Username for https://...: terminal prompts disabled",
+    which is git saying it had no credential and no terminal to ask at.
+
+    There is one, and it is ours: linking the project wrote it to
+    /config/gitcreds/<project> (projects.write_token), so naming it here
+    trusts the tree with nothing. Added rather than substituted, so a
+    controller that authenticates through gh for everything keeps doing so.
+    """
+    try:
+        import projects                                     # noqa: PLC0415
+        return projects.token_helper(Path(repo).name)
+    except Exception:                                       # noqa: BLE001
+        return ""                       # no record, or projects not configured
+
+
 def _run(repo, *args, env=None, timeout=30, index=True):
     """{code, out} of one git command, stderr folded into out.
 
@@ -693,6 +717,10 @@ def _run(repo, *args, env=None, timeout=30, index=True):
         argv = ["git", f"--git-dir={own}", f"--work-tree={repo}", *args]
     else:
         argv = ["git", "-C", str(repo), *args]
+    # ...and the credential, which the mirror deliberately does not carry.
+    cred = _creds(repo)
+    if cred:
+        argv[1:1] = ["-c", f"credential.helper={cred}"]
     e = {**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
     if own:
         # The tree's object store, so a commit's objects land where the

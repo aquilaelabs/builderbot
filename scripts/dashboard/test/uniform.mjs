@@ -1029,6 +1029,10 @@ const DIALOGS = {
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
+  // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
+  // from what is on screen, so it opens whether or not the Settings tab is
+  // the one showing, and debug mode decides the BUTTON rather than this.
+  setdebug: () => openDebugSettings(),
   enroll: async () => { openNodesTab();
     for (let i = 0; i < 40 && !document.querySelector('.nodestab button'); i++) await new Promise(r => setTimeout(r, 250));
     [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },

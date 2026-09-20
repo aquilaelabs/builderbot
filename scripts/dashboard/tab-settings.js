@@ -101,15 +101,12 @@ const SETTING_GROUPS = [
          + "nodes whose agent, runner and terminal logs its sessions may read. "
          + "It grants nothing by itself."}],
    // What a developer of BuilderBot reaches for and nobody else should
-   // meet: folded behind a Debug settings button that opens only while
-   // debug mode is on, the same way the node row's is.
+   // meet: behind a Debug settings button that opens a dialog while debug
+   // mode is on, the same way the node row's Debug settings does.
    debug: [
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
      hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
 ];
-// Whether the Debugging group's fold is open: kept across repaints, since
-// the tab redraws on every poll that moves a setting.
-let debugSettingsOpen = false;
 
 // The reset's confirmation, the way a project's purge asks: the word typed
 // in a box under the button, and the red verb asleep until it matches.
@@ -144,6 +141,52 @@ function askReset(el){
   input.focus();
 }
 
+// The Debugging group's other half, in a dialog rather than a fold in the
+// group. Two reasons, and the first is the one that was wrong rather than
+// merely inconsistent: the fold's fields sat inside the group, so the
+// group's Apply saved them, and a person who ticked one and pressed the
+// Apply they could see had saved a debug setting without meeting a word
+// about it. The second is that the node row's Debug settings is a dialog,
+// and these are one idea in two places.
+function openDebugSettings(){
+  const modal = $("setdbgmodal"), body = $("setdbgBody");
+  const g = SETTING_GROUPS.find(x => x.debug);
+  if (!modal || !body || !g) return;
+  const s = state?.settings;
+  const shut = () => { modal.hidden = true; };
+  body.innerHTML = `<div class="field">
+      <div class="hint">What a developer of BuilderBot reaches for. Debug mode shows
+        this button and nothing else: what is here is granted by saving it.</div>
+      <div class="logset">${g.debug.map(f => `
+        <div class="logdays setrow"><label class="ndcap">
+          <input type="checkbox" data-dbgset="${esc(f.key)}"${
+            s?.settings?.[f.key]?.value ? " checked" : ""}> ${esc(f.label)}${
+            helpIcon(f.hint)}</label></div>`).join("")}
+      </div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="primary" id="setdbgSave">Save</button>
+      <button type="button" id="setdbgCancel">Cancel</button>
+    </div>`;
+  modal.hidden = false;
+  body.querySelector("#setdbgCancel").onclick = shut;
+  const go = body.querySelector("#setdbgSave");
+  go.onclick = async () => {
+    const set = {};
+    body.querySelectorAll("[data-dbgset]").forEach(i => { set[i.dataset.dbgset] = i.checked; });
+    busy(go, "Saving");
+    try{
+      const r = await fetch("/api/settings", {method: "POST",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); unbusy(go, "Save"); return; }
+      shut();
+      notify("saved");
+      refresh();
+    }catch(e){ notify("settings: " + e, true); unbusy(go, "Save"); }
+  };
+}
+
 function settingsSections(){
   const s = state?.settings;
   if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
@@ -159,19 +202,16 @@ function settingsSections(){
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
-    // The fold's button is a real control only while debug mode is SAVED
-    // on: what is behind it is debug's, and a draft tick that has not been
-    // applied yet is not debug mode.
+    // The button is a real control only while debug mode is SAVED on: what
+    // is behind it is debug's, and a draft tick that has not been applied
+    // yet is not debug mode.
     const debugOn = !!s.settings.debug_mode?.value;
     const fold = !g.debug ? "" : `
           <div class="addbar" data-add="debug"><button type="button" data-debugshow
-            aria-expanded="${debugOn && debugSettingsOpen}"${debugOn ? "" : " disabled"}
+            ${debugOn ? "" : " disabled"}
             title="${debugOn ? "the settings kept behind debug mode"
                              : "turn Debug mode on and Apply first: these are its settings"}"
-            >Debug settings</button></div>
-          <div class="uadd" data-debugfold${debugOn && debugSettingsOpen ? "" : " hidden"}>
-            ${g.debug.map(field).join("")}
-          </div>`;
+            >Debug settings</button></div>`;
     return `<div class="row stack2" data-group="${esc(g.title)}">
       <div class="grow">
         <h4>${esc(g.title)}</h4>
@@ -189,12 +229,8 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   el.querySelectorAll('[data-group]').forEach(box => {
-    const show = box.querySelector("[data-debugshow]"), fold = box.querySelector("[data-debugfold]");
-    if (show && fold) show.onclick = () => {
-      debugSettingsOpen = !debugSettingsOpen;
-      show.setAttribute("aria-expanded", String(debugSettingsOpen));
-      slideBody(box, () => { fold.hidden = !debugSettingsOpen; });
-    };
+    const show = box.querySelector("[data-debugshow]");
+    if (show) show.onclick = () => openDebugSettings();
     const btn = box.querySelector(".setApply");
     if (!btn) return;
     const apply = async () => {

@@ -3635,6 +3635,17 @@ body.booting .pane>.loading{margin:auto}
     <div id="ndBody"></div>
   </div>
 </div>
+<!-- The Debugging group's other half. A dialog rather than a fold inside the
+     group, because the node row's Debug settings is a dialog and these two
+     are one idea in two places: the fold answered differently for no reason
+     anybody chose, and its fields shared the group's Apply, so ticking one
+     saved the group. -->
+<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
+  <div class="box">
+    <h3 id="setdbgTitle">Debug settings</h3>
+    <div id="setdbgBody"></div>
+  </div>
+</div>
 <div id="grmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="grTitle">
   <div class="box wide">
     <h3 id="grTitle">Global rules</h3>

@@ -81,7 +81,7 @@ const SURFACE = [
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersEditOpen', 'usersEditSave',
   'renderUsersInto', 'wireUsers', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
-  'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive',
+  'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'openDebugSettings',
   'globalRulesSection', 'paintGlobalRulesCount', 'loadGlobalRules', 'globalRuleRow', 'drawGlobalRules',
   'wireGlobalRules', 'openGlobalRules', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
