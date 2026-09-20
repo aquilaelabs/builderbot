@@ -2004,6 +2004,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
+/* The heading over each group of rows: where these came from, which is what
+   decides what can be done to them (R68). Quiet, because it is a label on a
+   list and not a section of its own. */
+.dmtab .dmgroup{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
+.dmtab .dmgroup b{color:var(--ink);font-weight:600}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything

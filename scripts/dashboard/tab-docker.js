@@ -805,8 +805,9 @@ function dmRowsHtml(ins, job, blind){
               ? `partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
-          ? `compose written here`
-          : `${esc(d.project)} · ${esc(d.instance)}`}${
+          ? `written here: this dashboard holds its compose file`
+          : `from ${esc(d.project)}'s compose file${
+              d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
         ${d.ports.length ? `<div class="sub dmports">${
@@ -1049,14 +1050,28 @@ function renderDockerInto(i){
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
-  // The dashboard's own first, each with the controls that used to live on the
-  // artifact row; this is where they went, and the row now only sends you
-  // here. Grouped by nothing: the project is on every line, and a heading per
-  // project would put a lot of chrome around lists that are usually one long.
-  const rows = dmRowsHtml(ins, job, blind) + cs.map(c => `
+  // Grouped by WHERE A ROW CAME FROM, which is the one thing the tab never
+  // said and the thing that decides what can be done to it: the operator
+  // could see several containers and edit one, and nothing explained that
+  // the difference was provenance rather than favouritism (R68 step 4).
+  // Not grouped by project: the project is on every line, and a heading per
+  // project is a lot of chrome around lists that are usually one long.
+  const head = (t, sub) => `<div class="field dmgroup"><b>${esc(t)}</b>${
+    sub ? ` <span class="dim">${esc(sub)}</span>` : ""}</div>`;
+  const fromProject = ins.filter(d => d.source !== "file");
+  const writtenHere = ins.filter(d => d.source === "file");
+  const rows = (fromProject.length
+      ? head("From a project", "built from its compose file, and rebuilt when the code moves")
+        + dmRowsHtml(fromProject, job, blind) : "")
+    + (writtenHere.length
+      ? head("Written here", "this dashboard holds the compose file; Edit is where it lives")
+        + dmRowsHtml(writtenHere, job, blind) : "")
+    + (cs.length
+      ? head("Already on this machine", "somebody else started these; BuilderBot only lists them")
+        : "") + cs.map(c => `
     <div class="row stack2 off">
       <div class="grow">
-        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
+        <div class="name">${esc(c.name || c.id)} <span class="pill" title="BuilderBot did not start this one, so it lists it and leaves it alone">not ours</span></div>
         <div class="sub">${esc(c.image)}</div>
         <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
