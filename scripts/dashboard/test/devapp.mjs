@@ -2149,9 +2149,10 @@ await page.click('#cGo');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
-ok(/compose written here/.test(await page.$eval(
-     '.dmtab .row[data-inst="radarr|main"]', r => r.textContent)),
-   '...and the manager says which kind it is');
+ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
+     '.dmtab .row[data-inst="radarr|main"]', r => r.textContent))
+   && /Written here/.test(await page.$eval('.dmtab', t => t.textContent)),
+   '...and the manager says which kind it is, on the row and over the group');
 // Editing one: what it is changes far more often than it is created, and
 // without this the only way to move a port was to remove it and retype it.
 await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
@@ -2540,24 +2541,52 @@ ok(await page.$('#devSend'),
     { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
-  // ---- where the tests run (roadmap R48, step 3) -------------------------
-  // Beside the dial, the same draft-then-Apply shape: `either` by default,
-  // `only` makes the container the one place bb test runs. Stored as a
-  // boolean, and absent when off, so a project left alone leaves no trace.
-  const TW = '.dmtab [data-dmtest="ep.silon"]';
-  ok(await page.$eval(TW, e => e.value === 'either' && !e.disabled
-                              && [...e.options].map(o => o.value).join() === 'either,only'),
-     'the row carries where the tests run, on either by default, with both settings');
-  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => b.disabled),
-     '...with its Apply asleep until something is picked');
-  await page.selectOption(TW, 'only');
-  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => !b.disabled),
-     '...which wakes on a pick that differs from what is saved');
-  await page.click('.dmtab [data-dmtestapply="ep.silon"]');
+  // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
+  // The setting lives with the project's node and test command now, in its
+  // settings dialog: it is the project's, and having it here meant somebody
+  // setting a project up had to finish on a machine tab. The row still says
+  // what it is set to, because this is where a person wonders, and the words
+  // link to where it is changed.
+  ok(/Tests run in this container when it is up, else on the node/.test(
+       await page.$eval('.dmtab .row[data-inst^="ep.silon|"]', r => r.textContent.replace(/\s+/g, ' '))),
+     'the row says where this project\'s tests run, in words');
+  ok(await page.$('.dmtab [data-dmtestgo="ep.silon"]') !== null
+     && await page.$('.dmtab [data-dmtest="ep.silon"]') === null,
+     '...and links to the project settings rather than carrying the control');
+  // ...and the control is there, offered only where there is a container to
+  // run in: a project with no compose file is not asked the question.
+  await page.evaluate(() => { openProjectsTab(); });
+  await page.waitForSelector('.doc .projtab [data-rn="ep.silon"]', { timeout: 15000 });
+  await page.click('.doc .projtab [data-rn="ep.silon"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#rnTestWhere', e => !e.hidden)
+     && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'either,only'),
+     'the project settings dialog carries where its tests run, beside its node and command');
+  await page.selectOption('#rnDevTest', 'only');
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
-     'Apply stores it on the project, as the one boolean it is');
+     '...and saving it there is what writes the setting');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#rnTestWhere', e => e.hidden),
+     '...while a project with no compose file is not asked the question at all');
+  await page.evaluate(() => { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); openDocker(); });
+  await page.waitForSelector('.dmtab', { timeout: 15000 });
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devtest: true }) });
+  });
+  await refreshUntil(page, () => ((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+     'it is stored on the project, as the one boolean it is');
+  await page.evaluate(() => { dockerList = null; loadDocker(); });
+  await page.waitForFunction(() => /only in this container/.test(
+    document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
+  ok(true, '...and the row says the other thing once it is set');
   await page.evaluate(async () => {
     await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ project: 'ep.silon', devtest: false }) });

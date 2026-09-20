@@ -483,9 +483,9 @@ bb tests last      that verdict again off the last run's log, running nothing
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
                    whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
-                   BuilderBot it runs on (roadmap R48). The row's second picker, "Claude tests",
-                   makes the container the only place: on `only`, a container that is down
-                   refuses rather than falling back to the node. The rebuild dial then governs
+                   BuilderBot it runs on (roadmap R48). "Tests run" in the project's settings
+                   dialog can make the container the only place: a container that is down then
+                   refuses rather than falling back to the node. The rebuild dial governs
                    testing too, since a stale container tests stale code
 bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
                    BuilderBot's own dev stack, under its compose file's `lab` profile, brought up

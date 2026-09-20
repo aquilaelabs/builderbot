@@ -1308,6 +1308,11 @@ def project_list(who):
                     "git_ready": _row_git_ready(base_git, mine_prefs.get(d.name))
                                  if users.uid_of(who) else True,
                     "push_how": projects.push_how(d.name),
+                    # Whether this project has a compose file, which is the
+                    # same question as "could its tests run in a container of
+                    # its own": the settings dialog offers that choice only
+                    # where there is something to run in (R68 step 6).
+                    "has_compose": devapp.project_has_compose(d.name),
                     # The newest transcript, read through the home's link
                     # onto the projects share (lib/common.sh's
                     # claude_projects_link), so a conversation a node's

@@ -1615,6 +1615,19 @@ def containers_dir(name):
     return STATE / "containers" / name
 
 
+def project_has_compose(project):
+    """Whether the project's own checkout carries a compose file.
+
+    Stats only, and deliberately: compose_file() consults the instance record
+    first, which means reading the store, and this is asked for every project
+    on every status poll. The question here is not "which file would an
+    instance build from" but "is there anything to build at all", which is
+    what decides whether the settings dialog offers to run the tests in a
+    container (R68 step 6).
+    """
+    return any((WORKSPACE / project / n).is_file() for n in COMPOSE_NAMES)
+
+
 def compose_file(project, instance=MAIN):
     """The compose file behind an instance.
 

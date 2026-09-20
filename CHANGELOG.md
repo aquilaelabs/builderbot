@@ -18,6 +18,7 @@
 - Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
 - Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
 - The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
+- Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
 
 ## 0.6.0: 2026-09-19
 
