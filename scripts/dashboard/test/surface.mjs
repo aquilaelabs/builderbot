@@ -61,7 +61,7 @@ const SURFACE = [
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
-  'openNewContainer', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
+  'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
   'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
