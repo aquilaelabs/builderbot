@@ -2720,12 +2720,17 @@ for f in files:
         f["where"] = ""
         bad.append(f)
 
-checks = sum(f["totals"][0] + f["totals"][1] for f in files if f["totals"])
 if not files:
     sys.exit("[builderbot] ERROR: that log has no test output in it")
 # A file that failed in the run and passed alone, in a world of its own, is
 # flaky: named, and not a failure. One that failed alone as well is.
 passed_alone = lambda f: (again.get(f["name"]) or {}).get("totals") and not again[f["name"]]["totals"][1]
+# What each file actually ran, which for a flaky one is its RETRY's total: the
+# first attempt crashed part way and its own total is short or missing, so
+# counting that reported a run's worth of checks as having gone missing
+# against the run before it (B178).
+counted = lambda f: (again[f["name"]]["totals"] if passed_alone(f) else f["totals"])
+checks = sum(t[0] + t[1] for t in map(counted, files) if t)
 flaky = [f for f in bad if passed_alone(f)]
 bad = [f for f in bad if not passed_alone(f)]
 for f in bad:

@@ -4668,8 +4668,8 @@ function openTab(spec){
 function roomForTab(){
   const cap = state?.max_tabs || 12;
   if (tabs.length < cap) return true;
-  notify(`Tab limit reached (${cap}). Minimize one first; it keeps running. `
-       + `The Settings tab raises the limit if this box can take more.`, true);
+  notify(`Tab limit reached (${cap}). Close or minimize one first; a minimized `
+       + `tab keeps running.`, true);
   return false;
 }
 
