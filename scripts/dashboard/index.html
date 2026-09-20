@@ -949,7 +949,22 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    when it is done. */
 .modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.68);
   display:flex;align-items:safe center;justify-content:center;padding:16px;
-  overflow:auto}   /* a soft keyboard can leave less height than the box */
+  overflow:auto;   /* a soft keyboard can leave less height than the box */
+  /* The DYNAMIC viewport, not the large one. A fixed overlay is laid out
+     against the large viewport on a phone, so while the browser's toolbar
+     slides in and out the box is centred in a taller box than the one being
+     looked at, and it bobs: a few pixels, every frame, for as long as the
+     toolbar is moving. The header does not move with it, because the header
+     is anchored to the top and only a centred thing feels a height change. */
+  height:100dvh;
+  /* ...and when the box is taller than the viewport, THIS is the scroller.
+     Without this, reaching its end hands the scroll on to the page behind,
+     which is why a dialog on a phone drags the whole page around under it. */
+  overscroll-behavior:contain}
+/* The page behind a dialog holds still. Scrolling it while a detour is open
+   loses your place for no reason you asked for, and on a touch screen it is
+   what a flick past the end of the dialog does. */
+html:has(.modal:not([hidden])){overflow:hidden}
 /* Every modal arrives rather than appearing: the room dims, and the box rises
    into it. As an animation and not a transition, because these are toggled by
    `hidden`; there is no frame in which a transition could start. One rule

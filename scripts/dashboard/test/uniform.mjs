@@ -1102,6 +1102,18 @@ for (const [name, open] of Object.entries(DIALOGS)) {
     }
     return { want, tight, odd };
   });
+  // A dialog holds the page still. Its overlay is the scroller when the box
+  // is taller than the screen, and without these two the flick that reaches
+  // the end of a dialog carries on into the page behind it, which is what
+  // the operator saw on a phone: the whole page moving under the box.
+  const still = await page.evaluate(() => {
+    const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
+    if (!m) return { err: 'no dialog' };
+    return { chain: getComputedStyle(m).overscrollBehaviorY,
+             locked: getComputedStyle(document.documentElement).overflow };
+  });
+  ok(!still.err && still.chain === 'contain' && still.locked === 'hidden',
+     `[dialog ${name}] holds the page still behind it (overscroll ${still.chain}, page ${still.locked})`);
   ok(!rhythm.err && rhythm.odd.length === 0,
      `[dialog ${name}] one rhythm down the band (${rhythm.want}px, ${rhythm.tight}px under a label)${
        rhythm.err ? ` (${rhythm.err})` : rhythm.odd.length ? `: ${rhythm.odd.join('; ')}` : ''}`);
