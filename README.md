@@ -17,6 +17,11 @@ to live on an Unraid server with your projects mounted straight in.
   └───────────────────────────────────────────────────────────┘
 ```
 
+**Given an account on somebody else's BuilderBot rather than setting one up?**
+[docs/start-here.md](docs/start-here.md) is the one page for that: the first
+five minutes, what is shared, and what the refusals mean. Everything below is
+for whoever runs the box.
+
 The container starts, runs its install/setup hooks, and stays up. It carries
 **no Claude Code**: a session runs on the node its project is bound to, opened
 from the dashboard, and the controller keeps the dashboard, the notebook and

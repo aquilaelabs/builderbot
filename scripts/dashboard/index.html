@@ -5863,6 +5863,11 @@ const GUIDE_USER = `
     <li><b>Your profile</b> (the gear, top right): set your name and email and
       the git identity your commits carry. No session starts until they are
       set, so the first thing to do is this.</li>
+    <li><b>Sign in to Claude</b> (the card under Doctor, which says so in red
+      until you have): your own Anthropic account, once. The sign-in runs on a
+      node and you paste the code back here; the login stays on that machine
+      and is yours, not anybody else's. Sessions will not start without
+      it.</li>
     <li><b>A project</b>: press its name to open the notebook, <b>Claude</b> to
       start a session on it, and the terminal button for a shell.</li>
     <li><b>The notebook</b>: Briefing (rules and memories), Roadmap (what to
@@ -5874,6 +5879,18 @@ const GUIDE_USER = `
     <li><b>Your phone</b>: Tools → Phone connects a handset on wireless
       debugging to a node; a session then asks you before it touches it.</li>
   </ul>
+  <h4>When something says no</h4>
+  <p>A refusal here is meant to name the way out, so it is worth reading
+  rather than retrying. The usual four: you are not signed in to Claude yet;
+  the node a project builds on is away, so nothing runs there until it is
+  back; the tool a build wants is not on that node, which is an
+  administrator's to install; or this project does not let a session push, so
+  the commit is yours to push from the Git view.</p>
+  <h4>Telling us something is wrong</h4>
+  <p>The Bugs tab of the project's notebook files it where we look, and a
+  report that says what you pressed and what it said back is worth ten that
+  say it broke. It is the same tracker the sessions read, so what you file is
+  what gets picked up.</p>
   <h4>On a phone</h4>
   <p>The same page: the bar at the bottom switches between the sidebar and the
   terminal, and the keys panel stands in for the ones a soft keyboard hides.</p>`;
