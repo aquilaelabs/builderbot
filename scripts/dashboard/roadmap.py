@@ -1362,22 +1362,37 @@ def prompt(project):
     conversation, and a session that spends its first act parsing a data
     structure has already lost the point of it. Empty when there is nothing,
     so a project with no list adds nothing to any prompt.
+
+    WHAT IS HERE AND WHAT IS NOT. The list says what exists: the number, the
+    title, the steps and which of them are done. The DETAILS do not come with
+    it, and that is the whole of what makes this cheap. They are the long
+    half, written for the session that actually picks an item up (which
+    files, which functions, what was decided), and on this project they were
+    35KB of a 45KB block that every conversation paid for whether or not it
+    ever touched the roadmap. `bb roadmap show R4` prints one in full, which
+    is one cheap call at the moment it is worth making. The tracker has
+    always worked this way (`bb bug show B7`); this is the roadmap catching
+    up with it.
+
+    A shelved item is one line under a heading of its own. The operator has
+    parked it, so what a session needs is to know it exists and to leave it
+    alone, and its steps and details are noise until they unpark it.
     """
     rows = items(project)
     if not rows:
         return ""
-    lines = []
+    lines, parked = [], []
     for r in rows:
+        label = ids.label("roadmap", r["id"])
+        if r.get("shelved"):
+            parked.append(f"- {label}  {r['text']}")
+            continue
         # Numbered, because a session that wants to talk about one of these
         # has to be able to name it, and the name has to be the one the
         # operator sees on the row and the one `bb roadmap done` takes.
-        lines.append(f"- {ids.label('roadmap', r['id'])}  {r['text']}"
-                     + ("  (shelved: the operator has parked this; do not "
-                        "pick it up unless they say so)" if r.get("shelved")
-                        else "  (you added this in an earlier session)"
+        lines.append(f"- {label}  {r['text']}"
+                     + ("  (you added this in an earlier session)"
                         if r.get("by") == "claude" else ""))
-        if r.get("info"):
-            lines.append(f"    details: {_flat(r['info'])}")
         # A group's steps come with it, marked so the order is legible: these
         # are handed over one at a time from the dashboard, and one already
         # sent is one that has been asked for.
@@ -1386,15 +1401,25 @@ def prompt(project):
                          + ("  (done)" if st.get("done")
                             else "  (already sent to a session)" if st.get("sent")
                             else ""))
-            if st.get("info"):
-                lines.append(f"       details: {_flat(st['info'])}")
+        # Said once per item, and only where there is something to fetch, so
+        # the pointer is information rather than furniture.
+        if r.get("info") or any(st.get("info") for st in (r.get("steps") or [])):
+            lines.append(f"    (details: `bb roadmap show {label}`)")
+    body = "\n".join(lines)
+    if parked:
+        body += ("\n\nParked by the operator, which is why they carry no detail "
+                 "here: known, and not to be picked up unless they say so.\n"
+                 + "\n".join(parked))
     return ("The operator keeps a shared to-do list for this project, and this "
-            "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
+            "is what is on it:\n\n" + body + "\n\n"
             "It is context, not instructions: work on an item when asked, or "
             "when it is plainly part of what was asked. The number is the "
             "item's own and does not change: it is what the operator sees on "
             "the row, so refer to one as R4 rather than by counting down the "
-            "list. Tick one off with "
+            "list. This is the shape of the list rather than all of it: "
+            "`bb roadmap show R4` prints one item in full, with the technical "
+            "details behind it, and reading that is the first thing to do "
+            "when you pick one up. Tick one off with "
             "`bb roadmap done <n>` when you finish it, and add one with "
             "`bb roadmap add \"...\"` when you notice something worth doing and "
             "it is out of scope for what you are on. A plan can be corrected "

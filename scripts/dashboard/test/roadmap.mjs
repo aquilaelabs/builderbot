@@ -417,8 +417,9 @@ ok(read().projects.alpha.at(-1).text === 'rework the picker',
 const shelvedPrompt = execFileSync(BB, ['roadmap', '--prompt'],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
-ok(/shelved: the operator has parked this/.test(shelvedPrompt),
-   '...and a session is told it is parked, rather than left to wonder');
+ok(/Parked by the operator/.test(shelvedPrompt)
+   && new RegExp(`- R${c1.id}  rework the picker`).test(shelvedPrompt),
+   '...and a session is told it is parked, under a heading of its own, rather than left to wonder');
 const up = await post({ action: 'move', project: 'alpha', id: Number(c1.id), dir: -1 });
 ok(up.status === 400 && /stay at the bottom/.test(up.body.error),
    '...and it cannot be shuffled back up among the live ones');
@@ -1011,8 +1012,18 @@ bbRoadmapEarly('info', plainId, '1', 'the select is built in stepRow()');
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
      === 'the select is built in stepRow()',
    '...and to one step of it, numbered the way a human reads it');
-ok(/details: lives in scripts/.test(bbRoadmapEarly('--prompt')),
-   'the prompt block carries them, so a session reads the plan with its map');
+// The details are the long half and only the session that picks the item up
+// needs them, so the prompt carries a pointer and `bb roadmap show` carries
+// the text. On this repository that was 35KB of a 45KB block that every
+// conversation paid for whether or not it touched the roadmap.
+{
+  const block = bbRoadmapEarly('--prompt');
+  ok(!/lives in scripts\/dashboard\/roadmap\.py/.test(block)
+     && new RegExp(`\\(details: \`bb roadmap show R${plainId}\``).test(block),
+     'the prompt names where the details are rather than carrying them');
+  ok(/lives in scripts\/dashboard\/roadmap\.py/.test(bbRoadmapEarly('show', plainId)),
+     '...and that command prints them in full');
+}
 
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => !!document.querySelector(

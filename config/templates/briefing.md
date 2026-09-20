@@ -49,10 +49,11 @@ question, so ask for the smallest command that does the job.
 
 ## The notebook
 
-`bb roadmap`, `bb bug`, `bb rules`, `bb tests`. What is open is already below in
-this prompt, so there is nothing to fetch when a conversation starts. Tick items
-off as you finish them, and file what you find rather than only saying it in a
-reply. `bb <verb> -h` is the rest of any of them.
+`bb roadmap`, `bb bug`, `bb rules`, `bb tests`. What is open is named below in
+this prompt: the titles, so nothing has to be fetched to know what exists, and
+the detail behind one item is `bb roadmap show R4` or `bb bug show B7` when you
+pick it up. Tick items off as you finish them, and file what you find rather
+than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
 
 ## Versions
 
@@ -72,6 +73,9 @@ before asking whether the fix was wrong: `bb status` for the controller's,
 The emulator, the system images, the GPU and adb are this machine's:
 `bb emu list|start|status|stop|log|gpu`, and `bb emu shot|gfx PKG|install FILE`,
 which write into dist/. It is not started for you and runs one at a time.
+An API level exists here where the store holds a system image for it:
+`bb emu images` lists them and `bb emu create <api>` fetches one on demand.
+Adding or removing one deliberately is the operator's, from the Emulator tab.
 
 Three blank-screen failures here are the emulator's rather than your code's, and
 all three look like a bug you just wrote: every frame blank with the view
