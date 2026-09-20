@@ -633,7 +633,12 @@ function openNewContainer(){
   fillNodeSelect($("cNode"), $("cNodeField"), dockerNode);
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
-  cSeg("yml");
+  for (const id of ["cImage", "cPorts", "cVols", "cEnvLines"]) $(id).value = "";
+  $("cRestart").value = "unless-stopped";
+  cYmlTouched = false;
+  // The form first: an image and a port is what most of these are, and the
+  // compose file it writes is one tab away for everything else.
+  cSeg("form");
   $("cNameHint").textContent =
     "Its own name, not a project's. It becomes the compose project on the "
     + "sandbox VM, which is what the manager lists it by.";
@@ -644,10 +649,43 @@ let cTab = "yml";                 // which pane the segment is showing
 
 function cSeg(which){
   cTab = which;
+  $("cTabForm").classList.toggle("on", which === "form");
   $("cTabYml").classList.toggle("on", which === "yml");
   $("cTabEnv").classList.toggle("on", which === "env");
+  $("cFormField").hidden = which !== "form";
   $("cYmlField").hidden = which !== "yml";
-  $("cEnvField").hidden = which === "yml";
+  $("cEnvField").hidden = which !== "env";
+}
+
+// Once the compose file has been edited by hand the form stops writing it:
+// a generator that overwrites what somebody typed is a generator that eats
+// work. Reset on every open.
+let cYmlTouched = false;
+
+// The form's answer, as the compose file it stands for. Written here rather
+// than on the server because what is about to be created should be readable
+// before it is: the Compose tab shows exactly the text that will be saved,
+// and the server still checks it with compose itself before writing it.
+function cFormYaml(){
+  const lines = l => l.split("\n").map(x => x.trim()).filter(Boolean);
+  const image = $("cImage").value.trim();
+  const ports = lines($("cPorts").value), vols = lines($("cVols").value);
+  const env = lines($("cEnvLines").value), restart = $("cRestart").value;
+  if (!image) return "";
+  // Quoted, every one of them: a port reads as a base-60 number in YAML
+  // ("7878:7878" is a sexagesimal literal to a YAML 1.1 parser), and a value
+  // with a colon or a space in it needs quoting anyway. Double quotes with
+  // the two escapes that matter inside them.
+  const q = v => `"${String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  const block = (key, xs) => xs.length
+    ? `\n    ${key}:\n` + xs.map(x => `      - ${q(x)}`).join("\n") : "";
+  return `services:\n  app:\n    image: ${q(image)}\n    restart: ${restart}`
+    + block("ports", ports) + block("volumes", vols) + block("environment", env) + "\n";
+}
+
+function cFormWrote(){
+  if (cYmlTouched) return;
+  $("cYml").value = cFormYaml();
 }
 
 // Switching between them moves the way the New project dialog's source picker
@@ -659,8 +697,9 @@ function cSeg(which){
 // that is already animating itself in.
 function cSlide(which){
   if (noMotion()) return;
-  $(which === "yml" ? "cYmlField" : "cEnvField").animate(
-    [{transform: `translateX(${which === "env" ? "18px" : "-18px"})`, opacity: 0},
+  $({form: "cFormField", yml: "cYmlField", env: "cEnvField"}[which]).animate(
+    [{transform: `translateX(${
+        {form: -18, yml: 0, env: 18}[which] >= 0 ? "18px" : "-18px"})`, opacity: 0},
      {transform: "none", opacity: 1}],
     {duration: 220, easing: "ease"});
 }

@@ -2009,6 +2009,9 @@ pre.diff .d-ctx{color:var(--dim)}
    list and not a section of its own. */
 .dmtab .dmgroup{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
 .dmtab .dmgroup b{color:var(--ink);font-weight:600}
+/* The small text areas in the container form: a few lines each, not the
+   full-height editor the compose file gets. */
+#cmodal textarea.csmall{min-height:64px}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything
@@ -3558,9 +3561,35 @@ body.booting .pane>.loading{margin:auto}
     <div class="field">
       <label id="cSegLabel">Definition</label>
       <div class="pseg" role="group" aria-labelledby="cSegLabel">
-        <button id="cTabYml" class="on" type="button">Compose</button>
+        <button id="cTabForm" class="on" type="button">From an image</button>
+        <button id="cTabYml" type="button">Compose</button>
         <button id="cTabEnv" type="button">Environment</button>
       </div>
+    </div>
+    <!-- The form that writes the compose file for you, for the ordinary case:
+         an image, some ports, some volumes. What it produces is the Compose
+         tab beside it, so nothing is hidden and anything the form cannot say
+         is said by editing that (R68 step 3). -->
+    <div class="field" id="cFormField">
+      <label for="cImage">Image</label>
+      <input id="cImage" autocomplete="off" spellcheck="false"
+             placeholder="lscr.io/linuxserver/radarr:latest">
+      <label for="cPorts">Ports<span class="help" data-tip="host:container, one per line. The host port is the node's, and two containers cannot hold the same one" tabindex="0">?</span></label>
+      <textarea id="cPorts" class="csmall" spellcheck="false" placeholder="7878:7878"></textarea>
+      <label for="cVols">Volumes<span class="help" data-tip="host:container, one per line. A relative host path is inside this container's own data directory on the node" tabindex="0">?</span></label>
+      <textarea id="cVols" class="csmall" spellcheck="false" placeholder="./config:/config&#10;/mnt/user/media:/media"></textarea>
+      <label for="cEnvLines">Environment<span class="help" data-tip="KEY=VALUE, one per line. These go in the compose file; the Environment tab is the .env file it can read with ${VAR}" tabindex="0">?</span></label>
+      <textarea id="cEnvLines" class="csmall" spellcheck="false" placeholder="PUID=99&#10;PGID=100&#10;TZ=Etc/UTC"></textarea>
+      <label for="cRestart">Restart</label>
+      <select id="cRestart">
+        <option value="unless-stopped">unless stopped: back after a reboot, unless you stopped it</option>
+        <option value="always">always: back even if you stopped it</option>
+        <option value="on-failure">on failure: only when it exits badly</option>
+        <option value="no">no: never on its own</option>
+      </select>
+      <div class="hint">This writes the Compose tab as you type. Edit that
+        directly for anything this form does not cover, and it stops being
+        rewritten.</div>
     </div>
     <div class="field" id="cYmlField">
       <label for="cYml">docker-compose.yml</label>
@@ -9378,7 +9407,13 @@ $("pUrl").oninput = () => {
 $("pUrl").addEventListener("input", pNameShow);
 $("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
 
+$("cTabForm").onclick = () => cSwitch("form");
 $("cTabYml").onclick = () => cSwitch("yml");
+// The form writes the compose file as it is filled in, and stops the moment
+// somebody edits that file by hand.
+for (const id of ["cImage", "cPorts", "cVols", "cEnvLines", "cRestart"])
+  $(id).oninput = $(id).onchange = () => cFormWrote();
+$("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };

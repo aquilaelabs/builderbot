@@ -19,6 +19,7 @@
 - Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
 - The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
 - Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
+- New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
 
 ## 0.6.0: 2026-09-19
 

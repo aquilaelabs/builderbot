@@ -2109,9 +2109,9 @@ ok(await page.$eval('#cYml', e => e.value) === ''
 ok(/services:/.test(await page.$eval('#cYml', e => e.placeholder))
    && /PUID=/.test(await page.$eval('#cEnv', e => e.placeholder)),
    '...and the shape each wants shown on the field, where it costs nothing to ignore');
-ok(await page.$eval('#cEnvField', e => e.hidden)
-   && !await page.$eval('#cYmlField', e => e.hidden),
-   '...showing one of the two definitions at a time');
+ok(await page.$eval('#cEnvField', e => e.hidden) && await page.$eval('#cYmlField', e => e.hidden)
+   && !await page.$eval('#cFormField', e => e.hidden),
+   '...showing one pane at a time, the form first (R68 step 3)');
 // The incoming pane slides in from its own tab's side, the way the New project
 // dialog's source picker does. Caught while it runs rather than after: the
 // pane is visible either way, and the only thing being claimed here is that it
@@ -2149,6 +2149,34 @@ await page.click('#cGo');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
+// The form that writes the compose file for you (R68 step 3): an image, its
+// ports and volumes, and what it produces is the Compose tab beside it, so
+// nothing about the container is hidden from the person making it.
+{
+  await page.evaluate(() => openNewContainer());
+  await page.waitForSelector('#cmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#cFormField', e => !e.hidden) && await page.$eval('#cYmlField', e => e.hidden),
+     'New container opens on the form, with the compose file a tab away');
+  await page.fill('#cName', 'grafanish');
+  await page.fill('#cImage', 'grafana/grafana:11.0.0');
+  await page.fill('#cPorts', '3001:3000');
+  await page.fill('#cVols', './data:/var/lib/grafana');
+  await page.fill('#cEnvLines', 'GF_SECURITY_ADMIN_USER=admin');
+  await page.selectOption('#cRestart', 'always');
+  const yml = await page.$eval('#cYml', e => e.value);
+  ok(/image: "grafana\/grafana:11\.0\.0"/.test(yml) && /restart: always/.test(yml)
+     && /- "3001:3000"/.test(yml) && /- "\.\/data:\/var\/lib\/grafana"/.test(yml)
+     && /- "GF_SECURITY_ADMIN_USER=admin"/.test(yml),
+     'the form writes the compose file as it is filled in, every value quoted');
+  await page.click('#cGo');
+  await page.waitForSelector('.dmtab .row[data-inst="grafanish|main"]', { timeout: 20000 });
+  const onDisk = readFileSync(`${DIR}/state/containers/grafanish/docker-compose.yml`, 'utf8');
+  ok(onDisk === yml, '...and what was shown is byte for byte what was written');
+  // A port is a base-60 number to a YAML 1.1 parser unless it is quoted, which
+  // is why every value the form writes is: 3001:3000 unquoted parses as 10803000.
+  ok(/"3001:3000"/.test(onDisk), '...with the ports quoted, since YAML would read one as a number');
+}
+
 ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
      '.dmtab .row[data-inst="radarr|main"]', r => r.textContent))
    && /Written here/.test(await page.$eval('.dmtab', t => t.textContent)),
