@@ -3,15 +3,15 @@
 # Regenerate docs/screenshots/ from a staged dashboard.
 #
 # Boots the checkout's server.py and a real ttyd against a scratch workspace
-# of invented projects, then photographs it with `bb shot` — which is half
+# of invented projects, then photographs it with `bb shot`, which is half
 # the point: the screenshots document the dashboard, and taking them
 # exercises the container's own camera. Staged rather than shot from the
 # live instance so the pictures are reproducible and can never carry a real
 # terminal's scrollback into the repository.
 #
 # The tmux isolation below is copied from scripts/dashboard/test/run.sh, and
-# the shape is not optional: a throwaway session must never land on — and
-# this cleanup must never kill — the real server. TMUX is unset first
+# the shape is not optional: a throwaway session must never land on the real
+# server, and this cleanup must never kill it. TMUX is unset first
 # because inside a tmux session the client ignores TMUX_TMPDIR, and the
 # private socket is verified before anything else runs.
 #
@@ -41,7 +41,7 @@ S="$(mktemp -d "${TMPDIR:-/tmp}/readme-shots.XXXXXX")"
 W=/tmp/workspace
 # The invented image this staged instance claims to be. One variable, because
 # the owner's `image_seen` has to match it exactly or the welcome panel opens
-# itself over every picture — which is what it did.
+# itself over every picture, which is what it did.
 REV="abc1234def5678901234567890abcdef12345678"
 BUILT="2026-09-11T09:14Z"
 rm -rf "$W"
@@ -80,7 +80,7 @@ trap 'cleanup' EXIT
 # can show: a clean GitHub-linked repo, a local one with no remote (the link
 # chain), and one carrying static-analysis findings.
 mkdir -p "$S"/{state,reports,home}
-seed() { # seed NAME  — a small real repo with a plausible history
+seed() { # seed NAME: a small real repo with a plausible history
     local d="$W/$1"
     git init -q -b main "$d"
     ( cd "$d"
@@ -165,7 +165,7 @@ tmux send-keys -t shell "clear" Enter "ls" Enter
 tmux new-session -d -s claude-meal-planner -c "$W/meal-planner"
 
 # The strip the page opens with: the orbit shell front and center. No claude
-# tab — a tab means an iframe, an iframe means bb-tty runs the command.
+# tab: a tab means an iframe, an iframe means bb-tty runs the command.
 cat > "$S/state/tabs.json" <<EOF
 {"rev": 1, "active": 0, "panes": ["t1", null], "tabs": [
   {"id": "t1", "kind": "term", "arg": "shell:orbit", "label": "sh: orbit"},
@@ -184,7 +184,7 @@ env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_STATE="$S/state" \
 ttyd_pid=$!
 # A stubbed `claude`, so the Doctor card's sign-in line reads an invented
 # account. Without it these pictures carry the operator's real email address
-# into the repository — the card did not exist when this script was written,
+# into the repository. The card did not exist when this script was written,
 # and a staged instance that quietly photographs one real thing is worse than
 # one that photographs none, because nobody thinks to look.
 mkdir -p "$S/bin"
@@ -227,13 +227,13 @@ BASE="http://127.0.0.1:$PORT"
 shot() { DASHBOARD_PORT="$PORT" bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait "${SHOT_WAIT:-9000}"; }
 # Scale 1 wherever a terminal is in frame: ttyd's xterm canvas renders
 # blank, at doubled font metrics, under deviceScaleFactor 2 in headless
-# Chromium — found by taking these very screenshots. The phone dashboard
+# Chromium, as found by taking these very screenshots. The phone dashboard
 # view hides the terminal column, so it alone gets the crisp 2x.
 # Tall enough to reach the toolchain cards: the sidebar has nine of them now,
 # and a 900px frame cut off the ones this README spends paragraphs on.
 shot "$BASE/"               "$OUT/dashboard.png"       --size 1440x1180 --scale 1
 # No --resize: 390 at scale 2 is already 780 wide, so the flag only ever ran
-# imagemagick to produce the same pixels — and imagemagick is in the
+# imagemagick to produce the same pixels, and imagemagick is in the
 # controller's image and not on a node, which is where sessions are. The flag
 # stays on bb shot for a shot that really does downscale.
 shot "$BASE/?view=dash"     "$OUT/phone-dashboard.png" --size 390x844 --scale 2

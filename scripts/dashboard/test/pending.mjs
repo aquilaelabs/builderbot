@@ -1,12 +1,12 @@
 // What a session adds to the notebook, held for the operator (roadmap #27).
 //
 // Per project and per tab the operator picks auto, ask or deny for what a
-// session ENTERS — a roadmap item, a bug report, a rule. What is exercised
+// session ENTERS, be it a roadmap item, a bug report or a rule. What is exercised
 // for real: the three stores through bb (the gate lives in them), the
 // settings dialog that sets the words, the band above the notebook's tabs,
 // the review modal with its checkboxes and two verbs, the bell's row, the
 // hook line that tells the session what was decided, and the endpoint's
-// refusal of a session's own token. What is faked: nothing — the hook is the
+// refusal of a session's own token. What is faked: nothing. The hook is the
 // shipped script run as a process, and bb is the checkout's.
 import { launch, newPage, ok, done, ready, URL, DIR, nbShown, sleep } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -49,7 +49,7 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 // ---- auto is today ----------------------------------------------------------
 const first = bb('roadmap', 'add', 'a thing added under auto');
 ok(/added R\d+/.test(first) && roadmapItems().some(r => r.text === 'a thing added under auto'),
-   'with nothing set, what a session adds lands at once — the default changes nothing');
+   'with nothing set, what a session adds lands at once: the default changes nothing');
 const firstId = first.match(/added R(\d+)/)[1];
 
 // ---- the setting, in the project's settings dialog -------------------------
@@ -92,14 +92,14 @@ ok(/held behind R\d+/.test(bb('roadmap', 'step', 'add', `R${num}`, 'fix it')),
 ok(/still waiting/.test(bbErr('roadmap', 'done', `R${num}`)),
    '...while ticking it off is refused: there is nothing to tick yet');
 ok(/reworded R\d+/.test(bb('roadmap', 'edit', `R${firstId}`, 'a thing added under auto, reworded')),
-   'modifying what is already on the list passes under ask — the setting is about creation');
+   'modifying what is already on the list passes under ask: the setting is about creation');
 const listed = bb('roadmap', 'pending');
 ok(/make the picker wrap/.test(listed) && /↳.*details/.test(listed) && /↳.*fix it/.test(listed)
    && /setting.*ask/.test(listed),
    'bb roadmap pending lists what is waiting, the follow-ups under their item, and the setting');
 const second = bb('roadmap', 'add', 'a second held item');
 ok(Number((second.match(/R(\d+)/) || [])[1]) === Number(num) + 1,
-   'a second held add gets the next number — the reserved one is not handed out twice');
+   'a second held add gets the next number: the reserved one is not handed out twice');
 
 const bheld = bb('bug', 'add', 'the picker loses focus', '--sev', 'high', '--area', 'picker');
 const bnum = (bheld.match(/held for approval as B(\d+)/) || [])[1];
@@ -155,7 +155,7 @@ ok(await page.$$eval('#pendList input[data-pend]', bs => bs.every(b => b.checked
 ok(await page.$$eval('#pendList .prow.dep', ds => ds.length) === 3,
    '...with the follow-ups drawn under the change they ride behind');
 ok(await page.$eval('#pendList .prow:not(.dep) details pre', p => /1\. measure it/.test(p.textContent)),
-   '...and the full text of an add — its steps here — under a fold');
+   '...and the full text of an add (its steps here) under a fold');
 // Untick the held roadmap add: its two follow-ups go with it.
 const parent = await page.$eval('#pendList .prow:not(.dep) input[data-pend]', b => b.dataset.pend);
 await page.click(`#pendList input[data-pend="${parent}"]`);

@@ -3,8 +3,8 @@
 # Say at boot whether the docker daemon is reachable, and which one it is.
 #
 # The log said nothing about docker at all. Every other capability announces
-# itself here — the GPU says whether X came up, the SDK says how many
-# toolchains it found, the dashboard prints its URL — and the daemon that the
+# itself here (the GPU says whether X came up, the SDK says how many
+# toolchains it found, the dashboard prints its URL), and the daemon that the
 # dev-instance controls are built on was the one that did not, so "is the
 # sandbox up" was a question you could only answer by opening the dashboard or
 # running `bb doctor`. The boot log is where you look when something is wrong,
@@ -12,7 +12,7 @@
 #
 #
 # Never fatal. A daemon that is down is a feature that is off, not a container
-# that should refuse to start — the dev-instance controls grey out and say why,
+# that should refuse to start: the dev-instance controls grey out and say why,
 # and everything else in here works without it.
 #
 set -euo pipefail

@@ -1,7 +1,7 @@
-"""workspace.py — snapshots and the artifact store (docs/nodes.md §6, phase 6).
+"""workspace.py: snapshots and the artifact store (docs/nodes.md §6, phase 6).
 
-The tree is edited HERE — /workspace is the projects share, the only writable
-copy — and built THERE, on a node. Nothing network-mounts /workspace onto a
+The tree is edited HERE (/workspace is the projects share, the only writable
+copy) and built THERE, on a node. Nothing network-mounts /workspace onto a
 node (§6 says why, four times over); instead a job carries a snapshot of the
 working tree, dirty edits included, and the node materializes it into a
 job-scoped directory that is deleted after. What a build produces comes
@@ -11,8 +11,8 @@ what built it, from what, and where.
 
 What this module owns:
 
-  - snapshot(project): the working tree as git sees it — tracked plus
-    untracked, minus ignored and minus .git — as one uncompressed tar under
+  - snapshot(project): the working tree as git sees it (tracked plus
+    untracked, minus ignored and minus .git) as one uncompressed tar under
     /config/snapshots, named by its sha256. Uncompressed on purpose: the
     digest is of the bytes, and an unchanged tree makes byte-identical tar
     (owner and mode normalized, mtimes kept), so the node's by-digest cache
@@ -57,8 +57,8 @@ def configure(*, workspace, state):
 # snapshots
 
 def _files(root):
-    """The files a snapshot carries. Git's view when there is one — tracked
-    and untracked, minus ignored — so build/ and node_modules/ stay behind
+    """The files a snapshot carries. Git's view when there is one (tracked
+    and untracked, minus ignored), so build/ and node_modules/ stay behind
     without anybody listing them; every file but .git otherwise. dist/ is
     left out either way: it is the shelf the artifacts come BACK to, and
     shipping last week's APK to the node for it to ignore is waste."""
@@ -219,7 +219,7 @@ def artifact_put(job, name, stream, length):
 
 
 def file_path(project, rel):
-    """A file under the project's dist/ a node may fetch as a job input —
+    """A file under the project's dist/ a node may fetch as a job input:
     an APK to install on its emulator, say. dist/ only: the tree travels as
     a snapshot, and nothing else of a project is a node's to read."""
     rel = str(rel or "").replace("\\", "/")
@@ -255,7 +255,7 @@ def provenance(project, rel):
 
 # bb-tty and the two hooks it writes into a session's settings ride along
 # since roadmap #24: a node runs sessions from this same bundle. NOT the
-# rest of scripts/dashboard — the notebook modules, users.py, server.py —
+# rest of scripts/dashboard (the notebook modules, users.py, server.py),
 # because a node has no /config for them to read; the verbs that need them
 # are relayed back here (server._bb_relay).
 BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/provision-linux.sh",

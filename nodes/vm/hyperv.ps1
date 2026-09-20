@@ -2,7 +2,7 @@
 #
 # Rendered by the dashboard's Create sandbox VM (vmtemplate.py). Generation 2
 # is UEFI, and its Secure Boot template rejects most Linux installers unless
-# it is turned off or set to the Microsoft UEFI authority — off is the one
+# it is turned off or set to the Microsoft UEFI authority. Off is the one
 # that works for every distribution the provisioner supports.
 #
 # The MAC is in Hyper-V's own range (00:15:5D:xx:xx:xx) and written without

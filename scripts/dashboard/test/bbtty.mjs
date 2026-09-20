@@ -1,4 +1,4 @@
-// bb-tty's Claude launch — the one path the browser files cannot reach, since
+// bb-tty's Claude launch: the one path the browser files cannot reach, since
 // the harness runs no ttyd. This drives the script the way ttyd does (one URL
 // argument, one connection) against the same private tmux server, with stubs
 // standing in for `bb` and `claude`.
@@ -6,7 +6,7 @@
 // What it is here for: tmux hands `new-session` its command in a single 16KB
 // message and answers a longer one with `command too long`. The system prompt
 // bb-tty appends carries the project's whole roadmap and open bugs, so it grows
-// with the project — and once past that line, every Claude session on that
+// with the project, and once past that line, every Claude session on that
 // project became unstartable, ttyd reconnecting into the same error every five
 // seconds. The command goes through a launcher file now, and this is the test
 // that says so.
@@ -37,9 +37,9 @@ const status = await (await fetch(new global.URL('api/status', URL), {
 })).json();
 const boot = status.boot;
 
-// Stubs, ahead of everything on PATH. `claude` has to hold the pane open — a
+// Stubs, ahead of everything on PATH. `claude` has to hold the pane open (a
 // command that exits takes the session with it, and the session is the thing
-// being asserted — and to record what it was handed.
+// being asserted) and to record what it was handed.
 const bin = mkdtempSync(join(tmpdir(), 'bbtty-'));
 const argvOut = join(bin, 'argv');
 writeFileSync(join(bin, 'bb'), `#!/usr/bin/env bash
@@ -94,7 +94,7 @@ chmodSync(join(bin, 'bb'), 0o755);
 chmodSync(join(bin, 'claude'), 0o755);
 
 // One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
-// attach-session`, which fails without a terminal — by then the session either
+// attach-session`, which fails without a terminal; by then the session either
 // exists or does not, which is the whole question.
 // `as` is the account the /term proxy stamps on the argument. The model and
 // the effort are that account's, so the launcher has to be told whose terminal
@@ -127,7 +127,7 @@ const paneCmd = () => { try { return tmuxFmt('claude-alpha', '#{pane_start_comma
 const launcher = () => existsSync(LAUNCHER) ? readFileSync(LAUNCHER, 'utf8') : '';
 
 // A roadmap of 40KB. Under the old code this was `command too long` and no
-// session at all — the operator's report was a pane filling with that line as
+// session at all: the operator's report was a pane filling with that line as
 // ttyd reconnected into it every five seconds.
 let out = connect(40000);
 await sleep(400);
@@ -135,8 +135,8 @@ ok(!/command too long/.test(out),
    'a roadmap past tmux\'s 16KB command limit does not stop the session starting');
 ok(alive('claude-alpha'), '...the session is really there');
 // The account's commit identity rides into the session as git's environment
-// — GIT_AUTHOR_* and GIT_COMMITTER_*, which outrank any user.name a
-// repository carries — from bb settings --json, which the stub answers.
+// (GIT_AUTHOR_* and GIT_COMMITTER_*, which outrank any user.name a
+// repository carries) from bb settings --json, which the stub answers.
 const genv = k => { try { return execFileSync('tmux', ['show-environment', '-t', 'claude-alpha', k], { encoding: 'utf8' }).trim(); } catch { return ''; } };
 ok(genv('GIT_AUTHOR_NAME') === 'GIT_AUTHOR_NAME=Pat Tester'
    && genv('GIT_COMMITTER_EMAIL') === 'GIT_COMMITTER_EMAIL=pat@example.invalid',
@@ -233,7 +233,7 @@ ok(alive('claude-alpha') && /project\/alpha\/claude-run\.sh$/.test(paneCmd()),
 
 // A locked project. Enforced HERE rather than by graying the button out,
 // because the ttyd URL is reachable directly and a rule only the page honors
-// is a suggestion — the same reason `excluded` is checked in this script.
+// is a suggestion, the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
 writeFileSync(LOCKS, JSON.stringify(['alpha']));
 const refusedAt = Date.now();
@@ -243,7 +243,7 @@ await sleep(400);
 ok(/locked/.test(out) && !alive('claude-alpha'),
    'a locked project refuses a Claude session, whatever the URL asks for');
 // A refusal holds the terminal open for ten seconds so the browser can show
-// the reason — ttyd closes the connection the moment this exits. Only when
+// the reason: ttyd closes the connection the moment this exits. Only when
 // something is holding one: called from here, with stderr on a pipe, there is
 // nobody to show it to, and five tests in this suite were paying it.
 ok(refusedIn < 5000,
@@ -269,7 +269,7 @@ try { execFileSync('tmux', ['kill-session', '-t', 'claude-alpha'], { env: { ...p
 
 // No author, no session: an account with no name and email for commits is
 // told to fill in its Profile, here as well as on the ghosted button, for
-// the same reason as every other refusal in this file — the URL is reachable.
+// the same reason as every other refusal in this file: the URL is reachable.
 rmSync(LOCKS, { force: true });
 out = connect(0, { FAKE_GIT_READY: '0' });
 await sleep(400);
@@ -351,8 +351,8 @@ tmuxKill('claude-alpha');
 // authenticated (`u:<uid>:…`), and this is the half that acts on it: a shell
 // runs in that account's home and under a name nobody else attaches to.
 //
-// The OWNER is deliberately the exception on both counts — they keep
-// /home/builder and the bare session names — because a box with one operator
+// The OWNER is deliberately the exception on both counts (they keep
+// /home/builder and the bare session names), because a box with one operator
 // is every box until somebody adds a second account, and an upgrade that
 // renamed everything under them would be a cost paid by everyone for a case
 // most installs never reach.
@@ -408,7 +408,7 @@ tmuxKill('claude-alpha');
   // directory; anybody else gets a worktree on a branch of their own.
   //
   // A repo with no commits has an unborn HEAD and `git worktree add` refuses
-  // it, so this makes its own project with one — the fixtures are git init'd
+  // it, so this makes its own project with one: the fixtures are git init'd
   // and never committed to, and committing into one would be felt by every
   // suite that reads git.
   {
@@ -431,7 +431,7 @@ tmuxKill('claude-alpha');
     shell(`u:${other}:claude:${proj}:b:${boot}`);
     await sleep(400);
     ok(alive(`${other}~claude-${proj}`) && alive(`claude-${proj}`),
-       'a second account opens its own alongside it — two at once, not one');
+       'a second account opens its own alongside it: two at once, not one');
     const wt = join(DIR, 'ws', '.worktrees', proj, other);
     ok(tmuxFmt(`${other}~claude-${proj}`, '#{pane_start_path}') === wt,
        `...in a worktree of its own rather than the same tree (${wt})`);
@@ -463,7 +463,7 @@ tmuxKill('claude-alpha');
     }
 
     // The scope file walls it into ITS tree and names the other one as off
-    // limits — two people on one project is exactly when that has to hold.
+    // limits: two people on one project is exactly when that has to hold.
     const scope = JSON.parse(readFileSync(
       join(HOMEDIR, '.cache', 'builderbot', 'u', other, 'project', proj, 'claude-scope.json'), 'utf8'));
     const deny = scope.permissions.deny.join(' ');
@@ -536,7 +536,7 @@ tmuxKill('claude-alpha');
     ok(/additionalContext/.test(second) && /u_aaaaaaaa/.test(second),
        'the hook tells the second session who else has that file open');
     ok(!/permissionDecision/.test(second),
-       '...and does not refuse it — two worktrees editing one function is two commits, not a corruption');
+       '...and does not refuse it: two worktrees editing one function is two commits, not a corruption');
     const rec = JSON.parse(readFileSync(join(DIR, 'state', 'session-work.json'), 'utf8'));
     ok(rec[proj]['u_aaaaaaaa'].files['m.py'].includes('beta'),
        `...having recorded the enclosing definition, as a guess (${
@@ -554,7 +554,7 @@ tmuxKill('claude-alpha');
 
   // ---- the environment reaches the pane (bug #54) ----------------------------
   // A new session gets the tmux SERVER's environment, not the connecting
-  // client's — measured on tmux 3.4 — so the HOME bb-tty exported for an
+  // client's (measured on tmux 3.4), so the HOME bb-tty exported for an
   // account never reached the shell once any session existed: every later
   // account ran with the first one's Claude login. `-e` hands it over.
   {
@@ -577,7 +577,7 @@ tmuxKill('claude-alpha');
   // users/, the owner included); the account's name and a session token
   // arrive on the URL, since the node has no users.json to look one up in
   // and no key to mint one with; and a project's directory is never worked
-  // in directly — every session gets a worktree.
+  // in directly: every session gets a worktree.
   {
     const node = { BUILDERBOT_ROLE: 'node', BB_CI_LOG_DIR: '/x/ci-logs', BB_CONTROLLER: URL };
     // A node's bb-tty asks the controller whose terminal it is (B166), so
@@ -616,7 +616,7 @@ print(uid)`);
     shell(`u:${ownerUid}:sh:10:wtproj`, node, [`tok:${ownerTok}`]);
     await sleep(300);
     ok(alive(`${ownerUid}~shell-wtproj-10`) && !alive('shell-wtproj-10'),
-       'on a node the owner is prefixed like everybody else — there is no owner there');
+       'on a node the owner is prefixed like everybody else: there is no owner there');
     ok(existsSync(join(HOMEDIR, 'users', ownerUid)),
        '...and gets a home under users/ rather than the box\'s own');
     tmuxKill(`${ownerUid}~shell-wtproj-10`);
@@ -671,7 +671,7 @@ print(uid)`);
     const proj = 'wtproj';
     tmuxKill(`${otherUid}~claude-${proj}`);
     // The two extra URL arguments the proxy will add (phase 10b): the name
-    // and a session token. Passed the way ttyd passes them — one argv each.
+    // and a session token. Passed the way ttyd passes them, one argv each.
     const out = (() => { try {
       return execFileSync('bash', [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`,
         `tok:${tok(proj, otherUid)}`, 'name:the.owner'], {
@@ -705,7 +705,7 @@ print(uid)`);
        && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude')}/**)`),
        'another account\'s transcripts are walled off; this account\'s memories are not');
     // The owner (the controller says so; owner:1 on the URL no longer does), works in the project
-    // directory itself — the same tree, and so the same transcript slug,
+    // directory itself: the same tree, and so the same transcript slug,
     // as the controller's own session.
     tmuxKill(`${ownerUid}~claude-${proj}`);
     try {
@@ -735,7 +735,7 @@ print(uid)`);
     } catch { return '?'; } })();
     ok(/tmux/.test(serverArgs) && !/bbs_/.test(serverArgs),
        `...but not on the tmux server's command line, which every account can read (${serverArgs.slice(0, 40)})`);
-    // The server's environment follows the session's — a pane inherits it —
+    // The server's environment follows the session's (a pane inherits it)
     // minus what is one account's: the token stays per session.
     const genv = k => { try {
       return execFileSync('tmux', ['show-environment', '-g', k], { encoding: 'utf8', env: process.env }).trim();
@@ -855,7 +855,7 @@ print(uid)`);
            (cried.split('\n').find(l => /trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
 
       // ...and when the flag was missing, was put back, and a session is
-      // ALREADY running on the old answer — which cannot be told otherwise
+      // ALREADY running on the old answer, which cannot be told otherwise
       // and will go on asking until it restarts. That is the case somebody
       // actually meets, because /login rewrites this same file.
       writeFileSync(cjf, JSON.stringify({ hasCompletedOnboarding: true, projects: {} }));
@@ -901,7 +901,7 @@ print(uid)`);
   writeFileSync(HOOK, readFileSync(
     new globalThis.URL('../bb-keep-login', import.meta.url).pathname, 'utf8'));
   chmodSync(HOOK, 0o755);
-  // No bb beside it, so it falls back to the one on PATH — which is this
+  // No bb beside it, so it falls back to the one on PATH, which is this
   // stub, recording rather than relaying.
   const calls = join(hk, 'calls');
   writeFileSync(join(hk, 'bin', 'bb'),

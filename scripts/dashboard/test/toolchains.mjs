@@ -1,5 +1,5 @@
 // The Tools card and its package manager. Toolchains opens as a
-// document TAB — installing an SDK runs for minutes, so it belongs on the
+// document TAB: installing an SDK runs for minutes, so it belongs on the
 // strip rather than in a dialog to dismiss. The harness's bb stub makes and
 // removes directories rather than downloading gigabytes, so the whole round
 // trip runs in a second.
@@ -15,7 +15,7 @@ await ready(page);
 // The heading carries a chevron alongside its text, so match the text only.
 ok((await page.$eval('.card[data-card="tools"] h2', h => h.textContent.trim())).startsWith('Tools'),
    'Tools is a card of its own');
-// The scanner's report is a tab off this card now, not a card of its own —
+// The scanner's report is a tab off this card now, not a card of its own:
 // a report is read, and a sidebar card is a control surface.
 ok(await page.$$eval('.side .card[data-card]', cs =>
      !cs.some(c => c.dataset.card === 'findings')),
@@ -29,10 +29,10 @@ ok(await page.$eval('.card[data-card="tools"] #bFindings',
 // ---- the tab -----------------------------------------------------------
 // Through the notebook first: a document that parks in the pane's stack used
 // to keep the pane's doc id, and the toolchains view then rendered into that
-// hidden node — a blank tab. The id has one owner now: whatever is shown.
+// hidden node, a blank tab. The id has one owner now: whatever is shown.
 await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
 await page.waitForFunction(
-  // Loaded, whatever it holds — not merely started. This used to match the
+  // Loaded, whatever it holds, not merely started. This used to match the
   // "loading…" placeholder, so it was satisfied the instant the panel opened
   // and said nothing about the list arriving; that only came to light when
   // the placeholder stopped sharing a class with the empty state.
@@ -63,8 +63,8 @@ ok(!!await page.$('.pane .doc.on .tc'),
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')
      && tabOf(panes[active])?.kind === 'toolchains'),
    'Toolchains opens a tab, and lands on it');
-// Refresh belongs to the TAB's own bar — the scaffold's slot, where the Phone
-// and Nodes tabs keep theirs — with the picker it re-reads at the left of the
+// Refresh belongs to the TAB's own bar (the scaffold's slot, where the Phone
+// and Nodes tabs keep theirs), with the picker it re-reads at the left of the
 // same bar. The pane's title bar is the tab's name and its close control on
 // every kind, so a button in it was a shape this tab alone had.
 ok(await page.$('.pane .bar [data-reload]') === null,
@@ -111,7 +111,7 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
    'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
 
 // Pressing Install accepts Google's SDK terms, and the tab says so where the
-// button is — the acceptance is the operator's, not a script's.
+// button is: the acceptance is the operator's, not a script's.
 ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent)
                                           && e.querySelector('a[href*="developer.android.com/studio/terms"]')),
    'the Tools tab says that Install accepts Google\'s Android SDK terms, with the terms linked');
@@ -119,15 +119,15 @@ ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .tc input[value="flutter"]');
 await page.check('.doc .tc input[value="android:emulator"]');
-// The ticks live outside the DOM, so a redraw — one arrives every two
-// seconds while a job runs — must not quietly clear the selection.
+// The ticks live outside the DOM, so a redraw (one arrives every two
+// seconds while a job runs) must not quietly clear the selection.
 await page.evaluate(() => loadToolchains());
 await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
 ok(await page.$$eval('.doc .tc input:checked', is => is.length === 2),
    'a redraw keeps what was ticked');
 await page.click('.doc [data-tc="install"]');
 // More than two land: android:emulator is installed BY sdkmanager, which
-// android-tools provides, which needs a JDK — and the emulator is useless
+// android-tools provides, which needs a JDK, and the emulator is useless
 // without adb, so platform-tools comes too. That is the point of `requires`;
 // before it, this pair installed and then failed inside sdkmanager with a
 // message naming neither.
@@ -157,12 +157,12 @@ ok(emu.installed && emu.where.includes(`${DIR}/androidsdk/emulator`),
 ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),
    '...and both really exist on disk');
 ok(await page.$('.pkglog') === null,
-   'no scrolling log at the foot of the tab — a job says what it is doing on its row');
+   'no scrolling log at the foot of the tab; a job says what it is doing on its row');
 // The ticks are the operator's, and a poll every two seconds must not
 // quietly clear them mid-install.
 
 // A finished install lets go of its ticks, so the next click cannot act on
-// what was just dealt with — Remove especially.
+// what was just dealt with, Remove especially.
 // Enabled boxes only: an installed-and-current row is ticked on purpose now,
 // and that tick is a statement about the toolchain rather than a selection.
 ok(await page.$$eval('.doc .tc input:not(:disabled)', is => is.every(i => !i.checked)),
@@ -212,15 +212,15 @@ let d = await during({ action: 'install', current: 'flutter' });
 ok(d.text.startsWith('installing') && !d.bar && d.where === null,
    'the row being installed says installing, with no bar and no path');
 // Mid-install the directory exists, so every probe calls it installed. The row
-// must not wear any of the furniture that means "this is here" — a half-written
+// must not wear any of the furniture that means "this is here": a half-written
 // NDK showed a ticked box, an uninstall bin and the version "installed".
 ok(!d.ticked && !d.bin,
    '...and carries no ticked box or uninstall control while it is being written');
 d = await during({ action: 'remove', current: 'flutter' });
 ok(d.text.startsWith('removing') && !d.bar,
    'a removal says removing, and gets no bar either');
-// A check writes nothing, so the row it is on keeps its path and its controls
-// — stripping each in turn made the tab churn through a check that, once a
+// A check writes nothing, so the row it is on keeps its path and its controls;
+// stripping each in turn made the tab churn through a check that, once a
 // day, nobody asked for.
 d = await during({ action: 'check', current: 'flutter' });
 ok(d.text === undefined && d.where !== null,
@@ -254,8 +254,8 @@ ok((await page.$$eval('.doc .tc .nm .pill', ps => ps.map(p => p.textContent)))
      .some(t => t === '1.0'), 'installed versions show without a check');
 ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
    'no update claims before a check');
-// No size is typed into the catalog — a typed one is wrong the next time
-// upstream ships — so a row carries one only once this box has weighed it,
+// No size is typed into the catalog (a typed one is wrong the next time
+// upstream ships), so a row carries one only once this box has weighed it,
 // measured by a worker and arriving a moment after the row does.
 const pill = (name, n = 0) => page.$$eval('.doc .tc', (ls, [v, i]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
@@ -271,7 +271,7 @@ ok(/measured on disk/.test((await pill('flutter')).title),
    'an installed toolchain shows what it takes on disk, and says so');
 ok((await pill('swift')) === null,
    '...and one this box has never had shows no size at all rather than a guess');
-// A check spends no selection — it asks about every row regardless — so
+// A check spends no selection (it asks about every row regardless), so
 // whatever was ticked before it must survive it.
 await page.check('.doc .tc input[value="swift"]');
 await page.click('.doc [data-tc="check"]');
@@ -282,7 +282,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
                              && document.querySelector('.doc .tc .upd') !== null,
                            { timeout: 30000 });
 ok(await page.$eval('.doc .tc input[value="swift"]', i => i.checked),
-   'a check leaves the selection alone — it consumed nothing');
+   'a check leaves the selection alone; it consumed nothing');
 await page.uncheck('.doc .tc input[value="swift"]');
 const upd = await page.$$eval('.doc .tc', ls => ls
   .filter(l => l.querySelector('.upd'))
@@ -308,8 +308,8 @@ ok(/download/.test((await pill('swift', 0)).text)
    && /from upstream/.test((await pill('swift', 0)).title),
    '...and what the download weighs, asked of upstream rather than guessed');
 // The answers cost a network round trip each, so they are kept on the state
-// volume — a dashboard restart used to wipe every version the tab had been
-// told — and dated, because a number with no date on it goes quietly stale.
+// volume (a dashboard restart used to wipe every version the tab had been
+// told) and dated, because a number with no date on it goes quietly stale.
 ok(/versions checked/.test(await page.$eval('.doc .macros', el => el.textContent)),
    '...and the tab says how old the answers are');
 const stored = JSON.parse(readFileSync(`${DIR}/state/toolchain-versions.json`, 'utf8'));
@@ -318,8 +318,8 @@ ok(stored.at > 0 && stored.items.flutter.status === 'update',
 // So is the LOCAL read, which is the one that made this tab slow to open
 // after every container restart: `bb toolchains versions` is a couple of seconds
 // across every toolchain, and the answer had not changed. Keyed by what it is
-// an answer about — the set of installed paths, and the catalog's own digest
-// — so installing something, or editing a recipe, is not answered from it.
+// an answer about (the set of installed paths, and the catalog's own digest),
+// so installing something, or editing a recipe, is not answered from it.
 ok(stored.local && typeof stored.local.key === 'string' && stored.local.key,
    '...as is the local version read, with the key it is an answer for');
 ok(stored.catalog && stored.local.key.startsWith(stored.catalog),
@@ -403,7 +403,7 @@ ok(await page.$$eval('.doc .tc', ls => {
    'every installed toolchain carries its own uninstall control, and only those');
 ok(await page.$('.doc .tc:not(:has([data-rm])) [data-rm]') === null,
    '...and toolchains that are not installed do not');
-// One operation at a time — the server answers a second with a 409 — so the
+// One operation at a time (the server answers a second with a 409), so the
 // controls go dead while one runs rather than letting a click earn an error.
 // The bin icons were the gap: only the two big buttons were being disabled.
 // Set, read and put back in ONE evaluate. The tab re-reads itself whenever
@@ -456,7 +456,7 @@ await page.click('.doc [data-rm="android:emulator"]');
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
    'uninstalling asks first');
 // The job, not just the count: a row being removed has no path line at all,
-// so "one installed path" is briefly true mid-removal — and everything after
+// so "one installed path" is briefly true mid-removal, and everything after
 // this reads paths. On this runner that race is the difference between green
 // and a null dereference.
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
@@ -471,7 +471,7 @@ ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 // The tab is laid out like the notebook and the other document tabs. It was
 // the odd one out: an inset on the darker ground rather than filling its pane,
 // a 12px gutter applied to a wrapper instead of 14px on the rows, and a hover
-// highlight no other list here has — in a hardcoded colour no scheme reached.
+// highlight no other list here has, in a hardcoded colour no scheme reached.
 ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
    'the Toolchains tab fills its pane, like every other document tab');
 ok(await page.$eval('.tc', e => getComputedStyle(e).padding) === '11px 14px',
@@ -485,8 +485,8 @@ ok(await page.evaluate(() => {
 
 // ---- what it is doing, beside what started it ---------------------------
 // The status used to be the Install button's label, which made a toolchain id
-// into a green banner across the tab. It is green text beside the button now
-// — and beside *whichever* button started it, because on a phone the picker
+// into a green banner across the tab. It is green text beside the button now,
+// and beside *whichever* button started it, because on a phone the picker
 // is a screenful above the Install row.
 await page.check('.doc .tc input[value="go"]');
 await page.click('.doc [data-tc="install"]');
@@ -563,9 +563,9 @@ const post = body => page.evaluate(async b => {
 ok(await post({ action: 'install', names: ['flutter; rm -rf /'] }) === 400,
    'a name that is not in the catalog is refused');
 ok(await post({ action: 'install', names: [] }) === 400, 'an empty selection is refused');
-// A second job is refused while one runs. The message names which one — the
+// A second job is refused while one runs. The message names which one: the
 // version check that runs by itself once a day says so, rather than claiming
-// an install nobody started — though only the daily one is "auto"; a check
+// an install nobody started, though only the daily one is "auto"; a check
 // somebody pressed is as much theirs as an install.
 const clash = await page.evaluate(async () => {
   const go = b => fetch('/api/toolchains', { method: 'POST',
@@ -588,7 +588,7 @@ await page.click('#bToolchains');
 await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
 ok(true, 'and reopens from the card');
 // The strip lives on the server and is handed to every browser, so a tab kind
-// the store does not recognise is dropped on every read — which is why this
+// the store does not recognise is dropped on every read, which is why this
 // one came back from a reload, or a container restart, missing.
 await page.reload();
 await ready(page);
@@ -606,7 +606,7 @@ await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains
 // ---- a recipe this node's platform cannot have ---------------------------
 // The catalog says which platforms each recipe serves and the server marks
 // the rest, but the tab drew them all: on a Linux node that is one dead row
-// (xcodes), and on a Mac it is eleven of sixteen — a tab of controls that can
+// (xcodes), and on a Mac it is eleven of sixteen: a tab of controls that can
 // never be pressed. They go behind a fold, which is not the same as hidden:
 // somebody looking for xcodes should be able to find out that it exists and
 // what it wants.
@@ -652,10 +652,10 @@ await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains
 // 400s and 409s are asked for on purpose above; the browser logs a failed
 // fetch either way.
 const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
-ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
+ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 // The Toolchains tab reads nodesList, which tab-nodes.js declares with `let`.
 // Loaded after this file's script, a renderer drawing before it evaluated hit
-// the temporal dead zone and the tab came up "this tab's renderer failed —
+// the temporal dead zone and the tab came up "this tab's renderer failed:
 // nodesList is not defined". `typeof` throws on a TDZ binding too, so the fix
 // is load order, and this is the check that keeps it: every binding a
 // renderer here reads must exist by the time the first draw can happen.
@@ -681,8 +681,8 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
 // scope to it. On a node the agent exports it as the scope directory
 // already, because that is also what BUILDER_HOME and ANDROID_HOME are made
 // from and what a CI runner's .env carries. Taken at its word on a node it
-// was scoped twice — /mnt/SDK/linux-x86_64/linux-x86_64, a directory that
-// does not exist — and every toolchain on that node read as not installed
+// was scoped twice (/mnt/SDK/linux-x86_64/linux-x86_64, a directory that
+// does not exist) and every toolchain on that node read as not installed
 // while it sat there. Shell-level, because that is where the answer is
 // decided and where both machines ask for it.
 {

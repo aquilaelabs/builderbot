@@ -70,7 +70,7 @@ def _inflate(row):
 
 
 def node_list(all=False):
-    """The nodes, JSON columns inflated. Retired rows are history — kept in
+    """The nodes, JSON columns inflated. Retired rows are history: kept in
     the table (door 1: ids are never reused, and an old record must stay
     explicable) and left out of every list unless asked for. Each row also
     names the system job in flight on it, so the tab can say "applying"
@@ -80,7 +80,7 @@ def node_list(all=False):
     busy, inflight = {}, {}
     # Every job that has not finished, not only the system ones. A button
     # whose job type was not tracked here came back live on the repaint that
-    # followed the press — pressing() greys it for the round trip, and then
+    # followed the press: pressing() greys it for the round trip, and then
     # the render put a fresh, enabled one in its place. Update agent did
     # exactly that, which is what the operator kept seeing.
     for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
@@ -102,7 +102,7 @@ def node_list(all=False):
     # ...and the last system job that FINISHED on each, which is the only
     # account of an apply that did not work. Without it the operator pressed
     # Apply storage, the job ran, failed, and the section went straight back
-    # to "4 changes to apply" — no sign an attempt had happened at all,
+    # to "4 changes to apply", with no sign an attempt had happened at all,
     # which reads as a button that does nothing. Bounded: the newest rows
     # are the only ones that could be anybody's last.
     done, runner = {}, {}
@@ -224,7 +224,7 @@ LIVE_S = 3 * 25
 
 def _live(rec):
     """Liveness is derived, never stored. The `state` column is the
-    OPERATOR's intent — online, draining, retired, pending — and whether an
+    OPERATOR's intent (online, draining, retired, pending), and whether an
     agent is actually talking to us is a different fact with a different
     owner, so it rides beside it: `live` is True while the last heartbeat is
     recent, False once it is not, and None for a node kind that has no
@@ -240,8 +240,8 @@ def _live(rec):
 def _insert_node(rec):
     # ssh_addr is written empty and read by nothing: the kind that used it is
     # retired (roadmap #24). The column stays because migrations are numbered
-    # and append-only — dropping one is a one-way door across two engines for
-    # a cosmetic gain — so it is written rather than special-cased away.
+    # and append-only (dropping one is a one-way door across two engines for
+    # a cosmetic gain), so it is written rather than special-cased away.
     cols = ("id", "name", "kind", "pool", "created", "state", "concurrency",
             "ssh_addr", "os", "arch", *_JSON_COLS)
     vals = [json.dumps(rec.get(c, {})) if c in _JSON_COLS
@@ -255,7 +255,7 @@ STORE_ID_FILE = ".bb-store-id"
 
 # Where this container keeps its toolchains. `bb toolchains root` is the authority
 # and toolchains.py asks it, but nodes.py is imported at boot before any of
-# that and must not shell out on the seed path — so the same two answers bb
+# that and must not shell out on the seed path, so the same two answers bb
 # itself resolves between, in the same order.
 def sdk_root_of_controller():
     r = (os.environ.get("SDK_ROOT") or "").strip()
@@ -272,7 +272,7 @@ def store_id(path, make=True):
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (192.168.1.10:/mnt/user/development/SDK). Neither string can be
     derived from the other without knowing it is Unraid, so pairing on the
-    mount was never going to work here — measured on this box, 3 Sep.
+    mount was never going to work here. Measured on this box, 3 Sep.
 
     A file in the store answers exactly, whatever the transport, and it is
     store-specific rather than machine-specific, so it is the one kind of
@@ -293,7 +293,7 @@ def store_id(path, make=True):
     made = "s_" + secrets.token_hex(8)
     try:
         # Exclusive, so two machines racing the first mount cannot each
-        # believe they created it — the loser reads the winner's.
+        # believe they created it: the loser reads the winner's.
         fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         with os.fdopen(fd, "w") as fh:
             fh.write(made + "\n")
@@ -310,8 +310,8 @@ def _seed_local():
     Re-seeded shallowly on every boot: the row survives, but the reported
     census is refreshed because it describes this container, and this boot is
     the authority on this container. No capabilities at all (roadmap #24,
-    10c): the image carries no JDK and no Android SDK, so package-build —
-    which this box used to demonstrably do — is a node's; docker-host was
+    10c): the image carries no JDK and no Android SDK, so package-build
+    (which this box used to demonstrably do) is a node's; docker-host was
     never here (the local node is not a sandbox, docs/nodes.md §12). The row
     stays so the controller is recognized as sharing a store with a node,
     and so a selector job can still be placed here on purpose.
@@ -376,7 +376,7 @@ def parse_paths(text):
 
 
 def node_paths(node_id):
-    """What this container's paths are called on the node's machine — the
+    """What this container's paths are called on the node's machine: the
     daemon resolves bind sources over there. {} when nothing is set."""
     n = node(node_id) if node_id else None
     p = (n.get("config") or {}).get("paths") if n else None
@@ -388,7 +388,7 @@ def node_paths_set(principal, node_id, text):
     if not n:
         return {"error": "no such node"}
     if n["kind"] == "local":
-        return {"error": "local's paths are its own — there is nothing to map"}
+        return {"error": "local's paths are its own; there is nothing to map"}
     paths, why = parse_paths(text)
     if why:
         return {"error": why}
@@ -427,7 +427,7 @@ def node_for():
 
 
 # ---------------------------------------------------------------------------
-# mutations — phase 2: the Nodes tab's verbs. Every one writes an audit row
+# mutations, phase 2: the Nodes tab's verbs. Every one writes an audit row
 # with the principal the server hands it, because these ARE the mutations the
 # audit table was built ahead of.
 
@@ -436,7 +436,7 @@ def node_for():
 # that sits in the table until then is a job that never places.
 # What a node may be asked to do. NOT a setting any more (2 Sep): every node
 # gets all of it at enrollment, because a project names one node and that node
-# does everything for it — what the project can actually do there is what is
+# does everything for it. What the project can actually do there is what is
 # INSTALLED on it, which the census reports as toolchains. This stays as the
 # vocabulary of the node-side refusal (§15 door 7: an agent refuses a job
 # outside what it enrolled with), so a restricted node remains expressible
@@ -449,7 +449,7 @@ def rev():
     """Bumped on every node mutation and every heartbeat; /api/revs carries
     it so open views refetch instead of the list riding the status poll
     (docs/nodes.md §13). Liveness is derived, not written, so a node going
-    QUIET writes nothing — the count of live nodes is folded in so that its
+    QUIET writes nothing; the count of live nodes is folded in so that its
     row goes grey without anyone touching the store."""
     return f"{_rev[0]}.{sum(1 for n in node_list() if n.get('live'))}"
 
@@ -466,7 +466,7 @@ def _touch(node_id, principal, action, fields):
 def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
     """Gone (roadmap #18): a node is enrolled with a token, and only with a
     token. It stayed until compose could run on the agent, because until
-    then a node still needed an ssh key on top of its token for docker —
+    then a node still needed an ssh key on top of its token for docker,
     which meant two enrollments for one machine, and a token-only node (the
     cloud case) could take every job EXCEPT docker. Compose is an agent job
     now and proved on a real VM, so the key buys nothing and the second
@@ -475,7 +475,7 @@ def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
     Kept as a refusal rather than deleted so the endpoint answers with the
     way in rather than a 404.
     """
-    return {"error": "ssh nodes are gone — enroll the machine with a token "
+    return {"error": "ssh nodes are gone; enroll the machine with a token "
                      "instead: Enroll node mints one, and provision-linux.sh "
                      "--controller URL --token bbe_… on the machine does the "
                      "rest. It needs no key from this container, and it then "
@@ -484,7 +484,7 @@ def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
 
 def node_update(principal, node_id, fields):
     """Rename, re-pool, relabel, set concurrency, and (for a deliberately
-    restricted node, which nothing in the UI makes) capabilities —
+    restricted node, which nothing in the UI makes) capabilities:
     the editable half of a row. Never the id, the kind or the address: an
     address is an identity question, and the answer to "this node moved"
     is a new node (door 1), not an edit that makes old records lie."""
@@ -538,7 +538,7 @@ def node_update(principal, node_id, fields):
 
 
 def node_state(principal, node_id, state):
-    """Drain and undrain — and retire, which is what Remove means: rows
+    """Drain and undrain, plus retire, which is what Remove means: rows
     are history and an id is never reused, so a removed node keeps its row
     and leaves every list (door 1)."""
     if state not in ("online", "draining", "retired"):
@@ -547,15 +547,15 @@ def node_state(principal, node_id, state):
     if not n:
         return {"error": "no such node"}
     if n["kind"] == "local" and state == "retired":
-        return {"error": "the local node is this container — it cannot be "
+        return {"error": "the local node is this container; it cannot be "
                          "removed, only left with nothing to do"}
     if state == "online" and n["state"] == "pending":
         return {"error": "a pending node comes online by enrolling"}
     _exec("UPDATE nodes SET state = ? WHERE id = ?", (state, node_id))
     if state == "retired":
         # A retired node's agent keeps dialing in until somebody stops the
-        # unit; its credential failing closed is what tells it — and the
-        # operator — that "removed" meant it (docs/nodes.md §4, rotation
+        # unit; its credential failing closed is what tells it (and the
+        # operator) that "removed" meant it (docs/nodes.md §4, rotation
         # and revocation are rows).
         revoke_tokens(node_id)
     _touch(node_id, principal, "node-" + state, {})
@@ -588,7 +588,7 @@ def node_lock(principal, node_id, lock):
 def node_locked(n):
     """The sentence a locked node refuses with, or "" when it is not."""
     if n and (n.get("config") or {}).get("lock"):
-        return (f"system changes on {n['name']} are locked to its own console — "
+        return (f"system changes on {n['name']} are locked to its own console: "
                 "its mounts, address and root are managed at the OS level; Unlock "
                 "under Advanced on the Nodes tab to change that")
     return ""
@@ -597,7 +597,7 @@ def node_locked(n):
 def node_revoke(principal, node_id):
     """Cut an agent node's credential without retiring it. The row stays,
     the agent's next call fails closed with 'credential revoked', and the
-    way back is a fresh enrollment token — which is to say, a new row: a
+    way back is a fresh enrollment token, which is to say a new row: a
     node whose secret was compromised is a node whose identity was, and
     the id is not reissued."""
     n = node(node_id)
@@ -614,14 +614,14 @@ def node_revoke(principal, node_id):
 
 
 def docker_nodes():
-    """The docker-host nodes, for every picker — active ones with somewhere
+    """The docker-host nodes, for every picker: active ones with somewhere
     to send docker to. An agent node that has never dialed in has no known
     address yet, so it is not offered: a row with no way in would be a row
     that only ever says 'no answer'. Somewhere to send to, note, and not a
-    daemon that answers — nothing here asks, and the tab is where a node that
+    daemon that answers: nothing here asks, and the tab is where a node that
     does not answer says so."""
-    # Every node with a way in. Not narrowed by capability any more — a node
-    # does everything — so the two exclusions left are the honest ones: a
+    # Every node with a way in. Not narrowed by capability any more (a node
+    # does everything), so the two exclusions left are the honest ones: a
     # node the manager cannot reach would be a row that only ever says "no
     # answer", and `local` is the controller, whose daemon is whatever socket
     # somebody deliberately mounted (docs/nodes.md §12: containers there run
@@ -641,8 +641,8 @@ def _addr(n):
     address is data), so it changes without anything on this side being
     edited.
 
-    It is no longer how a compose action reaches the node — that is a job
-    on the agent — but a row still shows where the node answered from.
+    It is no longer how a compose action reaches the node (that is a job
+    on the agent), but a row still shows where the node answered from.
     """
     if n["kind"] == "agent":
         addr = (n.get("agent") or {}).get("addr") or ""
@@ -659,7 +659,7 @@ def ssh_addr_of(node_id):
 
 
 # ---------------------------------------------------------------------------
-# tokens — phase 3. Two kinds, one table (door 8: the kind is data).
+# tokens, phase 3. Two kinds, one table (door 8: the kind is data).
 #
 # An ENROLL token is minted by the operator, bound to a node row created
 # pending for it, and burned by the one enrollment it admits. A NODE token is
@@ -667,7 +667,7 @@ def ssh_addr_of(node_id):
 # Only the sha256 of a secret is stored, so the table is worthless to read;
 # the secret itself is shown exactly once, at mint, and never again.
 #
-# Secrets are self-describing — bbe_… enrolls, bbn_… is a node — so the
+# Secrets are self-describing (bbe_… enrolls, bbn_… is a node), so the
 # server can route a bearer to the right lookup without a second header, and
 # a token pasted in the wrong place fails with the right sentence.
 
@@ -737,7 +737,7 @@ def enroll_mint(principal, name, capabilities=None, user="bb"):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
-    "waiting for enrollment" — a line on the tab with the command to paste —
+    "waiting for enrollment" (a line on the tab with the command to paste),
     and it is where the token's scope lives: the capabilities the controller
     intended are on the row, so enrollment adds nothing the operator did not
     ask for. The id is minted now and kept; a token that expires unused
@@ -793,14 +793,14 @@ def enroll(auth, census, addr, version="", digest="", user=""):
 #
 # Long-poll only (docs/nodes.md §4): the agent POSTs `work` with
 # its current sample and the request is held until there is a job for it or
-# the poll window closes — so one request per node per POLL_S is the whole
+# the poll window closes, so one request per node per POLL_S is the whole
 # cost of liveness, metrics and job pickup together. The design wrote the
 # poll as a GET; a heartbeat is a body, and a GET with a body is not a thing,
 # so the verb is POST and the doc was corrected to say so.
 
 
 def agent_window(version):
-    """The compatibility window a version string promises — "0.4" of "0.4.27".
+    """The compatibility window a version string promises: "0.4" of "0.4.27".
 
     Empty for anything that is not WINDOW.BUILD, which includes every agent
     built before the window existed. Empty means "cannot say", and every
@@ -811,14 +811,14 @@ def agent_window(version):
     m = re.match(r"^(\d+\.\d+)\.", str(version or ""))
     return m.group(1) if m else ""
 # Held below the 30s most proxies allow. Settable only so the suite can stop
-# waiting on it: an agent does its housekeeping — restarting a ttyd that died,
-# reporting a session that appeared — once per turn of this loop, so a test
+# waiting on it: an agent does its housekeeping (restarting a ttyd that died,
+# reporting a session that appeared) once per turn of this loop, so a test
 # that watches for any of it waits a poll window per thing it watches, and
 # three of them were the slowest intervals in the suite. Nothing else sets it.
 POLL_S = int(os.environ.get("BB_NODE_POLL") or 25)
 _wake = threading.Condition(_lock)
 # The last minute of samples per node, for a sparkline (docs/nodes.md §9):
-# memory only, and lost on restart, which is the honest scope — the row keeps
+# memory only, and lost on restart, which is the honest scope: the row keeps
 # the current sample in the DB, and history is /metrics plus whatever the
 # operator points at it.
 _samples = {}
@@ -863,7 +863,7 @@ def _census(c):
                 # The marker inside the store (store_id): what says two
                 # machines mounting it at different paths, over different
                 # transports, are looking at one directory. Dropping it here
-                # is how the pair stays invisible — the same way store_dirs
+                # is how the pair stays invisible, the same way store_dirs
                 # was lost before it was whitelisted.
                 "id": str(s.get("id") or "")[:64],
                 "free_mb": _mb(s.get("free_mb")),
@@ -871,7 +871,7 @@ def _census(c):
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
                 "used_mb": _mb(s.get("used_mb")),
-                # The node's own directory in the store — linux-x86_64,
+                # The node's own directory in the store: linux-x86_64,
                 # darwin-arm64 (roadmap R19).
                 "scope": re.sub(r"[^A-Za-z0-9_-]", "", str(s.get("scope") or ""))[:40]}
     # {name: version} from `bb toolchains versions` on the node: the controller's
@@ -904,7 +904,7 @@ def _census(c):
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
     # The configuration plane's reported half (docs/nodes.md §12): whether
-    # the node was provisioned as a sandbox (bb-sandbox is there — the stamp
+    # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
@@ -935,7 +935,7 @@ def _census(c):
                 "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
                 "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200],
                 "stale": bool(m.get("stale")),
-                # What mount said when it failed — the server's own reason.
+                # What mount said when it failed: the server's own reason.
                 "error": str(m.get("error") or "")[:200]})
     sv = c.get("services") if isinstance(c.get("services"), dict) else {}
 
@@ -972,7 +972,7 @@ def _census(c):
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
     # The session half (roadmap #24): whether this node runs sessions, on
     # which ports, as which account, and whether the projects share is
-    # mounted where they expect it. Absent — not empty — from an agent too
+    # mounted where they expect it. Absent (not empty) from an agent too
     # old to report it, so the row can tell "no sessions here" from "did not
     # say"; the proxy relays a project's session to a node only on the
     # strength of this.
@@ -984,13 +984,13 @@ def _census(c):
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
             # None is "not probed", which the proxy reads as unknown rather
-            # than as read-only — a share the agent could not test is not a
+            # than as read-only: a share the agent could not test is not a
             # share it found closed.
             "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
             "bundle": str(se.get("bundle") or "")[:80],
-            # The agent's own sentence for a half that is down — no session
-            # account, no ttyd, a port taken — which the row's dead button
+            # The agent's own sentence for a half that is down (no session
+            # account, no ttyd, a port taken), which the row's dead button
             # repeats. Dropped once, and the button said only "runs none yet".
             "why": str(se.get("why") or "")[:120],
             # The node's own boot id, which a terminal's URL has to carry for
@@ -1013,7 +1013,7 @@ def _census(c):
     # The machine's own tools, as the agent detected them: its package
     # manager and the service that owns its network. A system job's spec is
     # the same for every node; this says what the agent there would turn it
-    # into, so the row can say so — and absent until the agent has looked,
+    # into, so the row can say so, and absent until the agent has looked,
     # which the row reads as "not reported", not as none.
     d = c.get("distro") if isinstance(c.get("distro"), dict) else None
     if d is not None:
@@ -1028,7 +1028,7 @@ def _census(c):
 # The operator's DESIRED storage and network for a node live on its record
 # (config.desired); the agent reports what is APPLIED in its census
 # (reported.mounts / .stores / .network); and a change is a `system` job the
-# agent runs as root — audited like any mutation, offered only to nodes that
+# agent runs as root: audited like any mutation, offered only to nodes that
 # enrolled as a sandbox, refused on the node without the stamp as well.
 # bb-sandbox at the console reads and writes the same on-node state, so the
 # GUI and a rescue shell cannot disagree about what the node is meant to be.
@@ -1037,7 +1037,7 @@ MOUNT_TYPES = ("nfs", "virtiofs")
 STORE_ROLES = ("data", "toolchains", "cache", "artifacts", "appdata")
 # The same refusal the agent makes of a store path, made here so the tab says
 # no before anybody presses. Deliberately in both places: a store is a
-# directory this system creates, fills and — for the cache — empties, so one
+# directory this system creates, fills and (for the cache) empties, so one
 # pointed at /etc is a delete waiting to happen, and the node refuses whatever
 # it is told regardless (docs/nodes.md §15 door 7, applied to disk).
 STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
@@ -1058,7 +1058,7 @@ def store_path_ok(path):
     if " " in p or ".." in p.split("/"):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
-        return (f"{p} is a system directory (or the root of the mounts) — a store "
+        return (f"{p} is a system directory (or the root of the mounts): a store "
                 "is a directory of its own, like /var/lib/builderbot/x or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):
@@ -1071,7 +1071,7 @@ _CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
 def _clean_config(cfg):
     """The desired config, validated to its shape, or an error string. Every
     field is bounded here so a system job's spec is never a blob from the
-    page — the agent writes what arrives into fstab and into whichever
+    page. The agent writes what arrives into fstab and into whichever
     backend owns its network (netplan, NetworkManager); the spec names the
     address, never the tool."""
     cfg = cfg if isinstance(cfg, dict) else {}
@@ -1090,12 +1090,12 @@ def _clean_config(cfg):
             # which is where a Linux box puts a mount and is what the
             # operator meant. The agent's bb-sandbox mkdir -p's it, so
             # naming a directory that does not exist yet is not a problem.
-            # Only a default — /workspace has to stay /workspace for path
+            # Only a default: /workspace has to stay /workspace for path
             # parity with the controller, so anything that matters is typed.
             tail = src.rsplit("/", 1)[-1] if kind == "nfs" else src
             tail = re.sub(r"[^A-Za-z0-9._-]", "", tail).strip(".")
             if not tail:
-                return None, f"nothing to name a mountpoint after in {src!r} — type one"
+                return None, f"nothing to name a mountpoint after in {src!r}; type one"
             path = "/mnt/" + tail
         if not path.startswith("/") or " " in path or ":" in path:
             return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
@@ -1126,7 +1126,7 @@ def _clean_config(cfg):
     if mode == "static":
         addr, gw = str(net.get("address") or "").strip(), str(net.get("gateway") or "").strip()
         if not _CIDR.match(addr):
-            return None, f"a static address is written with its prefix, like 10.0.0.12/24 — not {addr!r}"
+            return None, f"a static address is written with its prefix, like 10.0.0.12/24, not {addr!r}"
         if gw and not _IP.match(gw):
             return None, f"the gateway is an address, not {gw!r}"
         # str(): a hand-made request's [1] raised on .strip() instead of
@@ -1149,7 +1149,7 @@ def node_config_set(principal, node_id, cfg):
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
-        return {"error": "only an agent node has a configuration plane — "
+        return {"error": "only an agent node has a configuration plane; "
                          "an ssh node is configured at its own console"}
     clean, why = _clean_config(cfg)
     if why:
@@ -1164,8 +1164,8 @@ def node_config_set(principal, node_id, cfg):
 
 
 # ---- debug: which machine's logs a node's sessions may read ---------------
-# A session on a node reads the logs of its own WORK by default — the CI runs
-# for its project, what its test runs left — and nothing of the machine. The
+# A session on a node reads the logs of its own WORK by default (the CI runs
+# for its project, what its test runs left), and nothing of the machine. The
 # machine's own logs are root's there: the enrolled account is in neither
 # `adm` nor `systemd-journal`, so `journalctl -u builderbot-agent` from a
 # session answers "No journal files were opened due to insufficient
@@ -1184,7 +1184,7 @@ def node_config_set(principal, node_id, cfg):
 # a stream name resolves to an argv here, and nothing else is reachable
 # through this door however it is asked for.
 LOG_STREAMS = {
-    "agent": {"what": "the agent's own journal — what it did, and why a job failed",
+    "agent": {"what": "the agent's own journal: what it did, and why a job failed",
               "argv": ["journalctl", "-u", "builderbot-agent", "--no-pager",
                        "-n", "{lines}"]},
     # TWO SHAPES, and the node says which it is in. Under systemd the runner
@@ -1274,7 +1274,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
 
     The gate, in order, each refusal saying what would change it: the
     controller's debug switch, then this node's grant for that node. Past
-    both it is root_wait — the same job, the same log in the Jobs tab, the
+    both it is root_wait: the same job, the same log in the Jobs tab, the
     same refusal on a machine that did not enroll as a sandbox. What stands
     in for the approval is the grant, and the job's log says so.
     """
@@ -1284,7 +1284,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
                          "each node is then granted the nodes it may read"}
     if not asking_id:
         return {"error": "this session is not on a node, and the grant is a "
-                         "node's — a controller session reads its own log with "
+                         "node's; a controller session reads its own log with "
                          "`bb logs`"}
     a, tgt = node(asking_id), node(target_id)
     if not tgt:
@@ -1292,9 +1292,9 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     if target_id not in log_grants(asking_id):
         me = (a or {}).get("name") or asking_id
         return {"error": f"{me} has not been granted {tgt['name']}'s machine logs"
-                         + (" — not even its own, which is a tick of its own on "
+                         + (", not even its own, which is a tick of its own on "
                             "Debug settings" if asking_id == target_id else
-                            " — Debug settings on its row grants it")}
+                            ". Debug settings on its row grants it")}
     spec = LOG_STREAMS.get(stream)
     if not spec:
         return {"error": "no such log: " + ", ".join(sorted(LOG_STREAMS))}
@@ -1304,7 +1304,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
         n_lines = 200
     fills = {"lines": str(n_lines)}
     # The unit form when the node reported one, and then the data store is not
-    # needed at all — a node whose runner is a service may keep no runner.log.
+    # needed at all: a node whose runner is a service may keep no runner.log.
     unit = (runners_reported(tgt) or [{}])[0].get("unit") or ""
     if spec.get("unit_argv") and unit:
         spec = dict(spec, argv=spec["unit_argv"], store=None)
@@ -1318,7 +1318,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
         fills["data"] = str(path).rstrip("/")
     argv = [x.format(**fills) for x in spec["argv"]]
     why = (f"{(a or {}).get('name') or asking_id} reads {tgt['name']}'s "
-           f"{stream} log — granted on Debug settings, not asked for here")
+           f"{stream} log, granted on Debug settings, not asked for here")
     return root_wait(principal, target_id, argv, why=why, timeout=120)
 
 
@@ -1327,7 +1327,7 @@ DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
 
 def runner_labels_for(n, labels=None):
     """The labels a node's runner carries: the defaults, its architecture,
-    and its own name — the per-node label that lets a workflow's runs-on
+    and its own name, the per-node label that lets a workflow's runs-on
     pick this machine. Extra ones from the tab are kept, cleaned."""
     want = [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40] for x in (labels or [])]
     out = list(DEFAULT_RUNNER_LABELS)
@@ -1388,14 +1388,14 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
-        return {"error": "the runner is installed by the agent — an ssh node has none"}
+        return {"error": "the runner is installed by the agent; an ssh node has none"}
     # No sandbox stamp needed (roadmap #23): a runner is a tarball and a
     # token, not a change to the machine, so a container node or a guest
-    # gets one too. Storage and network keep the stamp — node_apply.
+    # gets one too. Storage and network keep the stamp: node_apply.
     if n["state"] != "online":
-        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+        return {"error": f"the node is {n['state']}; system jobs go to an online node"}
     if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node — one at a time"}
+        return {"error": "a system job is already in flight on this node; one at a time"}
     ar = dict(runners_of(n).get(slot) or {})
     if not ar:
         return {"error": "no such runner on this node: add one in the runner section first"}
@@ -1442,22 +1442,22 @@ def route_host(node_id):
 def node_funnel(principal, node_id, port, on=True):
     """Tailscale Funnel on a node (docs/nodes.md §7, mode `funnel`): a
     public HTTPS URL for one published port, with no DNS, certificate or
-    firewall change — as a system job the agent applies with tailscale's
+    firewall change. It is a system job the agent applies with tailscale's
     own CLI. One funnel per node, on 443: the node's MagicDNS name is the
     URL, and a second instance asking replaces the first, said plainly."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
-        return {"error": "a funnel needs the agent — this node runs none"}
+        return {"error": "a funnel needs the agent; this node runs none"}
     # Like the runner, no sandbox stamp: tailscale's own CLI does the work.
     ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
     if not ts.get("installed"):
-        return {"error": f"{n['name']} has no tailscale — install and log it in on the node first"}
+        return {"error": f"{n['name']} has no tailscale; install and log it in on the node first"}
     if n["state"] != "online":
-        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+        return {"error": f"the node is {n['state']}; system jobs go to an online node"}
     if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node — one at a time"}
+        return {"error": "a system job is already in flight on this node; one at a time"}
     try:
         port = int(port)
     except (TypeError, ValueError):
@@ -1475,8 +1475,8 @@ def agent_stale(n):
     """"" if this node runs the agent this controller ships, else why that
     matters right now.
 
-    A controller is always newer than or equal to its nodes — it is where
-    the agent file comes from — so a mismatch means the node may not
+    A controller is always newer than or equal to its nodes (it is where
+    the agent file comes from), so a mismatch means the node may not
     understand a job this version would send it. Job types and spec fields
     have been added on nearly every phase (system, toolchain, cache-clear,
     compose plans, bb verbs, store listings), and an older agent meets an
@@ -1491,18 +1491,18 @@ def agent_stale(n):
         return ""
     mine = (n.get("agent") or {}).get("version") or "?"
     if agent_gap(n):
-        return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']} — "
+        return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']}: "
                 f"a different compatibility window ({agent_window(mine)} against "
                 f"{agent_window(ours['version'])}), so nothing sent to it is promised to work. "
                 "Update it from the Nodes tab before relying on this node.")
-    return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']} — "
+    return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']}: "
             "press Update agent on its row first. A job this version sends could name "
             "something that agent does not know.")
 
 
 def agent_gap(n):
     """True when this node's agent is from ANOTHER compatibility window than
-    the one this controller ships — 0.3 against 0.4. Inside a window any
+    the one this controller ships: 0.3 against 0.4. Inside a window any
     agent works with any controller and being behind is routine; across one
     that promise was never made. Empty windows (an agent from before the
     window existed) are never read as a gap."""
@@ -1521,7 +1521,7 @@ def attention(project_nodes):
     out = []
     for n in node_list():
         # Only a node that is dialing in: one that is away takes no job for
-        # that reason first, and Update agent could not reach it anyway — an
+        # that reason first, and Update agent could not reach it anyway. An
         # alert nobody can act on would sit in the bell until the node came
         # back, which is the opposite of an alert that leaves when it stops
         # being true.
@@ -1535,7 +1535,7 @@ def attention(project_nodes):
 
 
 def node_update_agent(principal, node_id):
-    """Queue the self-update for a node's agent — the file this controller
+    """Queue the self-update for a node's agent: the file this controller
     serves, named by digest so the node can never be handed anything else
     (door 4). The agent replaces itself in place and re-execs, so nothing on
     the node restarts and no running job is interrupted; it refuses while
@@ -1560,7 +1560,7 @@ def node_update_agent(principal, node_id):
 
 def agent_shipped():
     """What this controller ships, for the row's comparison: digest and
-    version only — the body is the download verb's."""
+    version only; the body is the download verb's."""
     f = agent_file()
     return {"digest": f["digest"], "version": f["version"]}
 
@@ -1594,7 +1594,7 @@ def toolchain_for(argv):
 def toolchain_gap(node_id, argv):
     """"" if this node can plausibly run this command, else the toolchain
     it is missing. Only ever answers about a tool the command NAMES and the
-    node's census does not report — an unknown build script is not refused,
+    node's census does not report: an unknown build script is not refused,
     and a node that has never dialed in is not judged."""
     want = toolchain_for(argv)
     if not want:
@@ -1625,7 +1625,7 @@ def census_age(node_id):
 
 
 def node_runner_label(node_id):
-    """The label that pins a workflow's runs-on to THIS node's runner — its
+    """The label that pins a workflow's runs-on to THIS node's runner: its
     own name, cleaned the way runner_labels_for cleans it.
 
     "" when the node has no runner installed or asked for: advising a
@@ -1690,7 +1690,7 @@ def system_job_for(node_id):
 def apply_cfg(desired, what):
     """The half of a desired config an apply of `what` carries. Its own
     function because node_list compares a finished job's spec against it to
-    decide whether that job is still about the record as it stands — and a
+    decide whether that job is still about the record as it stands, and a
     second copy of this shape would make a stale failure look current, or
     the other way about, whenever either moved."""
     desired = desired or {}
@@ -1702,7 +1702,7 @@ def apply_cfg(desired, what):
 
 
 def node_apply(principal, node_id, what):
-    """Queue the system job that makes the node match its desired config —
+    """Queue the system job that makes the node match its desired config:
     storage (mounts and stores) or network, which is its own job because it
     is the one that can cut the cord (the agent reverts it if it cannot dial
     back in). Offered only to a live agent node that enrolled as a sandbox;
@@ -1718,16 +1718,16 @@ def node_apply(principal, node_id, what):
         return {"error": "this node was not provisioned as a BuilderBot sandbox "
                          "(no bb-sandbox on it), so system jobs are not offered to it"}
     if n["state"] != "online":
-        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+        return {"error": f"the node is {n['state']}; system jobs go to an online node"}
     if (n.get("agent") or {}).get("revoked"):
         return {"error": "this node's credential was revoked"}
     if node_locked(n):
         return {"error": node_locked(n)}
     desired = (n.get("config") or {}).get("desired") or {}
     if not desired:
-        return {"error": "nothing to apply — save a configuration first"}
+        return {"error": "nothing to apply; save a configuration first"}
     if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node — one at a time"}
+        return {"error": "a system job is already in flight on this node; one at a time"}
     cfg = apply_cfg(desired, what)
     # A storage apply that repoints a store copies what is in it first, and a
     # toolchain store is tens of gigabytes: fifteen minutes is the right ceiling
@@ -1753,7 +1753,7 @@ def node_apply(principal, node_id, what):
 # answer.
 layout_of = lambda: []
 bundle_digest = lambda: ""
-idle_minutes = lambda: 0            # noqa: E731 — idle.minutes, injected by server.py
+idle_minutes = lambda: 0            # noqa: E731  (idle.minutes, injected by server.py)
 # server.session_tokens_for: fresh credentials for the Claude sessions alive
 # on one node, so a session idle past its token's life is not locked out of
 # its own controller (R27). Injected, because minting is users.py's and the
@@ -1763,14 +1763,14 @@ session_tokens_for = lambda nid, sessions: []   # noqa: E731
 
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
-    running, and answer with what the controller expects of it — the
+    running, and answer with what the controller expects of it: the
     transports, the poll window, the node's own capabilities (so it can
     refuse outside them, door 7) and the controller's agent file digest
     (so self-update is a comparison, door 4).
 
     `running` is the jobs the agent has going right now. An agent that
     restarted has none, and the rows this side still had as running there
-    are then failed as lost — a subprocess does not survive its parent, so
+    are then failed as lost: a subprocess does not survive its parent, so
     a row saying otherwise would say it forever."""
     n = node(nid)
     if not n:
@@ -1789,7 +1789,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
     sample = rep.get("sample")
     # When this census was taken. The heartbeat is every 25 seconds but the
     # census only rides hello, every ten minutes, so "when did the node last
-    # dial in" is not the same question as "how old is this answer" — and it
+    # dial in" is not the same question as "how old is this answer", and it
     # is the second one a refusal is reasoning from.
     census_at = int(time.time())
     rep = _census(census)
@@ -1832,7 +1832,7 @@ def heartbeat(nid, sample, addr, running=0):
     """One sample per poll: the numbers the operator actually wants to see,
     riding the channel that exists anyway. Written to the row (current
     value) and to the ring (the last minute); last_seen is what liveness
-    reads. The address is refreshed too — see _addr."""
+    reads. The address is refreshed too; see _addr."""
     n = node(nid)
     if not n:
         return
@@ -1888,13 +1888,13 @@ def samples(nid):
 
 
 # ---------------------------------------------------------------------------
-# jobs — the queue (docs/nodes.md §2, phase 4)
+# jobs: the queue (docs/nodes.md §2, phase 4)
 #
 # The queue is a list and placement is a function. A job names a node or a
 # selector; a node with a free slot takes the oldest queued job it fits, and
 # from then on the row says where it ran, not where it might have. There are
 # two kinds of runner: an AGENT takes its jobs over the channel (exec and
-# self-update), and the CONTROLLER runs the rest itself — compose actions
+# self-update), and the CONTROLLER runs the rest itself: compose actions
 # against a node's daemon, and exec on the nodes that have no agent (local,
 # ssh). Both ask the same question of the same table through job_next(), and
 # concurrency is counted here from the rows rather than trusted from either.
@@ -1908,7 +1908,7 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              "image",
              # The sign-in flow, on the machine Claude is installed on: a job
              # of its own because it opens a PTY and drops to the SESSION
-             # account, not the job one (R47). Both matter — the flow prints a
+             # account, not the job one (R47). Both matter: the flow prints a
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
              "claude-login",
@@ -1968,7 +1968,7 @@ def runner_of(job_type, kind):
     An agent runs everything for itself, compose included: the node's own
     docker, on the node, so the token it enrolled with is the only way in and
     the controller needs no ssh key. Only `local` is left here, and only
-    because it IS here — the ssh kind, which used to leave compose on the
+    because it IS here: the ssh kind, which used to leave compose on the
     controller over an ssh key, is gone (roadmap #24).
     """
     return "controller" if kind == "local" else "node"
@@ -1977,12 +1977,12 @@ def runner_of(job_type, kind):
 def fits(job, n):
     """Placement, in one place: may this node take this job. An explicit
     node is exact; a selector is every key it names, all of which must hold.
-    Nothing here about load — first free slot wins, which is the whole
+    Nothing here about load: first free slot wins, which is the whole
     scheduling policy a single operator needs (docs/nodes.md §2)."""
     if n["state"] != "online" or (n.get("agent") or {}).get("revoked"):
         return False
     # An agent that is behind takes nothing but its own update. Here as well
-    # as in job_add, because job_add only sees the explicitly-placed case —
+    # as in job_add, because job_add only sees the explicitly-placed case:
     # a selector-placed job is matched to a node at take time, and this is
     # where that happens.
     if job.get("type") != "self-update" and runner_of(job.get("type") or "", n["kind"]) == "node" \
@@ -2039,11 +2039,11 @@ def _placement(placement):
 
 
 def job_add(principal, placement, type, spec, project="", source=None):
-    """Queue a job. With an explicit node the node is checked now — it must
+    """Queue a job. With an explicit node the node is checked now: it must
     exist, be online, and hold a credential if it is an agent. With a
     selector, at least one node must fit right now: a job nothing could ever
     take would sit queued forever, and "no node has X" at the button is the
-    honest answer (docs/nodes.md §18 — the dashboard says which project has
+    honest answer (docs/nodes.md §18: the dashboard says which project has
     no node). Assignment itself happens when a node asks, in job_next."""
     if type not in JOB_TYPES:
         return {"error": f"job type is one of {', '.join(JOB_TYPES)}"}
@@ -2056,12 +2056,12 @@ def job_add(principal, placement, type, spec, project="", source=None):
         if not n:
             return {"error": "no such node"}
         if n["state"] != "online":
-            return {"error": f"node is {n['state']} — it takes no new work"}
+            return {"error": f"node is {n['state']}; it takes no new work"}
         if (n.get("agent") or {}).get("revoked"):
-            return {"error": "this node's credential was revoked — enroll it "
+            return {"error": "this node's credential was revoked; enroll it "
                              "again to give it work"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
-            return {"error": "the agent on this node is not dialing in — the "
+            return {"error": "the agent on this node is not dialing in; the "
                              "job would wait until it does"}
         # Everything the AGENT runs waits for the agent to be current; its
         # own update is the way out and is never blocked.
@@ -2096,7 +2096,7 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
              sizes=None, project="", forget=False):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
-    and exit code handed back — the Nodes tab's Test, generalised. For the
+    and exit code handed back: the Nodes tab's Test, generalised. For the
     phone: adb on the node that holds the handset, where the controller has
     no adb and no phone. {"code", "out"} or {"error"}.
 
@@ -2127,7 +2127,7 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
                     "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
     # Taken back, not left in the queue: a probe nobody is waiting for any
-    # more would otherwise run whenever the node's slot freed — an `adb
+    # more would otherwise run whenever the node's slot freed: an `adb
     # install` an hour after the operator read it as failed.
     job_cancel(principal, r["job"])
     return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
@@ -2182,9 +2182,9 @@ def tell_wait(node_id, session, text, timeout=20):
 
 def root_wait(principal, node_id, argv, why="", timeout=600):
     """One approved command as root on a node (roadmap R38): a system job
-    with `apply: root`, waited for like run_wait. The gate is node_apply's —
-    an online agent node that enrolled as a sandbox, one system job at a
-    time — because root on somebody's own machine is theirs, and the agent
+    with `apply: root`, waited for like run_wait. The gate is node_apply's
+    (an online agent node that enrolled as a sandbox, one system job at a
+    time), because root on somebody's own machine is theirs, and the agent
     refuses it there too whatever this says. The reason and the approver
     ride in the spec so the job's log, which the Jobs tab keeps, says who
     allowed what and why."""
@@ -2197,11 +2197,11 @@ def root_wait(principal, node_id, argv, why="", timeout=600):
         return {"error": "this node was not provisioned as a BuilderBot sandbox, so root "
                          "there is its owner's"}
     if n["state"] != "online":
-        return {"error": f"the node is {n['state']} — a root command goes to an online node"}
+        return {"error": f"the node is {n['state']}; a root command goes to an online node"}
     if node_locked(n):
         return {"error": node_locked(n)}
     if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node — one at a time"}
+        return {"error": "a system job is already in flight on this node; one at a time"}
     spec = {"apply": "root", "timeout": int(timeout),
             "config": {"argv": [str(a) for a in argv], "why": str(why)[:300],
                        # The person, for the log's first line; the audit row
@@ -2238,7 +2238,7 @@ def phone_nodes():
 
 
 def job_running(node_id):
-    """How many jobs this node has going, from the rows — the count the
+    """How many jobs this node has going, from the rows: the count the
     slot check uses. Not the agent's own number: that rides a request as a
     snapshot, and a poll held with a stale one made the next job wait out
     the whole window after the last one ended."""
@@ -2271,7 +2271,7 @@ _kills = {}
 def session_kill(node_id, name):
     """End a tmux session on a node: queued for the agent's held poll, and
     the poll woken so it goes now. The name is the node's own (the session
-    account's prefix included) — the page's name for it is translated back
+    account's prefix included); the page's name for it is translated back
     by the caller."""
     n = node(node_id)
     if not n or n["kind"] != "agent":
@@ -2292,7 +2292,7 @@ def session_kill(node_id, name):
 _ended = {}
 
 
-# tmux commands for a node's sessions — keys, a console's line, a macro —
+# tmux commands for a node's sessions (keys, a console's line, a macro),
 # queued the same way, taken by the same poll. Each is {"session", "argv"}
 # with the node's own session name already in argv, or {"session", "page"}
 # for the paging decision the agent has to make on the pane it can see.
@@ -2327,13 +2327,13 @@ def node_sessions():
 
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
-    up to `wait` seconds for one — or for a cancel request, which comes back
+    up to `wait` seconds for one, or for a cancel request, which comes back
     as {"cancel": [ids]} so the agent's held poll hears it at once.
 
     `alive` says whether the poll's client is still connected, and is asked
     before anything is handed over. A held poll outlives the agent that
-    made it — an agent that restarted (its self-update, a kill) leaves its
-    last poll on this side for up to a poll length — and a job queued in
+    made it: an agent that restarted (its self-update, a kill) leaves its
+    last poll on this side for up to a poll length, and a job queued in
     that window was assigned to the dead poll, written to a closed socket,
     and marked lost by the new agent's first hello, which never had it. The
     same poll would have swallowed a cancel, a session kill or a hello
@@ -2342,7 +2342,7 @@ def job_next(node_id, wait, runner="node", alive=None):
     Drain is honored here: a draining node's agent keeps polling (that is
     how the operator sees it is alive) and is simply never handed work. So
     is concurrency, counted from the rows. The job's node is written at this
-    moment and never again — placement frozen at assignment."""
+    moment and never again: placement frozen at assignment."""
     deadline = time.time() + max(0, float(wait))
     with _wake:
         while True:
@@ -2357,7 +2357,7 @@ def job_next(node_id, wait, runner="node", alive=None):
                     if runner_of(j["type"], n["kind"]) != runner or not fits(j, n):
                         continue
                     # An agent's job is `assigned` until its first log post
-                    # says it started — the poll reply can be lost on the
+                    # says it started: the poll reply can be lost on the
                     # wire. The controller's own runner starts it on the
                     # thread that asked, so it is running from here.
                     st = "running" if runner == "controller" else "assigned"
@@ -2493,7 +2493,7 @@ def job_tail(job_id, n=4000):
 
 def job_set(job_id, **fields):
     """The runner's progress: step, error. Nothing else is settable this
-    way — state moves through job_next / job_result / job_cancel only."""
+    way: state moves through job_next / job_result / job_cancel only."""
     sets = {k: str(v)[:500] for k, v in fields.items() if k in ("step", "error")}
     if sets:
         _exec("UPDATE jobs SET " + ", ".join(f"{k} = ?" for k in sets)
@@ -2537,7 +2537,7 @@ def job_log(node_id, job_id, chunks, step=None):
         _jbump()
     # ...and anything waiting to go DOWN to the job. The agent posts output
     # every half second, so this reply is the only channel the controller has
-    # toward a running job — `cancel` has ridden it since the start, and a
+    # toward a running job: `cancel` has ridden it since the start, and a
     # sign-in's code rides it the same way. Popped, not left: a code is
     # delivered once, and a retried post must not type it twice.
     return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"]),
@@ -2563,7 +2563,7 @@ def job_input(job_id, text):
 
 
 def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
-    """Terminal. Idempotent by design — the agent retries until it is
+    """Terminal. Idempotent by design: the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
     got = _rows("SELECT node, state, type, project FROM jobs WHERE id = ?", (job_id,))
@@ -2599,14 +2599,14 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         if spec.get("apply") == "uninstall":
             node_state(f"node:{node_id}", node_id, "retired")
     # The module that queued this kind of job gets to finish it. A compose
-    # action run by the agent still has records to write here — what was
-    # built, from which commit, on which daemon — and this is where they
+    # action run by the agent still has records to write here (what was
+    # built, from which commit, on which daemon), and this is where they
     # land, once, whichever runner served it.
     fn = ON_DONE.get(got[0]["type"] if "type" in got[0].keys() else "")
     if fn:
-        with contextlib.suppress(Exception):     # noqa: BLE001 — a hook must not lose a result
+        with contextlib.suppress(Exception):     # noqa: BLE001  (a hook must not lose a result)
             # A hook may also REWORD the failure. All a node can honestly say
-            # is "exit 1" — it ran an argv somebody else composed — while the
+            # is "exit 1" (it ran an argv somebody else composed), while the
             # module that wrote the plan knows the step was "starting" and
             # what that means. The row used to carry that sentence because
             # the controller ran compose itself; this is how it keeps it now
@@ -2624,9 +2624,9 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
 
 def job_cancel(principal, job_id):
     """Stop a job. Queued: it simply ends, canceled. Assigned or running:
-    the flag is set and the runner is woken — the agent hears it on its
+    the flag is set and the runner is woken (the agent hears it on its
     next log post or held poll, the controller's own runner reads it and
-    kills the process group — and the row stays running until the runner
+    kills the process group), and the row stays running until the runner
     reports the end, because that is when it actually ended."""
     got = _rows("SELECT state, cancel FROM jobs WHERE id = ?", (job_id,))
     if not got:
@@ -2662,7 +2662,7 @@ def jobs_for(node_id=None, n=50, project=None, type=None, active=False):
     if where:
         q += " WHERE " + " AND ".join(where)
     # rowid breaks the tie: ids are random, and two jobs queued in the same
-    # second used to come back in either order — the row then showed an
+    # second used to come back in either order: the row then showed an
     # older job as the latest, or none at all.
     q += " ORDER BY queued DESC, rowid DESC LIMIT ?"
     return [_job_out(r) for r in _rows(q, (*args, int(n)))]
@@ -2675,7 +2675,7 @@ LOST_S = LIVE_S + 30
 
 
 def jobs_lost():
-    """Fail every job assigned to an agent that has gone quiet — "node lost"
+    """Fail every job assigned to an agent that has gone quiet: "node lost"
     after a grace window (docs/nodes.md §10). The agent is the durable side:
     if it comes back with the job still running it reports late, and the
     row is already terminal, so the late result is dropped as `already`.
@@ -2690,7 +2690,7 @@ def jobs_lost():
         seen = (nd.get("agent") or {}).get("last_seen") or 0
         if now - seen > LOST_S:
             _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', "
-                  "error = 'node lost — the agent stopped answering' WHERE "
+                  "error = 'node lost: the agent stopped answering' WHERE "
                   "id = ?", (now, j["id"]))
             audit("system", "job-lost", j["id"], {"node": j["node"]})
             n += 1
@@ -2701,19 +2701,19 @@ def jobs_lost():
 
 def jobs_reconcile(node_id, running):
     """At hello: the jobs this side has as running on the node that the
-    node does not — an agent that restarted, whose children died with it."""
+    node does not: an agent that restarted, whose children died with it."""
     have = {r["id"] for r in _rows(
         "SELECT id FROM jobs WHERE node = ? AND state IN ('assigned', "
         "'running')", (node_id,))}
     gone = have - set(running)
     for jid in gone:
         # A compose job on an agent node is the controller's, and the agent
-        # never had it — only what the agent RUNS is reconciled against it.
+        # never had it: only what the agent RUNS is reconciled against it.
         j = job(jid, with_log=False)
         if runner_of(j["type"], "agent") != "node":
             continue
         _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error "
-              "= 'lost — the agent restarted without it' WHERE id = ?",
+              "= 'lost: the agent restarted without it' WHERE id = ?",
               (int(time.time()), jid))
         audit("system", "job-lost", jid, {"node": node_id, "why": "restart"})
     if gone:
@@ -2722,7 +2722,7 @@ def jobs_reconcile(node_id, running):
 
 def jobs_restart_sweep():
     """At start: a job the controller itself was running when the process
-    died is failed as lost — the subprocess died with it, and a row still
+    died is failed as lost: the subprocess died with it, and a row still
     saying running would say it forever. An agent's own jobs are left to
     the agent's hello, which reconciles against what it actually has."""
     now = int(time.time())
@@ -2732,7 +2732,7 @@ def jobs_restart_sweep():
         if runner_of(j["type"], j["kind"] or "local") != "controller":
             continue
         _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error "
-              "= 'lost — BuilderBot restarted while it was running' WHERE "
+              "= 'lost: BuilderBot restarted while it was running' WHERE "
               "id = ?", (now, j["id"]))
         audit("system", "job-lost", j["id"], {"why": "controller restart"})
         n += 1
@@ -2742,7 +2742,7 @@ def jobs_restart_sweep():
 
 
 def job_counts():
-    """Jobs by state, nodes by state and liveness — the numbers /healthz
+    """Jobs by state, nodes by state and liveness: the numbers /healthz
     and /metrics are made of."""
     out = {"jobs": {s: 0 for s in JOB_ACTIVE + JOB_END}, "nodes": {}}
     for r in _rows("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state"):
@@ -2754,7 +2754,7 @@ def job_counts():
 
 
 # ---------------------------------------------------------------------------
-# the agent file — served to nodes, and the digest hello compares against
+# the agent file: served to nodes, and the digest hello compares against
 
 AGENT_PY = HERE.parent / "agent" / "builderbot-agent.py"
 _agent_cache = {}
@@ -2763,7 +2763,7 @@ _agent_cache = {}
 def agent_file():
     """The agent this controller ships: bytes, sha256, version string.
     Read once per mtime, so the digest hello answers with is the file on
-    disk right now — which is what makes 'is my agent current' a byte
+    disk right now, which is what makes 'is my agent current' a byte
     comparison on the node rather than a version number anyone typed."""
     try:
         st = AGENT_PY.stat()

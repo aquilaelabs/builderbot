@@ -8,8 +8,8 @@ in, and the version each upstream currently offers.
 
 It sits beside bb rather than inside it because the reading is JSON work and
 the resolvers are not alike. Each upstream announces its current release in a
-different shape — a bare line of text, a redirect to a tag, a JSON index of
-every build it has ever made — and that is a paragraph of python apiece
+different shape (a bare line of text, a redirect to a tag, a JSON index of
+every build it has ever made), and that is a paragraph of python apiece
 against a page of shell.
 
 Placeholders, substituted into url templates and argv:
@@ -91,8 +91,8 @@ def toolchain(name):
 def dig(obj, path):
     """A dotted path into nested dicts and lists, or None.
 
-    A number walks into a list — source.then.0.run is the first follow-up step
-    — which is not decoration: without it the .NET recipe's workload step
+    A number walks into a list (source.then.0.run is the first follow-up
+    step), which is not decoration: without it the .NET recipe's workload step
     resolved to nothing and quietly did not run, leaving a plain SDK behind
     where a MAUI one was asked for.
     """
@@ -271,8 +271,8 @@ def content_length(url):
 def download_urls(tc):
     """Every URL an install of this toolchain would fetch, or none.
 
-    Two ways to know. A recipe whose own source.url is the payload — a tarball
-    — is its own answer. Everything else has to ask the installer, and most of
+    Two ways to know. A recipe whose own source.url is the payload (a tarball)
+    is its own answer. Everything else has to ask the installer, and most of
     them will say: playwright's dry run names the five bundles it would pull,
     the .NET installer names the SDK archive it would pull. That is a command
     to run and a pattern to match, both of which are catalog entries rather
@@ -310,7 +310,7 @@ def download_urls(tc):
     env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
     # Cached like a fetched document, and for the same reason: the .NET dry run
     # downloads and executes a vendor script, and it was being run twice per
-    # check — once to learn the version, once to learn the size.
+    # check: once to learn the version, once to learn the size.
     def dry_run():
         try:
             return subprocess.run(spec["run"], capture_output=True,
@@ -332,12 +332,12 @@ def _revision(pkg_el):
 def android_size(spec, pkg_id):
     """The size sdkmanager's own repository index gives for exactly this id.
 
-    sdkmanager will not say what a package weighs, but the index it reads does
-    — and that index is the only place an android download size exists before
-    the download. Looked up by the id bb resolved rather than by picking the
-    newest entry: the index's newest playstore image is an android-CANARY
-    build nobody is installing, and the emulator appears twice, once stable
-    and once on the dev channel, sixteen megabytes apart.
+    sdkmanager will not say what a package weighs, but the index it reads
+    does, and that index is the only place an android download size exists
+    before the download. Looked up by the id bb resolved rather than by
+    picking the newest entry: the index's newest playstore image is an
+    android-CANARY build nobody is installing, and the emulator appears twice,
+    once stable and once on the dev channel, sixteen megabytes apart.
     """
     best = None
     for url in spec.get("xml") or []:
@@ -379,7 +379,7 @@ IMAGE_ID = re.compile(r"^system-images;android-([A-Za-z0-9.-]+);([A-Za-z0-9_-]+)
 def available_images():
     """Every system image the catalog's flavors offer, from sdkmanager's index.
 
-    One line per image — id, API level, flavor, bytes — which is what makes an
+    One line per image (id, API level, flavor, bytes), which is what makes an
     API level offerable at all: sdkmanager cannot be asked what exists without
     a network round trip that prints a thousand rows, and cannot be asked what
     anything weighs at any price. The index answers both.
@@ -427,7 +427,7 @@ def available_images():
         m = IMAGE_ID.match(key)
         out.append((key, m.group(1), m.group(2), size))
     # Newest level first, and a plain level ahead of the extension builds that
-    # share its number — android-34 is what somebody picking "34" means, and
+    # share its number: android-34 is what somebody picking "34" means, and
     # android-34-ext11 is a thing they would have to have gone looking for.
     # The index itself is in no order worth relying on.
     def key(row):
@@ -511,7 +511,7 @@ def main(argv):
 
     elif op == "size":
         # An optional package id, for the recipes whose size lives in an index
-        # keyed by one — bb resolves it, so that the id asked about here is
+        # keyed by one: bb resolves it, so that the id asked about here is
         # exactly the id that would be installed.
         print(size_of(tc, argv[2] if len(argv) > 2 else ""))
 

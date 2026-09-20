@@ -1,7 +1,7 @@
 // The app: one activity, a bottom bar, and screens for what the dashboard's
-// sidebar and notebook do — minus the terminals. A session's Claude and its
-// shell are the browser's; everything else — projects, the notebook, the
-// approvals, the nodes, the accounts, your profile — is here, in the shape
+// sidebar and notebook do, minus the terminals. A session's Claude and its
+// shell are the browser's; everything else (projects, the notebook, the
+// approvals, the nodes, the accounts, your profile) is here, in the shape
 // an Android app takes rather than the tabs a browser page needs.
 package dev.builderbot.app
 

@@ -8,7 +8,7 @@ operator's rule, and the reason sessions are told to write these separately:
 the pull request information does not need to be the same.
 
 **How it accrues, and why bumping is not part of it.** Entries land under
-`## Unreleased` as work is done — each stamped with the commit it describes —
+`## Unreleased` as work is done, each stamped with the commit it describes,
 and the file simply grows. A version bump then renames that section to the
 new version with the date. The bump is only the date break: whoever presses
 it, and whenever they press it, nothing that was logged is lost waiting. That
@@ -25,7 +25,7 @@ seen one, without promising conformance this module does not check.
 file. Which directory a project or component maps to is version.py's question
 (_sub resolves and prefix-checks it, because components arrive from a
 browser); answering it twice here would be a second copy that drifts. So this
-module has no configure() and no state — the callers that already resolved
+module has no configure() and no state: the callers that already resolved
 the directory hand it over.
 """
 import functools
@@ -105,7 +105,7 @@ def unreleased(d):
 
 
 def unreleased_text(text):
-    """The same, from text already in hand — so a caller that needs both the
+    """The same, from text already in hand, so a caller that needs both the
     file and the count pays for one read, not two."""
     if text is None:
         return []
@@ -129,7 +129,7 @@ def groups(d):
     """The Unreleased section as [{name, entries: [{text, shas}]}].
 
     A category is a `### Name` subsection, which is the shape Keep a Changelog
-    uses and the one this file was already close to — so a reader who has seen
+    uses and the one this file was already close to, so a reader who has seen
     one is not learning a private format, and a diff of a recategorised entry
     is a moved line rather than a rewritten file.
 
@@ -139,7 +139,7 @@ def groups(d):
 
     ORDER IS THE FILE'S, and deliberately. Categories and the entries in them
     are arranged by hand, so what a reader meets first is what somebody
-    decided should come first — not what happened to be committed earliest.
+    decided should come first, not what happened to be committed earliest.
     The commits are still on every line and still answer "when did that
     change"; they just no longer decide the running order.
     """
@@ -173,7 +173,7 @@ def _clean_text(t):
     if not t:
         raise _Refused("an empty changelog entry says nothing to anybody")
     if len(t) > MAX_TEXT:
-        raise _Refused(f"keep an entry under {MAX_TEXT} characters — it is one "
+        raise _Refused(f"keep an entry under {MAX_TEXT} characters: it is one "
                        "line of a list a person reads, not the whole story")
     return t
 
@@ -197,7 +197,7 @@ def put(d, gs):
     for.
 
     An empty group is dropped rather than written as a heading with nothing
-    under it — a category with no entries is a category somebody emptied.
+    under it, since a category with no entries is a category somebody emptied.
     """
     try:
         rows = []
@@ -214,7 +214,7 @@ def put(d, gs):
         return {"error": str(e)}
     # The uncategorised group carries no heading, so the file can only put it
     # first: written after a category its entries read as that category's,
-    # which is what a reversed arrangement did. Hoisted rather than refused —
+    # which is what a reversed arrangement did. Hoisted rather than refused:
     # somebody rearranging categories is not asking about this one.
     rows.sort(key=lambda r: 0 if not r[0] else 1)
     lines = []
@@ -262,14 +262,14 @@ def put(d, gs):
 def add(d, text, sha="", cat=""):
     """Log one user-facing change under Unreleased, creating what is missing.
 
-    The sha is the commit the entry describes — passed in rather than looked
+    The sha is the commit the entry describes, passed in rather than looked
     up, keeping this module free of git. It goes at the end of the line in
     parentheses: quiet enough to skim past, present enough that "when did that
     change" has a one-step answer.
 
     `cat` puts it in a category, making one at the END of the section if it is
     new. The end, because a session logging a change does not get to decide
-    where a category sits in what a reader meets — that is an arrangement, and
+    where a category sits in what a reader meets. That is an arrangement, and
     arrangements are the operator's.
     """
     try:
@@ -300,7 +300,7 @@ _STAMP = re.compile(r"\s*\(([0-9a-f]{7,40}(?:, [0-9a-f]{7,40})*)\)$")   # --shor
 
 def numbered(d):
     """The Unreleased entries as [(n, text, [shas], category)], n counting
-    from 1 in the section's order — the handle every verb below takes.
+    from 1 in the section's order: the handle every verb below takes.
 
     Numbers are positional and not stored: the section is short-lived by
     design, and an id scheme on a list a bump erases would outlive its
@@ -324,8 +324,8 @@ def _flat(d):
 
 
 def _regroup(rows, order=()):
-    """Back to the group shape, with the categories in `order` — the
-    arrangement already in the file — and any category new to it appended.
+    """Back to the group shape, with the categories in `order` (the
+    arrangement already in the file) and any category new to it appended.
 
     Taking the order from the rows instead put a category wherever its
     earliest entry happened to sit, so a session moving one line into an
@@ -369,7 +369,7 @@ def _pick(rows, ns):
         except (TypeError, ValueError) as e:
             raise _Refused("which entry? `bb changelog unreleased` numbers them") from e
         if not 1 <= i <= len(rows):
-            raise _Refused(f"no unreleased entry {i} — `bb changelog unreleased` "
+            raise _Refused(f"no unreleased entry {i}: `bb changelog unreleased` "
                            f"lists {len(rows)}; a dated section is history, and "
                            f"`bb version unroll` is how one is reopened")
         if i - 1 in want:
@@ -388,7 +388,7 @@ def edit(d, n, text=None, sha="", cat=None):
     the entry had stays and this commit's joins it, so "when did that change"
     still answers for both.
 
-    `text` of None keeps the words — for a move, where retyping the whole
+    `text` of None keeps the words, which is for a move, where retyping the whole
     line to change where it sits is a typo waiting to silently rewrite it.
     `cat` of None keeps the category. A caller that passes neither a sha nor
     new words changes nothing about what the entry says, and nothing should
@@ -426,8 +426,8 @@ def edit(d, n, text=None, sha="", cat=None):
 def remove(d, n):
     """Drop one Unreleased entry.
 
-    For a line that stopped being true — the change it described was undone,
-    or a later one replaced it — where rewording would leave the reader with a
+    For a line that stopped being true (the change it described was undone,
+    or a later one replaced it) where rewording would leave the reader with a
     note about something that never shipped. The commit is untouched; this is
     the record of what a person sees, not of what happened to the code.
     """
@@ -473,7 +473,7 @@ def split(d, n):
     The way back out of a merge, and the way to drop a single commit from a
     line: split, then remove the one that stopped being true. Each line keeps
     the text and the category, because there is no way to know which words
-    belonged to which commit — they are there to be reworded, which is the
+    belonged to which commit: they are there to be reworded, which is the
     next thing you do.
     """
     def go(rows):
@@ -493,7 +493,7 @@ def unroll(d, version):
 
     The undo of roll(), for a bump somebody thought better of: the section's
     entries rejoin whatever has been logged since, so the next bump dates the
-    whole group together. Only sensible while the version is unreleased —
+    whole group together. Only sensible while the version is unreleased:
     that judgment is the caller's, since tags are git's and this module is
     deliberately path-pure.
 
@@ -552,7 +552,7 @@ def roll(d, version, date):
     """Date the Unreleased section as `version`, ready to commit with it.
 
     Returns True when there was something to roll. An empty cycle rolls
-    nothing rather than writing a section holding only a date — the warning
+    nothing rather than writing a section holding only a date. The warning
     about that belongs at the moment of bumping, not in the shipped file.
     """
     if not unreleased(d):
@@ -580,7 +580,7 @@ _SERIES = re.compile(r"^(\d+)\.(\d+)(?:\.|\b)")
 
 def series_of(title):
     """The MAJOR.MINOR a dated section belongs to, or "" for a title that is
-    not a version — `Unreleased`, and anything hand-written."""
+    not a version: `Unreleased`, and anything hand-written."""
     m = _SERIES.match((title or "").strip())
     return f"{m.group(1)}.{m.group(2)}" if m else ""
 
@@ -591,7 +591,7 @@ def since_minor(secs):
     The About panel is read by somebody asking what changed in the build in
     front of them, and the whole file is the wrong answer there: it grows for
     the life of the project. So the panel shows everything unreleased and the
-    dated releases of the newest minor — 0.6.2, 0.6.1, 0.6.0 — and nothing
+    dated releases of the newest minor (0.6.2, 0.6.1, 0.6.0) and nothing
     older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
     without anybody pruning a file.
 

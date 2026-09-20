@@ -3,14 +3,14 @@
 //
 // This file exists because the rules kept being re-broken: three tabs in a
 // row landed with browser-default controls, a filter bar flush against the
-// edge, or rows on the sidebar's tighter inset — each fixed by inverting a
+// edge, or rows on the sidebar's tighter inset, each fixed by inverting a
 // mechanism (the global field skin, the band tokens, the doc-tab groups),
 // each found by a person noticing. The mechanisms make conformance cheap;
 // this makes deviation LOUD. The rules run for every kind registered in
 // TABKINDS that renders a document, discovered from the page itself, so:
 //
 //   - a new tab kind with no driver below FAILS ("no conformance driver"),
-//     which is the enforcement hook — the price of a new tab includes making
+//     which is the enforcement hook: the price of a new tab includes making
 //     it conform, not just making it exist;
 //   - the rules are computed style and geometry, never class names taken on
 //     faith, so passing means the pixels agree, not that the markup claims to.
@@ -59,7 +59,7 @@ const DRIVERS = {
   nodes: {
     // The config plane, not the row: its editors arrive on the tab's own
     // fetch a moment later, and a rule measured on the row alone was
-    // measuring a heading over nothing — which is how a mount row's
+    // measuring a heading over nothing, which is how a mount row's
     // controls came to sit at three different heights unremarked.
     open: () => page.evaluate(() => openNodesTab()),
     readyWhen: '.nodestab .ndconfbody',
@@ -91,7 +91,7 @@ const DRIVERS = {
   },
 };
 
-// Every kind that renders a document, from the page's own registry — never a
+// Every kind that renders a document, from the page's own registry, never a
 // hand-kept list here, because a hand-kept list is how a new kind ships
 // unmeasured.
 const kinds = await page.evaluate(() =>
@@ -99,11 +99,11 @@ const kinds = await page.evaluate(() =>
 const undriven = kinds.filter(k => !DRIVERS[k]);
 ok(undriven.length === 0,
    `every document tab kind has a conformance driver${
-     undriven.length ? ` — missing: ${undriven.join(', ')} (add it to
+     undriven.length ? `; missing: ${undriven.join(', ')} (add it to
      uniform.mjs DRIVERS; the hard rules are the price of a new tab)` : ''}`);
 
 // The band classes the design language names. Content-left must agree across
-// every one of them that is visible — this is the rule that was broken three
+// every one of them that is visible: this is the rule that was broken three
 // different ways before it was a rule. Indented-by-design rows opt out by
 // class, and the list of those is deliberately short.
 const BANDS = '.field, .row, .rule, .empty, .loading, .fnote, .dmsrc, ' +
@@ -149,7 +149,7 @@ async function measure(kind){
     const ragged = [...stacks.values()].filter(ws => ws.length > 1 && new Set(ws).size > 1);
     return {
       ragged, stacks: [...stacks.values()].filter(ws => ws.length > 1).length,
-      // flush and nbhost are the same treatment in the sheet — the notebook
+      // flush and nbhost are the same treatment in the sheet, and the notebook
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
       maxw: cs.maxWidth,
@@ -200,7 +200,7 @@ for (const kind of kinds){
        JSON.stringify(m.lefts)})`);
   ok(m.offskin.length === 0,
      `[${kind}] every control wears the field skin${
-       m.offskin.length ? ` — not: ${m.offskin.join(', ')}` : ''} (${
+       m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
        m.controls} checked)`);
 }
 
@@ -208,7 +208,7 @@ for (const kind of kinds){
 // The other half of the document language, and the half that drifts: it is
 // carried by shared classes rather than by a scaffold function, so a tab can
 // quietly answer differently and nothing notices. These rules are the things
-// that must be the SAME on every tab — which is why they are here and not in
+// that must be the SAME on every tab, which is why they are here and not in
 // each kind's own suite. A rule that is genuinely one tab's belongs there.
 //
 // Measured, never taken on faith: the colours and the layout are computed, so
@@ -222,11 +222,11 @@ for (const kind of kinds){
 
 // A tab strip is navigation, not actions; the document's own footer has its
 // own shape (one verb left, its undo right). Everything else that holds two
-// or more TEXT buttons is an action bar — icon clusters are exempt by having
+// or more TEXT buttons is an action bar; icon clusters are exempt by having
 // no text, which is what makes a roadmap row's five pictograms legal and a
 // row of Up / Down / Remove not.
-// `pagemore` joins them: it is the framework's own footer for a long list —
-// a count and up to three buttons, drawn by paginate() and nothing else — so
+// `pagemore` joins them: it is the framework's own footer for a long list
+// (a count and up to three buttons, drawn by paginate() and nothing else), so
 // it is already one bar with one shape everywhere, which is what the rule
 // below is for. It reached this check for the first time when the Jobs tab
 // was paged, because every other paginated list is in a notebook whose
@@ -254,7 +254,7 @@ async function language(){
         continue;
       }
       // Destructive last: not "the last button is destructive", but that
-      // nothing safe sits after something that cannot be undone — which is
+      // nothing safe sits after something that cannot be undone, which is
       // the rule a thumb obeys and a two-Remove bar still satisfies.
       const first = btns.findIndex(gone);
       if (first >= 0 && btns.slice(first).some(b => !gone(b)))
@@ -289,17 +289,17 @@ for (const kind of kinds){
   if (L.err) continue;
   ok(L.loose.length === 0,
      `[${kind}] every set of text buttons is an action bar${
-       L.loose.length ? ` — not: ${L.loose.join(', ')}` : ''}`);
+       L.loose.length ? `; not: ${L.loose.join(', ')}` : ''}`);
   ok(L.order.length === 0,
      `[${kind}] nothing safe sits after a verb that cannot be undone${
-       L.order.length ? ` — ${L.order.join(', ')}` : ''}`);
+       L.order.length ? `: ${L.order.join(', ')}` : ''}`);
   L.layout.forEach(x => seenBars.add(x));
   L.sects.forEach(x => seenSects.add(x.skin));
   L.reds.forEach(x => seenReds.add(x));
   const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
   ok(wordy.length === 0,
      `[${kind}] a section's status is a word or a number, not a sentence${
-       wordy.length ? ` — ${JSON.stringify(wordy)}` : ''}`);
+       wordy.length ? `: ${JSON.stringify(wordy)}` : ''}`);
 }
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
@@ -331,8 +331,8 @@ async function spanning(){
     const out = [];
     const seen = new Set();
     for (const row of box.querySelectorAll(ROWS)){
-      // The document bar is a band, not a control row — filters at the left,
-      // the action at the tab's right edge — so its union spans by design.
+      // The document bar is a band, not a control row (filters at the left,
+      // the action at the tab's right edge), so its union spans by design.
       // Its controls are measured one by one below, like any lone control.
       if (row.classList.contains('docbarrow')) continue;
       const kids = [...row.querySelectorAll(CTL)].filter(vis);
@@ -343,7 +343,7 @@ async function spanning(){
       if (r - l > LIM) out.push(`${row.className.split(' ')[0]} ${Math.round(r - l)}/${Math.round(W)}`);
     }
     for (const e of box.querySelectorAll(CTL)){
-      // `.slot` is a terminal pane, not `.term` — that is the terminal
+      // `.slot` is a terminal pane, not `.term`: that is the terminal
       // COLUMN, which every document tab is inside, so the exclusion took
       // every lone control on every tab with it and this half of the rule
       // measured nothing at all.
@@ -363,7 +363,7 @@ for (const kind of kinds){
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab${
-       S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
 }
 
 // ---- controls in a row line up ---------------------------------------------
@@ -424,8 +424,8 @@ async function lineup(){
 // node picker at phone width once, where the bar's max-width:88% is what
 // squeezes it, so this is measured where it bites rather than only at desktop.
 //
-// One line is computed from the control's own metrics — its line-height,
-// padding and border — not from a constant, because the tabs run 12px, 13px
+// One line is computed from the control's own metrics (its line-height,
+// padding and border) rather than from a constant, because the tabs run 12px, 13px
 // mono and 16px on a phone.
 async function unwrapped(){
   return page.evaluate(() => {
@@ -455,7 +455,7 @@ for (const kind of kinds){
   const L = await lineup();
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height${
-       L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
+       L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
 }
 
 // ---- a setting is written by Save, never by the pick -----------------------
@@ -470,7 +470,7 @@ for (const kind of kinds){
 // assigns `el.onchange = …` almost everywhere, and a function's own source
 // says whether it posts. What this cannot see is a listener added with
 // addEventListener, so it is a guard against the easy mistake rather than a
-// proof — the easy mistake being the one that shipped: a dial that saved on
+// proof, the easy mistake being the one that shipped: a dial that saved on
 // the pick because writing it there was three lines shorter.
 //
 // Filters and pickers are not settings and are allowed to act at once. They
@@ -499,12 +499,12 @@ for (const kind of kinds){
   const W = await writesOnPick();
   ok(!W.err && W.wrote.length === 0,
      `[${kind}] no setting writes itself on the pick${
-       W.err ? ` (${W.err})` : W.wrote.length ? ` — ${W.wrote.join(', ')}` : ''}`);
+       W.err ? ` (${W.err})` : W.wrote.length ? `: ${W.wrote.join(', ')}` : ''}`);
 }
 
 // ---- adding goes at the top ------------------------------------------------
 // The control that adds to a notebook view is the first band under its head
-// row, above the list, at both widths — never at the foot, where a phone
+// row, above the list, at both widths, never at the foot, where a phone
 // scrolled past every row to find it. Measured on each view that has one,
 // against its head row and the first row of its list.
 {
@@ -535,7 +535,7 @@ for (const kind of kinds){
   }
   ok(misplaced.length === 0,
      `every add control sits under its head row and above its list, as a button${
-       misplaced.length ? ` — not: ${misplaced.join('; ')}` : ''}`);
+       misplaced.length ? `; not: ${misplaced.join('; ')}` : ''}`);
   // Save and Revert only where something can be staged behind them: a Save
   // under a list that writes through read as a button that did nothing.
   const foots = {};
@@ -554,7 +554,7 @@ for (const kind of kinds){
 
 // ---- the notebook's head row ------------------------------------------------
 // Every view opens with the same row: its one-line summary left, its History
-// right — and that row is the FIRST band of the view, so the History sits at
+// right, and that row is the FIRST band of the view, so the History sits at
 // one height whichever tab is open. Measured rather than read from the
 // markup, because the Briefing tab once put a section above its head and
 // every other rule here still passed.
@@ -594,8 +594,8 @@ for (const kind of kinds){
       return { first: first ? (first.className || first.tagName).split(/\s+/)[0] : '(nothing)',
                isHead: !!first && first.classList.contains('nbhead'),
                top: head ? Math.round(head.getBoundingClientRect().top) : null,
-               // Not every view has a log — Tests and Artifacts open with a
-               // summary and nothing else — but where a head has controls
+               // Not every view has a log (Tests and Artifacts open with a
+               // summary and nothing else), but where a head has controls
                // they sit right of the summary, after its spacer.
                right: !head || [...head.querySelectorAll('button')].every(b => {
                  const sp = head.querySelector('.sp');
@@ -605,7 +605,7 @@ for (const kind of kinds){
   }
   const notFirst = Object.entries(heads).filter(([, h]) => !h.isHead).map(([v, h]) => `${v} opens with ${h.first}`);
   ok(notFirst.length === 0,
-     `every notebook view opens with its head row${notFirst.length ? ` — not: ${notFirst.join(', ')}` : ''}`);
+     `every notebook view opens with its head row${notFirst.length ? `; not: ${notFirst.join(', ')}` : ''}`);
   const tops = new Set(Object.values(heads).map(h => h.top));
   ok(tops.size === 1,
      `...and the head row sits at one height on every view (${JSON.stringify(
@@ -619,7 +619,7 @@ ok(seenReds.size <= 1,
    `a verb that cannot be undone is the same colour everywhere (${JSON.stringify([...seenReds])})`);
 
 // The fence inside the one page: a renderer that throws must break its own
-// tab and nothing else — before renderGuarded, one bug in one kind's render
+// tab and nothing else: before renderGuarded, one bug in one kind's render
 // took drawPanes down, and with it the poll, the strip and every terminal.
 {
   await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
@@ -643,7 +643,7 @@ ok(seenReds.size <= 1,
   ok(page.errors.length > errsBefore
      && /boom \(deliberate\)/.test(page.errors[page.errors.length - 1]),
      '...while the error still reaches the console, so a caught bug is not a hidden one');
-  // Deliberate, asserted, and now removed — the final zero-errors check below
+  // Deliberate, asserted, and now removed: the final zero-errors check below
   // is about bugs this suite did not cause on purpose.
   page.errors.length = errsBefore;
   await page.evaluate(() => {
@@ -655,7 +655,7 @@ ok(seenReds.size <= 1,
 }
 
 // A stacked box may not be aligned across its own axis, on every tab, at
-// DESKTOP width — which is where it shows.
+// DESKTOP width, which is where it shows.
 //
 // align-items on a COLUMN flex box is the horizontal axis, so a rule written
 // for a line of controls pushes a stacked one to an edge. That is what the
@@ -663,7 +663,7 @@ ok(seenReds.size <= 1,
 // starting at a different x, with six hundred pixels of nothing beside them,
 // because `.row:has(.setrow){align-items:flex-end}` also matched
 // `.row.stack2`. Cheap to measure, and the operator found it rather than
-// this suite — which is the reason it is here.
+// this suite, which is the reason it is here.
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);
@@ -682,7 +682,7 @@ for (const kind of kinds){
     return [...new Set(out)].slice(0, 4);
   });
   ok(skewed.length === 0, `[${kind}] no stacked box is aligned across its own axis${
-    skewed.length ? ` — ${skewed.join('; ')}` : ''}`);
+    skewed.length ? `: ${skewed.join('; ')}` : ''}`);
 }
 
 // ---- what reads on a filled accent surface, on every scheme -----------------
@@ -690,7 +690,7 @@ for (const kind of kinds){
 // a button that is on, a view bar's current tab, the mobile bar's, an open
 // select's chosen row, and the text selection. Twelve schemes swap the accent
 // under all of them, and five of those accents were bright enough that the
-// text on the fill came out under AA — nostromo worst at 3.56:1, which is the
+// text on the fill came out under AA, nostromo worst at 3.56:1, which is the
 // one somebody noticed. The active tab is measured because it had BOTH
 // failures: the fill was too light, and its name is a `.lbl`, the same class
 // as the quiet field-label helper, so it wore that colour on top.
@@ -731,7 +731,7 @@ for (const kind of kinds){
   await sleep(120);
   ok(bad.length === 0,
      `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes${
-       bad.length ? ` — under ${AA}:1: ${bad.join(', ')}` : ''}`);
+       bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
 }
 
 // The same page, held to the same rules at phone width: nothing may scroll
@@ -776,16 +776,16 @@ for (const kind of kinds){
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab at phone width${
-       S.err ? ` (${S.err})` : S.wide.length ? ` — ${S.wide.join(', ')}` : ''}`);
+       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
   await sleep(250);
   const L = await lineup();
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height at phone width${
-       L.err ? ` (${L.err})` : L.off.length ? ` — ${L.off.join('; ')}` : ''}`);
+       L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${
-       W.err ? ` (${W.err})` : W.tall.length ? ` — wrapped: ${W.tall.join(', ')}` : ''}`);
+       W.err ? ` (${W.err})` : W.tall.length ? `; wrapped: ${W.tall.join(', ')}` : ''}`);
   // A sentence is a proseline, not an input. An <input> shows about thirty
   // characters at this width, so a 300-character bug title was a field you
   // could not read what you were editing in. The threshold is the length: a
@@ -804,10 +804,10 @@ for (const kind of kinds){
   });
   ok(!P.err && P.bad.length === 0,
      `[${kind}] a sentence is a proseline, not an input${
-       P.err ? ` (${P.err})` : P.bad.length ? ` — ${P.bad.join(', ')}` : ''}`);
+       P.err ? ` (${P.err})` : P.bad.length ? `: ${P.bad.join(', ')}` : ''}`);
   ok(!P.err && P.grew.length === 0,
      `[${kind}] every proseline shows all of itself rather than scrolling inside${
-       P.grew.length ? ` — ${P.grew.join(', ')}` : ''}`);
+       P.grew.length ? `: ${P.grew.join(', ')}` : ''}`);
 }
 // ---- a list of choices is alphabetical -----------------------------------
 // Each of these was in the order somebody wrote it in. The exceptions are
@@ -852,7 +852,7 @@ for (const kind of kinds){
 }
 
 // The Tests view needs rows to be measured on, and one of them a continuation
-// — a "..." name whose "follows:" line is drawn under it — because that line
+// (a "..." name whose "follows:" line is drawn under it), because that line
 // is exactly what scrolled the tab sideways once (a 100% flex basis plus a
 // margin, unable to shrink). A registry the fixture does not carry, so a
 // two-line run is ingested here; the file reset takes it away again.
@@ -874,7 +874,7 @@ for (const kind of kinds){
 // on its own: the page reported no overflow while the Tests tab scrolled
 // sideways inside its pane. The widest offender is named, so the failure
 // says what to fix rather than that something is wide. The tab strip is
-// the one thing allowed past the edge — it scrolls by design.
+// the one thing allowed past the edge: it scrolls by design.
 const sideways = () => page.evaluate(() => {
   const host = document.querySelector('.doc.on');
   const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div') || host;
@@ -901,7 +901,7 @@ const sideways = () => page.evaluate(() => {
       widest = { right: Math.round(r.right),
                  what: `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className || '').split(/\s+/)[0]}`
                    + ` "${(e.textContent || '').trim().slice(0, 20)}" in ${chain.join(' < ')}`
-                   + (row ? ` — row: ${row.outerHTML.replace(/\s+/g, ' ').slice(0, 700)}` : '') };
+                   + (row ? `; row: ${row.outerHTML.replace(/\s+/g, ' ').slice(0, 700)}` : '') };
     }
   }
   return {
@@ -913,7 +913,7 @@ const sideways = () => page.evaluate(() => {
     // <select> never zooms, so inflating it bought nothing and cost the
     // loudest element on every tab: the fields are mono, and a 16px mono
     // picker beside an 11px label shouts. A select is measured the other
-    // way — it must NOT be inflated — so the rule has a check in both
+    // way (it must NOT be inflated), so the rule has a check in both
     // directions rather than one that only notices half of it.
     small: controls.filter(e => e.tagName !== 'SELECT'
                                 && parseFloat(getComputedStyle(e).fontSize) < 16)
@@ -944,9 +944,9 @@ for (const kind of kinds){
     ok(m.overflow <= 0 && !m.widest, `[${tag}] no sideways scroll at phone width (${
       m.overflow}px over${m.widest ? `; ${m.widest.what} reaches ${m.widest.right}px` : ''})`);
     ok(m.small.length === 0, `[${tag}] a phone's typed fields are 16px${
-      m.small.length ? ` — not: ${m.small.join(', ')}` : ''}`);
+      m.small.length ? `; not: ${m.small.join(', ')}` : ''}`);
     ok(m.loud.length === 0, `[${tag}] ...and its pickers are not${
-      m.loud.length ? ` — inflated: ${m.loud.join(', ')}` : ''}`);
+      m.loud.length ? `; inflated: ${m.loud.join(', ')}` : ''}`);
   }
 }
 
@@ -955,7 +955,7 @@ for (const kind of kinds){
 // the page. The two drift apart the day a helper is renamed and the document
 // still names the old one, so every name the document uses is checked to be
 // real on the page, and every helper the framework exposes is checked to be
-// in the document — a rename without a rewrite fails here by name.
+// in the document: a rename without a rewrite fails here by name.
 {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
@@ -964,17 +964,17 @@ for (const kind of kinds){
   const helpers = ['docSurface', 'docSection', 'renderGuarded', 'busy'];
   const missing = helpers.filter(h => !doc.includes(h));
   ok(missing.length === 0,
-     `the design language names every helper the framework exposes${missing.length ? ` — not: ${missing.join(', ')}` : ''}`);
+     `the design language names every helper the framework exposes${missing.length ? `; not: ${missing.join(', ')}` : ''}`);
   const named = [...doc.matchAll(/`(docSurface|docSection|renderGuarded|busy|wireSections)\b/g)].map(m => m[1]);
   const unreal = await page.evaluate(ns => ns.filter(n => typeof window[n] !== 'function'), [...new Set(named)]);
   ok(unreal.length === 0,
-     `...and every helper the document names is a real function on the page${unreal.length ? ` — not: ${unreal.join(', ')}` : ''}`);
+     `...and every helper the document names is a real function on the page${unreal.length ? `; not: ${unreal.join(', ')}` : ''}`);
   // By name, with or without the dot: the document writes a class as it
   // appears in markup as often as as a selector.
   const classes = ['actbar', 'field', 'histbar', 'danger', 'state', 'foot', 'modal', 'ndcap', 'setrow', 'prose'];
   const undocumented = classes.filter(c => !new RegExp(`\\b${c}\\b`).test(doc));
   ok(undocumented.length === 0,
-     `...and names the classes the page is measured on${undocumented.length ? ` — not: ${undocumented.join(', ')}` : ''}`);
+     `...and names the classes the page is measured on${undocumented.length ? `; not: ${undocumented.join(', ')}` : ''}`);
 }
 
 // ---- a fold lasts for the page, and a reload starts it from the default ---
@@ -985,7 +985,7 @@ for (const kind of kinds){
 // rather than the first one found, because a tab that is still filling in
 // (the Docker manager redraws as its rows land) replaces the element
 // between the find and the close, and a close on a detached fold records
-// nothing — which read as the rule failing when only the sample had moved.
+// nothing, which read as the rule failing when only the sample had moved.
 {
   const kind = 'nodes', key = 'nodes:health';
   const sel = `.doc.on details.sect[data-sect="${key}"]`;

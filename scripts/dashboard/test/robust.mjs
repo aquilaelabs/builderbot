@@ -3,14 +3,14 @@
 // The contract is narrow: refuse it (4xx) or do it (2xx). A 500 is an
 // unhandled exception, which on a surface that runs commands is the shape of
 // bug worth finding before it is found for you. Everything here is a body a
-// browser would never send — wrong types, missing fields, absurd numbers —
+// browser would never send (wrong types, missing fields, absurd numbers),
 // because the checks are written against each field being the thing it is
 // supposed to be.
 import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
 
 // ---- the app's own files carry a validator --------------------------------
 // index.html IS the application, and it went out with no ETag and no cache
-// directive at all — so whether a phone noticed a container update was left
+// directive at all, so whether a phone noticed a container update was left
 // to the browser's heuristics, and the failure is silent: yesterday's page
 // against today's server, with nothing on screen admitting it. `no-cache`
 // means "ask me first", so the usual answer is a 304 of a few bytes.
@@ -125,7 +125,7 @@ ok(badGet.length === 0,
      badGet.length ? ': ' + badGet.join(', ') : ''}`);
 
 // One status poll must not cost a node runtime. The auth check is 357MB and
-// 0.68s, and it used to run once per request while a sign-in was open — so a
+// 0.68s, and it used to run once per request while a sign-in was open, so a
 // phone, a desktop and a preload polling together were a gigabyte of Node and
 // a dashboard that had stopped answering.
 const t0 = Date.now();
@@ -140,7 +140,7 @@ ok(true, 'the console errors above are the refusals themselves');
 // ---- a poll that cannot land says so, rather than sitting on "loading…" ----
 // The operator hit a dashboard where some cards had drawn and the rest were
 // still on their initial text, with a red logo and nothing else to read. Red
-// on its own does not say "error", so it reads as a hung page — and the two
+// on its own does not say "error", so it reads as a hung page, and the two
 // want telling apart before anything else can be diagnosed.
 await page.route('**/api/status*', r => r.abort());
 // Two failures in a row, however the page's own poll interleaves: a
@@ -183,7 +183,7 @@ ok(await page.evaluate(() => !document.getElementById('dot').classList.contains(
 // ---- one card's draw failing must not strand the rest (bug #44) ----
 // The other shape of the same report: the container answered, one draw threw
 // on the payload, and every card after it kept its initial text under a red
-// light — which the words above would then have blamed on the network. The
+// light, which the words above would then have blamed on the network. The
 // failed card says so in its own body; the others draw; the light stays on.
 await page.evaluate(() => {
   window.__drawRunner = drawRunner;
@@ -209,10 +209,10 @@ await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
 ok(await page.evaluate(() => !/not drawn/.test(document.getElementById('runner').textContent)),
    '...and the card recovers on the next poll that draws');
-// ...and when the page trips BEFORE the draws — on the payload, not on the
-// fetch — the light and the placeholders blame this page, not the network.
+// ...and when the page trips BEFORE the draws (on the payload, not on the
+// fetch), the light and the placeholders blame this page, not the network.
 // The status answer is held for half a second so the stub is in place
-// before the page's own first poll comes back — the placeholders have to be
+// before the page's own first poll comes back: the placeholders have to be
 // on screen for the words on them to matter.
 await page.route('**/api/status*', async r => {
   await new Promise(res => setTimeout(res, 500)); await r.continue(); });

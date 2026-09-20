@@ -11,10 +11,10 @@ import { execFileSync } from 'child_process';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 // run.sh hands the URL over; the port in it is picked per run, so there is no
-// default worth having — a hardcoded one would run the suite against whatever
+// default worth having: a hardcoded one would run the suite against whatever
 // happens to answer there, which is the failure the runner refuses to allow.
 export const URL = process.env.DASHBOARD_TEST_URL
-  || (() => { throw new Error('DASHBOARD_TEST_URL is not set — run this through '
+  || (() => { throw new Error('DASHBOARD_TEST_URL is not set. Run this through '
                               + '`bb dashboard test`, which starts the server'); })();
 export const DIR = process.env.DASHBOARD_TEST_DIR;
 const CHROME = process.env.DASHBOARD_TEST_CHROME;
@@ -68,7 +68,7 @@ export async function closePage(p){
 export const launch = () => chromium.launch({ executablePath: CHROME });
 
 // A page with the test credentials, console errors collected on page.errors,
-// and dialogs auto-accepted (recorded on page.dialogs) — the confirmations
+// and dialogs auto-accepted (recorded on page.dialogs): the confirmations
 // are part of what the tests check.
 export async function newPage(browser, opts = {}){
   // The Authorization header is sent preemptively: the server answers 401
@@ -81,7 +81,7 @@ export async function newPage(browser, opts = {}){
     ...opts });
   const page = await ctx.newPage();
   // Every wait in this suite is a guess about how long a poll, a subprocess and
-  // a repaint take on THIS box — and this box also runs CI, the live dashboard
+  // a repaint take on THIS box, and this box also runs CI, the live dashboard
   // and whatever the operator is doing. Rather than re-guess at two hundred
   // call sites, the default is set here and the explicit ones are stretched by
   // the same multiple below: BB_TEST_SLOW=2 doubles them, which is what the CI
@@ -135,7 +135,7 @@ export async function newPage(browser, opts = {}){
   }
   page.errors = []; page.dialogs = [];
   // The harness runs no ttyd, so every terminal iframe's /term request 502s
-  // by design — same-origin now, which puts it in the page console where the
+  // by design: same-origin now, which puts it in the page console where the
   // old dead-port fetch never appeared. Filtered here, not per test: it is a
   // property of the harness, not of any one scenario.
   // With the URL, because "Failed to load resource: 400" names neither what
@@ -158,20 +158,20 @@ export const doctorFixture = name =>
 
 // A throwaway tmux session for a test that has ended the fixture ones. Only
 // on the harness's private server: run.sh unsets TMUX and points TMUX_TMPDIR
-// at its scratch dir, and this refuses to run unless both are so — a client
+// at its scratch dir, and this refuses to run unless both are so: a client
 // inside a tmux session ignores TMUX_TMPDIR and would create (and later, the
 // cleanup would kill) on the real server.
 export function tmuxNew(name, dir = '/tmp', cmd = []){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
-    throw new Error('tmuxNew: not on the private tmux server — refusing');
+    throw new Error('tmuxNew: not on the private tmux server, refusing');
   execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', dir, ...cmd]);
 }
 // What a pane on that private server currently shows. For checking that
-// something was typed into a session without being submitted — the screen is
+// something was typed into a session without being submitted: the screen is
 // the only place text that has not been sent to a program exists.
 export function tmuxCapture(name){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
-    throw new Error('tmuxCapture: not on the private tmux server — refusing');
+    throw new Error('tmuxCapture: not on the private tmux server, refusing');
   // -J joins what the pane merely wrapped, so a long line typed into an
   // 80-column pane still reads as the one line it is.
   return execFileSync('tmux', ['capture-pane', '-p', '-J', '-t', name]).toString();
@@ -180,23 +180,23 @@ export function tmuxCapture(name){
 // before the next file, so a test may end one it needs gone.
 export function tmuxKill(name){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
-    throw new Error('tmuxKill: not on the private tmux server — refusing');
+    throw new Error('tmuxKill: not on the private tmux server, refusing');
   try { execFileSync('tmux', ['kill-session', '-t', name]); } catch { /* already gone */ }
 }
 // A tmux format string evaluated against a session on that same private server.
 export function tmuxFmt(name, fmt){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
-    throw new Error('tmuxFmt: not on the private tmux server — refusing');
+    throw new Error('tmuxFmt: not on the private tmux server, refusing');
   return execFileSync('tmux', ['display-message', '-p', '-t', name, fmt]).toString().trim();
 }
 
-// Poll the server from node until the stored layout satisfies pred — for
+// Poll the server from node until the stored layout satisfies pred, for
 // tests that must not proceed (usually into a reload) before a debounced
 // save has actually landed. NOT page.waitForFunction with an async
 // predicate: an async function returns a Promise, a Promise is truthy, and
 // that wait resolves instantly. Two tests guarded reloads with exactly that
 // no-op, and passed only while their other waits happened to outlast the
-// 400ms save debounce — the findings preload made a page fast enough to
+// 400ms save debounce, until the findings preload made a page fast enough to
 // reload inside the window, and the pending save died with it.
 export async function layoutSettled(pred, ms = 15000){
   const auth = { Authorization: 'Basic '
@@ -211,13 +211,13 @@ export async function layoutSettled(pred, ms = 15000){
   }
 }
 
-// What animated while `act` ran — recorded, not sampled.
+// What animated while `act` ran: recorded, not sampled.
 //
 // Asking `getAnimations().length > 0` in a round trip after the action only
 // works if that round trip lands inside the tween, which is 140-220ms here.
 // On an idle box it does; on a loaded one it does not, and the test fails
 // with nothing wrong with the page. Wrapping Element.animate answers the
-// question that was actually being asked — did this animate — rather than
+// question that was actually being asked (did this animate) rather than
 // the one about whether it still is.
 //
 // Returns a key per animated element: its id, its data-card, and its classes,
@@ -251,12 +251,12 @@ export async function animatedDuring(page, act){
 // Open a fold and wait for it to stop moving.
 //
 // The memories and the bug reports slide open now, which means everything
-// inside one is in motion for the length of the tween — and Playwright will
+// inside one is in motion for the length of the tween, and Playwright will
 // not click a moving target, so a test that reached straight into a freshly
 // opened report failed on "element is not stable" under load. Waiting on the
 // element's own animations is exact: no sleep to tune, and nothing to
 // re-tune when the duration changes.
-// Change a fixture out of band, then wait for the page to notice — asking
+// Change a fixture out of band, then wait for the page to notice, asking
 // again each time instead of asking once and waiting.
 //
 // The server caches several verdicts behind short TTLs. The Claude auth
@@ -264,7 +264,7 @@ export async function animatedDuring(page, act){
 // (357MB, 0.68s), and bypassing the cache once put the container out of
 // memory. The page re-asks on its own fifteen-second poll. So a single
 // refresh() straight after rewriting a fixture can be answered from the
-// cache, and the next honest answer is up to TTL-plus-a-poll away — a test
+// cache, and the next honest answer is up to TTL-plus-a-poll away: a test
 // that refreshes once and then waits 25s is waiting on a question it has
 // already had answered, and 20 + 15 is more than 25.
 //
@@ -274,7 +274,7 @@ export async function animatedDuring(page, act){
 // suite is really a guess about how long a poll, a subprocess and a repaint
 // take on THIS machine, and this machine also runs CI, an emulator and the
 // operator's sessions. A full suite has gone red three times in a day on three
-// different waits, each of which passed alone seconds later — bug #13 — so the
+// different waits, each of which passed alone seconds later (bug #13), so the
 // honest fix is not another guess but a multiplier: BB_TEST_SLOW=2 doubles
 // every wait that goes through here, and a run under load can afford it.
 //
@@ -299,15 +299,15 @@ export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } =
 // Hold the poll off while a test drives state it planted itself.
 //
 // The page refreshes every fifteen seconds and a refresh REPLACES `state`
-// from the server. A test that plants something the server does not say —
-// state.docker = {on:false}, an attention row, a session that is not there —
+// from the server. A test that plants something the server does not say
+// (state.docker = {on:false}, an attention row, a session that is not there)
 // and then makes several assertions about it is racing that timer: usually
 // it wins, and about one run in three a tick lands mid-block and the page
 // redraws from the truth instead. That is bug B99's whole family, and it
 // cost a bisect that blamed a commit.
 //
 // So: plant, assert, release. `refresh` is a top-level function declaration,
-// so the binding can be swapped and put back — nothing in the page has to
+// so the binding can be swapped and put back; nothing in the page has to
 // know about this.
 export const holdPoll = page => page.evaluate(() => {
   if (!window.__heldRefresh){ window.__heldRefresh = refresh; refresh = async () => {}; }
@@ -326,7 +326,7 @@ export async function openFold(page, sel){
   // clicking it: these lists repaint whenever their revision token moves, and
   // a test that files or notes a bug moves it legitimately. The row is then
   // replaced by an equal one and the click lands on a detached node. Nothing
-  // is wrong with the page when that happens — re-resolve and go again rather
+  // is wrong with the page when that happens, so re-resolve and go again rather
   // than making the suite's honesty depend on that gap staying narrow.
   let last;
   for (let attempt = 0; attempt < 4; attempt++){
@@ -347,7 +347,7 @@ export async function openFold(page, sel){
   throw last;
 }
 
-// Wait until the page has its first doctor verdict — the last thing to land
+// Wait until the page has its first doctor verdict, the last thing to land
 // on a fresh instance, so a good "page is ready" marker.
 // The closing half of openFold, and racy for the same reason: the click can
 // land on a row that a repaint is about to replace, and the replacement comes

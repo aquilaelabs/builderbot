@@ -4,8 +4,8 @@
 A node runs this under systemd. It enrolls once with a token the operator
 minted on the Nodes tab, then loops for the life of the machine: say hello,
 ask for work, run what it is given, report what happened. The controller
-never connects to a node — a node needs no open port, no inbound rule and no
-key the controller could lose — and the credential it holds opens nothing
+never connects to a node (a node needs no open port, no inbound rule and no
+key the controller could lose), and the credential it holds opens nothing
 but its own row (docs/nodes.md §4, §8).
 
 The protocol is six verbs over plain HTTP, and this file speaks four of them
@@ -22,7 +22,7 @@ plus the download that fetches itself:
                                   operator has stopped that job
     POST /api/v1/agent/result     the terminal state (succeeded, failed,
                                   canceled), exit code and a one-line error
-    GET  /api/v1/agent/download   the agent the controller ships — self-update
+    GET  /api/v1/agent/download   the agent the controller ships, for self-update
 
 Three rules this file keeps that are worth knowing before changing it:
 
@@ -33,15 +33,15 @@ Three rules this file keeps that are worth knowing before changing it:
     and reports late.
   * The node enforces its own capabilities (door 7). A job that requires a
     capability this node was not enrolled with is refused HERE, whatever the
-    controller's row says — the row is a claim, the enrollment is the fact.
+    controller's row says. The row is a claim, the enrollment is the fact.
   * Jobs never run as root. The unit runs the agent as root so that phase 5's
     system jobs (mounts, network) can, but an exec job drops to the account
-    the provisioner enrolled — the same `bb` that docker runs as — before it
+    the provisioner enrolled (the same `bb` that docker runs as) before it
     runs anything. A session that reaches this box through a job has the
     reach it already had over ssh, and no more.
   * Sessions run here too (roadmap #24), and as a THIRD account. Beside the
-    jobs this keeps two ttyds up — the same two the controller's dashboard
-    hook starts — running bb-tty from the bb bundle the controller ships,
+    jobs this keeps two ttyds up, the same two the controller's dashboard
+    hook starts, running bb-tty from the bb bundle the controller ships,
     so a Claude session on this node's projects lives on this node, with
     this node's toolchains and the projects share it mounts. They run as
     the session account the provisioner made (--session-user), which is in
@@ -87,15 +87,15 @@ import urllib.request
 # controller and the other way round. 0.5.0 is where that promise ends and
 # where breaking changes and the removal of stale compatibility paths belong.
 # A test holds this half to the VERSION file, so the two cannot drift apart
-# quietly — see test/agent.mjs.
+# quietly; see test/agent.mjs.
 #
 # The BUILD is this file's own counter and moves only when this file moves,
 # which is why it is not BuilderBot's patch number: most patches ship no new
-# agent. It does NOT reset at a window boundary — 0.5.28 follows 0.4.27 — so
+# agent. It does NOT reset at a window boundary (0.5.28 follows 0.4.27), so
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.90"
+AGENT_VERSION = "0.6.91"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -104,7 +104,7 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   "cache": "/var/lib/builderbot/cache",
                   # What this node keeps of a project's built artifacts, so
                   # an emulator or a container here starts from a local copy
-                  # rather than pulling one over the link every time — which
+                  # rather than pulling one over the link every time, which
                   # is free on a LAN and is not on a node in somebody's
                   # cloud. Per project underneath (artifact_dir), because a
                   # VM may be several projects' node.
@@ -119,8 +119,8 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   "appdata": "/var/lib/builderbot/appdata"}
 
 # The session half (roadmap #24): the ttyd this node runs bb-tty under, the
-# ports it binds, and the address. Seams for the suite — which runs a ttyd
-# that only records what it was asked — and for a node whose ports are taken.
+# ports it binds, and the address. Seams for the suite, which runs a ttyd
+# that only records what it was asked, and for a node whose ports are taken.
 # The bind address defaults to the address the default route leaves by (the
 # LAN one the controller reaches), not the loopback: the controller's proxy
 # dials in from another machine. Phase 10b's firewall keeps it to the
@@ -134,7 +134,7 @@ SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
 SESSION = {}
 
 # Where a store may NOT be put. The stores are directories this agent
-# creates, fills, and — for the cache — empties on request, so a store
+# creates, fills, and (for the cache) empties on request, so a store
 # pointed at a system tree is a delete waiting to happen: `--cache /etc`
 # would make Clear cache remove every directory under /etc. Refused here and
 # again on the controller, deliberately twice: the tab should say no before
@@ -186,7 +186,7 @@ def store_path_ok(path):
     if " " in p or ".." in p.split("/"):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
-        return (f"{p} is a system directory (or the root of the mounts) — "
+        return (f"{p} is a system directory (or the root of the mounts): "
                 "a store is a directory of its own, like /var/lib/builderbot/x "
                 "or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
@@ -198,7 +198,7 @@ def make_store(path):
     brought into being.
 
     The list is the whole point. A store at /mnt/tank/bb/toolchains may have
-    made two directories or none, and there is no way to tell afterwards —
+    made two directories or none, and there is no way to tell afterwards:
     an empty /mnt/tank/bb could be ours or could be the operator's. So it is
     recorded at the moment of creation, and nothing outside that record is
     ever removed.
@@ -218,8 +218,8 @@ def prune_made(made):
 
     rmdir rather than a check-then-delete: it fails with ENOTEMPTY by
     itself, so there is no window between deciding a directory is empty and
-    removing it. The first one that will not go stops the walk — a parent of
-    something that is still there cannot be empty either — and a mountpoint
+    removing it. The first one that will not go stops the walk (a parent of
+    something that is still there cannot be empty either), and a mountpoint
     is never touched, because removing the directory a share is mounted on
     is how you delete the thing you meant to detach.
 
@@ -272,8 +272,8 @@ def dir_bytes(path):
 
 
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
-# bb-sandbox is the one copy of the mount logic, installed by the provisioner
-# — its presence is what says this node was set up as a sandbox, and a
+# bb-sandbox is the one copy of the mount logic, installed by the provisioner:
+# its presence is what says this node was set up as a sandbox, and a
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
@@ -303,11 +303,11 @@ NETPLAN_FILE = "90-builderbot.yaml"
 DIAL_BACK_S = 180
 # How long after a ttyd start this will try another. A port already taken
 # would otherwise spin the loop on a failing exec. Settable only so the suite
-# can stop waiting on it — the test that proves a dead ttyd is started again
+# can stop waiting on it: the test that proves a dead ttyd is started again
 # waits exactly this long, and it was the slowest interval in the suite.
 SESSION_RETRY_S = int(os.environ.get("BUILDERBOT_SESSION_RETRY_S") or 30)
 # The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
-# where it lives, and — for the tests — a tarball to unpack instead of the
+# where it lives, and, for the tests, a tarball to unpack instead of the
 # GitHub release download.
 RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner")
 # The machine's package manager, for a recipe's `system` packages. Seams for
@@ -336,7 +336,7 @@ RPM_BIN = os.environ.get("BUILDERBOT_RPM_BIN", "rpm")
 # NetworkManager's CLI, the network backend where there is no netplan (the
 # RHEL family). Settable for the same reason as netplan's: the suite stubs it.
 NMCLI_BIN = os.environ.get("BUILDERBOT_NMCLI_BIN", "nmcli")
-# The other package managers and network backends this agent can drive —
+# The other package managers and network backends this agent can drive:
 # one pair per family, detected on the machine, never told by the
 # controller. Each settable so the suite can point one at a stub or at a
 # path that does not exist.
@@ -495,7 +495,7 @@ class Controller:
     the case, and a CA is a later layer (docs/nodes.md §4). Plain http is
     allowed and said plainly: the token then travels in the clear, which is
     no worse than the dashboard's own credential already does on that
-    network — and no better.
+    network, and no better.
     """
 
     def __init__(self, url, token, pin=""):
@@ -525,8 +525,8 @@ class Controller:
         return c
 
     def call(self, verb, body=None, timeout=30, method="POST", raw=False):
-        """(status, decoded body). Status 0 means no answer at all —
-        the controller is down or unreachable — and is the case the loop
+        """(status, decoded body). Status 0 means no answer at all
+        (the controller is down or unreachable), and is the case the loop
         backs off on rather than treating as a refusal."""
         try:
             c = self._conn(timeout)
@@ -552,8 +552,8 @@ class Controller:
             return r.status, {"error": payload[:200].decode("utf-8", "replace")}
 
     def fetch(self, path, dest, timeout=600):
-        """GET a large body straight to a file. (status, digest-header)
-        — the snapshot and the bundle both arrive this way, and neither
+        """GET a large body straight to a file. (status, digest-header).
+        The snapshot and the bundle both arrive this way, and neither
         belongs in memory twice."""
         try:
             c = self._conn(timeout)
@@ -617,8 +617,8 @@ _PROBE_SAID = set()
 def _probe(argv, timeout=5):
     """Ask a tool for its version: what it said, and whether it ANSWERED.
 
-    _run cannot tell those apart — it hands back stdout or stderr and drops
-    the status — so a binary that ABORTS on startup read as a tool that
+    _run cannot tell those apart (it hands back stdout or stderr and drops
+    the status), so a binary that ABORTS on startup read as a tool that
     printed something odd, and _clean_version called that "present". The node
     then advertised a toolchain it cannot run, and the controller placed work
     there that could only fail on arrival. Measured on bb-sandbox-redhat,
@@ -632,7 +632,7 @@ def _probe(argv, timeout=5):
 
     There is no attempt to stop a crashing probe dumping core, because there
     is no way to from here. This ran under `ulimit -c 0` for one build on the
-    theory that a version probe has no business leaving a core file — and the
+    theory that a version probe has no business leaving a core file, and the
     kernel ignores RLIMIT_CORE when core_pattern is a PIPE, which is what
     both machines here have (apport on one, systemd-coredump on the other).
     Measured, not assumed: the limit reads back as 0 and the process is
@@ -655,21 +655,21 @@ def _probe_died(name, path, out, why):
 
     Out, because reporting a toolchain that cannot start is what lets the
     controller send work here that can only fail. Once per agent process,
-    because the census runs every ten minutes and the interesting part — the
-    tool's own first line, which is the whole diagnosis — does not change; a
+    because the census runs every ten minutes and the interesting part (the
+    tool's own first line, which is the whole diagnosis) does not change; a
     restart says it again, which is when somebody is looking anyway.
     """
     if name in _PROBE_SAID:
         return
     _PROBE_SAID.add(name)
-    # The whole of what it said, newlines folded — not its first line, which
+    # The whole of what it said, newlines folded, not its first line, which
     # was the first cut of this and threw the answer away: .NET's startup
     # failures open with "Process terminated." on a line of their own and put
     # the reason on the next one, so the log carried the half that says
     # nothing and dropped the half somebody has to act on.
     said = " ".join((out or "").split())[:300]
     log(f"toolchain: {path} {why} when asked its version, so {name} is not in "
-        f"this node's census" + (f" — it said: {said}" if said else ""))
+        f"this node's census" + (f". It said: {said}" if said else ""))
 
 
 def _mem():
@@ -687,7 +687,7 @@ def _mem():
 
 
 def _sshd_listening():
-    # Port 22 in LISTEN (state 0A) in either table — cheaper and truer than
+    # Port 22 in LISTEN (state 0A) in either table: cheaper and truer than
     # asking systemd, which does not know about a dropbear.
     for tab in ("/proc/net/tcp", "/proc/net/tcp6"):
         try:
@@ -709,11 +709,11 @@ STORE_ID_FILE = ".bb-store-id"
 #
 # One share can serve a Linux box, a Mac and a Windows machine only if their
 # binaries do not land on top of each other: the store's root is therefore
-# <store>/<os>-<arch> — linux-x86_64, darwin-arm64 — and everything else
+# <store>/<os>-<arch> (linux-x86_64, darwin-arm64), and everything else
 # (the layout, the probes, the census, the bundle) is relative to that. The
 # operator's setting stays the share; the scope is this machine's own fact.
-# What is the same bytes on every host — the Android system images, tens of
-# gigabytes — lives once under <store>/shared and each scope's android tree
+# What is the same bytes on every host (the Android system images, tens of
+# gigabytes) lives once under <store>/shared and each scope's android tree
 # links to it, because sdkmanager and Gradle want one ANDROID_HOME and
 # would otherwise fetch a second copy per platform. (The one-time move of a
 # flat store into its scope ran on 9 Sep 2026 and was taken out again.)
@@ -772,7 +772,7 @@ def share_images(store, say=None):
 
 
 def store_id(path):
-    """A stable id for a store, from a marker inside it — the same file the
+    """A stable id for a store, from a marker inside it: the same file the
     controller reads for its own (nodes.store_id).
 
     Two machines mounting one share cannot recognize each other by path: the
@@ -805,7 +805,7 @@ def _stores(stores, used=False):
             out[role] = {"path": path, "free_mb": None, "total_mb": None}
             continue
         if used:
-            # What the store itself holds — the cache's size is the number
+            # What the store itself holds; the cache's size is the number
             # the row shows beside its Clear (docs/nodes.md §6). du, at the
             # census only: a walk of a big cache is not a per-poll cost.
             n = _run(["du", "-sm", path], timeout=60).split()
@@ -872,7 +872,7 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                # The BINARIES, not the directories they sit in. Checking the
                # directories called android-sdk present on a node whose
                # cmdline-tools was an empty folder and whose platform-tools
-               # did not exist — so toolchain_gap admitted a job needing adb
+               # did not exist, so toolchain_gap admitted a job needing adb
                # and it failed there instead of being refused here.
                "android-sdk": ("android/platform-tools/adb",
                                "android/cmdline-tools/latest/bin/sdkmanager",
@@ -944,7 +944,7 @@ def _clean_version(text):
     """A version line, or "present" when the tool answered with something
     else. `flutter --version` as root leads with "Woah! You appear to be
     trying to run flu…" and rustup with "error: rustup could not choose a
-    version" — both mean the thing is there, and neither is a version, so
+    version". Both mean the thing is there, and neither is a version, so
     putting them on a row as one is worse than saying nothing."""
     line = (text or "").strip()
     if not line or not re.search(r"\d+\.\d+", line[:80]) or re.match(
@@ -1124,8 +1124,8 @@ def sysdeps_now(state):
 def store_dirs(state):
     """What is actually IN the toolchain store, as directory names.
 
-    The census's `toolchains` above is a placement summary — six names, so a
-    job can select on them — and it was being read as an inventory of the
+    The census's `toolchains` above is a placement summary (six names, so a
+    job can select on them), and it was being read as an inventory of the
     whole catalog, which called four installed toolchains missing on a store
     the controller could see for itself. `bb toolchains` puts each toolchain in
     <root>/<name>, and android's parts under <root>/android/, so the names
@@ -1166,8 +1166,8 @@ def sdk_images(state):
     host, and its download size comes from Google's index on the controller.
 
     The AVD half is not derivable anywhere else, which is why it is here. An
-    AVD names one image exactly — `image.sysdir.1=system-images/android-36/
-    google_apis/x86_64/` — and will not boot without it, so it is the whole
+    AVD names one image exactly (`image.sysdir.1=system-images/android-36/
+    google_apis/x86_64/`) and will not boot without it, so it is the whole
     of the answer to "can this one go?".
     """
     stores = state.get("stores") or {}
@@ -1224,7 +1224,7 @@ def sdk_env(state, who=None):
     store. What the image gets from its Dockerfile, a node gets from here.
 
     EVERY job, not only a bb verb. It used to be applied in the bb branch of
-    Job.exec alone, so `bb build` and `bb test` — a plain exec — ran with a
+    Job.exec alone, so `bb build` and `bb test` (a plain exec) ran with a
     bare PATH: measured on a real node, java and go were both NOT-ON-PATH
     and JAVA_HOME unset, on a node whose census reported java 21.0.12.1 and
     go present. The placement gate said yes and then ./gradlew could not
@@ -1255,7 +1255,7 @@ def sdk_env(state, who=None):
     # Where CI logs are archived on this node (roadmap #24, step 4). The
     # workflows honor BB_CI_LOG_DIR and so does `bb ci-log`; without it the
     # runner kept them under its own home, 0700, where a session on the node
-    # — a different account — could not read them. The data store is the
+    # (a different account) could not read them. The data store is the
     # one directory both accounts see, and the runner's .env (written by
     # _apply_runner) names the same path, so the archive and the reader
     # agree without either being configured by hand.
@@ -1271,7 +1271,7 @@ def runner_env_text(state):
     """The runner's .env: the SAME environment sdk_env hands every other job
     on this node, one KEY=VALUE per line, which the runner reads into every
     job it runs. It carried only BB_CI_LOG_DIR until 8 Sep, so a CI job's
-    PATH was the bare system's — no node, no Playwright, no store — while a
+    PATH was the bare system's, with no node, no Playwright and no store, while a
     session or a bb job on the same machine had the toolchain. The browser
     suite then skipped with exit 0 and every 'dashboard tests' run on
     bb-sandbox was green without running a test (bug B74). Sorted, so the
@@ -1285,7 +1285,7 @@ def sdk_versions(state):
 
     The SAME generator the controller runs for its own list, so the two
     describe one store the same way. Before this, a node's versions came
-    from _toolchains() — a six-name placement summary with crude parsing —
+    from _toolchains() (a six-name placement summary with crude parsing),
     and the Tools tab showed "present" beside a toolchain the controller could
     name a version for, an unstripped "go version go1.27.0 linux/amd64", and
     nothing at all for the NDK. One store, two descriptions of it.
@@ -1325,7 +1325,7 @@ def sdk_versions(state):
 
 
 def census(state):
-    """What this machine is. Asked at hello — every ten minutes — so the
+    """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
     tot, _ = _mem()
     tc = _toolchains(state)
@@ -1349,8 +1349,8 @@ def census(state):
         # node is below the floor the Git view needs (bb doctor names it).
         "git": _run(["git", "--version"]) if shutil.which("git") else "",
         # The daemon's OWN id, which is how the controller tells two VMs that
-        # have worn one address apart — a rebuilt sandbox, a second machine
-        # given the old one's IP. It used to read it over ssh with `docker
+        # have worn one address apart: a rebuilt sandbox, or a second
+        # machine given the old one's IP. It used to read it over ssh with `docker
         # info`, and that reader went when the Docker tab stopped judging an
         # agent node by the controller's ssh (B111); reported here, the same
         # value arrives by the route the work already takes.
@@ -1405,7 +1405,7 @@ def session_now(state):
     out["workspace"] = os.path.ismount(SHARE)
     # ...and writable: a projects share mounted read-only was the right
     # arrangement for a Docker-only sandbox (nothing there wrote source), and
-    # is the wrong one for a machine that runs sessions — Claude could not
+    # is the wrong one for a machine that runs sessions: Claude could not
     # save a file, and the home's transcripts link cannot be made on it.
     # The kernel answers EROFS for root too, so this is an honest probe.
     out["writable"] = out["workspace"] and os.access(SHARE, os.W_OK)
@@ -1433,7 +1433,7 @@ def session_now(state):
     # This machine's boot, in the form bb-tty's boot_id() computes: a
     # terminal's URL carries the boot it was opened in, and bb-tty refuses
     # to START a session from a tab older than the machine's current run.
-    # On a node that has to be the node's boot, not the controller's — the
+    # On a node that has to be the node's boot, not the controller's. The
     # controller stamps this into a node-bound terminal's URL for the page.
     out["boot"] = boot_id()
     # ...and how long ago that boot was. A network mount lands a moment
@@ -1457,7 +1457,7 @@ def uptime_s():
 
 
 def boot_id():
-    """PID 1's start time paired with the host's boot time — the same pair,
+    """PID 1's start time paired with the host's boot time: the same pair,
     in the same shape, as the controller's server.boot_id and bb-tty's."""
     try:
         with open("/proc/1/stat") as f:
@@ -1470,7 +1470,7 @@ def boot_id():
 
 
 def services_now():
-    """The managed services on this node and their state — today the
+    """The managed services on this node and their state. Today that is the
     Actions runner: registered as what, with which labels, and whether its
     listener is up. Read from the runner's own files, so a runner installed
     by hand reports the same way one installed from the tab does."""
@@ -1481,7 +1481,7 @@ def services_now():
     out["actions-runner"] = out["runners"][0] if out["runners"] else {"installed": False}
     # Tailscale: whether it is here, this node's MagicDNS name (the funnel
     # URL is https://<that>), and which https ports are funnelled to which
-    # local ports — read from tailscale's own status, so a funnel set by
+    # local ports, read from tailscale's own status, so a funnel set by
     # hand reports the same as one set from the tab.
     ts = {"installed": bool(shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK)),
           "dns": "", "funnel": {}}
@@ -1519,7 +1519,7 @@ def mounts_now():
     # A mount fstab has and the kernel does not is tried once, here, and
     # the server's sentence kept beside it: "not mounted" on the row said
     # nothing about WHY, and the why was the whole story when the sandbox
-    # moved to an address the host's export did not name — the mount was
+    # moved to an address the host's export did not name: the mount was
     # refused with "access denied by server", nofail let the boot go on,
     # and nothing anywhere repeated the refusal. Root only: mount is.
     if os.geteuid() == 0:
@@ -1552,14 +1552,14 @@ def mounts_now():
 
 
 def mount_try(path):
-    """`mount PATH` from fstab, and what it said when it failed — the last
+    """`mount PATH` from fstab, and what it said when it failed: the last
     line, which for NFS is the server's own reason. "" on success. Half a
     minute at most: an NFS server that is down keeps mount retrying in the
     foreground for two, and a census must not wait that out."""
     try:
         p = subprocess.run(["mount", path], capture_output=True, text=True, timeout=30, check=False)
     except subprocess.TimeoutExpired:
-        return "mount gave no answer in 30s — the server is not reachable"
+        return "mount gave no answer in 30s; the server is not reachable"
     except OSError as e:
         return str(e)[:200]
     if p.returncode == 0:
@@ -1585,7 +1585,7 @@ def _client_allows(client, addr):
 
 def export_gaps(addr):
     """The NFS mounts in fstab whose server exports them to named clients
-    that do not include addr — the address this node is about to move to.
+    that do not include addr, the address this node is about to move to.
     From `showmount -e` on each server; a server that does not answer, or
     a machine without showmount, contributes nothing rather than a refusal.
     The Unraid rule the docs prescribe names exactly one address, so a
@@ -1657,8 +1657,8 @@ def _os_release():
 # ---------------------------------------------------------------------------
 # the machine's own tools
 #
-# A system job from the controller says WHAT — an address and a gateway, a
-# mount, the packages a recipe needs — and never how: the spec is the same
+# A system job from the controller says WHAT (an address and a gateway, a
+# mount, the packages a recipe needs) and never how: the spec is the same
 # for every node. The how is this machine's, and it is detected here rather
 # than assumed: which package manager is installed, and which service owns
 # the network. Each backend renders the same desired state into its own
@@ -1668,15 +1668,15 @@ def _os_release():
 # another distribution is another backend here, not another job spec.
 
 def _have(binary):
-    """A binary on PATH, or an absolute path that is executable — the suite
+    """A binary on PATH, or an absolute path that is executable. The suite
     points the *_BIN settings at stubs by path."""
     return bool(shutil.which(binary)) or os.access(binary, os.X_OK)
 
 
 def pkg_backend():
     """(name, query argv, install argv) for the package manager this machine
-    has, keyed by the tool that answers whether a package is installed —
-    since that is the half every check needs — and, where two families
+    has, keyed by the tool that answers whether a package is installed
+    (since that is the half every check needs), and, where two families
     share one (rpm: dnf and zypper), by the installer beside it. The name
     is the key a recipe lists its system packages under (`system.apt`,
     `system.dnf`, ...). Empty when it is none of them, which is a machine
@@ -1701,7 +1701,7 @@ def pkg_backend():
         # with --noreplace, which is portage's own "if missing".
         return "emerge", [], [EMERGE_BIN, "--quiet", "--noreplace"]
     if _have(BREW_BIN) or os.path.exists("/opt/homebrew/bin/brew"):
-        # macOS: Homebrew, as the account that owns it — the agent runs as
+        # macOS: Homebrew, as the account that owns it. The agent runs as
         # that account on a guest node, which is what brew wants.
         brew = BREW_BIN if _have(BREW_BIN) else "/opt/homebrew/bin/brew"
         return "brew", [brew, "list", "--versions"], [brew, "install", "--quiet"]
@@ -1798,7 +1798,7 @@ class NetworkManagerNet:
 
     def ready(self, iface):
         if not self.conn(iface):
-            return (f"NetworkManager has no connection on {iface} — once, at the console: "
+            return (f"NetworkManager has no connection on {iface}. Once, at the console: "
                     f"nmcli con add type ethernet ifname {iface} con-name {iface}")
         return ""
 
@@ -1904,8 +1904,8 @@ class NetworkdNet(FilesNet):
     def paths(iface):
         # networkd applies the FIRST .network file, in lexical order, that
         # matches a device and ignores the rest; the distribution's own sit
-        # at 10- and 20-, so ours sorts ahead of them or it is never read
-        # — and the job would then report success with the old address.
+        # at 10- and 20-, so ours sorts ahead of them or it is never read,
+        # and the job would then report success with the old address.
         return [os.path.join(NETWORKD_DIR, f"00-builderbot-{iface}.network")]
 
     def render(self, iface, mode, addr, gw, dns):
@@ -1925,7 +1925,7 @@ class NetworkdNet(FilesNet):
 
 
 class IfupdownNet(FilesNet):
-    """/etc/network/interfaces — Debian without netplan, Raspberry Pi OS
+    """/etc/network/interfaces: Debian without netplan, Raspberry Pi OS
     before NetworkManager, Alpine's ifupdown-ng. The interface's own stanza
     in that file is replaced with ours (the rest of the file is kept as it
     is), then the interface is cycled with ifdown/ifup."""
@@ -2094,8 +2094,8 @@ def net_backend():
 
 
 def controller_ip(url):
-    """The address the controller's hostname resolves to now — IPv4 first,
-    the way the provisioner chose it — or "" when it does not resolve."""
+    """The address the controller's hostname resolves to now (IPv4 first,
+    the way the provisioner chose it), or "" when it does not resolve."""
     host = urllib.parse.urlsplit(url).hostname or ""
     if not host:
         return ""
@@ -2110,7 +2110,7 @@ def controller_ip(url):
 
 
 def init_now():
-    """Which init runs this machine — what a service of ours is, there."""
+    """Which init runs this machine: what a service of ours is, there."""
     if platform.system() == "Darwin":
         return "launchd"
     if os.path.isdir("/run/systemd/system"):
@@ -2175,7 +2175,7 @@ def distro_now():
 
 
 class Sampler:
-    """CPU as a percentage over the interval since the last sample — which
+    """CPU as a percentage over the interval since the last sample, which
     is the poll interval, so the number on the row is 'the last 25 seconds'
     and not an instant nobody can act on."""
 
@@ -2213,7 +2213,7 @@ def load_state():
         with open(NODE_JSON) as f:
             return json.load(f)
     except OSError as e:
-        raise SystemExit(f"{NODE_JSON} is missing — enroll this node first: "
+        raise SystemExit(f"{NODE_JSON} is missing; enroll this node first: "
                          "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
@@ -2281,7 +2281,7 @@ class Job(threading.Thread):
     did not acknowledge stays in `pending` and goes with the next one, so
     nothing is lost across a controller restart and nothing is doubled (the
     controller drops a sequence it already has). The result is retried with
-    backoff until acknowledged — this thread is the record of the job until
+    backoff until acknowledged: this thread is the record of the job until
     the controller has it.
     """
 
@@ -2313,7 +2313,7 @@ class Job(threading.Thread):
 
     def step(self, name):
         """What this job is doing now, for the row. Rides the next log post
-        rather than taking a verb of its own — the agent is already talking
+        rather than taking a verb of its own, since the agent is already talking
         to the controller every half second while a job runs."""
         with self.lock:
             self.pending_step = str(name)[:60]
@@ -2412,7 +2412,7 @@ class Job(threading.Thread):
                 state, code = self.agent.tell(self, spec)
             else:
                 state, code = self.exec(spec)
-        except Exception as e:                       # noqa: BLE001 — reported, not raised
+        except Exception as e:                       # noqa: BLE001 (reported, not raised)
             self.say(f"agent error: {type(e).__name__}: {e}\n")
             state, code, error = "failed", 70, f"agent error: {type(e).__name__}"
         if self.canceled:
@@ -2444,7 +2444,7 @@ class Job(threading.Thread):
         account (roadmap R47).
 
         A job of its own and not an exec, for two reasons that both matter.
-        It drops to the session account rather than the enrolled job one —
+        It drops to the session account rather than the enrolled job one:
         those are different accounts on purpose, and the credential has to
         land in the home a Claude session will read it from, owned by the
         account that will read it. And it wants a PTY: the flow prints a URL
@@ -2452,7 +2452,7 @@ class Job(threading.Thread):
         a buffer nobody ever sees.
 
         The conversation is the job's own log going up and `input` on the
-        reply to a log post coming down — the same channel `cancel` has used
+        reply to a log post coming down, the same channel `cancel` has used
         since the start. Nothing new is opened toward this machine.
         """
         who_name = self.agent.session_account()
@@ -2487,7 +2487,7 @@ class Job(threading.Thread):
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
         argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"]
         master, slave = pty.openpty()
-        self.say("signing in to Claude on this machine — the URL follows\n")
+        self.say("signing in to Claude on this machine; the URL follows\n")
         try:
             self.proc = subprocess.Popen(
                 argv, stdin=slave, stdout=slave, stderr=slave,
@@ -2548,14 +2548,14 @@ class Job(threading.Thread):
         if missing or "system" in need:
             # Door 7, in one line: the node refuses what it was not enrolled
             # to do, and says which capability was asked for. "system" is not
-            # a capability an exec can ask for at all — root work is its own
+            # a capability an exec can ask for at all: root work is its own
             # job type, and only the configuration plane queues it.
             self.say(f"refused: this node is not enrolled for {', '.join(missing or need)}\n")
             return "failed", 77
         argv = [str(a) for a in (spec.get("argv") or [])]
         stores = self.agent.state.get("stores") or {}
         cwd = spec.get("cwd") or stores.get("data") or "/tmp"
-        # The node's own toolchains, for EVERY job — a build is the case this
+        # The node's own toolchains, for EVERY job. A build is the case this
         # whole store exists for, and it was the one case that did not get
         # them (bug #45).
         env = dict(sdk_env(self.agent.state))
@@ -2584,14 +2584,14 @@ class Job(threading.Thread):
         for k, v in (spec.get("env") or {}).items():
             env[str(k)] = str(v)
         # Inputs: files from the project's dist/, fetched into the working
-        # directory by name — an APK for the emulator to install.
+        # directory by name: an APK for the emulator to install.
         for f in (spec.get("files") or [])[:8]:
             name = os.path.basename(str(f))
             # Into this node's artifact store for the project, and used from
             # there: a second emulator run on the same build copies nothing,
             # and on a node across a slow link that is the difference the
-            # store exists for. The size decides whether it is the same file
-            # — the controller sends no digest for a dist/ path.
+            # store exists for. The size decides whether it is the same file:
+            # the controller sends no digest for a dist/ path.
             keep = self.agent.artifact_dir(spec.get("project"), who)
             dest = os.path.join(keep or cwd, name)
             want = spec.get("sizes", {}).get(str(f)) if isinstance(spec.get("sizes"), dict) else None
@@ -2647,8 +2647,8 @@ class Job(threading.Thread):
             self._kill(p)
         # The pipe is read on its own thread, and this one posts on a clock.
         # Reading and posting on one thread meant a job that printed a line
-        # and then worked in silence never posted the line — readline blocked
-        # until the next one — so the row sat at "assigned" with nothing in
+        # and then worked in silence never posted the line (readline blocked
+        # until the next one), so the row sat at "assigned" with nothing in
         # its log, and a cancel sent on the log reply could not arrive.
         def pump():
             try:
@@ -2665,7 +2665,7 @@ class Job(threading.Thread):
             if self.pending:
                 self.flush()
             if time.time() > deadline and not killed:
-                self.say(f"timed out after {int(timeout)}s — killing it\n")
+                self.say(f"timed out after {int(timeout)}s, killing it\n")
                 self._kill(p)
                 killed = True
         p.wait()
@@ -2725,7 +2725,7 @@ class Agent:
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
-        """Popen keywords that make the child the enrolled account — empty
+        """Popen keywords that make the child the enrolled account. Empty
         when there is nothing to drop (not root, or enrolled as root on
         purpose). Popen's own user/group/extra_groups rather than a
         preexec_fn: this process has job threads, and a fork hook that runs
@@ -2823,7 +2823,7 @@ class Agent:
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
             # record so a job started before the next hello still has it, and
-            # only replaced when the controller actually sends one — an older
+            # only replaced when the controller actually sends one: an older
             # controller says nothing and this node keeps its built-in answer.
             lay = r.get("layout")
             if isinstance(lay, list) and lay and lay != self.state.get("layout"):
@@ -2831,7 +2831,7 @@ class Agent:
                 save_state(self.state)
             # The idle rule for Claude sessions (the controller's idle.py),
             # kept in node.json so it is enforced here while the controller
-            # is down — a node's sessions outlive a controller restart on
+            # is down. A node's sessions outlive a controller restart on
             # purpose; the rule about when they end must not.
             im = r.get("session_idle_minutes")
             if isinstance(im, int) and im >= 0 and im != self.state.get("session_idle_minutes"):
@@ -2865,7 +2865,7 @@ class Agent:
                 f"{n.get('state')}, poll {self.poll}s")
             # The sessions this node runs use the bb the controller ships;
             # when that moves, fetch it and restart the ttyds onto it. The
-            # running sessions are tmux's and survive the restart — only the
+            # running sessions are tmux's and survive the restart; only the
             # next connection runs the new bb-tty. Never fatal: the session
             # half must not take the job half down with it: a toolchain
             # store this process cannot write is a node with no sessions,
@@ -2949,7 +2949,7 @@ class Agent:
         delay = 1
         # What is THIS process's to end, ended by it. The ttyds go: a stop of
         # the unit is an update or a reboot, and the new agent starts its own.
-        # The tmux servers they attached do not — they are their own daemons,
+        # The tmux servers they attached do not: they are their own daemons,
         # the sessions are inside them, and a conversation should survive an
         # agent update the way it survives a ttyd restart.
         #
@@ -2957,7 +2957,7 @@ class Agent:
         # KillMode=control-group takes every process in the cgroup after this
         # handler returns, tmux included, so Update agent ended every session
         # on the machine (B107). The unit says KillMode=process now, which
-        # means the jobs are this handler's to end too — with control-group
+        # means the jobs are this handler's to end too. With control-group
         # systemd was killing those, and leaving a build running while the
         # controller re-queues it is the one thing that change could have
         # cost.
@@ -2984,7 +2984,7 @@ class Agent:
                 self.quiet_distro_ttyd()
                 st, r = self.hello()
                 if st == 401:
-                    log(f"refused: {r.get('error')} — this node's credential "
+                    log(f"refused: {r.get('error')}; this node's credential "
                         "is no longer good. Re-enroll with a new token.")
                     time.sleep(300)
                     continue
@@ -3033,13 +3033,13 @@ class Agent:
                 continue
             if st == 200 and r.get("tmux"):
                 # ...or keys for a session here: the phone keyboard's row,
-                # a console's line, a macro — typed into the pane as the
+                # a console's line, a macro: typed into the pane as the
                 # dashboard would type them into its own tmux.
                 self.tmux_ops(r["tmux"] if isinstance(r["tmux"], list) else [])
                 continue
             if st == 200 and r.get("hello"):
                 # The controller refused something on the strength of a
-                # census that may have gone stale — the census rides hello
+                # census that may have gone stale. The census rides hello
                 # every ten minutes, which is fine for a display and too
                 # coarse for a gate. Say it again now, so the retry the
                 # operator is about to make reasons about this machine as it
@@ -3050,7 +3050,7 @@ class Agent:
                 self.take(r)
                 continue
             if st == 401:
-                log(f"refused: {r.get('error')} — re-enroll with a new token")
+                log(f"refused: {r.get('error')}; re-enroll with a new token")
                 self.hello_at = 0
                 time.sleep(300)
                 continue
@@ -3097,7 +3097,7 @@ class Agent:
 
     # -- the workspace (docs/nodes.md §6, phase 6) ------------------------------
     def own_dir(self, path, who):
-        """Make a directory the enrolled account can use — a job runs as it,
+        """Make a directory the enrolled account can use: a job runs as it,
         and this process is root."""
         os.makedirs(path, exist_ok=True)
         if who:
@@ -3105,9 +3105,9 @@ class Agent:
                 os.chown(path, who["user"], who["group"])
 
     def materialize(self, job, src, who):
-        """The job's source, on disk: the snapshot by digest — from the
-        cache store when this node has fetched it before, from the
-        controller otherwise, checked against its digest either way — and
+        """The job's source, on disk: the snapshot by digest, from the
+        cache store when this node has fetched it before and from the
+        controller otherwise, checked against its digest either way, then
         unpacked into a directory of the job's own under the data store."""
         stores = self.state.get("stores") or {}
         digest = str(src.get("digest") or "")
@@ -3122,7 +3122,7 @@ class Agent:
             job.say(f"fetching snapshot {hexd[:12]}…\n")
             st, _ = self.ctl.fetch(f"source?digest={hexd}", tar_path)
             if st != 200:
-                job.say(f"the controller has no snapshot {hexd[:12]} ({st}) — the tree "
+                job.say(f"the controller has no snapshot {hexd[:12]} ({st}): the tree "
                         "has moved on; queue the job again\n")
                 return None
         h = hashlib.sha256()
@@ -3131,7 +3131,7 @@ class Agent:
                 h.update(chunk)
         if h.hexdigest() != hexd:
             os.remove(tar_path)
-            job.say("the cached snapshot did not match its digest; dropped it — queue the job again\n")
+            job.say("the cached snapshot did not match its digest; dropped it. Queue the job again\n")
             return None
         ws = os.path.join(stores.get("data") or "/tmp", "jobs", job.job["id"], "workspace")
         shutil.rmtree(os.path.dirname(ws), ignore_errors=True)
@@ -3254,7 +3254,7 @@ class Agent:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
         # Fetched by a job while the ttyds run an older copy: leave the
-        # restart to the loop's session_check, which owns self.ttyd — this
+        # restart to the loop's session_check, which owns self.ttyd; this
         # may be a job's thread. Without this the sessions ran whatever
         # bundle the ttyds started on until the next hello, up to ten
         # minutes, and a bb-tty that old looked for a transcript where the
@@ -3278,7 +3278,7 @@ class Agent:
         names; the three newest, which versions() probes for an SDK
         inventory; and, for a while, whatever an already-open shell has on
         its PATH. That last one is why there is an age floor and not a bare
-        count — a session started after `current` went on PATH holds no
+        count: a session started after `current` went on PATH holds no
         digest at all, so the floor is a grace period for the shells that
         predate it rather than a permanent requirement.
         """
@@ -3311,7 +3311,7 @@ class Agent:
         """What every session on this node inherits, through ttyd: this
         node's toolchains (sdk_env), the bundle's scripts and the account's
         own bin directories on PATH, the role, and how to reach the
-        controller — the URL and the certificate pin the agent enrolled
+        controller: the URL and the certificate pin the agent enrolled
         with, never its token. bb's relayed verbs carry the session's own
         token, which rides in on the terminal's URL."""
         env = dict(sdk_env(self.state))
@@ -3325,8 +3325,8 @@ class Agent:
         # session's shell was started whenever it was started and keeps the
         # PATH it was given, so a session that has been open since before an
         # update went on running the bundle it began with. What that looks
-        # like is a typo — `bb tests` printing bb's usage on a node whose
-        # controller has the verb — rather than a machine that is behind.
+        # like is a typo (`bb tests` printing bb's usage on a node whose
+        # controller has the verb) rather than a machine that is behind.
         #
         # Through `current`, every bb invocation in every shell, however old,
         # runs whatever was delivered last. The name is resolved at exec, so
@@ -3358,8 +3358,8 @@ class Agent:
         return "0.0.0.0"
 
     def session_start(self, into, retry=False):
-        """The two ttyds — writable, and the read-only twin an account
-        without a shell is shown — running bb-tty from the bundle, as the
+        """The two ttyds (writable, and the read-only twin an account
+        without a shell is shown), running bb-tty from the bundle, as the
         session account, on the LAN address. What 15-dashboard.sh does on
         the controller, done here by the process that is already up."""
         self.session_stop()
@@ -3405,8 +3405,8 @@ class Agent:
         # stayed on the ports as orphans, every later start failed the same
         # way in silence, and the census named the bundle nobody was
         # running. So the start is watched for a moment; one that died has
-        # its port looked at, and a stray bb-tty ttyd there — one of ours,
-        # from a process that is gone — is ended and the start tried once
+        # its port looked at, and a stray bb-tty ttyd there (one of ours,
+        # from a process that is gone) is ended and the start tried once
         # more. Anything else on the port is named and left alone.
         died = self._session_died()
         if died and not retry:
@@ -3424,8 +3424,8 @@ class Agent:
                              for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))  # noqa: B905 (3.9 on Rocky)
             self.session_stop()
             SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
-                           why=f"ttyd could not bind — {held}"[:160])
-            log(f"sessions: ttyd could not bind — {held}")
+                           why=f"ttyd could not bind: {held}"[:160])
+            log(f"sessions: ttyd could not bind: {held}")
             return
         SESSION.update(up=True, port=SESSION_PORT, ro_port=SESSION_PORT + 1, user=user,
                        home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
@@ -3433,8 +3433,8 @@ class Agent:
             f"as {user}, bb {self.session_bundle[7:19]}")
 
     def _session_died(self):
-        """The ports whose ttyd exited within the first moment of its start —
-        a bind failure shows as an exit in well under a second."""
+        """The ports whose ttyd exited within the first moment of its start.
+        A bind failure shows as an exit in well under a second."""
         for _ in range(6):
             time.sleep(0.25)
             if any(p.poll() is not None for p in self.ttyd):
@@ -3466,7 +3466,7 @@ class Agent:
     @staticmethod
     def _end_pid(pid):
         """SIGTERM, a moment, then SIGKILL; reaped if it was this process's
-        child — an orphan left over from before a re-exec still is."""
+        child; an orphan left over from before a re-exec still is."""
         for sig, wait in ((signal.SIGTERM, 3.0), (signal.SIGKILL, 1.0)):
             with contextlib.suppress(OSError):
                 os.kill(pid, sig)
@@ -3496,18 +3496,18 @@ class Agent:
         except (OSError, RuntimeError, subprocess.SubprocessError) as e:
             SESSION.update(up=False, port=0, ro_port=0, user=self.session_account(),
                            bundle="", why=f"{e}"[:120])
-            log(f"sessions: not started — {e}")
+            log(f"sessions: not started: {e}")
 
     def session_refresh(self, digest=None):
         """The bundle the controller ships against the one the ttyds run
         from: fetched and swapped in when they differ, and at the start of
-        this process (no digest to compare — the fetch answers with one),
+        this process (no digest to compare, since the fetch answers with one),
         which is when sessions start."""
         if self.ttyd and (digest is None or digest == self.session_bundle):
             return
         if not self.session_account():
             SESSION.update(up=False, port=0, ro_port=0, user="", bundle="",
-                           why="no session account — provision with --session-user")
+                           why="no session account; provision with --session-user")
             return
         env = {}
         who = self.as_user(env, self.session_account())
@@ -3519,7 +3519,7 @@ class Agent:
         self.session_start(into)
 
     def _tmux(self, argv, timeout=10):
-        """tmux as the session account — its server, its sessions. The
+        """tmux as the session account: its server, its sessions. The
         environment is the account's own (HOME and the default socket
         path follow the uid), not this process's: the agent under systemd
         has no TMUX_TMPDIR and must not inherit one from a test."""
@@ -3577,8 +3577,8 @@ class Agent:
         The controller holds no credential and learns of a login only when
         something on the machine tells it. That used to be a session's hook
         and nothing else, so a node signed in with no session running stayed
-        "not signed in" on the card until somebody opened one — and after a
-        sign-out, the way back needed the very thing the card was refusing.
+        "not signed in" on the card until somebody opened one, and after a
+        sign-out the way back needed the very thing the card was refusing.
         The agent is already here and already tends these homes, so it says
         so on the heartbeat.
 
@@ -3614,7 +3614,7 @@ class Agent:
 
     def kill_sessions(self, names):
         for name in names:
-            log(f"sessions: ending {name} — asked from the dashboard")
+            log(f"sessions: ending {name} (asked from the dashboard)")
             self._tmux(["kill-session", "-t", "=" + name])
 
     def tell(self, job, spec):
@@ -3667,10 +3667,10 @@ class Agent:
         own tmux (server._keys, _say, _send). Only send-keys and copy-mode,
         only at a session by exact name: the controller composed the
         argv, and this node still decides what it will run. `page` and
-        `respawn` are the two decisions made here — PgUp at a prompt enters
-        copy mode where inside a full-screen program it is the program's key,
-        and a respawn has to find the launcher — because both depend on
-        something only this side can see."""
+        `respawn` are the two decisions made here, because both depend on
+        something only this side can see: PgUp at a prompt enters copy mode
+        where inside a full-screen program it is the program's key, and a
+        respawn has to find the launcher."""
         for op in ops[:16]:
             if not isinstance(op, dict):
                 continue
@@ -3678,7 +3678,7 @@ class Agent:
             if not sess:
                 continue
             # A bare name, not `=name`: these take a target-PANE, and the
-            # exact-match prefix is target-session syntax — measured, as
+            # exact-match prefix is target-session syntax, measured as
             # "can't find pane: =…". tmux tries the exact name first anyway.
             page = op.get("page")
             if page in ("up", "down"):
@@ -3703,7 +3703,7 @@ class Agent:
             # The launcher's PATH is read off the pane rather than composed
             # here. On a node the session belongs to one of several accounts
             # and the file is in that account's home, which this side would
-            # have to reconstruct — while tmux already knows, because bb-tty
+            # have to reconstruct, while tmux already knows, because bb-tty
             # starts the pane on that script and nothing else. Hence the
             # claude-run- name, and hence checking it before running it: the
             # controller asked for a respawn, it did not say what to execute.
@@ -3727,7 +3727,7 @@ class Agent:
 
     def session_renew(self):
         """Ask the loop to restart the ttyds onto the current bundle with a
-        freshly built environment — from a job's thread, so only the flag
+        freshly built environment. From a job's thread, so only the flag
         is set here."""
         store = tc_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
@@ -3737,8 +3737,8 @@ class Agent:
     def session_firewall_check(self):
         """Once a minute: the session ports' rule names the controller's
         address as it resolved when the node was provisioned, and a
-        controller that moved — a new lease, a new host behind the same
-        name — would find 7681 and 7682 dropped for it from then on. So the
+        controller that moved (a new lease, a new host behind the same
+        name) would find 7681 and 7682 dropped for it from then on. So the
         name is resolved again here and the rule rewritten when the answer
         changed: the nftables file the Debian path wrote and re-applied, or
         firewalld's rich rules replaced. Root only, which is a managed node;
@@ -3789,7 +3789,7 @@ class Agent:
                 "firewalld rules replaced")
 
     def session_idle_reap(self):
-        """End this node's Claude sessions past the idle rule — the
+        """End this node's Claude sessions past the idle rule: the
         controller's idle.py, enforced here from node.json. Claude sessions
         by name (claude-<project>, u_xxxx~claude-<project>), by tmux's own
         session_activity, once per minute."""
@@ -3808,18 +3808,18 @@ class Agent:
                 continue
             claude = name.startswith("claude-") or "~claude-" in name
             if claude and time.time() - last > limit * IDLE_UNIT:
-                log(f"sessions: ending {name} — idle {limit} minute(s), the controller's rule")
+                log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 
     def session_mount_check(self):
         """Once a loop: is the projects share at /workspace as the last
-        census said — mounted, and writable? A census rides hello every ten
+        census said: mounted, and writable? A census rides hello every ten
         minutes, and the first one after a boot is taken before the network
         mounts land (the unit orders after remote-fs.target now, but a mount
         with nofail can still be late, and a Mac's owner mounts the share by
         hand), so it says the share is missing and the controller ghosts
         every Claude button bound here for the rest of those ten minutes.
-        So the fact is measured each loop — two stats — and a change says
+        So the fact is measured each loop (two stats), and a change says
         hello again at once."""
         if not SESSION or self.session_mount is None:
             return
@@ -3836,14 +3836,14 @@ class Agent:
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often
-        than SESSION_RETRY_S — a port already taken would otherwise
-        spin this loop on a failing exec — and ttyds running an older
+        than SESSION_RETRY_S (a port already taken would otherwise
+        spin this loop on a failing exec), and ttyds running an older
         bundle than the one a job just fetched are restarted onto it. The
         sessions are tmux's either way and survive; a client attached at
         that moment reconnects.
 
-        And a node whose own address moved — DHCP handed it another, the
-        interface came back on a new one — has ttyds bound to an address
+        And a node whose own address moved (DHCP handed it another, the
+        interface came back on a new one) has ttyds bound to an address
         nothing reaches any more, while the controller already dials the
         new one (it follows every hello). So the bind is compared to the
         machine's address now, and a change restarts the ttyds onto it."""
@@ -3895,7 +3895,7 @@ class Agent:
 
         The controller still decides WHAT: it sends an ordered plan of argvs
         with the compose file and env beside them, and does the bookkeeping
-        when this ends. What moved here is the execution — which is the whole
+        when this ends. What moved here is the execution, which is the whole
         point, because it is what let a node need an ssh key from the
         controller on top of the token it enrolled with. Nothing dials in
         now; docker is local.
@@ -3924,7 +3924,7 @@ class Agent:
                     os.chown(path, who["user"], who["group"])
             job.say(f"wrote {base} ({len(str(body))} bytes)\n")
         # The bind directories, made here rather than by a throwaway
-        # container over ssh — this process is already on the machine that
+        # container over ssh: this process is already on the machine that
         # has them, and docker creating a missing bind source as root is the
         # failure the whole mechanism exists to avoid.
         for d in (spec.get("dirs") or [])[:32]:
@@ -3969,13 +3969,13 @@ class Agent:
             if not argv:
                 continue
             job.step(str(stp.get("name") or "working"))
-            # The command, then its output — a log of output with no command
+            # The command, then its output: a log of output with no command
             # is unreadable, and the controller's own runner has always
             # written this line.
             job.say("$ " + " ".join(argv) + "\n")
             # The agent's OWN environment is the base here, unlike an exec
             # job: docker on this node should behave as it does for the
-            # account that runs it — a proxy, a DOCKER_CONFIG, a rootless
+            # account that runs it, since a proxy, a DOCKER_CONFIG, a rootless
             # socket are all the node's own arrangement, and a compose that
             # ignored them would work by luck.
             env = dict(os.environ)
@@ -3993,7 +3993,7 @@ class Agent:
         return "succeeded", 0
 
     def cache_clear(self, job, spec):
-        """Drop this node's build caches — one project's, or all of them.
+        """Drop this node's build caches: one project's, or all of them.
         The one thing that goes wrong with caches is a full disk, and this
         is the button for it (docs/nodes.md §6)."""
         root = (self.state.get("stores") or {}).get("cache") or ""
@@ -4019,7 +4019,7 @@ class Agent:
         with the bb the controller ships: the bundle (bb, its library, the
         catalog) is fetched by digest into the store and run from there as
         the enrolled account, SDK_ROOT pointing at the store. One catalog,
-        per-node state — the census reports what landed."""
+        per-node state; the census reports what landed."""
         store = tc_root(self.state)
         if not store:
             job.say("refused: this node has no toolchain store\n")
@@ -4092,13 +4092,13 @@ class Agent:
         """A recipe's `system.apt` (or `system.dnf`, on the RHEL family)
         packages, from the catalog the bundle
         carries: installed here, as root, on a node this agent may
-        administer (the sandbox stamp — roadmap #23 refines it to a class);
+        administer (the sandbox stamp; roadmap #23 refines it to a class);
         named and left to the owner anywhere else. The recipe itself runs
         as the job account, which is why this cannot be part of it.
         Playwright's browsers launched from the store and died on
         libatk-1.0.so.0 behind a stack that said the browser had closed.
         False when the install was tried and failed; a missing package on a
-        node this cannot administer is a warning, not a refusal — the
+        node this cannot administer is a warning, not a refusal: the
         download is still worth having, and the tool names what is missing
         when it is used."""
         cat = read_catalog(into)
@@ -4115,7 +4115,7 @@ class Agent:
         if not missing:
             return True
         if not self.administers():
-            job.say(f"{name} needs system packages this node's owner installs — "
+            job.say(f"{name} needs system packages this node's owner installs, "
                     f"not this agent, which does not administer the machine: "
                     f"{' '.join(missing)}\n")
             return True
@@ -4193,7 +4193,7 @@ class Agent:
     # -- the configuration plane (docs/nodes.md §12, phase 5) -----------------
     def system(self, job, spec):
         """Apply the desired storage or network config the controller holds
-        for this node — the one root-privileged thing the agent does. Not
+        for this node: the one root-privileged thing the agent does. Not
         dropped to the enrolled account, because mounts and addresses are
         root's; offered by the controller only to nodes that enrolled as a
         sandbox, and refused here without bb-sandbox, which is the stamp."""
@@ -4201,7 +4201,7 @@ class Agent:
         self.refresh_sandbox_tool(job)
         # Per verb, not one stamp for all of them (roadmap #23): storage and
         # network edit fstab and netplan, which only a machine provisioned
-        # as a sandbox — a MANAGED node — hands over. A runner needs only its
+        # as a sandbox (a MANAGED node) hands over. A runner needs only its
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
@@ -4404,7 +4404,7 @@ class Agent:
 
         `cwd` matters more than it looks: the runner's own svc.sh resolves
         everything relative to where it is invoked and refuses with "Must run
-        from runner root or install is corrupt" anywhere else — which is
+        from runner root or install is corrupt" anywhere else, which is
         exactly what a registered-but-serviceless runner came from.
         """
         job.say("$ " + " ".join(argv) + "\n")
@@ -4426,7 +4426,7 @@ class Agent:
         and the exact command and pressed Allow; the job's log opens with
         both and who it was, so the Jobs tab is the record. Nothing about
         the command is interpreted here: it is run as given, as root, once,
-        and its output and exit code go back. Not sudo — there is no second
+        and its output and exit code go back. Not sudo: there is no second
         command without a second question."""
         argv = [str(a) for a in (cfg.get("argv") or []) if str(a)]
         if not argv:
@@ -4438,9 +4438,9 @@ class Agent:
             timeout = max(1, min(int(cfg.get("timeout") or 600), 3600))
         except (TypeError, ValueError):
             timeout = 600
-        # The same shape as Job.exec — its own process group, output pumped
+        # The same shape as Job.exec (its own process group, output pumped
         # as it comes, the log posted on a clock so a cancel can arrive and
-        # land — minus the drop to the enrolled account, which is the point.
+        # land), minus the drop to the enrolled account, which is the point.
         # Not _sh: that blocks until the command ends with nothing posted,
         # so a cancel had nothing to reach and a timeout killed only the
         # direct child.
@@ -4470,7 +4470,7 @@ class Agent:
             if job.pending:
                 job.flush()
             if time.time() > deadline and not killed:
-                job.say(f"timed out after {timeout}s — killing it\n")
+                job.say(f"timed out after {timeout}s, killing it\n")
                 job._kill(p)
                 killed = True
         p.wait()
@@ -4520,9 +4520,9 @@ class Agent:
             log(f"could not write {self.SESSION_PROFILE}: {e}")
 
     def _apply_storage(self, job, cfg):
-        """Mounts as a diff against what bb-sandbox has — remove what is no
+        """Mounts as a diff against what bb-sandbox has: remove what is no
         longer wanted, add or rewrite what is (add-nfs/add-share rewrite an
-        existing fstab line, so this is idempotent) — then the stores, which
+        existing fstab line, so this is idempotent), then the stores, which
         are this agent's own file. Ends with a hello, so the row shows the
         applied state now rather than at the next census."""
         want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
@@ -4565,7 +4565,7 @@ class Agent:
                 # it, and everything then lands on the node's own disk while
                 # the row reports a healthy store with plenty of room. So a
                 # store under a configured mount is refused unless that
-                # mount is really mounted — fix the share, or take the entry
+                # mount is really mounted: fix the share, or take the entry
                 # out and mean it locally.
                 cover = mount_covering(path, live)
                 if cover and not os.path.ismount(str(cover.get("path") or "")):
@@ -4591,15 +4591,15 @@ class Agent:
                         # The move did not happen, so nothing was written to
                         # the new place: leave no litter behind either.
                         for d in prune_made(made)[0]:
-                            job.say(f"{role}: removed {d} again — the move did not happen\n")
+                            job.say(f"{role}: removed {d} again; the move did not happen\n")
                         bad += 1
                         continue
                     self._retire_store(job, role, was, marks.get(role) or [])
                     marks[role] = made
                 else:
-                    # Same path. Keep the original record — it says what was
+                    # Same path. Keep the original record (it says what was
                     # made for this store the FIRST time, which is what a
-                    # later move has to clean up — and add anything this run
+                    # later move has to clean up) and add anything this run
                     # had to put back.
                     prev = list(marks.get(role) or [])
                     marks[role] = prev + [d for d in made if d not in prev]
@@ -4611,7 +4611,7 @@ class Agent:
             save_state(self.state)
         self.hello()
         if bad:
-            job.say(f"{bad} of the changes did not apply — the rest did\n")
+            job.say(f"{bad} of the changes did not apply; the rest did\n")
             return "failed", 1
         job.say("storage applied\n")
         return "succeeded", 0
@@ -4622,7 +4622,7 @@ class Agent:
         artifacts stayed where they were, with nothing saying so. So the
         contents come across first, and the job only repoints if they did.
 
-        The source is never deleted — the same rule the node-change
+        The source is never deleted, the same rule the node-change
         migration keeps (roadmap #17). A half-finished move must leave the
         old store able to serve, and reclaiming the space is the operator's
         to do once they can see both.
@@ -4636,7 +4636,7 @@ class Agent:
             job.say(f"{role}: nothing at {old} to bring across\n")
             return True
         if role == "cache":
-            job.say(f"{role}: leaving {old} where it is — a cache is rebuildable, "
+            job.say(f"{role}: leaving {old} where it is, because a cache is rebuildable "
                     f"and the new one starts cold\n")
             return True
         try:
@@ -4672,9 +4672,9 @@ class Agent:
         # job that can legitimately take that long.
         #
         # ...but not ownership where ownership is not the mover's to keep. A
-        # share exported all_squash — which is what the projects and SDK
+        # share exported all_squash (which is what the projects and SDK
         # shares here ARE, so that a file written from any machine is owned
-        # the way the array expects — refuses every chown, and `cp -a` then
+        # the way the array expects) refuses every chown, and `cp -a` then
         # exits non-zero after copying every byte correctly. The store move
         # read that as a failed copy and refused to repoint, with the data
         # sitting in the new place: "Operation not permitted", four times,
@@ -4684,7 +4684,7 @@ class Agent:
             argv.append("--no-preserve=ownership")
             job.say(f"{new} squashes ownership (an all_squash export, most likely), so "
                     f"the copy keeps times, modes and links and the export decides the "
-                    f"owner — which is the arrangement, not a loss.\n")
+                    f"owner, which is the arrangement, not a loss.\n")
         # The store's ENTRIES, not `old/.`: given the directory itself cp
         # ends by setting the destination's own times, which a squashed
         # export refuses for a root it does not let this account own, and
@@ -4699,19 +4699,19 @@ class Agent:
             job.say(f"refused: the copy failed. {role} still points at {old}, "
                     f"which is untouched.\n")
             return False
-        job.say(f"{role}: copied. The old copy at {old} is left in place — "
+        job.say(f"{role}: copied. The old copy at {old} is left in place; "
                 f"delete it yourself once you are satisfied.\n")
         return True
 
     def _retire_store(self, job, role, old, made):
         """After a store has moved, take back the directories this agent
-        made for it — and only those, and only if they are empty.
+        made for it, and only those, and only if they are empty.
 
         Which is usually none of them, and saying so matters: the move keeps
         the old copy on purpose, so the store directory is not empty and
         rmdir refuses it. That is the correct outcome, not a failure, and
         the log says which path is still holding data so it can be removed
-        deliberately. The empty case is real too — a store that was
+        deliberately. The empty case is real too: a store that was
         configured and never written to leaves directories behind that
         nobody wants.
         """
@@ -4720,8 +4720,8 @@ class Agent:
             return
         removed, kept = prune_made(made)
         if removed:
-            job.say(f"{role}: removed {', '.join(removed)} — made for this store "
-                    f"and empty now\n")
+            job.say(f"{role}: removed {', '.join(removed)} (made for this store "
+                    f"and empty now)\n")
         for path, why in kept:
             job.say(f"{role}: {path} stays ({why})"
                     + (": the old copy is in there; remove it yourself when you are "
@@ -4731,15 +4731,15 @@ class Agent:
     def _apply_network(self, job, cfg):
         """Commit/confirm, because this is the one change that can cut the
         cord it arrives on (docs/nodes.md §12): render the desired address
-        through whichever backend owns this machine's network — netplan, or
-        NetworkManager — apply it, then dial the controller from wherever
+        through whichever backend owns this machine's network (netplan, or
+        NetworkManager), apply it, then dial the controller from wherever
         the machine landed. No answer within DIAL_BACK_S and the previous
         config is put back and applied again, and the failure is reported
         on reconnect. The spec is the same whatever the backend."""
         backend = net_backend()
         if backend is None:
-            job.say("refused: network changes need a backend this agent drives — netplan, "
-                    "NetworkManager, systemd-networkd, wicked, ifupdown or dhcpcd — and "
+            job.say("refused: network changes need a backend this agent drives (netplan, "
+                    "NetworkManager, systemd-networkd, wicked, ifupdown or dhcpcd), and "
                     f"{_os_release() or 'this node'} has none of them running; set the address "
                     "by hand, or on a node that has one\n")
             return "failed", 77
@@ -4760,7 +4760,7 @@ class Agent:
             return "failed", 77
         # The one check that would have saved the operator's evening: the
         # host's NFS exports name this node's address, so a node that moves
-        # loses its mounts unless the rule moves first — and the mount
+        # loses its mounts unless the rule moves first, and the mount
         # fails quietly under nofail, at the next boot, on a share the
         # sessions need. Asked of the servers before anything changes.
         gaps = export_gaps(addr) if mode == "static" else []
@@ -4773,7 +4773,7 @@ class Agent:
         desired = backend.render(iface, mode, addr, gw, dns)
         before = backend.snapshot(iface)
         if backend.same(desired, before):
-            job.say(f"already applied — {backend.name} already has this config\n")
+            job.say(f"already applied: {backend.name} already has this config\n")
             return "succeeded", 0
         if backend.apply(self, job, iface, desired, before) != 0:
             backend.restore(self, job, iface, before)
@@ -4790,7 +4790,7 @@ class Agent:
             # shorter than five seconds still costs five, which is what the
             # test that shortens DIAL_BACK_S was paying twice over.
             time.sleep(max(0.0, min(5.0, deadline - time.time())))
-        job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
+        job.say(f"could not reach the controller within {DIAL_BACK_S}s; reverting\n")
         backend.restore(self, job, iface, before)
         deadline = time.time() + DIAL_BACK_S
         while time.time() < deadline:
@@ -4803,8 +4803,8 @@ class Agent:
     def _apply_runner(self, job, cfg):
         """The Actions runner as a service on this node (phase 7): fetched
         from GitHub's releases, registered with a token the controller mints
-        on request — the PAT stays in the controller's root-only stash and
-        the token lives for an hour — and run under systemd as the enrolled
+        on request (the PAT stays in the controller's root-only stash and
+        the token lives for an hour), and run under systemd as the enrolled
         account by the runner's own svc.sh. Removal deregisters first, so
         GitHub does not keep a ghost. Labels are the tab's, the node's name
         among them, and are written beside the runner for the census."""
@@ -4887,14 +4887,14 @@ class Agent:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
         # A runner that is already configured locally refuses to be
-        # configured again — `--replace` is about taking a NAME back on
+        # configured again: `--replace` is about taking a NAME back on
         # GitHub's side, not about overwriting .runner here. So a Reinstall
         # after a half-finished install (registered, service not installed)
         # failed with "Cannot configure the runner because it is already
         # configured", and the retry was blocked by the state the first
         # attempt left. Clear it first, and mean it: deregister properly if
         # the controller will mint a removal token, and failing that take the
-        # local config out of the way so this can proceed — a runner left on
+        # local config out of the way so this can proceed; a runner left on
         # GitHub's side is replaced by name a moment later.
         # The registration token FIRST, before anything standing is touched:
         # a reinstall whose token could not be minted used to stop and
@@ -4932,7 +4932,7 @@ class Agent:
             f.write(",".join(labels))
         # The runner reads .env into every job it runs: the node's toolchain,
         # so CI sees what bb build sees, and where the workflows' archive
-        # step lands — see runner_env_text. The log directory is made here,
+        # step lands (see runner_env_text). The log directory is made here,
         # readable, so the session account can read what lands in it.
         logs = ci_log_dir(self.state)
         self.own_dir(logs, who)
@@ -4948,10 +4948,10 @@ class Agent:
                     # census reads .runner, which exists by now.
                     self.hello()
                     job.say("the runner is registered with GitHub but its service did "
-                            "not install — it will not pick up jobs until it does\n")
+                            "not install; it will not pick up jobs until it does\n")
                     return "failed", 1
         else:
-            # No systemd — a container node (this image in the node role),
+            # No systemd: a container node (this image in the node role),
             # or a guest machine without it (roadmap #23). The runner is
             # run.sh in the foreground under this agent, which supervises it
             # and takes it down with itself; the census's pgrep of
@@ -5276,14 +5276,14 @@ def cmd_enroll(args):
                   f"  check it against the controller; a different one next "
                   f"time is refused")
     else:
-        print("note: plain http — the node token travels unencrypted on this "
+        print("note: plain http. The node token travels unencrypted on this "
               "network, as the dashboard's own credential does. Put TLS in "
               "front of the controller and re-enroll to pin it.")
     state.update({"node_id": r["node_id"], "token": r["token"],
                   "name": r.get("name", ""), "capabilities": r.get("capabilities", []),
                   "enrolled": int(time.time()), "scheme": ctl.scheme})
     save_state(state)
-    print(f"enrolled as node {r['node_id']} ({r.get('name')}) — "
+    print(f"enrolled as node {r['node_id']} ({r.get('name')}); "
           f"capabilities: {', '.join(r.get('capabilities') or []) or 'none'}")
     print(f"  credential in {NODE_JSON} (0600); jobs run as {opts['--user']}"
           + (f", sessions as {opts['--session-user']}" if opts["--session-user"] else ""))

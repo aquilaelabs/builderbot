@@ -2,7 +2,7 @@
 """House rules: what the operator has decided about working on this project.
 
 The notebook already carries three things a session is handed before it types
-anything — the roadmap, the open bugs, and Claude's own memories. This is the
+anything: the roadmap, the open bugs, and Claude's own memories. This is the
 fourth, and it is the only one of them the operator writes and a session
 cannot. That is the whole point, and it is the line the Briefing tab draws:
 
@@ -12,34 +12,34 @@ cannot. That is the whole point, and it is the line the Briefing tab draws:
 Both sides write them, the way both sides write the roadmap and the tracker.
 What is asymmetric is narrower than "who may write": a session may add a rule
 and change or drop ITS OWN, and may not touch one of the operator's. That is
-the only guarantee worth having — a session cannot rewrite the instruction it
-is being held to — and everything else follows the shape the rest of the
+the only guarantee worth having (a session cannot rewrite the instruction it
+is being held to), and everything else follows the shape the rest of the
 notebook already has.
 
 The first version of this file had no author and no log, and reached for a
 wall to make up for it: sessions could not write at all. That was the wrong
 fix for the right worry. What makes the roadmap safe to share is not a lock,
 it is that every change carries who made it and lands in a history nobody can
-quietly edit — so that is what this has now.
+quietly edit. So that is what this has now.
 
 Two things still hold the line. bb-tty's claude_scope() denies Edit, Write and
 NotebookEdit on the file, so the only way in is a verb that checks ownership;
 and the whole-list replace behind the tab is a person's, because a session
 rewriting every rule at once is the thing the per-rule check exists to stop.
-Read is left alone deliberately — a conditional rule is named in the prompt
+Read is left alone deliberately: a conditional rule is named in the prompt
 and not quoted there, so a session has to be able to go and read one.
 
 WHY NOT CLAUDE.md, which is the obvious first answer: that file is checked in,
 so a session can edit its own instructions and does; and it is about the
 PROJECT, read by anybody who clones it. A rule about how the operator wants to
-be worked with is about the operator. So the split is — CLAUDE.md describes
+be worked with is about the operator. So the split is this: CLAUDE.md describes
 the project and either side writes it; rules describe how the operator wants a
 session to work here, live in /config, are never committed, and only the
 operator writes them.
 
 STANDING AND CONDITIONAL, which is the axis that matters and is not topic.
 Everything standing is in the prompt of every session started here, forever,
-so the cost is paid again on every conversation — one project's notebook
+so the cost is paid again on every conversation, and one project's notebook
 reached 16KB and made its sessions unstartable. A rule that only matters when
 somebody touches the agent should not be paid for on a CSS change. So a rule
 with a trigger is CONDITIONAL: the standing block carries one line naming it,
@@ -101,7 +101,7 @@ def _by_whom():
 
 
 def replay(project, verb, args):
-    """A held rule, replayed on approval — or an edit that rode behind one."""
+    """A held rule, replayed on approval, or an edit that rode behind one."""
     if verb == "add":
         return add(project, args.get("name", ""), args.get("text", ""),
                    paths=args.get("paths", ""), words=args.get("words", ""), by="claude",
@@ -122,8 +122,8 @@ _lock = statefile.on(lambda: FILE)
 # `bb rules show` takes, so it has to be typeable and stable.
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
-# Long enough for a real rule — the worked example that prompted this is four
-# short paragraphs — and short enough that nobody pastes a document in.
+# Long enough for a real rule (the worked example that prompted this is four
+# short paragraphs) and short enough that nobody pastes a document in.
 MAX_TEXT = 2000
 MAX_RULES = 40
 MAX_TRIGGERS = 12
@@ -243,7 +243,7 @@ def _clean(r, i):
     def bits(v):
         # Both shapes: the tab sends a list it has already split, the CLI and
         # a hand-edited file send the line somebody typed. Taking str() of a
-        # list is how "scripts/agent" once became "['scripts/agent']" — a
+        # list is how "scripts/agent" once became "['scripts/agent']": a
         # trigger that matches nothing and looks like it should.
         if isinstance(v, (list, tuple)):
             parts = [str(x) for x in v]
@@ -262,8 +262,8 @@ def _clean(r, i):
     # A framework's two halves (roadmap R31): the document in the repo that
     # defines it in full, and the command that verifies it. A path is kept
     # repo-relative and cannot climb; a command is any line, run from the
-    # project root by whoever runs `bb rules check` — a session, on its own
-    # tree — so it is no more than the session could type.
+    # project root by whoever runs `bb rules check`, which is a session on its
+    # own tree, so it is no more than the session could type.
     doc = str(r.get("doc") or "").strip().replace("\\", "/").lstrip("/")[:200]
     if ".." in doc.split("/"):
         doc = ""
@@ -296,7 +296,7 @@ def replace(project, rules):
     if not isinstance(rules, list):
         return {"error": "expected a list of rules"}
     if len(rules) > MAX_RULES:
-        return {"error": f"{MAX_RULES} rules is the limit — every standing one "
+        return {"error": f"{MAX_RULES} rules is the limit: every standing one "
                          "is read into every session that starts here"}
     with _lock:
         was = {x.get("name"): x for x in
@@ -312,7 +312,7 @@ def replace(project, rules):
             continue
         # A rule keeps the author it had. The tab is the operator's, but
         # reading and tidying a session's rule there should not quietly make
-        # it theirs — that is a decision, and it has its own button.
+        # it theirs. That is a decision, and it has its own button.
         prev = was.get(str(r.get("name") or "").strip().lower())
         c = _clean({**r, "by": r.get("by") or (prev or {}).get("by")}, i)
         if not c["text"]:
@@ -373,7 +373,7 @@ def history(project, limit=None, since=None, find=None):
 
 
 def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
-    """One rule, appended. The session's verb — the tab replaces the list.
+    """One rule, appended. The session's verb; the tab replaces the list.
 
     A session's rule is marked as its own, which is what lets it change one
     later and what tells the next session, reading the block, that this line
@@ -395,7 +395,7 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
             return pending.hold(project, "rules", "add",
                                 {"name": r["name"], "text": text,
                                  "paths": paths, "words": words, "doc": doc, "check": check},
-                                summary=f"{r['name']} — {r['text']}", number=r["name"])
+                                summary=f"{r['name']}: {r['text']}", number=r["name"])
     with _lock:
         d = load()
         p = _project(d, project)
@@ -461,13 +461,13 @@ def _mine(rs, name, by):
 
     A session may change its own and not the operator's; the operator may
     change anything. The refusal says which it is rather than pretending the
-    rule is not there — "no such rule" for one you can see is the answer that
+    rule is not there. "No such rule" for one you can see is the answer that
     sends somebody looking for a typo.
     """
     for i, r in enumerate(rs):
         if r.get("name") == name:
             if by == "claude" and r.get("by") != "claude":
-                return None, ("that rule is the operator's — you can read it and "
+                return None, ("that rule is the operator's: you can read it and "
                               "cannot change it. Say what you think is wrong with "
                               "it in your reply; they edit it on the Briefing tab")
             return i, ""
@@ -535,7 +535,7 @@ def block(project):
 
     Standing rules in full; conditional ones as one line each saying they
     exist and how to read them. That line is what stops a trigger that misses
-    being a rule the session never heard of — the worse of the two failures,
+    being a rule the session never heard of, which is the worse of the two failures,
     because the session cannot even know to ask.
     """
     rs = effective(project)
@@ -582,12 +582,12 @@ def block(project):
             on = "; ".join(x for x in [", ".join(r.get("paths") or []),
                                        ", ".join(r.get("words") or [])] if x)
             mine = "*" if r.get("by") == "claude" else ""
-            out.append(f"  {mine}{r['name']} — {on}{frame(r)}")
+            out.append(f"  {mine}{r['name']}: {on}{frame(r)}")
     return "\n".join(out).strip()
 
 
 def covers(r, path):
-    """Whether a rule's files include this repo-relative path — the same
+    """Whether a rule's files include this repo-relative path, by the same
     reading `matching` gives a file about to be edited: a glob, or a bare
     directory meaning everything under it."""
     for pat in r.get("paths") or []:
@@ -607,7 +607,7 @@ def matching(project, *, prompt="", path=""):
     should not fire on the word "anode" at all.
 
     Paths are globs against the project-relative path, and a bare directory
-    name is taken as everything under it — `scripts/agent` is what somebody
+    name is taken as everything under it: `scripts/agent` is what somebody
     types and `scripts/agent/**` is what they mean.
     """
     low = str(prompt or "").lower()
@@ -651,7 +651,7 @@ def payload(project):
 
 
 def counts():
-    """{project: how many rules} — for the project row, like the rest."""
+    """{project: how many rules}, for the project row, like the rest."""
     with _lock:
         d = load()
     return {p: len(v.get("rules") or [])
@@ -662,7 +662,7 @@ def revisions():
     """{project: a number that moves when the tab has to re-read}.
 
     The rules themselves, hashed: there is no run or ingest here to count, and
-    a length would miss a reword — which is most of what editing a rule is.
+    a length would miss a reword, which is most of what editing a rule is.
     """
     with _lock:
         d = load()

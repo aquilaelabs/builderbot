@@ -1,16 +1,16 @@
-"""Ending Claude sessions nobody has used for a while — on this container, and
+"""Ending Claude sessions nobody has used for a while: on this container, and
 on every node, by the node itself.
 
 One controller-scoped setting: minutes of inactivity after which a Claude
 session is ended, 0 for never. A session's activity is tmux's own
-`session_activity` — the last time anything was typed into it or written by
-it — so a session that Claude is still working in is not idle, and one
+`session_activity` (the last time anything was typed into it or written by
+it), so a session that Claude is still working in is not idle, and one
 sitting at a prompt with nobody attached for an hour is.
 
 Two enforcers, one rule. This container ends its own sessions from a thread
 here. A node ends its own: the value rides the hello reply (nodes.py reads
 it through `idle_minutes`, injected by server.py), the agent keeps it in
-node.json and checks its tmux on every loop — so the rule holds while the
+node.json and checks its tmux on every loop, so the rule holds while the
 controller is down, which is the case the operator asked for: a node's
 sessions outlive a controller restart on purpose, and the one thing that
 must not outlive it is the rule about when they end.
@@ -27,8 +27,8 @@ import time
 
 _state = None
 _write_json = None
-_changed = lambda: None          # noqa: E731 — the server nudges the nodes
-_log = lambda m: print(m, file=sys.stderr, flush=True)   # noqa: E731 — the server's log is its stderr
+_changed = lambda: None          # noqa: E731  (the server nudges the nodes)
+_log = lambda m: print(m, file=sys.stderr, flush=True)   # noqa: E731  (the server's log is its stderr)
 
 DEFAULT_MINUTES = 0
 # Seconds per "minute". The suite sets it to 1 so a rule of one minute can be
@@ -123,7 +123,7 @@ def reap_once():
                            capture_output=True, text=True, timeout=10, check=False)
         if r.returncode == 0:
             ended.append(name)
-            _log(f"idle: ended {name} — no activity for {limit} minute(s), the Settings tab's rule")
+            _log(f"idle: ended {name} after no activity for {limit} minute(s), the Settings tab's rule")
     return ended
 
 
@@ -132,7 +132,7 @@ def _loop():
         time.sleep(max(1.0, UNIT))
         try:
             reap_once()
-        except Exception as e:        # noqa: BLE001 — a reaper must not die
+        except Exception as e:        # noqa: BLE001  (a reaper must not die)
             _log(f"idle: {e}")
 
 

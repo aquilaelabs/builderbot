@@ -17,7 +17,7 @@ await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2); await page.mou
 // displaced tabs' tween is 140ms, and whether it has finished by the time a
 // round trip lands is a fact about how busy the box is, not about the drag.
 // `held` is a class and stays put while the button is down, so that one can
-// still be read directly — but before the mouse comes up.
+// still be read directly, but before the mouse comes up.
 const slid = await animatedDuring(page,
   () => page.mouse.move(first.x + 4, first.y + 10, { steps: 10 }));
 const mid = { held: await page.$eval(`.tab[data-id="${ids0[2]}"]`,
@@ -73,7 +73,7 @@ ok(await page.evaluate(() => active === 0), '...and back to the left');
 await page.evaluate(() => closePane(1));
 ok(await page.$eval('#pane1', p => !p.querySelector('iframe') && !p.dataset.tab), 'unsplitting empties the hidden pane (no orphan terminal client)');
 
-// A stale poll — one revision behind what this page already wrote — must
+// A stale poll, one revision behind what this page already wrote, must
 // not be adopted, or the tab just removed would come back.
 const stale = await page.evaluate(() => {
   const before = tabs.map(t => t.id).join();
@@ -102,5 +102,5 @@ const folded = await page.evaluate(async () => {
   await p; return 'nothing';
 });
 ok(folded === 'slid', `a fold from another browser slides shut here (${folded})`);
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

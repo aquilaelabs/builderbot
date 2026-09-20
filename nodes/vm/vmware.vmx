@@ -1,11 +1,11 @@
-# A BuilderBot node on VMware — Workstation, Fusion or ESXi.
+# A BuilderBot node on VMware: Workstation, Fusion or ESXi.
 #
 # Rendered by the dashboard's Create sandbox VM (vmtemplate.py). Save it as
 # <name>.vmx in a folder of its own, make the disk beside it, and open it.
 #
 # The MAC is in VMware's own manual range (00:50:56:00:00:00 through
-# 00:50:56:3F:FF:FF) because addressType static is refused outside it — the
-# one detail this format does not share with the others.
+# 00:50:56:3F:FF:FF) because addressType static is refused outside it, and
+# that is the one detail this format does not share with the others.
 .encoding = "UTF-8"
 config.version = "8"
 virtualHW.version = "19"

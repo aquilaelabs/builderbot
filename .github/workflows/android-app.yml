@@ -34,7 +34,7 @@ jobs:
 
       # One identity for the app and the thing it talks to. The APK's name,
       # its versionName and its versionCode all come from `bb version` here
-      # rather than from three places that drift — the app said 0.1.0 on the
+      # rather than from three places that drift: the app said 0.1.0 on the
       # day the project reached 0.5.0. Passed in rather than left for gradle
       # to work out, so the build does not depend on what is on its PATH.
       - name: Read the repository's version
@@ -43,7 +43,7 @@ jobs:
           # BB_RELAYED, because this is a CI checkout under the runner's work
           # directory and not a project the controller knows: without it `bb
           # version` tries to relay, finds no session, and answers nothing.
-          # That is what shipped `builderbot-app-.apk` — an artifact named
+          # That is what shipped `builderbot-app-.apk`, an artifact named
           # after an empty string, from a build that reported success.
           # Every one falls back, so a version that cannot be read costs a
           # worse name and not a wrong one.

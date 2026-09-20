@@ -5,12 +5,12 @@ bring the session up to date with the notebook on the way past.
 On a shared project, what somebody is asking Claude to do is the thing the
 others need to know and the thing they otherwise find out at the merge. Three
 people on one project, each starting the same refactor, is the failure this
-prevents — and it is cheap, because the prompt has already been typed.
+prevents, and it is cheap, because the prompt has already been typed.
 
 THIS IS NOT PRIVATE, and the dashboard says so where the feed is drawn rather
 than leaving it to be discovered. A project shared with other accounts is not
 a private place to think out loud: your prompts go to the people you share it
-with. Nobody else — the feed is readable by whoever may see the project, which
+with. Nobody else: the feed is readable by whoever may see the project, which
 is the same rule as the project itself.
 
 It changes nothing about the prompt itself. A UserPromptSubmit hook can
@@ -19,17 +19,17 @@ is swallowed, because a chat line is never worth losing somebody's turn.
 
 WHAT IT DOES PRINT is the other half (roadmap #27). A hook's stdout is added
 to the turn as context, which makes this the one place a running session can
-be told something for free — no line typed into its input box, no turn spent,
-no interruption mid-task. So when the roadmap or the memories have moved
-since this session last heard, one sentence saying so rides along with the
+be told something for free, with no line typed into its input box, no turn
+spent and no interruption mid-task. So when the roadmap or the memories have
+moved since this session last heard, one sentence saying so rides along with the
 prompt the operator was already sending. That is why the panel does not need
 a button for the ordinary case; "Save & tell" is left for the other one,
 where somebody wants the session to stop what it is doing and read now.
 
 Which means stdout matters here in a way it did not before: everything
-printed reaches the model. Nothing else may be written to it — a traceback on
-stdout would arrive as instructions — which is what the bare `except` at the
-bottom is for.
+printed reaches the model. Nothing else may be written to it, because a
+traceback on stdout would arrive as instructions, which is what the bare
+`except` at the bottom is for.
 """
 import contextlib
 import json
@@ -45,7 +45,7 @@ MAX = 800
 #
 # UserPromptSubmit fires for every prompt a session receives, and only some of
 # them were typed by somebody. A background command finishing, a file changing
-# under an open session, a slash command expanding — each arrives as a turn
+# under an open session, a slash command expanding: each arrives as a turn
 # wrapped in one of these, and relaying them filled a project's channel with
 # task ids and output paths. That is what it looked like on a phone, and the
 # operator's guess was the notebook they happened to be clicking at the time;
@@ -53,7 +53,7 @@ MAX = 800
 #
 # Named rather than matched by shape. A pattern for "anything in angle
 # brackets" would eat a prompt that quotes XML, which is a normal thing to ask
-# about — so a wrapper this does not know leaks once and gets added here,
+# about, so a wrapper this does not know leaks once and gets added here,
 # which is the failure worth having.
 WRAPPERS = ("task-notification", "system-reminder", "command-name",
             "command-message", "command-args", "local-command-stdout",
@@ -90,7 +90,7 @@ def post_hook(body):
 
 def catchup(project, session):
     """One sentence about what has moved in the notebook since this session
-    was last told, or "" — and told, so the next prompt does not repeat it.
+    was last told, or "", and told, so the next prompt does not repeat it.
 
     Never raises: the caller prints what comes back, and this is on the path
     of every prompt in every session.
@@ -109,7 +109,7 @@ def catchup(project, session):
         return " ".join(x for x in (str(roadmap.catchup(project, session) or ""),
                                     str(pending.settled_line(project) or ""))
                         if x)
-    except Exception:                     # noqa: BLE001 — never cost a turn
+    except Exception:                     # noqa: BLE001  (never cost a turn)
         return ""
 
 
@@ -125,7 +125,7 @@ def rules_firing(project, *, prompt="", path=""):
 
     Read here rather than relayed: on the controller the file is right there.
 
-    A NODE has no /config, and this does not relay — which is a real limit
+    A NODE has no /config, and this does not relay, which is a real limit
     and not an oversight. `bb rules --prompt` is relayed, so a node session
     still starts with the standing rules in full and the conditional ones by
     name; what it does not get is one arriving on the turn it becomes
@@ -146,22 +146,22 @@ def rules_firing(project, *, prompt="", path=""):
         rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                         write_json=_write_json)
         hit = rules.matching(project, prompt=prompt, path=path)
-    except Exception:                     # noqa: BLE001 — never cost a turn
+    except Exception:                     # noqa: BLE001  (never cost a turn)
         return ""
     if not hit:
         return ""
-    out = ["House rules for this project cover what you are about to do — the "
+    out = ["House rules for this project cover what you are about to do. The "
            "operator's are theirs and not yours; one marked * a session left:"]
     for r in hit:
         mine = "* " if r.get("by") == "claude" else ""
-        doc = f"\nDefined in full in {r['doc']} — read it first." if r.get("doc") else ""
+        doc = f"\nDefined in full in {r['doc']}; read it first." if r.get("doc") else ""
         chk = f"\nRun `bb rules check {r['name']}` before calling the work done." if r.get("check") else ""
         out.append(f"\n[{r['name']}] {mine}\n{r['text']}{doc}{chk}")
     return "\n".join(out)
 
 
 def main():
-    # `--started PROJECT SESSION`: not a prompt — bb-tty on a node says the
+    # `--started PROJECT SESSION`: not a prompt. bb-tty on a node says the
     # session began, which the controller's proxy announces for a local one
     # and cannot see for one on a node. Nothing to read from stdin.
     if sys.argv[1:2] == ["--started"]:
@@ -186,9 +186,9 @@ def main():
         # ...and any house rule this prompt fires (roadmap #7). A conditional
         # rule is named in the standing block and not quoted there, so this is
         # where its text actually arrives: on the turn somebody asks about the
-        # thing it is about. The full prompt, not human_part — a rule keyed to
-        # "agent" should fire whether the word came from the operator or from
-        # a task notification about one.
+        # thing it is about. The full prompt, not human_part, because a rule
+        # keyed to "agent" should fire whether the word came from the operator
+        # or from a task notification about one.
         fired = rules_firing(project, prompt=str(req.get("prompt") or ""))
         if fired:
             print(fired)

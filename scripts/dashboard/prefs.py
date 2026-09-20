@@ -3,7 +3,7 @@
 
 Per project, set at the bottom of that project's settings dialog. It began as
 a pair of pickers inside every send box, became one standing preference on a
-sidebar card, and is now per project — because the thing it governs is per
+sidebar card, and is now per project, because the thing it governs is per
 project. Each directory has one long-lived conversation, and which model suits
 a Kotlin app is not which model suits a shell script.
 
@@ -11,8 +11,8 @@ a Kotlin app is not which model suits a shell script.
 `--model` and `--effort` when it starts claude. That matters for two reasons
 the slash-command route could not manage:
 
-  - `/model` now raises a confirmation, and there is no IPC into a session —
-    only tmux send-keys — so the dashboard was typing the next line into a
+  - `/model` now raises a confirmation, and there is no IPC into a session
+    (only tmux send-keys), so the dashboard was typing the next line into a
     dialog. notify.py predicted exactly this: it refuses to recognise dialogs,
     because that means pattern-matching a TUI that changes every release.
   - a slash-command switch is saved as claude's default for NEW sessions too,
@@ -36,7 +36,7 @@ MODELS = ("opus", "sonnet", "haiku", "fable")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # How much the operator wants to be in the loop on what a session ENTERS
 # into each notebook tab (roadmap #27): auto lands it, ask holds it for
-# approval, deny refuses it. Creation only — see pending.py. Kept here
+# approval, deny refuses it. Creation only; see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
 GATE_KINDS = ("roadmap", "bugs", "rules")
 # The git policy's two questions, and what they read as when nothing is set:
@@ -158,7 +158,7 @@ def _load():
     Was a single global pair. It moved onto each project because the sessions
     it governs are per project: one long-lived conversation per directory, and
     which model is right for a Kotlin app is not which model is right for a
-    shell script. The old global value is not thrown away — `migrate` puts it
+    shell script. The old global value is not thrown away: `migrate` puts it
     on every project that exists at the time, so nothing changes underfoot for
     an install that had one.
     """
@@ -186,9 +186,9 @@ def _clean(rec):
     return {
             # Which docker-host node this project's containers default to.
             # A node id, opaque here: prefs stores the choice, the pickers
-            # resolve it, and "" means auto — the default docker node.
+            # resolve it, and "" means auto, the default docker node.
             # The project's node (docs/nodes.md §6, §13): where EVERYTHING
-            # this project does on a node goes — its containers, builds,
+            # this project does on a node goes: its containers, builds,
             # tests, CI and emulation. One setting, by the operator's
             # decision (1 Sep): per-role pickers were more control than
             # anybody wanted. A node id, "" meaning none.
@@ -204,7 +204,7 @@ def _clean(rec):
             # not lock a session out of the notebook by typo.
             # What a session may do with git's network half (roadmap R36):
             # push its own branch, and push to main. Enforced where the
-            # controller runs git — the relay — and read by a session with
+            # controller runs git (the relay) and read by a session with
             # bb git policy; a local commit or merge cannot be forbidden.
             "gitpol": {k: ((rec.get("gitpol") or {}).get(k)
                            if isinstance(rec.get("gitpol"), dict)
@@ -221,7 +221,7 @@ def _clean(rec):
             # node's daemon. `deny` by default; `auto` for a project whose
             # whole loop is "change it, rebuild it, look at it"; `ask` puts
             # the reason in front of a person, who allows one rebuild.
-            # Creating, removing and Up/Down are not on this dial at all —
+            # Creating, removing and Up/Down are not on this dial at all:
             # those are docker-write, which a session never has.
             "devbuild": _devbuild(rec.get("devbuild")),
             # Whether a session's tests run ONLY inside the project's dev
@@ -244,13 +244,13 @@ def get(project):
 
 # How a project of each shape runs its tests, in the order a tree is asked.
 # The command is never WRITTEN anywhere: the record stays exactly what the
-# operator typed, and this answers when that is empty — so `bb test` on a
+# operator typed, and this answers when that is empty, so `bb test` on a
 # project nobody has configured runs the thing that project obviously runs,
 # and the settings field shows it as the placeholder it would use.
 #
 # Tests only. "Run the tests" has one conventional answer per ecosystem;
-# "build" does not — which target, which flavour, which of an Android
-# project's four — so `bb build` still refuses and says so rather than
+# "build" does not (which target, which flavour, which of an Android
+# project's four), so `bb build` still refuses and says so rather than
 # guessing at somebody's release variant.
 TEST_DEFAULTS = (
     # This repository's own harness, which is a shell script rather than a
@@ -274,7 +274,7 @@ def test_default_at(root):
 
     Read from the tree each time rather than remembered: a repo that grows a
     test runner should start answering, and one that loses it should stop.
-    Two entry points because the two callers know different things — the
+    Two entry points because the two callers know different things: the
     server knows the workspace and the project name, and bb knows the
     directory it is being run in and often not the workspace at all.
     """
@@ -303,8 +303,8 @@ def test_default_at(root):
 
 
 def all_projects(workspace=None):
-    """Every project's pair, for the status payload. Cheap — one small file,
-    no subprocess — which is what lets this ride the poll at all.
+    """Every project's pair, for the status payload. Cheap (one small file,
+    no subprocess), which is what lets this ride the poll at all.
 
     With a workspace, each record also carries `test_default`: what `bb test`
     would run there with nothing set, so the settings field can offer it as
@@ -350,7 +350,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 return {"error": "gitpol is {push|main: allow|deny}"}
             for k, v in gitpol.items():
                 if k not in GITPOL_KEYS:
-                    return {"error": f"not a git policy: {k} — one of {', '.join(GITPOL_KEYS)}"}
+                    return {"error": f"not a git policy: {k}; one of {', '.join(GITPOL_KEYS)}"}
                 if v not in GITPOL_MODES:
                     return {"error": f"{k}: allow or deny, not {v}"}
                 cur["gitpol"][k] = v
@@ -359,7 +359,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
             for k, v in gate.items():
                 if k not in GATE_KINDS:
-                    return {"error": f"not a gate: {k} — one of {', '.join(GATE_KINDS)}"}
+                    return {"error": f"not a gate: {k}; one of {', '.join(GATE_KINDS)}"}
                 if v not in GATE_MODES:
                     return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
                 cur["gate"][k] = v
@@ -380,7 +380,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["devtest"]
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
-            # file says only what somebody chose — _clean puts the defaults
+            # file says only what somebody chose; _clean puts the defaults
             # back on the way out.
             rec = dict(cur)
             if all(v == "auto" for v in cur["gate"].values()):
@@ -402,7 +402,7 @@ def set_prefs(project, node=None, build=None, test=None,
 
 
 def forget(project):
-    """Drop a project's pair — for a project being deleted."""
+    """Drop a project's pair, for a project being deleted."""
     with _lock:
         d = _load()
         if d["projects"].pop(project, None) is not None:

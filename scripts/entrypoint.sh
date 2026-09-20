@@ -20,10 +20,10 @@ PGID="${PGID:-100}"
 # Shield secrets from the builder user (and therefore from Claude sessions).
 #
 # Values may arrive as container env vars or as /secrets/*.env files (a
-# root-owned mount — the fully shielded path, since env vars remain visible
+# root-owned mount: the fully shielded path, since env vars remain visible
 # to `docker exec`'d processes no matter what we do here). Either way they
 # are stashed into a root-only file for the mint-runner-token helper, turned
-# into log-redaction rules, and — when SHIELD_SECRETS is on — scrubbed from
+# into log-redaction rules, and, when SHIELD_SECRETS is on, scrubbed from
 # the environment every builder process inherits.
 # Values stashed for the root helper and registered for log redaction.
 #
@@ -32,8 +32,8 @@ PGID="${PGID:-100}"
 # shielded rather than explained.
 SECRET_VARS=(ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN NODE_TOKEN)
 
-# DOCKER_HOST is the operator's to write as the sandbox VM's address — just the
-# machine, `10.0.0.9` — and it is also a variable the docker CLI reads for
+# DOCKER_HOST is the operator's to write as the sandbox VM's address (just the
+# machine, `10.0.0.9`), and it is also a variable the docker CLI reads for
 # itself, where a bare address means tcp://<addr>:2375 and nothing answers.
 #
 # So it is normalized once, here, before anything inherits it: the dashboard,
@@ -48,7 +48,7 @@ if [ -n "${DOCKER_HOST:-}" ]; then
             case "$DOCKER_HOST" in
                 ssh://*@*) ;;                       # spelled out in full
                 ssh://*)   DOCKER_HOST="ssh://bb@${DOCKER_HOST#ssh://}" ;;
-                *) ;;                               # tcp://, unix:// — the
+                *) ;;                               # tcp://, unix://: the
                                                     # feature refuses these and
                                                     # says so; not ours to edit
             esac ;;
@@ -116,7 +116,7 @@ SED
 # Shielded SSH keys: private keys dropped in /secrets/ssh (root-only mount)
 # are loaded into a root-owned ssh-agent. Builder processes get only the
 # agent socket (SSH_AUTH_SOCK is baked into the image env), so git/ssh can
-# *use* the keys — the agent signs on their behalf — but no session can ever
+# *use* the keys (the agent signs on their behalf), but no session can ever
 # read the private key material itself.
 setup_ssh_agent() {
     local keydir=/secrets/ssh
@@ -154,7 +154,7 @@ setup_ssh_agent() {
 
     # ssh-agent rejects any client whose uid differs from its own (root is the
     # sole exception), so the builder user cannot talk to it directly no matter
-    # how the socket is chowned — sessions would see an empty agent while the
+    # how the socket is chowned; sessions would see an empty agent while the
     # keys sat loaded and usable only by root.
     #
     # Bridge it with a root-owned socat proxy. The agent sees root as the peer
@@ -163,8 +163,8 @@ setup_ssh_agent() {
     # Because the proxy runs as root, the builder user cannot ptrace it to read
     # key material out of memory either.
     if ! command -v socat >/dev/null 2>&1; then
-        warn "socat is missing — sessions cannot reach the root-owned agent, so"
-        warn "the shielded keys will be unusable — use ~/.ssh, or give the"
+        warn "socat is missing: sessions cannot reach the root-owned agent, so"
+        warn "the shielded keys will be unusable. Use ~/.ssh, or give the"
         warn "project a token in the dashboard's clone dialog instead."
         return 0
     fi
@@ -181,7 +181,7 @@ setup_ssh_agent() {
     done
 
     if [ -S "$user_sock" ]; then
-        log "ssh-agent: ${added} shielded key(s) loaded — sessions can use them, not read them"
+        log "ssh-agent: ${added} shielded key(s) loaded; sessions can use them, not read them"
     else
         warn "ssh-agent proxy failed to start; shielded keys will be unusable"
     fi
@@ -189,16 +189,16 @@ setup_ssh_agent() {
 
 # Mirror everything this container prints into a persistent file on the
 # /config volume, so startup output survives container recreation (which
-# happens on every image update — exactly when you want yesterday's log).
+# happens on every image update, exactly when you want yesterday's log).
 # Docker's own `docker logs` keeps working: tee passes output through.
-# rotate_log FILE — shift generations down and leave FILE free for a new one.
+# rotate_log FILE: shift generations down and leave FILE free for a new one.
 # Rotating per start rather than per size means one file equals one container
 # lifetime, so "what happened on that boot" is answerable by opening a file
 # instead of hunting for the boundary in an appended stream. The cost is that a
 # crash loop burns through generations quickly, which is what BB_LOG_KEEP is
 # now for: a ceiling, not the policy. How long logs are actually kept is a
 # number of DAYS, set in the dashboard's settings menu and applied by
-# dashboard/logs.py — a count is the wrong unit for "was that this week?", and
+# dashboard/logs.py: a count is the wrong unit for "was that this week?", and
 # five generations of a crash loop is five minutes.
 rotate_log() {
     local logfile="$1" keep=60 i             # a ceiling, constant since R29
@@ -233,20 +233,20 @@ setup_logging() {
     for f in builderbot.log dashboard.log docker.log ttyd.log; do
         rotate_log "$logdir/$f"
     done
-    # All output — the persistent file AND the docker-logs passthrough —
+    # All output (the persistent file AND the docker-logs passthrough)
     # flows through the redaction rules built by stash_secrets.
     if [ -s /run/builderbot/redact.sed ]; then
         exec > >(sed -u -f /run/builderbot/redact.sed | tee -a "$logfile") 2>&1
     else
         exec > >(tee -a "$logfile") 2>&1
     fi
-    log "===== container start $(date -Is) — logging to ${logfile} ====="
+    log "===== container start $(date -Is), logging to ${logfile} ====="
 }
 
 # Append this image to the ledger, unless it is already the last line.
 #
 # Deduplicated on the stamp rather than written per boot: a restart is not
-# news, a different image is. A rollback appends too, which is the point — the
+# news, a different image is. A rollback appends too, which is the point: the
 # question this answers is "what was the box running on Tuesday", and pointing
 # the Repository field back at an older tag is one of the ways the answer
 # stops being obvious.
@@ -274,7 +274,7 @@ record_image() {
     # Everything else in /config belongs to the builder; keep this the same so
     # a later reader is not the one to find out it is root's.
     chown "${PUID:-99}:${PGID:-100}" "$f" 2>/dev/null || true
-    log "image changed: ${rev:0:7} (${ver}) — recorded in ${f}"
+    log "image changed: ${rev:0:7} (${ver}), recorded in ${f}"
 }
 
 banner() {
@@ -354,15 +354,15 @@ seed_home() {
     # The workspace root is only ours to chown when it is a directory this
     # container made. Mounted, it is the host's projects share, and quietly
     # changing the ownership of somebody's share because a container started is
-    # not a repair — it is a surprise. The Projects card reports it instead.
+    # not a repair; it is a surprise. The Projects card reports it instead.
     if is_mountpoint "$WORKSPACE"; then
         run_as_builder test -w "$WORKSPACE" \
-            || warn "$WORKSPACE is not writable by ${PUID}:${PGID} — new projects cannot be created there (chown it on the host)"
+            || warn "$WORKSPACE is not writable by ${PUID}:${PGID}: new projects cannot be created there (chown it on the host)"
     else
         chown "$PUID:$PGID" "$WORKSPACE" 2>/dev/null || true
     fi
 
-    # Project mounts are deliberately left alone — a recursive chown across a
+    # Project mounts are deliberately left alone: a recursive chown across a
     # share is slow and hard to undo. Set CHOWN_PROJECTS=true to opt in.
     if is_true "${CHOWN_PROJECTS:-false}"; then
         local d
@@ -376,14 +376,14 @@ seed_home() {
 }
 
 # The Android SDK lives in the image at /opt, so anything sdkmanager installs
-# at runtime is thrown away by the next image update — and with a weekly
+# at runtime is thrown away by the next image update, and with a weekly
 # rebuild that means re-downloading gigabytes on a schedule. Every directory
 # that is purely downloaded content moves out to a store that persists and is
 # symlinked back into place, so sdkmanager, Gradle and Android Studio all
 # install to the store without knowing it.
 #
 # Which store: the toolchain store when one is mapped, the home volume otherwise.
-# The choice is made per directory, and deliberately conservative — a
+# The choice is made per directory, and deliberately conservative: a
 # directory that already holds gigabytes on the home volume keeps pointing
 # there, because silently retargeting the link would make an existing 30GB
 # library vanish from every tool that uses it. New directories, and empty
@@ -406,7 +406,7 @@ persist_android_downloads() {
         # The share first, then the home volume's own toolchain store root (where packages
         # land when no share is mapped). Whichever actually holds packages
         # wins, so a library that exists is never hidden behind an empty
-        # directory somewhere else — the one failure mode that matters here,
+        # directory somewhere else, the one failure mode that matters here,
         # because "hidden" looks exactly like "gone" to Gradle.
         store=""
         for cand in "$share/$sub" "$home_root/android/$sub"; do
@@ -447,8 +447,8 @@ persist_android_downloads() {
         log "android sdk downloads persist outside the image"
     fi
     if [ "$nudge" -eq 1 ]; then
-        # Nothing is broken — the links point at the packages wherever they
-        # are — so this is information, not an instruction. Moving them is a
+        # Nothing is broken (the links point at the packages wherever they
+        # are), so this is information, not an instruction. Moving them is a
         # host-side `mv` into the toolchain store and a restart; the container has
         # no better way to do it than the operator does, and doing tens of GB
         # of copying from in here without being asked would be worse.
@@ -464,7 +464,7 @@ persist_android_downloads() {
 # How long each hook took, and how far into the boot it started.
 #
 # The dashboard is a hook like any other, so everything before it is time the
-# operator spends looking at a browser that will not connect — and until this,
+# operator spends looking at a browser that will not connect, and until this,
 # the log said which hooks ran and nothing about which one was the wait. A
 # guess about that is worth nothing; nine hooks run before the web UI and any
 # of them could be the one.
@@ -546,7 +546,7 @@ main() {
         persist_android_downloads
         setup_ssh_agent
     else
-        warn "not running as root — skipping user remap, ownership fixes and root hooks"
+        warn "not running as root; skipping user remap, ownership fixes and root hooks"
     fi
 
     # After the timezone, so the ledger's stamps read as local time like every
@@ -557,7 +557,7 @@ main() {
     run_hooks
     log "hooks done (+${SECONDS}s from start)"
     # The finish line, for anything a hook started that is now measuring a
-    # container it was itself part of building — the dashboard's doctor above
+    # container it was itself part of building, the dashboard's doctor above
     # all. World-readable: it is read by the builder user.
     # Braced: bash performs the redirections left to right and reports a failed
     # one itself, so `: > file 2>/dev/null` still prints "Permission denied".

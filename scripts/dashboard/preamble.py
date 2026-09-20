@@ -5,7 +5,7 @@ Three stores contribute to the block bb-tty hands `claude` as
 `--append-system-prompt`: the house rules first (how the operator wants this
 worked on comes before what there is to work on), then the open roadmap, then
 the open bugs. That order and those joins used to live in bb-tty as shell,
-which was fine while the launcher was the only reader — and stopped being fine
+which was fine while the launcher was the only reader, and stopped being fine
 the moment the Briefing tab wanted to SHOW a person what their sessions are
 sent. Two assemblies of the same text drift, and the one that drifts is the
 one nobody runs.
@@ -41,7 +41,7 @@ WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
 MAX = 200000
 
-CUT = ("[the rest of this list did not fit in the prompt — `bb roadmap`"
+CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
        " and `bb bug` show all of it]")
 
 
@@ -156,7 +156,7 @@ def fit(text):
     """(what a session gets, whether it was cut, how big it was).
 
     The cut lands on a line boundary rather than mid-line, and never inside a
-    UTF-8 character — `head -c` was happy to do both.
+    UTF-8 character; `head -c` was happy to do both.
     """
     raw = text.encode("utf-8")
     if len(raw) <= MAX:

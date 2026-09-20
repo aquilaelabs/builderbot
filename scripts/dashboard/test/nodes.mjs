@@ -1,5 +1,5 @@
 // Phase 1 of the controller design (docs/nodes.md): the seam, with nothing
-// visibly changing. What this file holds is the phase's whole contract —
+// visibly changing. What this file holds is the phase's whole contract:
 // the store exists behind the four one-way doors it owns, the local node and
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
@@ -19,7 +19,7 @@ writeFileSync(`${DIR}/ws/ep.silon/.env.example`, '');
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 
-// The store the harness server booted with — read through the module itself,
+// The store the harness server booted with, read through the module itself,
 // the way bb nodes reads it, so the test exercises the same path.
 const readStore = (py) => JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, sys
@@ -62,7 +62,7 @@ ok(!local.capabilities.includes('docker-host'),
    '...and no docker-host capability: the local node is not a sandbox');
 ok(await page.evaluate(() => !document.querySelector('.nodestab [data-cap], .nodestab [data-encap]')),
    'no capability toggles anywhere: a node does everything for the projects bound to it');
-// The docker host, enrolled by the harness with a token (roadmap #24 —
+// The docker host, enrolled by the harness with a token (roadmap #24:
 // there is no ssh kind and no DOCKER_HOST seed any more). Its address is
 // what it dialed in from, reported by the node rather than written here.
 const sandbox = list.find(n => n.name === 'sandbox');
@@ -73,7 +73,7 @@ ok(sandbox && /^n_[0-9a-f]{8}$/.test(sandbox.id) && sandbox.kind === 'agent'
 ok(!list.some(n => n.kind === 'ssh'),
    '...and no node is of the retired ssh kind, here or anywhere');
 ok(list[0].id === 'local',
-   'local lists first — the one node every deployment has');
+   'local lists first: the one node every deployment has');
 
 // ---- the default node runs docker, when any node says so (B113) -----------
 // node_for() took the newest node with an ADDRESS, and an address is not a
@@ -128,8 +128,8 @@ print(json.dumps(out))
 
 // ---- the seam: work says which node it belongs to --------------------------
 // A compose action claims the job slot; the claim now asks node_for() and
-// the answer rides the job the page polls. Fixed in phase 1 — docker work is
-// the sandbox record — and the call site is what phase 4's placement slides
+// the answer rides the job the page polls. Fixed in phase 1 (docker work is
+// the sandbox record), and the call site is what phase 4's placement slides
 // into.
 {
   const r = await page.evaluate(async () => (await (await fetch('/api/devapp', {
@@ -138,7 +138,7 @@ print(json.dumps(out))
   })).json()));
   ok(!r.error, `an instance exists to act on (${r.error || 'ok'})`);
   // Read from the job ROW, not from the live slot the manager polls. The
-  // first version of this raced the stub daemon — an up finishes in well
+  // first version of this raced the stub daemon: an up finishes in well
   // under a second and a finished job leaves the slot, so the stamp had to
   // be caught mid-flight, and on a loaded box the whole job could pass
   // between two polls. It flaked in full runs and passed in isolation, which
@@ -161,7 +161,7 @@ print(json.dumps(out))
 
 // ---- the audit trail -------------------------------------------------------
 // Door 2: every mutation through the POST funnel writes who/what/when with a
-// parameter digest — and never the parameters, which carry tokens.
+// parameter digest, and never the parameters, which carry tokens.
 {
   await page.evaluate(() => fetch('/api/bugs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -194,7 +194,7 @@ print(json.dumps(out))
     { encoding: 'utf8', cwd: REPO,
       env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
   ok(!/\blocal\b/.test(out) && /sandbox · stub/.test(out),
-     'bb nodes prints the enrolled machines, read-only — never the controller, which is registry plumbing');
+     'bb nodes prints the enrolled machines, read-only. Never the controller, which is registry plumbing');
 }
 
 // ---- phase 2: the Nodes tab ------------------------------------------------
@@ -228,7 +228,7 @@ print(json.dumps(out))
   // key as well as a token and a token-only node could do everything except
   // docker. Compose is an agent job now, so the tab offers one way in.
   ok(await page.$('#ndAdd') === null && await page.$('#ndEnroll') !== null,
-     'the tab offers enrollment and nothing else — no Add ssh node');
+     'the tab offers enrollment and nothing else: no Add ssh node');
   {
     const before = page.errors.length;
     const r = await page.evaluate(() => nodeAct({ action: 'add', name: 'buildbox',
@@ -285,7 +285,7 @@ print(json.dumps(out))
   ok(true, 'a deliberately restricted node can still be written through the API');
   {
     // A deliberate refusal: the server answers 400, and the browser logs
-    // every non-2xx as a console error. Asserted, then absolved — the final
+    // every non-2xx as a console error. Asserted, then absolved: the final
     // zero-errors check is for failures this file did not order.
     const before = page.errors.length;
     const r = await page.evaluate(() => nodeAct({ action: 'update',
@@ -315,7 +315,7 @@ print(json.dumps(out))
 {
   // Opened with the node list DELIBERATELY not loaded, because that is the
   // state a fresh page is in: the picker is drawn from that list, and the
-  // tab used to watch only its own revision — so the list landed, nothing
+  // tab used to watch only its own revision, so the list landed, nothing
   // redrew, and a box with two nodes showed no picker until something else
   // happened to repaint the tab. The tab asks for the list on open now and
   // watches its revision, and this is the case that proves it.
@@ -324,7 +324,7 @@ print(json.dumps(out))
   await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
   // Waited for AND read in one go: the tab redraws from the poll, so a list
   // read in a second round trip can land on the moment between two draws and
-  // come back empty (B99's family — this file has had three).
+  // come back empty (B99's family; this file has had three).
   const opts = await page.waitForFunction(() => {
     const os = [...document.querySelectorAll('.dmtab .dmpick option')];
     return os.length ? os.map(o => o.textContent.trim()) : false;
@@ -363,14 +363,14 @@ print(json.dumps(out))
   // available()'s two probes notices first depends on the box: `docker
   // version` failing gives "does not answer", and `docker version` answering
   // while `docker info` does not gives "answers but will not say what it is".
-  // Both are the thing under test — a reason on screen instead of a spinner —
+  // Both are the thing under test (a reason on screen instead of a spinner),
   // and listing only three made the fourth read as a failure in a full run
   // while the file passed alone.
   ok(/not a BuilderBot sandbox|does not answer|will not say what it is/.test(emptyWhy),
      `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
   await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
-     '...with the picker still live — the way back is the way in');
+     '...with the picker still live: the way back is the way in');
   // and back: the sandbox's last-known answer paints instantly from cache.
   // Waited for at the point of USE, not at the assertion above: the picker
   // is drawn only while nodesList holds more than one node, and a reload of
@@ -394,7 +394,7 @@ print(json.dumps(out))
                              null, { timeout: 30000 });
   ok(true, 'switching back to the live node recovers without a reload');
   // ...and the tab REMEMBERS which node that was. The pick lived in a page
-  // variable, so a reload went back to whichever node is the default — not
+  // variable, so a reload went back to whichever node is the default, not
   // the one anybody chose, and reliably the wrong entry in the picker. It
   // rides in the tab's arg now, which is the part of a tab that is saved,
   // and `identity()` for a kind that is not `multi` is the kind alone, so
@@ -404,7 +404,7 @@ print(json.dumps(out))
   ok(await page.evaluate(() => tabs.find(t => t.kind === 'docker')?.arg) === want,
      'the docker tab carries the node it is on, so it is saved with the layout');
   // The line under the picker names the daemon the PICKER is on, which it
-  // read off the status poll — and the poll is the default node's answer, so
+  // read off the status poll, and the poll is the default node's answer, so
   // it named a machine the tab was not talking to, in an address. Read
   // BEFORE the reload below, which throws the answer away on purpose.
   ok(await page.evaluate(() => (dockerList?.src?.where || '').length > 0),
@@ -425,7 +425,7 @@ print(json.dumps(out))
   await page.evaluate(() => toggleUiMenu(true));
   await page.waitForSelector('#uiProfile', { timeout: 10000 });
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logDays')),
-     'the gear keeps appearance only — the log setting moved out');
+     'the gear keeps appearance only: the log setting moved out');
   await page.evaluate(() => toggleUiMenu(false));
   await page.evaluate(() => { const c = document.getElementById('cardAdmin');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
@@ -461,7 +461,7 @@ print(json.dumps(out))
 // A node that enrolled as a sandbox gets a fold: mounts, stores and network
 // as the operator wants them, drawn against what the agent reports, with
 // Save keeping the record and Apply queuing the system job. Enrolled here by
-// hand — the census is a body — because the real agent has its own suite.
+// hand (the census is a body) because the real agent has its own suite.
 {
   const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
   const base = URL.replace(/\/$/, '');
@@ -470,12 +470,12 @@ print(json.dumps(out))
   const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed' });
   // The digest this controller ships, so the fixture node enrolls CURRENT.
   // Everything below drives Apply, the runner and installs, all of which are
-  // held while an agent is behind — the stale half is its own block at the
+  // held while an agent is behind: the stale half is its own block at the
   // end, where it can hold them without breaking the rest.
   const shipped = (await napi('/api/v1/nodes')).agent || {};
   // The census this node reports, kept as one object: a hello REPLACES it,
   // so a later poke that sends a partial one silently takes the node's
-  // mounts and address away — which is a confusing way to fail four tests
+  // mounts and address away, which is a confusing way to fail four tests
   // further down.
   const CENSUS = { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, administers: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
@@ -488,7 +488,7 @@ print(json.dumps(out))
               // which is the disparity this replaces.
               toolchain_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
               // What the toolchain store actually holds, which is what the
-              // Tools tab decides `installed` from — the census summary
+              // Tools tab decides `installed` from; the census summary
               // above is a placement hint, not an inventory.
               store_dirs: { top: ['flutter', 'node'], android: [] },
               // The android system images in the node's own toolchain store,
@@ -562,7 +562,7 @@ print(json.dumps(out))
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
   ok(await page.$(`${ROW} .ndstale`) === null && await page.$(`${ROW} [data-nd="update-agent"]`) === null,
      'a node running the shipped agent wears no update pill and is offered no update');
-  // The controller is not on this tab at all now — a stronger version of the
+  // The controller is not on this tab at all now, a stronger version of the
   // claim this used to make by picking it and finding no storage section and
   // no agent to update.
   ok(!(await nodeOptions(page)).includes('local')
@@ -690,7 +690,7 @@ print(json.dumps(out))
   ok(await page.$eval(`${RUN} .ndrunstate`, e => /running a job/.test(e.textContent)
        && /registered as shed/.test(e.textContent)),
      '...and one that is working says which job-taking state it is in, by name');
-  // The label is the only thing that pins a workflow to THIS machine —
+  // The label is the only thing that pins a workflow to THIS machine.
   // `self-hosted` alone matches the controller and every other node, so
   // GitHub sends the job to whichever is idle (roadmap #19).
   ok(await page.$eval(`${ROW} .ndrunpin`, e =>
@@ -698,7 +698,7 @@ print(json.dumps(out))
      '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
   // most often here to check, and it was below three editors. The plane is
-  // sections now — one fold per concern, a status on each summary — and
+  // sections now (one fold per concern, a status on each summary), and
   // the order still holds.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {
        const kids = [...e.querySelectorAll(':scope > details.sect > summary .t')].map(t => t.textContent.trim());
@@ -709,7 +709,7 @@ print(json.dumps(out))
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
   // Every fold on this page is driven rather than left to the browser's
-  // instant snap — the memories, the bug reports, the version tab's fold, the
+  // instant snap: the memories, the bug reports, the version tab's fold, the
   // Docker manager's wiring. Sections shipped without it and were the one
   // kind that jumped.
   {
@@ -720,7 +720,7 @@ print(json.dumps(out))
     await openFold(page, sel);          // put it back for what reads inside it
   }
   // The sidebar's Runner card carries every node with a runner, not only
-  // this container's — a workflow lands on whichever runner its runs-on
+  // this container's: a workflow lands on whichever runner its runs-on
   // matches, and GitHub was the only place that answer existed.
   await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: false,
                                    name: 'shed', url: 'https://github.com/example-org',
@@ -728,7 +728,7 @@ print(json.dumps(out))
   // "shed" is not the condition: the card has carried the name since the
   // install press above, on whichever poll landed since, and refresh() asked
   // while the fifteen-second poll is out returns at once and re-polls after
-  // it — so the first draw here can be from an answer computed before this
+  // it, so the first draw here can be from an answer computed before this
   // hello. Wait for the state the assertion is about (B73).
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => {
@@ -739,8 +739,8 @@ print(json.dumps(out))
        && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      'the Runner card carries a node runner, with the runs-on that lands a job on it');
   await runnerCensus({});
-  // A node with mounts and no saved config opens on the ones it reports —
-  // an empty editor for a machine with three shares was the first thing the
+  // A node with mounts and no saved config opens on the ones it reports.
+  // An empty editor for a machine with three shares was the first thing the
   // operator hit.
   const seeded = await page.$$eval(`${ROW} .ndmount [data-k="source"]`, es => es.map(e => e.value));
   ok(seeded.includes('nas:/mnt/user/old'),
@@ -757,7 +757,7 @@ print(json.dumps(out))
   await page.fill(`${ROW} .ndmount[data-i="${last}"] [data-k="path"]`, '/mnt/appdata');
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
   ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
-     'the fold carries the artifacts store — this node\'s copy of what projects built');
+     'the fold carries the artifacts store: this node\'s copy of what projects built');
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);
@@ -1054,7 +1054,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // The controller reaches the toolchain store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be
   // derived from the other and the pair was invisible. A marker file inside
-  // the store answers exactly, whatever the transport — and once the pair is
+  // the store answers exactly, whatever the transport, and once the pair is
   // visible, two machines of different architectures sharing one store is a
   // thing that can be refused instead of failing later as binaries that will
   // not execute.
@@ -1086,7 +1086,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
          (wrong.error || 'no error').slice(0, 100)})`);
     const fine = await napi('/api/toolchains', { action: 'install', names: ['flutter'], node: other.id });
     ok(!/packaged for/.test(fine.error || ''),
-       `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
+       `...while one that resolves its own platform is not refused FOR ITS PLATFORM: this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
     if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
     // Two architectures on one store is the design now, not a clash: each
     // machine installs under its own <os>-<arch> scope (roadmap R19), so
@@ -1094,7 +1094,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // share. Cancelled at once, so the one-at-a-time rule below starts clean.
     const clash = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     ok(clash.job && !clash.error,
-       `a store shared across architectures takes the install — each machine has its own scope in it (${
+       `a store shared across architectures takes the install: each machine has its own scope in it (${
          clash.job || clash.error})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: clash.job });
     // Same architecture: allowed, but still one at a time across the pair.
@@ -1143,9 +1143,9 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await runnerCensus({});     // put the fixture's store listing back
   }
 
-  // What a FINISHED job on a node reports. It used to report nothing — the
+  // What a FINISHED job on a node reports. It used to report nothing: the
   // row vanished the moment the job ended, with done and failed hardcoded
-  // empty — so the tab never cleared what the operator had ticked and the
+  // empty, so the tab never cleared what the operator had ticked and the
   // next press re-sent toolchains that had already landed.
   {
     const j = await napi('/api/toolchains', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
@@ -1295,7 +1295,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => [...document.querySelectorAll('#rnNode option')].some(o => o.value === id),
                              minted.id, { timeout: 10000 });
   ok(await page.$eval('#rnNode', s => ![...s.options].some(o => o.value === 'local') && [...s.options].some(o => /sandbox/.test(o.textContent))),
-     'the project\'s node is any node but this container — the ssh sandbox included');
+     'the project\'s node is any node but this container: the ssh sandbox included');
   await page.selectOption('#rnNode', minted.id);
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
@@ -1361,7 +1361,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
 
   // ---- an apply that failed says so, where the button is -------------------
   // A failed apply leaves the drift exactly as it was, so the section went
-  // back to "1 change to apply" and mentioned the attempt nowhere — which
+  // back to "1 change to apply" and mentioned the attempt nowhere, which
   // reads as a button that did nothing, and is what the operator saw.
   {
     const ap = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
@@ -1452,7 +1452,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // that replaces the button. pressing() only covers the round trip; the
   // render is what has to know, and node_list only tracked system jobs, so
   // Update agent came back live the instant it answered.
-  // Back to the Nodes tab — the block above left the Tools tab in front.
+  // Back to the Nodes tab: the block above left the Tools tab in front.
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
@@ -1484,7 +1484,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
   // Waited for rather than read once: the rows and the alerts are two reads
   // of the record in one poll, and a hello landing between them skews one
-  // poll's answer — the next agrees.
+  // poll's answer; the next agrees.
   await page.waitForFunction(() => /different compatibility window/.test(
     (state.projects || []).find(p => p.name === 'alpha')?.node_gap || ''), null, { timeout: 30000 });
   ok(true, 'the project row carries why nothing routed to its node runs');
@@ -1516,7 +1516,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
      `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
   // A mount the server refused is neither: the agent tried it and kept
-  // what the server said, and the fix is the export rule on the host —
+  // what the server said, and the fix is the export rule on the host,
   // which is what actually happened when the sandbox moved to an address
   // the rule did not name.
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
@@ -1591,7 +1591,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
 // What DOCKER_HOST_PATHS was: on the sandbox node's row now, validated to
 // pairs, and read by the manager through the node being addressed. It used
 // to draw on the ssh row only; with that kind retired (roadmap #24) it draws
-// on the agent row, which is the only remote row left — devapp.host_map
+// on the agent row, which is the only remote row left; devapp.host_map
 // still reads it for whichever node is being addressed, so a line that drew
 // nowhere would have taken an editable setting out of reach in silence.
 {
@@ -1676,7 +1676,7 @@ await page.evaluate(() => nodeAct({ action: 'paths', id: nodesList.find(n => n.n
 
 // Retire what this file made, the way agent.mjs does: the store outlives a
 // suite, and a node left online here becomes the DEFAULT node for the files
-// after it — which sent devapp's compose at a machine that does not exist.
+// after it, which sent devapp's compose at a machine that does not exist.
 for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
      { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).nodes){
   if (n.kind !== 'local' && n.name !== 'sandbox')
@@ -1753,7 +1753,7 @@ await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
    'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
 // Every hypervisor with a template here is offered, and the list is the
-// server's — the templates that actually ship, not a copy of them in the page.
+// server's: the templates that actually ship, not a copy of them in the page.
 await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv option') || []).length > 1,
                            null, { timeout: 15000 });
 const kinds = await page.$$eval('#ndBody #vm_hv option', os => os.map(o => o.value));
@@ -1784,7 +1784,7 @@ await page.waitForFunction(x => document.querySelector('#ndBody .vmxml')?.textCo
                            vm1, { timeout: 15000 });
 const [u2, m2] = idOf(await page.$eval('#ndBody .vmxml', p => p.textContent));
 ok(u2 !== u1 && m2 !== m1,
-   'a second render is a second machine — neither the uuid nor the MAC is reused');
+   'a second render is a second machine: neither the uuid nor the MAC is reused');
 ok((await page.$$eval('#ndBody .vmsteps li', ls => ls.length)) >= 5
    && await page.$eval('#ndBody .vmsteps', ol => /NFS Security Settings/.test(ol.textContent)),
    '...and the steps say how to get from here to an enrolled node, exports first');
@@ -1818,8 +1818,8 @@ ok(!!badId.error && !badId.text, '...and something that is not a uuid is refused
 
 // ---- and the same machine on somebody else's hypervisor ---------------------
 // A node is a machine, not an Unraid machine. The picker switches template,
-// and what changes with it is the artifact, the steps, and the MAC range —
-// the last being the one nobody gets right by hand: VMware refuses a static
+// and what changes with it is the artifact, the steps, and the MAC range.
+// The last is the one nobody gets right by hand: VMware refuses a static
 // address outside its own, Hyper-V and VirtualBox hand out their own, and a
 // machine wearing the wrong prefix is the one that collides.
 await page.selectOption('#ndBody #vm_hv', 'proxmox');
@@ -1856,8 +1856,8 @@ page.errors = [];
 await page.click('#ndBody #vmCancel');
 
 // ---- debug: whose machine logs a node's sessions may read -------------------
-// A session on a node reads the logs of its own WORK — its project's CI runs,
-// what its test runs left — and nothing of the machine. The agent's journal
+// A session on a node reads the logs of its own WORK (its project's CI runs,
+// what its test runs left) and nothing of the machine. The agent's journal
 // is root's there: the enrolled account is in neither adm nor
 // systemd-journal, so journalctl from a session answers "insufficient
 // permissions". This opens that deliberately, per node, and only while the
@@ -1882,7 +1882,7 @@ await page.click('#ndBody #vmCancel');
     return { status: r.status, ...(await r.json()) };
   }, [node, extra]);
 
-  // The switch first. Off — the default — nothing is offered to anybody,
+  // The switch first. Off (the default), nothing is offered to anybody,
   // whatever any node has been granted.
   let r = await read(n.name);
   ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
@@ -1895,7 +1895,7 @@ await page.click('#ndBody #vmCancel');
   });
 
   // On, and still refused: the switch grants nothing. A node is not granted
-  // its own journal either — that is the tick this exists to make somebody
+  // its own journal either; that is the tick this exists to make somebody
   // press.
   r = await read(n.name, { project: 'alpha' });
   ok(r.status === 403 && /has not been granted/.test(r.error || ''),
@@ -1937,7 +1937,7 @@ await page.click('#ndBody #vmCancel');
 
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
-   'still no nodes card — nodes are a tab, not sidebar chrome');
+   'still no nodes card: nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 // ---- Uninstall from the row --------------------------------------------------

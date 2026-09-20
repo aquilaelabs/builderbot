@@ -20,7 +20,7 @@ Three things about adb drive the details:
   toggled, so a remembered port goes stale. The node scans for it rather than
   asking the operator to go and read a number again.
 - **adb calls a TCP phone an emulator.** `adb -e` selects it and `adb -d` does
-  not, so nothing here may use those flags to tell the two apart — the serial
+  not, so nothing here may use those flags to tell the two apart: the serial
   is the only honest test, and an emulator's is emulator-NNNN.
 
 The phone is kept on an adb server of its own on the node (ANDROID_ADB_SERVER_PORT),
@@ -43,7 +43,7 @@ WORKSPACE = None
 nodes = None          # the node module, set by server.py once it is up: run_wait, phone_nodes, node
 # What an allowed rebuild request actually calls, set by server.py: devapp's
 # own rebuild(project, instance). Injected rather than imported so this module
-# keeps having one dependency — the node registry — and so the request queue
+# keeps having one dependency (the node registry), and so the request queue
 # stays a queue rather than growing an opinion about compose.
 rebuilder = None
 
@@ -111,7 +111,7 @@ KNOWN_MAX = 8      # per node; a desk does not hold more phones than this
 def _remember(d, nid, ip, model, serial, name):
     """Note a phone on this node's remembered list, in place if it is one
     already there. A phone is the same phone by model when the model is
-    known and by address until it is — a pairing knows only the address,
+    known and by address until it is: a pairing knows only the address,
     and the connect that follows fills the model in on the same row. The
     address is updated either way: DHCP moves it, the phone does not
     change."""
@@ -139,7 +139,7 @@ def known(nid):
 
 def forget(nid, ip):
     """Drop one remembered phone by address. The pairing key on the node
-    stays — this is the list's memory, not adb's — so the phone can be
+    stays (this is the list's memory, not adb's), so the phone can be
     connected again by typing its address."""
     if not _valid_ip(ip):
         return {"error": f"not an IPv4 address: {ip}"}
@@ -156,7 +156,7 @@ def forget(nid, ip):
 # ---- adb, on the node ------------------------------------------------------
 
 def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone"):
-    """One adb command on the node's phone server. Never `-e` or `-d` — see
+    """One adb command on the node's phone server. Never `-e` or `-d`; see
     the module docstring. {"code", "out"}; an unreachable node is a failure
     with the reason as its output."""
     if nodes is None:
@@ -170,7 +170,7 @@ def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone")
 
 
 # What each node's adb last reported, kept a while: every probe is a job on
-# the node, so the tab does not ask on every poll — it asks when opened,
+# the node, so the tab does not ask on every poll. It asks when opened,
 # when something is pressed, and when a request is about to run.
 _dev_cache = {}
 _dev_fail = {}           # nodes whose last probe did not run, by id
@@ -204,8 +204,8 @@ def devices(nid, force=False):
         return list(c["devs"]) if c else []
     r = _adb(nid, "devices", "-l", timeout=20)
     if r["code"] != 0:
-        # A probe that did not run — the node's one slot taken by a push, an
-        # agent behind, a node away — is not a node with no phone. The last
+        # A probe that did not run (the node's one slot taken by a push, an
+        # agent behind, a node away) is not a node with no phone. The last
         # answer stands, and phone_on() is told not to draw a conclusion.
         _dev_fail[nid] = True
         return list(c["devs"]) if c else []
@@ -249,7 +249,7 @@ def phone_on(nid, force=False):
 
 def device_rev():
     """A token for "what is attached changed", for the revisions poll. From
-    the cache only — this is read every second and a job per read would be
+    the cache only: this is read every second and a job per read would be
     a queue of nothing."""
     return ",".join(sorted(f"{nid}:{d['serial']}:{d['state']}"
                            for nid, c in _dev_cache.items() for d in c["devs"]))
@@ -370,8 +370,8 @@ def connect(nid, ip, port, uid, name):
     else:
         n = find_port(nid, ip, by=f"user:{name}")
         if not n:
-            return {"error": f"nothing on {ip} is listening for adb from the node — "
-                             "is wireless debugging still on? It hands out a new "
+            return {"error": f"nothing on {ip} is listening for adb from the node. "
+                             "Is wireless debugging still on? It hands out a new "
                              "port every time it is toggled."}
     r = _adb(nid, "connect", f"{ip}:{n}", timeout=30, by=f"user:{name}")
     if "connected to" not in r["out"]:
@@ -420,7 +420,7 @@ def _node_row(n, uid, probe):
 def payload(uid, node="", probe=False, admin=False, project=""):
     """The tab's data for one account: every node a phone can be driven
     from, which of them holds one and whose it is, and the requests waiting
-    on THIS account — phone requests on the phone's owner, root requests on
+    on THIS account: phone requests on the phone's owner, root requests on
     an administrator. `probe` asks the picked node's adb again now."""
     rows = []
     for n in (nodes.phone_nodes() if nodes is not None else []):
@@ -449,7 +449,7 @@ def summary(nid, uid, node=None):
 # `web-ext run` is Mozilla's own tool and the only supported way in: an XPI is
 # not an APK, so `adb install` is not it, and Firefox for Android will not
 # take an extension off the filesystem. web-ext drives adb plus Firefox's
-# remote debugging socket to install the add-on TEMPORARILY — it is gone when
+# remote debugging socket to install the add-on TEMPORARILY: it is gone when
 # Firefox restarts, which is the development loop rather than an install.
 #
 # It runs as a job on the node that holds the phone, and stays running on
@@ -494,7 +494,7 @@ with zipfile.ZipFile(f) as z:
             sys.exit("that archive tries to write outside itself")
     z.extractall(d)
 PY
-test -f "$d/manifest.json" || { echo "no manifest.json inside — not a WebExtension package"; exit 1; }
+test -f "$d/manifest.json" || { echo "no manifest.json inside: not a WebExtension package"; exit 1; }
 cd "$d"
 exec web-ext run --target=firefox-android --no-reload --adb-port="$port"   --adb-device="$serial" --firefox-apk="$apk" --source-dir=. --no-input   --adb-remove-old-artifacts
 """
@@ -529,13 +529,13 @@ def push(nid, node, rel, size, project, apk, uid, name, by="phone"):
     if held:
         return held
     if push_state()["running"]:
-        return {"error": f"already pushing {_push['what']} — stop it first"}
+        return {"error": f"already pushing {_push['what']}; stop it first"}
     dev = phone_on(nid)
     if not dev:
         return {"error": "no phone is connected on this project's node"}
     tc = ((node or {}).get("reported") or {}).get("toolchains") or {}
     if not (isinstance(tc, dict) and tc.get("web-ext")):
-        return {"error": f"web-ext is not on {(node or {}).get('name') or 'that node'} — "
+        return {"error": f"web-ext is not on {(node or {}).get('name') or 'that node'}: "
                          "a push is web-ext beside the phone's adb, so install it there"}
     if apk not in FIREFOX_APKS:
         return {"error": f"not a Firefox this knows: {apk}"}
@@ -557,8 +557,8 @@ def push(nid, node, rel, size, project, apk, uid, name, by="phone"):
 
 
 def stop_push(uid, by="phone"):
-    """End the session. The add-on goes with it on the next Firefox restart —
-    it was never installed in the lasting sense. The owner's, like the push."""
+    """End the session. The add-on goes with it on the next Firefox restart.
+    It was never installed in the lasting sense. The owner's, like the push."""
     with _lock:
         cur = dict(_push)
     if not cur["job"]:
@@ -575,7 +575,7 @@ def stop_push(uid, by="phone"):
 # ---- asking first ----------------------------------------------------------
 # Anything a session wants to do to the phone is submitted here and waits for
 # the connection's OWNER to allow it. The session never runs the command
-# itself — it describes what it wants, and on approval the node runs it and
+# itself: it describes what it wants, and on approval the node runs it and
 # the output comes back. So "did Claude touch my phone" has one answer and it
 # is on the tab of the person who connected it.
 #
@@ -609,13 +609,13 @@ def _req_public(r):
 
 def _for(r, uid, admin):
     """Whether a request waits on this account. Routed by the SESSION that
-    asked: a phone request goes to the account that connected the phone —
+    asked: a phone request goes to the account that connected the phone,
     which is the asker themselves when it is their own phone on their own
     session; a root request goes to the asker when their account is an
     administrator, and to every administrator when it is not, because a
-    sandbox is a shared machine and root on it is not a user's to allow —
-    their own phone is. (A per-user grant for root on a sandbox is a design
-    of its own, not written yet.)"""
+    sandbox is a shared machine and root on it is not a user's to allow,
+    while their own phone is. (A per-user grant for root on a sandbox is a
+    design of its own, not written yet.)"""
     # Root and a rebuild are both an administrator's to allow: root because a
     # sandbox is shared, a rebuild because starting and stopping containers is
     # docker-write, which a user does not have on a project they otherwise own.
@@ -627,7 +627,7 @@ def _for(r, uid, admin):
 
 
 def requests_open(uid=None, admin=False, project=""):
-    """What is waiting: everything, or only what waits on this account —
+    """What is waiting: everything, or only what waits on this account.
     `admin` says whether it is one, which is who a root request waits on.
     With `project`, a SESSION's read-only view instead: its own project's
     pending requests, so `bb root` and `bb phone` in a session can say what
@@ -645,25 +645,25 @@ def requests_open(uid=None, admin=False, project=""):
 
 def ask(why, argv, nid, node_name, project, by="claude", asker=""):
     """A session asking to reach the phone on its project's node. The
-    request goes to whoever connected that phone — the asker, when it is
+    request goes to whoever connected that phone, the asker when it is
     their own. `asker` names the account whose session asks, for the row.
     Returns the request's id."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
-        return {"error": "say what it is for — the operator is answering a "
+        return {"error": "say what it is for: the operator is answering a "
                          "question about a command they did not write"}
     if not isinstance(argv, list) or not argv or not all(
             isinstance(a, str) and a for a in argv):
-        return {"error": "nothing to run" if not argv else "an empty argument — the command "
+        return {"error": "nothing to run" if not argv else "an empty argument: the command "
                          "shown must be the command run"}
     if len(argv) > 40 or any(len(a) > 500 for a in argv):
         return {"error": "that command is too long to put in front of somebody"}
     if not nid:
         return {"error": f"{project or 'this project'} has no node, so there is no phone "
-                         "to reach — a phone is driven from the project's node"}
+                         "to reach: a phone is driven from the project's node"}
     rec = _rec(nid)
     if not rec or not phone_on(nid):
-        return {"error": f"no phone is connected on {node_name or nid} — somebody "
+        return {"error": f"no phone is connected on {node_name or nid}: somebody "
                          "connects one on the Phone tab with that node picked"}
     return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
                   rec.get("owner_name") or "the owner", asker)
@@ -678,7 +678,7 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
              "cmd": list(argv), "state": "pending", "by": by, "asker": asker,
              "node": nid, "node_name": node_name or nid, "project": project,
              "to": to, "out": "", "code": None}
-        # What a kind needs and the others do not — a rebuild's instance. Kept
+        # What a kind needs and the others do not: a rebuild's instance. Kept
         # off _req_public: it decides a compose project and a data directory,
         # and the row already names the container it would rebuild.
         r.update(extra or {})
@@ -691,30 +691,30 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
              asker_uid="", asker_name="", asker_admin=False, locked=""):
     """A session asking for ONE command as root on its project's node
     (roadmap R38). Not sudo, which would be every command from then on
-    with nobody reading them, and not a sudo that pretends — this is the
+    with nobody reading them, and not a sudo that pretends. This is the
     phone's shape applied to root: the reason and the exact command go to
     a person, they allow or deny, and the node runs that command and
     nothing else. Which person is the session's own account when it is an
-    administrator's — their ask, on their Nodes tab and bell — and every
+    administrator's (their ask, on their Nodes tab and bell), and every
     administrator when a user's session asks, because a sandbox is shared
     and root on it is not a user's to allow. Only a node provisioned as a
     sandbox (a MANAGED node) takes it: somebody's own machine is not the
     controller's to run root on, whoever asks."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
-        return {"error": "say what it is for — the operator is answering a "
+        return {"error": "say what it is for: the operator is answering a "
                          "question about a root command they did not write"}
     if not isinstance(argv, list) or not argv or not all(
             isinstance(a, str) and a for a in argv):
         # An empty argument is refused rather than dropped: what the person
         # reads must be exactly what the node runs.
-        return {"error": "nothing to run" if not argv else "an empty argument — the command "
+        return {"error": "nothing to run" if not argv else "an empty argument: the command "
                          "shown must be the command run"}
     if len(argv) > 40 or any(len(a) > 500 for a in argv):
         return {"error": "that command is too long to put in front of somebody"}
     if not nid:
         return {"error": f"{project or 'this project'} has no node, so there is no machine "
-                         "to run anything on as root — root is asked for on the project's node"}
+                         "to run anything on as root: root is asked for on the project's node"}
     if not sandbox:
         return {"error": f"{node_name or nid} was not provisioned as a BuilderBot sandbox, so "
                          "root there is its owner's and not something this can ask for"}
@@ -724,7 +724,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
         return {"error": locked}
     if asker_admin and asker_uid:
         return _queue("root", why, argv, nid, node_name, project, by, asker_uid,
-                      f"{asker_name or 'you'} (your own account — it is on your Nodes tab and bell)",
+                      f"{asker_name or 'you'} (your own account: it is on your Nodes tab and bell)",
                       asker_name)
     return _queue("root", why, argv, nid, node_name, project, by, "admins",
                   "the administrators", asker_name)
@@ -737,16 +737,16 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
 
     The phone's shape applied to a build: the reason and what it would do go
     to a person, they allow or deny, and allowing starts the build. Nothing
-    about the container is decided here — which compose file, which node, what
-    it mounts — because none of that is the session's to name: it asks about
+    about the container is decided here (which compose file, which node, what
+    it mounts), because none of that is the session's to name: it asks about
     the instance that already exists, which somebody else created.
     """
     why = " ".join(str(why or "").split())[:300]
     if not why:
-        return {"error": "say what the rebuild is for — the operator is "
+        return {"error": "say what the rebuild is for: the operator is "
                          "answering a question about work they did not start"}
     to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
-                   else (asker_uid, f"{asker_name or 'you'} (your own account — it is "
+                   else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
     return _queue("rebuild", why, ["devapp", "rebuild", name], "", "", project,
                   "claude", to, to_name, asker_name,
@@ -762,7 +762,7 @@ def _find(rid):
 
 def decide(rid, allow, uid, name="", admin=False):
     """The answer. Allowing runs it on the node, so the session never
-    reaches the phone — or root — itself. Anybody else is refused: a phone
+    reaches the phone (or root) itself. Anybody else is refused: a phone
     question was put to the person who connected the phone, a root one to
     the administrators."""
     try:
@@ -775,7 +775,7 @@ def decide(rid, allow, uid, name="", admin=False):
             return {"error": "no such request"}
         if not _for(r, uid, admin):
             return {"error": "root on a sandbox is a shared machine's: an administrator "
-                             "allows it, not a user — your own phone is yours to allow"
+                             "allows it, not a user; your own phone is yours to allow"
                     if r.get("kind") == "root" and not admin else
                     "that request is for the administrator whose session asked"
                     if r.get("kind") == "root" else
@@ -802,7 +802,7 @@ def decide(rid, allow, uid, name="", admin=False):
                      out=str(res.get("error") or res.get("job") or "started"))
         # A refusal comes back to whoever pressed Allow, not only to the
         # session: the risk gate is the one that fires here, and it is the
-        # operator's own acknowledgement that is missing — which they can
+        # operator's own acknowledgement that is missing, which they can
         # only give by pressing Rebuild on the row, where the risks are
         # actually listed. Silently ending the request would leave them
         # believing they had started a build.
@@ -811,7 +811,7 @@ def decide(rid, allow, uid, name="", admin=False):
         return {"ok": True}
     if r.get("kind") == "root":
         # Answered at once, run on a thread: a root command may take ten
-        # minutes, and the browser's Allow — behind whatever proxy — must
+        # minutes, and the browser's Allow, behind whatever proxy, must
         # not hang for it. The request is `running` meanwhile, the session
         # polls its outcome, and the record is what the thread updates.
         def finish():
@@ -844,7 +844,7 @@ def outcome(rid, project=""):
     """What became of a request, for the session that is waiting on it.
     `project` is the asking session's, and a request is answered only to
     the project that made it: ids are a small counter, and the output can
-    be a getprop, a logcat, a file — one project's phone, not another's."""
+    be a getprop, a logcat, a file. One project's phone, not another's."""
     try:
         rid = int(rid)
     except (TypeError, ValueError):
@@ -860,14 +860,14 @@ def outcome(rid, project=""):
 
 
 # ---- installing an APK -----------------------------------------------------
-# `adb install -r` replaces an existing install in place, keeping its data —
+# `adb install -r` replaces an existing install in place, keeping its data,
 # so this is both "install" and "update", and there is no separate verb worth
 # offering. Two failures are common enough to name rather than dump raw:
 #
 # - The installed copy was signed with a different key (a release build, or
 #   one from the Play Store, against a debug build from here). Android refuses
 #   the update outright and the only way through is uninstalling first, which
-#   takes the app's data with it — a decision for the operator, on the phone.
+#   takes the app's data with it, a decision for the operator, on the phone.
 # - A lower version code than what is installed. `-d` allows it but only for
 #   debuggable packages, and passing it always would quietly turn a mistaken
 #   downgrade into a successful one.
@@ -885,7 +885,7 @@ def install_state():
 
 FAILURES = (
     ("INSTALL_FAILED_UPDATE_INCOMPATIBLE",
-     "the copy already on the phone was signed with a different key — "
+     "the copy already on the phone was signed with a different key; "
      "uninstall it there first, which also removes its data"),
     ("INSTALL_FAILED_VERSION_DOWNGRADE",
      "that build's version code is lower than the one installed"),

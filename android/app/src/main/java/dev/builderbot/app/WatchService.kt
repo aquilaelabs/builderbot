@@ -1,6 +1,6 @@
 // The watch: what the dashboard's bell shows, as notifications. A foreground
 // service polls /api/status and /api/phone on a clock and posts what is
-// new — a session asking for the phone or for root, with Approve and Deny on
+// new: a session asking for the phone or for root, with Approve and Deny on
 // the notification itself; a notebook holding a session's changes; a node
 // whose agent is behind or out of window. No push service: the dashboard is
 // on somebody's own network, reached directly or over a tailnet, and a
@@ -178,13 +178,13 @@ class WatchService : Service() {
         fun attentionLine(a: JSONObject): String = when (a.str("kind")) {
             "md" -> "${a.str("project")}'s CLAUDE.md block is from ${a.str("from")}; this BuilderBot is ${a.str("to")}"
             else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
-                (if (a.bool("window")) " — out of window, work there is stopped" else "")
+                (if (a.bool("window")) " (out of window, work there is stopped)" else "")
         }
     }
 }
 
 // Approve or Deny from the notification: one POST, the note cleared, and a
-// short note of the answer — the person never had to open the app.
+// short note of the answer, and the person never had to open the app.
 class DecideReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra("id", 0)
@@ -196,7 +196,7 @@ class DecideReceiver : BroadcastReceiver() {
         Thread {
             val said = try {
                 runBlocking { api.decide(id, allow) }
-                if (allow) "Allowed — the node is running it" else "Denied"
+                if (allow) "Allowed: the node is running it" else "Denied"
             } catch (e: Exception) {
                 "Could not answer: ${e.message}"
             }

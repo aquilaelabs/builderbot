@@ -3,8 +3,8 @@
 the page, and the handful of things the page may do to it (roadmap R36).
 
 Every answer is git plumbing run on the CONTROLLER against
-the project's tree on the share — the one place with the credentials, the
-worktrees and every account's author — and shaped for the page: the
+the project's tree on the share (the one place with the credentials, the
+worktrees and every account's author) and shaped for the page: the
 uncommitted changes, the recent history with parents (the page draws the
 lanes), one commit with its files and diff, a file's uncommitted diff, and
 the branches with how far each stands from main and its upstream, marked
@@ -12,7 +12,7 @@ with whose worktree sits on it.
 
 Deliberately narrow at the boundary. A sha is forty hex characters or
 fewer, a path is one `git ls-files` or `git status` reported, a ref is one
-`git for-each-ref` handed out — nothing typed into a URL reaches a command
+`git for-each-ref` handed out. Nothing typed into a URL reaches a command
 line as anything but a checked value. Output is capped: a diff past
 DIFF_MAX bytes is cut with a line saying so, because a page is not the
 place to read a vendored library's arrival.
@@ -612,7 +612,7 @@ def _main_branch(repo):
 
 def _worktrees(repo):
     """{ref: path} for every worktree of the repository, the main one
-    included — `git worktree list --porcelain` names both."""
+    included; `git worktree list --porcelain` names both."""
     out = _git(repo, "worktree", "list", "--porcelain") or ""
     trees, path = {}, ""
     for line in out.splitlines():
@@ -636,7 +636,7 @@ def _cap(text):
     if len(b) <= DIFF_MAX:
         return text
     cut = b[:DIFF_MAX].decode("utf-8", "ignore")
-    return cut + f"\n… cut at {DIFF_MAX // 1000}kB — the rest is in the repository\n"
+    return cut + f"\n… cut at {DIFF_MAX // 1000}kB; the rest is in the repository\n"
 
 
 def payload(project, what, sha="", path="", n=None, branch=""):
@@ -749,14 +749,14 @@ def act(repo, action, args, env=None, may_push=True):
         return _done(r, "fetched")
     if action == "pull":
         if _dirty(repo):
-            return {"error": "there are uncommitted changes — commit or discard them first, so a pull cannot land on top of them"}
+            return {"error": "there are uncommitted changes: commit or discard them first, so a pull cannot land on top of them"}
         r = _run(repo, "pull", "--ff-only", env=env, timeout=NET_TIMEOUT)
         if r["code"] and "diverged" in r["out"] or r["code"] and "Not possible to fast-forward" in r["out"]:
-            return {"error": "the branch and its upstream have both moved — this only fast-forwards; merge or rebase from a shell, or ask Claude"}
+            return {"error": "the branch and its upstream have both moved: this only fast-forwards; merge or rebase from a shell, or ask Claude"}
         return _done(r, "pulled")
     if action == "push":
         if not may_push:
-            return {"error": "this project has no push rights — they are granted in the clone dialog, once"}
+            return {"error": "this project has no push rights: they are granted in the clone dialog, once"}
         st = status(repo)
         branch = st.get("branch") or ""
         if not branch or branch == "(detached)":
@@ -784,14 +784,14 @@ def act(repo, action, args, env=None, may_push=True):
         if not name or not _has_branch(repo, name):
             return {"error": "no such branch"}
         if _dirty(repo):
-            return {"error": "there are uncommitted changes — commit or discard them before switching, so they cannot be carried onto the wrong branch"}
+            return {"error": "there are uncommitted changes: commit or discard them before switching, so they cannot be carried onto the wrong branch"}
         r = _run(repo, "switch", "--", name, env=env)
         return _done(r, f"on {name}")
     if action == "merge":
         # Into the branch the tree is ON, which is what git does and the only
         # thing a person can reason about from a row: to put a feature into
         # main you Switch to main and press Merge on the feature. Nothing
-        # here switches for you — a button that moved the tree under you on
+        # here switches for you: a button that moved the tree under you on
         # the way to doing something else is how you lose track of where you
         # are.
         name = _ok_branch(args.get("name"))
@@ -829,7 +829,7 @@ def act(repo, action, args, env=None, may_push=True):
         if no:
             return no
         if _dirty(repo):
-            return {"error": "there are uncommitted changes — commit or discard them first, "
+            return {"error": "there are uncommitted changes: commit or discard them first, "
                              "so the merge is its own commit"}
         r = _run(repo, "merge", "--no-edit", name, env=env)
         if r["code"]:
@@ -839,7 +839,7 @@ def act(repo, action, args, env=None, may_push=True):
             # session, which is the one thing that can finish it. Aborting
             # would throw that away to say the same sentence.
             if any(f["state"] == "conflict" for f in status(repo).get("files", [])):
-                return {"error": f"{name} does not merge into {into} cleanly — the files are "
+                return {"error": f"{name} does not merge into {into} cleanly: the files are "
                                  "under Changes, with the button that hands the merge to Claude"}
             _run(repo, "merge", "--abort", env=env)
             return {"error": r["out"] or "could not merge"}
@@ -852,12 +852,12 @@ def act(repo, action, args, env=None, may_push=True):
         if not parents:
             return {"error": "no such commit"}
         if _dirty(repo):
-            return {"error": "there are uncommitted changes — commit or discard them first, so the revert is its own commit"}
+            return {"error": "there are uncommitted changes: commit or discard them first, so the revert is its own commit"}
         extra = ["-m", "1"] if len(parents) > 1 else []
         r = _run(repo, "revert", "--no-edit", *extra, sha, env=env)
         if r["code"]:
             _run(repo, "revert", "--abort", env=env)
-            return {"error": "the revert does not apply cleanly — it was abandoned; ask Claude to do it by hand"}
+            return {"error": "the revert does not apply cleanly, so it was abandoned; ask Claude to do it by hand"}
         return _done(r, "reverted")
     if action == "commit":
         msg = " ".join(str(args.get("message") or "").split())
@@ -895,12 +895,12 @@ def act(repo, action, args, env=None, may_push=True):
             return {"error": "no such branch"}
         st = status(repo)
         if name == st.get("branch"):
-            return {"error": "that is the branch the tree is on — switch first"}
+            return {"error": "that is the branch the tree is on; switch first"}
         if name == _main_branch(repo):
             return {"error": f"{name} is the main branch; it stays"}
         r = _run(repo, "branch", "-D" if args.get("force") else "-d", "--", name, env=env)
         if r["code"] and "not fully merged" in r["out"] and not args.get("force"):
-            return {"error": f"{name} has commits that are on no other branch — deleting it loses them",
+            return {"error": f"{name} has commits that are on no other branch: deleting it loses them",
                     "unmerged": True}
         return _done(r, f"{name} deleted")
     return {"error": "unknown action"}
@@ -955,7 +955,7 @@ def _done(r, said):
 
 # ---- Send to Claude (R36 step 3) --------------------------------------------
 # A commit, a diff, a branch or a conflict, handed to the project's session
-# as a line the operator could have typed — the way a roadmap step and the
+# as a line the operator could have typed, the way a roadmap step and the
 # version question arrive. The line names what was picked precisely enough
 # for the session to go and read it itself (a sha, a path, a branch), and
 # says what is being asked; it never carries the diff, which the session
@@ -964,9 +964,9 @@ def _done(r, said):
 ASKS = {
     "review":  "review it: what it changes, and anything worth fixing",
     "explain": "explain what it changes and why, in plain words",
-    "revert":  "revert it — a new commit undoing it — and say what that undoes",
+    "revert":  "revert it (a new commit undoing it) and say what that undoes",
     "rebase":  "rebase it onto {main}, resolving anything that conflicts, and say what moved",
-    "merge":   "merge it into {main} — fast-forward if you can, a merge commit if not — and say what it brought in",
+    "merge":   "merge it into {main} (fast-forward if you can, a merge commit if not) and say what it brought in",
     "conflicts": "the tree is mid-merge with conflicts: resolve them, finish the merge, and say what you decided in each file",
     "diff":    "look at the uncommitted change and say whether it is right, before it is committed",
 }
@@ -1001,7 +1001,7 @@ def ask(repo, project, kind, args, sessions=()):
         about = "the merge in progress"
     else:
         return {"error": "nothing picked"}
-    line = f"From the operator, on the Git view of {project}: {about} — {what}."
+    line = f"From the operator, on the Git view of {project}: {about}; {what}."
     session = TMUX_NAME("claude-" + project)
     r = TELL(session, line, sessions)
     if r.get("error"):

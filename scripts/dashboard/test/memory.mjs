@@ -1,7 +1,7 @@
 // The memory book: the book icon on a project row, the modal behind it, and
 // /api/memory. The fixture (run.sh) gives alpha two memories arranged so both
-// kinds of index drift are present — one pointer with no file, one file with
-// no pointer — because those warnings are the reason to open the thing.
+// kinds of index drift are present (one pointer with no file, one file with
+// no pointer) because those warnings are the reason to open the thing.
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
@@ -20,7 +20,7 @@ await ready(page);
 // The icon carries the to-do count (roadmap.mjs covers that); memory rides in
 // the same panel, folded under it.
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
-// A locked project keeps its notebook — that is the whole difference from
+// A locked project keeps its notebook, which is the whole difference from
 // the exclusion this replaced, which hid it. It opens read-only.
 ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
    'a locked project still has a notebook to open');
@@ -30,7 +30,7 @@ await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on that project');
-// On the strip's FIRST tab, whichever that is — the default is read off the
+// On the strip's FIRST tab, whichever that is: the default is read off the
 // strip rather than marked on a button, so reordering the tabs moves it.
 ok(await page.$eval('.pane .nb .nbtabs button', b => b.classList.contains('on'))
    && await page.$eval('#memList', el => el.checkVisibility()),
@@ -57,7 +57,7 @@ ok(mems.length === 2 && mems.every(m => !m.open),
 ok(mems.some(m => m.name === 'tabs' && m.type === 'feedback')
    && mems.some(m => m.name === 'loose' && m.type === 'project'),
    'each carries the name and type out of its own frontmatter');
-// The index is not a document here — it is one line belonging to each memory,
+// The index is not a document here: it is one line belonging to each memory,
 // shown on the memory it names. There is no whole-index editor to get wrong.
 ok(await page.$('#memIndex') === null,
    'the index is not offered as a block of text to edit');
@@ -84,8 +84,8 @@ ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
    '...and both sit behind one section that counts them');
 
 // The third kind of drift (roadmap #4): a [[link]] in a memory's body naming
-// no memory here — what a rename leaves behind. Written to disk the way a
-// session writes one, and taken away again so the counts below still hold.
+// no memory here, which is what a rename leaves behind. Written to disk the
+// way a session writes one, and taken away again so the counts below hold.
 {
   const { unlinkSync } = await import('node:fs');
   writeFileSync(`${MEM}/linker.md`, '---\nname: linker\ndescription: points at one that was renamed\nmetadata:\n  type: project\n---\n\nSee [[tabs]] and [[gone-elsewhere]].\n');
@@ -133,7 +133,7 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 });
 // One Save for the panel, and one only: the list's changes and the memory
 // editor's, written together. There were two, and the second typed the change
-// into a running session — which stopped being the only way anything reached
+// into a running session, which stopped being the only way anything reached
 // one when the prompt hook got a free channel back (roadmap #27).
 ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'typing in a memory arms the panel\'s one Save button');
@@ -164,7 +164,7 @@ ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
 // ---- the index, written from the rows -----------------------------------
 // What is left at this point: one memory (loose, unlisted) and one index line
 // pointing at a file that was never there. Filling the memory's fields in has
-// to do both halves — give it a line, and take the dead one out.
+// to do both halves: give it a line, and take the dead one out.
 await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
 await page.click('#memList .mem:has(.mname:text-is("loose")) .mEdit');
 await page.waitForSelector('#memList .mem:has(.mname:text-is("loose")) .ixt');
@@ -187,7 +187,7 @@ ok(true, 'which leaves the panel with nothing to warn about');
 
 // ---- writing one by hand -------------------------------------------------
 // It unrolls. The form replaces a one-line link with eight fields, and doing
-// that in one frame threw the list under it down the page — the same jump the
+// that in one frame threw the list under it down the page: the same jump the
 // folds, the drop boxes and the card headers all exist not to make. Height,
 // like all of them, so the lines below ride down instead of being teleported.
 {
@@ -239,7 +239,7 @@ ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
 
 // ---- the memory log --------------------------------------------------------
 // What the notebook changed here, with when. Claude's own memory writes are
-// files, not events — the button's tooltip says so — but the dashboard's
+// files, not events (the button's tooltip says so), but the dashboard's
 // half used to vanish without record: who forgot a memory was nobody.
 await page.click('#memLog');
 await page.waitForFunction(() => document.querySelectorAll('#memHist .hist').length > 0,
@@ -250,7 +250,7 @@ ok(macts.includes('forgot') && macts.includes('edited') && macts.includes('wrote
 ok(await page.$$eval('#memHist .hist .what', ws => ws.some(w => /tabs\.md/.test(w.textContent))),
    '...naming the file each event touched');
 // Closed by the sheet's own Close, not by the button that opened it: the
-// sheet covers the whole page now, so that button is behind the overlay —
+// sheet covers the whole page now, so that button is behind the overlay,
 // which is the point of an overlay, and was the bug. It used to stop at the
 // notebook's text column and leave the header reachable through the gap.
 await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
@@ -330,7 +330,7 @@ page.errors = [];
 // to be: a second button typed the line into the session, because that was
 // the only way anything reached one. The prompt hook carries it now (roadmap
 // #27), so what this asserts is the silence, and that the counter the hook
-// reads from actually moved — the memories are a half of the notebook the
+// reads from actually moved: the memories are a half of the notebook the
 // line has to be able to name.
 ok(!/notes about how you work here/.test(tmuxCapture('claude-alpha')),
    'saving a memory spends no line of the session\'s conversation');
@@ -340,8 +340,8 @@ ok((JSON.parse(readFileSync(`${DIR}/state/roadmap.json`, 'utf8'))
    + 'session is told on its next prompt');
 
 // ---- keeping up with the other writer -----------------------------------
-// The stamp on the poll is the directory's own — how many files and how
-// lately touched — rather than a counter, because the writer that moves a
+// The stamp on the poll is the directory's own (how many files and how
+// lately touched) rather than a counter, because the writer that moves a
 // memory most often is a session using its own file tools, which increments
 // nothing (roadmap #26).
 writeFileSync(`${MEM}/arrived.md`,
@@ -352,7 +352,7 @@ ok(true, 'a memory a session writes appears in an open book, with nothing touche
 
 // ---- a memory that moved under the editor -------------------------------
 // The whole-file write is this panel's genuine last-writer-wins, and a memory
-// is the largest thing anybody types here — so the editor carries the digest
+// is the largest thing anybody types here, so the editor carries the digest
 // of the bytes it loaded, and a save whose base is gone is refused (#26).
 // There is no "keep theirs" for this one: the version in the box may be an
 // hour of typing, so what is stored is put on screen to read and copy from
@@ -392,7 +392,7 @@ ok(read('clash.md').includes('what the operator typed'),
 // ---- who else is in here -------------------------------------------------
 // Roadmap #26's other half: a refusal makes a collision safe, and this is
 // what stops most of them happening. Both windows are the same ACCOUNT, so
-// the account cannot be the answer — the tab's own id is, which is why the
+// the account cannot be the answer: the tab's own id is, which is why the
 // line can say "your other window" rather than naming you at yourself.
 // Nobody else is in this notebook when the block starts. An earlier file's
 // window that reloaded holds the old page's seat for the seat's fifty seconds
@@ -415,7 +415,7 @@ await refreshUntil(page, () => /Roadmap/.test(
 ok(true, '...and says which view it is on, which is where the collision would be');
 // Letting go of the notebook says so rather than leaving the seat to time
 // out: a line claiming somebody is here who has just left is worse than no
-// line. Through destroy(), which is what the tab's ✕ calls — closing the tab
+// line. Through destroy(), which is what the tab's ✕ calls; closing the tab
 // itself would not do here, because the tab STRIP is per account and shared,
 // so shutting it in that window shuts it in this one.
 await other.evaluate(() => notebooks.get('alpha').destroy());
@@ -430,7 +430,7 @@ ok(true, '...and goes when that window closes the notebook');
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.
 await page.keyboard.press('Escape');
-ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it — a tab is not a dialog');
+ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it; a tab is not a dialog');
 const nbTab = await page.$$eval('.tab',
   ts => ts.findIndex(t => /Notebook: alpha/.test(t.textContent)));
 ok(nbTab >= 0, 'it is on the tab strip, named for its project');

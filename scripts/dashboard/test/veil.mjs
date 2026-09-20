@@ -1,7 +1,7 @@
 // The cover that hides the white flash when a terminal pane appears.
 //
-// The flash is the frame's document existing with no background of its own —
-// ttyd colours `.xterm-viewport` and nothing above it — which a browser paints
+// The flash is the frame's document existing with no background of its own
+// (ttyd colours `.xterm-viewport` and nothing above it), which a browser paints
 // as a white canvas, over whatever the iframe element underneath is set to.
 // Firefox on Android does it unconditionally.
 //
@@ -48,7 +48,7 @@ await build();
 ok(await page.$eval('#veiltest iframe',
      f => getComputedStyle(f.contentDocument.documentElement).backgroundColor
           === 'rgba(0, 0, 0, 0)'),
-   'a terminal frame starts with no background of its own — this is the flash');
+   'a terminal frame starts with no background of its own: this is the flash');
 
 const t0 = Date.now();
 await page.evaluate(() => unveil(document.querySelector('#veiltest iframe')));

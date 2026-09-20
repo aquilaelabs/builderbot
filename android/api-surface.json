@@ -1,6 +1,6 @@
 {
   "_": [
-    "The dashboard's API as the companion app calls it — every path, the",
+    "The dashboard's API as the companion app calls it: every path, the",
     "method, and the fields the app reads from the answer. test/appapi.mjs",
     "holds the running dashboard to this file, so a change that renames a",
     "field or a path the app reads fails the suite until the app is updated",

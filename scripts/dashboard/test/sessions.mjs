@@ -13,13 +13,13 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 // Sessions hangs off the terminal now, at every width, so a desktop page has
-// to open the panel before there is a list to click — the sidebar card it
+// to open the panel before there is a list to click: the sidebar card it
 // used to live in is gone.
 await page.waitForSelector('#mSessions');
 await page.click('#mSessions');
 await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
 // On a desktop the flyout is an OVERLAY: the terminal keeps its height, and
-// with it its fit and its scrollback — a resize costs a terminal a refit and a
+// with it its fit and its scrollback; a resize costs a terminal a refit and a
 // reflow of everything on screen, which is a lot to charge for looking at a
 // list. The phone pushes instead, because there is not the screen to cover one
 // thing with another.
@@ -77,7 +77,7 @@ await page.evaluate(() => closePane(1));
 
 // ---- the git/GitHub card ghosts against the shell's directory ----------
 // shell-9 lives in /tmp; alpha has a GitHub remote; ep.silon's remote is
-// GitLab — so between the three shells every ghosting state appears, and the
+// GitLab, so between the three shells every ghosting state appears, and the
 // dotted name proves the cwd-to-project mapping survives tmux's rename.
 tmuxNew('shell-alpha', `${DIR}/ws/alpha`);
 tmuxNew('shell-ep_silon', `${DIR}/ws/ep.silon`);
@@ -117,7 +117,7 @@ ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
 // Opened and read in ONE task, which is the whole trick here. This tab points
 // at a session that was just ended, and a tab whose session was seen alive and
-// is now gone is REAPED by the next poll — correctly, and by design. On a quiet
+// is now gone is REAPED by the next poll, correctly and by design. On a quiet
 // box the read won that race; under load the poll won it, and the failure read
 // as "the page lost the tab" rather than "the page did exactly what it says it
 // does". Nothing between the two openTab calls and the measurement means
@@ -142,8 +142,8 @@ ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
 await page.evaluate(() => { const t = tabs.find(x => sessionOf(x.arg) === 'claude-alpha');
                             if (t) hideTab(t.id); });
 
-// The findings card is gone — the Analysis tab in Tools is the cross-project
-// browser now — so the notebook's view opens by name, which is what the tab's
+// The findings card is gone (the Analysis tab in Tools is the cross-project
+// browser now), so the notebook's view opens by name, which is what the tab's
 // rows and bb's messages point at.
 await page.evaluate(() => openNotebook('alpha', 'analysis'));
 await page.waitForSelector('.pane .nb [data-view="analysis"]:not([hidden]) .rule',
@@ -175,7 +175,7 @@ await page.waitForFunction(n =>
   anaRules, { timeout: 10000 });
 // The view's bands line up with every other view's. The filter bar was a
 // .field inside a .field and inset twice; the rules carried the sidebar's
-// tighter 11px — so this one view had three left edges where the roadmap
+// tighter 11px, so this one view had three left edges where the roadmap
 // beside it had one.
 {
   const xs = await page.evaluate(() => {
@@ -191,8 +191,8 @@ await page.waitForFunction(n =>
 }
 ok(await page.$$eval('.pane .nb .field .field', es => es.length === 0),
    '...and nothing in the notebook is inset twice by a field inside a field');
-// The fourth log. Nothing writes it — it is the difference between one scan
-// and the last — but it opens and filters like the other three, which is the
+// The fourth log. Nothing writes it (it is the difference between one scan
+// and the last), but it opens and filters like the other three, which is the
 // point of it being here at all.
 await page.click('.pane .nb #anaLog');
 await page.waitForFunction(() => !document.getElementById('anaHist').hidden,
@@ -205,14 +205,14 @@ ok((await page.$eval('.pane .nb #anaHistBar input', i => i.placeholder)).include
    && await page.$$eval('.pane .nb #anaHistBar select', ss => ss.length === 2),
    '...with the same search box and the same two filters');
 // At "all time" with nothing to show, this log says why it is empty rather
-// than reusing the shared line about a notebook nobody has written in — no
+// than reusing the shared line about a notebook nobody has written in; no
 // one writes this one at all.
 await page.selectOption('.pane .nb #anaHistBar .hwhen', '0');
 await page.waitForFunction(() => /first scan/.test(
   document.getElementById('anaHist').textContent), null, { timeout: 15000 });
 ok(true, '...and says why it is empty rather than looking broken');
 // Closed by the sheet's own Close, not by the button that opened it: the
-// sheet covers the whole page now, so that button is behind the overlay —
+// sheet covers the whole page now, so that button is behind the overlay,
 // which is the point of an overlay, and was the bug. It used to stop at the
 // notebook's text column and leave the header reachable through the gap.
 await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
@@ -221,14 +221,14 @@ await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])
                            { timeout: 8000 });
 await page.waitForFunction(() => document.getElementById('anaHist').hidden,
                            null, { timeout: 15000 });
-// A notebook tab survives the reload and loads itself — the restore story
+// A notebook tab survives the reload and loads itself: the restore story
 // the findings tab used to carry, now the notebook's.
 await layoutSettled(l => l.tabs.some(t => t.kind === 'notebook'));
 await page.reload();
 await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
                            { timeout: 30000 });
 ok(true, 'a notebook tab restored from the layout loads itself');
-// A reload closes the flyout, the way it always has on a phone — the panel
+// A reload closes the flyout, the way it always has on a phone: the panel
 // is a toggle, not a card that is simply there. Open it again for the rest.
 await page.click('#mSessions');
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
@@ -290,7 +290,7 @@ await phone.waitForSelector('#mKeys', { state: 'visible' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
    'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');
 // A truncated version string answers nothing, so where it will not fit the
-// About control carries the word instead — and exactly one of the two, never
+// About control carries the word instead, and exactly one of the two, never
 // both: showing the label on a desktop as well stacked it under the version
 // and doubled the button's height.
 ok(await phone.$eval('#bAbout .alab', el => getComputedStyle(el).display !== 'none')
@@ -305,14 +305,14 @@ ok(await page.$eval('#bAbout .alab', el => getComputedStyle(el).display === 'non
 // Both heights are read in ONE evaluate, either side of a synchronous click,
 // and that is the whole point rather than a shortcut. The button's handler is
 // mobPanel -> render -> drawKeys -> slidePanel with nothing awaited, so when
-// .click() returns the panel is already absolute and its animation started —
-// no frame, no poll and no other animation can land between the two reads.
+// .click() returns the panel is already absolute and its animation started.
+// No frame, no poll and no other animation can land between the two reads.
 // Sampling the baseline in an earlier round trip is what CI kept failing on,
 // four runs running, while an idle box passed: the panel assertion above it
 // passed in the same breath, so the panel was still absolute and cannot have
-// been what moved the terminal — the baseline was simply stale. The likeliest
+// been what moved the terminal; the baseline was simply stale. The likeliest
 // mover is setView('terminal') just above, a 220ms slide that holds overflow-x
-// on <main> for its duration — and it was. One task keeps anything from
+// on <main> for its duration, and it was. One task keeps anything from
 // landing BETWEEN the two reads and does nothing about a baseline taken while
 // that slide is still running; what had been holding THAT off was the round
 // trips of the assertion above, which is not a thing to depend on and stopped
@@ -337,7 +337,7 @@ const paneH0 = mid.before;
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
 ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the terminal snaps to make room');
 // Commands wants a shell under it now, and the tab that was open got ended
-// above — so put one there, or this measures the guard instead of the swap.
+// above, so put one there, or this measures the guard instead of the swap.
 await phone.evaluate(() => {
   const shell = t => t.kind === 'term' && !t.arg.startsWith('claude:');
   if (!tabs.some(shell)) newShell();
@@ -350,18 +350,18 @@ await phone.waitForFunction(() => !document.getElementById('sespanel').classList
 ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Commands closes it and opens the macros');
 ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
-// Claude on a project with a transcript opens the Resume/New chooser — which
+// Claude on a project with a transcript opens the Resume/New chooser, which
 // must be visible on a phone (it once shared the hidden pin menu's class).
 // Both in one evaluate: setView animates the column synchronously, so asking
 // afterwards in a second round trip was asking whether the 220ms tween had
-// outlived the trip — true on an idle box, not on a loaded one.
+// outlived the trip: true on an idle box, not on a loaded one.
 ok(await phone.evaluate(() => {
      setView('dash');
      return document.querySelector('.col.side').getAnimations().length > 0;
    }),
    'the view slides across the switch');
 // A Claude session runs on a NODE (R47), so the chooser is what the press
-// opens when one COULD start — a project with no node gets the reason under
+// opens when one COULD start; a project with no node gets the reason under
 // the row instead, which is agent.mjs's. So alpha gets a node reporting a
 // session half good enough to take one, for as long as this block needs it.
 const bapi = async (path, body, hdrs) => (await fetch(URL.replace(/\/$/, '') + path, {
@@ -446,7 +446,7 @@ ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none
    'phone: Claude on a project with history shows the Resume/New chooser');
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens
-// this and NOTHING ELSE — so one drawn below the fold is a press with no
+// this and NOTHING ELSE, so one drawn below the fold is a press with no
 // visible result, which is what bug #65 was reported as.
 //
 // Set up properly or this asserts nothing: the row has to be at the bottom
@@ -456,7 +456,7 @@ ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none
 await phone.click('#projects [data-c="alpha"]');          // put it away again
 await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
 // A window short enough that the row is at the bottom edge, which is the
-// only shape in which the chooser has nowhere to be drawn — on a tall one it
+// only shape in which the chooser has nowhere to be drawn; on a tall one it
 // lands on screen whatever this does, and the assertion would be vacuous.
 // The press is DISPATCHED rather than clicked, because Playwright scrolls a
 // target into view for you and would undo the thing being reproduced.
@@ -520,7 +520,7 @@ const hFull = await phone.$eval('#macpanel', el => el.offsetHeight);   // landed
 // tween is a race: on a loaded box the close lands before the second tap, so
 // there is no mid-slide left to reverse from and the test fails for a reason
 // that is about the box. Waiting on currentTime is exactly the condition the
-// assertion cares about — that the panel really is part-way down.
+// assertion cares about: that the panel really is part-way down.
 const from = await phone.evaluate(async () => {
   const el = document.getElementById("macpanel");
   document.getElementById("mMacros").click();          // closing (slides)
@@ -588,11 +588,11 @@ ok(true, 'a phone reload lands back on the terminal view');
 await phone.goto(URL + '?view=dash');
 await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
 ok(true, '?view= overrides the remembered side');
-ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
+ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ': ' + phone.errors.join(' | ') : ''}`);
 await closePage(phone);
 
 // A phone held sideways: a flyout must not push the bottom bar off the
-// screen — it gives way, and the terminal keeps a strip.
+// screen; it gives way, and the terminal keeps a strip.
 const land = await newPage(browser, { viewport: { width: 844, height: 390 } });
 await land.goto(URL);
 await land.waitForFunction(() => state !== null, { timeout: 30000 });
@@ -608,7 +608,7 @@ await closePage(land);
 
 // ---- a tab that outlived its container ---------------------------------
 // A browser left open across a restart still holds its Claude tabs, and a
-// phone waking up reloads the terminal iframe — which spawns whatever the URL
+// phone waking up reloads the terminal iframe, which spawns whatever the URL
 // names. Pruning the saved layout at boot cannot stop that, because the page
 // never re-read it. So the URL carries the boot it was opened in, and bb-tty
 // refuses to *start* a session for one from a previous run. Attaching to a
@@ -628,11 +628,11 @@ ok(/before the container restarted/.test(tty('claude:alpha')),
 // A name that is not a project, so this asks the question without starting
 // anything: the point is only that the boot gate is a Claude rule.
 ok(!/before the container restarted/.test(tty('shell:nosuchproject:1')),
-   'a shell carries no stamp and never did — it is safe to recreate in place');
+   'a shell carries no stamp and never did: it is safe to recreate in place');
 
 // The task line is what a session is doing, and only while it is doing it.
 // It comes off the tmux pane title, which Claude sets as it goes and never
-// clears — so an idle session kept showing the last thing it had been doing,
+// clears, so an idle session kept showing the last thing it had been doing,
 // with no age on it and nothing to expire it. "done: <whatever>" reads as a
 // status and is a fossil.
 const taskLines = await page.evaluate(() => {
@@ -652,10 +652,10 @@ ok(taskLines.working.some(t => /working on: reading the emulator log/.test(t)),
 ok(!taskLines.idle.some(t => /emulator log/.test(t)),
    '...and an idle one says nothing, rather than the last thing it happened to do');
 
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // ---- a terminal tab closes when its session ends ------------------------
-// bb-tty execs claude, so the pane's process IS the conversation: exiting it —
-// Ctrl+C twice, /exit, a crash — ends the tmux session, and the tab used to be
+// bb-tty execs claude, so the pane's process IS the conversation: exiting it
+// (Ctrl+C twice, /exit, a crash) ends the tmux session, and the tab used to be
 // left holding a dead terminal until somebody pressed ✕. Nothing is lost by
 // closing it: the transcript is on disk and the project's Claude button offers
 // to resume it.
@@ -674,7 +674,7 @@ ok(true, '...and the tab closes when that session ends');
 
 // The case the transition rule exists for: a tab whose session has NEVER been
 // seen is left alone, because that is what every tab looks like for a moment
-// after a restore — and reaping those would wipe the strip at every boot.
+// after a restore, and reaping those would wipe the strip at every boot.
 await page.evaluate(() => openTab({kind: 'term', arg: 'shell:neverran'}));
 await page.waitForFunction(() => tabs.some(t => t.arg === 'shell:neverran'),
                            null, { timeout: 15000 });

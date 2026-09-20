@@ -3,19 +3,19 @@ name: lint
 # On the pull request and nowhere else. Merging used to run this a second
 # time, on the push to main that the merge creates, and that second run tells
 # you nothing the first did not: a pull_request build checks out
-# refs/pull/N/merge, which IS this branch merged into main — the same tree the
+# refs/pull/N/merge, which IS this branch merged into main: the same tree the
 # button is about to produce. So the check happens once, before the decision it
 # informs, rather than once before and once after.
 #
 # The one case it gives up: a commit pushed straight to main, bypassing a PR,
-# is not linted. That is deliberate — work here lands on a branch and merges
-# through a PR — and `bb lint` in the container is the same set of tools if
+# is not linted. That is deliberate (work here lands on a branch and merges
+# through a PR), and `bb lint` in the container is the same set of tools if
 # something ever does need checking by hand.
 on:
   pull_request:
   workflow_dispatch:
 
-# A superseded push's lint result is worthless — cancel it rather than make
+# A superseded push's lint result is worthless, so cancel it rather than make
 # the (single) self-hosted runner work through the backlog serially.
 concurrency:
   group: lint-${{ github.ref }}
@@ -25,21 +25,21 @@ jobs:
   lint:
     # The BuilderBot container itself, not ubuntu-latest: self-hosted minutes
     # are free where hosted ones bill against the plan, and the image bakes
-    # the same linters `bb lint` uses — so this job also proves, on every
+    # the same linters `bb lint` uses, so this job also proves, on every
     # push, that the runner picks up jobs and carries its advertised
     # toolchain. One job rather than one per tool because a single runner
     # serves jobs serially; splitting only adds queueing.
     #
     # The dashboard's browser suite used to be a step here and now has its own
     # workflow. It is the one check in this repo that fails for reasons that
-    # are not the code's — it is timing-sensitive and this runner shares its
-    # box with everything else — and as a step it took these linters' verdict
-    # down with it and stopped the compose and XML checks below from running
-    # at all. Every tool in THIS job is deterministic, so a red run here means
+    # are not the code's: it is timing-sensitive and this runner shares its
+    # box with everything else. As a step it took these linters' verdict down
+    # with it and stopped the compose and XML checks below from running at
+    # all. Every tool in THIS job is deterministic, so a red run here means
     # something is genuinely wrong.
     runs-on: [self-hosted, bb-sandbox]
     # `bash` rather than the default `bash -e`, because that one difference is
-    # pipefail — and every check below is piped into tee. Without it the tee's
+    # pipefail, and every check below is piped into tee. Without it the tee's
     # exit status is the step's, and a failing linter would report success.
     defaults:
       run:
@@ -51,7 +51,7 @@ jobs:
         # The runner streams a step's console output to GitHub and keeps none
         # of it on disk: /workspace/_work/_diag records which step failed and
         # its exit code, never a line of what it printed. So a session inside
-        # this container — which has no PAT and cannot ask the API — could see
+        # this container, which has no PAT and cannot ask the API, could see
         # that CI was red and nothing about why, for a job that ran a few
         # inches away. Every check below tees into this file, and `bb ci-log`
         # reads it.
@@ -76,7 +76,7 @@ jobs:
           echo "CI_LOG=$log" >> "$GITHUB_ENV"
           echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
           {
-            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "# ${GITHUB_WORKFLOW} on ${GITHUB_REPOSITORY}"
             echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
             echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
             echo "commit: ${GITHUB_SHA}"
@@ -88,8 +88,8 @@ jobs:
         # The container the runner lives in can lag this repo: the PR that
         # first ADDS a tool to the image lints before any image carrying the
         # tool exists, and a stale container may not have updated yet. Fetch
-        # whatever is missing into the job's temp dir — never skip a check
-        # because the tool is absent, that is a pass by omission.
+        # whatever is missing into the job's temp dir. Never skip a check
+        # because the tool is absent; that is a pass by omission.
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
@@ -103,7 +103,7 @@ jobs:
             chmod +x "$RUNNER_TEMP/bin/hadolint"
           }
           command -v actionlint >/dev/null || {
-            # Tag via the /releases/latest redirect, not api.github.com —
+            # Tag via the /releases/latest redirect, not api.github.com:
             # anonymous API calls rate-limit per IP.
             tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest)"
             tag="${tag##*/}"
@@ -127,8 +127,8 @@ jobs:
           # hand-maintained enumeration of extensions and filenames, which
           # fails in the one direction that matters: an extensionless script
           # added later is simply never checked, and nothing says so. That is
-          # how scripts/dashboard/bb-tty — which validates a browser-supplied
-          # argument — went unlinted. A shebang cannot be forgotten.
+          # how scripts/dashboard/bb-tty, which validates a browser-supplied
+          # argument, went unlinted. A shebang cannot be forgotten.
           # The whole repository by its first line, and the scripts that live
           # inside quoted heredocs (bb-sandbox in the provisioner), which is
           # the selection bb lint makes, so the two agree about what a clean
@@ -146,7 +146,7 @@ jobs:
           shellcheck -x -S warning "${files[@]}" 2>&1 | tee -a "$CI_LOG"
 
       - name: Dockerfile
-        # Ignores live in .hadolint.yaml, which hadolint picks up on its own —
+        # Ignores live in .hadolint.yaml, which hadolint picks up on its own:
         # one config for this job and for `bb lint`, so the two can never
         # disagree about what a clean Dockerfile is.
         run: hadolint Dockerfile 2>&1 | tee -a "$CI_LOG"

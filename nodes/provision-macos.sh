@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Enroll a Mac as a BuilderBot node — a GUEST node (roadmap R23): one
+# Enroll a Mac as a BuilderBot node, a GUEST node (roadmap R23): one
 # directory and one launchd agent, and nothing outside them. The Mac stays
 # its owner's machine: no accounts made, no daemon, no root, nothing in
 # /etc, and --remove takes exactly what this put there back out again.
@@ -16,7 +16,7 @@
 #
 # Written for the bash macOS ships (3.2): no associative arrays, no mapfile,
 # nothing newer than 2007. Its own file rather than a branch of
-# nodes/provision-linux.sh for that reason and one more — that script provisions a
+# nodes/provision-linux.sh for that reason and one more: that script provisions a
 # machine, and this one only adds a footprint to somebody's.
 #
 set -eu
@@ -46,7 +46,7 @@ token and prints this line with the address and the token in it.
   --check              only the pre-flight: say whether this Mac can be a
                        node, change nothing, exit 0 or 1.
   --remove             take the footprint away: the launchd agent, the
-                       directory (stores included — say so if that is not
+                       directory (stores included; say so if that is not
                        what you want), and nothing else, because nothing
                        else was put there.
 
@@ -103,19 +103,19 @@ chk() {
     esac
 }
 if [ "$(uname -s)" = Darwin ]; then chk ok "macOS $(sw_vers -productVersion 2>/dev/null || echo '?') on $(uname -m)"
-else chk fail "this is $(uname -s), and this script is for macOS — nodes/provision-linux.sh is the one for Linux"; fi
+else chk fail "this is $(uname -s), and this script is for macOS; nodes/provision-linux.sh is the one for Linux"; fi
 if [ "$(id -u)" = 0 ]; then chk fail "run this as yourself, not root: a guest node is one directory in your home and a launchd agent that runs as you"; fi
 if xcode-select -p >/dev/null 2>&1; then chk ok "Xcode command line tools at $(xcode-select -p)"
 else chk fail "no Xcode command line tools: run  xcode-select --install  and come back (git and clang live there)"; fi
 if command -v python3 >/dev/null 2>&1; then chk ok "python3: $(python3 --version 2>&1)"
-else chk fail "no python3 — it comes with the command line tools above"; fi
+else chk fail "no python3: it comes with the command line tools above"; fi
 if command -v brew >/dev/null 2>&1; then chk ok "Homebrew at $(command -v brew)"
 else chk warn "no Homebrew: a recipe's system packages (tmux, ttyd for sessions) cannot be installed by the agent; https://brew.sh"; fi
 if command -v git >/dev/null 2>&1; then chk ok "git: $(git --version 2>&1)"
 else chk fail "no git"; fi
 xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' 2>/dev/null | head -1)"
 if [ -n "$xcode" ]; then chk ok "Xcode: $xcode"
-else chk warn "no Xcode.app: iOS and macOS apps need it — the App Store, or the xcodes recipe from the Tools tab once enrolled"; fi
+else chk warn "no Xcode.app: iOS and macOS apps need it, from the App Store or the xcodes recipe from the Tools tab once enrolled"; fi
 if [ -n "$TOOLCHAINS" ]; then
     if [ -d "$TOOLCHAINS" ] && [ -w "$TOOLCHAINS" ]; then chk ok "toolchain store at $TOOLCHAINS (this Mac's scope: darwin-$(uname -m))"
     else chk fail "$TOOLCHAINS is not a writable directory: mount the share first (Finder: Go > Connect to Server, smb://…), or use a directory of this Mac's"; fi
@@ -123,14 +123,14 @@ fi
 avail="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print int($4/1024/1024)}')"
 if [ -n "$avail" ]; then
     if [ "$avail" -ge 20 ]; then chk ok "${avail}G free in $HOME"
-    else chk warn "only ${avail}G free in $HOME — Xcode alone wants 15"; fi
+    else chk warn "only ${avail}G free in $HOME; Xcode alone wants 15"; fi
 fi
 if [ -n "$CONTROLLER" ]; then
     if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/" 2>/dev/null; then chk ok "controller ${CONTROLLER} answers"
-    else chk warn "${CONTROLLER} does not answer from here — enrollment will fail until it does"; fi
+    else chk warn "${CONTROLLER} does not answer from here, so enrollment will fail until it does"; fi
 fi
 if [ "$FAILED" = 1 ]; then
-    warn "this Mac is not ready to be a node — nothing was changed"
+    warn "this Mac is not ready to be a node, so nothing was changed"
     exit 1
 fi
 if [ "$CHECK_ONLY" = 1 ]; then printf '\n   this Mac can be a node.\n'; exit 0; fi
@@ -149,7 +149,7 @@ say "the agent, from ${CONTROLLER}"
 hdr="$(mktemp)"
 curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
      "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
-    || { warn "could not download the agent from ${CONTROLLER} — is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
+    || { warn "could not download the agent from ${CONTROLLER}. Is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
 want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
 got="sha256:$(shasum -a 256 "${AGENT}.new" | cut -d' ' -f1)"
 rm -f "$hdr"
@@ -202,7 +202,7 @@ sleep 2
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
     printf '   running; log at %s/log/agent.log\n' "$FOOT"
 else
-    warn "the agent did not stay up — read $FOOT/log/agent.log"
+    warn "the agent did not stay up; read $FOOT/log/agent.log"
 fi
 
 cat <<EOF
@@ -217,6 +217,6 @@ $TOOLCHAINS/darwin-$(uname -m). Root is never asked for here.
   bash provision-macos.sh --remove        take it all away again
 
 Sessions on this Mac (a Claude terminal here rather than on the controller)
-need the projects share mounted at /workspace — on macOS that is one line
-in /etc/synthetic.conf and an SMB mount — and are not set up by this script.
+need the projects share mounted at /workspace (on macOS that is one line
+in /etc/synthetic.conf and an SMB mount), and are not set up by this script.
 EOF

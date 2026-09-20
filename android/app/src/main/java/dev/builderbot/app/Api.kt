@@ -1,7 +1,7 @@
 // The dashboard's API, as the app speaks it: Basic auth on every request
 // (the same credential the browser sends), JSON in and out, one place that
 // knows the server's address. Kept to the platform's own HTTP client and
-// org.json so the app carries no networking stack of its own — the surface
+// org.json so the app carries no networking stack of its own. The surface
 // it calls is small, and android/api-surface.json names every path here.
 package dev.builderbot.app
 
@@ -78,7 +78,7 @@ class Api(private val base: String, private val user: String, private val passwo
     // A step, into the session's own input. `step` null means the next one
     // that has not gone, which is what the panel sends and what somebody on a
     // phone means by "send the next bit". The answer says whether the line
-    // actually landed — a step is marked sent only when it did.
+    // actually landed: a step is marked sent only when it did.
     suspend fun roadmapSend(project: String, id: Any, step: Int?, note: String) =
         post("/api/roadmap", json("project" to project, "action" to "send", "id" to id,
                                "step" to step, "note" to note))
@@ -102,7 +102,7 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun nodeAct(id: String, action: String) =
         post("/api/v1/nodes", json("action" to action, "id" to id))
     // The toolchain store, and what may be added to it. The listing is NOT
-    // administrators-only — what a node carries decides whether a build can
+    // administrators-only: what a node carries decides whether a build can
     // run there, and that is everybody's question; installing is theirs.
     // `node` empty means the controller's own store, which is what the
     // dashboard's picker calls the first entry.
@@ -112,7 +112,7 @@ class Api(private val base: String, private val user: String, private val passwo
         post("/api/toolchains", json("action" to action, "node" to node,
                                      "names" to JSONArray(names)))
     suspend fun users() = get("/api/users")
-    /** One account, in one Save — the same verb the dashboard's modal uses, so
+    /** One account, in one Save, using the same verb the dashboard's modal uses, so
      *  the owner protections that live in users.py hold here too. A blank
      *  password leaves the existing one alone. */
     suspend fun userEdit(name: String, role: String, projects: List<String>, password: String) =
@@ -135,7 +135,7 @@ class Api(private val base: String, private val user: String, private val passwo
      *  the newer APK is an artifact like any other, and installing it from the
      *  phone is the difference between an app that can update itself and one
      *  that needs a desktop to reach the same file. Streamed rather than read
-     *  into memory — this is twelve megabytes. */
+     *  into memory: this is twelve megabytes. */
     suspend fun download(path: String, dest: java.io.File): java.io.File = withContext(Dispatchers.IO) {
         val c = open(path, "GET")
         c.setRequestProperty("Accept", "*/*")

@@ -3,8 +3,8 @@
 // Its VERSION is BuilderBot's, not a number of its own: the app ships from
 // this repository, talks to this dashboard, and the APK the workflow names
 // already carries `bb version --file`. A hand-kept versionName drifted from
-// that immediately — it still said 0.1.0 on the day the project reached
-// 0.5.0 — so the build takes both from `bb version` when it is told them
+// that immediately (it still said 0.1.0 on the day the project reached
+// 0.5.0), so the build takes both from `bb version` when it is told them
 // (-PbbVersion, -PbbCode, which the workflow passes) and falls back to
 // reading them itself. A checkout with no bb and no git still builds; it
 // just says so in the name.
@@ -12,7 +12,7 @@
 // TARGET_API is the number of the dashboard's API surface
 // this build was written against (server.py's APP_API); the dashboard's
 // suite holds the two equal (test/appapi.mjs), so a dashboard change that
-// moves the surface fails there until this app is updated with it — and
+// moves the surface fails there until this app is updated with it, and
 // the app, seeing a dashboard ahead of it, says so and points at the newer
 // build. Bump both together, never one.
 // Asked once, at configuration time. `bb` is on PATH inside BuilderBot and on

@@ -1,11 +1,11 @@
-"""The controller's API, from `bb` — one client for the verbs that reach it.
+"""The controller's API, from `bb`: one client for the verbs that reach it.
 
 bb used to carry four copies of the same twelve lines: build a Request to
 http://127.0.0.1:<port>, send the auth header, decode the answer or the
 error. Each assumed the dashboard was on the loopback, which was true for as
 long as bb only ran on the controller. Since roadmap #24 a session runs ON A
 NODE, where the controller is at BB_CONTROLLER over the LAN and possibly
-https with a self-signed certificate — and then the four copies would each
+https with a self-signed certificate, and then the four copies would each
 have needed the same three changes.
 
 So this is where those changes live:
@@ -15,7 +15,7 @@ So this is where those changes live:
   * https is verified by PIN, not by CA, exactly as the node agent verifies
     it: BB_CONTROLLER_PIN is the certificate digest the node learned at
     enrollment, and a different one is refused. No pin and https is allowed
-    and unverified — the node's own choice at enrollment, repeated here;
+    and unverified, which is the node's own choice at enrollment, repeated here;
   * the auth header is whatever bb_auth_or_die produced: a session token
     (Bearer) or a name:password for the command (Basic).
 

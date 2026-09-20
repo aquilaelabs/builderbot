@@ -1,7 +1,7 @@
 // One command as root on a node (roadmap R38): the phone's shape applied to
 // root. A session asks with a reason and the exact command; the request
-// waits on the administrators — on the Nodes tab and in the bell, nobody
-// else's — and Allow runs that one command on the node as a system job,
+// waits on the administrators (on the Nodes tab and in the bell, nobody
+// else's), and Allow runs that one command on the node as a system job,
 // Deny says no. Not sudo, and not a fake one.
 //
 // The harness's sandbox node runs agent-stub.py, whose census says sandbox
@@ -37,13 +37,13 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 // ---- what is refused before anybody is asked -------------------------------
 ok((await api('/api/phone', { action: 'ask', kind: 'root', why: '', cmd: ['id'], project: 'alpha' })).body.error,
-   'a root ask with no reason is refused — Allow on an unexplained root command is a guess');
+   'a root ask with no reason is refused: Allow on an unexplained root command is a guess');
 ok(/has no node/.test((await api('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: ['id'], project: 'beta' })).body.error || ''),
    'a project with no node has no machine to ask for root on, and is told so');
 ok((await api('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: [], project: 'alpha' })).body.error,
    '...and an ask with nothing to run is refused');
 ok(/empty argument/.test((await api('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: ['mv', 'a', ''], project: 'alpha' })).body.error || ''),
-   '...and one with an empty argument, which the node would drop — the command shown must be the command run');
+   '...and one with an empty argument, which the node would drop: the command shown must be the command run');
 
 // ---- a second account, of the kind that is not asked ---------------------------
 execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'visitor', '--role', 'user'],
@@ -58,7 +58,7 @@ const asked = await api('/api/phone', { action: 'ask', kind: 'root', why: 'load 
 ok(asked.body.id > 0 && /test.*your own account/.test(asked.body.to || ''),
    `an administrator's own ask goes to that administrator, and says so (${asked.body.to})`);
 ok((await api('/api/phone', undefined, other)).body.asks.filter(a => a.kind === 'root').length === 0,
-   'a user account is not asked — a root request waits on administrators alone');
+   'a user account is not asked: a root request waits on administrators alone');
 ok((await api('/api/phone')).body.asks.some(a => a.id === asked.body.id && a.kind === 'root' && a.asker === 'test'),
    '...and the administrator is, with the request marked as a root one and naming whose session asked');
 // A second administrator is not asked about the first one's own request:
@@ -68,11 +68,11 @@ execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'ops', '--role', 'ad
     env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
 const ops = asUser('ops', 'opspassword1');
 ok(!(await api('/api/phone', undefined, ops)).body.asks.some(a => a.id === asked.body.id),
-   "another administrator is not asked about an administrator's own request — it went to the session that asked");
+   "another administrator is not asked about an administrator's own request: it went to the session that asked");
 ok((await api('/api/phone', { action: 'allow', id: asked.body.id }, other)).body.error,
    '...and the user cannot answer it, either way');
 ok((await api('/api/phone', { action: 'outcome', id: asked.body.id }, other)).status === 403,
-   "...nor read its outcome by id — a root command's output on a shared machine is not a user's to browse");
+   "...nor read its outcome by id: a root command's output on a shared machine is not a user's to browse");
 
 // ---- where it shows: the Nodes tab and the bell --------------------------------
 await page.evaluate(() => openNodesTab());
@@ -134,7 +134,7 @@ await page.waitForFunction(() => !document.querySelector('.ndask'), null, { time
 ok((await api('/api/phone', { action: 'outcome', id: denied.body.id })).body.state === 'denied',
    'Deny stops it, and the session is told no rather than left hanging');
 ok((await api('/api/phone', { action: 'allow', id: denied.body.id })).body.error,
-   '...and an answered request cannot be answered again — a second command is a second question');
+   '...and an answered request cannot be answered again: a second command is a second question');
 
 // ---- a session's own token can ask, and reads only its own outcome ----------------
 {
@@ -149,7 +149,7 @@ uid = u.load()["users"]["${who}"]["uid"] if "${who}" else ""
 print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const alpha = { Authorization: 'Bearer ' + mint('alpha'), 'Content-Type': 'application/json' };
   // A USER's session asks: they may not allow root on a shared machine, so
-  // the request goes to every administrator — and not back to them.
+  // the request goes to every administrator, and not back to them.
   const vsess = { Authorization: 'Bearer ' + mint('alpha', 'visitor'), 'Content-Type': 'application/json' };
   const vask = await api('/api/phone', { action: 'ask', kind: 'root', why: 'from a user session', cmd: ['true'] }, vsess);
   ok(vask.status === 200 && /administrators/.test(vask.body.to || ''),
@@ -167,7 +167,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   ok(sess.status === 200 && sess.body.id > 0, `a session token may ask for root on its project's node (${sess.status})`);
   const mine = (await api('/api/phone', undefined, alpha)).body.asks || [];
   ok(mine.some(a => a.id === sess.body.id) && !mine.some(a => a.project !== 'alpha'),
-     "...and reading the list from a session shows its own project's waiting requests and no other's — what bb root prints");
+     "...and reading the list from a session shows its own project's waiting requests and no other's, which is what bb root prints");
   ok((await api('/api/phone', { action: 'allow', id: sess.body.id }, alpha)).status === 403,
      '...but may not answer its own question');
   ok((await api('/api/phone', { action: 'outcome', id: sess.body.id }, beta)).body.error,
@@ -184,7 +184,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const set = v => api('/api/settings', { set: { debug_mode: v } });
   const readLog = (stream) => api('/api/nodelog',
     { node: sandbox.name, stream, lines: 5, project: 'alpha' });
-  // The argv off the job the read queued, which is the exact question — the
+  // The argv off the job the read queued, which is the exact question; the
   // output only says what the command happened to print.
   const ranArgv = async r => ((((await api(`/api/v1/jobs?n=20`)).body.jobs || [])
     .find(j => j.id === r.body.job) || {}).spec?.config?.argv || []).join(' ');
@@ -195,7 +195,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   // which: the journal when svc.sh made it a service, runner.log under the
   // data store when the agent runs run.sh in the foreground instead. This
   // read the file unconditionally, so on every node where the runner is
-  // installed properly — which is every node this project provisions —
+  // installed properly (which is every node this project provisions),
   // `--runner` answered "No such file or directory".
   //
   // A census is the agent's to send, so the shape is set through the stub's
@@ -225,7 +225,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   ok(!/runner\.log/.test(argv),
      '...not from a runner.log that a node with a service never writes');
 
-  // No unit — an agent too old to report the field, or a node with no systemd
+  // No unit: an agent too old to report the field, or a node with no systemd
   // running run.sh in the foreground. The file, exactly as before.
   ok(await census(''), 'a node whose runner is not a service reports no unit');
   r = await readLog('runner');

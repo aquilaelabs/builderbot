@@ -2,7 +2,7 @@
 # The same machine provision-linux.sh makes, built at first boot instead of by hand.
 #
 # Use this with a Debian or Ubuntu *cloud* image (the genericcloud qcow2), not
-# an installer ISO — a cloud image is already a working root filesystem and
+# an installer ISO. A cloud image is already a working root filesystem and
 # grows its partition to fill whatever disk you give it, which is what makes
 # "start at 64G and expand later" free rather than a resize exercise.
 #

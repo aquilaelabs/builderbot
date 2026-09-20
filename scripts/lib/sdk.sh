@@ -3,7 +3,7 @@
 #
 # Sourced by bb, which keeps the rest of the CLI. It is a file of its own
 # because it is a third of that script and answers a question none of the rest
-# of it asks — what can be installed here, what is installed, what upstream
+# of it asks: what can be installed here, what is installed, what upstream
 # has, and how to put it there or take it away.
 #
 # The recipes are not in here either. config/toolchains.json holds every URL,
@@ -12,7 +12,7 @@
 # bookkeeping around them: where a thing lands, what it weighs, whether it is
 # already there, and what to undo when an install dies half way.
 #
-# The primitives it stands on — sdk_root, sdk_have, sdk_find — are in
+# The primitives it stands on (sdk_root, sdk_have, sdk_find) are in
 # common.sh, because a startup hook and `bb status` need to know where the SDK
 # root is without pulling in a toolchain manager to ask.
 
@@ -24,7 +24,7 @@
 # to bootstrap: sdkmanager, adb, and this command.
 #
 # Each recipe unpacks into its own directory under the root and is undone by
-# deleting that directory — no system packages, nothing outside the root, so
+# deleting that directory: no system packages, nothing outside the root, so
 # `bb toolchains remove` is a plain rm and a container rebuild changes nothing.
 SDK_TOOLCHAINS="android node jdk playwright flutter dotnet swift go rust zig"
 
@@ -73,13 +73,13 @@ sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 # ANDROID_HOME when it is set, the store's android/ directory otherwise. On
 # a node the agent sets ANDROID_HOME to that directory for every job and
 # session; on the controller nothing sets it since the image stopped
-# carrying /opt/android-sdk (10c), and the store is the only root there is —
+# carrying /opt/android-sdk (10c), and the store is the only root there is;
 # sdk_relink_android, which used to point the image's tree onto the share,
 # finds nothing to relink and does nothing. One value, correct in both
 # places, and sdkmanager never runs without it.
 sdk_root_flag() { printf -- '--sdk_root=%s' "${ANDROID_HOME:-$(sdk_dir android)}"; }
 sdkmgr() {
-    # Every install goes past the licenses first — see below for why that is
+    # Every install goes past the licenses first; see below for why that is
     # here rather than at each call site.
     if [ "${1:-}" = --install ]; then sdk_android_licenses; fi
     sdkmanager "$(sdk_root_flag)" "$@"
@@ -91,7 +91,7 @@ sdkmgr() {
 # accepted, and the refusal names the package rather than the licence: "The
 # following packages can not be installed since their licenses or those of
 # the packages they depend on were not accepted". This image accepts them at
-# build time (Dockerfile) into the image's own <sdk>/licenses — which is why
+# build time (Dockerfile) into the image's own <sdk>/licenses, which is why
 # nothing here ever had to. A node's toolchain store is a DIFFERENT root, and
 # nothing had ever accepted them there, so an android:* install on a node
 # failed at this second hurdle immediately after the SDK-root one.
@@ -103,10 +103,10 @@ sdkmgr() {
 sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
     [ ! -d "$root/licenses" ] || return 0
-    log "accepting the android SDK licenses for ${root} — once per store"
+    log "accepting the android SDK licenses for ${root}, once per store"
     mkdir -p "$root"
     # `yes` dies of SIGPIPE when sdkmanager stops reading. Expected, not a
-    # failure — hence the || true inside the pipeline's first stage, the same
+    # failure; hence the || true inside the pipeline's first stage, the same
     # shape the Dockerfile uses.
     (yes || true) | sdkmanager "$(sdk_root_flag)" --licenses >/dev/null 2>&1 || true
 }
@@ -166,14 +166,14 @@ PY
 # Rewrite the file every shell sources, so a toolchain installed a minute ago
 # is on PATH in the next terminal rather than after the next container
 # restart. The startup hook writes the same file from the same generator;
-# this is the other half — installs happen at runtime, and until now only
+# this is the other half: installs happen at runtime, and until now only
 # boot noticed them.
 # Where the generated env file lives. NOT in the toolchain store root, which is a share
 # two machines mount at different paths: every line in it is absolute
 # (/sdk/flutter/bin, RUSTUP_HOME=/sdk/rust/rustup), so a copy written here is
 # wrong for the sandbox that mounts the same bytes at /mnt/SDK, and whichever
 # machine generated it last won. It was the one piece of machine-specific
-# data in a store that is otherwise identical for everybody — the operator's
+# data in a store that is otherwise identical for everybody, the operator's
 # own test for what may be shared, and the only thing that failed it.
 #
 # The home volume instead: container-local, survives a restart, and
@@ -198,15 +198,15 @@ sdk_write_env() {
 
 # `bb toolchains` answers for the store the project actually builds with.
 #
-# A project bound to a node compiles THERE — bb build, bb test, bb run and
-# bb emu all go to it — so answering with this container's store told a
+# A project bound to a node compiles THERE (bb build, bb test, bb run and
+# bb emu all go to it), so answering with this container's store told a
 # session about a machine its project does not use. Worse on this box, where
 # this toolchain store and the node's toolchain store are ONE store under two names
 # (/sdk here through Unraid's FUSE layer, /mnt/SDK there over NFS, the same
 # store id): the two listings read like two machines' toolchains and were the
 # same bytes.
 #
-# Read from the node's census rather than run as a job there — everything
+# Read from the node's census rather than run as a job there: everything
 # below is already in it, so this stays the instant command it has always
 # been. `bb toolchains --local` is this container's own store, and BB_NODE_TOOLCHAINS
 # means we ARE the node, where local is the right answer.
@@ -219,7 +219,7 @@ sdk_status() {
         local node; node="$(project_node 2>/dev/null)"
         if [ -n "$node" ] && sdk_status_node "$node"; then return 0; fi
         # No node: nothing installs on a controller (roadmap #26), so the
-        # honest list is empty rather than this container's own store —
+        # honest list is empty rather than this container's own store,
         # which holds the browsers its boot put there and is --local's.
         if [ -z "$node" ]; then
             log "this project has no node: toolchains are installed on a node (the Nodes tab), and a project with none cannot compile here"
@@ -257,9 +257,9 @@ def gb(mb):
     return f"{mb / 1024:.0f}G" if mb < 1024 * 1024 else f"{mb / 1048576:.1f}T"
 
 
-live = "" if n.get("live") else "  (quiet — this is its last census)"
+live = "" if n.get("live") else "  (quiet; this is its last census)"
 print("== toolchain store root ==")
-print(f"  {store['path']}  on {n['name']} — this project's node, "
+print(f"  {store['path']}  on {n['name']}, this project's node, "
       f"where its builds run{live}")
 if store.get("free_mb"):
     print(f"  {'space':<14} {gb(store['free_mb'])} free")
@@ -293,32 +293,32 @@ sdk_status_local() {
     local root; root="$(sdk_root)"
     printf '== toolchain store root ==\n'
     # Asked about the STORE, not this machine's directory inside it: the
-    # mount is the share, and one scope down is never a mountpoint — so a
+    # mount is the share, and one scope down is never a mountpoint, so a
     # perfectly good share reported itself as the home volume.
     if is_mountpoint "$(sdk_store_root)"; then
-        printf '  %s  (mapped share — outside the image, kept across updates)\n' "$root"
+        printf '  %s  (mapped share; outside the image, kept across updates)\n' "$root"
     else
         printf '  %s  (home volume; map a share to SDK_ROOT to keep SDKs off it)\n' "$root"
     fi
     # A root that is not there is said out loud rather than left to be
     # inferred from a list of nothing. SDK_ROOT is taken at its word and the
     # scope is appended to it, so pointing it at a store's SCOPED directory
-    # resolves one level too deep and every toolchain reads as missing —
+    # resolves one level too deep and every toolchain reads as missing,
     # which looks exactly like an empty store and is not one.
     if [ ! -d "$root" ]; then
         printf '  %s\n' "this directory does not exist, so nothing below is installed here."
         case "$root" in
             */"$(sdk_scope)"/"$(sdk_scope)")
                 printf '  %s\n' "SDK_ROOT names the store's $(sdk_scope) directory; it wants the store itself, one level up." ;;
-            *)  printf '  %s\n' "SDK_ROOT is ${SDK_ROOT:-unset} — check it names the store, not a directory inside it." ;;
+            *)  printf '  %s\n' "SDK_ROOT is ${SDK_ROOT:-unset}; check it names the store, not a directory inside it." ;;
         esac
     fi
-    # The root may not exist yet — ask about the filesystem that will hold it.
+    # The root may not exist yet, so ask about the filesystem that will hold it.
     local probe="$root"; [ -d "$probe" ] || probe="$(dirname "$probe")"
     printf '  %-14s %s free\n' "space" "$(df -h "$probe" 2>/dev/null | awk 'NR==2{print $4}')"
     printf '\n== toolchains ==\n'
-    # Paths, not sizes: `du` on these walks tens of GB — a system-image tree
-    # alone took this command from instant to seven seconds — and the size of
+    # Paths, not sizes: `du` on these walks tens of GB (a system-image tree
+    # alone took this command from instant to seven seconds), and the size of
     # a toolchain is a question for `du` on the day you ask it, not something
     # to pay for on every status.
     local t d
@@ -328,15 +328,15 @@ sdk_status_local() {
             # Android is the one that also lives in the image: the bootstrap
             # tools ship there, the packages are what moved out.
             # Asked of the STORE and not only of PATH: the tools can be
-            # installed and unreachable — a link left pointing at the flat
-            # store the scope was moved out of takes the PATH entry with it
-            # (B105) — and "no cmdline-tools" beside a store that has them
+            # installed and unreachable, since a link left pointing at the
+            # flat store the scope was moved out of takes the PATH entry with
+            # it (B105), while "no cmdline-tools" beside a store that has them
             # sends somebody to install what is already there.
             printf '  %-11s %s\n' android "$(
                 if command -v sdkmanager >/dev/null 2>&1; then
-                    printf 'sdkmanager ready — packages in %s' "$d"
+                    printf 'sdkmanager ready; packages in %s' "$d"
                 elif [ -x "$d/cmdline-tools/latest/bin/sdkmanager" ]; then
-                    printf 'cmdline-tools are in the store but not on PATH — packages in %s' "$d"
+                    printf 'cmdline-tools are in the store but not on PATH; packages in %s' "$d"
                 else
                     echo 'no cmdline-tools'
                 fi)"
@@ -358,7 +358,7 @@ sdk_status_local() {
     fi
 }
 
-# sdk_fetch URL DEST — download with a progress line, into a temp file first.
+# sdk_fetch URL DEST: download with a progress line, into a temp file first.
 sdk_fetch() {
     curl -fL --progress-bar -o "$2" "$1"
 }
@@ -381,7 +381,7 @@ sdk_android_list() {
         if [ "$age" -lt "$SDK_LIST_CACHE_TTL" ]; then cat "$f"; return 0; fi
     fi
     # Written aside and moved into place, so a reader never sees half a table,
-    # and nothing is printed at all when sdkmanager cannot answer — a stale
+    # and nothing is printed at all when sdkmanager cannot answer: a stale
     # snapshot would be a wrong answer to the one question this is asked for.
     # timeout cannot run a shell function, so this one names the binary
     # and takes the root from the same place sdkmgr does.
@@ -398,7 +398,7 @@ sdk_android_list_forget() { rm -f "${TMPDIR:-/tmp}/bb-sdk-list.cache"; }
 # The newest package sdkmanager offers for a bare name, as `id<TAB>version`.
 # ndk and cmake ship as versioned ids (ndk;30.0.15729638) and a bare name
 # installs nothing, so both the installer and the version check have to
-# resolve one — from what the repository offers rather than from a table here
+# resolve one, from what the repository offers rather than from a table here
 # that would go stale within a release. One function, so the version a row
 # promises is by construction the one an install lands.
 #
@@ -420,8 +420,8 @@ sdk_android_newest() {
 # bb toolchains check [NAME...]: what is installed, and whether it is current.
 #
 # One TSV line per toolchain: name, installed, latest, status. Every probe is
-# bounded by a timeout — most of them reach the network, and a package list
-# that hangs would take the dashboard's job with it — and a probe that cannot
+# bounded by a timeout (most of them reach the network, and a package list
+# that hangs would take the dashboard's job with it), and a probe that cannot
 # answer says "unknown" rather than guessing "current", because a wrong
 # "current" is the one answer nobody would check.
 #
@@ -441,7 +441,7 @@ sdk_check_one() {
             # A git clone on the stable branch: the honest question is whether
             # our HEAD is the branch head, and ls-remote answers it without
             # fetching an object. Against the clone's origin when there is a
-            # clone and against the upstream URL when there is not — the same
+            # clone and against the upstream URL when there is not: the same
             # answer either way, and the second form is what lets a row that
             # has never been installed say what it would get.
             [ -z "$d" ] || inst="$(git -C "$d" rev-parse --short=8 HEAD 2>/dev/null || echo -)"
@@ -470,7 +470,7 @@ sdk_check_one() {
             # The installer itself knows what the channel currently holds, so
             # ask it rather than parsing a release feed that changes shape.
             # The dry-run echoes the exact invocation it would make, version
-            # and all — a more stable thing to read than the payload URL — and
+            # and all (a more stable thing to read than the payload URL), and
             # it needs nothing installed to say so.
             [ -n "$local_only" ] || latest="$(timeout 60 bash -c 'curl -fsSL https://dot.net/v1/dotnet-install.sh \
                       | bash -s -- --channel LTS --dry-run' 2>/dev/null \
@@ -485,7 +485,7 @@ sdk_check_one() {
             ;;
         jdk)
             # java -version prints to STDERR, which is why the redirect is a
-            # merge rather than a discard — read the other way this reported
+            # merge rather than a discard; read the other way this reported
             # every installed JDK as absent.
             d="$(sdk_find jdk)" || d=""
             [ -z "$d" ] || inst="$("$d/bin/java" -version 2>&1 | sed -n 's/.*version "\([^"]*\)".*/\1/p' | head -1)"
@@ -499,9 +499,9 @@ print((json.load(sys.stdin).get("releases") or [""])[0].removeprefix("jdk-"))' 2
             # sdkmanager --version needs a JDK, so this reads the package file
             # the tools ship instead: no java, no subprocess, and an answer
             # even on a node whose JDK is not installed yet.
-            # Where the SDK really keeps it first — <sdk>/cmdline-tools/latest
+            # Where the SDK really keeps it first (<sdk>/cmdline-tools/latest
             # is both what the run step symlinks into and what a hand install
-            # produces — then the unpack directory, which is where it sits
+            # produces), then the unpack directory, which is where it sits
             # before that symlink exists. Reading only the second reported no
             # version at all for a node whose tools were put in by hand, while
             # the census beside it said android-sdk was present.
@@ -638,7 +638,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
     fi
     # A fifth column: what the download weighs. Most recipes answer from their
     # own URL or a dry run; the android ones answer from sdkmanager's
-    # repository index, which is keyed by package id — so the id is resolved
+    # repository index, which is keyed by package id, so the id is resolved
     # here, by the same code that would install it, rather than guessed at
     # from the index's newest entry.
     local dlid=""
@@ -710,7 +710,7 @@ sdk_update() {
 # absent from the dashboard's, which is the whole distinction: these are
 # gigabytes on somebody else's disk, and the decision belongs to the person
 # who pays for it. The CLAUDE.md template has always said "offer the command,
-# do not run it" — this is that rule with teeth.
+# do not run it". This is that rule with teeth.
 #
 # It is a guardrail, not a boundary: a session has a shell and could call
 # sdkmanager directly. The point is to make the right thing easy and the
@@ -727,7 +727,7 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb toolchains $*"
 # Put back any package directory sdkmanager turned into a real directory.
 #
 # It does not write through a symlink for every package: installing the
-# emulator replaced ANDROID_HOME/emulator — a link onto the share — with a
+# emulator replaced ANDROID_HOME/emulator (a link onto the share) with a
 # real directory, which put 821MB back inside the image layer where the next
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
@@ -736,7 +736,7 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb toolchains $*"
 # sdkmanager records an operation in progress in <package>/.installer/, in a
 # file naming a working directory under $ANDROID_HOME/.temp. That record
 # outlives the operation: a container restart, or a package moved onto the
-# share by relink, leaves it pointing at a directory that is gone — and every
+# share by relink, leaves it pointing at a directory that is gone, and every
 # later install or uninstall of that package then fails with `"Uninstall
 # Android Emulator v.37.1.11" failed` and exit 1 and nothing else. It cost an
 # afternoon to find, because the failure names neither the file nor the path.
@@ -754,15 +754,15 @@ sdk_android_clear_stale_installer() {
     [ -f "$data" ] || return 0
     path="$(sed -n 's/^path=//p' "$data" | head -1)"
     if [ -n "$path" ] && [ -e "$path" ]; then return 0; fi
-    log "clearing stale installer state in ${dir} — it points at ${path:-nothing}, which is gone"
+    log "clearing stale installer state in ${dir}: it points at ${path:-nothing}, which is gone"
     rm -rf "${dir:?}/.installer"
 }
 
 sdk_relink_android() {
     local store sub src
     store="$(sdk_dir android)"
-    # On a node the store IS the SDK home — ANDROID_HOME points at the store's
-    # android/ directory and sdkmanager writes there directly — so there is no
+    # On a node the store IS the SDK home: ANDROID_HOME points at the store's
+    # android/ directory and sdkmanager writes there directly, so there is no
     # image-side directory to point back at the share, and the moves below
     # would be a directory onto itself.
     [ "$(readlink -f "$store")" != "$(readlink -f "${ANDROID_HOME:-/opt/android-sdk}")" ] || return 0
@@ -786,8 +786,8 @@ sdk_relink_android() {
             # package directory here IS the link, so sdkmanager deletes it.
             # Left missing, the next install would create a real directory in
             # its place and put gigabytes inside the image instead of on the
-            # share — quietly, and only noticed at the next image update.
-            log "restoring the ${sub} link — an uninstall removed it"
+            # share, quietly, and only noticed at the next image update.
+            log "restoring the ${sub} link: an uninstall removed it"
             mkdir -p "$store/$sub"
         else
             continue                                  # a file, not a package
@@ -801,7 +801,7 @@ sdk_relink_android() {
 # Every probe here calls a non-empty directory installed, which is precisely
 # what a download interrupted half way leaves behind: the tab says installed,
 # `bb toolchains check` agrees, and the first thing to actually use it fails in some
-# stranger way. Only ever set to a directory this run made — an install onto
+# stranger way. Only ever set to a directory this run made: an install onto
 # an existing one is a repair, and deleting what was already working because
 # the repair failed would be worse than the failure.
 SDK_PARTIAL=""
@@ -812,13 +812,13 @@ sdk_mark_partial() {
 }
 # Interrupted rather than failed: the dashboard's Abort sends the whole
 # process group a TERM, so the download dies with it. Handled explicitly
-# because bash runs its EXIT trap on a signal with $? still zero — the
+# because bash runs its EXIT trap on a signal with $? still zero: the
 # cleanup would look at that and conclude nothing had gone wrong, leaving a
 # half-unpacked toolchain behind.
 sdk_install_aborted() {
     trap - EXIT
     if [ -n "${SDK_PARTIAL:-}" ]; then
-        warn "aborted — removing the partial ${SDK_PARTIAL}"
+        warn "aborted; removing the partial ${SDK_PARTIAL}"
         rm -rf "${SDK_PARTIAL:?}"
         SDK_PARTIAL=""
     else
@@ -830,7 +830,7 @@ sdk_install_aborted() {
 sdk_install_cleanup() {
     local rc=$?
     if [ "$rc" = 0 ] || [ -z "${SDK_PARTIAL:-}" ]; then return 0; fi
-    warn "install failed (exit ${rc}) — removing the partial ${SDK_PARTIAL}"
+    warn "install failed (exit ${rc}); removing the partial ${SDK_PARTIAL}"
     rm -rf "${SDK_PARTIAL:?}"
     SDK_PARTIAL=""
     # Android packages leave a record of the operation behind as well, and a
@@ -879,7 +879,7 @@ sdk_plan() {
     printf 'kind      %s\n' "$kind"
     printf 'directory %s\n' "$d"
     if [ "$kind" = sdkmanager ]; then
-        local pkg; pkg="$(sdk_android_id "$what")" || pkg="(cannot resolve — is sdkmanager here?)"
+        local pkg; pkg="$(sdk_android_id "$what")" || pkg="(cannot resolve; is sdkmanager here?)"
         printf 'sdkmanager %s --install %s\n' "$(sdk_root_flag)" "$pkg"
         return 0
     fi
@@ -888,7 +888,7 @@ sdk_plan() {
     [ -z "$version" ] || printf 'version   %s\n' "$version"
     [ -z "$url" ] || printf 'url       %s\n' "$url"
     # The machine's packages the recipe needs, installed by the agent on a
-    # node it administers and by hand anywhere else — so the plan says them.
+    # node it administers and by hand anywhere else, so the plan says them.
     local -a sysapt sysdnf
     sdk_meta_into sysapt argv "$what" system.apt 2>/dev/null || sysapt=()
     [ "${#sysapt[@]}" = 0 ] || printf 'system    apt: %s\n' "${sysapt[*]}"
@@ -955,7 +955,7 @@ sdk_install_android() {
    cmdline-tools directory with nothing in it, which is not the same thing."
     pkg="$(sdk_android_id "$what")"
     [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
-    log "installing ${pkg} — into $(sdk_dir android)"
+    log "installing ${pkg} into $(sdk_dir android)"
     sdk_android_clear_stale_installer "$pkg"
     sdk_mark_partial "$(sdk_android_pkg_dir "$pkg")"
     sdkmgr --install "$pkg"
@@ -987,7 +987,7 @@ sdk_install_tarball() {
     sdk_install_verify "$what" "$d" "$version"
 }
 
-# Fetch an installer and run it. The URL here is a script, not the payload —
+# Fetch an installer and run it. The URL here is a script, not the payload;
 # it goes and gets that itself, with the arguments the catalog gives.
 sdk_install_script() {
     local what="$1" d url tmp tmpdir
@@ -1166,7 +1166,7 @@ sdk_install_tizen() {
     cat <<'EOF'
 Tizen is Samsung's OS, and where it runs decides whether you want it:
 
-  TVs, signage and appliances   alive and current — Samsung ships Tizen on
+  TVs, signage and appliances   alive and current. Samsung ships Tizen on
                                 every smart TV, and licenses it to other TV
                                 makers. This is the reason to install it.
   Watches                       over. Samsung moved Galaxy Watch to Wear OS
@@ -1202,12 +1202,12 @@ sdk_remove() {
                 kind=sdkmanager
                 # A typo'd id would otherwise reach sdkmanager, which fetches
                 # the whole remote repository before deciding it has nothing to
-                # uninstall — a minute of network for a misspelling. Every id
+                # uninstall: a minute of network for a misspelling. Every id
                 # of this shape maps to a directory, so ask the disk first.
                 [ -d "${ANDROID_HOME:-/opt/android-sdk}/$(printf '%s' "${what#android:}" | tr ';' '/')" ] \
                     || die "${what} is not installed (bb emu images lists what is)"
                 ;;
-            # tizen is not in the catalog — nothing there can install it — but
+            # tizen is not in the catalog (nothing there can install it), but
             # it is a directory on the share like any other, so it comes off
             # like one.
             tizen) ;;
@@ -1215,7 +1215,7 @@ sdk_remove() {
         esac
     fi
     # Then the marker, before anything is deleted, so an uninstall that dies
-    # half way still counts as one having been asked for — a hook re-fetching
+    # half way still counts as one having been asked for: a hook re-fetching
     # 1.3GB behind a failed removal is the surprise this exists to stop. After
     # the name is checked, though: a typo used to leave a marker behind for a
     # toolchain that does not exist.
@@ -1272,7 +1272,7 @@ sdk_remove() {
                     return 0
             fi
             # A top-level package whose directory under ANDROID_HOME is one of
-            # our symlinks — the emulator is the only one in the catalog — is
+            # our symlinks (the emulator is the only one in the catalog) is
             # deleted by sdkmanager as *the link*, leaving the payload sitting
             # on the share: 820MB reported as removed and still spent. So
             # resolve where it really lives before asking, and clear that.
@@ -1285,7 +1285,7 @@ sdk_remove() {
             sdk_android_clear_stale_installer "$pkg"
             sdkmgr --uninstall "$pkg"
             if [ -n "$store" ] && [ -d "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
-                log "clearing ${store} — sdkmanager removed the link, not the files"
+                log "clearing ${store}: sdkmanager removed the link, not the files"
                 rm -rf "${store:?}"
             fi
             # The directories above a removed image: sdkmanager takes the abi
@@ -1313,8 +1313,8 @@ sdk_remove() {
 # a baseline. One TSV line each (id, API level, flavor, size, the AVDs built
 # on it) so the tab can offer to remove the ones nobody is using. Forty-four
 # gigabytes of them accumulated here before there was any way to see them.
-# Which AVDs are built on a given image. An AVD names one exactly — a line
-# like `image.sysdir.1=system-images/android-36/google_apis/x86_64/` — and
+# Which AVDs are built on a given image. An AVD names one exactly, in a line
+# like `image.sysdir.1=system-images/android-36/google_apis/x86_64/`, and
 # will not boot without it, which is the difference between an image that is
 # spare and one that something depends on. Two flavors at the same API level
 # are not interchangeable here: an AVD asking for google_apis does not accept
@@ -1354,7 +1354,7 @@ cmd_toolchains() {
     case "$sub" in
         status|"")  sdk_status "$@" ;;
         # `bb toolchains --local` reads as a flag on the bare command, which is
-        # how anyone would type it — the dispatch would otherwise take it
+        # how anyone would type it; the dispatch would otherwise take it
         # for a subcommand and print the usage line.
         --local)    sdk_status --local ;;
         root)       printf '%s\n' "$(sdk_root)" ;;

@@ -1,8 +1,8 @@
 """What each session on a project is changing, and where two of them collide.
 
 Since roadmap #24 more than one person can work a project at once, each in a
-worktree of their own. That makes them SAFE — they cannot overwrite each other
-or commit each other's work — and it does not make them coordinated: two people
+worktree of their own. That makes them SAFE (they cannot overwrite each other
+or commit each other's work) and it does not make them coordinated: two people
 can still spend an afternoon rewriting the same function and find out at the
 merge.
 
@@ -14,7 +14,7 @@ truthful one:
     heuristic, nothing to keep in step with a model's intentions.
   * THE HOOK, which is finer and best-effort. A PreToolUse hook sees the file
     an edit is about to touch and guesses the enclosing symbol from the text
-    around it. Function-level, and a guess — recorded as one.
+    around it. Function-level, and a guess, recorded as one.
 
 Git is asked live and stored nowhere: a record of what a tree contains would
 be a second copy of something git already answers, and the copy is the one
@@ -63,7 +63,7 @@ def _git(cwd, *args):
 
 
 def trees(project, worktrees):
-    """{label: path} — every working tree this project is being worked in.
+    """{label: path} for every working tree this project is being worked in.
 
     The project directory is the owner's; the rest are worktrees named for the
     account id that owns them, which is how they are laid out on disk.
@@ -81,7 +81,7 @@ def trees(project, worktrees):
 
 def changed(path):
     """Files with uncommitted work in this tree, staged or not, plus the
-    untracked ones — a new file two people both added is a collision too.
+    untracked ones; a new file two people both added is a collision too.
 
     Porcelain v1 because its shape has been stable for a decade: XY, a space,
     then the path. A rename carries `old -> new` and the new name is the one

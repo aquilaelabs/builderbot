@@ -8,17 +8,17 @@ import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-// Plain fetches first — no credentials at all, straight from node.
+// Plain fetches first: no credentials at all, straight from node.
 const bare = async (path, opts = {}) =>
   fetch(URL.replace(/\/$/, '') + path, { redirect: 'manual', ...opts });
 
 // ...but not for the page itself, which needs node:http instead of fetch.
-// undici's parser asserts — `assert(!this.paused)` — and takes the whole
+// undici's parser asserts (`assert(!this.paused)`) and takes the whole
 // process down when a body bigger than its buffer meets a connection close,
 // and every response here ends in one: Python's BaseHTTPRequestHandler speaks
 // HTTP/1.0 and closes after each. It is latent until the body is large enough,
 // so this file died the day the dashboard page crossed 128KiB gzipped, having
-// sat 119 bytes under it — and it died by CRASHING, after printing that every
+// sat 119 bytes under it, and it died by CRASHING, after printing that every
 // test passed, so the file's own tally said 21/21 while the suite went red.
 //
 // The bytes are not in question: curl gets Content-Length and exactly that
@@ -80,8 +80,8 @@ ok(r.headers.get('location') === '/', 'a protocol-relative next is not followed'
 r = await bare('/logout', { headers: { Cookie: cookie } });
 ok(/Max-Age=0/.test(r.headers.get('set-cookie') || ''), 'logout clears the cookie');
 
-// Big answers travel gzipped when the client takes it — the page and the
-// status snapshot a phone polls every 15s — and small ones as they are.
+// Big answers travel gzipped when the client takes it (the page and the
+// status snapshot a phone polls every 15s), and small ones as they are.
 const AUTHH = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
 ok(r.headers.get('content-encoding') === 'gzip', 'the status snapshot travels gzipped');
@@ -95,10 +95,10 @@ const plain = (await bigGet('/', AUTHH)).body.length;
 //
 // It tripped anyway, exactly as predicted: 150000 was reached with fifteen
 // bytes to spare, so the twelve colour schemes were the feature that met it.
-// Raised to a number the ratio would fail long before — which is the check
+// Raised to a number the ratio would fail long before, which is the check
 // that actually means something.
-// 250000 was reached the ordinary way in the end — no blob, just a year of
-// features in the one file this page is by design — so it moves again, to a
+// 250000 was reached the ordinary way in the end (no blob, just a year of
+// features in the one file this page is by design), so it moves again, to a
 // number the ratio fails long before. The ratio is the half that means
 // something; this one only ever says "an image got pasted in".
 ok(r.headers.get('content-encoding') === 'gzip'
@@ -108,7 +108,7 @@ r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'identit
 ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plain bytes');
 
 // A browser with preemptive basic auth (bb shot, curl -u, these tests) still
-// works exactly as before — the whole page, no login step.
+// works exactly as before: the whole page, no login step.
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
@@ -129,7 +129,7 @@ await page2.reload();
 await page2.waitForFunction(() => document.getElementById('projects') !== null, { timeout: 20000 });
 ok(true, '...and the cookie survives a reload');
 // The header's sign-out button: drawn to its neighbors' size, and it really
-// ends the session — landing on the login page and staying out.
+// ends the session, landing on the login page and staying out.
 ok(await page2.$eval('#bOut', b => {
   const r = b.getBoundingClientRect();
   const c = document.getElementById('bCards').getBoundingClientRect();
@@ -144,12 +144,12 @@ await ctx2.close();
 
 // ---- accounts, not one env var (roadmap #22 step 1) --------------------
 // DASHBOARD_AUTH=test:test seeded the owner on this server's first boot and
-// is not consulted again. Nothing is restricted yet — that is step 2 — so
+// is not consulted again. Nothing is restricted yet (that is step 2), so
 // what is checked here is the store standing where the string used to.
 //
 // Everything below works on a SECOND account. The first version changed the
 // owner's password and could not put it back, because `test` is under the
-// eight-character floor the store enforces — which would have taken the
+// eight-character floor the store enforces, which would have taken the
 // harness credential away from every file that runs after this one.
 {
   const { readFileSync, existsSync } = await import('node:fs');
@@ -213,7 +213,7 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
 // served until somebody claims it.
 //
 // Driven against a store of its own rather than this server's, which already
-// has an owner — the whole property is what happens when there is none.
+// has an owner: the whole property is what happens when there is none.
 {
   const { execFileSync } = await import('node:child_process');
   const { mkdtempSync, readFileSync, existsSync } = await import('node:fs');
@@ -256,7 +256,7 @@ ${code}`], { encoding: 'utf8' });
 // ---- a strip each (roadmap #25) --------------------------------------------
 // The tab layout was ONE file for the whole box: written by whichever browser
 // saved last and handed to every other one. Fine for one operator, wrong the
-// moment there are two — you would watch somebody else's tabs open in front
+// moment there are two: you would watch somebody else's tabs open in front
 // of you. It is keyed by the account's minted id now, and the id is minted
 // rather than the name because the owner is renameable on purpose.
 {
@@ -281,7 +281,7 @@ ${code}`], { encoding: 'utf8' });
 
   const owner = asUser('test', 'test');
   const other = asUser('sharer', 'stripspass1');
-  // Given one project, because a `user` with none can reach nothing at all —
+  // Given one project, because a `user` with none can reach nothing at all,
   // which is correct, and would make everything below pass for the wrong
   // reason.
   await bare('/api/users', { method: 'POST', headers: owner,
@@ -351,8 +351,8 @@ ${code}`], { encoding: 'utf8' });
       { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096,
         arch: 'x86_64', system: 'linux', session: SE } },
       { Authorization: 'Bearer ' + box.token });
-    // The session list rides the HEARTBEAT, not the census — nodes.heartbeat
-    // is where it is whitelisted — so this is the shape the agent's poll
+    // The session list rides the HEARTBEAT, not the census (nodes.heartbeat
+    // is where it is whitelisted), so this is the shape the agent's poll
     // sends, with no wait so nothing is held.
     // ...and its answer is a 204 when there is no job for the node, so the
     // body is not read.
@@ -363,8 +363,8 @@ ${code}`], { encoding: 'utf8' });
     await census([]);
     await napi('/api/prefs', { project: 'beta', node: box.id });
     // Both accounts signed in to ONE Anthropic account, which is the state
-    // the rule is about. Reported the way a node reports it — with a session
-    // token minted for that account, on the node its project is bound to —
+    // the rule is about. Reported the way a node reports it (with a session
+    // token minted for that account, on the node its project is bound to)
     // rather than by writing the record, so what is under test is the path
     // that makes one.
     // WORKSPACE too: the verb checks the project is one, off the filesystem.
@@ -389,7 +389,7 @@ ${code}`], { encoding: 'utf8' });
     // The account whose session it is may come back to it...
     ok((await term(other, 'claude:beta')).status !== 409,
        'the account that opened it can reattach');
-    // ...and so may anybody else, since roadmap #24 — they each work in a
+    // ...and so may anybody else, since roadmap #24: they each work in a
     // worktree of their own, so a second conversation cannot overwrite the
     // first. What IS refused is a second session on one ANTHROPIC account:
     // they would share its limits, and afterwards nothing could say which of
@@ -406,7 +406,7 @@ ${code}`], { encoding: 'utf8' });
        '...naming the login and saying why, not just refusing');
     // A shell on the same project is not affected: shells are per account.
     ok((await term(owner, 'sh:1:beta')).status !== 409,
-       'a shell on that project is unaffected — shells were never shared');
+       'a shell on that project is unaffected: shells were never shared');
     // Ending it clears the way, with nothing to sweep: there is no record at
     // all any more. A session's NAME says whose it is, so the node's own list
     // is the only truth and it cannot go stale, be orphaned by a deleted
@@ -429,8 +429,8 @@ ${code}`], { encoding: 'utf8' });
 
   // ---- a user role has no shell at all (roadmap #27) -----------------------
   // The rest of the role is enforced by this server, in Python. A terminal is
-  // the way around all of it — one uid, one tmux server, Bash covered by no
-  // deny list — so an account that may not have one gets its Claude session
+  // the way around all of it (one uid, one tmux server, Bash covered by no
+  // deny list), so an account that may not have one gets its Claude session
   // as a read-only console and nothing else through /term.
   {
     const st = await (await bare('/api/status', { headers: other })).json();
@@ -469,7 +469,7 @@ ${code}`], { encoding: 'utf8' });
     // having the project. Not a 403: whatever else it answers, it got past
     // the gate.
     ok((await post(other, '/api/devapp', { project: 'beta', action: 'rebuild' })).status !== 403,
-       'a user CAN rebuild — that is how you see what you just committed');
+       'a user CAN rebuild: that is how you see what you just committed');
     ok((await post(other, '/api/devapp', { project: 'beta', action: 'abort' })).status !== 403,
        '...and stop one, since whoever may start a build may stop it');
     ok((await post(other, '/api/toolchains', { action: 'install', names: ['jdk'] })).status === 403,
@@ -483,7 +483,7 @@ ${code}`], { encoding: 'utf8' });
           theirs.nodes.length} of ${all.nodes.length})`);
     // ...and the scoping is on the ANSWER, not only the picker. `?node=` is a
     // string in a URL, and the answer is what carries the other projects'
-    // names — scoping the picker alone would have been theatre.
+    // names. Scoping the picker alone would have been theatre.
     const nodeId = all.nodes.find(n => n.id !== 'local')?.id || 'local';
     const peek = await bare('/api/docker?node=' + encodeURIComponent(nodeId),
                             { headers: other });
@@ -498,7 +498,7 @@ ${code}`], { encoding: 'utf8' });
 
   // ---- an admin sees everything and works on what it took on (#27) ---------
   // Two different questions. Hiding a project from somebody who administers
-  // the box only sends them looking for it, so an admin is shown every one —
+  // the box only sends them looking for it, so an admin is shown every one,
   // and the list they keep is a seatbelt against editing the wrong project,
   // not a wall, because an admin has a shell. A `user` is still only shown
   // what it was given, because a project it cannot work on is one it has no
@@ -540,7 +540,7 @@ ${code}`], { encoding: 'utf8' });
        'a user reads only the jobs of projects they were given');
     ok(!((await (await bare('/api/status', { headers: other })).json()).attention || []).length,
        '...and the bell\'s node alerts, which only an administrator can act on, are not theirs');
-    // Memories are the reader's own, in the reader's home — not the owner's
+    // Memories are the reader's own, in the reader's home, not the owner's
     // (bug B67): a user opening the Memory tab must not see what the owner's
     // sessions remembered, and what they write must land where their own
     // sessions read.
@@ -574,7 +574,7 @@ ${code}`], { encoding: 'utf8' });
     // between this and a user's list.
     ok((await post(adm, '/api/users', { action: 'projects', name: 'second',
                                         projects: ['alpha'] })).status === 200,
-       'an admin can add a project to its own list — a seatbelt, not a wall');
+       'an admin can add a project to its own list: a seatbelt, not a wall');
     ok((await post(adm, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' })).status === 200,
        '...and then it works on it');
     ok((await post(other, '/api/users', { action: 'projects', name: 'sharer',
@@ -614,7 +614,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok(denied.status === 403,
        '...and one they were not is refused, the same as the project is');
     // An admin is shown every project, so every project's channel is readable
-    // to them — a channel is the group chat for the people on it, and saying
+    // to them: a channel is the group chat for the people on it, and saying
     // something in one is not a change to the project. The list marks which
     // are actually theirs; the door does not need to.
     ok((await chat(owner, { action: 'read', project: 'gamma' })).status === 200,
@@ -629,7 +629,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
        '...and asking for another one directly is refused, not merely undrawn');
 
     // The status poll carries what is waiting, which is what puts the dot on
-    // the button — a chat you have to open to discover is one nobody opens.
+    // the button: a chat you have to open to discover is one nobody opens.
     await chat(owner, { action: 'send', who: 'sharer', text: 'and another' });
     const st = await (await bare('/api/status', { headers: other })).json();
     ok(st.chat && (st.chat.unread || {})[`dm:${uidOf('test')}`] >= 1,
@@ -653,7 +653,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
        'a prompt on a shared project reaches the others, marked as a prompt');
 
     // ...but only what a PERSON typed. UserPromptSubmit fires for every turn a
-    // session receives, and a background command finishing arrives as one —
+    // session receives, and a background command finishing arrives as one,
     // which filled a channel with task ids and output paths on a real phone.
     const relayed = t => { execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
       input: JSON.stringify({ prompt: t }), encoding: 'utf8',
@@ -672,7 +672,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
        `...and a real message keeps only the half somebody typed (${last.text})`);
   }
 
-  // A rename must not lose the strip — the whole reason the key is minted.
+  // A rename must not lose the strip: the whole reason the key is minted.
   execFileSync('python3', ['-c', `
 import importlib.util, json
 spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
@@ -693,7 +693,7 @@ print(u.remove("renamed"))`], { encoding: 'utf8' });
 
 // ---- what a `user` sees, and does not (roadmap #22 step 2) --------------
 // The property the whole scheme leans on: a project somebody was not given is
-// ABSENT, not refused — so the existence check and the permission check are
+// ABSENT, not refused, so the existence check and the permission check are
 // the same check, and comparing error messages tells you nothing.
 {
   const { readFileSync } = await import('node:fs');
@@ -740,7 +740,7 @@ ${code}`], { encoding: 'utf8' }).trim();
      '...while the owner still sees every one of them');
 
   // A project they were not given does not exist, and says so in the words a
-  // typo gets — never "forbidden", which would confirm it is there.
+  // typo gets, never "forbidden", which would confirm it is there.
   const hidden = await (await post('/api/roadmap', { action: 'save', project: 'ep.silon', items: [] })).json();
   ok(/not a project/.test(hidden.error || ''),
      `a project they cannot see reads as absent, not refused (${hidden.error})`);
@@ -765,10 +765,10 @@ ${code}`], { encoding: 'utf8' }).trim();
     ok(r3.status === 403, `${path} is an administrator's`);
   }
   // A phone is not machinery: whoever connects one owns it, and a user may
-  // — the ownership is held per connection, not by role. (No node named,
-  // so this is refused for that reason and not for who is asking.)
+  // too, since the ownership is held per connection, not by role. (No node
+  // named, so this is refused for that reason and not for who is asking.)
   ok((await post('/api/phone', { action: 'connect' })).status !== 403,
-     "/api/phone is any account's — a phone is its owner's, not the administrators'");
+     "/api/phone is any account's: a phone is its owner's, not the administrators'");
   // ...and the refusal REFUSED. Asserting the status alone is what let a
   // guard through that wrote a 403 and then did the thing anyway: _json
   // returns None, so `if (no := self._may(...))` was never true. The nodes
@@ -821,9 +821,9 @@ ${code}`], { encoding: 'utf8' }).trim();
     '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
   ok(true, 'Add makes an account from the tab');
 
-  // Which Anthropic account each BuilderBot account is signed in as — from
-  // the record a node reported, since no login lives here (R47) — and two on
-  // one login said out loud, since Anthropic's terms allow one person per
+  // Which Anthropic account each BuilderBot account is signed in as, taken
+  // from the record a node reported, since no login lives here (R47), and two
+  // on one login said out loud, since Anthropic's terms allow one person per
   // Claude account.
   rs = await rows();
   ok(rs.filter(r => r.name !== 'test').every(r => /no Claude login yet/.test(r.text)),
@@ -1031,7 +1031,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   ok((await post('/api/phone', { action: 'pair' })).status === 403,
      '...while pairing it stays the operator\'s');
 
-  // Rotating the key takes every session token at once — which is the
+  // Rotating the key takes every session token at once, which is the
   // granularity that matters, since they are minted fresh per connection.
   mint('revoke_sessions()');
   ok((await as('/api/status')).status === 401,
@@ -1046,7 +1046,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
 // ---- the Profile tab: an account's own settings -----------------------
 // Anybody signed in, about themselves only: name and email, the git identity
 // their commits carry, and a password change that asks for the current one
-// first — a browser left signed in is not enough to lock its owner out. The
+// first: a browser left signed in is not enough to lock its owner out. The
 // throwaway account, because the suite's own credential must keep working.
 {
   // Made here: the tabmade account above was removed by the flow that tests
@@ -1098,7 +1098,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.click('.profiletab .help');
   // Wait for the box to have a width, not for a hundred milliseconds: the
   // ::after is laid out a frame or two after the class lands, and on a busy
-  // box it is later than that — which read back as `auto`, came out of
+  // box it is later than that, which read back as `auto`, came out of
   // parseFloat as NaN, and failed a rule about placement with a number
   // nobody could place.
   await page.waitForFunction(() => {
@@ -1116,7 +1116,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.setViewportSize({ width: 1280, height: 800 });
   // No author, no terminal and no git: an account with no name and email
   // is refused a shell as well as a session at the door, and bb git for it
-  // is refused on the relay — every project is a repository, and a shell is
+  // is refused on the relay: every project is a repository, and a shell is
   // where git is typed. The account made above has no author until it is
   // given one; then everything opens.
   {
@@ -1235,7 +1235,7 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     body: JSON.stringify({ action: 'remove', name: 'profiled' }) })).json());
 }
 
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // ---- the route tables ------------------------------------------------------
 // Routes are matched in order and a prefix route takes every path it
 // prefixes, so one listed after a shorter prefix of itself is never reached:

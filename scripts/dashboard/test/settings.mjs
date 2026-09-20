@@ -1,10 +1,10 @@
 // The Settings tab (roadmap R29, then the operator's cut): what is left after
-// asking which settings need to exist at all — two switches, since the Claude
-// Code update settings went with the install itself (R47) — plus the commit
+// asking which settings need to exist at all. Two switches, since the Claude
+// Code update settings went with the install itself (R47), plus the commit
 // identity, which became a project's own setting in its dialog. What is
 // exercised for real: the store through the endpoint, the tab's rows, the
 // identity landing in the repo's own config through /api/prefs and coming out
-// of bb settings, and bb_setting — the boot scripts' read — run as bash
+// of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -134,12 +134,12 @@ const setting = (key, dflt) => execFileSync('bash', ['-c',
   { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
 ok(setting('claude_shared_login', 'true') === 'false',
    'bb_setting hands a boot hook the saved value, a false as the word false so is_true reads it');
-ok(setting('nothing_saved', 'dflt') === 'dflt', '...and the default when nothing is saved — no environment variable is read any more');
+ok(setting('nothing_saved', 'dflt') === 'dflt', '...and the default when nothing is saved; no environment variable is read any more');
 
 // ---- the commit identity is the account's ----------------------------------
 // Set on the Profile tab, never in a project: two people on one project are
 // two authors. It reaches a session as git's environment, and `bb settings
-// --json` is how bb-tty asks for it — for the seat BB_ACCOUNT_UID names.
+// --json` is how bb-tty asks for it, for the seat BB_ACCOUNT_UID names.
 const prof = await post('/api/profile', { action: 'save',
   profile: { full_name: 'Test Person', email: 'test@example.invalid' } });
 ok(prof.status === 200 && prof.body.git.name === 'Test Person' && prof.body.git.email === 'test@example.invalid',

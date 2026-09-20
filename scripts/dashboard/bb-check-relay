@@ -4,7 +4,7 @@ back (roadmap R31, step 2).
 
     bb-check-relay PROJECT SESSION        # JSON on stdin, the way Claude Code calls a Stop hook
 
-A house rule can carry a check — the command that verifies the framework it
+A house rule can carry a check: the command that verifies the framework it
 names (rules.py, `bb rules check`). A session that read the rule may still
 forget to run it, and a rule nobody runs is prose. So when the session is
 about to stop, this runs the checks of the rules whose files the tree has
@@ -18,8 +18,8 @@ mtimes is hashed; a stamp beside the token file remembers the last hash
 that passed, and an unchanged tree is let go without a word.
 
 Never loops: Claude Code marks a stop that a hook already refused once
-(stop_hook_active), and that one is let through — a check that cannot be
-made to pass must not hold a session hostage. Silent on any failure of its
+(stop_hook_active), and that one is let through, because a check that cannot
+be made to pass must not hold a session hostage. Silent on any failure of its
 own: a hook that cannot run is never worth a turn.
 """
 import contextlib

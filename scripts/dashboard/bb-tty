@@ -7,7 +7,7 @@
 # matters: it never reaches a shell (ttyd execs directly), and a project name
 # is checked against the directories that actually exist rather than trusted as
 # a path. Anyone reaching this is already authenticated and already entitled to
-# a shell, so the goal is not privilege containment — it is making a mistyped
+# a shell, so the goal is not privilege containment; it is making a mistyped
 # URL fail cleanly instead of starting something surprising.
 #
 # Everything runs inside tmux so a closed browser tab detaches rather than
@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 # Beside this script rather than by absolute path. In the image the two are the
-# same file — this lives at /opt/builderbot/scripts/dashboard/bb-tty — and out
+# same file (this lives at /opt/builderbot/scripts/dashboard/bb-tty), and out
 # of it, the checkout's copy runs from the checkout, which is what lets the
 # dashboard suite drive this script at all.
 . "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
@@ -27,7 +27,7 @@ target="${1:-shell}"
 #
 # The dashboard's /term proxy stamps the argument with the account it
 # authenticated, as `u:<uid>:<target>`, and OVERWRITES anything the browser
-# put there — so this is the account asking, not the account claimed. That is
+# put there, so this is the account asking, not the account claimed. That is
 # the same reasoning as the lock check below: a rule only the UI honors is a
 # suggestion, because the ttyd URL is reachable directly.
 #
@@ -53,8 +53,8 @@ esac
 # target the proxy can hand this script the two things a node does not have
 # and cannot make: the account's name (its users.json is on the controller)
 # and a session token for the project (minted there, by the key only it
-# holds). On the controller neither arrives — the name is looked up and the
-# token minted right here — so both are optional, and one that does arrive
+# holds). On the controller neither arrives (the name is looked up and the
+# token minted right here), so both are optional, and one that does arrive
 # is taken only in the shape it should have. The token is a credential for
 # one project with user rights and an expiry, which is exactly what the
 # launcher below would have minted; it is not the operator's password.
@@ -161,10 +161,10 @@ if on_node && [ -n "$account" ]; then
     export DISABLE_AUTOUPDATER=1
 fi
 
-# sess NAME — the session name for this account.
+# sess NAME: the session name for this account.
 #
 # A SHELL is per account: two people opening a terminal on the same project
-# must not land in one another's, which is what one name would do — tmux
+# must not land in one another's, which is what one name would do: tmux
 # attaches to an existing session rather than making a second. A CLAUDE
 # session is deliberately NOT per account: one conversation per project is the
 # rule (two in one working tree fight over the same files), and who holds it
@@ -173,14 +173,14 @@ fi
 # The OWNER keeps the bare names, which is why this asks tmux_prefix rather
 # than building one: same rule as their home, in one place. `~` is the
 # separator because tmux rewrites `.` and `:` in a name and leaves this
-# alone — measured, not assumed.
+# alone; measured, not assumed.
 sess() {
     printf '%s%s' "$(tmux_prefix "$account")" "$1"
 }
 
 # Projects the operator keeps but runs themselves. Shared with the dashboard,
 # which writes it; enforced here, because a rule only the UI honors is a
-# suggestion — the ttyd URL is reachable directly.
+# suggestion: the ttyd URL is reachable directly.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
 is_locked() {
@@ -188,7 +188,7 @@ is_locked() {
         jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
         return
     fi
-    # On a node the list is the controller's, and `bb settings` asks it —
+    # On a node the list is the controller's, and `bb settings` asks it,
     # over the API, with the session token that rode in above. No token, or
     # no answer, reads as not locked: the proxy on the controller refuses a
     # locked project before the connection ever reaches here, so this is the
@@ -198,7 +198,7 @@ is_locked() {
 }
 
 # Where the dashboard keeps each project's model and effort. Read by the
-# launcher this writes rather than here, so a respawn re-reads it — see
+# launcher this writes rather than here, so a respawn re-reads it; see
 # claude_launcher.
 PREFS_FILE="${DASHBOARD_STATE:-/config}/claude-prefs.json"
 
@@ -212,16 +212,16 @@ siblings_of() {
         | { grep -vxF "$WORKSPACE/$1" || true; }   # sole project: no siblings
 }
 
-# walls_around PROJECT HERE — every tree this session must not reach into.
+# walls_around PROJECT HERE: every tree this session must not reach into.
 #
-# Every project but its own, and every WORKTREE but its own — including the
+# Every project but its own, and every WORKTREE but its own, including the
 # other worktrees of this same project, which is the case that matters: two
 # people working one project are the reason worktrees exist, and a deny list
 # that stopped at the project boundary would let each of them edit the other's
 # checkout, which is exactly what the separate trees are for.
 #
 # siblings_of lists dot directories too, so .worktrees would otherwise be
-# denied WHOLESALE — including the tree this session is sitting in. It is
+# denied WHOLESALE, including the tree this session is sitting in. It is
 # excluded here and its contents enumerated instead.
 walls_around() {
     local proj="$1" here="$2"
@@ -319,12 +319,12 @@ claude_scope() {
 
     # Read for reading, Edit for every tool that writes. Two eras of Claude
     # Code semantics meet here, and both left a mark. Originally a rule named
-    # one tool — Read and Edit did not cover Write — so the first version of
+    # one tool (Read and Edit did not cover Write), so the first version of
     # this left a session able to CREATE a file in a sibling project, and the
     # fix was four rules per path (Write, and NotebookEdit, the same tool
     # wearing a different name for .ipynb). Claude Code has since inverted
     # that: an Edit(path) rule now covers ALL file-editing tools, and a
-    # Write() or NotebookEdit() rule is IGNORED with a startup warning — a
+    # Write() or NotebookEdit() rule is IGNORED with a startup warning: a
     # wall of yellow at the top of every session, one line per dead rule.
     # So: Edit carries the whole write-side deny, and the two dead spellings
     # are gone. If the semantics ever move again, the warning wall is the
@@ -345,7 +345,7 @@ claude_scope() {
     # component: denying only the root one would leave `extension/VERSION`
     # editable and the policy walked straight past.
     #
-    # Read is deliberately not denied — a session should be able to see the
+    # Read is deliberately not denied: a session should be able to see the
     # version it is working against, and `bb version` prints it anyway.
     #
     # Same caveat as every rule in this file: it binds the file tools, not
@@ -355,7 +355,7 @@ claude_scope() {
     # `here` is where the session actually works, which is the project
     # directory for the owner and a worktree for anybody else (roadmap #24).
     # It matters twice. A worktree session is OUTSIDE $WORKSPACE/$proj, so the
-    # project directory itself becomes a sibling to deny — the whole point is
+    # project directory itself becomes a sibling to deny; the whole point is
     # that the two are separate trees and one session must not reach into the
     # other. And the VERSION rule has to name the tree the session is in, or
     # it denies a file that session was never going to touch and leaves its
@@ -366,7 +366,7 @@ claude_scope() {
     # update looks like: there is nothing to do but wait, and working blind
     # against a machine that is changing is worse than waiting.
     # bb-work-note records what this session
-    # touches and says when another has the same file open — it does NOT
+    # touches and says when another has the same file open; it does NOT
     # refuse, because each session is in a worktree of its own and two people
     # editing one function are making two commits, not corrupting one tree.
     # bb-prompt-relay puts what was asked into the project's chat feed, so the
@@ -443,10 +443,10 @@ claude_scope() {
     return 1
 }
 
-# claude_launcher PROJECT TRANSCRIPT_DIR COMMAND... — write COMMAND as a script
+# claude_launcher PROJECT TRANSCRIPT_DIR COMMAND...: write COMMAND as a script
 # and echo its path.
 #
-# name begins with `claude-` deliberately — the session-is-really-claude check
+# name begins with `claude-` deliberately: the session-is-really-claude check
 # below reads pane_start_command, which is now this path.
 #
 # The script resolves the project's model and effort ITSELF, at exec time,
@@ -457,14 +457,14 @@ claude_scope() {
 # continues the conversation instead of replacing it.
 claude_launcher() {
     local proj="$1" tdir="$2"; shift 2
-# session_token PROJECT — a scoped credential for the session about to start,
+# session_token PROJECT: a scoped credential for the session about to start,
 # or empty. Read from users.py so there is one implementation of what a token
 # is; a shell that reimplemented the signing would be a second one to keep in
 # step with the server.
 session_token() {
     # A node never mints: the store and its key are the controller's, and
     # the token is the one that rode in on the URL, or nothing. Nothing is
-    # the safe direction — bb then says it has no credential rather than
+    # the safe direction: bb then says it has no credential rather than
     # reaching for anybody else's.
     if on_node; then printf '%s' "${BB_TOKEN:-}"; return 0; fi
     local py="/opt/builderbot/scripts/dashboard/users.py"
@@ -498,7 +498,7 @@ PY
     dir="$(cache_project_dir "$proj")"
     out="$dir/claude-run.sh"
     tmp="$out.new"
-    # %q so the command survives being written down and read back as shell —
+    # %q so the command survives being written down and read back as shell:
     # the system prompt is somebody's prose, with quotes and newlines in it.
     # exec, so nothing sits between tmux and claude: the pane's process is the
     # conversation, which is what the shutdown's TERM and the pane's pid mean.
@@ -506,14 +506,14 @@ PY
         printf '#!/usr/bin/env bash\n'
         printf '# Written by bb-tty each time a session for %s is opened.\n' "$proj"
         printf '# tmux takes a command in one 16KB message; this is how a long\n'
-        printf '# system prompt gets past that. Not edited by hand — it is\n'
+        printf '# system prompt gets past that. Not edited by hand; it is\n'
         printf '# overwritten on the next connection.\n'
         printf '# The model and effort are read here rather than baked in, so a\n'
         printf '# respawn through this file picks up a setting just changed.\n'
         printf 'set -uo pipefail\n'
         # What the session may do, and what it may no longer do.
         #
-        # It used to inherit DASHBOARD_AUTH — the operator's own password —
+        # It used to inherit DASHBOARD_AUTH (the operator's own password)
         # from the container environment, which made "only the operator can
         # install a toolchain" a rule the code asked nicely about (bug #16). It
         # gets a token scoped to THIS project with `user` rights instead, and
@@ -522,7 +522,7 @@ PY
         # Minted per connection rather than kept: they expire, they are cheap,
         # and rotating the store's key invalidates every one of them at once.
         # A failure to mint leaves the session with neither, which is the safe
-        # direction — bb then says it has no credential rather than falling
+        # direction: bb then says it has no credential rather than falling
         # back to the operator's.
         printf 'unset DASHBOARD_AUTH\n'
         local tok; tok="$(session_token "$proj")"
@@ -533,8 +533,8 @@ PY
         # A session outlives its token. The token is twelve hours; a
         # conversation that has been going longer than that had one in its
         # environment that no longer verifies, and every bb verb answered
-        # "not signed in" — the notebook, `bb git push` on a node, all of it
-        # — with no way back except ending the session. The launcher above is
+        # "not signed in" (the notebook, `bb git push` on a node, all of it),
+        # with no way back except ending the session. The launcher above is
         # already rewritten on every connection, but a claude that is ALREADY
         # RUNNING keeps the environment it started with, so refreshing the
         # launcher refreshes nothing for it. This file is what a running one
@@ -549,7 +549,7 @@ PY
         printf 'extra=()\n'
         # The file where the dashboard keeps them, when it is here; on a node
         # it is not, and `bb settings` asks the controller for the same two
-        # fields — still at exec time, so a respawn still picks up a change.
+        # fields, still at exec time, so a respawn still picks up a change.
         printf 'if [ -r %q ]; then\n' "$PREFS_FILE"
         # Under the ACCOUNT, not the project: the pair is whoever is at the
         # keyboard's, so two people on one project launch on their own (17
@@ -584,7 +584,7 @@ PY
     printf '%s' "$out"
 }
 
-# claude_first_run DIR — answer Claude Code's first-run questions for this home
+# claude_first_run DIR: answer Claude Code's first-run questions for this home
 # and this directory, where they are not answered already. See the call site.
 # Sets CLAUDE_TRUST_ADDED=1 when this tree was NOT trusted before this call
 # and is now, so the caller can say so where it knows whether a session is
@@ -618,8 +618,8 @@ claude_first_run() {
     #
     # hasTrustDialogAccepted is what makes Claude Code apply a workspace's own
     # permission rules at all. Without it every allowance a person grants is
-    # thrown away — it says so out loud: "Ignoring N permissions.allow entry
-    # from .claude/settings.json: this workspace has not been trusted" — so
+    # thrown away, and it says so out loud: "Ignoring N permissions.allow entry
+    # from .claude/settings.json: this workspace has not been trusted", so
     # the session asks about every command and remembers none of the answers.
     # From the outside that reads as the permission setting being ignored,
     # which is where a morning went.
@@ -633,33 +633,33 @@ claude_first_run() {
     return 0
 }
 
-# bad MESSAGE... — fail visibly. ttyd closes the connection the moment this
+# bad MESSAGE...: fail visibly. ttyd closes the connection the moment this
 # exits, so without the pause the browser shows an empty terminal and no reason.
 bad() {
     for line in "$@"; do echo "$line" >&2; done
     # ...but only when something is holding a terminal open to read it. Under
     # ttyd every fd is the pty. Called from a script with stderr on a pipe
     # there is nobody to show it to, and the pause was ten seconds of nothing
-    # each time — five tests in the dashboard suite spent it proving that a
+    # each time; five tests in the dashboard suite spent it proving that a
     # refusal is a refusal.
     if [ -t 2 ]; then sleep 10; fi
     exit 1
 }
 
-# git_identity PROJECT — the ACCOUNT's commit identity, into this session's
+# git_identity PROJECT: the ACCOUNT's commit identity, into this session's
 # environment. GIT_AUTHOR_* and GIT_COMMITTER_* outrank any user.name a
 # repository or a home carries, which is the point: two people on one
 # project are two authors, and a repo-level identity would make them one.
 # The values come from `bb settings --json`, which answers for the seat
-# BB_ACCOUNT_UID names — right here on the controller, and over the relay
+# BB_ACCOUNT_UID names, right here on the controller, and over the relay
 # from a node, whose controller knows the account behind the token. A shell
 # gets them too, so a commit typed by hand is the same person's. Never
 # fatal: a session with no identity is one git asks about, not one refused.
 git_ready=""            # "false" once bb settings has said the account has no author
 
-# need_author WHAT — no author, no terminal: every project is a repository,
+# need_author WHAT: no author, no terminal. Every project is a repository,
 # and a commit with no name and email behind it is one git refuses halfway
-# through the work — or, worse, one made under whatever a repository or the
+# through the work, or, worse, one made under whatever a repository or the
 # box happens to have configured. A shell is refused as well as a session,
 # because a shell is where git is typed. Only when the controller SAID so:
 # a controller that is not answering at all must not read as a refusal, and a
@@ -667,7 +667,7 @@ git_ready=""            # "false" once bb settings has said the account has no a
 need_author() {
     [ "$git_ready" = false ] || return 0
     bad "You have no name and email for commits yet, so $1 does not start." \
-        "Set them on your Profile — the gear in the dashboard's header — and" \
+        "Set them on your Profile (the gear in the dashboard's header) and" \
         "open this again. Every project here is a repository, and a commit" \
         "needs an author."
 }
@@ -682,7 +682,7 @@ git_identity() {
     [ -z "$email" ] || export GIT_AUTHOR_EMAIL="$email" GIT_COMMITTER_EMAIL="$email"
 }
 
-# start SESSION DIR [COMMAND...] — attach to a session, creating it if needed,
+# start SESSION DIR [COMMAND...]: attach to a session, creating it if needed,
 # with the settings this dashboard depends on applied to it.
 #
 # Applied here rather than left to ~/.tmux.conf because that file lives on a
@@ -705,18 +705,18 @@ start() {
     # tmux rewrites `.` and `:` in a session name to `_` (they are its target
     # syntax) without saying so, so a project called `example.com` would run
     # as `claude-example_com` while everything addressing it by the name it
-    # asked for — the page's kill/keys/macros, the server's exclude — missed.
+    # asked for (the page's kill/keys/macros, the server's exclude) missed.
     # The substitution is made here, on purpose, and mirrored by tmux_name()
     # in server.py and tmuxName() in index.html: three places, one rule.
     s="${s//[.:]/_}"
     # THE ENVIRONMENT HAS TO BE HANDED OVER, NOT INHERITED. A new session gets
     # the tmux SERVER's environment, which is whatever the first connection
-    # ever made carried — so once one session existed, every later account's
+    # ever made carried, so once one session existed, every later account's
     # session ran with the first one's HOME: the owner's Claude login, the
     # owner's transcripts, whoever asked (bug #54). Measured on tmux 3.4:
     # HOME set for the client, HOME of the server in the pane. `-e` sets it
     # on the session this creates, and -A ignores it on an attach, which is
-    # right — the session that exists already has its own.
+    # right: the session that exists already has its own.
     local -a envs=() v
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
@@ -724,20 +724,20 @@ start() {
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
     # The server is started on its own first. When new-session is what
-    # starts it, the server daemon keeps that new-session's argv — the -e
-    # list above, token included — for the life of the server, where ps
+    # starts it, the server daemon keeps that new-session's argv (the -e
+    # list above, token included) for the life of the server, where ps
     # shows it to every account on the machine. A server started bare has
     # nothing on its command line; the -e values still land in the
     # session's environment, which is where they were wanted.
     tmux start-server 2>/dev/null || true
     # ...and its environment brought up to date, whole. A pane inherits the
-    # SERVER's environment (bug #54), which is frozen at the server's start
-    # — so on a node, once one session existed, every later one ran with
+    # SERVER's environment (bug #54), which is frozen at the server's start,
+    # so on a node, once one session existed, every later one ran with
     # the environment the agent had back then: no NODE_PATH from a recipe
     # installed since, no BB_CI_LOG_DIR from an agent updated since,
     # measured on bb-sandbox after the agent update that added it. Copied
     # in before every session, minus what is one account's rather than the
-    # machine's — those ride on -e below, per session, and must never sit
+    # machine's; those ride on -e below, per session, and must never sit
     # where another account's pane could inherit them.
     local kv
     while IFS= read -r -d '' kv; do
@@ -749,14 +749,14 @@ start() {
     # ...and this account's identity taken OUT of the server's global
     # environment, where the first session's landed when the server was
     # started from a process that had it exported. A pane given no -e of its
-    # own — a root shell, an account with no identity yet — would otherwise
+    # own (a root shell, an account with no identity yet) would otherwise
     # inherit somebody else's name onto its commits, which is the very
     # mislabel the identity exists to stop.
     for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
         tmux set-environment -gu "$v" 2>/dev/null || true
     done
     # -A -d creates it if it is missing and attaches to it if it is not, without
-    # attaching yet — race-free where has-session followed by new-session is not.
+    # attaching yet: race-free where has-session followed by new-session is not.
     tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"
 
     # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
@@ -772,7 +772,7 @@ start() {
     esac
 
     # tmux's own right-click menu is drawn in the terminal, underneath the
-    # browser's context menu, which covers it — two menus for one click, and
+    # browser's context menu, which covers it: two menus for one click, and
     # only one of them dismissable. The browser's cannot be suppressed from
     # here (the terminal is served from its own port and is a cross-origin
     # frame), so the one we control is the one that goes.
@@ -791,7 +791,7 @@ case "$target" in
         start "$(sess shell)" "$WORKSPACE"
         ;;
 
-    # sh:N:PROJECT — an additional numbered terminal, so the Shell button can
+    # sh:N:PROJECT: an additional numbered terminal, so the Shell button can
     # open several at once instead of returning to the same one. An empty
     # PROJECT means the workspace root.
     sh:*)
@@ -817,9 +817,9 @@ case "$target" in
 
     claude:*)
         rest="${target#claude:}"
-        # claude:PROJECT                — a fresh conversation
-        # claude:PROJECT:r:UUID         — resume that transcript
-        # ...:b:BOOT                    — and which run of the container asked
+        # claude:PROJECT                  a fresh conversation
+        # claude:PROJECT:r:UUID           resume that transcript
+        # ...:b:BOOT                      and which run of the container asked
         resume="" want_boot=""
         case "$rest" in
             *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
@@ -833,7 +833,7 @@ case "$target" in
         # Reject anything that is not a directory sitting directly in the
         # workspace: no traversal, no absolute paths, no invented names.
         # Checked against the PROJECT, before session_dir may answer with a
-        # worktree — the name is what has to be real.
+        # worktree: the name is what has to be real.
         if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
             echo "No such project: ${proj}" >&2
             echo "Available:" >&2
@@ -844,19 +844,19 @@ case "$target" in
                 -not -exec test -e '{}/.bbignore' ';' -printf '  %f\n' >&2
             bad ""
         fi
-        # Attaching to a session that is already running is always fine — the
+        # Attaching to a session that is already running is always fine: the
         # conversation is there, and this is how a tab comes back to it.
         # *Starting* one is a decision, and it has to be a decision made now.
         #
         # A browser left open across a container restart still holds its Claude
-        # tabs, and a phone waking up reloads the terminal iframe — which
+        # tabs, and a phone waking up reloads the terminal iframe, which
         # spawns whatever its URL names, silently, minutes after a restart
         # nobody connected it to. Pruning the stored layout at boot cannot stop
         # that; the page never re-read it. So the URL carries the boot it was
         # opened in, and one from a previous run is refused here, where the
         # session would otherwise be created. On a node the boot in the URL
         # is the NODE's (the page takes it from the project's row), compared
-        # against this machine's — so a controller restart does not orphan a
+        # against this machine's, so a controller restart does not orphan a
         # tab whose session is alive here, and a node reboot does refuse one.
         #
         # First of the checks, so a tab that is going to be refused anyway
@@ -865,7 +865,7 @@ case "$target" in
            && [ "$want_boot" != "$(boot_id)" ]; then
             bad "This tab is from before ${BB_NODE:-the container} restarted." \
                 "Its conversation is still on disk. Open Claude on ${proj} from" \
-                "the dashboard's Projects card to pick it up again — starting a" \
+                "the dashboard's Projects card to pick it up again. Starting a" \
                 "session is a decision, and a reconnecting tab is not one."
         fi
         # Signed out, a session starts and dies on claude's own error, which
@@ -880,7 +880,7 @@ case "$target" in
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
         # one says so (R47). `bb login --check` carries two sentences and no
         # secret: which Anthropic account this machine is signed in as going
-        # up, and a generation coming back — behind means the account was
+        # up, and a generation coming back; behind means the account was
         # signed out while this machine was not listening, and the answer is
         # to log out here. Nothing is copied either way, because a refresh
         # ROTATES the refresh token and two machines holding one grant sign
@@ -889,7 +889,7 @@ case "$target" in
         # So signing in on one node does NOT sign in another: the second one
         # asks, here, the first time a session opens on it. Every connection
         # rather than only when signed out, because the sign-out has to
-        # arrive somehow. Never fatal and silent when nothing moved — a
+        # arrive somehow. Never fatal and silent when nothing moved: a
         # controller that is down costs a session nothing.
         if on_node; then
             bb login --check >/dev/null 2>&1 || true
@@ -936,7 +936,7 @@ case "$target" in
         fi
         # What this session is handed, in front of it: the house rules first,
         # then the open roadmap, then the open bugs. This is the whole reason
-        # the list is worth keeping — a note left in a conversation dies with
+        # the list is worth keeping: a note left in a conversation dies with
         # it, and one left here is read by the next session without anybody
         # remembering to mention it.
         #
@@ -1000,9 +1000,9 @@ case "$target" in
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
         dir="$(session_dir "$proj" "$account")"
-        # Claude Code's first run asks three things at the keyboard — a
+        # Claude Code's first run asks three things at the keyboard (a
         # text theme, whether to trust the folder, and the onboarding
-        # screens — and a home this dashboard made has never answered them:
+        # screens), and a home this dashboard made has never answered them:
         # every account's home here, and every home on a node. A person at
         # a terminal can pick; an account with no shell is looking at a
         # read-only console, and the picker is the one screen its text box
@@ -1013,7 +1013,7 @@ case "$target" in
         # dialog would be asking about the tree it was just handed), and
         # onboarding done. Merged into whatever is there, never replacing a
         # file a person has already shaped, and only when the answer is
-        # missing — a theme somebody set with /theme stays theirs.
+        # missing: a theme somebody set with /theme stays theirs.
         if ! claude_first_run "$dir"; then
             echo "WARNING: could not record ${dir} as trusted in ${HOME}/.claude.json." >&2
             echo "Claude Code ignores a workspace's own permission rules until it is," >&2
@@ -1021,7 +1021,7 @@ case "$target" in
             echo "answers. Check that file exists and is writable." >&2
         fi
         # Every bb verb resolves the project as BB_PROJECT first and falls back
-        # to the directory's name — which in a worktree is an account id. One
+        # to the directory's name, which in a worktree is an account id. One
         # export rather than a special case in each of them.
         export BB_PROJECT="$proj"
         # Which tree this session is in, so the hook records a path relative
@@ -1041,26 +1041,26 @@ case "$target" in
         # second one alongside it.
         # A session under a claude name must be running claude. tmux takes a
         # session with the command it was given, so a conversation that ends
-        # leaves nothing behind — but if one ever does survive as a bare
+        # leaves nothing behind, but if one ever does survive as a bare
         # shell, this tab is not the way into it: the name is claimed for
         # claude, and anything else wearing it is replaced rather than
         # attached to.
         # pane_start_command, not pane_current_command: the current one is
         # whatever is in the foreground this second, and claude runs its tools
-        # as subprocesses — so a session busy running a build reports `bash`
+        # as subprocesses, so a session busy running a build reports `bash`
         # and would have been killed here, mid-conversation. The start command
         # is what the pane was created with and does not move.
         mysess="$(sess "claude-${proj//[.:]/_}")"
         if tmux has-session -t "=$mysess" 2>/dev/null \
            && ! tmux list-panes -t "=$mysess" -F '#{pane_start_command}' 2>/dev/null \
                 | grep -qi claude; then
-            log "${mysess}: session is not running claude — replacing it"
+            log "${mysess}: session is not running claude; replacing it"
             tmux kill-session -t "=$mysess" 2>/dev/null || true
         fi
         # The flag was missing and has just been put back. A session already
         # running here read the old answer when it started and cannot be told
         # otherwise, so it will go on asking about every command until it is
-        # restarted — which is the whole of what somebody sees, and is worth a
+        # restarted, which is the whole of what somebody sees, and is worth a
         # line rather than a mystery.
         if [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ] && tmux has-session -t "=$mysess" 2>/dev/null; then
             echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
@@ -1068,13 +1068,13 @@ case "$target" in
             echo "will keep asking about every command until it is restarted." >&2
         fi
         # On a node, a session that is about to be MADE is announced to the
-        # project's channel through the controller — its proxy announces a
+        # project's channel through the controller; its proxy announces a
         # local one and cannot see this one. A reattach is not a start.
         if on_node && ! tmux has-session -t "=$mysess" 2>/dev/null; then
             "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" --started "$proj" "$account" \
                 >/dev/null 2>&1 || true
         fi
-        # Through a launcher, always — not only when the prompt happens to be
+        # Through a launcher, always, not only when the prompt happens to be
         # long today. A path that is exercised on every session is one that
         # works; a fallback taken only past 16KB is one nobody finds out about
         # until a notebook grows. If the file cannot be written, the command
@@ -1088,7 +1088,7 @@ case "$target" in
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
-            # worth more than one that refuses to start at all — which is what
+            # worth more than one that refuses to start at all, which is what
             # passing the block here would produce for any real roadmap.
             echo "WARNING: could not write the launcher for '${proj}'," >&2
             echo "so this session starts without the project's roadmap and bugs," >&2

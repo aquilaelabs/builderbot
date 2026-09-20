@@ -3,7 +3,7 @@
 # PID 1 payload (running as `builder`).
 #
 # Keeps the container alive and owns the graceful shutdown below. Neither CI
-# nor a Claude session runs here any more — every runner is on a node
+# nor a Claude session runs here any more: every runner is on a node
 # (docs/nodes.md phase 7) and so is every session (R47), and the emulator left
 # with them (815d40e). So what a stop has to be careful with is the terminals,
 # and nothing here is slow.
@@ -17,8 +17,8 @@ set -euo pipefail
 # Graceful shutdown
 #
 # `docker stop` gives us SIGTERM and then SIGKILL after a timeout. Unraid always
-# passes that timeout explicitly — DockerClient.php stops a container with
-# `/containers/<id>/stop?t=` DOCKER_TIMEOUT, default **10** — so the container's
+# passes that timeout explicitly (DockerClient.php stops a container with
+# `/containers/<id>/stop?t=` DOCKER_TIMEOUT, default **10**), so the container's
 # own --stop-timeout is ignored and ten seconds is all we get out of the box.
 #
 # Everything here is therefore ordered by value-per-second, not by tidiness:
@@ -30,8 +30,8 @@ set -euo pipefail
 # Save the terminal sessions so the next boot can put them back.
 #
 # What is saved is the shell, not what was running in it: the directory it was
-# in and what had been printed there. Processes go down with the container —
-# that is what a restart is — and pretending otherwise by restarting them would
+# in and what had been printed there. Processes go down with the container,
+# which is what a restart is, and pretending otherwise by restarting them would
 # be a different and much worse promise.
 #
 # Claude sessions are deliberately not saved. A conversation ended with the
@@ -95,14 +95,14 @@ shutdown() {
         sleep 1
     done
 
-    # Last, because it takes the terminals with it — including any this ran in.
+    # Last, because it takes the terminals with it, including any this ran in.
     tmux kill-server 2>/dev/null || true
     log "bye"
     exit 0
 }
 trap shutdown TERM INT
 
-# The container NAME is what `docker exec` needs, and it is not the hostname —
+# The container NAME is what `docker exec` needs, and it is not the hostname:
 # Unraid names the container BuilderBot while the hostname is builderbot, and
 # docker matches names case-sensitively. Unraid exports HOST_CONTAINERNAME;
 # fall back to the hostname elsewhere.

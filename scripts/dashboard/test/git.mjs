@@ -1,4 +1,4 @@
-// The notebook's Git view (roadmap R36, step 1): the repository read out —
+// The notebook's Git view (roadmap R36, step 1). The repository is read out:
 // what is changed and not committed, the history as a graph, one commit's
 // detail and diff, and the branches with whose worktree sits on which.
 // Real git on the fixture repos, read by the checkout's server; nothing
@@ -11,8 +11,8 @@ const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const B = `${DIR}/ws/beta`;
 const git = (...a) => execFileSync('git', ['-C', B, ...a], { encoding: 'utf8' }).trim();
 // A history worth a graph: two commits on the main line, a branch off the
-// first with one of its own, and a merge back — four lanes' worth of
-// edges — plus a session's branch the way session_dir names one, and an
+// first with one of its own, and a merge back (four lanes' worth of
+// edges), plus a session's branch the way session_dir names one, and an
 // uncommitted change beside an untracked file.
 git('config', 'user.name', 'dashboard test'); git('config', 'user.email', 'test@example.invalid');
 const main = git('symbolic-ref', '--short', 'HEAD');
@@ -277,7 +277,7 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
      'Revert is a new commit undoing the picked one');
   // Merging is the view's own, not an ask any more: the operator merges a
   // branch here and pushes it themselves, rather than handing it to a session
-  // to do. Into the branch the tree is ON — nothing switches for you.
+  // to do. Into the branch the tree is ON: nothing switches for you.
   {
     // Put back exactly, at the end: the assertions after this one read the
     // fixture's own branches and the content of its files, and a merge that
@@ -392,7 +392,7 @@ ok(true, 'a commit made outside the dashboard arrives on the view by itself');
     git('reset', '--hard', '-q', was);
   }
 
-  // Whose: a session's token cannot press these — it has bb git.
+  // Whose: a session's token cannot press these; it has bb git.
   const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
@@ -415,7 +415,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.evaluate(() => getNotebook('beta').view('git'));
   // Waited for the CHANGED FILE, not just for the view to exist. #gitCommit
   // is there as soon as the form draws, which happens before git status has
-  // caught up with the write above — so Discard was missing about one run in
+  // caught up with the write above, so Discard was missing about one run in
   // two, and the file passed on its own the next time. The wait throws by
   // name if the row never comes, so the assertion below still proves all six.
   await refreshUntil(page, () => !!document.querySelector(
@@ -460,7 +460,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
 
 // ---- step 3: the policy, and Send to Claude --------------------------------
 // What a session may send to the remote is the project's to say, on the Git
-// view, and the controller's to enforce where the push runs — the relay. A
+// view, and the controller's to enforce where the push runs: the relay. A
 // commit, a change or a branch is handed to the session as one line naming
 // it and the ask, typed into the session the way a roadmap step arrives.
 {
@@ -706,7 +706,7 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
      `the controller never fell back to running git in the tree (${
        fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
 }
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // B164: a repository with no main and no master. Merge into main cannot
 // mean anything there, and the refusal said "or on :" with the name empty.
 {

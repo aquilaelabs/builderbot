@@ -2,21 +2,21 @@
 """One batch across the whole notebook, for a session working something out.
 
 `bb roadmap begin`, then edit the roadmap and the tracker as much as you like,
-then `bb roadmap commit` — and each log gets one account of what changed
+then `bb roadmap commit`, and each log gets one account of what changed
 rather than every step of arriving at it. `revert` puts both back.
 
 **Why it spans both.** A session reworking a plan usually files, notes or
 closes bugs in the same breath: the plan moved because of what the tracker now
 says. Two independent batches would let one be committed and the other
 reverted, leaving a roadmap describing work against a tracker that never
-recorded why — and nothing afterwards could notice. So it is one transaction
+recorded why, and nothing afterwards could notice. So it is one transaction
 over the notebook, opened and closed here and nowhere else.
 
 **Deliberately not the panel's model.** There, the thing being edited is on
 screen and Save is the commit, so nothing touches disk until it is pressed and
 each tab holds its own unsaved work separately. Here the file IS the only way
 the operator can see what a session is doing, so changes land as they are
-made — visible, watchable — and only the *record* waits for commit.
+made (visible, watchable) and only the *record* waits for commit.
 
 **The memories are not in it.** A session writes those as files with its own
 tools rather than through a module here, so there is no write to intercept and
@@ -28,9 +28,9 @@ lock it does not hold. This only sequences them, and makes "half a batch" a
 state that cannot be reached through the front door.
 """
 
-# Injected rather than imported. The CLI already loads these by path — the
+# Injected rather than imported. The CLI already loads these by path (the
 # running image serves them from /opt while a checkout may be the one under
-# test — and importing them again here would produce a second copy with its
+# test), and importing them again here would produce a second copy with its
 # own configuration and its own idea of where the state lives.
 roadmap = None
 bugs = None
@@ -63,7 +63,7 @@ def begin(project, by="claude"):
 
 
 def state(project):
-    """The open batch, or None — both halves' unrecorded changes counted as one.
+    """The open batch, or None: both halves' unrecorded changes counted as one.
 
     `half` is set only when the two have somehow come apart, which the front
     door cannot do; it is there so that if it ever happens the panel and the
@@ -99,7 +99,7 @@ def revert(project):
 
     Both guards are asked before either file is touched. Reverting the roadmap
     and then discovering the tracker refuses would leave the notebook in a
-    state nobody asked for and no command can name — worse than the refusal it
+    state nobody asked for and no command can name, worse than the refusal it
     was trying to honor.
     """
     if state(project) is None:

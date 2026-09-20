@@ -5,7 +5,7 @@
 //
 // The harness's sandbox node runs agent-stub.py with the stubbed adb on its
 // PATH, so every adb command the tab sends becomes a job there and answers as
-// a phone that is always present. That is not a shortcut — a real adb answers
+// a phone that is always present. That is not a shortcut: a real adb answers
 // from whatever is actually paired to the box the suite runs on, which makes
 // the result a fact about the room rather than the code.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
@@ -67,7 +67,7 @@ const mine = conn.body.nodes.find(n => n.id === sandbox.id);
 ok(mine.phone?.model === 'Test Phone' && mine.mine && mine.owner?.name === 'test',
    'the node now holds a phone, and the account that connected it is its owner');
 // The connect above went through the API, not the tab, so the tab is asked
-// to read again — as it would on the next revision.
+// to read again, as it would on the next revision.
 await page.evaluate(() => phFetch());
 await page.waitForFunction(() => /connected by test/.test(document.querySelector('.phonetab')?.textContent || ''),
                            null, { timeout: 15000 });
@@ -96,10 +96,10 @@ ok(theirConn.status === 400 && /connected by test/.test(theirConn.body.error),
 
 // ---- a session asking, and who is asked ------------------------------------
 // The point of the whole arrangement: a session does not touch the handset,
-// it describes what it wants and waits — for the account that connected the
+// it describes what it wants and waits for the account that connected the
 // phone, on the project's node, and nobody else.
 ok((await api('/api/phone', { action: 'ask', why: '', cmd: ['shell', 'ls'], project: 'alpha' })).body.error,
-   'an ask with no reason is refused — Allow on an unexplained command is a guess');
+   'an ask with no reason is refused: Allow on an unexplained command is a guess');
 const noNode = await api('/api/phone', { action: 'ask', why: 'look around', cmd: ['shell', 'ls'], project: 'beta' });
 ok(/has no node/.test(noNode.body.error || ''),
    'a project with no node has no phone to ask for, and is told so');
@@ -108,7 +108,7 @@ const asked = await api('/api/phone', { action: 'ask', why: 'read the Firefox ve
 ok(asked.body.id > 0 && asked.body.to === 'test',
    `a session can ask, and is told who was asked (${JSON.stringify(asked.body).slice(0, 80)})`);
 ok((await api('/api/phone', undefined, other)).body.asks.length === 0,
-   'the other account is not asked — the question goes to the connection\'s owner alone');
+   'the other account is not asked: the question goes to the connection\'s owner alone');
 await page.evaluate(() => phFetch());
 await page.waitForSelector('.phask', { timeout: 15000 });
 ok(/read the Firefox version/.test(await page.$eval('.phask', e => e.textContent))
@@ -145,7 +145,7 @@ await page.waitForFunction(() => !document.querySelector('.phask'), null, { time
 await page.waitForFunction(() => document.title === 'BuilderBot', null, { timeout: 15000 });
 ok(true, '...and the badge clears when nothing is waiting');
 const done1 = await api('/api/phone', { action: 'outcome', id: asked.body.id });
-ok(done1.body.state === 'done', 'Allow runs it — on the node, not in the session');
+ok(done1.body.state === 'done', 'Allow runs it: on the node, not in the session');
 const denied = await api('/api/phone', { action: 'ask', why: 'wipe something',
                                          cmd: ['shell', 'rm', '-rf', '/sdcard/x'], project: 'alpha' });
 await page.evaluate(() => phFetch());
@@ -192,7 +192,7 @@ writeFileSync(`${DIR}/ws/alpha/dist/streamlift-1.3-clash.apk`, 'x');
 const instState = async () => (await api('/api/artifacts?project=alpha')).body.install || {};
 // Polled from here, not through page.waitForFunction with an async predicate:
 // that hands the page a Promise, which is truthy at once, and the wait is no
-// wait at all — the install is a job on the node now, and takes a moment.
+// wait at all: the install is a job on the node now, and takes a moment.
 const instUntil = async (state) => {
   for (let i = 0; i < 100; i++){
     const st = await instState();
@@ -214,7 +214,7 @@ ok(/signed with a different key/.test(clash.error),
 // web-ext on the node that holds the phone, as a job that stays running: the
 // stub prints the line the real one prints once the add-on is on the phone,
 // then sits there like the real one does. The .xpi is put where the agent
-// would have fetched it — the fixture agent fetches nothing.
+// would have fetched it, because the fixture agent fetches nothing.
 // A real zip with a manifest, since the node unpacks it before web-ext runs.
 for (const f of [`${DIR}/ws/alpha/dist/companion-0.2.0.xpi`, `${DIR}/sandboxdata/companion-0.2.0.xpi`])
   execFileSync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("manifest.json","{}"); z.close()', f]);
@@ -257,10 +257,10 @@ ok(!pushSt.running, 'the owner stops it, and the job ends');
 // ---- browsing from the phone itself ----------------------------------------
 const asDesktop = (await api('/api/phone')).body;
 ok(asDesktop.you === undefined,
-   'from a desktop the tab is not told an address — the browser is not the phone');
+   'from a desktop the tab is not told an address: the browser is not the phone');
 const lan = execSync("hostname -I").toString().trim().split(/\s+/)
   .find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a) && !a.startsWith('127.'));
-const asPhone = !lan ? { you: 'no LAN address on this box — nothing to ask with' }
+const asPhone = !lan ? { you: 'no LAN address on this box: nothing to ask with' }
   : await (await fetch(URL.replace('127.0.0.1', lan) + 'api/phone', {
   headers: { 'User-Agent': 'Mozilla/5.0 (Android 17; Mobile; rv:145.0) Firefox/145.0',
              Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') }
@@ -282,7 +282,7 @@ page.errors = [];
 // Pairing and connecting both put the handset on the node's list, one row
 // per phone: a pairing knows only the address, the connect that follows
 // fills the model in on the same row, and Forget drops the row and nothing
-// else — the pairing key on the node is adb's, not this list's.
+// else: the pairing key on the node is adb's, not this list's.
 {
   const known = async () => (await api('/api/phone?node=' + sandbox.id)).body.nodes
     .find(n => n.id === sandbox.id).known || [];

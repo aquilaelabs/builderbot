@@ -14,7 +14,7 @@ manager and the controller carries what it needs in the image, the project
 bootstrap and the icon name went with the features, and the commit identity
 is a project's own (prefs.py, the settings dialog). Two more went with the
 Claude Code install itself (R47): this container does not carry it, so
-whether to update it here and on which channel were settings about nothing —
+whether to update it here and on which channel were settings about nothing:
 a node installs its own and `claude update` in a session there keeps it
 current.
 
@@ -42,7 +42,7 @@ FILE = None
 KEYS = {
     # Off, the server refuses a second Claude session on one project when
     # another account's session there is signed in to the same Claude
-    # account — two people on one login is what Anthropic's terms forbid.
+    # account. Two people on one login is what Anthropic's terms forbid.
     # On, that refusal stands down: for one person testing two BuilderBot
     # accounts with the one Claude login they have. The refusal is kept,
     # not removed, because the setting is for that test and nothing else.
@@ -57,8 +57,8 @@ KEYS = {
     "offer_unvetted": {"default": False, "kind": "bool", "applied": "now"},
     # Off, a session on a node reads only logs belonging to the work it is
     # doing: the CI runs for its project, and what its own test runs left.
-    # The machine's own logs — the agent's journal, the runner's, the
-    # terminal server's — are root's on that box and are not offered at all.
+    # The machine's own logs (the agent's journal, the runner's, the
+    # terminal server's) are root's on that box and are not offered at all.
     #
     # On, a node's row gains Debug settings, where each node is granted the
     # nodes whose machine logs its sessions may read. Nothing is granted by
@@ -101,7 +101,7 @@ def _parse(key, raw):
 
 
 def effective():
-    """{key: {"value", "source"}} — this file, else the default. `source` is
+    """{key: {"value", "source"}} from this file, else the default. `source` is
     what the tab says beside a field that has never been saved."""
     d = load()
     out = {}

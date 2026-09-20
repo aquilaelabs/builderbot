@@ -5,6 +5,7 @@
 - Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)
 - Android system images move to an Emulator tab of their own, with bb emu images, bb emu flavors and bb emu image add|remove: an image is not a toolchain, since one exists at every API level at once. The button is ghosted until a node has the command-line tools and the emulator. (4f964c1)
 - A stop is quick again: the shutdown no longer waits on an emulator the controller has not run since it moved to the nodes, and the tab-limit notice no longer points at a setting that does not exist. (8b227f6)
+- Every em dash is out of the code base: the refusals, the log lines and the app's own text read as something a person wrote, not something a machine generated. Only the glyphs stay, like the dash on a tab's minimize button and an empty cell. (ae54d3c)
 
 ## 0.6.0: 2026-09-19
 

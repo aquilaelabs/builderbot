@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Everything behind the notebook's bug tracker.
 
-The roadmap is for design work — things somebody decided to build. A bug is a
+The roadmap is for design work: things somebody decided to build. A bug is a
 different kind of record: nobody decided it, it has a place it lives and a way
 to make it happen, and "done" means fixed rather than delivered. Mixing the two
 in one list meant every bug was worded as a task and lost the fields a session
-actually needs to act on it — where it is, how to reproduce it, and the gap
+actually needs to act on it: where it is, how to reproduce it, and the gap
 between what should happen and what does.
 
 So bugs get their own file and their own shape. Either side writes them: the
 operator reports one from the notebook's Bugs tab, a session through `bb bug`
-when it trips over something out of scope for what it is on — the same reason
-the roadmap exists, applied to defects.
+when it trips over something out of scope for what it is on. That is the same
+reason the roadmap exists, applied to defects.
 
-A bug that turns out to be real is *closed*, not deleted — fixed or wontfix,
-each with a note saying why — because a closed bug is the record that stops
+A bug that turns out to be real is *closed*, not deleted (fixed or wontfix,
+each with a note saying why), because a closed bug is the record that stops
 the same report being investigated twice. Deleting exists for the other case,
 which the first version of this file did not admit to: a report that should
 never have been filed. A session mis-files one, a duplicate goes in twice,
@@ -35,7 +35,7 @@ import json
 import os
 import sys
 
-# `bb` execs this module by path — spec_from_file_location — so its directory
+# `bb` execs this module by path (spec_from_file_location), so its directory
 # is not on sys.path the way it is when the dashboard imports it normally, and
 # a plain `import statefile` would work in one caller and not the other. Doing
 # it through sys.path rather than a second by-path load keeps it ONE module
@@ -101,19 +101,19 @@ def replay(project, verb, args):
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
 # was NOT is a lock: a threading.Lock guards the threads of one process, and
-# the tracker has two writers — the dashboard, and a `bb` invocation, which is a
+# the tracker has two writers: the dashboard, and a `bb` invocation, which is a
 # separate process. Both loaded, both mutated their own copy, both wrote, and
 # the second landed on top of the first. Measured, four processes making forty
 # changes each: 40 of 160 survived.
 #
 # statefile.locked takes flock on the file itself, so the other process waits
-# instead of overwriting. Same sites, same shape — see statefile.py.
+# instead of overwriting. Same sites, same shape. See statefile.py.
 _lock = statefile.on(lambda: FILE)
 
 SEVERITIES = ("low", "medium", "high", "critical")
 # The ways a bug leaves the open list. "na" is for one that was real and
-# stopped applying — the feature it was about was removed, the screen it lived
-# on is gone — which is neither fixed (nobody fixed it) nor wontfix (it was
+# stopped applying (the feature it was about was removed, the screen it lived
+# on is gone), which is neither fixed (nobody fixed it) nor wontfix (it was
 # not a decision to leave it). Saying either of those about it misleads
 # whoever reads the tracker next.
 STATUSES = ("open", "fixed", "wontfix", "na")
@@ -158,8 +158,8 @@ def _int(v):
 def _clean(text, limit):
     """Trim a field: whitespace tidied, blank runs collapsed, capped.
 
-    Interior newlines survive — repro steps and an analysis are written across
-    lines on purpose — the same rule the roadmap's text follows.
+    Interior newlines survive: repro steps and an analysis are written across
+    lines on purpose. It is the same rule the roadmap's text follows.
     """
     text = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [" ".join(ln.split()) for ln in text.split("\n")]
@@ -172,14 +172,14 @@ def _clean(text, limit):
     return "\n".join(out)[:limit]
 
 
-# Every change to the tracker, kept — the same reason the roadmap keeps its
+# Every change to the tracker, kept, for the same reason the roadmap keeps its
 # log: two people write this, and the tracker itself only shows the present
 # tense. Capped per project alongside the bugs it describes.
 MAX_HISTORY = 300
 
 
 def _log(d, project, by, ev):
-    """Record one change — in the history, or in an open batch.
+    """Record one change, in the history or in an open batch.
 
     The same arrangement the roadmap's log has, and now the same batch: a
     session working through a notebook is arriving at one state, not making a
@@ -234,7 +234,7 @@ def _coalesce(events):
             filed[i] = e
         elif act in _CONTENT:
             # A title reworded after filing belongs on the filing, not beside
-            # it — "filed X" then "edited X" reads as two events and was one.
+            # it: "filed X" then "edited X" reads as two events and was one.
             if i in filed:
                 filed[i]["text"] = e.get("text", filed[i].get("text"))
                 filed[i]["at"] = e["at"]
@@ -315,7 +315,7 @@ def revert_blocked(project):
         h = d.get("history", {}).get(project) or []
         if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
             return ("the operator has changed the tracker since the batch "
-                    "opened — reverting would undo their work too. "
+                    "opened; reverting would undo their work too. "
                     "Commit it and correct what is wrong.")
     return None
 
@@ -336,7 +336,7 @@ def revert(project):
 
 
 def history(project, limit=None, since=None, find=None):
-    """What has happened to the tracker, newest first, optionally narrowed —
+    """What has happened to the tracker, newest first, optionally narrowed by
     the same filters the roadmap's log takes, because whoever learned one
     should not have to learn the other."""
     with _lock:
@@ -371,7 +371,7 @@ def payload(project):
 
 
 def counts():
-    """{project: open bugs} — one read for every project row."""
+    """{project: open bugs}, one read for every project row."""
     with _lock:
         d = load()
     return {p: sum(1 for b in rows if b.get("status") == "open")
@@ -395,7 +395,7 @@ def revisions():
 def add(project, title, by="you", severity="medium", **fields):
     title = _clean(title, MAX_SHORT).replace("\n", " ")
     if not title:
-        return {"error": "a bug needs a title — one line, what goes wrong"}
+        return {"error": "a bug needs a title: one line, what goes wrong"}
     if severity not in SEVERITIES:
         return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
     number = _int(fields.pop("number", None))
@@ -426,7 +426,7 @@ def add(project, title, by="you", severity="medium", **fields):
         d = load()
         rows = d["projects"].setdefault(project, [])
         if len(rows) >= MAX_BUGS:
-            return {"error": f"{MAX_BUGS} bugs is the limit — close some, or "
+            return {"error": f"{MAX_BUGS} bugs is the limit; close some, or "
                              "this stops being a tracker and starts being a log"}
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
@@ -454,8 +454,8 @@ def _stamp(project):
     """The project's version right now (roadmap #6): what a report was first
     seen in, and what it was closed in.
 
-    The same identity `bb version` prints — VERSION file plus commit count
-    plus sha, or git describe where there is no file — so two reports say
+    The same identity `bb version` prints (VERSION file plus commit count
+    plus sha, or git describe where there is no file), so two reports say
     "before" and "after" in an order that sorts. None rather than a guess
     when there is nothing honest to say: a tree with no commits yet, a
     directory that is not a repository. A blank is read as "unknown"; a
@@ -467,12 +467,12 @@ def _stamp(project):
     gave it.
     """
     try:
-        import version  # noqa: E402 — beside this file, on sys.path already
+        import version  # noqa: E402  (beside this file, on sys.path already)
         if getattr(version, "WORKSPACE", None) is None:
             version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
         v = version.render(project)
         return (v.get("forms") or {}).get("semver") or None
-    except Exception:  # noqa: BLE001 — a stamp must never stop a report
+    except Exception:  # noqa: BLE001  (a stamp must never stop a report)
         return None
 
 
@@ -511,7 +511,7 @@ def _edit(project, bug_id, change, by="you", rev=None):
     `rev` is the revision the caller read (roadmap #26): pass it and a write
     over somebody else's edit is refused rather than applied, answering with
     the report as it now stands and who moved it. The tab re-fetches on
-    bug_rev, so its window is one poll — but a report is mostly long text
+    bug_rev, so its window is one poll, but a report is mostly long text
     fields, and losing a paragraph of somebody's repro to a poll's worth of
     lateness is exactly the silent loss this exists to stop.
     """
@@ -545,7 +545,7 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     """Reword any of a bug's fields. Unknown keys are ignored rather than
     stored: the file's shape is this module's, not the request's.
 
-    `act` names the event for the log — the CLI's `note` is an edit of the
+    `act` names the event for the log: the CLI's `note` is an edit of the
     notes field, but "noted" and "edited" are different claims to whoever
     reads the history back.
     """
@@ -596,20 +596,20 @@ def send(project, bug_id, sessions=(), note=""):
     if row is None:
         return {"error": "no such bug"}
     # A closed bug is a record, not work. Sending one would ask a session to
-    # go and deal with something somebody has already decided is dealt with —
+    # go and deal with something somebody has already decided is dealt with,
     # and the three closes exist precisely to say which kind of dealt-with it
     # was. If it turns out not to have been, `reopen` is the honest way back,
     # and it leaves a line in the log saying so where this would leave none.
     if row.get("status") != "open":
         return {"error": f"bug {ids.label('bugs', bug_id)} is "
                          f"{STATUS_WORDS.get(row['status'], row['status'])}"
-                         " — reopen it first if it needs work again"}
+                         "; reopen it first if it needs work again"}
     # No /model or /effort ahead of it: a project's pair are launch flags now,
     # so the session this reaches is already running on them.
     session = claude_session(project)
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
-            f"Run `bb bug show {tag}` for the report — the area, how to "
+            f"Run `bb bug show {tag}` for the report: the area, how to "
             f"reproduce it, expected against actual, and the notes so far. "
             f"When you have dealt with it, close it with `bb bug fix "
             f"{tag} \"what fixed it\"`, or one of the other closes if it "
@@ -622,7 +622,7 @@ def send(project, bug_id, sessions=(), note=""):
         return r
     # Written down rather than only typed: "was this ever handed to a session,
     # and when?" is a tracker question, and the tracker is where the next
-    # reader looks. It is not a status change — sent is not fixed.
+    # reader looks. It is not a status change; sent is not fixed.
     with _lock:
         d = load()
         _log(d, project, "you", {"act": "sent", "id": bug_id,
@@ -647,11 +647,11 @@ def set_status(project, bug_id, status, note="", by="you"):
     def change(bug):
         was = bug.get("status", "open")
         # Closing a closed bug used to succeed and overwrite its note (bug
-        # #70) — the record of WHY it was closed, which is the point of
+        # #70), the record of WHY it was closed, which is the point of
         # closing. Reopen first: that leaves a line in the log saying the
         # earlier answer was withdrawn, where a second close would leave none.
         if status != "open" and was != "open":
-            return {"error": f"already {STATUS_WORDS.get(was, was)} — reopen it "
+            return {"error": f"already {STATUS_WORDS.get(was, was)}; reopen it "
                              "first if it needs closing differently"}
         if status == "open" and was == "open":
             return {"error": "it is open already"}
@@ -675,8 +675,8 @@ def set_status(project, bug_id, status, note="", by="you"):
 def remove(project, bug_id, why="", by="you"):
     """Take a report off the tracker for good.
 
-    For a report that should not exist — mis-filed, duplicated, the wrong
-    project — and nothing else. A bug that was real and is now dealt with is
+    For a report that should not exist (mis-filed, duplicated, the wrong
+    project) and nothing else. A bug that was real and is now dealt with is
     closed, which keeps it; this does not. The reason is kept in the log
     either way, because a row vanishing with no account of why is exactly the
     thing the history was added to prevent.
@@ -701,8 +701,8 @@ def remove(project, bug_id, why="", by="you"):
 def prompt(project):
     """The block bb-tty appends for a session, after the roadmap's.
 
-    The open bugs by number, severity and title — enough to recognise one when
-    the work touches it — with the fields left on disk behind `bb bug show`,
+    The open bugs by number, severity and title (enough to recognise one when
+    the work touches it), with the fields left on disk behind `bb bug show`,
     because ten full repro scripts in every prompt is the price of nothing.
     """
     with _lock:
@@ -716,11 +716,11 @@ def prompt(project):
              for b in reversed(rows)]
     return ("The project also has a bug tracker, with these open:\n\n"
             + "\n".join(lines) + "\n\n"
-            "`bb bug show B7` gives one in full — where it lives, how to "
+            "`bb bug show B7` gives one in full: where it lives, how to "
             "reproduce it, what is known about why. When you fix one, close it "
             "with `bb bug fix B7 \"what fixed it\"`; when you find a new one "
             "and it is out of scope for what you are on, `bb bug add "
             "\"...\" --sev medium --area \"...\" --repro \"...\"` rather than "
             "only mentioning it. Add what you learn about an open one to its "
-            "notes with `bb bug note B7 \"...\"` — the tracker is where the "
+            "notes with `bb bug note B7 \"...\"`. The tracker is where the "
             "next session looks first.")

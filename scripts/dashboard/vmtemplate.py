@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """What a new sandbox VM is made from, with this one's identity in it.
 
-`nodes/unraid-vm.xml` is the machine — q35, shared memory backing, a virtio
-rng, sizes for something that compiles — and it is one file for every
+`nodes/unraid-vm.xml` is the machine (q35, shared memory backing, a virtio
+rng, sizes for something that compiles) and it is one file for every
 distribution. What it cannot be is a template you paste twice: three fields
 in it belong to ONE virtual machine, and a second VM wearing them is a
 second VM pointing at the first one's OVMF nvram file and answering to its
@@ -12,14 +12,14 @@ So this renders that file rather than copying it: a UUID, the nvram path
 named after that UUID (Unraid names it that way and libvirt writes it
 there), a MAC on QEMU's own 52:54:00 prefix, and the name the operator gave,
 which is also the domain directory their vdisk lives in. Nothing else about
-the machine moves — the reasoning in the file's comments is the reasoning
+the machine moves: the reasoning in the file's comments is the reasoning
 here.
 
 Both identities are GIVEN as well as generated, and that is the whole of the
 sequencing problem. Unraid mints its own pair when the VM is created in Form
 view: the nvram file on disk is named after its UUID, and any DHCP
 reservation was made against its MAC. So a fresh pair is right for a machine
-that does not exist yet, and Unraid's pair is right the moment it does —
+that does not exist yet, and Unraid's pair is right the moment it does:
 pasting them in is what keeps the firmware variables and the address the
 ones already set up.
 
@@ -31,7 +31,7 @@ AND THE SAME FOR SIX MORE HYPERVISORS. A node is a machine, not an Unraid
 machine, and the shape above is the same question everywhere: cores, memory,
 a disk, an installer, and an identity that must not be shared with another
 VM. `nodes/vm/` holds one template per hypervisor and HYPERVISORS below says
-what each of them is — the artifact it produces, the MAC range it accepts,
+what each of them is: the artifact it produces, the MAC range it accepts,
 and the steps from that manager's "new VM" to an enrolled node.
 
 The MAC range is the detail worth having a table for: every one of these
@@ -41,8 +41,8 @@ uses 00:15:5D, VirtualBox 08:00:27, and QEMU and everything on top of it
 52:54:00. Getting it wrong by hand gives you two machines on one address on
 the day you make the second node.
 
-Unraid is rendered from `nodes/unraid-vm.xml` — the real, pasteable machine
-this repository keeps — by rewriting the values in place. The other six are
+Unraid is rendered from `nodes/unraid-vm.xml` (the real, pasteable machine
+this repository keeps) by rewriting the values in place. The other six are
 templates with placeholders, because there is no such thing as a VMware .vmx
 or a `qm create` line that is useful without a name in it.
 """
@@ -54,7 +54,7 @@ from pathlib import Path
 
 # The shipped machine. Two directories up from this module is the repo root
 # in a checkout and /opt/builderbot in the image, so one expression finds it
-# in both — which is what `bb dashboard dev` needs to serve the checkout's.
+# in both, which is what `bb dashboard dev` needs to serve the checkout's.
 TEMPLATE = Path(__file__).resolve().parents[2] / "nodes" / "unraid-vm.xml"
 
 # ---- the hypervisors -------------------------------------------------------
@@ -79,14 +79,14 @@ HYPERVISORS = {
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
             "Unraid → VMS → Add VM → Linux. Name it {name}, give it {cores} cores, "
-            "{memory_gb} GiB and a {disk_gb}G vdisk, and Create — that makes the folder "
+            "{memory_gb} GiB and a {disk_gb}G vdisk, and Create, which makes the folder "
             "and the disk.",
             "Open it → Edit → XML View, paste this over what is there, Update. Its uuid "
             "and MAC are above: paste Unraid's own into them and Generate again to keep "
             "the firmware settings and the address it already has.",
             "Start it and install: headless, no desktop, ssh on.",
-            "Export the shares to its address first — Unraid → Shares → the share → NFS "
-            "Security Settings — or every mount on it is refused.",
+            "Export the shares to its address first (Unraid → Shares → the share → NFS "
+            "Security Settings) or every mount on it is refused.",
             "Back here, Enroll node mints a token; run the provision command it gives "
             "you on the VM, as root.",
         ],
@@ -109,7 +109,7 @@ HYPERVISORS = {
         "file": "vm/libvirt.sh", "artifact": "virt-install command", "lang": "sh",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
-            "Check the bridge at the top — `virsh net-list` and `ip link` say what this "
+            "Check the bridge at the top: `virsh net-list` and `ip link` say what this "
             "host has.",
             "Run it as root on the KVM host. It defines the machine, makes the disk and "
             "starts the installer on the serial console.",
@@ -123,7 +123,7 @@ HYPERVISORS = {
         "file": "vm/qemu.sh", "artifact": "shell script", "lang": "sh",
         "mac_prefix": "52:54:00", "wants": ("uuid", "mac"),
         "steps": [
-            "Check the two OVMF paths at the top — they differ between distributions.",
+            "Check the two OVMF paths at the top: they differ between distributions.",
             "Run it as a user who can reach /dev/kvm. It makes the disk, copies the UEFI "
             "variables and boots the installer on this terminal.",
             "The network is user-mode, which is the one thing to change for real use: it "
@@ -151,7 +151,7 @@ HYPERVISORS = {
         "file": "vm/hyperv.ps1", "artifact": "PowerShell script", "lang": "ps",
         "mac_prefix": "00:15:5D", "wants": ("mac",),
         "steps": [
-            "Check the switch name at the top — `Get-VMSwitch` names them, and Default "
+            "Check the switch name at the top: `Get-VMSwitch` names them, and Default "
             "Switch is NAT rather than your LAN.",
             "Run it in an elevated PowerShell on the host.",
             "Connect to the VM and install: no desktop, ssh on. Secure Boot is off "
@@ -169,8 +169,8 @@ HYPERVISORS = {
             "interfaces.",
             "Run it as the user the VMs belong to. It creates the machine, the disk and "
             "starts it headless.",
-            "Install over the console — `VBoxManage controlvm {name} screenshotpng` or "
-            "attach the GUI — no desktop, ssh on.",
+            "Install over the console (`VBoxManage controlvm {name} screenshotpng`, or "
+            "attach the GUI): no desktop, ssh on.",
             "Back here, Enroll node mints a token; run the provision command it gives "
             "you on the VM, as root.",
         ],
@@ -212,7 +212,7 @@ def mac(prefix="52:54:00"):
 
 def defaults(hv=DEFAULT_HV):
     """What the dialog opens on: the machine the template describes, with an
-    identity minted here — right for a VM that does not exist yet, and
+    identity minted here: right for a VM that does not exist yet, and
     replaced by the manager's own when it already made one."""
     spec = HYPERVISORS.get(hv) or HYPERVISORS[DEFAULT_HV]
     return {"name": "bb-sandbox", "cores": 6, "memory_gb": 16, "disk_gb": 200,
@@ -225,7 +225,7 @@ def catalog():
     hands back and which fields it takes.
 
     ALPHABETICAL by label. It used to be the order they were written in, which
-    was this box's own hypervisor first and then whatever was added next —
+    was this box's own hypervisor first and then whatever was added next,
     an order only the person who wrote it could predict.
     """
     return sorted(
@@ -257,22 +257,22 @@ def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
         return {"error": f"{spec['label']} is dev, not yet vetted, so it is not offered here: "
                          "Settings, 'Offer dev features' puts it back, tagged dev"}
     if not spec:
-        return {"error": f"no template for {hv} — "
+        return {"error": f"no template for {hv}; "
                          f"{', '.join(HYPERVISORS)} are the ones here"}
     d = defaults(hv)
     name = str(name or d["name"]).strip()
     iso = str(iso or d["iso"]).strip()
     if not NAME_RE.fullmatch(name):
-        return {"error": "a name is letters, digits, dot, dash or underscore — "
+        return {"error": "a name is letters, digits, dot, dash or underscore: "
                          "it is the domain's name and its folder under /mnt/user/domains"}
     if not ISO_RE.fullmatch(iso):
-        return {"error": f"the installer is a file name ending .iso, in {ISOS} — not a path"}
+        return {"error": f"the installer is a file name ending .iso, in {ISOS}, not a path"}
     uid = str(uid or "").strip().lower() or str(uuid.uuid4())
     # Lowercased after minting, not before: the table writes 00:15:5D the
     # way the vendor does, and the comparison below is on the value.
     hw = (str(hw or "").strip() or mac(spec["mac_prefix"])).lower()
     if not UUID_RE.fullmatch(uid):
-        return {"error": "a uuid is 8-4-4-4-12 hex digits — Unraid shows the VM's on its "
+        return {"error": "a uuid is 8-4-4-4-12 hex digits; Unraid shows the VM's on its "
                          "edit page, and leaving this blank mints one"}
     if not MAC_RE.fullmatch(hw):
         return {"error": "a MAC is six hex pairs separated by colons"}
@@ -280,7 +280,7 @@ def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
     # range is refused (VMware), quietly replaced (Hyper-V), or collides with
     # the next machine it hands one to.
     if not hw.startswith(spec["mac_prefix"].lower()):
-        return {"error": f"{spec['label']} takes a MAC in {spec['mac_prefix']}:xx:xx:xx — "
+        return {"error": f"{spec['label']} takes a MAC in {spec['mac_prefix']}:xx:xx:xx; "
                          "leaving it blank mints one in range"}
     try:
         disk_gb = int(disk_gb) if disk_gb not in (None, "") else d["disk_gb"]
@@ -345,8 +345,8 @@ def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
 def _unraid(text, f, kib):
     """The Unraid machine, rewritten in place rather than filled in.
 
-    That file is a real domain anybody can paste as it stands — the docs
-    point at it and its comments carry the reasoning — so it holds values,
+    That file is a real domain anybody can paste as it stands (the docs
+    point at it and its comments carry the reasoning), so it holds values,
     not placeholders, and this replaces the ones that belong to one machine.
     """
     # Comments first: what follows rewrites values inside elements, and a
@@ -379,5 +379,5 @@ def _unraid(text, f, kib):
         text, n = re.subn(pat, to, text, count=1)
         if not n:
             return {"error": f"the shipped machine has no {pat.split('[')[0].strip('<>')} "
-                             "to fill in — nodes/unraid-vm.xml has moved under this"}
+                             "to fill in; nodes/unraid-vm.xml has moved under this"}
     return {"text": text}

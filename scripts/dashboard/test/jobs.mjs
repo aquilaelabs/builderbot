@@ -1,10 +1,11 @@
 // Phase 4 of the controller design (docs/nodes.md): jobs and the queue. The
 // rows ARE the queue; placement is a node or a selector, frozen when the job
 // is taken; the controller's own runner executes on local and the agent on
-// its node (it used to reach an ssh node from here — that kind is gone); cancel is a flag on the row that the runner reads; and
-// the Jobs tab is the operator's window on all of it. Every assertion here
-// goes through the queue end to end — a job queued, placed, run, logged,
-// ended — because the queue is what this phase exists to prove.
+// its node (it used to reach an ssh node from here, but that kind is gone);
+// cancel is a flag on the row that the runner reads; and the Jobs tab is the
+// operator's window on all of it. Every assertion here goes through the queue
+// end to end (a job queued, placed, run, logged, ended), because the queue is
+// what this phase exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 
@@ -26,7 +27,7 @@ const until = async (fn, ms = 20000, step = 200) => {
 };
 const job = id => api(`/api/v1/jobs?id=${id}`);
 // The store outlives a suite within one run, so the tab can carry another
-// suite's rows — an agent's, on a node with another name. The row checks
+// suite's rows: an agent's, on a node with another name. The row checks
 // below are about the jobs THIS file queued.
 const mine = new Set();
 const exec = async body => { const q = await api('/api/v1/nodes', { action: 'exec', ...body }); if (q.job) mine.add(q.job); return q; };
@@ -64,7 +65,7 @@ const settled = id => until(async () => { const j = await job(id); return OVER.i
   const arch = execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim();
   // The label as well as the arch, because the selector has to be one only
   // LOCAL answers. The harness's docker host is an enrolled agent node now
-  // (roadmap #24) and it fits arch just as well — and its agent is
+  // (roadmap #24) and it fits arch just as well, and its agent is
   // long-polling, so it takes an unplaced job before the controller's
   // watcher looks. That is placement working: a selector job is frozen to
   // whichever node takes it. `labels.arch` is on the controller's own seeded
@@ -74,7 +75,7 @@ const settled = id => until(async () => { const j = await job(id); return OVER.i
   ok(q2.ok, `a selector only local fits (arch=${arch}, label arch) is taken`);
   const j = await settled(q2.job);
   ok(j && j.state === 'succeeded' && j.node === 'local' && /placed on local/.test(j.log),
-     `and the job is placed on local when it is taken — the node written on the row (${
+     `and the job is placed on local when it is taken, with the node written on the row (${
         j && j.node}, ${j && j.state})`);
   ok(j && j.placement && j.placement.select && j.placement.select.arch === arch,
      'the row keeps the selector it was placed by, not only the answer');
@@ -90,7 +91,7 @@ const settled = id => until(async () => { const j = await job(id); return OVER.i
   const b = await exec({ id: 'local', argv: ['true'] });
   await sleep(600);
   const waiting = await job(b.job);
-  ok(waiting.state === 'queued', 'a second job on the same node waits — concurrency is counted from the rows');
+  ok(waiting.state === 'queued', 'a second job on the same node waits: concurrency is counted from the rows');
   const hz = await (await fetch(base + '/api/v1/healthz')).json();
   ok(hz.ok === true && hz.running >= 1 && hz.queued >= 1,
      `/api/v1/healthz answers without a credential and counts the queue (${JSON.stringify(hz)})`);
@@ -151,7 +152,7 @@ await ready(page);
      `the Jobs tab lists them with their state, node and reason (${rows.length} rows)`);
   ok(rows.every(r => !/Cancel/.test(r.text)), 'an ended job offers no Cancel');
 
-  // unfold a log — ONE THIS FILE QUEUED, by id, not the newest succeeded row.
+  // unfold a log: ONE THIS FILE QUEUED, by id, not the newest succeeded row.
   // `mine` is the set of job ids these tests submitted; the box runs other
   // jobs, and on a node with a phone paired the newest succeeded row is an
   // `adb devices` probe whose log says "List of devices attached" (B86).

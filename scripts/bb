@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# `bb` — small convenience CLI inside the container.
+# `bb`: small convenience CLI inside the container.
 #
 set -euo pipefail
 
@@ -21,7 +21,7 @@ export BB_LIB
 
 usage() {
     cat <<'EOF'
-bb — BuilderBot helper
+bb: BuilderBot helper
 
   bb status              show tool versions, runner state and mounted projects
   bb version             this project's version, and who is allowed to move it
@@ -33,17 +33,17 @@ bb — BuilderBot helper
   bb version unbump      take an unreleased bump back; its changelog section
                          dissolves into Unreleased, the code stays
   bb version --list      every version this repo carries: its own, and any
-                         component — a directory with its own VERSION file
+                         component, a directory with its own VERSION file
   bb version --for DIR   ask about one component instead of the project
   bb version policy      what a session may move here, and who decides
   bb changelog           this project's user-facing changelog (--for DIR)
   bb changelog add "..." log what a change means for the person using it;
                          the next version bump dates the accumulated lines.
                          --cat NAME files it under a category, made at the
-                         end if it is new — the arrangement is the operator's
+                         end if it is new; the arrangement is the operator's
   bb changelog unreleased  the entries waiting for a bump, numbered by
                          category, in the order somebody arranged them
-  bb changelog edit N "..."  reword one of them — a change that tweaks something
+  bb changelog edit N "..."  reword one of them: a change that tweaks something
                          already logged this cycle corrects its line, not adds one.
                          --cat NAME on its own moves it and leaves the words;
                          --no-stamp corrects a line without claiming a commit
@@ -58,9 +58,9 @@ bb — BuilderBot helper
   bb login --check       the quiet half: what this machine is signed in as,
                          told to the controller, and a sign-out taken here
   bb git push|fetch|pull|ls-remote [ARGS]
-  bb git policy      what a session may push here — its branch, main — from the
+  bb git policy      what a session may push here (its branch, main) from the
                      project's Git view; the controller enforces it on the relay
-                         git's network half, run where the credential is — from a
+                         git's network half, run where the credential is: from a
                          session on a node it goes through the controller
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
   bb emu stop            shut the emulator down
@@ -75,7 +75,7 @@ bb — BuilderBot helper
   bb emu images [--available]  the system images on this machine's store, or every one there is
   bb emu flavors         google_apis, +playstore, tv, wear: what each is for
   bb emu image add|remove ID  put a system image on this machine's store, or take one off
-                         — every emu verb runs on the project's node when it has one
+                         (every emu verb runs on the project's node when it has one)
   bb ci-labels [--write] the runner labels the registry knows; --write regenerates
                          .github/actionlint.yaml from them
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
@@ -84,12 +84,12 @@ bb — BuilderBot helper
   bb roadmap show N      one item in full: its details, its steps and theirs
   bb roadmap add "..." [--step "..."]   an item, or an ordered group of steps
   bb bug                 this project's bug tracker: open bugs, newest first
-  bb bug find TEXT       search the reports themselves — area and repro included
+  bb bug find TEXT       search the reports themselves: area and repro included
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
-  bb bug na N ["why"]    it was real and stopped applying — the feature went
+  bb bug na N ["why"]    it was real and stopped applying: the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
   bb tests run [ARGS]    run the project's test command, time it, and record the run.
-                         Ends by NAMING what went wrong — the failed assertions,
+                         Ends by NAMING what went wrong: the failed assertions,
                          and for a file that crashed the line it died on.
                          ARGS go to the command, so a suite that takes file
                          names runs only those: `bb tests run auth cards`
@@ -97,14 +97,14 @@ bb — BuilderBot helper
   bb tests lab           the lab suites, against the Gitea of BuilderBot's dev stack (lab profile)
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
-  bb rules               the house rules for this project — the operator's and yours
-  bb rules show NAME     one of them in full — what a conditional rule says
+  bb rules               the house rules for this project: the operator's and yours
+  bb rules show NAME     one of them in full: what a conditional rule says
   bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
   bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
   bb rules history       what has changed them, by either of you
   bb preamble            what a session started here is handed: rules, roadmap, bugs
   bb tests               the test registry: where the suite's time goes, slowest first
-  bb tests show KEY      one test — what it protects, what it exercises, its history
+  bb tests show KEY      one test: what it protects, what it exercises, its history
   bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
   bb tests describe --from FILE.json      fill many at once, in one write
   bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
@@ -132,7 +132,7 @@ bb — BuilderBot helper
   bb devapp              this project's dev instance: built from what, running,
                          and whether its daemon answers
   bb devapp rebuild [--why "..."]
-                         build it and bring it up — only where the project's
+                         build it and bring it up. Only where the project's
                          docker row has handed that over. On `ask` the reason
                          goes to a person and this waits for their answer
   bb findings [PATH]     digest scanner SARIF findings for this project
@@ -152,7 +152,7 @@ bb — BuilderBot helper
   bb catchup             what has happened here lately: commits and the first
                          line of their bodies, what moved in the notebook, the
                          builds, and which image this box is running
-  bb ci-log              what CI printed on its last run here — the runner
+  bb ci-log              what CI printed on its last run here; the runner
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -168,7 +168,7 @@ bb — BuilderBot helper
                          the agent's journal, the runner's, the terminal
                          server's. Offered only while the controller's debug
                          mode is on and only to a node granted that node on
-                         its Debug settings — its own included. Without it a
+                         its Debug settings, its own included. Without it a
                          session reads its project's CI and test logs alone
   bb doctor              check the things that usually go wrong
 
@@ -185,7 +185,7 @@ bb — BuilderBot helper
 EOF
 }
 
-# version LABEL COMMAND... — print a tool's version, or "-" when it is absent
+# version LABEL COMMAND...: print a tool's version, or "-" when it is absent
 # or answers with nothing.
 version() {
     local label="$1"; shift
@@ -296,7 +296,7 @@ cmd_projects() {
 # What this machine is signed in as, told to the controller (R47).
 #
 # The grant itself never moves. Every failure this had came from copying one
-# OAuth pair to several machines — a refresh ROTATES the refresh token, so two
+# OAuth pair to several machines: a refresh ROTATES the refresh token, so two
 # copies sign each other out (bug #64), and a machine that was away holds one
 # the server has retired (B100). Each machine signs in for itself now and
 # keeps the grant it alone refreshes.
@@ -348,7 +348,7 @@ def claude(*args, timeout=30):
 
 
 def whoami():
-    """Signed in here, and as whom — read from the FILES, not by asking the
+    """Signed in here, and as whom: read from the FILES, not by asking the
     CLI.
 
     This runs on every prompt (bb-keep-login), and `claude auth status` put a
@@ -361,13 +361,13 @@ def whoami():
 
     The rule is --list's: .claude.json carries oauthAccount.emailAddress, and
     .credentials.json existing is what makes it a login rather than a leftover
-    name — a sign-out keeps the first and removes the second, which is how
+    name. A sign-out keeps the first and removes the second, which is how
     `claude auth logout` here is still noticed. What this CANNOT see is a
     credential the server has since refused, because no file records that; it
     surfaces the moment a session runs, and is a rarer thing than the failed
     turns asking cost.
     """
-    # Claude Code being HERE is still part of the question — the old reader
+    # Claude Code being HERE is still part of the question; the old reader
     # got that for free by running it, and a home kept after an uninstall
     # would otherwise report a login this machine cannot use.
     if not shutil.which("claude"):
@@ -387,7 +387,7 @@ def whoami():
 def plan_now():
     """The subscription, and the one fact no file carries in the form the card
     shows: `claude auth status` says "max" where .claude.json's oauthAccount
-    says organizationType "claude_max", and those are not the same field — one
+    says organizationType "claude_max", and those are not the same field: one
     is the subscription and one is the organization, which coincide for a
     personal account and need not for a seat.
 
@@ -431,7 +431,7 @@ if r.get("error"):
         warn(f"could not ask the controller about this account's login: {e}")
     if "Error" in e or "500" in e:
         refused(f"The controller could not answer about your Claude login "
-                f"({e[:120]}) — this machine cannot be told about a sign-out.")
+                f"({e[:120]}). This machine cannot be told about a sign-out.")
     sys.exit(1 if not here else 0)
 
 gen = int(r.get("gen") or 0)
@@ -441,18 +441,18 @@ if gen > my_gen():
     keep_gen(gen)
     if here and not r.get("email"):
         claude("auth", "logout", timeout=60)
-        say(f"signed out on {NODE} — this account was signed out of Claude")
+        say(f"signed out on {NODE}: this account was signed out of Claude")
         sys.exit(0)
 
 if not here:
     if loud:
-        say(f"not signed in on {NODE} — the Doctor card's sign-in runs the flow here")
+        say(f"not signed in on {NODE}; the Doctor card's sign-in runs the flow here")
     # Tell the controller this machine is not one of the signed-in ones, so
     # the card stops naming it.
     bbapi.call("/api/v1/claude-login", {"signed_in": False}, auth=auth)
     sys.exit(1)
 
-# Asked of the CLI only when the controller has no plan for this account —
+# Asked of the CLI only when the controller has no plan for this account;
 # see plan_now(). Every other prompt sends "", which leaves the stored one be.
 known = str(r.get("plan") or "")
 plan = known or plan_now()
@@ -558,7 +558,7 @@ LISTPY
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
     # that job's pty as its terminal (roadmap R47). The account is the one the
     # dashboard asked for and the home is resolved here, by the same user_home
-    # a session on this machine gets — one implementation of "where does this
+    # a session on this machine gets: one implementation of "where does this
     # account live", rather than a second copy in the agent.
     #
     # The grant STAYS HERE. What goes up is which Anthropic account this
@@ -582,28 +582,28 @@ LISTPY
     # ON A NODE the check runs first, because it is what carries a SIGN-OUT
     # here: signed out elsewhere while this machine was away means logging out
     # locally, not signing in again. Anything else falls through to the flow
-    # below, which runs in this terminal — this machine signs itself in and
+    # below, which runs in this terminal: this machine signs itself in and
     # keeps the grant it alone refreshes (R47).
     if on_node; then
         # --why, not --loud: the quiet check still obeys a sign-out and still
-        # says a refusal worth repeating, but its "not signed in — the Doctor
-        # card's sign-in runs the flow here" line is exactly the wrong advice
-        # to print one line before running that flow here. Somebody who typed
-        # this, or opened a session on a node that has no login, is already in
-        # the right place.
+        # says a refusal worth repeating, but its "not signed in on this node;
+        # the Doctor card's sign-in runs the flow here" line is exactly the
+        # wrong advice to print one line before running that flow here.
+        # Somebody who typed this, or opened a session on a node that has no
+        # login, is already in the right place.
         claude_login_check --why || true
         [ "$(claude auth status --json 2>/dev/null \
              | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
-        log "sign in here — this machine keeps its own login, and no other machine's travels"
+        log "sign in here: this machine keeps its own login, and no other machine's travels"
     fi
     # And on the controller there is nothing to run: Claude Code is installed
     # where sessions are, which is a node (R47). The dashboard's Sign in
     # starts the flow on one and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code — a sign-in runs on a node, from the dashboard's Sign in button, or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from the dashboard's Sign in button, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
-    # session behind afterwards. The older path — start a session and use its
-    # slash command — is the fallback for an image whose claude predates the
+    # session behind afterwards. The older path (start a session and use its
+    # slash command) is the fallback for an image whose claude predates the
     # subcommand, which is exactly the case a first-time setup can be in.
     if claude auth --help >/dev/null 2>&1; then
         claude auth login
@@ -613,7 +613,7 @@ LISTPY
     # ...and tell the controller who this machine is now signed in as, which
     # is what makes the card name it. Only --flow did this, so signing in
     # from a terminal left the card stale until a hook or the agent's own
-    # clock caught up — minutes of a dashboard saying the opposite of the
+    # clock caught up: minutes of a dashboard saying the opposite of the
     # machine. A no-op on a controller, where the check returns at once.
     claude_login_check --loud || true
 }
@@ -621,7 +621,7 @@ LISTPY
 
 avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
 
-# emu_avd [TARGET] — resolve which AVD to act on. A bare API level (37) maps to
+# emu_avd [TARGET]: resolve which AVD to act on. A bare API level (37) maps to
 # that version's AVD; anything else is taken as a literal name. With no target:
 # ANDROID_AVD_NAME wins if set, then the first configured API level, then the
 # unsuffixed name AVDs used before this was multi-version.
@@ -655,7 +655,7 @@ emu_avd() {
     fi
 }
 
-# Does hardware GLES actually work here? Not "is there a GPU" — the card can be
+# Does hardware GLES actually work here? Not "is there a GPU": the card can be
 # present, the Vulkan loader can find it, and EGL can still refuse to hand out
 # a display, which is exactly the state this box was in for months. So this
 # asks EGL itself, and believes the answer.
@@ -663,7 +663,7 @@ emu_avd() {
 # Prints the vendor string on success and nothing on failure; the caller reads
 # the exit status.
 #
-# x_display_up — "is anything listening on :0" — is in lib/common.sh, because
+# x_display_up, "is anything listening on :0", is in lib/common.sh, because
 # the GPU startup hook has to ask it too.
 gpu_gles_ok() {
     [ -n "${DISPLAY:-}" ] || return 1
@@ -739,7 +739,7 @@ emu_via_node() {
         local f="${2:-}"
         [ -n "$f" ] || die "bb emu install needs an APK in dist/"
         case "$f" in dist/*) ;; *) f="dist/${f#./}" ;; esac
-        [ -f "$f" ] || die "${f} is not in this project's dist/ — the node fetches the APK from there"
+        [ -f "$f" ] || die "${f} is not in this project's dist/; the node fetches the APK from there"
         files=("$f"); argv=("emu" "install" "$(basename "$f")")
     fi
     local auth
@@ -759,7 +759,7 @@ r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
-print(f"[builderbot] {r['job']} — bb {' '.join(argv)} on {names.get(r['node'], r['node'])}", flush=True)
+print(f"[builderbot] {r['job']}: bb {' '.join(argv)} on {names.get(r['node'], r['node'])}", flush=True)
 shown, state = 0, ""
 while True:
     j = call(f"/api/v1/jobs?id={r['job']}")
@@ -772,8 +772,8 @@ while True:
         state = j["state"]; break
     time.sleep(1)
 arts = [o["path"] for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
-print(f"[builderbot] {r['job']} {state}" + (f" — {j['error']}" if j.get("error") else "")
-      + (" — into dist/: " + ", ".join(a[5:] for a in arts) if arts else ""), flush=True)
+print(f"[builderbot] {r['job']} {state}" + (f": {j['error']}" if j.get("error") else "")
+      + (", into dist/: " + ", ".join(a[5:] for a in arts) if arts else ""), flush=True)
 sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
 PY
 }
@@ -784,7 +784,7 @@ cmd_emu() {
     # a console on a node sees that node's, and nothing routes. The Emulator
     # tab is where a node is picked.
     case "${1:-}" in images|flavors|image) cmd_emu_images "$@"; return ;; esac
-    # On the project's node when it has one (docs/nodes.md phase 9) — the
+    # On the project's node when it has one (docs/nodes.md phase 9): the
     # emulator, the images and the GPU are that machine's. BB_EMU_LOCAL=1
     # keeps a verb here, for the box that still carries an emulator itself.
     if [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ] && [ -n "$(project_node)" ]; then
@@ -796,21 +796,21 @@ cmd_emu() {
     # before `emulator: not found` could say it badly. BB_EMU_LOCAL=1 is
     # the escape hatch for a box that still carries one.
     if ! on_node && [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ]; then
-        die "this project has no node, and the controller runs no emulator — bind a node in the project's settings dialog, and bb emu runs there"
+        die "this project has no node, and the controller runs no emulator; bind a node in the project's settings dialog, and bb emu runs there"
     fi
     case "${1:-status}" in
         create)
             # An AVD for an API level: the system image and platform through
-            # sdkmanager if they are not here, then avdmanager — on demand,
+            # sdkmanager if they are not here, then avdmanager, on demand,
             # for a node whose store starts empty. The only way an image
             # arrives besides the Emulator tab, since the baseline hook went.
             local api="${2:-}" pkg name
-            [ -n "$api" ] || die "bb emu create <api> — the API level to build the AVD for"
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — install android-tools first"
+            [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here; install android-tools first"
             pkg="system-images;android-${api};google_apis;x86_64"
             name="$(emu_avd "$api")"
             if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
-                log "installing ${pkg} — a couple of GB, kept on the store"
+                log "installing ${pkg}: a couple of GB, kept on the store"
                 sdkmgr --install "$pkg" || die "could not install ${pkg}"
             fi
             [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
@@ -818,30 +818,30 @@ cmd_emu() {
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 || die "AVD creation failed for ${name}"
-            log "AVD '${name}' ready — bb emu start ${api}"
+            log "AVD '${name}' ready; bb emu start ${api}"
             ;;
         install)
             local apk="${2:-}" serial
-            [ -f "$apk" ] || die "bb emu install <apk> — not a file: ${apk:-?}"
-            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            [ -f "$apk" ] || die "bb emu install <apk>: ${apk:-?} is not a file"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
             adb -s "$serial" install -r "$apk"
             ;;
         shot)
             # A screenshot of the emulator's screen, into dist/ so the
             # Artifacts tab lists it and a node's copy returns the same way.
             local serial out="${2:-}"
-            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
             [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/shot-$(date +%Y%m%d-%H%M%S).png"; }
             adb -s "$serial" exec-out screencap -p > "$out" || die "screencap failed"
             log "screenshot: ${out}"
             ;;
         gfx)
-            # Real per-frame timings for a package — dumpsys gfxinfo
+            # Real per-frame timings for a package, from dumpsys gfxinfo
             # framestats, which works under any renderer, where screenrecord
             # does not (CLAUDE.md's Android section says why).
             local pkg="${2:-}" serial out="${3:-}"
             [ -n "$pkg" ] || die "bb emu gfx <package> [FILE]"
-            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
             [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/gfx-${pkg}-$(date +%Y%m%d-%H%M%S).txt"; }
             adb -s "$serial" shell dumpsys gfxinfo "$pkg" framestats > "$out" || die "dumpsys gfxinfo failed"
             log "gfxinfo: ${out} ($(grep -c '^[0-9]' "$out" 2>/dev/null || echo 0) frames)"
@@ -854,14 +854,14 @@ cmd_emu() {
             fi
             avd="$(emu_avd "${2:-}")"
             avd_exists "$avd" \
-                || die "AVD '${avd}' not found — bb emu create <api> builds one, and bb emu list shows what is here"
-            [ -w /dev/kvm ] || warn "/dev/kvm not available — this will be very slow"
+                || die "AVD '${avd}' not found; bb emu create <api> builds one, and bb emu list shows what is here"
+            [ -w /dev/kvm ] || warn "/dev/kvm not available; this will be very slow"
             # Software rendering by default. `-gpu host` does not work here
             # even with a GPU passed through and NVIDIA_DRIVER_CAPABILITIES=all:
             # the emulator finds the card for Vulkan and then fails at
             # "Failed to get EGL display", because NVIDIA's EGL wants a display
             # and this container has none. Bridging that needs an X server
-            # (Xvfb) in EXTRA_APT_PACKAGES, which is the operator's call — so
+            # (Xvfb) in EXTRA_APT_PACKAGES, which is the operator's call, so
             # the default stays software and says why rather than pretending.
             # What to render with. An explicit ANDROID_EMULATOR_GPU is obeyed
             # as given; otherwise the hardware path is *tested* rather than
@@ -882,7 +882,7 @@ cmd_emu() {
             # Under a software GPU the guest has no DRM render node, so HWUI's
             # default Vulkan backend cannot initialise: the app draws, the view
             # hierarchy is complete, and every frame comes out blank. The guest
-            # says so once in logcat — "E/MESA: Failed to open rendernode" — and
+            # says so once in logcat ("E/MESA: Failed to open rendernode") and
             # is otherwise silent about it, which is why this cost somebody a
             # day of thinking their own screen was broken.
             #
@@ -897,8 +897,8 @@ cmd_emu() {
                     [ -z "$hwui" ] || propargs=(-prop "debug.hwui.renderer=${hwui}") ;;
             esac
             # The log rotates rather than truncating. The emulator dies
-            # silently under load — adb goes quiet, `bb emu stop` says there is
-            # nothing to stop — and the only account of why is in the log the
+            # silently under load (adb goes quiet, `bb emu stop` says there is
+            # nothing to stop) and the only account of why is in the log the
             # *next* start used to overwrite before anybody could read it.
             if [ -s "$HOME/.android/emulator.log" ]; then
                 mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
@@ -915,7 +915,7 @@ cmd_emu() {
             # Waiting for THIS emulator, not for any device. A bare
             # wait-for-device is satisfied the instant it is asked when a phone
             # is attached over wireless adb, and this reported the emulator
-            # ready before it had booted — a wrong answer rather than a missing
+            # ready before it had booted: a wrong answer rather than a missing
             # one, which is worse.
             local waited=0 serial=""
             while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ]; do
@@ -924,7 +924,7 @@ cmd_emu() {
                 sleep 1; waited=$((waited + 1))
             done
             [ -n "$serial" ] \
-                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s — see ~/.android/emulator.log"
+                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; see ~/.android/emulator.log"
             log "emulator is up as ${serial}"
             adb devices
             ;;
@@ -940,14 +940,14 @@ cmd_emu() {
             fi
             ;;
         status)
-            # Everything attached, deliberately — a phone paired over wireless
+            # Everything attached, deliberately: a phone paired over wireless
             # adb shares this adb server, and knowing it is there is the point
             # when a command aimed at "the device" could mean either. The
             # emulator is the one named emulator-NNNN.
             adb devices -l
             ;;
         gpu)
-            # "Which renderer would a start use, and why" — one command,
+            # "Which renderer would a start use, and why", in one command,
             # because the answer used to take an afternoon of reading logs.
             local v note
             if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
@@ -955,14 +955,14 @@ cmd_emu() {
             elif ! x_display_up; then
                 printf 'software (swiftshader_indirect): no X display for the GPU\n'
                 # What the startup hook last said about it. The display dying
-                # hours into a boot used to be silent — the emulator went on
+                # hours into a boot used to be silent: the emulator went on
                 # working, slower, and every timing conclusion after it was
                 # wrong. The hook restarts it three times and then stops; this
                 # is where it says which of those happened.
                 note="$(gpu_display_note)"
                 [ -n "${note:-}" ] && printf '  the startup hook says: %s\n' "$note"
                 command -v Xorg >/dev/null 2>&1 \
-                    || printf '  this machine has no X server — the GPU path needs one\n'
+                    || printf '  this machine has no X server; the GPU path needs one\n'
                 command -v nvidia-smi >/dev/null 2>&1 \
                     && printf '  the card is here: %s\n' \
                        "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
@@ -970,7 +970,7 @@ cmd_emu() {
                 printf 'hardware (-gpu host): EGL vendor %s on %s\n' "$v" "${DISPLAY:-:0}"
             else
                 printf 'software (swiftshader_indirect): X is up but EGL gave no vendor driver\n'
-                printf '  Mesa answering here means llvmpipe — software by a slower road\n'
+                printf '  Mesa answering here means llvmpipe, software by a slower road\n'
             fi
             ;;
         log|logs)
@@ -983,7 +983,7 @@ cmd_emu() {
             tail -n "${3:-200}" "$f"
             ;;
         list)
-            printf 'API levels with a system image here: %s\n' "$(emu_apis | paste -sd, - | sed 's/^$/none — bb emu create <api> installs one/')"
+            printf 'API levels with a system image here: %s\n' "$(emu_apis | paste -sd, - | sed 's/^$/none; bb emu create <api> installs one/')"
             printf 'default for `bb emu start`: %s\n\n' "$(emu_avd)"
             avdmanager list avd 2>/dev/null \
                 | grep -E 'Name:|Based on:' \
@@ -998,13 +998,13 @@ cmd_emu() {
 # The self-hosted runner streams a job's console output to GitHub and keeps
 # none of it: /workspace/_work/_diag holds the runner's own diagnostics, which
 # name the failing step and its exit code and never a line of what it printed.
-# With no PAT there is no API to ask either, so "CI is red — why?" had no
+# With no PAT there is no API to ask either, so "CI is red, why?" had no
 # answer in here for a job that ran in this very container. The lint workflow
 # tees each check into /config/ci-logs/<repo>/ and this reads it.
 # Where CI logs are kept, resolved the same way the workflows resolve it:
-# BB_CI_LOG_DIR first — on a node the agent sets it for jobs and sessions
+# BB_CI_LOG_DIR first (on a node the agent sets it for jobs and sessions
 # alike, and writes the same path into the runner's .env, so the archive is
-# under the data store where the session account can read it — then /config
+# under the data store where the session account can read it), then /config
 # on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
@@ -1027,17 +1027,17 @@ cmd_ci_log() {
     # The project this is run from, the same way `bb roadmap` decides.
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one, or pass --project NAME"
+            || die "not inside a project under ${WORKSPACE}; cd into one, or pass --project NAME"
     fi
     local d="$dir/$proj"
     if [ ! -d "$d" ] || [ -z "$(find "$d" -maxdepth 1 -name '*.log' -print -quit 2>/dev/null)" ]; then
         # Nothing here means the job ran somewhere else, which since the lint
         # and dashboard workflows moved onto a node is the ordinary case. The
         # log is on that machine, under the same two-step path this resolves,
-        # and the way to reach a node is the job channel — audited, scoped,
-        # already built — rather than a share or a second credential.
+        # and the way to reach a node is the job channel (audited, scoped,
+        # already built) rather than a share or a second credential.
         if [ -n "$(project_node 2>/dev/null)" ]; then
-            log "nothing kept here — asking ${proj}'s node"
+            log "nothing kept here; asking ${proj}'s node"
             local remote='d="${BB_CI_LOG_DIR:-}"; [ -n "$d" ] || { [ -w /config ] \
                 && d=/config/ci-logs || d="$HOME/ci-logs"; }; d="$d/'"$proj"'"'
             if [ "$list" = 1 ]; then
@@ -1078,14 +1078,14 @@ cmd_ci_log() {
         for f in "${logs[@]}"; do
             case "$(basename "$f" .log)" in "$want"|"$want"-*) pick="$f"; break ;; esac
         done
-        [ -n "$pick" ] || die "no kept log for run ${want} — try: bb ci-log --list"
+        [ -n "$pick" ] || die "no kept log for run ${want}; try: bb ci-log --list"
     fi
     cat "$pick"
 }
 
 # ---- what has happened here lately -----------------------------------------
-# A session's prompt carries the roadmap and the bug tracker — the project's
-# STATE — and nothing whatever about its recent past. So a conversation that
+# A session's prompt carries the roadmap and the bug tracker (the project's
+# STATE) and nothing whatever about its recent past. So a conversation that
 # opens with "it finally built" or "is that still broken?" costs four or five
 # calls to reconstruct by hand: git log, a git show per commit for the body
 # that actually explains it, bb status for the image, a history per notebook
@@ -1095,7 +1095,7 @@ cmd_ci_log() {
 # every prompt on this project, and most conversations never ask about last
 # week. Reach for it when the first message refers to history.
 
-# project_here — the project directory this was run from, or nothing.
+# project_here: the project directory this was run from, or nothing.
 project_here() {
     local here; here="$(pwd -P)"
     case "$here" in
@@ -1104,7 +1104,7 @@ project_here() {
     esac
 }
 
-# trim_line TEXT — one line, capped so that a screen stays a screen. Counted in
+# trim_line TEXT: one line, capped so that a screen stays a screen. Counted in
 # characters and not bytes: bash slices by character in this image's UTF-8
 # locale, and the text being cut here is full of em dashes.
 trim_line() {
@@ -1116,16 +1116,16 @@ trim_line() {
     fi
 }
 
-# ci_log_rows DIR [LIMIT] — one line per archived CI run, newest first.
+# ci_log_rows DIR [LIMIT]: one line per archived CI run, newest first.
 #
 # Newest by mtime rather than by name: a re-run of an older run carries a lower
 # id than a newer first attempt, so the number does not order them. The
 # workflow's name comes off the header line because two workflows archive here
-# now — the lint job and the image build's outcome — and a list that cannot
+# now (the lint job and the image build's outcome) and a list that cannot
 # tell them apart is a list of numbers.
 ci_log_reason() {
     # The first thing that went wrong in an archived run, and which check it
-    # was under. A row that says only "failure" is easy to scroll past — which
+    # was under. A row that says only "failure" is easy to scroll past, which
     # is how twelve consecutive red lint runs went unnoticed here, taking the
     # deterministic linters' signal down with them.
     awk '
@@ -1148,6 +1148,18 @@ ci_log_reason() {
 }
 
 
+# The workflow a kept log came from, out of its first line. Two shapes,
+# because the header's separator changed with the voice sweep and the logs
+# already on the box were written by the old one: "# NAME on owner/repo"
+# now, and "# NAME <sep> owner/repo" before it, where the separator was one
+# character. Neither pattern needs that character written here.
+ci_log_name() {
+    local n
+    n="$(sed -n '1s|^# \(.*\) on \([^ ]*/[^ ]*\)$|\1|p' "$1")"
+    [ -n "$n" ] || n="$(sed -n '1s|^# \(.*\) . \([^ ]*/[^ ]*\)$|\1|p' "$1")"
+    printf '%s' "$n"
+}
+
 ci_log_rows() {
     local d="$1" limit="${2:-0}" rows f reason
     [ -d "$d" ] || return 0
@@ -1160,14 +1172,14 @@ ci_log_rows() {
     local result
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        # No result line means the closing step never ran — the job was killed
+        # No result line means the closing step never ran: the job was killed
         # rather than finished, which on this box usually means the container
         # updated underneath it. Say so: a blank column reads like a bug in
         # this listing, and it is the opposite, a job whose end never happened.
         result="$(sed -n 's/^result: //p' "$f" | head -1)"
         printf '  %-20s %s  %-12s %s\n' "$(basename "$f" .log)" \
             "$(date -r "$f" '+%d %b %H:%M')" \
-            "$(sed -n '1s/^# \(.*\) — .*/\1/p' "$f")" \
+            "$(ci_log_name "$f")" \
             "${result:-(unfinished)}"
         # ...and why, when it is not a success. Which check failed and what it
         # said is the difference between a row somebody chases and a row
@@ -1207,11 +1219,11 @@ cmd_catchup() {
         if [ -n "${BB_IMAGE_REV:-}" ]; then
             printf '%.7s%s' "$BB_IMAGE_REV" "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
         else
-            printf 'unstamped — built outside CI'
+            printf 'unstamped, built outside CI'
         fi)"
     printf '  %-9s %s\n' version "${BB_VERSION:-unstamped}"
     # The ledger the entrypoint keeps. Its last few lines answer "when did this
-    # box change image, and what was it on before" — which is most of what
+    # box change image, and what was it on before", which is most of what
     # "your fix is not working" turns out to be.
     local ledger; ledger="$(bb_image_log)"
     if [ -s "$ledger" ]; then
@@ -1221,7 +1233,7 @@ cmd_catchup() {
                 "since $(date -d "$seen" '+%d %b %H:%M' 2>/dev/null || printf '%s' "$seen")"
         done < <(grep -v '^#' "$ledger" | tail -3)
     else
-        printf '  %-9s %s\n' ran "no ledger yet — this image predates it, or /config is not mounted"
+        printf '  %-9s %s\n' ran "no ledger yet; this image predates it, or /config is not mounted"
     fi
 
     if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -1241,10 +1253,10 @@ cmd_catchup() {
             if [ -n "$main" ] && git merge-base --is-ancestor "$BB_IMAGE_REV" "$main" 2>/dev/null; then
                 behind="$(git rev-list --count "${BB_IMAGE_REV}..${main}" 2>/dev/null || echo '?')"
                 if [ "$behind" = 0 ]; then
-                    printf '  %-9s %s\n' serving "origin/main exactly — what is merged is what is running"
+                    printf '  %-9s %s\n' serving "origin/main exactly: what is merged is what is running"
                 else
                     # Being behind only matters if the missing commits are ones
-                    # the image is BUILT from — the paths build-image.yml
+                    # the image is BUILT from, the paths build-image.yml
                     # triggers on. Three merged doc commits leave the code in
                     # here current, and saying only "3 behind" sends somebody
                     # to `bb drift` to find that out.
@@ -1253,9 +1265,9 @@ cmd_catchup() {
                         Dockerfile .dockerignore scripts config \
                         .github/workflows/build-image.yml 2>/dev/null | head -1)"
                     if [ -n "$moved_inputs" ]; then
-                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, and they change the image — what is merged is NOT what is running"
+                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, and they change the image; what is merged is NOT what is running"
                     else
-                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, none of them image inputs — the code in here is current"
+                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, none of them image inputs; the code in here is current"
                     fi
                 fi
             else
@@ -1268,14 +1280,14 @@ cmd_catchup() {
         up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
         if [ -n "$up" ]; then
             read -r ahead behind < <(git rev-list --left-right --count "HEAD...${up}" 2>/dev/null || echo "0 0")
-            printf '  %-9s %s\n' branch "$br — ${ahead} ahead / ${behind} behind ${up}"
+            printf '  %-9s %s\n' branch "$br: ${ahead} ahead / ${behind} behind ${up}"
         else
-            printf '  %-9s %s\n' branch "$br — no upstream"
+            printf '  %-9s %s\n' branch "$br: no upstream"
         fi
         # And where it stands against MAIN, which is the half that decides
         # whether there is anything here to finish. "0 ahead / 0 behind its own
         # remote" reads as live work when the work is in fact merged and the
-        # branch is parked — and a branch name reused across many PRs carries
+        # branch is parked, and a branch name reused across many PRs carries
         # nothing else to tell those apart.
         local mainref nahead
         mainref="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 \
@@ -1283,7 +1295,7 @@ cmd_catchup() {
         if [ -n "$mainref" ] && [ "$br" != main ] && [ "$br" != '-' ]; then
             nahead="$(git rev-list --count "${mainref}..HEAD" 2>/dev/null || echo '?')"
             if [ "$nahead" = 0 ]; then
-                printf '  %-9s %s\n' "vs main" "already in $mainref — nothing here is unmerged"
+                printf '  %-9s %s\n' "vs main" "already in $mainref; nothing here is unmerged"
             else
                 printf '  %-9s %s\n' "vs main" "$nahead commit(s) not in $mainref"
             fi
@@ -1293,7 +1305,7 @@ cmd_catchup() {
         if [ "$dirty" = 0 ] && [ "$untracked" = 0 ]; then
             printf '  %-9s %s\n' tree "clean"
         else
-            printf '  %-9s %s\n' tree "${dirty} changed, ${untracked} untracked — uncommitted work is here"
+            printf '  %-9s %s\n' tree "${dirty} changed, ${untracked} untracked; uncommitted work is here"
         fi
 
         echo
@@ -1336,7 +1348,7 @@ cmd_catchup() {
         # Its own log, not the tabs' contents: the open items are already in a
         # session's prompt, and what is missing from there is what MOVED.
         # One line per change, trimmed. `bb history` prints an entry's whole
-        # text — which for a roadmap `info` is a page — and three of those is
+        # text (which for a roadmap `info` is a page) and three of those is
         # the screen this command exists to be.
         local moved
         # -n is generous because the filter below throws lines away, and a
@@ -1347,7 +1359,7 @@ cmd_catchup() {
                          *) continue ;;
                      esac
                      # A roadmap `add` or `info` is already in the session's
-                     # prompt verbatim — the whole open list is — so printing
+                     # prompt verbatim (the whole open list is), so printing
                      # it here charges for it twice. What is NOT in the prompt
                      # is an item that has LEFT the list, which is exactly what
                      # `done` and `dropped` are, and they are the roadmap moves
@@ -1363,7 +1375,7 @@ cmd_catchup() {
                  done | sed -n '1,8p')"
         if [ -n "$moved" ]; then
             printf '%s\n' "$moved"
-            echo "  ('bb history' for these in full — the text is cut short here)"
+            echo "  ('bb history' for these in full; the text is cut short here)"
         else
             echo "  nothing moved in that window"
         fi
@@ -1379,10 +1391,10 @@ cmd_catchup() {
             # CI runs on the project's node now, so the records are there.
             # Not fetched here: catchup is read often and a job per read is
             # the wrong price for a summary. bb ci-log goes and gets them.
-            echo "  none kept here — CI runs on this project's node, so its"
+            echo "  none kept here: CI runs on this project's node, so its"
             echo "  records are there: 'bb ci-log --list' fetches them"
         else
-            echo "  none kept — only a job that runs on this box archives one"
+            echo "  none kept; only a job that runs on this box archives one"
         fi
     fi
 }
@@ -1392,7 +1404,7 @@ cmd_catchup() {
 # machine. Says nothing at all on the controller, where the path is right.
 logs_are_the_controllers() {
     on_node || return 0
-    die "there is no container log here — this is a node, and that log is the" \
+    die "there is no container log here: this is a node, and that log is the" \
         "controller's. \`bb ci-log\` reads a CI run's output on this machine"
 }
 
@@ -1489,8 +1501,8 @@ cmd_logs() {
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
                 # boot. It used to list only builderbot.log's generations,
-                # which made the other three — the dashboard, docker and ttyd,
-                # all of which rotate the same way now — look like they did not
+                # which made the other three (the dashboard, docker and ttyd,
+                # all of which rotate the same way now) look like they did not
                 # exist.
                 if ! ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null; then
                     logs_are_the_controllers
@@ -1516,8 +1528,8 @@ cmd_logs() {
         esac
         shift
     done
-    # A MACHINE's own log — the agent's journal, the runner's, the terminal
-    # server's — which is root's on that box and is not offered to a session
+    # A MACHINE's own log (the agent's journal, the runner's, the terminal
+    # server's), which is root's on that box and is not offered to a session
     # by default. The controller decides: its debug switch, then the grant on
     # the asking node's row. Both refusals say what would change them.
     if [ -n "$want_node" ] || [ -n "$stream" ]; then
@@ -1551,7 +1563,7 @@ NODELOG
     fi
     if [ ! -f "$logfile" ]; then
         logs_are_the_controllers
-        die "no log at ${logfile} — see: bb logs --list"
+        die "no log at ${logfile}; see: bb logs --list"
     fi
     if [ "$follow" -eq 1 ]; then
         tail -n "$lines" -f "$logfile"
@@ -1563,8 +1575,8 @@ NODELOG
 # Reduce a SARIF report to grouped markdown.
 #
 # This reads scan output and nothing else. The scanner itself lives outside the
-# container on purpose — /reports is mounted read-only and no scanner binary is
-# installed — so there is no way to start a scan from in here, by design. If the
+# container on purpose (/reports is mounted read-only and no scanner binary is
+# installed), so there is no way to start a scan from in here, by design. If the
 # findings look stale, the fix is to re-run the scanner on the host.
 #
 # Raw SARIF is mostly metadata: a few hundred KB of it would fill a session's
@@ -1622,7 +1634,7 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
 | ($level != "" or $rule != "" or $find != "") as $filtered
 | if ($all | length) == 0 then "No findings.\n"
   elif $n == 0 and $filtered and ($scoped | length) > 0 then
-    "No findings match the filters — \($scoped | length) before filtering.\n"
+    "No findings match the filters; \($scoped | length) before filtering.\n"
   elif $n == 0 then
     ( if $relayed != "" then "No findings for \($proj) in this report.\n"
       else "No findings for \($proj). This report covers: "
@@ -1630,9 +1642,9 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
            + "\nRun with --all to see them anyway.\n" end )
   else
   ( "# Findings (\($n)\(if $filtered then " matching, of \($scoped | length)" else "" end))"
-  + (if $scope == "all" then " — all projects in this report\n"
+  + (if $scope == "all" then ": all projects in this report\n"
      elif $relayed != "" then " in \($proj)\n"
-     else " in \($proj), of \($all | length) in the report — --all for the rest\n" end)
+     else " in \($proj), of \($all | length) in the report; --all for the rest\n" end)
   + ( $rows | group_by(.level) | sort_by(.[0].level | rank)
       | map( "\n## \(.[0].level) (\(length))\n"
              + ( group_by(.rule) | sort_by(-length)
@@ -1659,14 +1671,14 @@ cmd_roadmap() {
     local proj="${BB_ROADMAP_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
 
 # Which account this session belongs to, for the notebook's logs: "claude"
 # says a session wrote it, and with two people each running one that does not
 # say whose. Read from the users file the way `bb settings` reads the commit
-# identity — no configure, two fields.
+# identity: no configure, two fields.
 def _account_name(state_dir):
     uid = os.environ.get("BB_ACCOUNT_UID", "")
     try:
@@ -1697,8 +1709,8 @@ roadmap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(roadmap)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
-# There were five, all still using a fixed <name>.tmp — the exact collision the
-# server's copy was changed away from — and statefile.py carries the file lock
+# There were five, all still using a fixed <name>.tmp (the exact collision the
+# server's copy was changed away from) and statefile.py carries the file lock
 # that stops this process and the dashboard losing each other's writes.
 _sfs = importlib.util.spec_from_file_location(
     "statefile", __import__("os").path.join(
@@ -1717,7 +1729,7 @@ _state = os.environ.get("DASHBOARD_STATE", "/config")
 roadmap.configure(write_json=write_json, state=_state, actor=lambda: _account_name(_state))
 
 # The tracker's half of a notebook batch. A batch spans both files, so the
-# roadmap's begin/commit/revert have to reach the tracker as well — loaded
+# roadmap's begin/commit/revert have to reach the tracker as well; loaded
 # beside roadmap.py rather than imported, for the same reason roadmap.py is: this
 # has to be the copy sitting next to the script that was actually run.
 _here = os.path.dirname(sys.argv[1])
@@ -1735,7 +1747,7 @@ op = argv[0] if argv else "list"
 rest = argv[1:]
 
 # roadmap.py put its own directory on sys.path, so the id module beside it is
-# importable here the way it is inside the dashboard — and the approval
+# importable here the way it is inside the dashboard, and the approval
 # queue (roadmap #27), which roadmap.configure already set up.
 import ids  # noqa: E402
 import pending  # noqa: E402
@@ -1745,7 +1757,7 @@ def held_line(r, what="it"):
     """What a session is told when its add was held for the operator."""
     h = r["held"]
     tag = R(h["number"]) if h.get("number") is not None else "it"
-    return (f"held for approval as {tag} — {what} lands on the roadmap when the "
+    return (f"held for approval as {tag}; {what} lands on the roadmap when the "
             "operator approves it on the notebook. `bb roadmap pending` lists "
             "what is waiting; you are told on a later turn what they decided")
 
@@ -1762,12 +1774,12 @@ def behind(n, verb, args, summary):
         return False
     if verb is None:
         print(f"[builderbot] ERROR: {R(n)} is still waiting for the operator's "
-              "approval — there is nothing to change yet. `bb roadmap pending`",
+              "approval; there is nothing to change yet. `bb roadmap pending`",
               file=sys.stderr)
         sys.exit(1)
     r = pending.hold(proj, "roadmap", verb, args, summary, number=n, after=rec["id"])
     bail(r)
-    print(f"held behind {R(n)} — it lands with that item when the operator "
+    print(f"held behind {R(n)}: it lands with that item when the operator "
           "approves it, and goes if they deny it")
     return True
 
@@ -1780,7 +1792,7 @@ def ident(word):
     """The item a verb was given, checked before anything is looked up.
 
     `bb roadmap done 12` and `bb roadmap done R12` both work; `bb roadmap
-    done B12` stops here with a sentence saying B12 is a bug — the letter is
+    done B12` stops here with a sentence saying B12 is a bug: the letter is
     a check, not decoration (ids.py). The number goes on as an int so every
     module call and every message below prints it the same way.
     """
@@ -1789,7 +1801,7 @@ def ident(word):
         print(f"[builderbot] ERROR: {err}", file=sys.stderr)
         sys.exit(1)
     if n is None:
-        print(f"[builderbot] ERROR: not a roadmap item: {word!r} — they are "
+        print(f"[builderbot] ERROR: not a roadmap item: {word!r}; they are "
               "numbered R1, R2, ...", file=sys.stderr)
         sys.exit(1)
     return n
@@ -1802,7 +1814,7 @@ def show():
     # while a dozen tracker changes sat unrecorded.
     b = _nb.state(proj)
     if b:
-        print(f"  [batch open — {b['changes']} change"
+        print(f"  [batch open: {b['changes']} change"
               f"{'' if b['changes'] == 1 else 's'} unrecorded across this "
               "notebook; bb roadmap commit, or revert]")
     if not rows:
@@ -1836,14 +1848,14 @@ def bail(r):
 # Which seat this session sits in, for the two questions roadmap #26 and #27
 # both need answered: has this list moved since I last looked at it, and was
 # it me who moved it. Empty for a bb run from a plain shell, which then gets
-# the old behaviour — no check, because there is nothing to check against.
+# the old behaviour: no check, because there is nothing to check against.
 _who = os.environ.get("BB_ACCOUNT_UID", "")
 
 
 def fresh():
     """Refuse to write over words this session has not read.
 
-    The exposure is not two writes landing at once — those are per field and
+    The exposure is not two writes landing at once; those are per field and
     under a lock. It is that a session read the roadmap when it started, the
     operator reworded an item an hour later, and the session then rewrites
     that item from the copy in its context. Nothing tells either of them.
@@ -1855,20 +1867,20 @@ def fresh():
     """
     if roadmap.stale(proj, _who):
         print("[builderbot] ERROR: the roadmap has changed since you last read "
-              "it — run `bb roadmap` and make this change against what it says "
+              "it; run `bb roadmap` and make this change against what it says "
               "now", file=sys.stderr)
         sys.exit(2)
 
 
 if op in ("list", "ls"):
     show()
-    # Read, so what arrives on the next prompt is what has moved SINCE this —
+    # Read, so what arrives on the next prompt is what has moved SINCE this,
     # and so the guard above stops holding a session that has just looked.
     roadmap.mark_seen(proj, _who, "roadmap")
 elif op == "show":
     # One item in full: its details, its steps and theirs. `list` cannot carry
     # this without becoming unreadable, and a session working item N wants
-    # exactly N — the same reason `bb bug show` exists.
+    # exactly N, the same reason `bb bug show` exists.
     if not rest:
         print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0])
@@ -1890,7 +1902,7 @@ elif op == "show":
 elif op == "--prompt":
     sys.stdout.write(roadmap.prompt(proj))
 elif op == "add":
-    # `bb roadmap add "title" --step "..." --step "..."` — a change that needs
+    # `bb roadmap add "title" --step "..." --step "..."`: a change that needs
     # things done in an order is one item with steps, not several items that
     # can be handed over backwards.
     words, steps, i = [], [], 0
@@ -1923,7 +1935,7 @@ elif op == "done":
     r = roadmap.tick(proj, n, by="claude", who=_who); bail(r)
     print(f"done {R(n)}: {r['item']['text']}")
 elif op in ("rm", "remove"):
-    # For work that is abandoned — a finished plan is ticked, not dropped.
+    # For work that is abandoned. A finished plan is ticked, not dropped.
     # The reason rides with the deletion: the row can be put back from the
     # history (`restore`, or the panel's Put back), and a note saying why it
     # went is what stops that happening by mistake.
@@ -1932,7 +1944,7 @@ elif op in ("rm", "remove"):
     n = ident(rest[0]); behind(n, None, None, None); fresh()
     r = roadmap.remove(proj, n, by="claude", why=" ".join(rest[1:]),
                     who=_who); bail(r)
-    print(f"removed {R(n)} — bb roadmap restore {R(n)} puts it back")
+    print(f"removed {R(n)}; bb roadmap restore {R(n)} puts it back")
 elif op == "restore":
     # The other half of rm: the dropped row comes back from the history as it
     # was, steps and details and all, under its own number.
@@ -1943,8 +1955,8 @@ elif op == "restore":
     print(f"put back {R(n)}: {r['item']['text']}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
-    # read; it is arriving at one. The work still lands as it happens — hiding
-    # it would be worse than a noisy log — but the record is written once, at
+    # read; it is arriving at one. The work still lands as it happens (hiding
+    # it would be worse than a noisy log), but the record is written once, at
     # commit, saying what changed rather than every step of getting there.
     #
     # One batch over the WHOLE notebook: the roadmap and the tracker both.
@@ -1953,7 +1965,7 @@ elif op in ("begin", "commit", "revert"):
     # describing work against a tracker that never recorded why.
     if op == "begin":
         bail(_nb.begin(proj))
-        print(f"batch open on {proj}'s notebook — the roadmap and the bug "
+        print(f"batch open on {proj}'s notebook: the roadmap and the bug "
               "tracker both. Commit or revert it")
     elif op == "commit":
         r = _nb.commit(proj); bail(r)
@@ -1978,7 +1990,7 @@ elif op in ("mv", "move"):
 elif op == "shelve":
     # Parked, not dropped: a reason to keep it, no intention of doing it now.
     # One direction only. Putting something on the shelf is a thing a session
-    # knows — it is blocked, or it is waiting on somebody — and it is loud:
+    # knows (it is blocked, or it is waiting on somebody) and it is loud:
     # the row goes dark at the bottom and the log says who did it. Taking one
     # *off* is reversing a decision the operator made for reasons the session
     # was not told, so it is theirs, and one tap in the panel.
@@ -1986,7 +1998,7 @@ elif op == "shelve":
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
     r = roadmap.shelve(proj, n, True, by="claude", who=_who); bail(r)
-    print(f"shelved {R(n)} — say in your reply why, the operator unshelves it")
+    print(f"shelved {R(n)}; say in your reply why, the operator unshelves it")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
@@ -2082,7 +2094,7 @@ elif op == "step":
         r = roadmap.step_done(proj, item, step_index(srest[1]),
                            by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
         print(f"step {srest[1]} of {R(item)} done"
-              + (f" — the last one, so {R(item)} is done and off the list"
+              + (f", the last one, so {R(item)} is done and off the list"
                  if r.get("finished") else ""))
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
@@ -2101,7 +2113,7 @@ elif op == "step":
               file=sys.stderr)
         sys.exit(1)
 elif op == "pending":
-    # What this project has waiting for the operator (roadmap #27) — the
+    # What this project has waiting for the operator (roadmap #27): the
     # roadmap's half. Read-only: approving is theirs, on the notebook.
     rs = pending.listing(proj, "roadmap")
     if not rs:
@@ -2169,8 +2181,8 @@ PY
 }
 
 cmd_history() {
-    # One search over all three of the notebook's logs — roadmap, bugs, and
-    # what the dashboard did to the memories — tagged by source and merged by
+    # One search over all three of the notebook's logs (roadmap, bugs, and
+    # what the dashboard did to the memories), tagged by source and merged by
     # time. `bb roadmap history` and `bb bug history` scope to one; this is for
     # "when did anything here mention the picker?", which is a question about
     # the notebook and not about a tab of it.
@@ -2179,14 +2191,14 @@ cmd_history() {
     local proj="${BB_ROADMAP_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$dir" "$proj" "$@" <<'PY'
 
 # Which account this session belongs to, for the notebook's logs: "claude"
 # says a session wrote it, and with two people each running one that does not
 # say whose. Read from the users file the way `bb settings` reads the commit
-# identity — no configure, two fields.
+# identity: no configure, two fields.
 def _account_name(state_dir):
     uid = os.environ.get("BB_ACCOUNT_UID", "")
     try:
@@ -2269,7 +2281,7 @@ rows = []
 # findings log is the one nobody wrote: its rows carry no `by`, which reads
 # correctly in this column as a blank rather than a name.
 # ...and the approval queue's own log (roadmap #27): what was held, and what
-# the operator decided — the one place "denied" is written down.
+# the operator decided: the one place "denied" is written down.
 pending = load_mod(dirname, "pending")
 pending.configure(write_json=write_json, state=state)
 for tag, mod in (("roadmap", roadmap), ("bugs", bugs), ("memory", memory),
@@ -2284,7 +2296,7 @@ if not rows:
 for tag, e in rows:
     when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
     where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
-    # The tab's own letter on the number — R12, B62 — because a merged log is
+    # The tab's own letter on the number (R12, B62), because a merged log is
     # exactly where a bare number could be read against the wrong list.
     kind = tag
     if tag == "waiting":
@@ -2312,7 +2324,7 @@ cmd_preamble() {
     # What a session started on this project is handed: the house rules, the
     # open roadmap and the open bugs, in the order it reads them. bb-tty asks
     # for this rather than joining the three itself, and the Briefing tab
-    # draws the same string — one assembly, so the tab cannot drift from what
+    # draws the same string: one assembly, so the tab cannot drift from what
     # a session actually gets.
     local dir py
     dir="$(dirname "$(readlink -f "$0")")/dashboard"
@@ -2321,7 +2333,7 @@ cmd_preamble() {
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     python3 - "$dir" "$proj" "${1:-}" <<'PREPY'
 import json, os, sys
@@ -2358,16 +2370,16 @@ PREPY
 cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
-    # change only its own — see rules.py for the ownership and the log.
+    # change only its own; see rules.py for the ownership and the log.
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     # `bb rules check` runs a rule's check command HERE, in this tree, on
     # whichever machine the session is on (roadmap R31): the rules themselves
     # come through `bb rules --json`, which is relayed on a node, so this
-    # needs neither /config nor rules.py — only git, the tree and the command.
+    # needs neither /config nor rules.py, only git, the tree and the command.
     if [ "${1:-}" = check ]; then
         shift
         local rules_json
@@ -2462,7 +2474,7 @@ sys.modules["statefile"] = statefile
 def _account_name(state_dir):
     """Which account this session belongs to, for the rules log: "claude"
     says a session wrote it, and with two people each running one that does
-    not say whose. Read from the users file directly — no configure."""
+    not say whose. Read from the users file directly: no configure."""
     uid = os.environ.get("BB_ACCOUNT_UID", "")
     try:
         with open(os.path.join(state_dir, "users.json")) as f:
@@ -2488,7 +2500,7 @@ if "--global" in argv:
     proj = reg.GLOBAL
 op = argv[0] if argv else "list"
 rest = argv[1:]
-import pending  # noqa: E402 — rules.py put its directory on sys.path
+import pending  # noqa: E402 (rules.py put its directory on sys.path)
 
 # What bb-tty puts in front of a session. Empty output and status 0 when
 # there are no rules, so the caller can test it with `[ -z ]`.
@@ -2512,7 +2524,7 @@ elif op == "show":
             break
     else:
         names = ", ".join(r["name"] for r in reg.effective(proj)) or "none"
-        sys.exit(f"no rule called {want} here — this project has: {names}")
+        sys.exit(f"no rule called {want} here; this project has: {names}")
 elif op == "add":
     if len(rest) < 2:
         sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...]')
@@ -2533,12 +2545,12 @@ elif op == "add":
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     if r.get("held"):
-        print(f"held for approval as the rule {r['held']['number']} — it takes "
+        print(f"held for approval as the rule {r['held']['number']}: it takes "
               "effect when the operator approves it on the notebook. `bb rules "
               "pending` lists what is waiting; you are told on a later turn what "
               "they decided")
         sys.exit(0)
-    print(f"added {r['rule']['name']} — yours, marked as a session's on the "
+    print(f"added {r['rule']['name']}: yours, marked as a session's on the "
           "Briefing tab, and in front of every session started here")
 elif op == "edit":
     if len(rest) < 2:
@@ -2553,7 +2565,7 @@ elif op == "edit":
                          number=held["number"], after=held["id"])
         if r.get("error"):
             sys.exit(f"[builderbot] ERROR: {r['error']}")
-        print(f"held behind the rule {held['number']} — it lands with it when the "
+        print(f"held behind the rule {held['number']}: it lands with it when the "
               "operator approves it, and goes if they deny it")
         sys.exit(0)
     # `edit NAME "text"`, or `edit NAME --doc PATH --check CMD --files ... --words ...`
@@ -2576,7 +2588,7 @@ elif op == "rm":
         sys.exit('usage: bb rules rm <name> ["why it went"]')
     if pending.held(proj, "rules", rest[0].strip().lower()) is not None:
         sys.exit(f"[builderbot] ERROR: the rule {rest[0]} is still waiting for the "
-                 "operator's approval — there is nothing to drop yet. `bb rules pending`")
+                 "operator's approval; there is nothing to drop yet. `bb rules pending`")
     r = reg.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude")
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
@@ -2613,7 +2625,7 @@ elif op == "list":
               "one of yours there, marked as a session's.")
         sys.exit(0)
     p = reg.payload(proj)
-    print(f"{p['standing']} standing, {p['conditional']} conditional — "
+    print(f"{p['standing']} standing, {p['conditional']} conditional; "
           f"{p['chars']} characters in front of every session here")
     for r in rs:
         when = ""
@@ -2626,7 +2638,7 @@ elif op == "list":
                  + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
         print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
-          "wrote: yours to `edit` or `rm`. The rest are the operator's — read "
+          "wrote: yours to `edit` or `rm`. The rest are the operator's: read "
           "them, and say in your reply if one looks wrong.")
 else:
     print(f"[builderbot] ERROR: unknown: bb rules {op}", file=sys.stderr)
@@ -2634,7 +2646,7 @@ else:
 RULESPY
 }
 
-# tests_verdict LOGFILE — what went wrong, from a run's own log.
+# tests_verdict LOGFILE: what went wrong, from a run's own log.
 #
 # A suite prints two thousand PASS lines and one thing that matters, and until
 # this the answer to "what broke" was a grep. Worse, a grep for FAIL finds
@@ -2643,7 +2655,7 @@ RULESPY
 # "FAILURES above". That cost four nine-minute runs to find one timeout.
 #
 # So the log is read rather than skimmed. Per file: its failed assertions by
-# name, and — when it printed no totals line — the fact that it died and the
+# name, and, when it printed no totals line, the fact that it died and the
 # line it died on. Both, for a file that did both: a crash is usually the
 # second symptom, a click on something an assertion three lines up has
 # already said is missing, and a verdict that printed only the death sent
@@ -2667,7 +2679,7 @@ BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==")
 AGAIN = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) again ==")
 # ` in Xs` only when the run was timed: `bb dashboard test FILE` prints the
 # bare form, and a verdict that required the seconds read a passing file as a
-# crash — which is the one thing this tool must never do.
+# crash, which is the one thing this tool must never do.
 TOTALS = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([\d.]+)s)?")
 FAIL = re.compile(r"^FAIL\s+(?:\[\+[\d.]+s\]\s+)?(.*)")
 # What a crashed file's death looks like. Node puts the message on its own
@@ -2753,8 +2765,8 @@ for f in bad:
         print(f"  {f['name']}  CRASHED" + (f" at {f['where']}" if f.get("where") else ""))
         print(f"      {f['why'][:160]}")
         # What had already gone wrong before it died. A crash is usually the
-        # SECOND symptom — a click on something an earlier assertion has just
-        # said is not there — and printing only the death sends the next
+        # SECOND symptom (a click on something an earlier assertion has just
+        # said is not there) and printing only the death sends the next
         # reader to the wrong line.
         if f["fails"]:
             print(f"      {len(f['fails'])} assertion{'' if len(f['fails']) == 1 else 's'}"
@@ -2778,7 +2790,7 @@ VERDICT
 }
 
 cmd_tests() {
-    # The test registry's CLI half — the side a session drives, and the only
+    # The test registry's CLI half: the side a session drives, and the only
     # side that can ingest, because ingesting means reading what a runner
     # printed and the dashboard runs no suites.
     #
@@ -2787,7 +2799,7 @@ cmd_tests() {
     # the checkout's copy is the one under test.
     # Checked below rather than here: `run` does not touch this module. It
     # runs the suite and relays the ingest, and the node bundle carries bb
-    # without the dashboard's python — so the guard up here made `bb tests
+    # without the dashboard's python, so the guard up here made `bb tests
     # run` the one verb that cannot work on a node, which is the one machine
     # a suite actually runs on.
     local py
@@ -2815,29 +2827,29 @@ cmd_tests() {
     local proj="${BB_TESTS_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     # `ingest` with no file reads stdin, so the whole thing is one pipe. The
     # log reaches python as a PATH, never as a value: the heredoc below owns
     # python's stdin (the collision `bb phone` was fixed for), and a run log
-    # is a couple of hundred kilobytes — passed in the environment it is
+    # is a couple of hundred kilobytes; passed in the environment it is
     # "Argument list too long", which is how this was found.
     # `run` closes the loop the registry was built for: a suite is run, its
     # real durations are parsed, and the registry stops going stale because
-    # somebody forgot the second step. Same command `bb test` runs — the
-    # project's own, from its settings — with BB_TEST_TIMING=1 in front of it.
+    # somebody forgot the second step. Same command `bb test` runs (the
+    # project's own, from its settings) with BB_TEST_TIMING=1 in front of it.
     #
     # On a node that command runs right here in this tree, dirty edits and
     # all (cmd_run's on_node branch), so this is the iterate loop; from the
     # controller it is a job on the project's node, streamed back the same
     # way, and takes a row in the Jobs tab that somebody else can watch.
-    # `last` — the same verdict, off the log the last run wrote, without
+    # `last`: the same verdict, off the log the last run wrote, without
     # running anything. A red suite should cost one run, not four: what broke
     # is a fact the log already holds, and re-running to find it out again is
     # nine minutes for an answer that was on disk.
     if [ "${1:-}" = last ]; then
         local prev="${WORKSPACE}/${proj}/.bb-test-run.log"
-        [ -f "$prev" ] || die "no run log yet — \`bb tests run\` writes one beside the project"
+        [ -f "$prev" ] || die "no run log yet; \`bb tests run\` writes one beside the project"
         printf 'from %s, %s\n' "$(basename "$prev")" \
             "$(date -r "$prev" '+%d %b %H:%M' 2>/dev/null || echo 'unknown time')"
         tests_verdict "$prev"
@@ -2856,7 +2868,7 @@ cmd_tests() {
         # different name for it than `bb tests` does.
         #
         # In an `if` rather than after a `||`: errexit is suppressed inside a
-        # condition, and PIPESTATUS still holds the pipeline's own statuses —
+        # condition, and PIPESTATUS still holds the pipeline's own statuses,
         # which is the only way to end up with the SUITE's exit code rather
         # than tee's. Read straight after `|| rc=$?` it is the `||`'s.
         # Say when it will be done before it starts, from the registry's
@@ -2880,7 +2892,7 @@ cmd_tests() {
             echo "took ${took}s"
         fi
 
-        # A FAILING run is still worth ingesting — a red suite has real
+        # A FAILING run is still worth ingesting: a red suite has real
         # timings in it, and the registry is about where the time goes rather
         # than about whether it passed. What is not worth ingesting is a run
         # that never happened, and the tell is the timing prefix: no line
@@ -2903,11 +2915,11 @@ cmd_tests() {
     [ -f "$py" ] || die "testreg.py is missing from this image"
     local src="" tmp=""
     # From a node this verb is relayed, so the path is opened on the
-    # CONTROLLER — which shares /workspace with the node and nothing else. A
+    # CONTROLLER, which shares /workspace with the node and nothing else. A
     # log written to the node's own /tmp is simply not there, and "no such
     # run log" pointing at a file you can see is a confusing way to say it.
     no_file() {
-        [ -z "${BB_RELAYED:-}" ] || die "$1: $2 — this ran on the controller," \
+        [ -z "${BB_RELAYED:-}" ] || die "$1: $2. This ran on the controller," \
             "which shares /workspace with the node and nothing else. Put it" \
             "under the project and try again"
         die "$1: $2"
@@ -2960,7 +2972,7 @@ def bail(r):
 if op in ("list", "ls"):
     p = reg.payload(proj)
     if not p["n"]:
-        print(f"nothing on {proj}'s test registry — "
+        print(f"nothing on {proj}'s test registry; "
               "`bb tests ingest RUNLOG` after a run puts the timings in")
         sys.exit(0)
     print(f"{p['n']} tests · {p['total_ms'] / 1000:.0f}s measured"
@@ -2985,7 +2997,7 @@ if op in ("list", "ls"):
         if t.get("after"):
             print(f"             follows: {t['after'][:60]}")
 elif op == "projection":
-    # When a run will finish, from what the last one took — so nobody has
+    # When a run will finish, from what the last one took, so nobody has
     # to guess, and a run well past it is read as stuck rather than slow.
     # `--secs` is the bare number, for `bb tests run` to hold up against
     # the clock when the run ends.
@@ -3013,7 +3025,7 @@ elif op == "projection":
     if rest[:1] == ["--secs"] or "--secs" in rest:
         print(f"{wall:.0f}")
     elif not wall:
-        print("no projection yet — nothing measured on this project; this run records the first")
+        print("no projection yet; nothing measured on this project, and this run records the first")
     else:
         print(f"projected {wall:.0f}s, {took}; "
               f"one past {2 * wall:.0f}s is stuck, not slow")
@@ -3033,14 +3045,14 @@ elif op == "show":
     if len(t.get("history") or []) > 1:
         print("  history: " + ", ".join(f"{h / 1000:.1f}s" for h in t["history"]))
     if t["suspect"]:
-        print(f"  FLAGGED: lands on a {t['suspect']}s boundary — a fixed sleep or a "
+        print(f"  FLAGGED: lands on a {t['suspect']}s boundary, a fixed sleep or a "
               "polling timeout rather than work")
     elif t.get("accepted"):
-        print(f"  accepted: sits on {t['sits_on']}s, and that is the work — {t['accepted']}")
+        print(f"  accepted: sits on {t['sits_on']}s, and that is the work: {t['accepted']}")
     print(f"  protects: {t['protects'] or '(nothing written yet)'}")
     print(f"  exercises: {t['notes'] or '(nothing written yet)'}")
 elif op == "describe" and rest[:1] == ["--from"]:
-    # A bulk fill, from a file of {key: {protects, notes}} — one load and one
+    # A bulk fill, from a file of {key: {protects, notes}}: one load and one
     # save. Written for the first fill of a registry that already had two
     # thousand tests in it, where the per-test verb would have been two
     # thousand rewrites of the store.
@@ -3051,7 +3063,7 @@ elif op == "describe" and rest[:1] == ["--from"]:
     bail(r)
     print(f"described {r['wrote']} tests")
     if r["unknown_n"]:
-        print(f"  {r['unknown_n']} keys named no test here — the registry and the "
+        print(f"  {r['unknown_n']} keys named no test here; the registry and the "
               "file have drifted:")
         for k in r["unknown"][:10]:
             print(f"    {k}")
@@ -3114,10 +3126,10 @@ elif op == "drift":
         print(f"  ...and {n - shown} more")
     if p["undocumented"]:
         print(f"\n{p['undocumented']} of {p['n']} tests have no line saying what "
-              "they protect — `bb tests list` shows the slowest first")
+              "they protect; `bb tests list` shows the slowest first")
 elif op == "flagged":
     p = reg.payload(proj)
-    print(f"{p['suspect']} tests land on a round timeout — "
+    print(f"{p['suspect']} tests land on a round timeout: "
           f"{p['recover_ms'] // 1000}s of the suite is waiting, not working"
           + (f" · {p['accepted']} accepted as the work, not listed" if p["accepted"] else ""))
     for t in p["tests"]:
@@ -3125,15 +3137,15 @@ elif op == "flagged":
             print(f"   {secs(t['ms']):>8}  {t['key']:<20} {t['name'][:56]}"
                   f"  [{t['suspect']}s]")
 elif op == "accept":
-    # `bb tests accept KEY "why"`: the wait is the work — a real boot, a
-    # timeout being proved — so it stops being flagged, with the reason kept
+    # `bb tests accept KEY "why"`: the wait is the work (a real boot, a
+    # timeout being proved) so it stops being flagged, with the reason kept
     # beside it. `--no` takes the mark off.
     if len(rest) < 2 or (rest[1] != "--no" and not rest[1].strip()):
         print("usage: bb tests accept <key> \"why the time is the work\"  |  bb tests accept <key> --no",
               file=sys.stderr); sys.exit(1)
     r = reg.accept(proj, rest[0], "" if rest[1] == "--no" else " ".join(rest[1:]))
     bail(r)
-    print(f"{rest[0]}: " + ("no longer accepted — flagged again if it sits on a round number"
+    print(f"{rest[0]}: " + ("no longer accepted; flagged again if it sits on a round number"
                             if rest[1] == "--no" else "accepted; it will not be flagged"))
 else:
     print(f"[builderbot] ERROR: unknown: bb tests {op}", file=sys.stderr)
@@ -3145,7 +3157,7 @@ TESTSPY
 }
 
 cmd_bug() {
-    # The bug tracker's CLI half — the side a session drives. Same shape as
+    # The bug tracker's CLI half: the side a session drives. Same shape as
     # cmd_todo: the project from the working directory (or BB_BUG_PROJECT for
     # callers that are not in one, like bb-tty), the module loaded from the
     # file beside this script so the checkout's copy is the one under test.
@@ -3155,7 +3167,7 @@ cmd_bug() {
     local proj="${BB_BUG_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" \
         python3 - "$py" "$proj" "$@" <<'PY'
@@ -3163,7 +3175,7 @@ cmd_bug() {
 # Which account this session belongs to, for the notebook's logs: "claude"
 # says a session wrote it, and with two people each running one that does not
 # say whose. Read from the users file the way `bb settings` reads the commit
-# identity — no configure, two fields.
+# identity: no configure, two fields.
 def _account_name(state_dir):
     uid = os.environ.get("BB_ACCOUNT_UID", "")
     try:
@@ -3194,8 +3206,8 @@ bugs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bugs)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
-# There were five, all still using a fixed <name>.tmp — the exact collision the
-# server's copy was changed away from — and statefile.py carries the file lock
+# There were five, all still using a fixed <name>.tmp (the exact collision the
+# server's copy was changed away from) and statefile.py carries the file lock
 # that stops this process and the dashboard losing each other's writes.
 _sfs = importlib.util.spec_from_file_location(
     "statefile", __import__("os").path.join(
@@ -3215,7 +3227,7 @@ bugs.configure(write_json=write_json, state=_state)
 
 # The roadmap's half of a notebook batch, and the coordinator over the two.
 # `bb bug begin` and `bb roadmap begin` are the same command reached from
-# either tab's name — one batch covers the notebook, so it would be a lie for
+# either tab's name: one batch covers the notebook, so it would be a lie for
 # the tracker to have a private one.
 _here = os.path.dirname(sys.argv[1])
 
@@ -3236,8 +3248,8 @@ proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
 rest = argv[1:]
 
-import ids  # noqa: E402 — bugs.py put its directory on sys.path
-import pending  # noqa: E402 — the approval queue (roadmap #27)
+import ids  # noqa: E402 (bugs.py put its directory on sys.path)
+import pending  # noqa: E402 (the approval queue, roadmap #27)
 
 
 def B(n):
@@ -3253,25 +3265,25 @@ def behind(n, verb, args, summary):
         return False
     if verb is None:
         print(f"[builderbot] ERROR: {B(n)} is still waiting for the operator's "
-              "approval — there is nothing to close or drop yet. `bb bug pending`",
+              "approval; there is nothing to close or drop yet. `bb bug pending`",
               file=sys.stderr)
         sys.exit(1)
     r = pending.hold(proj, "bugs", verb, args, summary, number=n, after=rec["id"])
     bail(r)
-    print(f"held behind {B(n)} — it lands with that report when the operator "
+    print(f"held behind {B(n)}: it lands with that report when the operator "
           "approves it, and goes if they deny it")
     return True
 
 
 def ident(word):
-    """The bug a verb names, with the letter checked first — `bb bug fix R12`
+    """The bug a verb names, with the letter checked first: `bb bug fix R12`
     stops here saying R12 is a roadmap item. See cmd_roadmap's twin."""
     n, err = ids.parse("bugs", word)
     if err:
         print(f"[builderbot] ERROR: {err}", file=sys.stderr)
         sys.exit(1)
     if n is None:
-        print(f"[builderbot] ERROR: not a bug number: {word!r} — they are "
+        print(f"[builderbot] ERROR: not a bug number: {word!r}; they are "
               "B1, B2, ...", file=sys.stderr)
         sys.exit(1)
     return n
@@ -3301,7 +3313,7 @@ def show(b):
           + (f" · {b['status']}: {b.get('status_note', '')}"
              if b.get("status") != "open" else ""))
     # The versions (roadmap #6): blank where the report predates the stamp
-    # or the tree had nothing honest to say — never a guess.
+    # or the tree had nothing honest to say, never a guess.
     if b.get("seen_in") or b.get("seen_on"):
         print(f"  {'seen in':>8}: {b.get('seen_in') or '?'}"
               + (f" · on image {b['seen_on']}" if b.get("seen_on") else ""))
@@ -3338,12 +3350,12 @@ if op in ("list", "ls"):
     # should not have to remember that its notes are unrecorded.
     _b = _nb.state(proj)
     if _b:
-        print(f"  [batch open — {_b['changes']} change"
+        print(f"  [batch open: {_b['changes']} change"
               f"{'' if _b['changes'] == 1 else 's'} unrecorded across this "
               "notebook; bb bug commit, or revert]")
     open_rows = [b for b in rows() if b.get("status") == "open"]
     if not open_rows:
-        print(f"no open bugs on {proj} — `bb bug all` includes the closed ones")
+        print(f"no open bugs on {proj}; `bb bug all` includes the closed ones")
     for b in open_rows:
         print(line(b))
 elif op == "all":
@@ -3352,11 +3364,11 @@ elif op == "all":
     for b in rows():
         print(line(b))
 elif op in ("begin", "commit", "revert"):
-    # The same batch `bb roadmap begin` opens — one over the whole notebook,
+    # The same batch `bb roadmap begin` opens: one over the whole notebook,
     # reached from whichever tab's name you happened to be thinking in.
     if op == "begin":
         bail(_nb.begin(proj))
-        print(f"batch open on {proj}'s notebook — the bug tracker and the "
+        print(f"batch open on {proj}'s notebook: the bug tracker and the "
               "roadmap both. Commit or revert it")
     elif op == "commit":
         r = _nb.commit(proj); bail(r)
@@ -3368,7 +3380,7 @@ elif op in ("begin", "commit", "revert"):
               f"{r['dropped']} change{'' if r['dropped'] == 1 else 's'} dropped")
 elif op in ("find", "search"):
     # Over the bugs themselves, not over the log. `history --find` searches
-    # what happened; this searches what is *on file* — the area and the repro
+    # what happened; this searches what is *on file*: the area and the repro
     # above all, which is how you find out whether the thing you just tripped
     # over is already known.
     if not rest:
@@ -3398,7 +3410,7 @@ elif op == "add":
     bail(r)
     if r.get("held"):
         h = r["held"]
-        print(f"held for approval as {B(h['number'])} — it lands in the tracker "
+        print(f"held for approval as {B(h['number'])}: it lands in the tracker "
               "when the operator approves it on the notebook. `bb bug pending` "
               "lists what is waiting; you are told on a later turn what they decided")
         sys.exit(0)
@@ -3406,7 +3418,7 @@ elif op == "add":
 elif op == "note":
     # The everyday update: what a session learned about a bug it did not fix.
     # Appended rather than replacing, because the last analysis is not made
-    # wrong by the next one — it is how the next one starts.
+    # wrong by the next one; it is how the next one starts.
     if len(rest) < 2:
         print("usage: bb bug note <n> \"what you learned\"", file=sys.stderr)
         sys.exit(1)
@@ -3415,7 +3427,7 @@ elif op == "note":
     stamp = time.strftime("%d %b", time.localtime())
     if b is None:
         # A note on a report that is itself waiting: held behind it, with
-        # the note stamped now — that is when it was learned.
+        # the note stamped now, because that is when it was learned.
         held_notes = (pending.held(proj, "bugs", n) or {}).get("args", {}).get("notes", "")
         body = (held_notes + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
         if behind(n, "edit", {"bug_id": n, "act": "noted", "notes": body},
@@ -3441,7 +3453,7 @@ elif op == "edit":
     bail(r)
     print(f"updated {k} on {B(n)}")
 elif op in ("rm", "remove"):
-    # For a report that should not exist — mis-filed, a duplicate, the wrong
+    # For a report that should not exist: mis-filed, a duplicate, the wrong
     # project. A bug that was real and is dealt with gets `fix` or `wontfix`,
     # which keeps it; this does not, and says why in the log.
     if not rest:
@@ -3450,7 +3462,7 @@ elif op in ("rm", "remove"):
         sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
     r = bugs.remove(proj, n, why=" ".join(rest[1:]), by="claude"); bail(r)
-    print(f"removed {B(n)} — closing keeps a bug, this does not")
+    print(f"removed {B(n)}; closing keeps a bug, this does not")
 elif op in ("fix", "wontfix", "na", "reopen"):
     if not rest:
         print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
@@ -3525,7 +3537,7 @@ PY
 
 # The Analysis tab's log, for a session. Its own subcommand rather than a flag,
 # because it answers a different question: not what the scanner says now, which
-# is what the report is for, but what it has stopped and started saying — a
+# is what the report is for, but what it has stopped and started saying: a
 # finding that is simply absent this week leaves no other trace at all.
 # ---- the phone, through the operator ---------------------------------------
 # A session does not reach the handset itself. It says what it wants and why,
@@ -3547,7 +3559,7 @@ cmd_phone() {
             # with a SyntaxError where the phone's model should have been.
             # The JSON arrives by environment, not by pipe: `python3 -` takes
             # its PROGRAM from stdin, so a heredoc and a pipe are competing for
-            # the same channel and the heredoc wins — which is how this came to
+            # the same channel and the heredoc wins, which is how this came to
             # be parsing an empty stdin as JSON.
             BB_PHONE_AUTH="$auth" python3 - <<'PY'
 import os, sys
@@ -3559,15 +3571,15 @@ if d.get("error"):
     sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
 rows = d.get("nodes") or []
 if not rows:
-    print("phone:   no node carries adb — a phone is driven from a node")
+    print("phone:   no node carries adb; a phone is driven from a node")
 for n in rows:
     p = n.get("phone")
     who = (n.get("owner") or {}).get("name")
     print("{:<16} {}".format(n.get("name", "?") + ":",
-          "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f" — connected by {who}" if who else "")
+          "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f", connected by {who}" if who else "")
           if p else ("not dialing in" if not n.get("live") else "no phone connected")))
 for a in d.get("asks") or []:
-    print("waiting: #{} {} — {} on {}".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
+    print("waiting: #{} {} ({} on {})".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
 PY
             ;;
         run)
@@ -3582,7 +3594,7 @@ PY
                 esac
             done
             [ -n "$why" ] || die "bb phone run needs --why \"what this is for\""
-            [ $# -gt 0 ] || die "nothing to run — put the adb arguments after --"
+            [ $# -gt 0 ] || die "nothing to run; put the adb arguments after --"
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 - "$@" <<'PY'
@@ -3600,7 +3612,7 @@ r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:
 if r.get("error"):
     print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
 rid = r["id"]
-print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}) — waiting up to 15 minutes "
+print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
       "for Allow on the dashboard's Phone tab", file=sys.stderr)
 # Polled rather than pushed: this is a shell command waiting on a person, and
 # a person is slow in a way no callback improves.
@@ -3623,8 +3635,8 @@ PY
 }
 
 # One command as root on the project's node (roadmap R38): the phone's
-# shape — reason and exact command in front of a person, Allow runs it on
-# the node, Deny says no — applied to root. Not sudo: there is no second
+# shape (reason and exact command in front of a person, Allow runs it on
+# the node, Deny says no) applied to root. Not sudo: there is no second
 # command without a second question, and nothing here pretends.
 cmd_root() {
     local sub="${1:-status}" why="" auth
@@ -3644,7 +3656,7 @@ asks = [a for a in (d.get("asks") or []) if a.get("kind") == "root"]
 if not asks:
     print("root:    nothing is waiting")
 for a in asks:
-    print("waiting: #{} {} — {} on {}: {}".format(a.get("id"), a.get("why"), a.get("project") or "a session",
+    print("waiting: #{} {} ({} on {}): {}".format(a.get("id"), a.get("why"), a.get("project") or "a session",
                                                  a.get("node_name"), " ".join(a.get("cmd") or [])))
 PY
             ;;
@@ -3657,7 +3669,7 @@ PY
                 esac
             done
             [ -n "$why" ] || die "bb root run needs --why \"what this is for\""
-            [ $# -gt 0 ] || die "nothing to run — put the command after --"
+            [ $# -gt 0 ] || die "nothing to run; put the command after --"
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 - "$@" <<'PY'
@@ -3672,7 +3684,7 @@ r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "c
 if r.get("error"):
     print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
 rid = r["id"]
-print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) — waiting up to 15 minutes "
+print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up to 15 minutes "
       "for Allow on the dashboard's Nodes tab or bell", file=sys.stderr)
 for _ in range(900):
     time.sleep(1)
@@ -3692,14 +3704,14 @@ PY
     esac
 }
 
-# bb devapp — this project's dev instance, and the one action a session may
+# bb devapp: this project's dev instance, and the one action a session may
 # be given over it.
 #
 # The dashboard's docker row is the operator's: Up, Down, Env, making one and
 # removing one are theirs, and a session is told to ask. REBUILD is the
 # exception a project can hand over, with the dial on that row, because a
 # project whose work IS the container has a loop that a session cannot close
-# otherwise — change it, rebuild it, look at what it did. Three settings and
+# otherwise: change it, rebuild it, look at what it did. Three settings and
 # `deny` is the default: `auto` is the loop, `ask` puts the reason in front
 # of a person and starts the build when they allow it, `deny` refuses with
 # the sentence that names the dial, so a session that tries learns where the
@@ -3726,7 +3738,7 @@ cmd_devapp() {
     proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     case "$sub" in
         status|state)
@@ -3756,7 +3768,7 @@ elif st.get("needs_build"):
 miss = st.get("missing_env") or []
 if miss:
     print(f"  {'env':<12} missing " + ", ".join(miss[:6])
-          + (" …" if len(miss) > 6 else "") + " — the operator fills these in (Env)")
+          + (" …" if len(miss) > 6 else "") + "; the operator fills these in (Env)")
 job = st.get("job") or {}
 if job.get("running"):
     print(f"  {'job':<12} {job.get('step') or 'working'}")
@@ -3791,8 +3803,8 @@ def look():
 
 
 # What it was built from before, because that is the only signal that says a
-# build HAPPENED. A job that succeeded is not news to the row — job_view
-# returns nothing for one — so "no job running" reads the same three seconds
+# build HAPPENED. A job that succeeded is not news to the row (job_view
+# returns nothing for one), so "no job running" reads the same three seconds
 # before it starts and the moment after it finishes, and taking either for
 # success is how this said "rebuilt" over a build that had not begun.
 was = (look().get("built_rev") or "")
@@ -3805,7 +3817,7 @@ if r.get("id") and not r.get("started"):
     # reason in front of them, and the wait is theirs. Allowing starts the
     # build, and from there this is the same poll as any other rebuild.
     rid = r["id"]
-    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) — waiting up "
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
           "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
     for _ in range(900):
         time.sleep(1)
@@ -3820,7 +3832,7 @@ if r.get("id") and not r.get("started"):
             break
     else:
         sys.exit("[builderbot] nobody answered within fifteen minutes")
-print("[builderbot] rebuilding — it runs on the node's daemon and takes minutes",
+print("[builderbot] rebuilding; it runs on the node's daemon and takes minutes",
       file=sys.stderr)
 # Polled rather than streamed: the job's log belongs to the row, and what a
 # session needs is the step while it waits and the verdict at the end. A
@@ -3854,9 +3866,9 @@ while waited < 3600:
                   "Env on the docker row", file=sys.stderr)
         raise SystemExit(0)
     if waited >= 21:
-        sys.exit("[builderbot] ERROR: no build appeared within twenty seconds — "
+        sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
                  "this project's row on the Docker tab has what happened")
-sys.exit("[builderbot] ERROR: the rebuild is still going after an hour — its row on the Docker tab has it")
+sys.exit("[builderbot] ERROR: the rebuild is still going after an hour; its row on the Docker tab has it")
 PY
             ;;
         test)
@@ -3908,7 +3920,7 @@ cmd_findings_history() {
     proj="${BB_FINDINGS_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, os, sys, time
@@ -3918,8 +3930,8 @@ fx = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fx)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
-# There were five, all still using a fixed <name>.tmp — the exact collision the
-# server's copy was changed away from — and statefile.py carries the file lock
+# There were five, all still using a fixed <name>.tmp (the exact collision the
+# server's copy was changed away from) and statefile.py carries the file lock
 # that stops this process and the dashboard losing each other's writes.
 _sfs = importlib.util.spec_from_file_location(
     "statefile", __import__("os").path.join(
@@ -3937,7 +3949,7 @@ fx.configure(write_json=write_json,
              state=os.environ.get("DASHBOARD_STATE", "/config"))
 proj, argv = sys.argv[2], sys.argv[3:]
 
-# The same three filters the other logs take, parsed the same way — a day
+# The same three filters the other logs take, parsed the same way: a day
 # count or a date, because both are things somebody types from memory.
 limit, since, find, i = 20, None, None, 0
 while i < len(argv):
@@ -3978,7 +3990,7 @@ for e in h:
 PY
 }
 
-# ago SECONDS — a duration in the shortest form that is still honest. Its own
+# ago SECONDS: a duration in the shortest form that is still honest. Its own
 # helper because two callers below want the same words: how old a report is,
 # and how far one has fallen behind its siblings.
 ago() {
@@ -3992,28 +4004,28 @@ ago() {
 
 # The node registry, read-only. Phase 1 of the controller design
 # (docs/nodes.md): the list exists and nothing else does yet, so this prints
-# what the dashboard's store knows and never writes it — the dashboard's boot
+# what the dashboard's store knows and never writes it; the dashboard's boot
 # owns seeding and migration, and a look at the list must not race it.
-# bb users — the dashboard's accounts, from a shell.
+# bb users: the dashboard's accounts, from a shell.
 #
 # This exists for the case the GUI cannot serve: the owner has forgotten the
 # password, or there are no accounts at all yet. Whoever can run this can
-# already read everything in the container, so it is not a privilege boundary
-# — it is the way back in, and every system needs one.
+# already read everything in the container, so it is not a privilege
+# boundary; it is the way back in, and every system needs one.
 #
 # Deliberately not a full editor. Roles and project lists belong on the Users
 # tab, where there is room to say what they mean.
 # The credential this bb speaks to the dashboard with, as a finished header.
 #
-# BB_TOKEN first: a Claude session is given one of those — scoped to its own
-# project, `user` rights, an expiry — instead of the operator's password,
+# BB_TOKEN first: a Claude session is given one of those (scoped to its own
+# project, `user` rights, an expiry) instead of the operator's password,
 # which is what it used to inherit (bug #16). DASHBOARD_AUTH is no longer a
-# container setting — the owner is made on the first-run screen — but it is
+# container setting (the owner is made on the first-run screen) but it is
 # still read here, so an operator in a plain `docker exec` shell can pass one
 # for a single command rather than being unable to reach the API at all. The
 # operator's
 # own shell, and a session no longer has it in its environment at all.
-# When a session token stops being good, as a unix time — or nothing for
+# When a session token stops being good, as a unix time, or nothing for
 # anything that is not one. The body is base64url of `project|exp|uid|sig`.
 bb_token_exp() {
     case "${1:-}" in bbs_*) ;; *) return 0 ;; esac
@@ -4032,7 +4044,7 @@ bb_token_dead() {
 # The session token to use now: the one in the environment unless it has
 # expired, and then the one bb-tty last wrote beside the launcher.
 #
-# A conversation outlives its token — twelve hours — and the environment of a
+# A conversation outlives its token (twelve hours) and the environment of a
 # process already running cannot be changed from outside it, so a long session
 # was left holding a token that no longer verified and every verb answered
 # "not signed in". bb-tty refreshes that file on every connection, so opening
@@ -4072,7 +4084,7 @@ bb_token_now() {
     # The later-expiring of the two. The file used to be read only once the
     # environment's token had died; now every answer from the controller
     # can renew it (users.renewal, kept by bbapi.keep_token), so the file is
-    # usually the NEWER one while the environment still verifies — and a
+    # usually the NEWER one while the environment still verifies, and a
     # session that keeps sending the older token would be renewed on every
     # call for nothing.
     if [ -n "$ft" ] && ! bb_token_dead "$ft"; then
@@ -4102,7 +4114,7 @@ bb_auth_or_die() {
     # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
     if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
         local e; e="$(bb_token_exp "$BB_TOKEN")"
-        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null) — they last 12 hours and a conversation can outlast one. Open this session's tab from the dashboard again and the next command works: that mints a fresh token and leaves it where bb looks."
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). They last 12 hours and a conversation can outlast one. Open this session's tab from the dashboard again and the next command works: that mints a fresh token and leaves it where bb looks."
     fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
@@ -4112,7 +4124,7 @@ bb_auth_or_die() {
             die "the dashboard is not running, and it is the controller: nodes dial \
 into its API, so builds, tests, CI and emulation all go through it. See bb logs."
         fi
-        die "no dashboard credential — a session started from the dashboard gets \
+        die "no dashboard credential: a session started from the dashboard gets \
 BB_TOKEN. From a plain docker exec there is none: run this from a dashboard \
 terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
     fi
@@ -4185,26 +4197,26 @@ PY
 # one side only was either refused on arrival or never sent.
 BB_RELAY_VERBS=" $(tr -s '[:space:]' ' ' < "$(dirname "$(readlink -f "$0")")/lib/relay-verbs") "
 
-# revalidate_tree — open the files a relayed verb may have written, so this
+# revalidate_tree: open the files a relayed verb may have written, so this
 # machine sees them.
 #
 # The projects share is NFS, and a relayed verb runs on the CONTROLLER: the
 # write lands on the server while this node keeps serving cached attributes
 # for the file until its attribute cache expires. git decides a file is
 # unchanged from (mtime, size), so inside that window `git status` says clean
-# and `git add -A` stages the OLD blob — with no error. It shipped: a01cbeb
+# and `git add -A` stages the OLD blob, with no error. It shipped: a01cbeb
 # committed this repo's CLAUDE.md at the previous compatibility window an hour
 # after the file had been rewritten and verified (B90).
 #
-# `git update-index --really-refresh` does NOT fix it — measured 6 times out
+# `git update-index --really-refresh` does NOT fix it: measured 6 times out
 # of 6, it re-stats and gets the same cached answer. Opening the file does:
 # NFS close-to-open consistency revalidates a file's attributes with the
 # server on open, which is the guarantee this leans on, and it cleared the
 # window 6 times out of 6.
 #
 # So: read them. It is the whole list of files any bb verb writes into a
-# project tree — its notes, its changelog and its version, at the root and one
-# level down for a component — and they are small enough that doing it after
+# project tree (its notes, its changelog and its version, at the root and one
+# level down for a component) and they are small enough that doing it after
 # every relayed verb costs nothing and forgets nothing.
 revalidate_tree() {
     local f
@@ -4275,7 +4287,7 @@ PY
     return $rc
 }
 
-# run_here ROLE [GLOB...] -- CMD... — `bb run` on the node the session is on:
+# run_here ROLE [GLOB...] -- CMD...: `bb run` on the node the session is on:
 # the command in this tree, and each output glob's matches into dist/.
 run_here() {
     local role="$1" outs=() g f
@@ -4283,7 +4295,7 @@ run_here() {
     while [ $# -gt 0 ]; do
         case "$1" in --) shift; break ;; *) outs+=("$1"); shift ;; esac
     done
-    log "$role: running here, on ${BB_NODE:-this node} — $*"
+    log "$role: running here, on ${BB_NODE:-this node}: $*"
     local code=0
     "$@" || code=$?
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
@@ -4302,22 +4314,22 @@ run_here() {
     return "$code"
 }
 
-# bb settings [--json] — this project's settings, as the dashboard has them:
+# bb settings [--json]: this project's settings, as the dashboard has them:
 # node, model, effort, the build and test commands, whether it is locked.
 # Read-only, and no verb writes any of it: those are the settings dialog's.
 # On a node it is relayed, and it is what bb-tty and bb build read there.
-# bb git VERB [ARGS...] — git's network half, run where the credential is.
+# bb git VERB [ARGS...]: git's network half, run where the credential is.
 #
 # Rule 2 of docs/nodes.md §20: PATs and deploy keys are set up on the
 # controller and nowhere else. A session on a node edits the same tree (the
 # projects share, mounted by both machines) but has no key and no token, so
-# its push, fetch, pull and ls-remote are relayed to the controller — the
+# its push, fetch, pull and ls-remote are relayed to the controller; the
 # dispatch below sends the verb whole, and the controller runs THIS function
 # in the same directory with the keys it already shields. Plain `git push`
 # on a node keeps failing, and bb doctor there says to use this.
 #
 # The arguments are held to a short list on purpose. git takes options that
-# run a program — --upload-pack, --receive-pack, -c core.sshCommand, -o —
+# run a program (--upload-pack, --receive-pack, -c core.sshCommand, -o)
 # and the process they would run in is the controller's, with its keys in
 # reach. So: refspecs and remote names by shape, and a handful of flags by
 # name; everything else is refused here, before git sees it, whichever side
@@ -4338,20 +4350,20 @@ print("push its branch:", p.get("push", "allow"))
 print("push to main:   ", p.get("main", "deny"))
 print("A local commit or merge is yours; what reaches the remote is what this governs.")'
             return 0 ;;
-        *) die "bb git takes push, fetch, pull, ls-remote or policy — plain git does everything else" ;;
+        *) die "bb git takes push, fetch, pull, ls-remote or policy; plain git does everything else" ;;
     esac
     for a in "$@"; do
         case "$a" in
             -u|--set-upstream|--tags|--follow-tags|--delete|-d|--dry-run|-n|--prune|-p|--all|\
             --force-with-lease|--ff-only|--rebase|--no-rebase|--heads|--porcelain|-v|--verbose|-q|--quiet) ;;
-            -*) die "bb git: '$a' is not accepted — only remote names, refspecs and a few plain flags reach the controller's git" ;;
+            -*) die "bb git: '$a' is not accepted; only remote names, refspecs and a few plain flags reach the controller's git" ;;
             ''|*[!A-Za-z0-9._/:+~^@-]*) die "bb git: '$a' is not a remote name or refspec" ;;
         esac
     done
     git "$verb" "$@"
 }
 
-# pw_node_path — where require("playwright") looks: the store's own module,
+# pw_node_path finds where require("playwright") looks: the store's own module,
 # installed beside the browsers by the playwright recipe, ahead of the
 # image's global one. One rule for both machines: a node has only the store's,
 # and the controller prefers it so the two drive the same browser revisions.
@@ -4371,7 +4383,7 @@ cmd_settings() {
         # --json from a shell with no project still answers: the commit
         # identity in it is the account's, and bb-tty asks for a shell too.
         proj="$(project_here 2>/dev/null)" || {
-            [ "$json" = 1 ] || die "not inside a project under ${WORKSPACE} — cd into one first"
+            [ "$json" = 1 ] || die "not inside a project under ${WORKSPACE}; cd into one first"
             proj=""
         }
     fi
@@ -4400,7 +4412,7 @@ _mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else 
 rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
 # What `bb test` runs here with nothing set. Never written to the file: the
 # record stays the operator's, and this is what an empty box means. From the
-# tree itself where the caller stands in one — the workspace is not in the
+# tree itself where the caller stands in one; the workspace is not in the
 # environment on every path a relayed verb takes, and the directory is.
 _root = os.environ.get("BB_PROJECT_ROOT") or os.path.join(
     os.environ.get("BB_WORKSPACE") or "/workspace", proj)
@@ -4417,7 +4429,7 @@ rec["project"] = proj
 # users.py, which wants the dashboard's configure(); the shape is two fields.
 def _identity(uid):
     """(name, email, found): found says the seat matched an account at all,
-    so a stale uid — a deleted account, an old tab — is not read as an
+    so a stale uid (a deleted account, an old tab) is not read as an
     account with no author and told to fill in a Profile it cannot open."""
     try:
         with open(os.path.join(state, "users.json")) as f:
@@ -4456,7 +4468,7 @@ for k in ("node", "model", "effort", "build", "test", "outputs", "policy", "lock
 PY
 }
 
-# bb work — who else is changing this project, and where you overlap.
+# bb work: who else is changing this project, and where you overlap.
 #
 # Two answers, and the first needs nothing to have been recorded: git knows
 # what every working tree on this project has uncommitted, and a file changed
@@ -4479,14 +4491,14 @@ o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
 o.configure(state=state, workspace=ws,
             write_json=lambda p, d: open(p, "w").write(json.dumps(d, indent=2)))
 # The account each worktree belongs to, so the answer names people rather than
-# ids. Missing users.json is not fatal — the ids are still an answer.
+# ids. Missing users.json is not fatal; the ids are still an answer.
 names = {}
 with contextlib.suppress(Exception), open(f"{state}/users.json") as f:
     names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
 wt = f"{ws}/.worktrees"
 trees = o.trees(proj, wt)
 if len(trees) < 2:
-    print(f"{proj}: one working tree — nobody else is in it")
+    print(f"{proj}: one working tree, and nobody else is in it")
 else:
     print(f"{proj}: {len(trees)} working trees")
     for label, path in trees.items():
@@ -4496,7 +4508,7 @@ hits = o.collisions(proj, wt, names)
 if hits:
     print("\nthe same file, open in more than one:")
     for h in hits:
-        print(f"  {h['file']}  —  {', '.join(h['trees'])}")
+        print(f"  {h['file']}  ({', '.join(h['trees'])})")
 elif len(trees) > 1:
     print("\nno file is open in two of them")
 notes = o.notes(proj)
@@ -4518,23 +4530,23 @@ cmd_users() {
         token)
             # A session token for one project, the kind bb-tty mints for a
             # session it starts: user rights over that project, an expiry.
-            # For the operator proving a node by hand — the node cannot
+            # For the operator proving a node by hand (the node cannot
             # mint one, and BB_TOKEN=… is how bb there reaches the
-            # controller — and for the test suite. Never written anywhere.
+            # controller) and for the test suite. Never written anywhere.
             #
             # --now prints the token bb would send from here, not a new one:
             # the environment's or the renewed one in the cache, whichever
-            # expires later (bb_token_now) — which is the question "why is
+            # expires later (bb_token_now), which is the question "why is
             # bb refusing" and "did the renewal land" both come down to.
             if [ "${1:-}" = "--now" ]; then
                 local now; now="$(bb_token_now)"
-                [ -n "$now" ] || die "no session token here — this is not a session bb-tty started"
+                [ -n "$now" ] || die "no session token here; this is not a session bb-tty started"
                 printf '%s\n' "$now"; return 0
             fi
             [ -n "${1:-}" ] || die "which project? bb users token PROJECT [ACCOUNT]"
             [ -d "$WORKSPACE/$1" ] || die "no project called $1 under $WORKSPACE"
-            # With an account name the token is FOR that account — what a
-            # node-bound terminal gets — and can fetch its Claude login.
+            # With an account name the token is FOR that account (what a
+            # node-bound terminal gets) and can fetch its Claude login.
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" "${2:-}" <<'PY'
 import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", sys.argv[1])
@@ -4593,7 +4605,7 @@ pw = os.environ.get("BB_USERS_PW", "")
 if sub == "list":
     rows = users.all_users()
     if not rows:
-        print("no accounts yet — open the dashboard and it will ask you to "
+        print("no accounts yet; open the dashboard and it will ask you to "
               "make the owner")
     for u in rows:
         seen = "never" if not u["seen"] else f"{(int(__import__('time').time()) - u['seen']) // 86400}d ago"
@@ -4608,7 +4620,7 @@ else:
     if "--role" in rest:
         role = rest[rest.index("--role") + 1]
     # No accounts at all means this is the first one, and the first one is the
-    # owner whatever was asked for — a store whose only account cannot
+    # owner whatever was asked for: a store whose only account cannot
     # administer it is a store nobody can use.
     if not users.all_users():
         with users._lock:
@@ -4640,21 +4652,21 @@ try:
     nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
     rows = nodes.node_list()
 except Exception as e:
-    print(f"no node store yet — the dashboard creates it on boot ({e})")
+    print(f"no node store yet; the dashboard creates it on boot ({e})")
     raise SystemExit(0) from None
-# Enrolled machines only. The controller's own record is registry plumbing —
-# it is how a share it mounts is recognized as a node's store — and never a
+# Enrolled machines only. The controller's own record is registry plumbing
+# (it is how a share it mounts is recognized as a node's store) and never a
 # machine anybody lists: it runs no work and takes no toolchains.
 rows = [n for n in rows if n["kind"] != "local"]
 if not rows:
-    print("no node is enrolled — the dashboard's Nodes tab mints a token for one")
+    print("no node is enrolled; the dashboard's Nodes tab mints a token for one")
     print("a project with no node can be read and edited here, and cannot be built")
     raise SystemExit(0)
 for n in rows:
     caps = ",".join(n["capabilities"]) or "-"
     ag = n.get("agent") or {}
     where = ag.get("addr") or "-"
-    # An agent node is live or quiet by whether it has dialed in lately —
+    # An agent node is live or quiet by whether it has dialed in lately:
     # derived, never stored, and the one column the row cannot lie about.
     state = n["state"]
     if n["kind"] == "agent" and state != "pending":
@@ -4669,11 +4681,11 @@ PY
 
 # The queue, read-only: the recent jobs and what became of them, and one
 # job's log. Same read-only opening of the store as `bb nodes`; a session
-# sees what ran and where, and stops nothing from here — Cancel is the tab's.
+# sees what ran and where, and stops nothing from here; Cancel is the tab's.
 #
 # THE LOG IS THE POINT OF `bb jobs ID`. A job's output is posted to the
 # controller and kept nowhere else, and a failed job with an exit code and
-# nothing to read is not something anybody can act on — an apply that came
+# nothing to read is not something anybody can act on: an apply that came
 # back "exit 1" with an empty pane cost an evening. The listing has never
 # been scoped to one project (it reads the store, not the API), and the log
 # is the same answer one level down: what a session may already see that a
@@ -4685,7 +4697,7 @@ cmd_jobs() {
         -h|--help) echo "bb jobs [-n N | ID]   the recent jobs, or one job's log"; return 0 ;;
         j_*) jid="$1" ;;
         "") : ;;
-        *) die "bb jobs [-n N | ID] — an id looks like j_1a2b3c4d" ;;
+        *) die "bb jobs [-n N | ID]: an id looks like j_1a2b3c4d" ;;
     esac
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
     [ -f "$py" ] || die "nodes.py is missing from this image"
@@ -4700,18 +4712,18 @@ try:
     rows = ([nodes.job(jid)] if jid else nodes.jobs_for(n=int(sys.argv[2])))
     names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
 except Exception as e:
-    print(f"no node store yet — the dashboard creates it on boot ({e})")
+    print(f"no node store yet; the dashboard creates it on boot ({e})")
     raise SystemExit(0) from None
 if jid and not rows[0]:
     print(f"no such job: {jid}")
     raise SystemExit(1)
 if not rows:
-    print("no jobs yet — a compose action, an exec on a node or an agent update makes one")
+    print("no jobs yet; a compose action, an exec on a node or an agent update makes one")
     raise SystemExit(0)
 for j in rows:
     s = j.get("spec") or {}
     # Named per type, the same names the Jobs tab uses. Anything not named
-    # here fell through to `exec` with an empty command — which is what a
+    # here fell through to `exec` with an empty command, which is what a
     # system job looked like on this list: a blank line and an exit code.
     what = (f'{s.get("action", "compose")} {j["project"]}'
             + (f'/{s["instance"]}' if s.get("instance") not in (None, "", "main") else "")
@@ -4731,7 +4743,7 @@ for j in rows:
     when = time.strftime("%d %b %H:%M", time.localtime(j["queued"]))
     took = (f' · {max(1, j["ended"] - j["started"])}s'
             if j.get("started") and j.get("ended") else "")
-    err = f' — {j["error"]}' if j.get("error") else ""
+    err = f': {j["error"]}' if j.get("error") else ""
     print(f'{j["id"]:>12}  {when}  {state:<22} {names.get(j["node"], j["node"] or "any"):<12} '
           f'{what}{took}{err}')
     if jid:
@@ -4740,7 +4752,7 @@ for j in rows:
         # whole thing is small.
         log = (j.get("log") or "")
         if not log.strip():
-            print("\n  (this job wrote nothing — not "
+            print("\n  (this job wrote nothing, and not "
                   + ("still running" if j["state"] in ("queued", "assigned", "running")
                      else "an empty pane waiting to fill") + ")")
         else:
@@ -4751,7 +4763,7 @@ for j in rows:
 PY
 }
 
-# bb run / build / test — a job on the project's node, watched from here.
+# bb run / build / test: a job on the project's node, watched from here.
 #
 # The tree is edited here and built there (docs/nodes.md §6): the dashboard
 # snapshots this project's working tree, dirty edits included, queues an exec
@@ -4783,7 +4795,7 @@ cmd_run() {
     # ON A NODE THE SESSION IS WHERE THE TOOLCHAIN IS (roadmap #24), so there
     # is nothing to snapshot and nowhere to send it: the command runs here,
     # in this tree, and what --out names is copied into dist/ the way a job's
-    # outputs would have come back. No job row — this is a build, and the
+    # outputs would have come back. No job row: this is a build, and the
     # queue is for work that has to travel.
     #
     # ...unless --node names ANOTHER machine. That used to be dropped here
@@ -4820,7 +4832,7 @@ r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node"
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
-print(f"[builderbot] {r['job']} queued on {names.get(r['node'], r['node'])} — "
+print(f"[builderbot] {r['job']} queued on {names.get(r['node'], r['node'])}: "
       f"snapshot {r['snapshot'][7:19]}, {r['files']} files", flush=True)
 shown = 0
 state = ""
@@ -4841,11 +4853,11 @@ arts = [o for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
 kept = [o for o in (j.get("outputs") or []) if o.get("kind") == "workspace"]
 line = f"[builderbot] {r['job']} {state}"
 if j.get("error"):
-    line += f" — {j['error']}"
+    line += f": {j['error']}"
 if arts:
-    line += " — into dist/: " + ", ".join(a["path"][5:] for a in arts)
+    line += ", into dist/: " + ", ".join(a["path"][5:] for a in arts)
 if kept:
-    line += f" — workspace kept on the node at {kept[0]['path']}"
+    line += f", workspace kept on the node at {kept[0]['path']}"
 print(line, flush=True)
 sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
 PY
@@ -4887,7 +4899,7 @@ for g in rec.get("outputs") or []:
     print(g)
 ')
     local cmd="${rec[0]:-}" from="${rec[1]:-none}" where="${rec[2]:-either}"
-    [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
+    [ -n "$cmd" ] || die "no $role command is set for $proj; the operator sets it in the project's settings dialog (Build and test)"
     # A test runs inside the project's dev instance when it has one that is
     # UP (roadmap R48): the container is the boundary. Otherwise on the node,
     # unless the project's Docker row says the tests are the container's
@@ -4919,7 +4931,7 @@ for g in rec.get("outputs") or []:
     cmd_run "${args[@]}" -- sh -c "$cmd \"\$@\"" "$role" "$@"
 }
 
-# bb ci-labels — the runner labels the registry knows (phase 7), for a
+# bb ci-labels: the runner labels the registry knows (phase 7), for a
 # workflow's runs-on: this container's own while it still runs one, plus
 # every node runner's, reported or asked for. --write regenerates
 # .github/actionlint.yaml from them, so the file is derived and not hand-kept.
@@ -4941,7 +4953,7 @@ PY
         } | awk 'NF && !seen[$0]++')
     if [ "$write" = 1 ]; then
         mkdir -p .github
-        { printf '# Labels the runners in BuilderBot'"'"'s registry carry — every node runner'"'"'s;\n'
+        { printf '# Labels the runners in BuilderBot'"'"'s registry carry: every node runner'"'"'s;\n'
           printf '# this container runs none. Generated by `bb ci-labels --write`; regenerate rather\n'
           printf '# than edit, so actionlint checks runs-on against what really exists.\n'
           printf 'self-hosted-runner:\n  labels:\n'
@@ -5055,7 +5067,7 @@ PY
 
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
-    # `bb findings history` reads the notebook's fourth log — what the scanner
+    # `bb findings history` reads the notebook's fourth log: what the scanner
     # has stopped and started saying here. Handed straight to the same helper
     # the other three use, so the filters are the ones already learned.
     if [ "${1:-}" = history ]; then
@@ -5102,11 +5114,11 @@ cmd_findings() {
     fi
 
     [ "${#files[@]}" -gt 0 ] \
-        || die "no .sarif files under ${target} — has the scanner run yet?"
+        || die "no .sarif files under ${target}; has the scanner run yet?"
 
     # When each report was written, and whether it is keeping up with the
-    # others. A scanner that dies leaves its PREVIOUS report in place — a host
-    # script worth having does not overwrite a good report with nothing — so a
+    # others. A scanner that dies leaves its PREVIOUS report in place (a host
+    # script worth having does not overwrite a good report with nothing) so a
     # dead scanner and a live one look identical here, and the findings in the
     # stale one describe a tree that may since have moved. That is not
     # hypothetical: a trivy that had been crashing for four days was still
@@ -5122,8 +5134,8 @@ cmd_findings() {
 
     # A day, and the size is the argument. One scan run writes every report
     # within minutes of itself, so anything measured in hours is the same run.
-    # Re-running ONE scanner by hand — the obvious thing to do after fixing
-    # one — leaves its siblings a few hours behind, and they must not vanish
+    # Re-running ONE scanner by hand, the obvious thing to do after fixing
+    # one, leaves its siblings a few hours behind, and they must not vanish
     # for it. A report left behind by a scanner that failed is behind by a
     # whole cycle, which for any cadence anybody runs is more than this.
     # Matches STALE_AFTER in the dashboard's server.py; the two answer the
@@ -5134,15 +5146,15 @@ cmd_findings() {
         m="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
         lag=$(( newest - m ))
         if [ "$lag" -ge "$stale_after" ]; then
-            # Named on the command line it is still read — one file makes
+            # Named on the command line it is still read: one file makes
             # itself the newest, so there is nothing to be behind. That is the
             # way to look at one deliberately.
-            printf '<!-- %s — LEFT OUT: %s behind the newest report, its scanner may have failed.\n' \
+            printf '<!-- %s (LEFT OUT): %s behind the newest report, its scanner may have failed.\n' \
                 "$f" "$(ago "$lag")"
             printf '     Read it anyway with: bb findings %s -->\n' "$f"
             continue
         fi
-        printf '<!-- %s — written %s ago -->\n' "$f" "$(ago $(( now - m )))"
+        printf '<!-- %s, written %s ago -->\n' "$f" "$(ago $(( now - m )))"
         jq -r --arg proj "$proj" --arg scope "$scope" --arg level "$lvl" \
             --arg rule "$rule" --arg find "$fnd" --arg relayed "${BB_RELAYED:-}" \
             "$FINDINGS_JQ" "$f" \
@@ -5156,10 +5168,10 @@ cmd_findings() {
 # workflows, compose files and XML are what every project in this container
 # carries regardless of language, and they are exactly the files whose failures
 # otherwise surface for the first time in a CI run. A project's own linters
-# (eslint, ruff configs, gradle checks) stay the project's business — they have
+# (eslint, ruff configs, gradle checks) stay the project's business; they have
 # their own configuration and this must not second-guess it.
 #
-# Each check is skipped, visibly, when its tool is missing — an image from
+# Each check is skipped, visibly, when its tool is missing: an image from
 # before these tools shipped should say so rather than pass by omission.
 cmd_lint() {
     local root="${1:-$PWD}" rc=0 skipped=0
@@ -5167,10 +5179,10 @@ cmd_lint() {
     cd "$root"
 
     section() { printf '== %s ==\n' "$1"; }
-    need() { # need TOOL — false (and say so) when it is not installed
+    need() { # need TOOL: false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
         if on_node; then
-            printf '  [skip] %s is not in this node'"'"'s store — the Tools tab installs lint-tools, with this node picked\n' "$1"
+            printf '  [skip] %s is not in this node'"'"'s store; the Tools tab installs lint-tools, with this node picked\n' "$1"
             return 1
         fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
@@ -5191,7 +5203,7 @@ cmd_lint() {
         fi
     }
 
-    # Shell scripts, by shebang — the same selection CI's lint workflow makes,
+    # Shell scripts, by shebang: the same selection CI's lint workflow makes,
     # so passing here means passing there.
     section "shell scripts (shellcheck)"
     if need shellcheck; then
@@ -5201,11 +5213,11 @@ cmd_lint() {
                 && shells+=("$f")
         done < <(files '*')
         # A script embedded in a QUOTED heredoc is a string to the shell and a
-        # string to shellcheck, so it was never checked at all — and one of
+        # string to shellcheck, so it was never checked at all, and one of
         # them is nodes/provision-linux.sh's bb-sandbox, ~280 lines installed to a
         # root-only path on another machine, where four bugs had been sitting.
-        # Extracted by the same rule the list above is built on — a shell
-        # shebang on its first line — so this stays a property of the content
+        # Extracted by the same rule the list above is built on (a shell
+        # shebang on its first line) so this stays a property of the content
         # rather than a list of names to keep up to date. A finding names the
         # extracted copy, whose filename carries the source and the tag.
         local tmpd=""
@@ -5336,18 +5348,18 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
             fi
             # A committed declaration is checked against the registry (phase
             # 7): a label no runner carries is the "Waiting for a runner"
-            # strand, said here. A note, not a failure — the registry is this
+            # strand, said here. A note, not a failure: the registry is this
             # box's and CI runs the same lint elsewhere.
             if [ -f .github/actionlint.yaml ]; then
                 local known declared missing=""
                 # Through the dispatch, not the function: on a node the
                 # registry is the controller's, and bb ci-labels is relayed
-                # there — called direct, it read an empty registry here and
+                # there. Called direct, it read an empty registry here and
                 # called every label unknown.
                 #
                 # And guarded: under set -e a failing substitution ends the
                 # whole lint with nothing said, which is what happened on a
-                # node whose session token had expired — the relay refused,
+                # node whose session token had expired: the relay refused,
                 # and lint stopped after actionlint with no verdict at all.
                 # A registry that cannot be read is a note, not a silent exit.
                 if known="$(bash "$0" ci-labels 2>/dev/null | tr '\n' ' ')"; then
@@ -5355,17 +5367,17 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
                     for l in $declared; do
                         case " $known " in *" $l "*) ;; *) missing="${missing:+$missing, }$l" ;; esac
                     done
-                    [ -z "$missing" ] || echo "  [note] actionlint.yaml declares labels no runner in the registry carries: ${missing} — bb ci-labels --write regenerates it"
+                    [ -z "$missing" ] || echo "  [note] actionlint.yaml declares labels no runner in the registry carries: ${missing}; bb ci-labels --write regenerates it"
                 else
                     echo "  [note] the runner registry could not be read (bb ci-labels failed), so runs-on labels were not checked against it"
                 fi
             fi
             # ...and the other half of the same failure (roadmap #19). A
-            # project's node governs BuilderBot's OWN queue — bb build, test,
+            # project's node governs BuilderBot's OWN queue: bb build, test,
             # run, emu, compose. GitHub Actions dispatch is GitHub's and reads
             # runs-on only, so nothing connects the two: with a runner on the
             # controller AND on a node, `runs-on: [self-hosted, builderbot]`
-            # matches both and GitHub picks whichever is idle — which can be
+            # matches both and GitHub picks whichever is idle, which can be
             # the machine without the toolchain, silently. The node's own name
             # is already a label on its runner, so pinning is one word. This
             # can only ever be advice: the workflow file is the repo's and
@@ -5403,7 +5415,7 @@ if label:
               f"do{'' if len(loose) > 1 else 'es'} not pin it "
               f"({', '.join(loose[:6])}{', …' if len(loose) > 6 else ''})")
         print(f"         their runs-on matches every BuilderBot runner, so GitHub sends the")
-        print(f"         job to whichever is idle — which may be a machine without the")
+        print(f"         job to whichever is idle, which may be a machine without the")
         print(f"         toolchain. To land on this project's node:")
         print(f"           runs-on: [self-hosted, {label}]")
 PY
@@ -5421,7 +5433,7 @@ PY
         echo "  none found"
     elif need docker; then
         for cf in "${composes[@]}"; do
-            # Validation only — no daemon involved. An .env.example stands in
+            # Validation only, with no daemon involved. An .env.example stands in
             # for the gitignored .env so required variables interpolate.
             local -a envarg=()
             [ -f .env ] || { [ -f .env.example ] && envarg=(--env-file .env.example); }
@@ -5441,7 +5453,7 @@ PY
         echo "  none found"
     else
         for x in "${xmls[@]}"; do
-            # One line on failure, not a traceback — the line and column are
+            # One line on failure, not a traceback: the line and column are
             # the useful part.
             if python3 -c "
 import sys, xml.dom.minidom, xml.parsers.expat
@@ -5565,16 +5577,16 @@ SETTINGS
 # This repo IS the container's source, and the thing every session trips over
 # first is that editing a file here changes nothing until an image is built
 # and the container updated. These commands shorten that loop where it can be
-# shortened — the dashboard is one Python file and one HTML file, nothing to
-# compile — and say plainly what is and is not live where it cannot.
+# shortened (the dashboard is one Python file and one HTML file, nothing to
+# compile) and say plainly what is and is not live where it cannot.
 
 # The dashboard server process, by PID. Anchored on the script path so a
-# shell whose command line merely mentions the dashboard is never matched —
+# shell whose command line merely mentions the dashboard is never matched:
 # an unanchored pkill here once killed the real dashboard and, another time,
 # the very shell that ran it.
 dashboard_pid() {
     # The flags matter: 15-dashboard.sh starts it as `python3 -u .../server.py`,
-    # and a pattern anchored straight from python3 to the path matched nothing —
+    # and a pattern anchored straight from python3 to the path matched nothing,
     # so `bb dashboard dev` said "the dashboard is not running" while it was
     # serving the page you were reading. Anything between python3 and the path
     # is allowed, and the path still has to end at dashboard/server.py.
@@ -5582,7 +5594,7 @@ dashboard_pid() {
 }
 
 # The directory the running dashboard was started from, read off its command
-# line — so "which copy is live" is a fact, not a guess from a marker file.
+# line, so "which copy is live" is a fact, not a guess from a marker file.
 dashboard_dir() {
     local pid; pid="$(dashboard_pid)" || true
     [ -n "$pid" ] || return 1
@@ -5611,14 +5623,14 @@ cmd_dashboard() {
             [ -f "$dir/server.py" ] && [ -f "$dir/index.html" ] \
                 || die "$dir does not hold a dashboard (server.py + index.html)"
             pid="$(dashboard_pid)" || true
-            [ -n "$pid" ] || die "the dashboard is not running — nothing to swap. It \
+            [ -n "$pid" ] || die "the dashboard is not running, so there is nothing to swap. It \
 is not running; see bb logs."
             env_pid="$pid"
             if [ "$(dashboard_dir)" = "$dir" ]; then
                 log "dashboard: already serving from $dir"; return 0
             fi
-            # Same environment the running one has — port, terminal port,
-            # credential — read from the process, never printed. Only the
+            # Same environment the running one has (port, terminal port,
+            # credential), read from the process, never printed. Only the
             # script changes.
             local envs=()
             while IFS= read -r -d '' kv; do
@@ -5637,7 +5649,7 @@ is not running; see bb logs."
                 | "$(dirname "$(readlink -f "$0")")/lib/log-split.sh" \
                     "$(bb_log_dir)/dashboard.log" dashboard &
             sleep 1
-            [ -n "$(dashboard_pid)" ] || die "the new dashboard did not stay up — see $(bb_log_dir)/dashboard.log"
+            [ -n "$(dashboard_pid)" ] || die "the new dashboard did not stay up; see $(bb_log_dir)/dashboard.log"
             log "dashboard: now serving from $dir (pid $(dashboard_pid))"
             log "this lasts until the container restarts; 'bb dashboard dev --off' puts the image's copy back"
             ;;
@@ -5646,14 +5658,14 @@ is not running; see bb logs."
             if [ "$d" = /opt/builderbot/scripts/dashboard ]; then
                 echo "dashboard: serving the image's copy ($d)"
             else
-                echo "dashboard: serving a DEV copy from $d — 'bb dashboard dev --off' reverts"
+                echo "dashboard: serving a DEV copy from $d; 'bb dashboard dev --off' reverts"
             fi
             ;;
         *) die "usage: bb dashboard test|dev|status" ;;
     esac
 }
 
-# bb drift — what this checkout has changed that the running container is
+# bb drift: what this checkout has changed that the running container is
 # not serving. Compares the image's /opt/builderbot/scripts and the shipped
 # templates against the repo's, file by file. Answers the question every
 # session asks itself after editing anything here.
@@ -5675,7 +5687,7 @@ cmd_drift() {
     if [ "$n" = 0 ]; then
         echo "no drift: the running container is serving what this checkout holds"
     else
-        echo "$n file(s) differ — the running container is NOT serving these; a change is live"
+        echo "$n file(s) differ: the running container is NOT serving these; a change is live"
         echo "only after CI builds a new image and the container updates (or 'bb dashboard dev' for the dashboard)"
     fi
     if d="$(dashboard_dir 2>/dev/null)" && [ "$d" != /opt/builderbot/scripts/dashboard ]; then
@@ -5687,8 +5699,8 @@ cmd_drift() {
 # PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honors), then
 # the toolchain store directly, then the historical /opt path. Resolved rather than
 # hardcoded because the browsers moved out of the image: the /opt entry is a
-# symlink the startup hook makes, and a hook that could not make it — /opt is
-# root-owned — used to leave every screenshot command dead with the bytes
+# symlink the startup hook makes, and a hook that could not make it (/opt is
+# root-owned) used to leave every screenshot command dead with the bytes
 # sitting right there on the share.
 find_chromium() {
     local base exe
@@ -5701,14 +5713,14 @@ find_chromium() {
         # machine's: the image installs them (playwright install-deps), a
         # node gets them from the provisioner. Without them Chromium dies
         # at launch behind a Playwright stack that says "browser has been
-        # closed" — measured on bb-sandbox, libatk-1.0.so.0 — so the missing
+        # closed" (measured on bb-sandbox, libatk-1.0.so.0) so the missing
         # ones are named here, before the launch.
         local missing
         missing="$(ldd "$exe" 2>/dev/null | awk '/not found/{print $1}' | head -5 | tr '\n' ' ')"
         if [ -n "$missing" ]; then
             if on_node; then
                 die "Chromium is in the store but ${BB_NODE:-this node} lacks its system libraries (${missing% }).
-   Re-run nodes/provision-linux.sh on it — the session half installs them."
+   Re-run nodes/provision-linux.sh on it; the session half installs them."
             fi
             die "Chromium is in the store but this image lacks its system libraries (${missing% })"
         fi
@@ -5717,13 +5729,13 @@ find_chromium() {
     die "no Playwright chromium found; install the browsers with: bb toolchains install playwright"
 }
 
-# bb shot — headless screenshots, for showing the operator visual state from
+# bb shot: headless screenshots, for showing the operator visual state from
 # a box with no display. Playwright's Chromium from the image.
 #
 # One URL keeps the old shape (bb shot URL [FILE]). Several URLs share one
 # browser and land in a directory, each named from its path (/ -> index.png).
 # --full and --scale exist because README screenshots need the whole page at
-# 2x — capabilities MediaReducer's tools/screenshots grew privately before
+# 2x, and capabilities MediaReducer's tools/screenshots grew privately before
 # this subsumed them; --resize is the downscale that keeps those PNGs
 # repo-sized, done by the same Chromium rather than by imagemagick, which is
 # not on a node (B103); --wait absorbs pages whose async fetches settle after
@@ -5731,7 +5743,7 @@ find_chromium() {
 # page. The intended split: a project's own script boots its app into a
 # photogenic state, then ends with one bb shot line.
 cmd_shot() {
-    # The operator's password, or a session's token — whichever this shell
+    # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
     local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0
     local full=0 resize="" out="" mode=file urls=()
@@ -5790,7 +5802,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
   const b = await chromium.launch({ executablePath: exe });
   // Either shape of credential. A session holds a bearer token rather than a
   // password now (bug #16), and splitting on ":" produced no credential at
-  // all for one — so a session photographing a dashboard page would have got
+  // all for one, so a session photographing a dashboard page would have got
   // the LOGIN page and no error, which is the worst way for this to fail.
   const bearer = /^bbs_/.test(auth);
   const [username, password] = !bearer && auth.includes(":")
@@ -5822,7 +5834,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
     });
   }
   // ...and a real sign-in, for the cookie. A header added by routing does not
-  // reach a WEBSOCKET handshake — Playwright does not intercept those — and
+  // reach a WEBSOCKET handshake (Playwright does not intercept those) and
   // the terminal is a websocket on the dashboard's own origin now, so a
   // shot of a page with a terminal in it came out holding ttyd's reconnect
   // prompt. A cookie goes on the handshake like any other request.
@@ -5838,7 +5850,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
   }
   // The downscale, in the browser that took the shot. It used to be
   // imagemagick's `convert`, which is in the controller's image and on no
-  // node (B103) — so the one flag a README script needs died on the machine
+  // node (B103), so the one flag a README script needs died on the machine
   // sessions actually run on. Chromium resamples as well as convert does and
   // is already here, by definition: nothing that can take a screenshot lacks
   // it. On a blank page of its own, because a data: image is exactly what a
@@ -5874,7 +5886,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
     if (+wait) await p.waitForTimeout(+wait);
     let out = dest;
     if (mode === "dir") {
-      // Named from the path so reruns overwrite their own shots — with a
+      // Named from the path so reruns overwrite their own shots, with a
       // counter only for two URLs that share a path (e.g. differing query).
       const u = new URL(url);
       // No leading dash or dot: "/?view=x" would otherwise slug to
@@ -5900,13 +5912,13 @@ EOF
     printf '%s\n' "$files"
 }
 
-# bb favicon — one SVG mark in, the favicon set a web app actually needs out:
+# bb favicon: one SVG mark in, the favicon set a web app actually needs out:
 # favicon.ico carrying every small size in one file (the bare /favicon.ico
 # request browsers make on their own has no way to ask for a particular one),
 # apple-touch-icon.png at 180 for iOS home screens, and the SVG copied
 # alongside for browsers that prefer vector.
 #
-# Rasterized by Playwright's Chromium, packed by ImageMagick — that split
+# Rasterized by Playwright's Chromium, packed by ImageMagick: that split
 # because the image's ImageMagick writes ICO but carries no SVG delegate,
 # and Chromium renders any SVG exactly the way a browser tab will show it.
 # The mark itself stays the project's own; this is only the packaging every
@@ -5965,7 +5977,7 @@ EOF
     else
         cp "$tmp/180.png" "$out/apple-touch-icon.png"
     fi
-    # Copied unless it already IS the output — regenerating in place is the
+    # Copied unless it already IS the output; regenerating in place is the
     # normal workflow and cp would fail on the self-copy.
     [ "$(readlink -f "$svg")" = "$(readlink -f "$out/favicon.svg")" ] \
         || cp "$svg" "$out/favicon.svg"
@@ -6045,7 +6057,7 @@ IDPY
     #
     # Anthropic's is asked on a NODE and not here: this container carries no
     # Claude Code and calls that API for nothing (R47), so on a controller it
-    # was a green tick about a thing that never happens — and the machine
+    # was a green tick about a thing that never happens, and the machine
     # whose reachability actually decides whether a session works was not
     # being asked at all. GitHub's stays on both: the controller pushes.
     if on_node; then
@@ -6054,7 +6066,7 @@ IDPY
     check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
     # ...and the question this box exists to answer: can a session run at all?
     # A Claude session runs on a node and nowhere else now, so a controller
-    # with no node able to take one can start nothing — which is worth saying
+    # with no node able to take one can start nothing, which is worth saying
     # here rather than leaving somebody to find it when a button refuses.
     if ! on_node; then
         DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - \
@@ -6086,7 +6098,7 @@ NODEPY
     fi
     # The daemon the dashboard's dev instances are built and run on: the
     # sandbox VM a node record names. This used to report only a mounted socket,
-    # as "docker socket not mounted" — true, and misleading, because it reads
+    # as "docker socket not mounted": true, and misleading, because it reads
     # as "no docker here" on a box with a working daemon one variable away.
     #
     # The probe is devapp.available(), the same call the Artifacts tab makes on
@@ -6108,12 +6120,12 @@ NODEPY
         *)    printf '  [skip] docker daemon: could not be probed\n' ;;
     esac
     # The GPU is a NODE's concern (roadmap #24, 10c): a controller renders
-    # nothing — no emulator, no X server — so on one the card is not checked
+    # nothing (no emulator, no X server) so on one the card is not checked
     # and not missed. The block below runs in the node role, where the
     # emulator does, and on this image that is a container enrolled as a node.
     if on_node; then
     # nvidia-smi is injected by the container runtime, never installed in the
-    # image — its absence means no GPU was passed through.
+    # image, and its absence means no GPU was passed through.
     if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
         printf '  [ok]   nvidia gpu: %s\n' \
             "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
@@ -6173,8 +6185,8 @@ NODEPY
     # https not authenticated", which is a claim about pushing and this is not
     # a test of pushing: a project with its own token in /config/gitcreds
     # pushes over https perfectly well with gh logged out, and this repo does
-    # exactly that. What gh being logged out actually costs is the API — no
-    # `gh pr create`, no `gh release create` — and reporting that as broken git
+    # exactly that. What gh being logged out actually costs is the API: no
+    # `gh pr create`, no `gh release create`, and reporting that as broken git
     # sends somebody to fix a credential that is already working.
     # Nothing here signs gh in, so it being signed out is the ordinary state
     # and not a line: a skip nobody can act on is noise on every deploy.
@@ -6217,7 +6229,7 @@ NODEPY
     if [ -n "$ssh_src" ]; then
         # A successful GitHub ssh auth still exits nonzero (no shell access),
         # so judge by the greeting instead of the exit code. On failure report
-        # what ssh actually said — host-key verification, a refused key and an
+        # what ssh actually said: host-key verification, a refused key and an
         # unreachable agent all look identical otherwise.
         local ssh_out ssh_why
         ssh_out="$(ssh -T -o BatchMode=yes -o ConnectTimeout=10 git@github.com 2>&1 || true)"
@@ -6242,7 +6254,7 @@ NODEPY
     fi
     # The login, on the machine that holds one. This used to pass on the mere
     # EXISTENCE of ~/.claude, which since R47 is where the controller keeps
-    # its record of which Anthropic account an account is bound to — so a
+    # its record of which Anthropic account an account is bound to, so a
     # container carrying no Claude Code at all reported "Claude Code
     # credentials present in /home/builder", which was three kinds of wrong.
     # The credential is one file, and it lives on a node.
@@ -6269,9 +6281,9 @@ sys.stdout.write(f" ({e})" if e else "")' 2>/dev/null)"
 }
 
 # Bare `bb` prints what it can do. It used to run `status`, which is the same
-# wall of tool versions `bb status` gives you — an answer to a question nobody
+# wall of tool versions `bb status` gives you: an answer to a question nobody
 # typing `bb` on its own was asking.
-# bb version — this project's version identity, in whatever form is asking.
+# bb version: this project's version identity, in whatever form is asking.
 #
 # The shell half is deliberately thin: everything that decides what a version
 # IS lives in dashboard/version.py, because the notebook needs the same answers
@@ -6285,7 +6297,7 @@ cmd_version() {
     proj="${BB_VERSION_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
@@ -6296,8 +6308,8 @@ version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
-# There were five, all still using a fixed <name>.tmp — the exact collision the
-# server's copy was changed away from — and statefile.py carries the file lock
+# There were five, all still using a fixed <name>.tmp (the exact collision the
+# server's copy was changed away from) and statefile.py carries the file lock
 # that stops this process and the dashboard losing each other's writes.
 _sfs = importlib.util.spec_from_file_location(
     "statefile", __import__("os").path.join(
@@ -6355,10 +6367,10 @@ def policy_line():
     # `start` delegates no PART and still delegates something: the first
     # version. Said plainly, or a session reads "the operator only" and does
     # not try the one thing it may do.
-    return (f"{pol}" + (f" — a session may move {', '.join(allowed)}"
+    return (f"{pol}" + (f": a session may move {', '.join(allowed)}"
                         if allowed else
-                        " — a session may give it its first version, and move nothing after"
-                        if pol == "start" else " — the operator only"))
+                        ": a session may give it its first version, and move nothing after"
+                        if pol == "start" else ": the operator only"))
 
 
 if argv and argv[0] == "bump":
@@ -6381,7 +6393,7 @@ if argv and argv[0] == "unbump":
     if r.get("error"):
         fail(r["error"])
     print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
-          f"(returned, committed {r['commit']}, not pushed) — its changelog "
+          f"(returned, committed {r['commit']}, not pushed); its changelog "
           "section is back in Unreleased")
     raise SystemExit(0)
 
@@ -6412,7 +6424,7 @@ if argv and argv[0] == "--list":
         print(f"  {label:<28} {rv['forms']['semver'] or '(none)'}")
     if len(rows) == 1:
         print("\n  one version for the whole repo. A directory with its own "
-              "VERSION\n  file becomes a component with its own — see "
+              "VERSION\n  file becomes a component with its own; see "
               "`bb version --for DIR`.")
     raise SystemExit(0)
 
@@ -6458,8 +6470,8 @@ else:
 # happened. Said in the summary, because a session reading this is exactly
 # who needs to know which of the two has occurred.
 print(("  released as       " if v["released"] else "  building towards  ") + (
-    v["target"] or ("(VERSION is there but unreadable — see above)"
-                    if v.get("error") else "(no VERSION file — add one to opt in)")))
+    v["target"] or ("(VERSION is there but unreadable; see above)"
+                    if v.get("error") else "(no VERSION file; add one to opt in)")))
 if v["released"]:
     print(f"  tag               {v['tag']}  (on this commit)")
 elif v["target"]:
@@ -6479,7 +6491,7 @@ running = os.environ.get("BB_VERSION", "").strip()
 if own and running:
     print(f"  running here      {running}")
     if forms["semver"] and running != forms["semver"]:
-        print("                    differs from this checkout — the box serves"
+        print("                    differs from this checkout; the box serves"
               " whatever image it last pulled")
 
 print(f"  who may bump      {policy_line()}")
@@ -6505,7 +6517,7 @@ if other:
 PY
 }
 
-# bb changelog — the user-facing record beside VERSION, per project or
+# bb changelog: the user-facing record beside VERSION, per project or
 # component. A session logs what changed for the person using the product;
 # the next bump dates the accumulated lines. Writing goes through `add` so
 # the shape stays uniform; reading is just the file.
@@ -6516,7 +6528,7 @@ cmd_changelog() {
     proj="${BB_VERSION_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
-            || die "not inside a project under ${WORKSPACE} — cd into one first"
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
@@ -6527,8 +6539,8 @@ version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version)
 
 # The atomic write, from the module beside it rather than a copy per heredoc.
-# There were five, all still using a fixed <name>.tmp — the exact collision the
-# server's copy was changed away from — and statefile.py carries the file lock
+# There were five, all still using a fixed <name>.tmp (the exact collision the
+# server's copy was changed away from) and statefile.py carries the file lock
 # that stops this process and the dashboard losing each other's writes.
 _sfs = importlib.util.spec_from_file_location(
     "statefile", __import__("os").path.join(
@@ -6597,7 +6609,7 @@ if argv and argv[0] == "add":
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
     n = len(changelog.unreleased(d))
-    print(f"logged{' (new ' + changelog.FILE + ')' if r.get('created') else ''} — "
+    print(f"logged{' (new ' + changelog.FILE + ')' if r.get('created') else ''}: "
           f"{n} unreleased entr{'y' if n == 1 else 'ies'} now waiting for a bump")
     # ...and that the file is now modified. An entry is stamped with the commit
     # it describes, so it is written AFTER that commit and lands in the next
@@ -6648,7 +6660,7 @@ if argv and argv[0] == "merge":
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
-    print(f"merged into one entry — {r['entries']} unreleased now")
+    print(f"merged into one entry; {r['entries']} unreleased now")
     raise SystemExit(0)
 
 if argv and argv[0] == "split":
@@ -6659,7 +6671,7 @@ if argv and argv[0] == "split":
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
-    print(f"split into one entry per commit — {r['entries']} unreleased now. "
+    print(f"split into one entry per commit; {r['entries']} unreleased now. "
           f"Reword them, or drop the one that stopped being true.")
     raise SystemExit(0)
 
@@ -6671,7 +6683,7 @@ if argv and argv[0] == "rm":
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)
-    print(f"dropped it — {r['entries']} unreleased now")
+    print(f"dropped it; {r['entries']} unreleased now")
     raise SystemExit(0)
 
 if argv:
@@ -6692,7 +6704,7 @@ if argv:
 
 text = changelog.read(d)
 if text is None:
-    print(f"no {changelog.FILE} here yet — the first "
+    print(f"no {changelog.FILE} here yet; the first "
           f"`bb changelog add` creates it")
     raise SystemExit(0)
 print(text, end="")
@@ -6726,7 +6738,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         "tests run"|"tests last"|"tests lab"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
-            # does not carry — `bb bug` printed the controller's answer and
+            # does not carry: `bb bug` printed the controller's answer and
             # then died with "bugs.py is missing from this image".
             case "$BB_RELAY_VERBS" in
                 # The controller's answer IS this command's answer. It used to

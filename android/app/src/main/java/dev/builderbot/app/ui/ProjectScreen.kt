@@ -1,13 +1,13 @@
-// One project: the notebook's views the app can act on — the roadmap, the
+// One project: the notebook's views the app can act on (the roadmap, the
 // bugs, the briefing's rules and memories, the artifacts, and the
-// repository's state — as sections down one screen with the actions a person
+// repository's state) as sections down one screen with the actions a person
 // takes from a phone: add an item, file a bug, close one, hand a step or a
 // report to the session that is running, read what is waiting.
 //
 // Sending is the one that changes what a phone is FOR. The rest is reading
 // and filing, which can wait for a desk; a step handed over is work starting
-// while you are somewhere else. It is offered only where it can land — a
-// session has to be open on the project — because a button that quietly does
+// while you are somewhere else. It is offered only where it can land (a
+// session has to be open on the project) because a button that quietly does
 // nothing is worse than one that is not there.
 //
 // The terminals stay the browser's.
@@ -88,10 +88,10 @@ fun ProjectScreen(store: Store, name: String) {
 // What a send actually did, in the words the panel uses. `sent` is the whole
 // question: the server marks a step as gone only when the line landed in the
 // pane, so a false here means the session was busy with a dialog and the step
-// is still waiting — which is exactly the case worth not lying about.
+// is still waiting, which is exactly the case worth not lying about.
 private fun sent(r: Result<org.json.JSONObject>): String {
     val v = r.getOrElse { return it.message ?: "it did not go" }
-    return if (v.bool("sent")) "sent to Claude" else "not sent — the session did not take it"
+    return if (v.bool("sent")) "sent to Claude" else "not sent: the session did not take it"
 }
 
 @Composable
@@ -202,7 +202,7 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
     val (rl, _) = load("rules-$project") { api.rules(project) }
     // The two halves of the dashboard's Briefing tab, in the same order: what
     // the operator holds a session to, then what a session noticed. Both are
-    // read here — a rule is the operator's to write and a memory is the
+    // read here: a rule is the operator's to write and a memory is the
     // session's, so neither is a thing to type on a phone.
     val (mm, _r2) = load("mem-$project") { api.memory(project) }
     val rules = rl.value?.arr("rules") ?: emptyList()
@@ -268,11 +268,11 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
 
 // ---- what this project's sessions run as -----------------------------------
 // The two the dashboard's settings dialog carries and a phone can usefully
-// set: the model and the effort. Permissions are NOT here — Claude Code's own
+// set: the model and the effort. Permissions are NOT here. Claude Code's own
 // app is where a session's are changed, which is the operator's own finding
 // and a better place for it than a second control saying something similar.
-// Both are read WHEN A SESSION STARTS — bb-tty writes them into
-// the settings file it launches Claude Code with — so changing one while a
+// Both are read WHEN A SESSION STARTS (bb-tty writes them into
+// the settings file it launches Claude Code with), so changing one while a
 // session is open does nothing to that session until a new one starts. That
 // is what the chip is: it ENDS the open session, the same gesture the dialog
 // offers, and the Claude button starts one on the new setting, resuming the
@@ -281,7 +281,7 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
 // Chips rather than dropdowns: every one of these lists is short, a chip row
 // shows the current value without a tap, and it is the idiom already on this
 // screen. The node, the build and test commands and the notebook gates stay
-// the browser's — they are not decisions anybody makes from a phone.
+// the browser's. They are not decisions anybody makes from a phone.
 @Composable
 private fun Settings(api: dev.builderbot.app.Api, project: String) {
     val scope = rememberCoroutineScope()
@@ -317,7 +317,7 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                            label = { Text("end the session now") })
                 Dim(if (restart)
                         "press Claude to start it again, resuming the conversation; anything it is in the middle of is lost"
-                    else "saved for the next session — the one running keeps what it started with")
+                    else "saved for the next session; the one running keeps what it started with")
             } else {
                 Dim("no session is open, so this takes effect when one starts")
             }
@@ -336,8 +336,8 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                             val why = r.str("error")
                             if (why.isNotBlank()) why
                             else if (!live || !restart) "saved"
-                            else if (r.bool("ended")) "saved, and the session ended — press Claude to start it again"
-                            else ("saved, but the session was not ended — " +
+                            else if (r.bool("ended")) "saved, and the session ended: press Claude to start it again"
+                            else ("saved, but the session was not ended: " +
                                   r.str("why").ifBlank { "it is still on what it started with" })
                         } catch (e: Exception) { e.message ?: "it did not save" }
                         saving = false

@@ -46,7 +46,7 @@ def configure(*, run, write_json, state):
 #
 # Adding a toolchain is an entry there and nothing else, as long as it fits one
 # of the five kinds sdk_install dispatches on (tarball, script, git, command,
-# sdkmanager) — plus a version resolver in sdkmeta.py when upstream publishes
+# sdkmanager), plus a version resolver in sdkmeta.py when upstream publishes
 # its releases in a shape none of the existing ones read. Node.js was exactly
 # that: one catalog row, one resolver, no install code.
 #
@@ -81,7 +81,7 @@ def load_toolchains():
         # ...and the platforms it works on, when the catalog says. A list of
         # "<os>/<arch>", `*` allowed in the arch position. Projected here
         # like the four above rather than taken whole, so a field the page
-        # does not render cannot arrive through this — and checked, because
+        # does not render cannot arrive through this, and checked, because
         # a malformed one would otherwise refuse every install silently.
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
@@ -133,7 +133,7 @@ CATALOG_DIGEST = hashlib.sha256(
     json.dumps(TOOLCHAINS, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 # What the last check found, kept on the state volume. Held only in memory
-# until now, which meant a dashboard restart — or a container update — wiped
+# until now, which meant a dashboard restart (or a container update) wiped
 # every version the tab had been told, and the rows for things that are not
 # installed went back to saying nothing at all. The answers are a network
 # round trip each and they do not go stale quickly; the tab says how old they
@@ -187,9 +187,9 @@ def load_versions():
 # at once would fight over the same sdkmanager lock.
 _tc_lock = threading.Lock()
 # What `bb toolchains check` last reported: {name: {installed, latest, status}}.
-# Filled only when asked — every probe in it reaches the network, so doing it
-# on the fifteen-second poll would be a background service nobody requested —
-# and reloaded from disk at startup, so what it found outlives this process.
+# Filled only when asked: every probe in it reaches the network, so doing it
+# on the fifteen-second poll would be a background service nobody requested.
+# Reloaded from disk at startup, so what it found outlives this process.
 # ...and what it last weighed on disk, which is the honest answer to "how big
 # is this" for a toolchain that has been installed here before, better than any
 # number typed into a file, and better than the download, which for Swift is a
@@ -207,7 +207,7 @@ _sdk_root_cache = []
 
 # The bb that ships with this server.py: /opt/builderbot/scripts/bb in the
 # image, the checkout's copy under `bb dashboard dev`. Same relative position
-# either way, and it keeps the pair in step — a page offering a subcommand
+# either way, and it keeps the pair in step: a page offering a subcommand
 # the bb beside it does not have would be a button that cannot work.
 # BB_BIN exists for the test harness, which points it at a stub: the suite
 # must be able to drive install and remove without downloading gigabytes.
@@ -229,7 +229,7 @@ def _tc_cands(probe):
         cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()
-        # The share first, then the home volume — anything installed before a
+        # The share first, then the home volume: anything installed before a
         # share was mapped lives there, and calling it uninstalled while 8GB
         # of it sits on disk is how this went wrong once already.
         home = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".sdk"
@@ -246,9 +246,9 @@ def _tc_paths(probe):
     the share, and the whole point of the card is showing where a thing
     actually landed.
 
-    Usually one. A system-image flavor is the exception — it can be installed
+    Usually one. A system-image flavor is the exception: it can be installed
     at several API levels at once, all of them real directories and all of
-    them its footprint — which is why this returns a list and the size adds
+    them its footprint, which is why this returns a list and the size adds
     them up."""
     out = []
     for p in _tc_cands(probe):
@@ -276,8 +276,8 @@ def _tc_path(probe):
 # installed. Re-read when that set does.
 #
 # ON DISK as well as in memory, since it is what made the Toolchains tab slow to
-# open after every container restart: the answer had not changed — the same
-# toolchains on the same share — and the tab paid four seconds to hear it
+# open after every container restart: the answer had not changed (the same
+# toolchains on the same share) and the tab paid four seconds to hear it
 # again. The key is what makes that safe rather than stale. It is the set of
 # (toolchain, path), so anything installed or removed changes it, PLUS the
 # catalog's own digest, so editing config/toolchains.json changes it too: a
@@ -309,7 +309,7 @@ def local_versions():
 
 # Measured sizes in KB, {name: kb}. The catalog's "~3 GB" is a download
 # estimate written by hand; once something is on disk there is a real number,
-# and it is not the estimate — a toolchain grows after installation (a pub
+# and it is not the estimate: a toolchain grows after installation (a pub
 # cache, a .NET workload, an NDK unpacked bigger than it shipped).
 #
 # du walks the tree to get it, which is instant on a warm share and seconds on
@@ -394,7 +394,7 @@ def payload():
     for p in TOOLCHAINS:
         path = _tc_path(p["probe"])
         # The directory is there but the file that completes the toolchain is
-        # not (layout.needs): not installed, so Install is offered — the
+        # not (layout.needs): not installed, so Install is offered; the
         # recipe fills the directory in rather than starting over.
         need = (p.get("layout") or {}).get("needs")
         if path and need and not os.path.exists(os.path.join(path, need)):
@@ -424,7 +424,7 @@ def payload():
             # three. Said as a download, so it does not read as one.
             about = dl.startswith("~")
             size = ("~" if about else "") + human_kb(int(dl.lstrip("~")) // 1024) + " download"
-            origin = ("an approximation — a git clone has no size to ask for"
+            origin = ("an approximation: a git clone has no size to ask for"
                       if about else "the size of the download, from upstream")
         else:
             origin = ""
@@ -462,7 +462,7 @@ def payload():
 
 def is_mount(path):
     """Whether the toolchain store root is a mapped share rather than a directory on the
-    home volume — the difference between "kept outside the image" and "kept
+    home volume: the difference between "kept outside the image" and "kept
     alongside everything else"."""
     if not path:
         return False
@@ -482,7 +482,7 @@ _PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
 # The decimal matters: on "100.0%" a bare \d{1,3} match lands on the 0 after
 # the point and reports nought percent for a finished download.
 def _job_tail(out, keep=16):
-    """The useful end of a command's output — the frames dropped."""
+    """The useful end of a command's output, with the frames dropped."""
     lines = [ln.strip() for ln in out.splitlines()]
     return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
 
@@ -565,10 +565,10 @@ def _tc_worker():
         # rather than tearing the directory out from under it.
         #
         # Nothing is read out of the output while it runs. Every recipe meters
-        # differently and several mislead by accident — one fraction across a
+        # differently and several mislead by accident (one fraction across a
         # whole operation, a count that parks for minutes, five files metered
         # from zero apiece, the word "download" sitting inside the noun
-        # "installer" — and a row reporting any of it faithfully still read as
+        # "installer"), and a row reporting any of it faithfully still read as
         # broken. The row says what it is doing and animates. The output is
         # looked at only when the thing fails, which is the only time anybody
         # wanted it.
@@ -581,8 +581,8 @@ def _tc_worker():
                     if len(f) >= 4 and f[3] != "local":
                         row = {"installed": f[1], "latest": f[2], "status": f[3]}
                         # The download, when the catalog names a URL that is
-                        # the payload. It is not the footprint — a gigabyte of
-                        # Swift unpacks to three — so it is only ever used for
+                        # the payload. It is not the footprint (a gigabyte of
+                        # Swift unpacks to three), so it is only ever used for
                         # a toolchain this box has never had.
                         # A leading tilde is the catalog saying this one is
                         # an approximation rather than a measurement, and it
@@ -629,7 +629,7 @@ def abort_job():
     The queue is emptied so nothing further starts, and the child is asked to
     stop: bb removes the half-installed directory on its way out, which is the
     same cleanup a failed install gets, because a killed install and a failed
-    one leave exactly the same mess. Everything already installed stays — the
+    one leave exactly the same mess. Everything already installed stays: the
     abort is for the rest of the queue, not for undoing what worked.
     """
     with _tc_lock:
@@ -756,11 +756,11 @@ def payload_for_node(nid):
             # Nothing did, on a node: done and failed were hardcoded empty
             # and the row vanished the moment the job ended, so every tick
             # survived and the next press re-sent toolchains that had already
-            # landed — "installing 2" with one left to do.
+            # landed: "installing 2" with one left to do.
             #
             # Both lists come from the census rather than from the job's log:
             # what is in the store now is the only thing actually true, and
-            # it is self-correcting — a job that half-worked reports exactly
+            # it is self-correcting: a job that half-worked reports exactly
             # the toolchains that did land as done, whatever its exit code was.
             for j in nodes.jobs_for(node_id=nid, type="toolchain", n=1):
                 if j.get("state") not in ("succeeded", "failed", "canceled"):
@@ -799,7 +799,7 @@ def _store_share(n):
     nothing: /var/lib/builderbot/toolchains is every node's default and is a
     different disk on each.
 
-    The store's own id first (nodes.store_id — a marker file inside it),
+    The store's own id first (nodes.store_id, a marker file inside it),
     because it is the only answer that survives the transport differing. On
     this box the toolchain store is reached through Unraid's FUSE layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by the sandbox
@@ -808,7 +808,7 @@ def _store_share(n):
     arbitration never engaged for it.
 
     The mount source stays as the fallback, for a node whose store has no
-    marker yet — a read-only share is the case that has to keep working.
+    marker yet: a read-only share is the case that has to keep working.
     """
     rep = n.get("reported") or {}
     store = (rep.get("stores") or {}).get("toolchains") or {}
@@ -898,7 +898,7 @@ def layout_for_node():
 def node_has(n):
     """The toolchain names already in this node's toolchain store, by the
     directories bb toolchains puts them in. Empty when the node has not reported
-    its store — which is not evidence of absence, so a caller must treat it
+    its store, which is not evidence of absence, so a caller must treat it
     as "unknown" rather than "nothing"."""
     rep = n.get("reported") or {}
     top = set(((rep.get("store_dirs") or {}).get("top")) or [])
@@ -914,7 +914,7 @@ def node_has(n):
         elif probe == "android-tools":
             # A directory called cmdline-tools is not sdkmanager. On the
             # operator's node it held nothing but a symlink pointing at a
-            # directory a failed install had removed — so this said installed,
+            # directory a failed install had removed, so this said installed,
             # the requirement was never pulled in, and the android:* package
             # that needed it died on "no sdkmanager". The census answers from
             # the binaries, so it corroborates; where a node has reported no
@@ -939,7 +939,7 @@ def with_requires(names, have):
     catalog says it now, and the requirement is pulled in rather than
     discovered.
 
-    Requirements already in the store are left out — this adds what is
+    Requirements already in the store are left out: this adds what is
     missing, ahead of what needs it, and never re-installs. Returns
     (ordered names, what was added).
     """
@@ -969,7 +969,7 @@ def platform_of(n):
 
 def supports(tc, plat):
     """Whether this recipe works on that platform. Absent list means the
-    historical truth — this catalog only ever served linux/amd64."""
+    historical truth: this catalog only ever served linux/amd64."""
     want = tc.get("platforms") or ["linux/amd64"]
     if not plat:
         return True                     # a node that has not said is not judged
@@ -1025,7 +1025,7 @@ def store_busy(nid):
 
 def node_job(principal, nid, action, names):
     """Queue the toolchain job. Refused, with numbers, when the store cannot
-    hold what is asked — measured here the last time it was installed, so a
+    hold what is asked, measured here the last time it was installed, so a
     toolchain this controller never had is not gated, and the log says so."""
     if not nodes:
         return {"error": "no node store"}
@@ -1033,7 +1033,7 @@ def node_job(principal, nid, action, names):
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
-        return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
+        return {"error": f"{n['name']} runs no agent; toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}
     added = []
     if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
@@ -1047,7 +1047,7 @@ def node_job(principal, nid, action, names):
         names, added = ordered, [x for x in ordered if x not in names]
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
-        # of hundred megabytes and fail on exec — or install and fail later.
+        # of hundred megabytes and fail on exec, or install and fail later.
         # Refused by name instead. arm64 Linux needs no new agent to reach
         # this, which is why it is a live wrong answer rather than a future
         # one (roadmap #18).
@@ -1062,14 +1062,14 @@ def node_job(principal, nid, action, names):
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
             return {"error": f"{n['name']}'s toolchain store has {human_kb(free * 1024)} free "
-                             f"and this needs about {human_kb(int(need_kb * 1.2))} — "
+                             f"and this needs about {human_kb(int(need_kb * 1.2))}: "
                              "point the store somewhere bigger first"}
     busy = store_busy(nid)
     if busy:
         return {"error": busy}
     # Two architectures on one store used to be refused here, because a flat
-    # store could not hold both. It is scoped by platform now — each machine
-    # installs under <store>/<os>-<arch> (roadmap R19) — so a Mac and a Linux
+    # store could not hold both. It is scoped by platform now: each machine
+    # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
                       {"action": action, "names": names, "timeout": 3600})
@@ -1143,7 +1143,7 @@ def start_job(action, names, auto=False):
         _tc_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
                         aborting=False,
-                        # Fixed in phase 1 — toolchains install here — and a
+                        # Fixed in phase 1 (toolchains install here) and a
                         # seam on purpose: phase 6 makes this a job placed on
                         # any node's toolchain store, and this call site is
                         # where the node picker's answer lands.
@@ -1158,10 +1158,10 @@ def start_job(action, names, auto=False):
 # minutes, so this is a slow background errand rather than anything the poll
 # does: eight seconds of it, a while after boot so that a container coming up
 # is not doing this alongside everything else it does at start. It steps aside
-# for anything the operator started — a check that queued itself behind an
-# install would hold the tab hostage — and tries again later.
+# for anything the operator started and tries again later: a check that
+# queued itself behind an install would hold the tab hostage.
 # Weekly. It was daily, and a check is one network round trip per toolchain to
-# somebody else's servers — for answers that move on a release cadence, not a
+# somebody else's servers, for answers that move on a release cadence, not a
 # daily one. The manual button is what a person presses when they actually
 # want to know now.
 TC_CHECK_EVERY = 7 * 86400
@@ -1176,7 +1176,7 @@ def versions_loop():
     time.sleep(TC_CHECK_DELAY)
     # From when the last check actually happened, not from zero. A container
     # restart used to mean a full round of upstream requests three minutes
-    # later, so an afternoon of image updates was an afternoon of checking —
+    # later, so an afternoon of image updates was an afternoon of checking,
     # for answers that had not moved. The timestamp is on the state volume and
     # outlives the container, which is the whole reason it is written there.
     #

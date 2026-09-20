@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Report on the mounted projects, and put each one's commit identity into its
-# repo config — the project's own setting (prefs.py), so a session commits as
-# the person that project belongs to and a repo without one says so at the
-# first commit rather than committing as nobody.
+# repo config. That identity is the project's own setting (prefs.py), so a
+# session commits as the person that project belongs to and a repo without one
+# says so at the first commit rather than committing as nobody.
 #
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
@@ -14,7 +14,7 @@ for dir in "$WORKSPACE"/*/; do
     name="$(basename "$dir")"
     [ "$name" = "_work" ] && continue
     # Same rule the dashboard applies: a directory holding .bbignore is not a
-    # project. Two places, one meaning — a log that disagreed with the card
+    # project. Two places, one meaning: a log that disagreed with the card
     # would be worse than either.
     [ -e "${dir}.bbignore" ] && continue
 

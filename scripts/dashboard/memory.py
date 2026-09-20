@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Everything behind the dashboard's memory book — what Claude remembers here.
+"""Everything behind the dashboard's memory book: what Claude remembers here.
 
 Claude Code keeps per-project memories in `~/.claude/projects/<slug>/memory/`:
 one markdown file per fact, plus MEMORY.md, an index of one line each that is
 loaded into every session started in that project. The index is not a summary
-of the files — it is the only part always in context, and the files are read
-only when recall reaches for one — which is why it is edited here as a field
+of the files: it is the only part always in context, and the files are read
+only when recall reaches for one. That is why it is edited here as a field
 on the memory it names rather than as a document of its own. Claude writes
-them; nobody reads them. That is the gap this exists to close — CLAUDE.md goes through a
+them; nobody reads them. That is the gap this exists to close: CLAUDE.md goes through a
 pull request and a transcript is on screen, but a memory accumulates silently
 and steers every later session, so a wrong one is both permanent and invisible.
 
@@ -76,7 +76,7 @@ def _by_whom():
 
 _log_lock = threading.Lock()
 
-# What the dashboard did to a project's memories, kept — the one half of the
+# What the dashboard did to a project's memories, kept: the one half of the
 # memory story that can be logged here at all. Claude writes its memories
 # through its own tooling, straight to the files; those changes have no event
 # to record, only mtimes. So this log answers "what did the notebook change,
@@ -138,7 +138,7 @@ def history(project, limit=None, since=None, find=None):
 
 
 # The index Claude loads at the start of every session in the project. Not a
-# memory itself — it is the table of contents — which is why it cannot be
+# memory itself (it is the table of contents), which is why it cannot be
 # deleted here and why deleting a memory has to edit it.
 INDEX = "MEMORY.md"
 
@@ -154,8 +154,8 @@ MAX_FILES = 200
 
 
 def memory_dir(project, home=None):
-    """Where a project's memories live for one account — its home's
-    .claude/projects, the box's own when no home is named — or None if
+    """Where a project's memories live for one account (its home's
+    .claude/projects, or the box's own when no home is named), or None if
     that is not a project.
 
     The name is checked against /workspace rather than joined onto it. This is
@@ -189,14 +189,14 @@ WIKI_RE = re.compile(r"\[\[([^\]\n]+)\]\]")
 INDEX_RE = re.compile(r"^\s*[-*]\s*\[(?P<title>[^\]]*)\]\((?P<file>[^)\s]+)\)"
                       r"\s*(?:[—–-]|:)?\s*(?P<hook>.*?)\s*$")
 
-# What a memory's `type` is allowed to be — the four Claude Code documents.
+# What a memory's `type` is allowed to be: the four Claude Code documents.
 # A select rather than a text field on the page, and checked again here.
 TYPES = ("user", "feedback", "project", "reference")
 
 # A new memory's file name, which is also its `name:` field. The same shape
 # Claude uses: lowercase words joined by single dashes. This is the one string
 # the browser sends that becomes a file that did not exist before, so it is
-# matched whole rather than sanitized — a name that is not this is refused,
+# matched whole rather than sanitized: a name that is not this is refused,
 # not repaired into something the operator did not type.
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_SLUG = 60
@@ -205,8 +205,8 @@ MAX_SLUG = 60
 def _index_rows(text):
     """MEMORY.md as rows: index lines parsed, everything else kept verbatim.
 
-    Anything that is not a line pointing at a `.md` file — a heading someone
-    added, a blank line — comes back as raw and is written out untouched. The
+    Anything that is not a line pointing at a `.md` file (a heading someone
+    added, a blank line) comes back as raw and is written out untouched. The
     index is defined as one line per memory, but nothing enforces that, and
     losing a line the operator typed is a worse bug than carrying it.
     """
@@ -226,7 +226,7 @@ def _line(file, title, hook):
     """One index line, from the two fields the panel edits.
 
     The brackets and the parenthesis are the syntax, so they cannot survive
-    inside a title that is going between them — a title carrying a `]` would
+    inside a title that is going between them: a title carrying a `]` would
     write a line that reads back as a different one, or as none.
     """
     title = re.sub(r"[\[\]()]", "", (title or "").replace("\n", " ")).strip()
@@ -239,7 +239,7 @@ def _front(text):
 
     Four keys of a YAML subset, parsed by hand: the dashboard is stdlib-only,
     and a `key: value` reader is not worth being the first dependency in it.
-    Anything unrecognized is simply not summarized — the raw file is right
+    Anything unrecognized is simply not summarized: the raw file is right
     there in the editor, and this only fills in the row above it.
     """
     out = {}
@@ -254,7 +254,7 @@ def _front(text):
             continue
         key, val = m.group(1), m.group(2)
         # `type` is nested under `metadata:`, and the nesting is the only
-        # thing distinguishing it — so take it wherever it appears rather than
+        # thing distinguishing it, so take it wherever it appears rather than
         # tracking indentation for one field.
         if key in ("name", "description", "type") and val:
             out.setdefault(key, val.strip("'\""))
@@ -264,8 +264,8 @@ def _front(text):
 def _rev(text):
     """A memory's revision: a short digest of the bytes that were loaded.
 
-    The file is the unit here — a memory is one document somebody types into,
-    not a row of fields — so there is no per-field revision to keep and
+    The file is the unit here (a memory is one document somebody types into,
+    not a row of fields), so there is no per-field revision to keep and
     nothing to count. The digest is what the editor carries back at Save, and
     a mismatch means the file moved underneath it (roadmap #26).
 
@@ -299,7 +299,7 @@ def _read(p):
 
 def census(project, home=None):
     """How many memories this project has, and a stamp that moves when any of
-    them does — one walk of the directory for both.
+    them does; one walk of the directory for both.
 
     The count is for the row's book icon, and is a number rather than a
     boolean because the number is the whole reason to open the book: two is a
@@ -337,7 +337,7 @@ def census(project, home=None):
 
 
 def count(project):
-    """How many memories this project has — for the row's book icon."""
+    """How many memories this project has, for the row's book icon."""
     return census(project)["count"]
 
 
@@ -361,7 +361,7 @@ def payload(project, live=(), home=None):
             memories.append(m)
     memories.sort(key=lambda m: -m["when"])
 
-    # The index is not a separate document to edit — it is one line belonging
+    # The index is not a separate document to edit: it is one line belonging
     # to each memory, so it is served on the memory it belongs to. A memory
     # with no line gets empty fields, which is the same thing the page shows
     # for one whose line says nothing.
@@ -379,16 +379,16 @@ def payload(project, live=(), home=None):
     # to surface it.
     listed, present = set(byfile), {m["file"] for m in memories}
     issues = [{"level": "warning",
-               "text": f"the index points at {h}, which is not here — "
+               "text": f"the index points at {h}, which is not here; "
                        "saving takes the line out"}
               for h in sorted(listed - present)]
     issues += [{"level": "warning",
-                "text": f"{f} is not in the index — Claude sees it only when "
+                "text": f"{f} is not in the index: Claude sees it only when "
                         "recall surfaces it, not at the start of every session"}
                for f in sorted(present - listed)]
     # The third kind (roadmap #4): a [[name]] inside a memory naming no
-    # memory here. The instructions allow one that is not written yet — it
-    # marks something worth writing — but the same shape is what a rename
+    # memory here. The instructions allow one that is not written yet (it
+    # marks something worth writing), but the same shape is what a rename
     # leaves behind, and it has bitten once: sole-operator.md pointed at a
     # memory that had been renamed under it, and nothing said so. Named by
     # file and by link, so the fix is one edit rather than a search.
@@ -398,7 +398,7 @@ def payload(project, live=(), home=None):
             if slug and slug not in names:
                 issues.append({"level": "warning",
                                "text": f"{m['file']} links to [[{slug}]], which names "
-                                       "no memory here — one still to write, or one "
+                                       "no memory here: one still to write, or one "
                                        "that was renamed"})
     if len(found) > MAX_FILES:
         issues.append({"level": "warning",
@@ -408,7 +408,7 @@ def payload(project, live=(), home=None):
     return {"project": project, "dir": str(d),
             "memories": memories, "issues": issues, "types": list(TYPES),
             # The index is regenerated from the lines the memories carry, so
-            # it is one more document with one more revision — a stale client
+            # it is one more document with one more revision: a stale client
             # rewriting it drops the line another writer just added, which is
             # the third of the three exposures roadmap #26 names.
             "index_rev": _rev(index),
@@ -426,7 +426,7 @@ def _target(d, file):
 
     Every name has to already be in the directory, which is what makes it
     safe: it came from the listing. The index is deliberately not reachable
-    this way — it has one writer, save_index, below.
+    this way: it has one writer, save_index, below.
     """
     if not file or "/" in file or file == INDEX or not file.endswith(".md"):
         return None
@@ -454,7 +454,7 @@ def _conflict(p, rev, what):
     """Refuse a write whose base is no longer what is on disk (roadmap #26).
 
     Answers with the file as it now stands, so whoever asked can show both
-    and choose — a refusal that only says no leaves the words that were typed
+    and choose. A refusal that only says no leaves the words that were typed
     with nowhere to go, which is worse than the overwrite it prevented.
 
     No `by`: a memory is a file, and the writer that most often moves one is
@@ -504,7 +504,7 @@ def save_index(project, entries, rev=None, home=None):
     """Rewrite MEMORY.md from the one line each memory carries.
 
     The index is regenerated rather than edited as text, so it cannot end up
-    describing memories that are not there — but it is regenerated *in place*:
+    describing memories that are not there, but it is regenerated *in place*:
     a memory already listed keeps its position, because the order is the only
     thing in the file nobody can reconstruct, and the operator may well have
     put the important one at the top. New memories land at the end.
@@ -569,7 +569,7 @@ def create(project, name, title, hook, mtype, body, home=None):
 
     Both halves or neither: a file with no index line is invisible until
     recall happens to surface it, which is the failure mode the panel warns
-    about — it should not be the thing the panel's own button produces.
+    about, and it should not be the thing the panel's own button produces.
     """
     d = memory_dir(project, home)
     if d is None:
@@ -582,7 +582,7 @@ def create(project, name, title, hook, mtype, body, home=None):
         return {"error": f"a memory is one of: {', '.join(TYPES)}"}
     hook = (hook or "").replace("\n", " ").strip()
     if not hook:
-        return {"error": "a memory needs a one-line description — it is what "
+        return {"error": "a memory needs a one-line description: it is what "
                          "recall matches against"}
     body = (body or "").strip()
     if not body:
@@ -623,7 +623,7 @@ def _unindex(d, file):
     """Drop the index line pointing at a file that is going away.
 
     Deleting the file alone would leave every future session loading a pointer
-    to nothing — which reads to Claude as a memory that exists and cannot be
+    to nothing, which reads to Claude as a memory that exists and cannot be
     found, the most confusing of the available outcomes.
     """
     p = d / INDEX
@@ -645,8 +645,8 @@ def delete(project, file, home=None):
         return {"error": f"not a project: {project}"}
     if file == INDEX:
         # Removing it loses the pointer to every memory at once, which is
-        # never what one bin icon should mean. It is not offered — there is no
-        # row for it any more — so this is the belt to that braces.
+        # never what one bin icon should mean. It is not offered (there is no
+        # row for it any more), so this is the belt to that braces.
         return {"error": "the index is not a memory"}
     p = _target(d, file)
     if p is None:

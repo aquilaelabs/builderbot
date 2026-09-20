@@ -23,9 +23,9 @@ mkdir -p "$ROOT" 2>/dev/null || true
 [ -d "$ROOT" ] || exit 0
 
 # Not $ROOT/env.sh: the toolchain store root is a share the sandbox mounts too, at its
-# own path, and every line generated here is absolute — so a copy in the
+# own path, and every line generated here is absolute, so a copy in the
 # store is wrong for whichever machine did not write it last. Container-local
-# instead; sdk.sh's sdk_env_file() is the same answer, one generator — and
+# instead; sdk.sh's sdk_env_file() is the same answer, one generator, and
 # it lives in sdk.sh, which common.sh does not pull in, so both are sourced
 # (B82: the hook exited 127 on 'command not found' and the file was never
 # written).
@@ -51,7 +51,7 @@ MARK='# builderbot:sdk-env'
 if [ -f "$BASHRC" ]; then
     if grep -qF "$MARK" "$BASHRC"; then
         awk -v mark="$MARK" -v f="$ENV_FILE" '
-            # The line after the marker is ours to replace — but only if it
+            # The line after the marker is ours to replace, but only if it
             # looks like ours, so a hand edit under the marker is kept rather
             # than silently eaten.
             skip { skip = 0; if (index($0, "env.sh")) next }

@@ -33,7 +33,7 @@
         </activity>
 
         <!-- The watch: a foreground service that polls the dashboard and
-             posts what the bell would show — a session asking for the phone
+             posts what the bell would show: a session asking for the phone
              or for root, with Approve and Deny on the notification itself. -->
         <service
             android:name=".WatchService"

@@ -3,7 +3,7 @@
 # Put back the terminal sessions the last shutdown saved.
 #
 # A terminal in the dashboard is a tmux session, and tmux dies with the
-# container — so without this, restarting means every terminal you had open is
+# container, so without this, restarting means every terminal you had open is
 # gone, including the ones you had minimized out of the tab strip. The shutdown
 # writes each session's directory and the last screenful of its scrollback; this
 # recreates the session there and prints that scrollback back into it before the
@@ -11,7 +11,7 @@
 #
 # What comes back is the terminal, not what was running in it. A build that was
 # halfway through went down with the container; restarting it here would be a
-# promise this cannot keep. Claude sessions are not restored at all — the
+# promise this cannot keep. Claude sessions are not restored at all: the
 # conversation ended, and a new session wearing its name would be a lie.
 #
 set -euo pipefail
@@ -22,7 +22,7 @@ INDEX="$SESSION_DIR/index.json"
 
 [ -f "$INDEX" ] || exit 0
 command -v tmux >/dev/null 2>&1 || exit 0
-command -v jq   >/dev/null 2>&1 || { warn "sessions: jq missing — not restoring"; exit 0; }
+command -v jq   >/dev/null 2>&1 || { warn "sessions: jq missing, not restoring"; exit 0; }
 
 restored=0
 while IFS=$'\t' read -r name dir; do

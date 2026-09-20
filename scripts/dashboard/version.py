@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """One version identity per project, rendered for whatever is asking.
 
-**Why this is not one string.** The obvious design — pick a version, write it
-everywhere — cannot be built. An Android `versionCode` must be a monotonically
+**Why this is not one string.** The obvious design (pick a version, write it
+everywhere) cannot be built. An Android `versionCode` must be a monotonically
 increasing integer; a Firefox `manifest.json` version must be dot-separated
 digits; npm wants semver; Python wants PEP 440. Those formats genuinely
 disagree, so a scheme insisting on one literal string breaks on the first real
@@ -10,13 +10,13 @@ artifact.
 
 So there is **one input and several renderings**. The input is three parts:
 
-  target   the VERSION file at the project root — MAJOR.MINOR.PATCH, one line,
+  target   the VERSION file at the project root: MAJOR.MINOR.PATCH, one line,
            hand-edited. The only part a person ever decides, and a statement
            about where the project is going rather than where it has been.
-  ordinal  `git rev-list --count HEAD` — the ordering a sha cannot give. Two
+  ordinal  `git rev-list --count HEAD`, the ordering a sha cannot give. Two
            bugs stamped abc1234 and def5678 do not say which came first, which
            is exactly what "first spotted in" has to answer.
-  sha      the short commit — exact identity, no order.
+  sha      the short commit: exact identity, no order.
 
 **Why rev-list --count and not `git describe`'s count.** They look
 interchangeable and are not. `git describe` counts commits *since the last
@@ -24,21 +24,21 @@ tag*, so that number RESETS to zero every time a tag is cut. Feed it to
 Android's versionCode and the first build after a release is rejected: Play
 requires the code to be strictly greater than the last one uploaded, forever.
 rev-list counts every commit reachable from HEAD, never resets, and works
-before the first tag exists — which matters here, where there are none yet.
+before the first tag exists, which matters here, where there are none yet.
 Not a CI run number either: rev-list is reproducible from any checkout, works
 offline, and survives a workflow being renamed.
 
 Two honest limits on the ordinal, written here so nobody later mistakes it for
 a globally unique id. It counts commits reachable from HEAD, so a branch and
-main can produce the same number — fine, because only main builds publish a
-code. And it only rises while history does: a squash or a force-push that
-drops commits from main lowers it, which for an app already on Play is
+main can produce the same number. That is fine, because only main builds
+publish a code. And it only rises while history does: a squash or a force-push
+that drops commits from main lowers it, which for an app already on Play is
 unrecoverable. Do not rewrite the trunk of a project that ships an APK.
 And adopting this scheme in a CLONED repo that already published elsewhere
 needs one check first: Play requires the next versionCode to exceed the last
 one ever uploaded, and this repo's commit count bears no relation to codes a
 previous maintainer picked by hand. Compare `bb version --code` against the
-app's last published code before shipping — if it is not higher, the store
+app's last published code before shipping: if it is not higher, the store
 will refuse the build, and nothing here can know that.
 
 **A tag on HEAD drops the -dev suffix.** `0.4.0-dev.390` sorts before `0.4.0`
@@ -54,7 +54,7 @@ browser extension in one tree do not share a maturity: the extension can be at
 2.1 while the app is new at 0.3, and bumping minor for an app feature would
 silently move the extension's user-visible version for whoever installed it.
 
-So a *component* is any directory holding its own VERSION file — discovered,
+So a *component* is any directory holding its own VERSION file: discovered,
 not configured, the same deal `dist/` is. The root VERSION is the project's
 and is what an unqualified `bb version` answers, unchanged. A component
 answers for itself.
@@ -63,18 +63,18 @@ Only the target splits. The sha is the repo's either way, and the ordinal
 becomes the count of commits that touched THAT directory: still strictly
 increasing, so versionCode and AMO stay satisfied, but an untouched product's
 version stops moving every time its neighbour is edited. That churn is the
-whole reason to split them — a shipped extension should not appear to change
+whole reason to split them: a shipped extension should not appear to change
 because somebody edited the app.
 
 **Who may move it.** A per-project policy, because most of the coding here
 happens through prompts and by bump time nobody remembers what three weeks
 contained. `locked` (the default) keeps it entirely with the operator; `patch`,
 `minor` and `open` delegate progressively more. Enforced here rather than
-requested in a prompt — the point of the setting is not relying on the model's
-judgment. It stops `bb version bump` and the file tools; it does not stop
-Bash, the same honest limit the sibling-project deny list has. What actually
-makes a bad bump recoverable is that VERSION is committed: every move is in
-`git log` with a date and a message saying who made it.
+requested in a prompt, because the point of the setting is not relying on the
+model's judgment. It stops `bb version bump` and the file tools; it does not
+stop Bash, the same honest limit the sibling-project deny list has. What
+actually makes a bad bump recoverable is that VERSION is committed: every move
+is in `git log` with a date and a message saying who made it.
 """
 import os as _os
 import sys as _sys
@@ -126,7 +126,7 @@ TARGET_RE = re.compile(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$")
 # `start` is the one that delegates nothing and still unblocks something:
 # a project with NO version can be given its first one by a session, and
 # every move after that stays the operator's. Creating a version and moving
-# one are different decisions — the first has no claim to overwrite — and
+# one are different decisions (the first has no claim to overwrite), and
 # without this the only way to let a session write the first VERSION was to
 # hand it the bumping as well.
 POLICIES = ("locked", "start", "patch", "minor", "open")
@@ -141,7 +141,7 @@ PARTS = ("major", "minor", "patch")
 # The same lock the roadmap and the tracker take, and for the same reason: the
 # dashboard is one process and a `bb` invocation is another, and a threading
 # lock guards the threads of one. Both would load, both mutate their own copy,
-# both write — and os.replace makes each write atomic while doing nothing about
+# both write, and os.replace makes each write atomic while doing nothing about
 # the second landing on top of the first. See statefile.py.
 _lock = statefile.on(lambda: FILE)
 
@@ -169,7 +169,7 @@ def components(project):
     """Directories one level under the project that carry their own VERSION.
 
     Exactly one level, and the same one candidates() offers and init()
-    accepts — three functions with three different ideas of where a component
+    accepts: three functions with three different ideas of where a component
     may live is how a VERSION file ends up created somewhere the tab never
     finds. One level also keeps a vendored tree's own VERSION two levels down
     from showing up as a product this project ships.
@@ -192,10 +192,10 @@ def _git(project, *args, timeout=10, env=None):
     """One git command in the project, or None if it failed.
 
     None rather than an exception on purpose: every caller here is asking a
-    question that has a reasonable "cannot tell" answer — no repo, no commits,
-    no tags — and none of them should turn that into a stack trace.
+    question that has a reasonable "cannot tell" answer (no repo, no commits,
+    no tags), and none of them should turn that into a stack trace.
 
-    `env` is what a commit carries over the process's own — the account's
+    `env` is what a commit carries over the process's own: the account's
     git identity (users.git_env), so an operator's bump is theirs and not
     whatever the repository or the box happens to have configured.
     """
@@ -214,7 +214,7 @@ def _git(project, *args, timeout=10, env=None):
 
 
 def _sub(project, comp):
-    """The directory a version question is about — the root, or a component.
+    """The directory a version question is about: the root, or a component.
 
     Resolved and prefix-checked rather than joined: `comp` can arrive from a
     browser, and `../..` must not turn this into a reader of arbitrary VERSION
@@ -250,7 +250,7 @@ def target(project, comp=""):
 
 
 def _relspec(project, where):
-    """The pathspec git is asked about — from the RESOLVED directory.
+    """The pathspec git is asked about, from the RESOLVED directory.
 
     Never the caller's raw spelling: `--for ./extension`, a trailing slash, or
     a symlinked alias all resolve to the same directory but name different
@@ -267,10 +267,10 @@ def _relspec(project, where):
 def _repo(project):
     """The repo-wide facts, gathered once. None where there is no repo.
 
-    Everything here is identical for the project and every component — only
-    the target and the ordinal are per-directory — so callers rendering
-    several blocks pass this in rather than paying four subprocesses per
-    block for the same four answers.
+    Everything here is identical for the project and every component (only the
+    target and the ordinal are per-directory), so callers rendering several
+    blocks pass this in rather than paying four subprocesses per block for the
+    same four answers.
     """
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
@@ -294,9 +294,9 @@ def parts(project, comp="", repo=None):
                 "describe": None, "released": False}
     where = _sub(project, comp)
     rel = _relspec(project, where) if comp else None
-    # A component counts only the commits that touched it. Still monotonic —
-    # commits accumulate, they do not un-happen — so versionCode and AMO are
-    # as satisfied as before; but the extension stops appearing to change
+    # A component counts only the commits that touched it. Still monotonic,
+    # because commits accumulate and do not un-happen, so versionCode and AMO
+    # are as satisfied as before; but the extension stops appearing to change
     # every time the app beside it is edited.
     ordinal = None
     if not comp or rel:
@@ -304,7 +304,7 @@ def parts(project, comp="", repo=None):
                        *(["--", rel] if rel else []))
     # Released means a tag for THIS thing is on HEAD. The root's is vX.Y.Z;
     # a component's is <dir>-vX.Y.Z, because the repo-wide tag says nothing
-    # about the component — a project release that happens to share the
+    # about the component: a project release that happens to share the
     # extension's number must not stamp a mid-cycle extension build as its
     # release.
     if tgt is None:
@@ -360,7 +360,7 @@ def render(project, comp="", repo=None):
             # Four dot-separated numbers, and one string that happens to be
             # correct in two unrelated ecosystems. Firefox: safely inside both
             # the toolkit version format and AMO's stricter one, which rejects
-            # the semver form outright — if this is ever submitted to AMO
+            # the semver form outright. If this is ever submitted to AMO
             # rather than self-distributed, run it past their validator first.
             # Windows: exactly the shape a VERSIONINFO resource wants, four
             # integers for FileVersion/ProductVersion, and the same four a
@@ -375,8 +375,8 @@ def render(project, comp="", repo=None):
             forms["pep440"] = f"{tgt}.dev{ordinal}+{sha}{mark}"
             # No '+' and no build metadata: this ends up in filenames and in
             # URLs, where '+' is a space to something eventually. The dirty
-            # mark stays — an artifact built from uncommitted work must not
-            # wear the name of a build the sha can reproduce.
+            # mark stays, because an artifact built from uncommitted work must
+            # not wear the name of a build the sha can reproduce.
             forms["file"] = f"{tgt}-dev.{ordinal}-{sha}" + ("-dirty" if p["dirty"] else "")
     elif p["describe"]:
         # No VERSION file. Say what git says, in the one field that can hold
@@ -385,11 +385,11 @@ def render(project, comp="", repo=None):
     # Every field of the Windows forms is a 16-bit integer, and MSI's first
     # two are 8-bit. The target is hand-written and small; the ordinal is the
     # one that grows on its own, so it is the one worth watching. Reported
-    # rather than clamped — a silently truncated version number is how two
+    # rather than clamped: a silently truncated version number is how two
     # different builds end up claiming to be the same one.
     if ordinal is not None and ordinal > 65535:
         p["warn"] = (f"the ordinal is {ordinal}, past the 65535 a Windows "
-                     "version field holds — --quad and --msi are unsafe here")
+                     "version field holds, so --quad and --msi are unsafe here")
     p["forms"] = forms
     return p
 
@@ -415,7 +415,7 @@ def policy(project):
 
 
 def set_policy(project, value):
-    """The operator's call only — there is no CLI verb that reaches this."""
+    """The operator's call only: there is no CLI verb that reaches this."""
     if value not in POLICIES:
         return {"error": f"policy must be one of {', '.join(POLICIES)}"}
     with _lock:
@@ -426,12 +426,12 @@ def set_policy(project, value):
 
 
 def allows(pol):
-    """Which parts a policy delegates — for display; may() is the gate."""
+    """Which parts a policy delegates, for display; may() is the gate."""
     return _ALLOWS.get(pol, ())
 
 
 def may(project, part, by="claude"):
-    """Whether `by` may move `part` here — the reason, or None if allowed."""
+    """Whether `by` may move `part` here: the reason, or None if allowed."""
     if part not in PARTS:
         return f"part must be one of {', '.join(PARTS)}"
     if by == "operator":
@@ -456,7 +456,7 @@ def _ships_from(project):
     `origin/HEAD` when the remote published one, else origin/main, else
     origin/master. REMOTE rather than local, and that is the whole point: the
     question is which commit an image is built from, and the answer is
-    whatever the remote's default branch points at — not whatever this
+    whatever the remote's default branch points at, not whatever this
     checkout happens to be standing on.
     """
     ref = _git(project, "symbolic-ref", "--short", "-q",
@@ -475,7 +475,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
 
     THE TWO GESTURES, and why there are two. A bump moves the number and
     closes the changelog under it, in one commit: that is deciding what this
-    release IS. Tagging says it HAPPENED — and until the tag exists every
+    release IS. Tagging says it HAPPENED, and until the tag exists every
     build reads `X.Y.Z-dev.<ordinal>+<sha>`, which sorts before X.Y.Z,
     because heading for something is not arriving. From the tag on, a build
     of that commit renders as the bare number.
@@ -483,9 +483,9 @@ def release(project, comp="", env=None, may_push=True, push=True):
     So this does not move VERSION and does not write the changelog: both
     were settled by the bump. It marks the commit and publishes the mark.
 
-    The tag's name is the same one `parts()` looks for — `vX.Y.Z`, and
-    `<dir>-vX.Y.Z` for a component — or `released` would stay false on a
-    tag this very function made.
+    The tag's name is the same one `parts()` looks for, `vX.Y.Z`, and
+    `<dir>-vX.Y.Z` for a component; otherwise `released` would stay false on
+    a tag this very function made.
 
     Never `--force`, and no way to move or delete a tag from here: a
     published tag is somebody else's checkout, and taking one back is a
@@ -496,7 +496,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return {"error": err}
     if tgt is None:
         thing = f"{project}/{comp}" if comp else project
-        return {"error": f"{thing} has no version to release yet — give it one first"}
+        return {"error": f"{thing} has no version to release yet; give it one first"}
     where = _sub(project, comp)
     if where is None:
         return {"error": f"no such component here: {comp}"}
@@ -511,12 +511,12 @@ def release(project, comp="", env=None, may_push=True, push=True):
         on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or "?"
         here = "this commit" if on and sha.startswith(on) or on.startswith(sha) else on
         return {"error": f"{name} already exists, on {here}. A published tag is not "
-                         f"moved from here — bump to the next number, or move it "
+                         f"moved from here: bump to the next number, or move it "
                          f"yourself in a terminal if it was never pushed."}
     # A dirty tree is not what the tag would mark: the tag names a commit,
     # and the files beside it are not in it.
     if (_git(project, "status", "--porcelain") or "").strip():
-        return {"error": "there are uncommitted changes — commit or discard them "
+        return {"error": "there are uncommitted changes: commit or discard them "
                          "first, so the tag marks what is actually in the commit"}
     # The commit that SHIPS is not always the commit you are standing on.
     #
@@ -534,7 +534,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
     ships = _ships_from(project)
     if ships:
         # Fetched first, or the tracking ref is whatever this checkout last
-        # heard and the guard quietly fails to fire — which is the bug again.
+        # heard and the guard quietly fails to fire, which is the bug again.
         # A release is the moment to be current about it; a fetch that cannot
         # run leaves the old answer rather than stopping the release. Short,
         # because a remote that is slow or gone must cost a moment and not a
@@ -564,7 +564,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return out
     r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
     if r is None:
-        out["note"] = (f"{name} is on this commit here, but the push failed — "
+        out["note"] = (f"{name} is on this commit here, but the push failed; run "
                        f"`git push origin {name}` when the remote is reachable.")
         return out
     out["pushed"] = True
@@ -585,8 +585,8 @@ def _cl_guard(project, where):
     changelog edit.
 
     The bump commit takes the changelog's worktree state along with VERSION,
-    which is right for unreleased entry lines — dating them is what a bump
-    means for them — but an edit the operator staged for a commit of their
+    which is right for unreleased entry lines (dating them is what a bump
+    means for them), but an edit the operator staged for a commit of their
     own (a typo fix in a dated section, say) would be silently absorbed into
     "Set version to X" and vanish from their pending commit. Same sweep, same
     refusal, as the VERSION guards beside it. Checked only when a roll would
@@ -599,7 +599,7 @@ def _cl_guard(project, where):
     staged = (_git(project, "diff", "--cached", "--name-only") or "").splitlines()
     if rel in staged:
         return (f"{rel} is staged for another commit, and this would sweep "
-                "that edit into the version commit — commit or unstage it first")
+                "that edit into the version commit: commit or unstage it first")
     return None
 
 
@@ -610,8 +610,8 @@ def _cl_guard(project, where):
 # BuilderBot is the case. Its minor IS the compatibility window, stamped again
 # in the agent's AGENT_VERSION and in the CLAUDE.md template's WINDOW line, and
 # 0.5.0 only came out consistent because a person moved both by hand before
-# pressing Bump (B91). A test holds the three equal — but after the commit,
-# and only if somebody runs it.
+# pressing Bump (B91). A test holds the three equal, but only after the
+# commit, and only if somebody runs it.
 #
 # Generic on purpose: this module serves every project and must not know what
 # an agent is. A repo declares its own stamps by carrying an executable
@@ -653,12 +653,12 @@ def _stamp(project, value, part, env=None):
 
 
 def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
-    """Roll the changelog, stage, and commit — the tail init and bump share.
+    """Roll the changelog, stage, and commit: the tail init and bump share.
 
     Every failure names what actually happened to BOTH files, because by this
     point the worktree is already mutated: an error that mentions only
     VERSION leaves a silently dated changelog for somebody to find later. A
-    changelog that cannot be staged — gitignored, most likely — does not take
+    changelog that cannot be staged (gitignored, most likely) does not take
     the whole commit down with it: VERSION still commits, and the note says
     what was left behind.
     """
@@ -669,7 +669,7 @@ def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
         cl_rel = str((where / changelog.FILE)
                      .relative_to(root(project).resolve()))
     if _git(project, "add", "--", ver_rel) is None:
-        return {"error": f"could not stage {ver_rel} — is it gitignored? It "
+        return {"error": f"could not stage {ver_rel}. Is it gitignored? It "
                          f"now reads {value}"
                          + (f", and {cl_rel} is dated for it" if cl_rel else ""),
                 "target": value}
@@ -684,13 +684,13 @@ def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
     if cl_rel is not None:
         if _git(project, "add", "--", cl_rel) is None:
             note = (f"{cl_rel} was dated for {value} but could not be staged "
-                    "— gitignored? — so it is not in the commit")
+                    "(gitignored?), so it is not in the commit")
         else:
             paths.append(cl_rel)
     if _git(project, "commit", "-m", msg, "--", *paths, timeout=30, env=env) is None:
         return {"error": f"{ver_rel} now reads {value}"
                          + (f" and {cl_rel} is dated for it" if cl_rel else "")
-                         + ", but committing failed — commit by hand",
+                         + ", but committing failed; commit by hand",
                 "target": value}
     return {"ok": True, "target": value,
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or "",
@@ -698,7 +698,7 @@ def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
 
 
 def init(project, value, by="claude", comp="", env=None):
-    """Give a project — or a component — its first VERSION, and commit it.
+    """Give a project, or a component, its first VERSION, and commit it.
 
     This exists because the guardrail would otherwise be a dead end: the file
     tools are denied on VERSION, so nothing a session or the panel can do
@@ -717,7 +717,7 @@ def init(project, value, by="claude", comp="", env=None):
                          f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
-        return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.1.0 — "
+        return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.1.0, "
                          f"not {value[:40]!r}"}
     where = _sub(project, comp)
     if where is None:
@@ -725,9 +725,9 @@ def init(project, value, by="claude", comp="", env=None):
     rel_dir = _relspec(project, where) if comp else ""
     if comp and (("/" in (rel_dir or "")) or where.name in _SKIP):
         # One level, matching where components() looks and candidates()
-        # offers: a VERSION created deeper would sit orphaned — real on disk,
+        # offers: a VERSION created deeper would sit orphaned: real on disk,
         # invisible on the tab, unrollable from anywhere.
-        return {"error": "a component lives one level under the project — "
+        return {"error": "a component lives one level under the project, and "
                          f"{rel_dir or comp} is somewhere the tab would never "
                          "show"}
     p = where / VERSION_FILE
@@ -735,9 +735,9 @@ def init(project, value, by="claude", comp="", env=None):
         # Not an error worth dressing up: the thing being asked for is already
         # true, and changing it is what bump is.
         return {"error": f"{comp + '/' if comp else ''}{VERSION_FILE} already "
-                         f"exists — use a bump to change it"}
+                         f"exists; use a bump to change it"}
     if _git(project, "rev-parse", "--short=7", "HEAD") is None:
-        return {"error": "not a git repository, or no commits yet — a version "
+        return {"error": "not a git repository, or no commits yet: a version "
                          "needs history to count"}
     why = _cl_guard(project, where)
     if why:
@@ -760,7 +760,7 @@ def init(project, value, by="claude", comp="", env=None):
 
 
 def candidates(project):
-    """Directories that could become a component — one level down, no VERSION.
+    """Directories that could become a component: one level down, no VERSION.
 
     Offered so that creating the second product's version is a choice from
     what is actually there rather than a path typed from memory.
@@ -797,11 +797,11 @@ def bump(project, part, by="claude", comp="", env=None):
     if tgt is None:
         # Naming the component when there is one: telling somebody the
         # PROJECT has no VERSION while bumping the extension blames a file
-        # that exists — and "create one" points at the exact hand-written
+        # that exists, and "create one" points at the exact hand-written
         # path the file-tool deny list closes. init is the sanctioned door.
         thing = f"{project}/{comp}" if comp else project
         forflag = f" --for {comp}" if comp else ""
-        return {"error": f"{thing} has no {VERSION_FILE} yet — give it one "
+        return {"error": f"{thing} has no {VERSION_FILE} yet; give it one "
                          f"with `bb version init 0.1.0{forflag}`, or from "
                          "the Artifacts tab"}
     where = _sub(project, comp)
@@ -817,14 +817,14 @@ def bump(project, part, by="claude", comp="", env=None):
     staged = _git(project, "diff", "--cached", "--name-only") or ""
     if rel in staged.splitlines():
         return {"error": f"{VERSION_FILE} is already staged for another "
-                         "commit — commit or unstage that first"}
+                         "commit; commit or unstage that first"}
     # And the unstaged twin, which is worse: a hand edit sitting in the
     # worktree would be absorbed into this commit, so the log would say
     # "(session)" over a change the operator made. The log being trustworthy
     # about who moved the version is the design's whole safety story.
     unstaged = _git(project, "diff", "--name-only", "--", rel) or ""
     if unstaged.strip():
-        return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
+        return {"error": f"{VERSION_FILE} has uncommitted changes: commit "
                          "or discard those first, so this bump's commit "
                          "records only its own move"}
     why = _cl_guard(project, where)
@@ -841,11 +841,11 @@ def bump(project, part, by="claude", comp="", env=None):
     msg = (f"Set {comp} version to {new}" if comp
            else f"Set version to {new}") + ("" if by == "operator" else " (session)")
     # _seal dates the changelog's Unreleased section as this version and
-    # commits it with VERSION — the bump is the date break, and splitting the
+    # commits it with VERSION: the bump is the date break, and splitting the
     # two across commits would let one land without the other. Uncommitted
     # ENTRY lines are swept in deliberately (dating them is what a bump means
     # for them); a STAGED edit was refused above, before anything moved.
-    # The repo's own stamps, before the commit is made — a hook that fails
+    # The repo's own stamps, before the commit is made: a hook that fails
     # stops the bump rather than leaving a number moved and its twin behind.
     # Only for the project itself: a component's version is its own and does
     # not carry the repository's promises.
@@ -865,7 +865,7 @@ def bump(project, part, by="claude", comp="", env=None):
 
 
 def evidence(project, comp=""):
-    """What has happened since the target last moved — the case for a bump.
+    """What has happened since the target last moved: the case for a bump.
 
     This is the reason the controls are worth building rather than just a
     number being displayed. Most of the coding here happens through prompts,
@@ -875,7 +875,7 @@ def evidence(project, comp=""):
     reads as a patch, and that is a two-second judgment instead of scrolling
     git log trying to reconstruct it.
 
-    Counts only, and deliberately no suggested verdict — the same principle
+    Counts only, and deliberately no suggested verdict, on the same principle
     the emulator benchmarking item settled on. Evidence the operator reads
     beats a recommendation this side cannot justify.
     """
@@ -884,7 +884,7 @@ def evidence(project, comp=""):
     e["done"] = e["fixed"] = None
     if comp:
         # The notebook's logs are per project, with no way to say which
-        # product a done item or a fixed bug belonged to — so for a component
+        # product a done item or a fixed bug belonged to, so for a component
         # they would present the sibling's work as this one's case for a
         # bump, the exact mislabeling the split exists to prevent. The commit
         # count above is honestly narrowed; these two are omitted rather than
@@ -908,7 +908,7 @@ def payload(project):
     """Everything the Artifacts tab head needs, in one read.
 
     The project's own block is the top level; `versions` holds ONLY the
-    components' blocks, almost always none — a component exists because
+    components' blocks, almost always none, because a component exists only if
     somebody put a VERSION file in a directory. The repo-wide git facts are
     gathered once and shared: they are identical for every block, and a tab
     fetch should not pay four subprocesses per component for the same four
@@ -926,8 +926,8 @@ def one(project, comp="", repo=None):
     pol = policy(project)
     d = _sub(project, comp)
     # One read serves both changelog fields. `has_changelog` is False both
-    # when there is no file and when the directory itself failed to resolve —
-    # the tab treats the two the same, and a component that vanished mid-read
+    # when there is no file and when the directory itself failed to resolve.
+    # The tab treats the two the same, and a component that vanished mid-read
     # already surfaces through its render error.
     text = changelog.read(d) if (changelog is not None and d) else None
     return {
@@ -954,7 +954,7 @@ def one(project, comp="", repo=None):
         "unreleased": len(changelog.unreleased_text(text)) if text is not None else 0,
         "has_changelog": text is not None,
         # For the undo control: where an unbump would land, and whether the
-        # current number is already a release somewhere in history — HEAD's
+        # current number is already a release somewhere in history. HEAD's
         # tags say "is this build the release", this says "was this NUMBER
         # ever released", and only the second makes it immutable.
         "prev": prev_target(project, comp) if v["target"] else None,
@@ -970,7 +970,7 @@ def _running_here(project):
 
 
 def prev_target(project, comp=""):
-    """What VERSION held before its last change — the value an unbump returns
+    """What VERSION held before its last change: the value an unbump returns
     to. None where there is nothing earlier: the file's first commit."""
     where = _sub(project, comp)
     if where is None:
@@ -984,7 +984,7 @@ def prev_target(project, comp=""):
 
 
 def _release_tag_exists(project, tgt, comp=""):
-    """Whether this version was ever tagged as a release — anywhere in
+    """Whether this version was ever tagged as a release, anywhere in
     history, not just on HEAD. Released numbers are immutable."""
     want = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     tags = (_git(project, "tag", "-l", want) or "").strip()
@@ -995,15 +995,15 @@ def _release_tag_exists(project, tgt, comp=""):
 
 
 def unbump(project, by="claude", comp="", env=None):
-    """Take the target back to its previous value — the code stays.
+    """Take the target back to its previous value; the code stays.
 
     For a bump somebody thought better of: nothing about the tree reverts,
     the number returns to what it was, and the changelog section the bump
-    dated dissolves back into Unreleased alongside anything logged since — so
+    dated dissolves back into Unreleased alongside anything logged since, so
     the next bump dates the whole group together as one release.
 
     Only while unreleased. A version that has a release tag is a number
-    somebody may have installed, and installed numbers are immutable — the
+    somebody may have installed, and installed numbers are immutable. The
     answer there is to bump forward, not to reuse.
     """
     tgt, err = target(project, comp)
@@ -1014,13 +1014,13 @@ def unbump(project, by="claude", comp="", env=None):
     prev = prev_target(project, comp)
     if prev is None:
         return {"error": f"{tgt} is this {'component' if comp else 'project'}'s "
-                         "first version — there is nothing earlier to return to"}
+                         "first version, and there is nothing earlier to return to"}
     if tuple(map(int, prev.split("."))) >= tuple(map(int, tgt.split("."))):
         # The last change was itself a return (or a hand edit downward), and
         # "undoing" it would move the target UP while claiming to take it
         # back. An unbump only ever goes down; forward is what bump is for.
         return {"error": f"the last change here already returned the version "
-                         f"(from {prev}) — bump forward when it is ready again"}
+                         f"(from {prev}); bump forward when it is ready again"}
     # The policy question is the same one the bump asked: undoing a minor
     # moves the minor, and a session allowed to move it forward is allowed to
     # move it back.
@@ -1030,7 +1030,7 @@ def unbump(project, by="claude", comp="", env=None):
     if why:
         return {"error": why}
     if _release_tag_exists(project, tgt, comp):
-        return {"error": f"{tgt} is released — a tagged number may be on "
+        return {"error": f"{tgt} is released: a tagged number may be on "
                          "somebody's device, so it cannot be reused. Bump "
                          "forward instead."}
     where = _sub(project, comp)
@@ -1038,9 +1038,9 @@ def unbump(project, by="claude", comp="", env=None):
     staged = (_git(project, "diff", "--cached", "--name-only") or "").splitlines()
     if rel in staged:
         return {"error": f"{VERSION_FILE} is already staged for another "
-                         "commit — commit or unstage that first"}
+                         "commit; commit or unstage that first"}
     if (_git(project, "diff", "--name-only", "--", rel) or "").strip():
-        return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
+        return {"error": f"{VERSION_FILE} has uncommitted changes: commit "
                          "or discard those first"}
     cl_rel = None
     if changelog is not None:
@@ -1048,7 +1048,7 @@ def unbump(project, by="claude", comp="", env=None):
                      .relative_to(root(project).resolve()))
         if cl_rel in staged:
             return {"error": f"{cl_rel} is staged for another commit, and "
-                             "dissolving the section would sweep that edit — "
+                             "dissolving the section would sweep that edit; "
                              "commit or unstage it first"}
     try:
         (where / VERSION_FILE).write_text(prev + "\n", encoding="utf-8")
@@ -1059,7 +1059,7 @@ def unbump(project, by="claude", comp="", env=None):
         _git(project, "add", "--", cl_rel)
         paths.append(cl_rel)
     # The repo's own stamps come BACK with the number, or taking a bump back
-    # leaves the compatibility window where the bump put it — a controller
+    # leaves the compatibility window where the bump put it: a controller
     # returned to 0.5.0 still promising 0.6 to every node and every briefing.
     # The hook is given the version being returned TO, and its own rules
     # apply: BuilderBot's moves the window down and the agent's build up,
@@ -1079,7 +1079,7 @@ def unbump(project, by="claude", comp="", env=None):
     msg = (f"Return the {comp + ' ' if comp else ''}version to {prev}"
            + ("" if by == "operator" else " (session)"))
     if _git(project, "commit", "-m", msg, "--", *paths, timeout=30, env=env) is None:
-        return {"error": f"{rel} now reads {prev}, but committing failed — "
+        return {"error": f"{rel} now reads {prev}, but committing failed; "
                          "commit by hand", "target": prev}
     return {"ok": True, "was": tgt, "target": prev, "component": comp,
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
@@ -1088,7 +1088,7 @@ def unbump(project, by="claude", comp="", env=None):
 def ask(project, sessions=(), comp=""):
     """Put the version question to the project's own Claude session.
 
-    There used to be a `bb version suggest` beside this — commit count, does
+    There used to be a `bb version suggest` beside this: commit count, does
     dist/ hold anything, how the roadmap's done-to-open ratio reads. It was
     removed rather than kept as an input, and the reason is worth recording:
     a mechanical number does not merely fail to help, it ANCHORS. Handing a
@@ -1100,8 +1100,8 @@ def ask(project, sessions=(), comp=""):
     session does the reading.
 
     Deliberately proposes rather than acts. The prompt says what the policy
-    here allows, and tells the session to wait for a clear yes either way —
-    negotiating the number is the point of asking a session instead of a
+    here allows, and tells the session to wait for a clear yes either way.
+    Negotiating the number is the point of asking a session instead of a
     function, and a session that set it on arrival would have skipped the
     conversation the operator came for.
     """
@@ -1141,10 +1141,10 @@ def ask(project, sessions=(), comp=""):
 
 
 def since_bump(project, comp=""):
-    """What has happened since the target last moved — the case for a bump.
+    """What has happened since the target last moved: the case for a bump.
 
-    The git half only. The counts that make the decision easy — roadmap items
-    done, bugs fixed — come from the notebook's own dated logs and are added
+    The git half only. The counts that make the decision easy, roadmap items
+    done and bugs fixed, come from the notebook's own dated logs and are added
     by the caller that has them.
     """
     where = _sub(project, comp)
@@ -1157,7 +1157,7 @@ def since_bump(project, comp=""):
     last = _git(project, "log", "-1", "--format=%H", "--", rel)
     # Narrowed to the component too: "what has happened here since" should not
     # count the app's commits when the question is about the extension. The
-    # RESOLVED spec, for the same reason parts() uses it — the raw spelling
+    # RESOLVED spec, for the same reason parts() uses it: the raw spelling
     # can name a different pathspec than the file just read.
     spec = _relspec(project, where) if comp else None
     n = _git(project, "rev-list", "--count", f"{last}..HEAD",

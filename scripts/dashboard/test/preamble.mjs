@@ -3,7 +3,7 @@
 // The house rules, the open roadmap and the open bugs are joined into the
 // string bb-tty gives `claude` as --append-system-prompt. That assembly used
 // to be shell inside the launcher, where it was fine while the launcher was
-// its only reader — and stopped being fine the moment the Briefing tab wanted
+// its only reader, and stopped being fine the moment the Briefing tab wanted
 // to show a person what their sessions are sent. Two assemblies of one string
 // drift, and the one that drifts is the one nobody runs.
 //

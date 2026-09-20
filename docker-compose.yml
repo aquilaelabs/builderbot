@@ -1,4 +1,4 @@
-# BuilderBot — Claude Code workstation + GitHub Actions runner for Unraid.
+# BuilderBot: Claude Code workstation + GitHub Actions runner for Unraid.
 #
 #   docker compose up -d
 #   docker exec -it builderbot claude
@@ -43,15 +43,15 @@ services:
       PGID: ${PGID:-100}
       TZ: ${TZ:-Etc/UTC}
       # The sandbox VM the Docker manager builds on is a node now, enrolled
-      # with a token from the dashboard's Nodes tab — no key here, nothing
-      # named here — with its path mapping on its row. DOCKER_HOST and
+      # with a token from the dashboard's Nodes tab (no key here, nothing
+      # named here) with its path mapping on its row. DOCKER_HOST and
       # DOCKER_HOST_PATHS are gone with the ssh node kind.
       # See docs/sandbox-vm.md.
 
       # --- shutdown ---------------------------------------------------------
       # How long a stop may spend deregistering the runner, powering the
       # emulator down and ending Claude sessions. Docker kills the container
-      # after ITS timeout regardless — pass `docker stop -t` to match, or on
+      # after ITS timeout regardless: pass `docker stop -t` to match, or on
       # Unraid raise Settings -> Docker -> Docker Stop Timeout.
       # Lines of each terminal's screen kept across a restart, and how many
       # boots' logs are kept.
@@ -66,9 +66,9 @@ services:
       # --- web dashboard ----------------------------------------------------
       # Status page plus a browser terminal. There is no password here: the
       # first page it serves asks you to make the owner account, and it serves
-      # nothing else until you have. Open it as soon as the container is up —
-      # this publishes an interactive shell into a container holding a loaded
-      # ssh-agent and read-write mounts of every project.
+      # nothing else until you have. Open it as soon as the container is up,
+      # because this publishes an interactive shell into a container holding
+      # a loaded ssh-agent and read-write mounts of every project.
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Loopback only: the browser reaches terminals through the dashboard
       # port under /term, behind the same single sign-in, so this port is
@@ -139,7 +139,7 @@ services:
 
       # Cosmetic, Unraid only: Unraid's container-icon cache. With this
       # mounted rw the container drops <name>-icon.png in on every start, and
-      # Unraid stops trying to download an icon it cannot reach — it only
+      # Unraid stops trying to download an icon it cannot reach: it only
       # fetches the Icon URL when its cache is empty.
       # - /var/lib/docker/unraid/images:/unraid-icons
 
@@ -153,7 +153,7 @@ services:
       # --- host Docker access (OFF by default) ------------------------------
       # Dev-instance volumes. Its own share
       # rather than a folder in appdata, because Unraid exports and backs up
-      # shares and not folders — see the template's note on this setting.
+      # shares and not folders; see the template's note on this setting.
       # Only needed where the daemon is this box's: a sandbox VM mounts the
       # share itself and makes the per-instance directory over there.
 

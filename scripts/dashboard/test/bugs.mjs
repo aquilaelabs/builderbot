@@ -1,6 +1,6 @@
 // The bug tracker: the notebook's third view, /api/bugs behind it, and the
-// `bb bug` CLI a session drives. Write-through, unlike the roadmap — a bug
-// report is a form submitted once, not a list curated in place — and nothing
+// `bb bug` CLI a session drives. Write-through, unlike the roadmap (a bug
+// report is a form submitted once, not a list curated in place), and nothing
 // is ever deleted: a bug closes as fixed or wontfix, each with a note, because
 // a closed bug is the record that stops the same report being chased twice.
 import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold, closeFold } from './lib.mjs';
@@ -41,7 +41,7 @@ ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    'the form opens without a cursor in it, like everything else here');
 await page.fill('.bugform .bfTitle', 'the picker loses its selection on rotate');
 await page.selectOption('.bugform .bfSev', 'high');
-await page.fill('.bugform .bfArea', 'scripts/dashboard/index.html — the picker');
+await page.fill('.bugform .bfArea', 'scripts/dashboard/index.html (the picker)');
 await page.fill('.bugform .bfRepro', '1. open the picker on a phone\n2. rotate');
 await page.fill('.bugform .bfExpected', 'the selection survives');
 await page.fill('.bugform .bfActual', 'it resets to the first entry');
@@ -51,7 +51,7 @@ const b1 = read()[0];
 ok(b1 && b1.title === 'the picker loses its selection on rotate'
    && b1.severity === 'high' && b1.status === 'open' && b1.by === 'you'
    && b1.repro === '1. open the picker on a phone\n2. rotate',
-   'the report lands on disk with its fields, written through — no Save involved');
+   'the report lands on disk with its fields, written through, with no Save involved');
 ok(await page.$eval('#bugList .bug .sev', el => el.textContent) === 'high',
    '...and the row leads with its severity, the way a memory leads with its type');
 
@@ -68,7 +68,7 @@ ok(/repro: put a compose file/.test(bbBug('show', '2')),
 // ---- the letter (roadmap #28) ------------------------------------------------
 // A bug is B2, everywhere it is printed; the bare number and the lower-case
 // letter are accepted on the way in; the ROADMAP's letter is refused with a
-// sentence naming both — the letter is a check, not decoration.
+// sentence naming both: the letter is a check, not decoration.
 ok(/\bB2\b.*compose files/.test(listed) && /filed\s+B2\s/.test(bbBug('history', '--find', 'compose files')),
    'a bug is printed as B2 in the listing and the log');
 ok(/repro: put a compose file/.test(bbBug('show', 'b2'))
@@ -125,7 +125,7 @@ ok(await page.$$eval('#bugList .bug', ds => ds.map(d => d.dataset.id)).then(
      ids => ids[ids.length - 1] === '1'),
    'a closed bug sinks below the open ones');
 
-// Reopen from the CLI — "the fix did not take" is a real answer.
+// Reopen from the CLI: "the fix did not take" is a real answer.
 bbBug('reopen', '1');
 ok(read().find(b => b.id === 1).status === 'open'
    && !read().find(b => b.id === 1).status_note,
@@ -182,7 +182,7 @@ ok(read().find(b => b.id === 1).status_note === 'this time with the resize liste
      `...and with the version it was closed in, which is a later one (${zc.fixed_in})`);
   bbZ('reopen', '1');
   ok(!('fixed_in' in zread()[0]),
-     'reopening takes the closed-in stamp with the note — it turned out not to be true');
+     'reopening takes the closed-in stamp with the note, since it turned out not to be true');
   execFileSync('rm', ['-rf', Z]);
 }
 
@@ -192,8 +192,8 @@ ok(read().find(b => b.id === 2).severity === 'medium',
    'a session can re-grade a bug once it knows more');
 
 // ---- sorting ---------------------------------------------------------------
-// Open before closed is not one of the choices — a tracker is read to find
-// what is left — so every order below is an order within that.
+// Open before closed is not one of the choices (a tracker is read to find
+// what is left), so every order below is an order within that.
 bbBug('add', 'a third, filed last and graded critical', '--sev', 'critical');
 await page.evaluate(() => notebooks.get('alpha').reloadBugs());
 await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 3,
@@ -209,7 +209,7 @@ await page.selectOption('#bugSort', 'newest');
 await page.waitForFunction(() => document.querySelector('#bugList .bug').dataset.id === '3',
                            { timeout: 10000 });
 ok((await ids()).at(-1) === '1',
-   'newest first reverses it — and the closed one stays at the bottom either way');
+   'newest first reverses it, and the closed one stays at the bottom either way');
 await page.selectOption('#bugSort', 'title');
 ok((await ids()).slice(0, 2).join() === '3,2',
    'title A–Z orders by the words, open ones still first');
@@ -218,13 +218,13 @@ await page.selectOption('#bugSort', 'severity');
 // Severity is the one sort that means nothing once a bug is closed: "how bad
 // is it" is a question about work outstanding, and a critical fixed months ago
 // above a medium fixed yesterday answers nothing anybody asked. So the closed
-// half falls back to most recently closed — the only thing that half is read
-// for — while the open half is still worst-first.
+// half falls back to most recently closed, the only thing that half is read
+// for, while the open half is still worst-first.
 bbBug('add', 'an old low one, closed first', '--sev', 'low');
 bbBug('add', 'a newer critical, closed after it', '--sev', 'critical');
 bbBug('fix', '4', 'closed this one first');
 // updated has one-second resolution, and the point of the assertion below is
-// that the LATER close leads — so the two have to land in different seconds.
+// that the LATER close leads, so the two have to land in different seconds.
 await new Promise(r => setTimeout(r, 1100));
 bbBug('fix', '5', 'and this one second');
 await page.evaluate(() => notebooks.get('alpha').reloadBugs());
@@ -233,7 +233,7 @@ await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').leng
 const order = await ids();
 const shut = order.slice(order.indexOf('5'));
 ok(shut[0] === '5' && shut.includes('4'),
-   'sorted by severity, the closed ones run most-recently-closed first — a low '
+   'sorted by severity, the closed ones run most-recently-closed first: a low '
    + 'closed after a critical is above it');
 ok(order.indexOf('5') > order.indexOf('2'),
    '...and every closed one is still below every open one, whatever its severity');
@@ -272,7 +272,7 @@ await page.click('.bug .dropbox .stop');
 // Waited for, not asserted on the next line: the row repaints whenever the
 // tracker's revision moves, and a click that lands as the row is replaced
 // leaves the box on screen for another frame. Nothing is wrong with the page
-// when that happens — what must be true is that it closes and that nothing
+// when that happens; what must be true is that it closes and that nothing
 // was deleted, and both survive a repaint (bug #13).
 await page.waitForFunction(() => !document.querySelector('.bug .dropbox'),
                            null, { timeout: 10000 });
@@ -290,13 +290,13 @@ ok(/wrong project/.test(bbBug('history', '--find', 'wrong project')),
 // A session can do the same, for the case that prompted it: a mis-filed report.
 bbBug('add', 'filed by a session in error');
 const oops = String(read().at(-1).id);
-bbBug('rm', oops, 'a mis-file — the session meant the other project');
+bbBug('rm', oops, 'a mis-file: the session meant the other project');
 ok(!read().some(b => String(b.id) === oops),
    'bb bug rm deletes one, for the mis-file that closing would lie about');
 
 // ---- not applicable --------------------------------------------------------
 // The third way a bug leaves the open list: it was real, and it stopped
-// applying — the feature it was about went away. Calling that fixed credits
+// applying: the feature it was about went away. Calling that fixed credits
 // a fix nobody made; calling it wontfix claims a decision nobody took.
 bbBug('add', 'the picker drops focus on rotate', '--sev', 'medium');
 const naId = String(read().at(-1).id);
@@ -360,7 +360,7 @@ await page.waitForFunction(() => document.getElementById('roadmapBatch').hidden,
                            { timeout: 20000 });
 // Waited for rather than read straight off. A batch now covers the tracker
 // too, so a bug filed inside one does not move the tracker's revision until
-// the commit — the tab has no reason to reload while the notebook is held,
+// the commit. The tab has no reason to reload while the notebook is held,
 // and learns about the report from this re-read rather than from a poll that
 // happened to fire earlier.
 await page.waitForFunction(() => [...document.querySelectorAll('#bugList .bug .btitle')]
@@ -369,7 +369,7 @@ ok(true, 'Check now lifts the hold and the Bugs tab has the session\'s report on
 
 // ---- the tracker's log -----------------------------------------------------
 // Same bar, same rows as the roadmap's: search, a window, a cap. Filed,
-// noted, fixed, reopened — with who and when, which the tracker's present
+// noted, fixed, reopened, with who and when, which the tracker's present
 // tense cannot answer.
 await page.click('#bugLog');
 await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').length > 0,
@@ -390,7 +390,7 @@ await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').len
 ok(await page.$eval('#bugHist .hist .note', n => /resize listener/.test(n.textContent)),
    '...and the search reads the notes, so a fix is findable by what fixed it');
 // Escape, not the History button again: the sheet covers the whole page now,
-// so the button that opened it is behind the overlay — which is the point of
+// so the button that opened it is behind the overlay, which is the point of
 // an overlay, and was the bug. It used to stop at the notebook's text column
 // and leave the header reachable through the gap.
 await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
@@ -434,7 +434,7 @@ const post = body => page.evaluate(async b => {
   const shut = await page.$eval(sel, d => d.offsetHeight);
   // The keyframes, read in the SAME task as the click. slideDetails animates
   // synchronously inside the handler, so this cannot miss the tween the way
-  // asking "is it animating?" in a later round trip can — which is the bug
+  // asking "is it animating?" in a later round trip can. That is the bug
   // this whole pass is about, and it would be poor to reintroduce it here.
   const kf = await page.evaluate(s => {
     const el = document.querySelector(s);
@@ -452,7 +452,7 @@ const post = body => page.evaluate(async b => {
   await closeFold(page, sel);
   // Against the row as it is NOW, not against `shut`. The click on the project
   // row above reopened the notebook, and its re-read repaints this list when it
-  // lands — on a loaded box that is under the fold rather than before it. The
+  // lands, on a loaded box that is under the fold rather than before it. The
   // repaint swaps the row for an equal one (closeFold copes), but a height
   // sampled on the old row and one on its replacement agree only while nothing
   // around it moved (the first-child border, the doc's scrollbar), which is not
@@ -484,7 +484,7 @@ ok(await page.$eval('.sendbox', b => b.closest('.bug')?.dataset.id) === first,
    'the send box opens inside the report it would send');
 // Model and effort are set once on the Claude card now, not asked per send.
 ok(await page.$('#sendModelSel') === null && await page.$('#sendMore') !== null,
-   '...with the note field, and no pickers — those moved to the Claude card');
+   '...with the note field, and no pickers; those moved to the Claude card');
 ok(await page.$eval('#sendMore', e => e.value) === '',
    '...and the note starts empty, never carrying words written for something else');
 await page.fill('#sendMore', 'it happens on the second run, not the first');
@@ -506,8 +506,8 @@ await page.click(`${row('alpha')} [data-m]`);
 await page.click('.pane .nb .nbtabs [data-v="bugs"]');
 await page.waitForSelector('#bugList .bug', { timeout: 15000 });
 // A closed bug is a record, not work. Both halves of that: the button goes
-// dead on the row, and the server refuses even if something asks anyway —
-// a rule only the panel honors is a suggestion.
+// dead on the row, and the server refuses even if something asks anyway,
+// because a rule only the panel honors is a suggestion.
 const closed = await page.$$eval('#bugList .bug',
   ds => ds.filter(d => !d.querySelector('.bReopen')).length === ds.length
         ? null
@@ -551,8 +551,8 @@ page.errors = [];
 // The history sheet covers the PAGE, not the notebook's text column. It is a
 // direct child of .nb, and `.nb > *{max-width:var(--doc-w)}` was capping the
 // fixed backdrop at 1080px of a 1280px viewport: the dim stopped short of the
-// right edge, and everything outside that strip — the header, About, the other
-// pane — stayed clickable through the gap, so two dialogs could be open at
+// right edge, and everything outside that strip (the header, About, the other
+// pane) stayed clickable through the gap, so two dialogs could be open at
 // once. One rule reaching one child too far.
 const sheetBox = await page.evaluate(async () => {
   document.getElementById('bugLog').click();
@@ -583,7 +583,7 @@ await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])
 
 // ---- two writers, one report ---------------------------------------------
 // The tracker is write-through and the tab re-reads on bug_rev, so its window
-// is one poll — but a report is mostly long text fields, and losing a
+// is one poll, but a report is mostly long text fields, and losing a
 // paragraph of somebody's repro to a poll's worth of lateness is exactly the
 // silent loss roadmap #26 is about. The form carries the revision it opened
 // over. Unlike a roadmap item, a whole form replaces every field at once, so
@@ -600,8 +600,8 @@ await page.fill('.bugform .bfRepro', "the operator's repro, typed at length");
 // The other writer, after the form was opened and before it is saved.
 bbBug('note', String(twoId), 'a session got here first');
 // The form stays on screen either way, so what says the write was refused is
-// the revision it now carries — waited for, or the second press below goes
-// out while the first is still in flight and they both carry the old one.
+// the revision it now carries. It is waited for, or the second press below
+// goes out while the first is still in flight and they both carry the old one.
 const formRev = () => page.$eval('.bugform', f => f.dataset.rev);
 const opened = await formRev();
 await page.click('.bugform .bfGo');
@@ -618,7 +618,7 @@ await page.waitForFunction(() => !document.querySelector('.bugform .bfTitle'),
 const settledBug = read().find(b => b.id === twoId);
 ok(settledBug.repro === "the operator's repro, typed at length"
    && !/a session got here first/.test(settledBug.notes || ''),
-   '...and pressing Save again writes it over theirs, note and all — which is '
+   '...and pressing Save again writes it over theirs, note and all, which is '
    + 'what a whole-form edit means, and why the first press had to stop');
 
 ok(page.errors.length === 0, 'zero console errors');
