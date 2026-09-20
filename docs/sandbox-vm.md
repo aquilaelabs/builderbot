@@ -164,7 +164,7 @@ share with files the rest of the array does not expect. `provision-linux.sh`
 installs tmux, ttyd, jq and git for it, Claude Code into its home by the
 native installer, and a `/etc/profile.d` entry so a login shell as that
 account has the role, the controller's address and `bb` (from the bundle the
-agent keeps under the packages store at `.bb/current`): the same
+agent keeps under the toolchain store at `.bb/current`): the same
 environment a dashboard session gets, which is what makes proving the node
 by hand the same path: `sudo -iu builder`, then
 `bb-tty u:<uid>:claude:<project>` with `BB_TOKEN` from `bb users token
@@ -332,7 +332,7 @@ tool:
   through it: netplan, NetworkManager, systemd-networkd, wicked,
   `/etc/network/interfaces` or `dhcpcd.conf`. Storage is fstab everywhere;
 - a recipe's **system packages** are named per family under `system` in
-  `config/packages.json` (the emulator's are there for apt, dnf, pacman,
+  `config/toolchains.json` (the emulator's are there for apt, dnf, pacman,
   zypper and apk). One that has no list for this node's family says so on
   the job, with the names it does have, and leaves them to the owner;
   Playwright's browsers are that case outside Debian today.
@@ -450,7 +450,7 @@ What it is sized for: **16 GiB, 6 cores, a 200G disk.** The sandbox used to
 be a box that built the odd image; now it is where a project's Gradle build,
 the Android emulator with a system image behind it, a Claude session and
 its Playwright browsers all run, sometimes in the same afternoon, and the
-packages store lands on its disk unless the stores are pointed at a share.
+toolchain store lands on its disk unless the stores are pointed at a share.
 8 GiB and 4 cores still work for a Docker-only sandbox; the qcow2 only
 takes what is used, so the disk number costs nothing until it is needed.
 
@@ -617,12 +617,12 @@ docker exec -u builder BuilderBot ssh-keygen -R <vm-ip>
 
 `bb-sandbox sdk` is the one verb that reads rather than configures, and the
 one that needs no root: it hands you the controller's own `bb`, the copy
-the agent unpacks into the packages store to run jobs with, so `bb-sandbox
-sdk versions` at this console answers with exactly what the Tools tab shows
+the agent unpacks into the toolchain store to run jobs with, so `bb-sandbox
+sdk versions` at this console answers with exactly what the Toolchains tab shows
 for this node, from the same generator. Read-only verbs only; installing
 from here would go around the one-install-at-a-time rule the controller
 keeps across every machine sharing a store, so it says so and points at the
-tab. Nothing to run until a package job has put a `bb` there.
+tab. Nothing to run until a toolchain job has put a `bb` there.
 
 **2. Enroll it as a node.** On the dashboard's Nodes tab, **Enroll node**
 mints a one-time token; run `provision-linux.sh --controller URL --token bbe_…` on

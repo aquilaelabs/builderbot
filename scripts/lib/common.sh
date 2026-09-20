@@ -10,10 +10,10 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 # The dashboard is started BY a hook (15-dashboard.sh) and the hooks after it
 # keep running. So anything the dashboard measures in that window is measuring
 # a half-built container, and `bb doctor`'s answer there is not just early, it
-# is wrong — and it is cached for half an hour, so it stays wrong.
+# is wrong, and it is cached for half an hour, so it stays wrong.
 #
 # In /run rather than /run/builderbot, which is 0700 root because it holds the
-# redaction table — the marker is meant to be read by the builder user. Cleared
+# redaction table; the marker is meant to be read by the builder user. Cleared
 # at the top of every boot: neither /run nor /tmp is a mount of its own here,
 # so both survive a `docker restart` and a marker left from last time would say
 # "ready" before this boot had done anything. server.py names the same path.
@@ -23,7 +23,7 @@ BOOT_READY_FILE="${BOOT_READY_FILE:-/run/builderbot-ready}"
 #
 # `controller` is the management instance: the dashboard, the notebook, the
 # queue and the record. `node` is a machine that enrolled with a controller
-# and runs its jobs — and, since roadmap #24, its SESSIONS: the same bb-tty
+# and runs its jobs and, since roadmap #24, its SESSIONS: the same bb-tty
 # starts Claude there, on the projects share the node mounts, with this
 # library answering for a machine that keeps no /config and has no owner.
 #
@@ -39,7 +39,7 @@ bb_role() {
     esac
 }
 
-# on_node — true on a node. The four account helpers, bb's notebook verbs
+# on_node: true on a node. The four account helpers, bb's notebook verbs
 # and bb-tty all branch on it, so it is one word rather than a case each.
 on_node() { [ "$(bb_role)" = node ]; }
 
@@ -47,8 +47,8 @@ log()  { printf '[builderbot] %s\n'      "$*"; }
 warn() { printf '[builderbot] WARN: %s\n' "$*" >&2; }
 die()  { printf '[builderbot] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# is_true VALUE — accepts true/1/yes/on in any case.
-# bb_setting KEY [DEFAULT] — a Settings-tab value (roadmap R29) out of
+# is_true VALUE: accepts true/1/yes/on in any case.
+# bb_setting KEY [DEFAULT]: a Settings-tab value (roadmap R29) out of
 # /config/settings.json, else the default. Booleans come out as the words
 # true/false, so is_true reads them. jq is in the image; without it, or without
 # the file, the answer is the default, never a crash at boot.
@@ -69,7 +69,7 @@ is_true() {
     esac
 }
 
-# is_mountpoint PATH — is this path a bind mount from the host?
+# is_mountpoint PATH: is this path a bind mount from the host?
 #
 # Used to tell a directory this container owns from one that belongs to the
 # server: the projects folder is mounted whole now, so /workspace is somebody's
@@ -81,24 +81,24 @@ is_mountpoint() {
     awk -v p="$p" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo
 }
 
-# sdk_root — where downloadable SDKs live.
+# sdk_root: where downloadable SDKs live.
 #
 # The image is the wrong home for them: /opt is discarded on every update, so
 # anything installed there is downloaded again on a weekly schedule, and the
-# packages are large enough (a system image is a couple of GB, the emulator
+# toolchains are large enough (a system image is a couple of GB, the emulator
 # 800MB) for that to be the dominant cost of an update. A mounted share keeps
-# them outside the image entirely — installed once, kept forever, shared by
+# them outside the image entirely: installed once, kept forever, shared by
 # every toolchain that can be told where to unpack.
 #
-# SDK_ROOT is that share, /sdk by default. Without one — nobody mapped it —
+# SDK_ROOT is that share, /sdk by default. Without one (nobody mapped it),
 # this falls back to the home volume, which also persists but is the
 # operator's own directory rather than a place to put 30GB.
-# sdk_store_root — the package store as the operator mapped it: the share,
-# or the home volume's .sdk. What the marker and the settings name.
+# sdk_store_root: the toolchain store as the operator mapped it (the share,
+# or the home volume's .sdk). What the marker and the settings name.
 sdk_store_root() {
     local root="${SDK_ROOT:-/sdk}"
     # ...and the one place the name means something else. The agent on a node
-    # exports SDK_ROOT as the SCOPE directory — <store>/linux-x86_64 — because
+    # exports SDK_ROOT as the SCOPE directory (<store>/linux-x86_64), because
     # that is also what it sets BUILDER_HOME and ANDROID_HOME from, and a CI
     # runner's .env carries the same (agent.mjs asserts it). Here SDK_ROOT is
     # the store, which sdk_root then scopes, so taking the agent's at its word
@@ -115,7 +115,7 @@ sdk_store_root() {
         # /sdk is the image's own default and exists in the image whether or
         # not anybody mapped a share there, so it has to prove it is a mount
         # before anything large is written to it. Any other path is one the
-        # operator chose — a subdirectory of another share, say — and is
+        # operator chose (a subdirectory of another share, say) and is
         # taken at its word; silently ignoring it and using the home volume
         # instead is the behavior this branch exists to avoid.
         if [ "$root" != /sdk ] || is_mountpoint "$root"; then
@@ -126,20 +126,20 @@ sdk_store_root() {
     printf '%s' "${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
 }
 
-# sdk_scope — this machine's directory in the store: <os>-<arch> as uname
+# sdk_scope: this machine's directory in the store, <os>-<arch> as uname
 # spells them (linux-x86_64). One share serves a Linux box, a Mac and a
 # Windows machine only if their binaries do not land on top of each other,
 # so everything installed lives one level down from the share (roadmap
 # R19); the agent on a node keeps the same rule, in the same words.
 sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"; }
 
-# sdk_root — where THIS machine's packages are: the store's scope directory.
+# sdk_root: where THIS machine's toolchains are, the store's scope directory.
 # Every install, probe and PATH entry is relative to this.
 sdk_root() { printf '%s/%s' "$(sdk_store_root)" "$(sdk_scope)"; }
 
-# sdk_share_images [STORE] — the layout's standing rule: the Android system
-# images live once under <store>/shared/android/system-images, and this
-# scope's android/system-images is a link to them. A real directory that
+# sdk_share_images [STORE] applies the layout's standing rule: the Android
+# system images live once under <store>/shared/android/system-images, and
+# this scope's android/system-images is a link to them. A real directory that
 # grew there (a first install on a fresh store) is moved under shared and
 # linked. Run at boot (45-sdk.sh). (The one-time move of a flat store into
 # its scope ran on 9 Sep 2026 and was taken out again.)
@@ -152,13 +152,13 @@ sdk_share_images() {
     if [ -d "$mine" ] && [ ! -L "$mine" ]; then
         if [ ! -d "$shared" ]; then
             mkdir -p "$(dirname "$shared")" && mv "$mine" "$shared" \
-                && log "package store: the android system images are shared across platforms"
+                && log "toolchain store: the android system images are shared across platforms"
         else
             for e in "$mine"/*; do
                 [ -e "$e" ] || continue
                 [ -e "$shared/$(basename "$e")" ] || mv "$e" "$shared/"
             done
-            rmdir "$mine" 2>/dev/null || log "package store: $mine still holds images the shared copy also has — remove it by hand"
+            rmdir "$mine" 2>/dev/null || log "toolchain store: $mine still holds images the shared copy also has; remove it by hand"
         fi
     fi
     if [ -d "$shared" ] && [ -d "$scoped/android" ] && [ ! -e "$mine" ] && [ ! -L "$mine" ]; then
@@ -167,29 +167,29 @@ sdk_share_images() {
     return 0
 }
 
-# sdk_have ROOT NAME — is a toolchain installed under the package store root?
+# sdk_have ROOT NAME: is a toolchain installed under the toolchain store root?
 sdk_have() {
     [ -d "$1/$2" ] && [ -n "$(ls -A "$1/$2" 2>/dev/null)" ]
 }
 
-# sdk_find NAME — where a toolchain actually is: the share if it holds it,
+# sdk_find NAME: where a toolchain actually is, the share if it holds it,
 # otherwise the home volume's root, otherwise nothing.
 #
 # The two can both be real. Anything installed before a share was mapped sits
-# on the home volume, and mapping one must not make it vanish — which it did:
+# on the home volume, and mapping one must not make it vanish, which it did:
 # PATH lost three toolchains and the dashboard called them uninstalled while
 # 8GB of them sat on disk. Same rule the Android package directories follow,
 # for the same reason: a thing that exists is never hidden behind an empty
 # directory somewhere else. Installs still go to the share; this is only
 # about finding what is already there.
-# A package the operator deliberately removed.
+# A toolchain the operator deliberately removed.
 #
-# Two startup hooks fetch things on a fresh share — the browsers, the
-# emulator — because a container that comes up "ready" with `bb shot` broken
+# Two startup hooks fetch things on a fresh share (the browsers, the
+# emulator) because a container that comes up "ready" with `bb shot` broken
 # is worse than a slow first boot. But a fresh share and a share somebody just
 # cleared look identical, so an uninstall used to last until the next restart
-# and no further. This is how the intent outlives it: `bb packages remove` leaves a
-# marker, `bb packages install` clears it, and a hook that finds one keeps its
+# and no further. This is how the intent outlives it: `bb toolchains remove` leaves a
+# marker, `bb toolchains install` clears it, and a hook that finds one keeps its
 # hands off. On the share, because an image update must not forget it.
 sdk_removed_marker() {
     printf '%s/.removed/%s' "$(sdk_root)" "$(printf '%s' "$1" | tr ':/' '--')"
@@ -206,7 +206,7 @@ sdk_find() {
     return 1
 }
 
-# run_as_builder CMD... — drop privileges when we happen to be root.
+# run_as_builder CMD...: drop privileges when we happen to be root.
 run_as_builder() {
     if [ "$(id -u)" -eq 0 ]; then
         gosu builder "$@"
@@ -215,7 +215,7 @@ run_as_builder() {
     fi
 }
 
-# bb_log_dir — where the persistent log lives. Priority: explicit BB_LOG_DIR
+# bb_log_dir: where the persistent log lives. Priority: explicit BB_LOG_DIR
 # env, then a mounted /logs volume (the optional template/compose mapping),
 # then the default inside /config.
 bb_log_dir() {
@@ -228,20 +228,20 @@ bb_log_dir() {
     fi
 }
 
-# bb_image_log — the ledger of images this container has actually run.
+# bb_image_log: the ledger of images this container has actually run.
 #
 # The one fact nothing else here keeps. The container is recreated on every
 # image update, so its own stamp answers only "what is running now"; the boot
 # log rotates away after a few starts; and with no PAT there is no registry to
-# ask. That leaves "which build was the box on when I saw that?" — the first
-# question whenever a fix appears not to have landed — with nothing to read.
+# ask. That leaves "which build was the box on when I saw that?", the first
+# question whenever a fix appears not to have landed, with nothing to read.
 #
 # /config, because the file has to survive the update it exists to record.
 bb_image_log() {
     printf '%s' "${BB_IMAGE_LOG:-/config/image-log.tsv}"
 }
 
-# git_branch DIR — current branch name, or '?'. Handles a freshly-init'd repo
+# git_branch DIR: current branch name, or '?'. Handles a freshly-init'd repo
 # with no commits, where `rev-parse --abbrev-ref HEAD` both prints and fails.
 git_branch() {
     git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null \
@@ -249,7 +249,7 @@ git_branch() {
         || echo '?'
 }
 
-# scope_path KIND — API path for runner registration/removal tokens, derived
+# scope_path KIND: API path for runner registration/removal tokens, derived
 # from RUNNER_URL (repo URL vs org URL).
 scope_path() {
     local kind="$1" path
@@ -264,7 +264,7 @@ scope_path() {
     esac
 }
 
-# github_api METHOD PATH — authenticated call against the GitHub REST API.
+# github_api METHOD PATH: authenticated call against the GitHub REST API.
 # Requires RUNNER_TOKEN. Prints the response body on success; on failure it
 # explains what the status code means for *this* call rather than leaving a
 # bare "curl: (22) ... error: 403" in the log.
@@ -289,7 +289,7 @@ github_api() {
 
     case "$code" in
         2*) printf '%s' "$body" ;;
-        401) die "GitHub rejected the token (401) on ${path} — it is invalid, revoked, or expired." ;;
+        401) die "GitHub rejected the token (401) on ${path}: it is invalid, revoked, or expired." ;;
         403) die "GitHub denied the request (403) on ${path}. This is ${scope_hint}." ;;
         404) die "GitHub returned 404 on ${path}. Either RUNNER_URL points somewhere that does not exist, or the token cannot see it: GitHub answers 404 rather than 403 for resources a token has no access to. This is ${scope_hint}." ;;
         *)   die "GitHub API returned ${code} on ${path}: $(printf '%s' "$body" | tr -d '\n' | head -c 200)" ;;
@@ -300,7 +300,7 @@ github_api() {
 #
 # The socket FILE outliving the server is the case this exists for. Xorg leaves
 # /tmp/.X11-unix/X0 behind when it dies, so `[ -S ... ]` answers yes for a
-# display nothing is behind — and every check downstream then blames EGL for a
+# display nothing is behind, and every check downstream then blames EGL for a
 # missing X server. Observed on 27 Aug: the doctor said "nvidia EGL is
 # installed but gave no vendor driver on the X display" while the truth was
 # that Xorg had exited hours before, which cost a diagnosis working outwards
@@ -314,18 +314,18 @@ github_api() {
 # that can disagree is exactly how a dead display kept looking like a live one.
 # Where the GPU display hook records what happened to its server: `up`,
 # `restarted N times`, or `down: <why>`. In /run, so it describes THIS boot and
-# nothing else — a state file that outlived its server would be the same kind
+# nothing else: a state file that outlived its server would be the same kind
 # of lie as the stale socket that made this bug expensive.
 #
 # Read by `bb emu gpu` and `bb doctor`. Named here because the hook writes it
 # and both of those read it, which is three files that must agree on one path.
-# A SIBLING of /run/builderbot, not a file inside it — the same shape
+# A SIBLING of /run/builderbot, not a file inside it: the same shape
 # BOOT_READY_FILE above uses, and for the same reason. That directory is
 # 0700 root because it holds the secrets stash, so a state file inside it is
 # unreadable by the builder account, which is what `bb emu gpu` and
 # `bb doctor` run as: gpu_display_note() returned empty for everyone but
 # root, and the whole point of writing the state was that the drop to
-# software should be STATED rather than silent. Measured on the box 3 Sep —
+# software should be STATED rather than silent. Measured on the box 3 Sep:
 # the supervisor was running and had written 'up', and both commands printed
 # nothing.
 GPU_DISPLAY_STATE="${GPU_DISPLAY_STATE:-/run/builderbot-gpu-display}"
@@ -352,7 +352,7 @@ XPY
 # ---- per-account homes (roadmap #26) ---------------------------------------
 #
 # The dashboard has accounts, and each of them gets a home: own shell history,
-# own Claude login, own memories. What it is NOT is a second OS user — every
+# own Claude login, own memories. What it is NOT is a second OS user: every
 # session still runs as `builder`, so everything written to the projects share
 # stays PUID:PGID exactly as it always has. A second uid would write files the
 # rest of the array does not expect, which is the one part of this that can
@@ -391,7 +391,7 @@ BB_SHARED_DOTFILES="
 owner_uid() {
     # NO OWNER ON A NODE (roadmap #24). The owner keeps /home/builder and the
     # bare names because that directory is the controller's precious
-    # original — the login, every transcript. Nothing on a node is anyone's
+    # original: the login, every transcript. Nothing on a node is anyone's
     # original, so every account there is prefixed and homed under users/,
     # the owner included; a node's users.json would not be readable anyway.
     on_node && return 0
@@ -401,7 +401,7 @@ owner_uid() {
                  | .value.uid) // ""' "$f" 2>/dev/null
 }
 
-# tmux_prefix UID — what that account's shell sessions are named with.
+# tmux_prefix UID: what that account's shell sessions are named with.
 #
 # Empty for the owner and for no account at all. The rule is the same one
 # user_home applies and users.tmux_prefix mirrors on the server: the owner
@@ -442,7 +442,7 @@ unshare_dotfiles() {
     return 0
 }
 
-# user_home UID — where that account's home is, made if it is missing.
+# user_home UID: where that account's home is, made if it is missing.
 #
 # Prints the path and nothing else, so a caller can use it directly. An empty
 # or unrecognizable id answers the box's own home, which is what every path
@@ -462,7 +462,7 @@ user_home() {
     if [ ! -d "$home" ]; then
         mkdir -p "$home" || { printf '%s' "$BUILDER_HOME"; return 0; }
         # 0700 stops an accident, not a determined look: one uid owns them all
-        # and can chmod any of them back. It is worth doing anyway — a Claude
+        # and can chmod any of them back. It is worth doing anyway: a Claude
         # credential should not be world-readable inside the container even to
         # something that could take it a harder way.
         chmod 700 "$home" 2>/dev/null || true
@@ -502,15 +502,15 @@ user_home() {
 #
 # Claude Code keeps everything about a conversation under
 # ~/.claude/projects/<slug>/: the transcript, the resume chooser's list, the
-# auto-memory files the notebook's Memory tab reads. A home is per MACHINE —
-# the login in it must be — so a project bound to a node would leave its
+# auto-memory files the notebook's Memory tab reads. A home is per MACHINE
+# (the login in it must be), so a project bound to a node would leave its
 # conversations on whichever box ran them, and unbinding it would strand the
 # node's. This is what keeps them one: the projects directory of every
 # account's home, on every machine, is a link to one directory on the
 # projects share, which both machines mount read-write at the same path.
 # The slug is the working directory with `/` turned into `-`, and path parity
 # (/workspace/<project> on both sides, worktrees included) makes it the same
-# string wherever the session ran — so the controller's Memory tab and
+# string wherever the session ran, so the controller's Memory tab and
 # resume chooser read a node's sessions without knowing they were there.
 #
 # NOT the login: ~/.claude/.credentials.json stays in the home. A share is
@@ -522,12 +522,12 @@ user_home() {
 # projects are, and the tree carries a .bbignore so it is never a project.
 BB_CLAUDE_SHARE="${BB_CLAUDE_SHARE:-${WORKSPACE:-/workspace}/.claude}"
 
-# claude_projects_link HOME UID — point HOME/.claude/projects at the account's
+# claude_projects_link HOME UID: point HOME/.claude/projects at the account's
 # directory on the share, making it if it is missing.
 #
-# A real directory already there is MOVED across — a copy into the shared
+# A real directory already there is MOVED across: a copy into the shared
 # directory (merging with whatever a session on the other machine left), the
-# original renamed beside it rather than deleted — because that is somebody's
+# original renamed beside it rather than deleted. That is somebody's
 # conversation history, and the one time this runs on the operator's own
 # home it is every transcript this box ever produced. Nothing is removed by
 # this function; the renamed original is the operator's to delete once they
@@ -561,7 +561,7 @@ claude_projects_link() {
             mv "$link" "$keep" 2>/dev/null || return 0
             # Nothing is printed: user_home's callers capture its output as
             # the home path (the server's home_for reads stdout and stderr
-            # together), and a line here became part of the path — the login
+            # together), and a line here became part of the path: the login
             # could not be found in "…/home\n[builderbot] claude: …". The
             # renamed original beside the link is the record, and the docs
             # say what it is.
@@ -578,14 +578,14 @@ claude_projects_link() {
 # coordination cannot: /workspace/<project> is one working tree, so `git add -A
 # && git commit` commits the other session's half-finished work, checkout and
 # stash delete it, and both share one dist/ and one dev instance. Those are the
-# failures that lose work. A worktree each makes them impossible — separate
-# files, separate commits, separate builds — and puts the conflicts where git
+# failures that lose work. A worktree each makes them impossible (separate
+# files, separate commits, separate builds) and puts the conflicts where git
 # is actually good at them, which is the merge.
 #
 # THE OWNER KEEPS THE PROJECT DIRECTORY. Same rule as their home and their
 # session names, and for the same reason: a box with one operator is every box
 # until somebody adds a second account, and it should be untouched by this.
-# It also makes the answer STATIC — a session's directory never depends on who
+# It also makes the answer STATIC: a session's directory never depends on who
 # happened to start first, which a first-come rule would have made a race.
 #
 # What a worktree session does not get, and the UI says so: its dist/ is its
@@ -597,7 +597,7 @@ BB_WORKTREES="${BB_WORKTREES:-${WORKSPACE:-/workspace}/.worktrees}"
 # a worktree can never be mistaken for a project, land on the sibling deny list
 # or appear in the picker.
 
-# session_dir PROJECT UID — where that account's session on that project works.
+# session_dir PROJECT UID: where that account's session on that project works.
 #
 # Prints the path. The project's own directory for the owner and for no account
 # at all; a worktree for anybody else, made on first use and reused after, so
@@ -611,8 +611,8 @@ session_dir() {
     esac
     # THE TREE RULE IS THE SAME ON BOTH MACHINES, unlike the home and the
     # session names: the project directory is on the share, so the owner
-    # working in it from the node is the owner working in it, and — since a
-    # bound project's sessions run on one machine at a time — nobody is in
+    # working in it from the node is the owner working in it, and, since a
+    # bound project's sessions run on one machine at a time, nobody is in
     # it from the other. It has to be the same, or the transcript slug (the
     # directory's path) would differ per machine and roadmap #24's shared
     # transcripts would not line up. A node has no users.json to say who the
@@ -623,7 +623,7 @@ session_dir() {
         printf '%s' "$src"; return 0
     fi
     # Not a git repo: there is no worktree to make, and refusing would be worse
-    # than sharing — a directory nobody can branch is one nobody can conflict
+    # than sharing: a directory nobody can branch is one nobody can conflict
     # in through git either.
     git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
     wt="$BB_WORKTREES/$proj/$uid"
@@ -642,12 +642,12 @@ session_dir() {
     printf '%s' "$wt"
 }
 
-# account_name UID — the account's name, for a branch a person has to read.
+# account_name UID: the account's name, for a branch a person has to read.
 account_name() {
     # On a node there is no store to ask, so bb-tty exports the name the
     # controller stamped into the terminal's argument beside the id
     # (BB_ACCOUNT_NAME), and that is the answer for that one account. Any
-    # other id — there should be none — falls back to the id itself.
+    # other id (there should be none) falls back to the id itself.
     if [ -n "${BB_ACCOUNT_NAME:-}" ] && [ "${BB_ACCOUNT_UID:-}" = "$1" ]; then
         printf '%s' "$BB_ACCOUNT_NAME"; return 0
     fi

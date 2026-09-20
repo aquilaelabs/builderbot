@@ -70,11 +70,11 @@ def conf():
     c = {"SESSION_USER": "builder", "WORKSPACE": "/workspace", "HOME_ROOT": "",
          "DATA_STORE": "/var/lib/builderbot/data", "ARTIFACTS_STORE": "/var/lib/builderbot/artifacts",
          "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata",
-         # The scoped packages store, whose .bb bundle is the bb and bb-tty a
+         # The scoped toolchain store, whose .bb bundle is the bb and bb-tty a
          # session and the agent run. Empty until the agent writes it, and then
          # the bundle is read-only in the view (B157); empty here just leaves
          # it as it was, which an older agent's conf does.
-         "PACKAGES_STORE": ""}
+         "TOOLCHAINS_STORE": ""}
     # Another layout file only for somebody who is not root, which is `plan`
     # run by the suite: `enter` is root through sudo, which resets the
     # environment, and root reads the machine's own file whatever it says.
@@ -232,7 +232,7 @@ def plan(c, a, uid):
         steps.append(("tmpfs", art, "mode=0755"))
         if _real_dir(f"{art}/{project}"):
             steps.append(("bind", f"{STAGE}/artifacts/{project}", f"{art}/{project}"))
-    # The packages store's bundle is the bb and bb-tty a session runs and the
+    # The toolchain store's bundle is the bb and bb-tty a session runs and the
     # agent runs for a job (as the enrolled account, in the docker group), on
     # the shared store the squash makes writable by the session account. So a
     # session could rewrite what another account's session, or a job, then
@@ -254,7 +254,7 @@ def plan(c, a, uid):
     # nothing can be planted there under a command's name, and bin/cache, which
     # only flutter itself runs from, is given back. What is left is a session
     # changing what a flutter command runs, on a node that has flutter.
-    store = c["PACKAGES_STORE"].rstrip("/") if c.get("PACKAGES_STORE") else ""
+    store = c["TOOLCHAINS_STORE"].rstrip("/") if c.get("TOOLCHAINS_STORE") else ""
     if store and _real_dir(store):
         steps.append(("bindro", store, store))
         flutter = f"{store}/flutter"

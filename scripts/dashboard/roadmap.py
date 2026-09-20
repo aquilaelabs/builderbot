@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""The per-project roadmap — the one thing here that both sides write.
+"""The per-project roadmap: the one thing here that both sides write.
 
-Named todo.py because that is what the list was called when it was written,
+Named roadmap.py because that is what the list was called when it was written,
 and the file is served from an absolute path by the running image; the
 command, the tab and the words everywhere else are "roadmap".
 
-Everything else the dashboard holds is one-way. The package list is the
+Everything else the dashboard holds is one-way. The toolchain list is the
 container's; a memory is Claude's; the project list is the filesystem's. This
 is shared: the operator adds "make the picker wrap properly", a session adds
 "a project can be created in one click and only deleted from a shell", and
@@ -18,7 +18,7 @@ now a thing noticed mid-task and left undone lived in the conversation and died
 with it.
 
 Where it lives is the other half. /config, beside the tab strip and the
-locked projects — not the repository. A list like this churns far faster than
+locked projects, not the repository. A list like this churns far faster than
 commits, and a checkbox tapped on a phone must not turn into an uncommitted
 change. Anything that deserves to be permanent graduates out of here: into
 CLAUDE.md, a commit message, or a test that fails when it regresses.
@@ -38,7 +38,7 @@ import json
 import os
 import sys
 
-# `bb` execs this module by path — spec_from_file_location — so its directory
+# `bb` execs this module by path (spec_from_file_location), so its directory
 # is not on sys.path the way it is when the dashboard imports it normally, and
 # a plain `import statefile` would work in one caller and not the other. Doing
 # it through sys.path rather than a second by-path load keeps it ONE module
@@ -53,7 +53,7 @@ import pending  # noqa: E402
 import time
 from pathlib import Path
 
-# The server's, injected rather than imported — same shape as packages.py.
+# The server's, injected rather than imported: the same shape as toolchains.py.
 # `tell` is notify.tell: the one way a line reaches a running Claude session.
 write_json = None
 actor = None
@@ -75,7 +75,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
                      # and with two people on a project that is not enough to
                      # answer "who dropped the third one?".
                      actor=actor)
-    globals()["FILE"] = Path(state) / "todos.json"
+    globals()["FILE"] = Path(state) / "roadmap.json"
     # The approval queue (roadmap #27): the gate in add() reads it, and the
     # replay of an approved record comes back through `replay` below.
     pending.configure(write_json=write_json, state=state)
@@ -97,23 +97,23 @@ def replay(project, verb, args):
 
 # Every read-modify-write below is already wrapped in `with _lock:`. What it
 # was NOT is a lock: a threading.Lock guards the threads of one process, and
-# the roadmap has two writers — the dashboard, and a `bb` invocation, which is a
+# the roadmap has two writers: the dashboard, and a `bb` invocation, which is a
 # separate process. Both loaded, both mutated their own copy, both wrote, and
 # the second landed on top of the first. Measured, four processes making forty
 # changes each: 40 of 160 survived.
 #
 # statefile.locked takes flock on the file itself, so the other process waits
-# instead of overwriting. Same sites, same shape — see statefile.py.
+# instead of overwriting. Same sites, same shape. See statefile.py.
 _lock = statefile.on(lambda: FILE)
 
 # Room for a working list, not an issue tracker. A list nobody can read at a
 # glance is one nobody reads at all, and this one is put in front of every
-# session that starts — so its length is a cost paid on every conversation.
+# session that starts, so its length is a cost paid on every conversation.
 MAX_OPEN = 30
 MAX_TEXT = 500
 
 # A line may be several lines. A step is one thing to hand over, and one thing
-# is often three sentences and a blank line — collapsing that to a single
+# is often three sentences and a blank line, and collapsing that to a single
 # paragraph made every plan read like a wall, which pushed sessions into
 # splitting one step into three. Steps are the expensive unit here (each one is
 # a message the operator sends by hand), so the cheap thing has to be able to
@@ -161,16 +161,16 @@ def save(d):
 
 
 # The two things in the panel that can move. Tracked apart so that the line
-# spent telling a session can say which of them did — "something changed" is a
+# spent telling a session can say which of them did: "something changed" is a
 # sentence that makes somebody go and look at both.
-KINDS = ("todo", "memory")
+KINDS = ("roadmap", "memory")
 
 
 def unsaved(project):
     """What has moved here since a session was last told, by kind.
 
-    Edits are written the moment they are made — a phone that dies half way
-    through tidying a list must not lose it — but telling the session is a
+    Edits are written the moment they are made (a phone that dies half way
+    through tidying a list must not lose it), but telling the session is a
     separate act, because every telling costs a line in a conversation. So the
     two are tracked apart: the file is always current, and this says whether
     anybody has been told, and about what.
@@ -186,7 +186,7 @@ def _kinds(got):
     return {k: bool(got.get(k)) for k in KINDS}
 
 
-def _touch(d, project, kind="todo", on=True):
+def _touch(d, project, kind="roadmap", on=True):
     cur = _kinds(d.setdefault("unsaved", {}).get(project))
     if kind is None:
         cur = dict.fromkeys(KINDS, bool(on))
@@ -195,7 +195,7 @@ def _touch(d, project, kind="todo", on=True):
     d["unsaved"][project] = cur
     # ...and a counter per kind that only ever goes up, which is what lets a
     # SESSION be told what it personally has not seen (roadmap #27). The
-    # `unsaved` flag above is one per project — it answers "does the panel
+    # `unsaved` flag above is one per project: it answers "does the panel
     # still have something to say", and a second session clearing it would
     # answer for somebody else. A counter compares instead: each session
     # remembers the number it last saw, so being told is per session and
@@ -206,11 +206,11 @@ def _touch(d, project, kind="todo", on=True):
             b[k] = int(b.get(k, 0)) + 1
 
 
-def _credit(d, project, who, kind="todo"):
+def _credit(d, project, who, kind="roadmap"):
     """Move one seat's watermark up by the change it just made itself.
 
     Without this, a session that adds an item is immediately behind the
-    counter it moved, and the next prompt tells it the roadmap changed —
+    counter it moved, and the next prompt tells it the roadmap changed,
     which it did, by its own hand. Crediting the writer keeps "you have not
     seen this" meaning somebody ELSE wrote it.
 
@@ -225,7 +225,7 @@ def _credit(d, project, who, kind="todo"):
 
 
 # Every change to a list, kept. The list itself only ever shows its present
-# state, and two people write it — so "was that step always worded like that?"
+# state, and two people write it, so "was that step always worded like that?"
 # and "who dropped the third one?" had no answer at all. Capped per project:
 # this rides in the same file the list does, and an unbounded log would make
 # every read of a short list pay for a year of edits.
@@ -233,7 +233,7 @@ MAX_HISTORY = 300
 
 
 def _log(d, project, by, ev):
-    """Record one event — in the history, or in an open batch.
+    """Record one event, in the history or in an open batch.
 
     Called inside the lock, before the save that commits the change it
     describes, so the record and the change land together or neither does.
@@ -246,7 +246,7 @@ def _log(d, project, by, ev):
     name = str((actor() if actor else "") or "")[:60]
     ev = {"at": int(time.time()),
           "by": "claude" if by == "claude" else "you",
-          # The account behind it, where one is known — including behind a
+          # The account behind it, where one is known, including behind a
           # session, whose author is the person it was minted for.
           **({"who": name} if name else {}),
           # A replay of something the operator approved: said on the event,
@@ -266,8 +266,8 @@ def _log(d, project, by, ev):
 # ---- batches -------------------------------------------------------------
 # A session that is working something out is not making a series of decisions
 # the operator needs to read; it is arriving at one. `begin` takes a copy of
-# the list, the work happens normally on top of it — visible, so the operator
-# can watch it land — and `commit` writes what changed rather than every step
+# the list, the work happens normally on top of it (visible, so the operator
+# can watch it land), and `commit` writes what changed rather than every step
 # of getting there. `revert` puts the copy back.
 #
 # Deliberately not the panel's model. There, the thing being edited is on
@@ -279,10 +279,10 @@ def begin(project, by="claude"):
     with _lock:
         d = load()
         if d.get("batch", {}).get(project):
-            return {"error": "a batch is already open here — commit or revert it"}
+            return {"error": "a batch is already open here; commit or revert it"}
         # How many of the operator's changes the log already held. Counted,
         # not timed: `at` has one-second resolution, so "later than the batch
-        # opened" caught anything that happened in the same second as it —
+        # opened" caught anything that happened in the same second as it,
         # which made revert refuse for a change that came *before* the work it
         # was asked to undo.
         h = d.get("history", {}).get(project) or []
@@ -378,7 +378,7 @@ def revert_blocked(project):
 
     Only the session's own work goes back. If the operator changed something
     while the batch was open, restoring a copy taken before it would quietly
-    undo their change too — so it is refused and said.
+    undo their change too, so it is refused and said.
 
     Its own function because a notebook batch spans two files: both guards
     have to answer before either is put back, or a refusal from the second
@@ -392,7 +392,7 @@ def revert_blocked(project):
         h = d.get("history", {}).get(project) or []
         if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
             return ("the operator has changed this list since the batch "
-                    "opened — reverting would undo their work too. "
+                    "opened; reverting would undo their work too. "
                     "Commit it and correct what is wrong.")
     return None
 
@@ -419,7 +419,7 @@ def history(project, limit=None, since=None, find=None):
     Narrowed here rather than by whoever is reading, because the reader that
     matters most is a session: a log dumped whole is a log that costs more
     context than the answer in it is worth. `find` reads the words of the
-    line, what it used to say, and the reason it was dropped — the three
+    line, what it used to say, and the reason it was dropped: the three
     places anybody would look.
     """
     with _lock:
@@ -443,7 +443,7 @@ def history(project, limit=None, since=None, find=None):
 
 
 def items(project):
-    """The list, in the order it is stored — which is the order it is shown.
+    """The list, in the order it is stored, which is the order it is shown.
 
     Nothing is sorted here any more. A list that reshuffles itself is one you
     cannot keep a plan in: an item ticked off would jump to the bottom, taking
@@ -460,8 +460,8 @@ def counts():
 
     The same number the panel shows, which is what makes the badge worth
     glancing at: an item with nothing left to hand over does not count.
-    Everything on the list is outstanding by construction now — ticking one
-    off takes it off — so this is only about how much of it can still be sent.
+    Everything on the list is outstanding by construction now (ticking one
+    off takes it off), so this is only about how much of it can still be sent.
     """
     with _lock:
         d = load()
@@ -478,12 +478,13 @@ def _int(v):
     word "x". One reader, and every caller answers "not an item" instead of
     dying.
 
-    "R12" is accepted beside 12 — the printed form of an id is the letter and
-    the number (ids.py) — and another tab's letter reads as no item at all.
+    "R12" is accepted beside 12, because the printed form of an id is the
+    letter and the number (ids.py), and another tab's letter reads as no item
+    at all.
     bb checks the letter before it gets here so the refusal can say why; the
     dashboard sends bare ints and never trips it.
     """
-    n, _err = ids.parse("todo", v)
+    n, _err = ids.parse("roadmap", v)
     return n
 
 
@@ -493,7 +494,7 @@ def _next_id(rows, d=None, project=None):
     On the list, held for approval (pending.py), or finished and gone: the
     file keeps the high-water mark under `reserved`, and it never comes
     down. It used to be the highest number still ON the list, so ticking
-    the newest items off handed their numbers to the next adds — the
+    the newest items off handed their numbers to the next adds: the
     approval gate was #27 in ten comments and the next item was R27 too
     (bug B72). A number is the item's own, and "a gap means something was
     removed" only holds if nothing is ever numbered twice.
@@ -511,7 +512,7 @@ def _took(d, project, n):
 
 
 # The details under a line: the technical half the title should not carry.
-# Which files, which functions, the approach — earmarked when the plan is
+# Which files, which functions, the approach, earmarked when the plan is
 # written so the session that works the step does not start from a cold grep.
 # Longer than a line is allowed to be, because "where in the codebase" is a
 # list, not a sentence.
@@ -524,14 +525,14 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 
     Its own verb rather than a field on edit, because the two change for
     different reasons: the words are *what* is being asked, the details are
-    *where and how* — and the history should say which of the two moved.
+    *where and how*, and the history should say which of the two moved.
     """
     text = _clean(text, max_lines=MAX_INFO_LINES + 1)
     if len(text) > MAX_INFO or text.count("\n") >= MAX_INFO_LINES:
         return {"error": f"details are {MAX_INFO} characters over at most "
                          f"{MAX_INFO_LINES} lines. Write the half a session would "
-                         f"otherwise grep for — which files, which functions, what "
-                         f"was decided — and not the thinking that got there; the "
+                         f"otherwise grep for (which files, which functions, what "
+                         f"was decided) and not the thinking that got there; the "
                          f"whole list is read into every session's prompt."}
     if step is not None and _int(step) is None:
         return {"error": "not a step"}
@@ -560,7 +561,7 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 
 
 # An item is one thing to do, or several in an order that matters. A change
-# that needs three things done in sequence is not three items — put them out
+# that needs three things done in sequence is not three items: put them out
 # of order and the second one lands on a tree the first was supposed to have
 # made. So a group keeps its steps, and only the next unsent one can be sent.
 MAX_STEPS = 12
@@ -571,19 +572,19 @@ def add(project, text, by="you", steps=(), who="", number=None):
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
+        return {"error": f"too long: {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
     steps = [_clean(str(x)) for x in (steps or [])]
     steps = [x for x in steps if x]
     if len(steps) > MAX_STEPS:
-        return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order — which is the whole reason both shapes exist."}
+        return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order, which is the whole reason both shapes exist."}
     if any(len(x) > MAX_TEXT for x in steps):
         return {"error": f"a step is longer than {MAX_TEXT} characters. A step "
                          f"is a point at which the last work must have finished, "
-                         f"not a task — put everything that can be done in one go "
+                         f"not a task: put everything that can be done in one go "
                          f"into one, and the detail in `bb roadmap info`."}
     # The gate (roadmap #27): what a SESSION adds may be held for the operator
     # or refused, per project. After the checks above, so a held record is
-    # one that would have landed — and the number it is told is reserved
+    # one that would have landed, and the number it is told is reserved
     # here, where the next id is minted, so nothing else takes it meanwhile.
     if by == "claude" and not pending.replaying():
         g = pending.mode(project, "roadmap")
@@ -602,7 +603,7 @@ def add(project, text, by="you", steps=(), who="", number=None):
         d = load()
         rows = d["projects"].get(project) or []
         if len(rows) >= MAX_OPEN:
-            return {"error": f"{MAX_OPEN} open items is the limit — this list "
+            return {"error": f"{MAX_OPEN} open items is the limit; this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
         nid = _int(number) or _next_id(rows, d, project)
@@ -633,7 +634,7 @@ def _find(rows, item_id):
 
 
 def _moved_by(d, project, item_id):
-    """Who last changed this item and when, out of the log — for the refusal
+    """Who last changed this item and when, out of the log, for the refusal
     below, which is worth nothing without a name and a time on it.
 
     An open batch is searched first: its events are newer than anything in the
@@ -650,8 +651,8 @@ def _moved_by(d, project, item_id):
 def clash(what, stored, was):
     """The refusal, when a write's base is no longer what is stored.
 
-    What a write to this list replaces is one FIELD — an item's words, or a
-    step's, or either one's details — so what it carries is not a version
+    What a write to this list replaces is one FIELD (an item's words, or a
+    step's, or either one's details), so what it carries is not a version
     number for the row but the words it believes it is replacing, and the
     check is that they are still there (roadmap #26).
 
@@ -662,7 +663,7 @@ def clash(what, stored, was):
     about anything. Same item is not the same as same words.
 
     `was is None` means the caller did not say what it was replacing, and is
-    unchecked — every caller that predates this, and `bb`, which has its own
+    unchecked: every caller that predates this, and `bb`, which has its own
     guard for the same danger and a much longer window to guard.
     """
     if was is None or str(was) == str(stored):
@@ -679,7 +680,7 @@ def _edit(project, item_id, change, by="you", who=""):
     this lock, next to the change it describes, and a closure that returns it
     cannot reach the loaded file to write it itself.
 
-    It may also hand back a `conflict` — see `clash` above — which is filled
+    It may also hand back a `conflict` (see `clash` above), which is filled
     in here with who moved the thing and when, for the same reason: the log
     is inside this lock and the closure cannot reach it.
     """
@@ -699,14 +700,14 @@ def _edit(project, item_id, change, by="you", who=""):
             out["conflict"].update(id=item_id, **_moved_by(d, project, item_id))
             return out
         # One event, or a list of them: the last step of a plan being marked
-        # done is two things that happened — the step, and the item it
-        # finished — and the log says both.
+        # done is two things that happened (the step, and the item it
+        # finished), and the log says both.
         for e in ([ev] if isinstance(ev, dict) else (ev or [])):
             if ok:
                 _log(d, project, by, e)
         d["projects"][project] = rows
-        # Only when something happened. A refused change — no such step, a
-        # step that has gone — used to mark the list unsaved all the same,
+        # Only when something happened. A refused change (no such step, a
+        # step that has gone) used to mark the list unsaved all the same,
         # which since #27 means every session on the project is told the
         # roadmap moved when nothing did.
         if ok:
@@ -721,7 +722,7 @@ def shelve(project, item_id, on=True, by="you", who=""):
 
     The state between "do this" and "we are not doing this": a reason to keep
     it, no intention of doing it now. It sinks to the bottom of the list, goes
-    dark, and its arrow dies — so what is left above it is what is actually
+    dark, and its arrow dies, so what is left above it is what is actually
     live, which is the only thing the list is read for.
 
     Physically to the bottom, not sorted there on the way out: the stored
@@ -736,7 +737,7 @@ def shelve(project, item_id, on=True, by="you", who=""):
         if on:
             rows.append(row)
         else:
-            # Back above the shelf, at the end of the live ones — its old place
+            # Back above the shelf, at the end of the live ones: its old place
             # is not recoverable and guessing at one would be worse than the
             # bottom of the part of the list it belongs to.
             rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
@@ -750,14 +751,14 @@ def tick(project, item_id, by="you", who=""):
     """Finish an item: off the list, into the log.
 
     It used to fade in place for a week. That is the same mistake striking a
-    line out by hand was — a list is read to find out what is left, and a
+    line out by hand was: a list is read to find out what is left, and a
     thing that is finished is not left. Both ways of leaving now go the same
     way, and the log is what tells them apart: "ticked off" is a session
     saying it did the work, "dropped" is somebody deciding not to.
 
     There is no putting one back, because there is nothing to put it back
     *to*. The words are in the history; adding it again is a fresh item, and
-    that is honest — it is being asked for a second time.
+    that is honest: it is being asked for a second time.
     """
     def change(row, rows):
         rows.remove(row)
@@ -774,7 +775,7 @@ def edit(project, item_id, text, step=None, by="you", was=None, who=""):
     if not text:
         return {"error": "nothing to say"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
+        return {"error": f"too long: {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
     if step is not None and _int(step) is None:
         return {"error": "not a step"}
 
@@ -806,7 +807,7 @@ def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
     becomes the next in line, so the group carries on from where it really is
     rather than from where it was written.
 
-    Dropping is for work that is abandoned — a finished plan is ticked, and
+    Dropping is for work that is abandoned: a finished plan is ticked, and
     marking its last step done ticks it. So the history keeps the whole row,
     steps and details and all, and `restore` puts it back from there: a line
     dropped by mistake, or a decision reversed, is one press rather than a
@@ -814,7 +815,7 @@ def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
 
     And it keeps the reason. "Dropped" and "dropped because the picker this
     described no longer exists" are the same event to the list and different
-    events to whoever reads it next — and the second one is what stops
+    events to whoever reads it next, and the second one is what stops
     somebody putting it back.
     """
     why = _clean(why, multiline=False)[:MAX_TEXT]
@@ -908,17 +909,17 @@ def move(project, item_id, step=None, dir=0, by="you", who=""):
 
 
 def add_step(project, item_id, text, by="you", who=""):
-    """Give an item a step — which is how a plain one becomes a plan."""
+    """Give an item a step, which is how a plain one becomes a plan."""
     text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
-        return {"error": f"too long — {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
+        return {"error": f"too long: {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
 
     def change(row, rows):
         steps = row.setdefault("steps", [])
         if len(steps) >= MAX_STEPS:
-            return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order — which is the whole reason both shapes exist."}
+            return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order, which is the whole reason both shapes exist."}
         steps.append({"text": text, "sent": 0})
         return {"ok": True,
                 "log": {"act": "add-step", "id": row["id"],
@@ -929,8 +930,8 @@ def add_step(project, item_id, text, by="you", who=""):
 def cross(project, item_id, step=None, on=True, by="you", who=""):
     """Put a sent line back, or mark one as gone.
 
-    This used to be two features. Striking a line out *by hand* — "I did this
-    one myself" — is gone: a line crossed off without being handed over reads
+    This used to be two features. Striking a line out *by hand* ("I did this
+    one myself") is gone: a line crossed off without being handed over reads
     exactly like one that was, and a list of things that look dealt with and
     are not is worse than a shorter list. What is left is the undo of a send:
     it did not take, put it back so it can go again. Removing it is the other
@@ -964,13 +965,13 @@ def _flat(text):
 
     A step can be written across several lines because a person reads it in
     the panel. It is delivered by typing it into a terminal, where a newline
-    is not whitespace — it is Enter, and it would submit half a prompt and
+    is not whitespace: it is Enter, and it would submit half a prompt and
     leave the rest to arrive as a second message. So the breaks become
     separators on the way out. A paragraph break is a heavier one than a line
     break, which is about as much of the shape as a single line can carry.
     """
     parts = [p.strip() for p in (text or "").split("\n\n")]
-    return " — ".join(" ".join(p.split()) for p in parts if p.strip())
+    return " / ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
 def gone(st):
@@ -984,8 +985,8 @@ def next_step(row):
     -1 means the item itself, for one with no steps. This is the whole order
     guarantee: a group hands out its steps one at a time, in the order they
     were written, and never the third before the second. A step a session
-    finished without being sent it — told in chat, or carried along with
-    the one before — is passed over the same way, so the operator is never
+    finished without being sent it (told in chat, or carried along with
+    the one before) is passed over the same way, so the operator is never
     offered a finished step as the next thing to send.
     """
     steps = row.get("steps") or []
@@ -1006,7 +1007,7 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
     finished, so it reworded the step to say LANDED and the panel went on
     offering it to send. This is the second mark. Only a session sets it,
     the same rule as ticking off an item, and there is no undo for the
-    same reason: if it turns out not to be finished, send it again — that
+    same reason: if it turns out not to be finished, send it again, which
     clears the mark and says so in the log.
     """
     if _int(step) is None:
@@ -1027,7 +1028,7 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
         # The last one finishes the plan: off the list and into the log as
         # done, the way `tick` does it, without a second command. A list is
         # read to find out what is left, and a plan with every step done is
-        # not left — it used to sit there saying "bb roadmap done takes it
+        # not left; it used to sit there saying "bb roadmap done takes it
         # off" until somebody typed that.
         if all(st.get("done") for st in steps):
             rows.remove(row)
@@ -1041,8 +1042,8 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
 def restore(project, item_id, at=None, by="you", who=""):
     """Put a dropped item back from the history, as it was when it went.
 
-    The newest "remove" of that item — or the one at `at`, when the log
-    holds several — carries the row itself (see remove), so what comes back
+    The newest "remove" of that item, or the one at `at` when the log
+    holds several, carries the row itself (see remove), so what comes back
     is the plan with its steps, marks and details, under its own number. A
     ticked-off item is not restorable: done is a session's word that the
     work happened, and undoing that is adding the work again.
@@ -1054,9 +1055,9 @@ def restore(project, item_id, at=None, by="you", who=""):
         d = load()
         rows = d["projects"].get(project) or []
         if _find(rows, item_id) is not None:
-            return {"error": f"{ids.label("todo", item_id)} is on the list"}
+            return {"error": f"{ids.label("roadmap", item_id)} is on the list"}
         if len(rows) >= MAX_OPEN:
-            return {"error": f"{MAX_OPEN} open items is the limit — this list "
+            return {"error": f"{MAX_OPEN} open items is the limit; this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
         want = _int(at)
@@ -1065,7 +1066,7 @@ def restore(project, item_id, at=None, by="you", who=""):
                and _int(e.get("id")) == item_id and isinstance(e.get("row"), dict)
                and (want is None or e.get("at") == want)]
         if not evs:
-            return {"error": f"nothing dropped as {ids.label("todo", item_id)} "
+            return {"error": f"nothing dropped as {ids.label("roadmap", item_id)} "
                              "is in the history to put back"}
         row = copy.deepcopy(max(evs, key=lambda e: e.get("at", 0))["row"])
         row["id"] = item_id
@@ -1107,7 +1108,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
             # repeat, so re-sending one has to name it. An item with no steps
             # has only itself, and asking for it again is unambiguous.
             if steps:
-                return {"error": "every step of this has been sent — "
+                return {"error": "every step of this has been sent; "
                                  "pick the one to send again"}
             step = -1
     step = _int(step)
@@ -1120,20 +1121,20 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
         # Out of order forwards is refused; back over one already sent is not,
         # because that is the operator saying "it did not take, do it again".
         if not gone(steps[step]) and nxt is not None and step != nxt:
-            return {"error": f"step {nxt + 1} has not been sent yet — "
+            return {"error": f"step {nxt + 1} has not been sent yet; "
                              "this one is in a group, and the order is the point"}
         # A step arrives on its own otherwise, and "then re-measure it" means
         # nothing without the plan it belongs to. So the line carries all
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
         text = (f"This is step {step + 1} of {len(steps)} in a plan "
-                f"({ids.label('todo', item_id)} on the roadmap). "
+                f"({ids.label('roadmap', item_id)} on the roadmap). "
                 f"The plan: {_flat(row['text'])}. "
                 f"Step {step + 1}: {_flat(steps[step]['text'])}")
         if steps[step].get("info"):
             text += f" Details: {_flat(steps[step]['info'])}"
     else:
-        text = f"{_flat(row['text'])}  ({ids.label('todo', item_id)} on the roadmap)"
+        text = f"{_flat(row['text'])}  ({ids.label('roadmap', item_id)} on the roadmap)"
         if row.get("info"):
             text += f"  (Details: {_flat(row['info'])})"
     # One message, not two. Saving the list and sending a step both want to
@@ -1148,7 +1149,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
     extra = changed_line(also_told) if isinstance(also_told, dict) else ""
     line = text + (f"  (Also: {extra[0].lower()}{extra[1:]})" if extra else "")
     # Nothing is switched here any more. The model and effort a project runs
-    # on are its own setting, applied by bb-tty as launch flags — so a session
+    # on are its own setting, applied by bb-tty as launch flags, so a session
     # that is up is already on them, and a step is just the step. What used to
     # sit here typed /model ahead of it, which stopped working the day claude
     # put a confirmation behind that command: the step went into the dialog.
@@ -1185,7 +1186,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
 # session is mid-task all the time, and a session that downed tools to go and
 # read them every time would be worse than one that never read them at all.
 LOOK = {
-    "todo": "the shared to-do list for this project (`bb roadmap`)",
+    "roadmap": "the shared to-do list for this project (`bb roadmap`)",
     "memory": ("my notes about how you work here "
                "(`cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md`)"),
 }
@@ -1206,11 +1207,11 @@ def changed_line(kinds):
     else:
         subject = "Both " + " and ".join(LOOK[k] for k in which)
         them = "them"
-    return (f"{subject} just changed — keep {them} in mind, but carry on with "
+    return (f"{subject} just changed; keep {them} in mind, but carry on with "
             "what you are doing unless I ask for one of those.")
 
 
-def mark_unsaved(project, kind="todo"):
+def mark_unsaved(project, kind="roadmap"):
     """Something in the panel moved. The Save buttons cover all of it, and the
     kind is what lets the message name which half."""
     with _lock:
@@ -1232,9 +1233,10 @@ def revisions():
     """{project: {kind: how many times it has moved}} for the status poll.
 
     So an open notebook can tell that somebody else wrote something without
-    re-fetching the list every fifteen seconds to find out — the same trick
-    the Bugs tab has had since it started polling bug_rev, and the reason the
-    Roadmap and Memory views were the two that sat there stale (roadmap #26).
+    re-fetching the list every fifteen seconds to find out. It is the same
+    trick the Bugs tab has had since it started polling bug_rev, and the
+    reason the Roadmap and Memory views were the two that sat there stale
+    (roadmap #26).
 
     The counter is #27's: it moves on every change to either half, whether or
     not a batch is open, which is what a history length cannot say.
@@ -1244,7 +1246,7 @@ def revisions():
     return {p: {k: int((v or {}).get(k, 0)) for k in KINDS} for p, v in b.items()}
 
 
-def stale(project, who, kind="todo"):
+def stale(project, who, kind="roadmap"):
     """Has this half moved since this seat last saw it?
 
     What it is for is a session about to write over words it read a while
@@ -1262,7 +1264,7 @@ def stale(project, who, kind="todo"):
 
 
 def mark_seen(project, who, kind=None):
-    """This seat has now read what is there — silently, saying nothing.
+    """This seat has now read what is there, silently, saying nothing.
 
     `catchup` is the other half of the same pair and reports as well as
     records; this one is for the act of READING the list, where there is
@@ -1286,7 +1288,7 @@ def mark_seen(project, who, kind=None):
 
 
 def readers(project):
-    """{seat: when it last READ this list} — for the panel (roadmap #26).
+    """{seat: when it last READ this list}, for the panel (roadmap #26).
 
     The operator's question after changing something is whether the session
     beside them has taken it in yet, and this is the only thing that answers
@@ -1302,7 +1304,7 @@ def catchup(project, who):
     marking it told in the same breath (roadmap #27).
 
     Read by the UserPromptSubmit hook, so the answer rides into a turn the
-    operator was already spending rather than costing one of its own — which
+    operator was already spending rather than costing one of its own, which
     is the whole difference between this and `announce` below, and the reason
     the panel need not have a button for the ordinary case.
 
@@ -1328,7 +1330,7 @@ def catchup(project, who):
         seats[who] = b
         # The panel's own marker is settled by the same act: somebody has now
         # been told, which is all that flag ever meant. It stays per project
-        # — two sessions sharing one would settle it for each other — because
+        # (two sessions sharing one would settle it for each other) because
         # it is a nag rather than the record, and the record is per session
         # above.
         for k, moved in kinds.items():
@@ -1360,22 +1362,37 @@ def prompt(project):
     conversation, and a session that spends its first act parsing a data
     structure has already lost the point of it. Empty when there is nothing,
     so a project with no list adds nothing to any prompt.
+
+    WHAT IS HERE AND WHAT IS NOT. The list says what exists: the number, the
+    title, the steps and which of them are done. The DETAILS do not come with
+    it, and that is the whole of what makes this cheap. They are the long
+    half, written for the session that actually picks an item up (which
+    files, which functions, what was decided), and on this project they were
+    35KB of a 45KB block that every conversation paid for whether or not it
+    ever touched the roadmap. `bb roadmap show R4` prints one in full, which
+    is one cheap call at the moment it is worth making. The tracker has
+    always worked this way (`bb bug show B7`); this is the roadmap catching
+    up with it.
+
+    A shelved item is one line under a heading of its own. The operator has
+    parked it, so what a session needs is to know it exists and to leave it
+    alone, and its steps and details are noise until they unpark it.
     """
     rows = items(project)
     if not rows:
         return ""
-    lines = []
+    lines, parked = [], []
     for r in rows:
+        label = ids.label("roadmap", r["id"])
+        if r.get("shelved"):
+            parked.append(f"- {label}  {r['text']}")
+            continue
         # Numbered, because a session that wants to talk about one of these
-        # has to be able to name it — and the name has to be the one the
+        # has to be able to name it, and the name has to be the one the
         # operator sees on the row and the one `bb roadmap done` takes.
-        lines.append(f"- {ids.label('todo', r['id'])}  {r['text']}"
-                     + ("  (shelved — the operator has parked this; do not "
-                        "pick it up unless they say so)" if r.get("shelved")
-                        else "  (you added this in an earlier session)"
+        lines.append(f"- {label}  {r['text']}"
+                     + ("  (you added this in an earlier session)"
                         if r.get("by") == "claude" else ""))
-        if r.get("info"):
-            lines.append(f"    details: {_flat(r['info'])}")
         # A group's steps come with it, marked so the order is legible: these
         # are handed over one at a time from the dashboard, and one already
         # sent is one that has been asked for.
@@ -1384,30 +1401,40 @@ def prompt(project):
                          + ("  (done)" if st.get("done")
                             else "  (already sent to a session)" if st.get("sent")
                             else ""))
-            if st.get("info"):
-                lines.append(f"       details: {_flat(st['info'])}")
+        # Said once per item, and only where there is something to fetch, so
+        # the pointer is information rather than furniture.
+        if r.get("info") or any(st.get("info") for st in (r.get("steps") or [])):
+            lines.append(f"    (details: `bb roadmap show {label}`)")
+    body = "\n".join(lines)
+    if parked:
+        body += ("\n\nParked by the operator, which is why they carry no detail "
+                 "here: known, and not to be picked up unless they say so.\n"
+                 + "\n".join(parked))
     return ("The operator keeps a shared to-do list for this project, and this "
-            "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
+            "is what is on it:\n\n" + body + "\n\n"
             "It is context, not instructions: work on an item when asked, or "
             "when it is plainly part of what was asked. The number is the "
-            "item's own and does not change — it is what the operator sees on "
+            "item's own and does not change: it is what the operator sees on "
             "the row, so refer to one as R4 rather than by counting down the "
-            "list. Tick one off with "
+            "list. This is the shape of the list rather than all of it: "
+            "`bb roadmap show R4` prints one item in full, with the technical "
+            "details behind it, and reading that is the first thing to do "
+            "when you pick one up. Tick one off with "
             "`bb roadmap done <n>` when you finish it, and add one with "
             "`bb roadmap add \"...\"` when you notice something worth doing and "
             "it is out of scope for what you are on. A plan can be corrected "
             "as well as written: `bb roadmap edit <n> \"...\"`, and "
             "`bb roadmap step add|edit|rm <n> [<step>] [\"...\"]` for one step "
-            "of one — do that when the design moves under a plan rather than "
+            "of one. Do that when the design moves under a plan rather than "
             "leaving steps that describe the old one. When you finish one "
             "step of a plan and the plan is not finished, "
             "`bb roadmap step done <n> <step>` marks that step; the panel "
             "then offers the operator the next one instead of it. `bb roadmap info <n> "
-            "[<step>] \"...\"` attaches the technical details — which files, "
-            "which functions, the approach — so the session that works it "
+            "[<step>] \"...\"` attaches the technical details (which files, "
+            "which functions, the approach) so the session that works it "
             "does not start from a cold grep; write them when you write the "
             "plan. Every change either of "
             "you makes is logged with its time and kept where the operator "
             "can read it, so correct the list rather than working around it. "
             "Do not restate the list "
-            "back to the operator — they can see it.")
+            "back to the operator; they can see it.")

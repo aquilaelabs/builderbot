@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Playwright's browsers live on the package store, not in the image.
+# Playwright's browsers live on the toolchain store, not in the image.
 #
 # They are 1.3GB of pure download and /opt is discarded on every image
 # update, so baking them in meant re-fetching them weekly forever. The image
-# keeps the module and the system libraries — apt packages that have to be
-# there — and the bundles come here.
+# keeps the module and the system libraries (apt packages that have to be
+# there), and the bundles come here.
 #
 # PLAYWRIGHT_BROWSERS_PATH still says /opt/pw-browsers, because everything
 # from `bb shot` to the dashboard's tests to the project CLAUDE.md template
@@ -30,11 +30,11 @@ mkdir -p "$STORE" 2>/dev/null || { warn "cannot write ${STORE}; leaving browsers
 chown "$PUID:$PGID" "$STORE" 2>/dev/null || true
 
 # An image that still ships browsers (or a session that installed some into
-# the real directory) is adopted rather than discarded — the bytes are
+# the real directory) is adopted rather than discarded: the bytes are
 # already here, and downloading them again to prove a point would be silly.
 if [ -d "$BROWSERS" ] && [ ! -L "$BROWSERS" ]; then
     if [ -n "$(ls -A "$BROWSERS" 2>/dev/null)" ] && [ -z "$(ls -A "$STORE" 2>/dev/null)" ]; then
-        log "moving playwright browsers onto ${STORE} — once, then updates stop re-downloading them"
+        log "moving playwright browsers onto ${STORE} (once, then updates stop re-downloading them)"
         cp -a "$BROWSERS/." "$STORE/" 2>/dev/null || true
     fi
     rm -rf "${BROWSERS:?}"
@@ -53,23 +53,23 @@ relink_chromium() {
 }
 
 # First boot on an empty share: fetch them. Synchronous and loud, like the
-# Android baseline — it happens once per share, and a container that comes up
+# Android baseline: it happens once per share, and a container that comes up
 # "ready" while `bb shot` cannot work would be worse than a slow start.
 #
 # Unless they were removed on purpose. A fresh share and one somebody just
 # cleared look exactly alike from here, so without the marker an uninstall
-# lasted until the next restart and no further — which is not an uninstall.
+# lasted until the next restart and no further, which is not an uninstall.
 if [ -e "$(sdk_removed_marker playwright)" ]; then
-    log "playwright browsers: removed by the operator — leaving them out"
-    log "  put them back with: bb packages install playwright"
+    log "playwright browsers: removed by the operator, leaving them out"
+    log "  put them back with: bb toolchains install playwright"
 elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
-    log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
+    log "installing playwright browsers into ${STORE} (~1.3GB, once; updates will not re-download them)"
     if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
            playwright install chromium firefox webkit >/dev/null 2>&1; then
         log "playwright browsers ready"
     else
-        warn "could not install the playwright browsers — bb shot and the dashboard"
-        warn "tests will not work until: bb packages install playwright"
+        warn "could not install the playwright browsers: bb shot and the dashboard"
+        warn "tests will not work until: bb toolchains install playwright"
     fi
 fi
 

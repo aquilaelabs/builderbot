@@ -1,6 +1,6 @@
 // New project: the button at the foot of the Projects card, the dialog, and
-// /api/create behind it. The local path runs for real — git init in the
-// scratch workspace, CLAUDE.md built from the checkout's template — while the
+// /api/create behind it. The local path runs for real (git init in the
+// scratch workspace, CLAUDE.md built from the checkout's template) while the
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
@@ -69,7 +69,7 @@ ok(cloneSlide.some(k => k.includes('pUrlField')),
    '...sliding in from its tab\'s side, like the view switch');
 ok(await page.$eval('#pNameField', el => !el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden),
-   'clone mode asks for a name as well as the URL — only the notes come from the repo');
+   'clone mode asks for a name as well as the URL: only the notes come from the repo');
 // The name follows the address, so the common case is still no typing...
 await page.fill('#pUrl', 'https://github.com/owner/radarr.git');
 ok(await page.$eval('#pName', el => el.value) === 'radarr',
@@ -97,7 +97,7 @@ ok(await page.$eval('#pNamePreview', el => el.hidden),
 // next assertion is that switching tabs leaves no cursor anywhere.
 await page.$eval('#pName', el => { el.value = ''; el.blur(); });
 // Neither tab puts a cursor anywhere. A focused field brings the on-screen
-// keyboard up with it, over half of the dialog that just opened — so the
+// keyboard up with it, over half of the dialog that just opened, so the
 // field is picked by whoever wants to type in it.
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    'switching to local leaves the keyboard down');
@@ -106,7 +106,7 @@ ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...and so does switching to clone');
 await page.click('#pLocal');
 
-// Refusals keep the dialog open with the reason in place — nothing typed is
+// Refusals keep the dialog open with the reason in place: nothing typed is
 // lost to a mistake.
 await page.click('#pCreate');
 ok(await page.$eval('#pErr', el => el.textContent.includes('name')),
@@ -144,7 +144,7 @@ ok(!readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('BUILDERBOT:ENV:BE
    '...nor put inside it, so the file is entirely theirs to commit');
 
 // A project made after anything has been pinned is pinned itself. Without
-// that it lands on disk and never reaches the sidebar — created, and to the
+// that it lands on disk and never reaches the sidebar: created, and to the
 // operator indistinguishable from gone. Unpinning first is what brings the
 // pins file into existence; while there is none, everything is pinned anyway
 // and this would prove nothing.
@@ -163,8 +163,8 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
 // ---- starting a local repo from an archive -------------------------------
 // A code base somebody already has, dropped into a fresh repo: unpacked
 // before git init, the wrapper folder a tarball or a GitHub zip carries
-// dropped, desktop junk skipped, and — because an archive is a list of
-// paths somebody else wrote — anything reaching outside the directory
+// dropped, desktop junk skipped, and, because an archive is a list of
+// paths somebody else wrote, anything reaching outside the directory
 // refused whole rather than written.
 {
   const fx = `${DIR}/archives`;
@@ -221,7 +221,7 @@ with zipfile.ZipFile('${fx}/flat.zip', 'w') as z:
      'a zip with more than one thing at the top is unpacked as it is, junk aside');
 
   // What a desktop makes: Finder's Compress puts a __MACOSX folder BESIDE
-  // the tree, and `tar czf x.tgz ./app` writes every member under ./ — both
+  // the tree, and `tar czf x.tgz ./app` writes every member under ./; both
   // are the ordinary case, and neither is a second folder anybody meant.
   execFileSync('python3', ['-c', `
 import zipfile
@@ -252,7 +252,7 @@ with zipfile.ZipFile('${fx}/finder.zip', 'w') as z:
   ok(existsSync(`${DIR}/ws/dotted/src/main.js`) && !existsSync(`${DIR}/ws/dotted/app`),
      'a tarball made under ./ drops its one folder the same way');
 
-  // A member the library cannot read — encrypted — is an answer, never a
+  // A member the library cannot read (encrypted) is an answer, never a
   // 500 with a half-written project left behind.
   execFileSync('python3', ['-c', `
 import zipfile
@@ -317,7 +317,7 @@ with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
 // ---- renaming ----------------------------------------------------------
 // The button is nothing; the migration is the job. A project's name is its key
 // in a dozen stores, and every one of them fails the same quiet way when it is
-// missed — the directory is there under its new name and its roadmap is not.
+// missed: the directory is there under its new name and its roadmap is not.
 // The pins file is the one that is trivial to seed and to read back, so it
 // stands in for the table: if the name moved there it moved by the same code
 // path everywhere else.
@@ -338,7 +338,7 @@ await page.waitForFunction(() => [...document.querySelectorAll('#projects .name'
 ok(true, '...and the row is the new name');
 
 // The refusals. A name already taken, a project that is not there, and the
-// name it already has — each answered rather than half-done.
+// name it already has: each answered rather than half-done.
 ok(await post({ name: 'pinned-again', to: 'alpha' }, '/api/rename') === 400,
    'renaming onto a name already in the workspace is refused');
 ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
@@ -358,7 +358,7 @@ await page.evaluate(() => setProjectPinned('beta', true));
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks. What is
-// checked is the SHAPE, not the host — any git server is linkable now — so
+// checked is the SHAPE, not the host (any git server is linkable now), so
 // the corpus is transports, paths that are not repositories, and a path too
 // deep for the host it names.
 for (const url of ['ext::sh -c id', 'file:///etc', 'https://github.com/owner-only',
@@ -366,7 +366,7 @@ for (const url of ['ext::sh -c id', 'file:///etc', 'https://github.com/owner-onl
                    'https://gitea.example/onlyone'])
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
-// The name still comes off the URL when none is given — proven without
+// The name still comes off the URL when none is given, proven without
 // touching the network: a URL naming a repo that already exists here is
 // refused by the mkdir claim before git ever runs. Which also proves the
 // address was ACCEPTED, since it got as far as claiming a directory: three of
@@ -385,12 +385,12 @@ ok(await post({ mode: 'clone', url: 'https://github.com/owner/somethingelse',
 // A supplied name goes through the same sanitizing an init's does, rather
 // than being trusted because a URL was alongside it. Proven by collision
 // again: each of these sanitizes to `alpha`, which already exists, so the
-// mkdir claim refuses it before git runs — and a name that had NOT been
+// mkdir claim refuses it before git runs, and a name that had NOT been
 // sanitized would not have collided.
 for (const name of ['../alpha', 'alpha/', 'alpha ', '.alpha', '_alpha'])
   ok(await post({ mode: 'clone', url: 'https://github.com/owner/repo', name }) === 400,
      `clone name sanitized to an existing one, refused: ${name}`);
-// Every one of these sanitizes to `alpha`, which exists — so the refusal
+// Every one of these sanitizes to `alpha`, which exists, so the refusal
 // proves the transformation rather than a rejection, and nothing is created.
 for (const name of ['../alpha', 'alpha!', '.alpha', '_alpha', 'alpha '])
   ok(await post({ name, mode: 'init' }) === 400,
@@ -411,7 +411,7 @@ ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused')
 
 // ---- a name already taken ----------------------------------------------
 // Said in the dialog rather than only by the server, because the server can
-// only answer after Create — and the case that needs it most is the one with
+// only answer after Create, and the case that needs it most is the one with
 // the field left EMPTY, where the name comes from the repository and is never
 // typed at all.
 await page.click('#bNewProj');
@@ -453,7 +453,7 @@ ok(await post({ mode: 'clone', url: 'https://github.com/owner/pushless',
 const rights = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable — loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbours on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -469,18 +469,18 @@ m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             state=d, home=d,
             write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
-# The remote's identity, however it is spelled — a deploy-key alias hides the
+# The remote's identity, however it is spelled: a deploy-key alias hides the
 # host but the path is still owner/repo, and case does not distinguish repos.
 out['ssh_alias'] = m.repo_of_remotes('origin\tgit@bb-thing:Owner/Repo.git (fetch)')
 out['https'] = m.repo_of_remotes('origin\thttps://github.com/owner/repo (push)')
-# A subgroup path IS a repository — GitLab nests them — so identity keeps all
+# A subgroup path IS a repository (GitLab nests them), so identity keeps all
 # of it. What is not a repository is an address with no owner in it at all.
 out['nested'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
 out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:justone (fetch)')
 m.grant_push('first', 'github.com', 'owner/repo', 'key')
 out['holder'] = m.push_holder('github.com', 'owner/repo')
 out['free'] = m.push_holder('github.com', 'owner/other')
-# The same path on another server is another repository — mirroring one to the
+# The same path on another server is another repository: mirroring one to the
 # other is a reason to link a second project, not a collision to refuse.
 out['elsewhere'] = m.push_holder('gitea.home.lan', 'owner/repo')
 out['may'] = [m.may_push('first'), m.may_push('second')]
@@ -505,7 +505,7 @@ ok(rj.after_drop === '',
 
 // ---- which host a clone is from ----------------------------------------
 // Cloning takes any address linking takes. The host is IN the address there,
-// so the form does not ask for one — it asks the one thing an address cannot
+// so the form does not ask for one. It asks the one thing an address cannot
 // say, which is what is running on a server nobody has answered for, and only
 // then. A paste of a GitHub URL is never asked; a Gitea is asked once ever.
 await page.click('#bNewProj');
@@ -571,7 +571,7 @@ for (const token of ['has space', 'two\nlines', 'sh', '#{}!'])
 const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable — loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbours on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -604,7 +604,7 @@ ok(tj.mode === '0o600' && tj.dirmode === '0o700',
 ok(tj.helper.startsWith('store --file=') && tj.helper.endsWith('/gitcreds/alpha'),
    '...and the helper git is given names that one file');
 ok(tj.lookup === tj.helper && tj.other === '',
-   'a project with no token gets no helper — it is not shared, it is absent');
+   'a project with no token gets no helper: it is not shared, it is absent');
 ok(tj.gone, 'and forgetting one removes it');
 
 // ---- which credential the remote actually uses -------------------------
@@ -615,7 +615,7 @@ ok(tj.gone, 'and forgetting one removes it');
 const authOut = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable — loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbours on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -676,14 +676,14 @@ out['now_off'] = m.remote_auth('/tmp/alpha', 'alpha')
 out['issued'] = issued
 # A credential is filed under the host it is for. git matches a stored line on
 # the scheme and the host, so one written against the wrong server is a file it
-# reads and ignores — a token that looks stored and authenticates nothing.
+# reads and ignores: a token that looks stored and authenticates nothing.
 m.write_token('gitea', 'abc123def456', 'git.home.lan:3000', 'http', 'sean')
 out['gitea_line'] = open(os.path.join(d, 'gitcreds', 'gitea')).read().strip()
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const aj = JSON.parse(authOut.trim().split('\n').pop());
 ok(aj.ssh_seen === 'ssh',
-   'a deploy-key alias is read as ssh, host and all — it is the URL form that decides');
+   'a deploy-key alias is read as ssh, host and all: it is the URL form that decides');
 ok(/no access token/.test(aj.no_token),
    'switching to a token nobody stored is refused, not written');
 ok(aj.opts_on_key.now === 'ssh' && aj.opts_on_key.token && aj.opts_on_key.ssh,
@@ -706,10 +706,10 @@ ok(!aj.off[1] && /nothing/.test(aj.off[0]) && aj.now_off === 'none',
 // ---- deploy keys -------------------------------------------------------
 // The harness agent holds one throwaway key. The endpoint lists its public
 // half; the dialog offers it; picking it for a clone writes the .pub selector
-// and the per-repo alias into the scratch home. The clone itself then fails —
-// the alias resolves against the real HOME's ssh config, which has never
-// heard of it — which is exactly what makes this test offline-safe: the
-// container-side writes all happen before git runs.
+// and the per-repo alias into the scratch home. The clone itself then fails,
+// because the alias resolves against the real HOME's ssh config, which has
+// never heard of it, and that is exactly what makes this test offline-safe:
+// the container-side writes all happen before git runs.
 const keys = await page.evaluate(async () =>
   (await (await fetch('/api/pubkeys')).json()).keys);
 ok(keys.length === 1 && keys[0].name === 'github_testkey'
@@ -727,18 +727,18 @@ ok(await page.$eval('#pPub', el => el.value.startsWith('ssh-ed25519 ')),
 await page.fill('#pUrl', 'https://github.com/owner/kproj');
 await page.click('#pCreate');
 // A clone is a background job now: the dialog gets out of the way as soon as
-// the job is accepted, and the Projects card carries it from there — which is
+// the job is accepted, and the Projects card carries it from there, which is
 // also what happens when the page is closed a second later.
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 ok(true, 'the dialog closes once the clone is accepted, rather than holding the request');
 // What a RUNNING row looks like is asserted further down, against the
 // harness's stalling git. Not here: this clone is a real one, and it fails
-// whenever ssh gives up on an alias no config has heard of — sometimes
+// whenever ssh gives up on an alias no config has heard of, sometimes
 // before the page's next poll, which is a row that came and went between two
 // frames. Three full runs died on that. So what is checked here is the
 // outcome, which is the part this clone is for: the failure lands on the
-// card, not in a toast that is gone in seven seconds — the page may not even
+// card, not in a toast that is gone in seven seconds. The page may not even
 // have been open when it happened.
 await page.waitForFunction(() => {
   const s = document.querySelector('#projects .row.jobfail .sub.bad');
@@ -770,7 +770,7 @@ await page.click('#pCancel');
 
 // ---- a job outlives the page, and can be stopped ------------------------
 // The whole reason a clone stopped being an HTTP request. The harness's git
-// stalls on this URL, so there is something still running to look at — which
+// stalls on this URL, so there is something still running to look at, which
 // is also why every assertion about a job while it runs belongs here rather
 // than against a real clone that may already have failed.
 await page.click('#bNewProj');
@@ -786,7 +786,7 @@ ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textCo
    && await page.$('#projects .row.job .dots') !== null,
    '...saying what it is doing, with an ellipsis rather than a parsed percentage');
 ok(await page.$eval('#bNewProj', b => b.disabled),
-   '...and New project is dead while it runs — one job at a time');
+   '...and New project is dead while it runs: one job at a time');
 ok(existsSync(`${DIR}/ws/slowclone`),
    'the directory is claimed up front, so a second request cannot take the name');
 ok(await page.$$eval('#projects .row .name',
@@ -796,7 +796,7 @@ ok(await page.$$eval('#projects .row .name',
 await page.reload();
 await ready(page);
 ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'slowclone'),
-   'a reload finds the job still running — it belongs to the server, not the page');
+   'a reload finds the job still running: it belongs to the server, not the page');
 await page.waitForFunction(() => {
   const s = document.querySelector('#projects .row.job .sub');
   return s && /\d+s/.test(s.textContent);
@@ -814,11 +814,11 @@ await page.click('#bJobOk');
 await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
-// The chain is GitHub whichever state a project is in — the link form for one
+// The chain is GitHub whichever state a project is in: the link form for one
 // with no remote, its credential settings for one that has. alpha has a
 // remote and beta does not, so the two doors are checked on the two of them.
 // With the stub gh (never authenticated) a key is mandatory, and the attempt
-// stops at the unresolvable bb- alias, before any remote is added — the
+// stops at the unresolvable bb- alias, before any remote is added. The
 // success path needs a live GitHub and stays a manual test, like the clone's.
 ok(await page.$('#projects [data-l="beta"]') !== null
    && await page.$('#projects [data-l="alpha"]') !== null,
@@ -830,8 +830,8 @@ ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
    '...and on a linked one it opens that project\'s GitHub settings, not the link form');
 await page.click('#rnCancel');
 await page.click('#projects [data-l="beta"]');
-// The dialog draws before its catalog lands — the keys and the git hosts are
-// one fetch per open — so every assertion below about the host picker is
+// The dialog draws before its catalog lands (the keys and the git hosts are
+// one fetch per open), so every assertion below about the host picker is
 // reading a payload that may still be in flight. Waited on the list being in
 // hand rather than on a tick going by, which is what made this file red about
 // one run in three on a busy box (B99).
@@ -856,7 +856,7 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta', forge: 'gite
    'and github.com cannot be linked as Gitea: the host names itself');
 await page.selectOption('#pForge', 'github');
 // The deploy-key pick from the clone flow above must not ride along into
-// this open — the select starts empty and repopulates from a fresh fetch.
+// this open: the select starts empty and repopulates from a fresh fetch.
 await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);
 ok(await page.$eval('#pKey', el => el.value === ''),
    'a new open starts with no key selected, whatever the last one picked');
@@ -897,7 +897,7 @@ await page.waitForFunction(() => {
 }, { timeout: 60000 });
 ok(true, 'a link runs as a job too, and its failure lands on the card');
 ok(!readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8').includes('[remote'),
-   '...and no remote was added — the check comes before the configuration');
+   '...and no remote was added: the check comes before the configuration');
 await page.click('#bJobOk');
 ok(await post({ name: 'alpha', url: 'https://github.com/owner/alpha',
                 key: 'github_testkey' }, '/api/link') === 400,
@@ -915,7 +915,7 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
 // ---- unlinking -----------------------------------------------------------
 // The way off a host, and the only way onto another one: link refuses a repo
 // that already has a remote, so this is the first half of moving. It is local
-// and instant — nothing is asked of the server the project is leaving, which
+// and instant: nothing is asked of the server the project is leaving, which
 // is one of the reasons to reach for it.
 //
 // alpha is the fixture with a remote and a seeded push grant. Its history is
@@ -988,7 +988,7 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
   const again = await post({ name: 'alpha', url: 'https://git.home.lan/owner/alpha',
                              forge: 'gitea' }, '/api/link');
   ok(again === 400,
-     'an unlinked project is offered to another host — and asked for a credential');
+     'an unlinked project is offered to another host, and asked for a credential');
   execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'remote', 'add', 'origin',
                        'git@github.com:owner/alpha.git']);
 }
@@ -1068,20 +1068,20 @@ print(json.dumps(out))
   rmSync(`${DIR}/state/gitcreds/tokrn2`, { force: true });
 }
 
-// The refusals above are answered with 400s on purpose — and the deploy-key
-// clone is made to fail with a 500 — and the browser logs each as a failed
+// The refusals above are answered with 400s on purpose, the deploy-key
+// clone is made to fail with a 500, and the browser logs each as a failed
 // resource. Those lines are the tests passing, not a fault. Anything else is
 // still a failure.
 // ---- the bin -------------------------------------------------------------
 // Deleting a project moves it to /workspace/.trash and every word on the page
 // says so. This is the other half of that promise: seeing what is in there,
-// putting one back, and — the only irreversible control on the page —
+// putting one back, and (the only irreversible control on the page)
 // destroying one.
 mkdirSync(`${DIR}/ws/.trash/oldproj`, { recursive: true });
 writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
 // It has to be visible before it can be pressed. Keyed to `.eye` alone, the
 // icon rule missed this button (an `.ic`) and its SVG got the browser
-// default — fill:black, stroke:none — which draws nothing at all, because
+// default (fill:black, stroke:none), which draws nothing at all, because
 // every path in it is an open stroke.
 const binInk = await page.$eval('#bTrash svg', e => {
   const c = getComputedStyle(e);
@@ -1125,10 +1125,10 @@ await page.click('#tList .dropbox .danger');
 await page.waitForFunction(() => !document.querySelector('#tList .trow[data-t="oldproj"]'),
                            { timeout: 10000 });
 ok(!existsSync(`${DIR}/ws/.trash/oldproj`),
-   'and then it is gone, files and all — the one thing here with nothing after it');
+   'and then it is gone, files and all: the one thing here with nothing after it');
 await page.click('#tClose');
 await page.waitForFunction(() => document.getElementById('tmodal').hidden);
 
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
-ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
+ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 await done(browser);

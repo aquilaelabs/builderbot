@@ -4,12 +4,12 @@
 -- only writes three of them (nodes, audit, schema bookkeeping). That is
 -- deliberate: the schema is the part that has to run on two engines forever
 -- (docs/nodes.md §5, §15 door 6), so it is easier to keep honest as one
--- reviewed piece than as a drip of later alterations — and an empty table
+-- reviewed piece than as a drip of later alterations, and an empty table
 -- costs nothing.
 --
 -- Portability rules, binding on every migration after this one:
 --   * types are TEXT / INTEGER only; JSON is TEXT serialized app-side
---   * ids are TEXT, minted by the application — never AUTOINCREMENT/SERIAL
+--   * ids are TEXT, minted by the application; never AUTOINCREMENT/SERIAL
 --   * times are INTEGER epoch seconds
 --   * no engine-specific syntax: no WITHOUT ROWID, no JSON1, no partial
 --     indexes, no ON CONFLICT clauses in the schema

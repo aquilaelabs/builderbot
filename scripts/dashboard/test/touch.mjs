@@ -1,5 +1,5 @@
 // Real touch through Chromium's gesture recognizer: a quick swipe on a card
-// header or tab label scrolls, a half-second hold then move drags — and never
+// header or tab label scrolls, a half-second hold then move drags, and never
 // the other way round.
 import { launch, newPage, ok, done, finger, sleep, URL } from './lib.mjs';
 
@@ -58,8 +58,8 @@ await finger(page, lb.x + 20, lb.y + 15, first.x + 4, first.y + 15, 650);
 ok((await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id)))[0] === ids0[1], 'hold then move reorders the tabs');
 ok((await page.$eval('#tabbar', el => el.scrollLeft)) < 10, '...without scrolling the strip');
 
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
-// A phone comes back to the side it left — but not across a container
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
+// A phone comes back to the side it left, but not across a container
 // restart. Whatever was on the terminal side ended with the container, so
 // landing there shows tabs for sessions that are gone. The boot the side was
 // chosen under is stored beside it, and a different one sends it back to the
@@ -86,8 +86,8 @@ ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
 
 // The tab strip's paging arrows do not ghost at the end they cannot go past.
 // Two half-there arrows on a strip too short to page read as broken rather than
-// as a limit. They stay `disabled` — pressing one still does nothing and a
-// screen reader is still told — so this asserts the LOOK and the behaviour
+// as a limit. They stay `disabled` (pressing one still does nothing and a
+// screen reader is still told), so this asserts the LOOK and the behaviour
 // separately, which is exactly the pair a previous attempt got wrong: it
 // dropped an `opacity:.35` from the .tscroll rule and handed them straight back
 // to `button:disabled{opacity:.5}`, leaving them just as faded.
@@ -133,13 +133,13 @@ const edge = async pos => page.$eval('#tabbar', (e, p) => {
 await edge('M'); await sleep(300);
 const mid = await edge('M');
 if (!mid.over){
-  ok(true, 'the strip does not overflow at this width — nothing to fade');
+  ok(true, 'the strip does not overflow at this width, so nothing to fade');
 } else {
   ok(mid.l && mid.r, 'mid-scroll both edges of the tab strip fade');
   await edge('L'); await sleep(300);
   const left = await edge('L');
   ok(!left.l && left.r,
-     '...hard left, only the right fades — the first tab is whole and stays crisp');
+     '...hard left, only the right fades: the first tab is whole and stays crisp');
   await edge('R'); await sleep(300);
   const right = await edge('R');
   ok(right.l && !right.r, '...and hard right, only the left');

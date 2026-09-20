@@ -64,8 +64,8 @@ def verdict(m):
     """(state, sentence). state is ok, FAIL or skip."""
     # The daemon is a node's (DOCKER_HOST is gone: the sandbox VM is a node
     # record, docs/nodes.md §11). No node with one is not a fault to report
-    # red on every run of a box that never wanted dev instances — noise is how
-    # a check stops being read — so that is a skip; a node that names one and
+    # red on every run of a box that never wanted dev instances (noise is how
+    # a check stops being read), so that is a skip; a node that names one and
     # does not answer is the failure worth a line.
     a = m.available_default()
     why = " ".join((a["why"] or "").split())      # one line, whatever it said

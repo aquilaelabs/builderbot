@@ -105,7 +105,7 @@ Create the appdata directories:
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
-# The package store: Android platforms/emulator/system images and any toolchain
+# The toolchain store: Android platforms/emulator/system images and any toolchain
 # you install later. On a normal share rather than appdata; it is bulk data,
 # it is not written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/sdk
@@ -149,42 +149,25 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * the projects folder (`/mnt/user/projects`) mapped to `/workspace`: one
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
-* the appdata paths for home / config / work
-* fields for `ANTHROPIC_API_KEY` (masked) and TZ
+* the appdata paths for home and config
+* TZ under the advanced view, which only sets the container's own clock: each
+  person picks the zone the dashboard shows times in on their Profile tab
 
-Each account's commit identity is set on its Profile tab; leave
-`ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
-**Apply**. Unraid pulls the image and starts it.
+Claude Code is not configured here: it runs on the nodes, and each person
+signs in from the dashboard's Sign in button with their own Claude account.
+Each account's commit identity is set on its Profile tab. Hit **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already
 exists**, so changing a default here (a path, the dashboard port) does
 nothing to a running container until you edit that setting on it yourself.
 
-### Give the container time to stop
+### Stopping the container
 
 Stopping from the Docker page sends SIGTERM and then SIGKILL. BuilderBot uses
-that window to power the emulator down instead of yanking it, and to save the
-terminals so the next boot can put them back.
-
-**Unraid gives it ten seconds by default, and that is often not enough.**
-Unraid always passes the timeout explicitly when it stops a container:
-`DockerClient.php` calls `/containers/<id>/stop?t=` with `DOCKER_TIMEOUT`,
-default `10`, so the container's own `--stop-timeout` is ignored and nothing
-in Extra Params can change it. The only lever is the Unraid setting:
-
-**Settings → Docker → Docker Stop Timeout**: raise it to **60** or more.
-(Docker only waits as long as it needs to; a container with nothing running
-still stops instantly, so a larger number costs nothing on a quiet box.)
-
-What the extra seconds buy, in the order the container spends them:
-
-| | why it wants the time |
-|---|---|
-| Emulator | `adb emu kill` powers the AVD down; a hard kill leaves it dirty and costs a cold boot next time |
-
-Saving the terminals costs milliseconds and happens first, so it survives even
-a ten-second stop. A stop tries for up to 90 seconds, which caps how long the
-container will wait in total, if you would rather it gave up sooner.
+that window to save the open terminal tabs, so the next boot can put them
+back, and that takes milliseconds: Unraid's default ten seconds (Settings →
+Docker → Docker Stop Timeout) is plenty, and nothing in Extra Params changes
+it, since Unraid passes its own timeout on every stop.
 
 **Claude sessions are not affected by any of this.** They run on their
 projects' nodes, in tmux there, and a controller that stops does not touch
@@ -193,28 +176,14 @@ them: the dashboard simply cannot reach them until it is back.
 ### Stopping cleanly before an update
 
 Nothing you care about lives in the container: projects are bind mounts to the
-array, and sessions, memory files, logins and AVDs are all on the home volume.
+array, the accounts and settings are on the home and config volumes, and Claude
+sessions, their logins and the emulator are on the nodes.
 Uncommitted work is not at risk from a restart.
 
-**The container handles the rest itself**; see *Give the container time to
-stop* above. Stopping it powers the emulator down and saves the terminals, on
-SIGTERM. There is no checklist to run first. Sessions and CI are unaffected:
-both are on nodes, and a node does not stop with this container.
-
-From a terminal rather than the Unraid UI, pass a timeout: Docker's own
-default is 10 seconds:
-
-```bash
-docker stop -t 120 BuilderBot
-```
-
-Unraid's Docker page and *Check for Updates* both use the host's configured
-stop timeout (Settings → Docker → Docker Stop Timeout) instead, which is why
-that setting is the one worth raising.
-
-Getting this wrong is recoverable, not fatal: an AVD that cold-boots next
-time, and a conversation you resume from the dashboard rather than one that
-closed itself.
+**The container handles the rest itself**; see *Stopping the container*
+above. There is no checklist to run first, and no timeout to raise. Sessions
+and CI are unaffected: both are on nodes, and a node does not stop with this
+container.
 
 ### Updating: the whole point
 
@@ -270,11 +239,12 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 ### Android emulator (on a node)
 
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
-on a project runs on that project's node, whose packages store holds the
-emulator and its images (Tools tab, node picked) and whose own `/dev/kvm` and
-card do the work. A node is a machine you enroll from the Nodes tab:
-`nodes/provision-linux.sh` on a VM or a spare box, `provision-macos.sh` on a
-Mac. Nothing here needs a device or a runtime flag for it.
+on a project runs on that project's node, whose toolchain store holds the
+emulator (Toolchains tab) and its images (Emulator tab) and whose own
+`/dev/kvm` and card do the work. A node is a machine you enroll from the
+Nodes tab: `nodes/provision-linux.sh` on a VM or a spare box,
+`provision-macos.sh` on a Mac. Nothing here needs a device or a runtime flag
+for it.
 
 ### Web dashboard
 
@@ -309,7 +279,7 @@ are underlined links that fix themselves in place. A row with an error carries
 no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project: the
-container marks its own paths that way (the package store, if you put it inside
+container marks its own paths that way (the toolchain store, if you put it inside
 the projects share, as the default does), and you can drop the same file into
 anything you would rather the card ignored.
 
@@ -499,9 +469,8 @@ What happens then:
 
 Honest limits: container-root can always read the stash (that's what makes
 the runner and the agent work); a session can still *use* the agent to push
-while it's running (usage is the point: extraction is what's blocked);
-`ANTHROPIC_API_KEY` can't be hidden from Claude Code since Claude Code
-itself must send it; and `NPM_TOKEN` lands in `~/.npmrc` if you use it.
+while it's running (usage is the point: extraction is what's blocked); and
+`NPM_TOKEN` lands in the controller's `~/.npmrc` if you use it.
 Shielding covers the credentials with real blast radius: the PAT and the
 SSH private keys.
 
@@ -573,8 +542,8 @@ Headless works out of the box; there is no display server in the container.
 
 Nothing Android is in the image. A project builds on its node: the JDK, the
 SDK (`android-tools`, platforms, build-tools) and the emulator are recipes in
-the node's packages store, installed from the dashboard's Tools tab with that
-node picked. From a session:
+the node's toolchain store, installed from the dashboard's Toolchains tab
+with that node picked. From a session:
 
 ```bash
 bb build            # the project's build command, on its node
@@ -584,7 +553,7 @@ bb emu stop
 
 AVDs live in the node's home; the images and platforms in its store, so an
 update never re-downloads them. Need another level? `bb emu create 34` on the
-node, or tick the image on the Tools tab.
+node, or add the image on the Emulator tab.
 
 ### Publishing packages
 
@@ -611,9 +580,8 @@ not host-root.
 |---|---|---|
 | Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
 | ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
-| Runner diagnostics (`_diag`) | `/mnt/user/appdata/BuilderBot/work/_diag/` | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
-| Android emulator | `/mnt/user/appdata/BuilderBot/home/.android/emulator.log` | ✅ |
+| A node's own logs (its agent, CI runner, terminal server) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
 
 Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
 to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to
@@ -654,5 +622,5 @@ SIGTERM; the emulator is powered down and Claude sessions close their turn.
 A node's runner is unaffected: nodes do not stop with this container.
 
 **Image size.** Nothing large is baked in any more: no JDK, no Android SDK,
-and the Playwright browsers live on the package store, so a pull is well under
+and the Playwright browsers live on the toolchain store, so a pull is well under
 a gigabyte. Updates are layer-diffed, so routine updates move far less data.

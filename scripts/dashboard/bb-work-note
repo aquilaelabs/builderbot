@@ -6,14 +6,14 @@ Runs before every file-writing tool in a Claude session, with the project and
 the account baked into its command line by bb-tty's claude_scope(). It does two
 things and neither of them is a refusal:
 
-  * writes the file — and a guess at the symbol — into overlap.py's notes, so
+  * writes the file (and a guess at the symbol) into overlap.py's notes, so
     `bb work` can say what each session has been touching;
   * when another session's notes name the same file, says so back into this
     one, before the edit rather than at the merge.
 
 IT DOES NOT BLOCK, and that is a decision rather than an omission. Every
 session works in a worktree of its own (roadmap #24), so two people editing one
-function are not corrupting anything — they are making two commits that git
+function are not corrupting anything: they are making two commits that git
 will merge or conflict on, which is the normal way that gets resolved.
 Refusing the second one would be refusing legitimate work on the grounds that
 somebody else got there first. What the second one needs is to KNOW, which is
@@ -48,8 +48,8 @@ DEF = re.compile(
 def symbol_for(path, old):
     """The definition the edit lands inside, or "" when nothing looks like one.
 
-    Tries the replaced text first — an edit that rewrites a whole function
-    carries its signature — and otherwise walks back from where that text sits
+    Tries the replaced text first (an edit that rewrites a whole function
+    carries its signature) and otherwise walks back from where that text sits
     in the file to the nearest definition above it.
     """
     for line in (old or "").splitlines()[:40]:
@@ -94,12 +94,12 @@ def house_rules(project, rel):
         rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                         write_json=write_json)
         hit = rules.matching(project, path=rel)
-    except Exception:                     # noqa: BLE001 — never take an edit with it
+    except Exception:                     # noqa: BLE001  (never take an edit with it)
         return []
     def line(r):
         who = ("* A note a session left, yours to change" if r.get("by") == "claude"
                else "The operator's house rule, theirs and not yours")
-        doc = f"\nIt is defined in full in {r['doc']} — read that before editing." if r.get("doc") else ""
+        doc = f"\nIt is defined in full in {r['doc']}; read that before editing." if r.get("doc") else ""
         chk = f"\nRun `bb rules check {r['name']}` before calling this work done." if r.get("check") else ""
         return f"{who}: [{r['name']}] covers this file.\n{r['text']}{doc}{chk}"
     return [line(r) for r in hit]
@@ -118,14 +118,14 @@ def main():
 
     here = os.path.dirname(os.path.abspath(__file__))
     # Recorded relative to the tree, so the same file in two worktrees is one
-    # name — the whole point is comparing across them.
+    # name, and the whole point is comparing across them.
     root = os.environ.get("BB_TREE") or ""
     rel = os.path.relpath(path, root) if root and path.startswith(root) else path
     symbol = symbol_for(path, spec.get("old_string"))
     if os.environ.get("BUILDERBOT_ROLE", "").lower() in ("node", "worker", "agent"):
         # On a node the notes live on the controller (roadmap #24): the
         # same record, posted with the session's own token, and the
-        # answer is who else has the file — as names, since the
+        # answer is who else has the file, as names, since the
         # controller has the store this script does not.
         sys.path.insert(0, os.path.join(here, "..", "lib"))
         import bbapi                                          # noqa: E402
@@ -142,14 +142,14 @@ def main():
         overlap.note(project, session, rel, symbol)
     # ...and any house rule this file fires (roadmap #7). Here rather than in
     # the prompt hook because this is the half that knows which file is about
-    # to be written — a rule keyed to scripts/agent/** should arrive when the
+    # to be written: a rule keyed to scripts/agent/** should arrive when the
     # agent is edited, whether or not anybody said the word.
     said = []
     if others:
         said.append(f"Another session on {project} has {rel} open: "
                     + ", ".join(others)
                     + ". You are each in your own worktree, so nothing is being "
-                      "overwritten — but you will be merging against their version "
+                      "overwritten, but you will be merging against their version "
                       "of this file. `bb work` shows what overlaps.")
     said += house_rules(project, rel)
     if not said:

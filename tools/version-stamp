@@ -19,7 +19,7 @@
 # (R63 step 3): what a session is told is assembled per session now, so
 # nothing is copied anywhere to fall out of window.
 #
-# The BUILD does not reset at a window boundary — 0.5.28 follows 0.4.27 — so a
+# The BUILD does not reset at a window boundary (0.5.28 follows 0.4.27), so a
 # minor bump increments it rather than starting over. That rule is why this
 # lives here rather than in version.py: it is this project's, and version.py
 # serves every project.

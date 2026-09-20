@@ -8,12 +8,12 @@ function nbRoadmapView({$, nb}){
   // open items are appended to every Claude session bb-tty starts, which is why
   // something noticed mid-task and left undone survives the conversation.
 
-  async function loadTodo(gen){
+  async function loadRoadmap(gen){
     // What the staging counter was when we asked. See the guard below.
-    const staged = nb.todoStaged;
+    const staged = nb.roadmapStaged;
     let j;
     try{
-      const r = await fetch("/api/todo?project=" + encodeURIComponent(nb.memProj));
+      const r = await fetch("/api/roadmap?project=" + encodeURIComponent(nb.memProj));
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
     if (gen !== nb.memGen) return;
@@ -21,30 +21,30 @@ function nbRoadmapView({$, nb}){
     // above catches a reply meant for a different project; this catches one for
     // this project that left before the operator typed and came back after.
     //
-    // Every path that reloads does ask first: rereadTodo confirms, noteBatch
+    // Every path that reloads does ask first: rereadRoadmap confirms, noteBatch
     // checks that nothing is staged, but they ask BEFORE the fetch, and the
     // answer stops being true while it is in flight. The list then came back
     // from the server and quietly took what had been typed since.
     //
     // The test is "did anything stage since we asked", not "is anything staged
     // now": an explicit re-read with work already staged is a request to
-    // replace it, and rereadTodo has confirmed that. Only the typing that
+    // replace it, and rereadRoadmap has confirmed that. Only the typing that
     // happened DURING the round trip is unanswerable, because nobody was asked
     // about it.
     //
-    // Measured rather than reasoned: three concurrent runs of todo.mjs, two of
-    // them with #todoList empty and the hint back to "Nothing yet" a moment
+    // Measured rather than reasoned: three concurrent runs of roadmap.mjs, two of
+    // them with #roadmapList empty and the hint back to "Nothing yet" a moment
     // after a row was staged. Filed as a test race for weeks (bug #13) because
     // it only showed under load, which is exactly when a fetch is slow enough
     // to land on the wrong side of the typing.
     //
     // The batch marker still gets through: a session opening or closing one is
     // news whether or not this list can be replaced.
-    if (nb.todoStaged !== staged){
+    if (nb.roadmapStaged !== staged){
       if (j.batch !== undefined) nb.noteBatch(j.batch);
       return;
     }
-    drawTodo(j);
+    drawRoadmap(j);
   }
 
   // The send arrow. Crossing something out here does not mean "done"; it means
@@ -134,9 +134,9 @@ function nbRoadmapView({$, nb}){
               : idx === nxt ? "pick this to send"
               : `step ${nxt + 1} comes first`;
     // Both halves of a group light up together.
-    const on = nb.todoSel && String(nb.todoSel.id) === String(r.id)
-               && (idx < 0 ? (steps.length ? true : nb.todoSel.step === null)
-                           : nb.todoSel.step === idx);
+    const on = nb.roadmapSel && String(nb.roadmapSel.id) === String(r.id)
+               && (idx < 0 ? (steps.length ? true : nb.roadmapSel.step === null)
+                           : nb.roadmapSel.step === idx);
     // The tags sit above the line rather than beside it: they are labels on the
     // whole item, and on a phone a pill sharing the first line pushed the words
     // into a column two thirds as wide as the ones under it.
@@ -158,10 +158,10 @@ function nbRoadmapView({$, nb}){
       aria-label="down"
       title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
       >${DOWN}</button>`;
-    return `<div class="todo${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
+    return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
-    ${nb.todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? (st.done
@@ -177,7 +177,7 @@ function nbRoadmapView({$, nb}){
         title="the technical half: files, functions, approach">▸ details</button>
       <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
     </span>
-    ${nb.todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
+    ${nb.roadmapOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
           ? "take it off the shelf: back among the live ones"
@@ -193,32 +193,32 @@ function nbRoadmapView({$, nb}){
   </div>`;
   }
 
-  function drawTodo(j){
-    if (j.error){ $("todoList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
+  function drawRoadmap(j){
+    if (j.error){ $("roadmapList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
     // Every read and every write hands back where the list has got to, so the
     // poll below can tell this panel's own change from somebody else's. Without
     // it every write is followed by a redraw a second later, which detaches
     // whatever inline box was open (a send box, a drop confirmation) under
     // the finger that opened it.
-    if (j.rev !== undefined) nb.todoRev = j.rev;
+    if (j.rev !== undefined) nb.roadmapRev = j.rev;
     const rows = j.items || [], live = !!j.session;
     // Whatever was armed may have been crossed off, dropped, or overtaken by a
     // step in front of it since the last draw.
-    if (nb.todoSel){
-      const r = rows.find(x => String(x.id) === String(nb.todoSel.id));
-      const ok = r && (nb.todoSel.step === null
+    if (nb.roadmapSel){
+      const r = rows.find(x => String(x.id) === String(nb.roadmapSel.id));
+      const ok = r && (nb.roadmapSel.step === null
         ? !(r.steps || []).length && canSend(r, -1, live)
-        : canSend(r, nb.todoSel.step, live));
-      if (!ok) nb.todoSel = null;
+        : canSend(r, nb.roadmapSel.step, live));
+      if (!ok) nb.roadmapSel = null;
     }
-    nb.todoSession = j.session || null;
+    nb.roadmapSession = j.session || null;
     // Shelved ones are not counted, here or on the project row: "still to send"
     // is a question about live work, and a parked item is not asking.
     const left = rows.reduce((n, r) =>
       n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
     const parked = rows.filter(r => r.shelved).length;
     const held = nb.nbUnsaved();
-    $("todoHint").textContent = !rows.length
+    $("roadmapHint").textContent = !rows.length
       ? "Nothing yet. What goes here is read at the start of every Claude session in this project."
       : held
         ? `${left} still to send${parked ? `, ${parked} shelved` : ""}: ${held} `
@@ -228,22 +228,22 @@ function nbRoadmapView({$, nb}){
             esc(j.session)} is running, so the arrows are live`
         : `${left} still to send${parked ? `, ${parked} shelved` : ""}: no session `
           + `is running here, so nothing can be sent yet`;
-    $("todoField").hidden = !rows.length;
-    if (nb.todoLogOn) nb.drawHistory();
+    $("roadmapField").hidden = !rows.length;
+    if (nb.roadmapLogOn) nb.drawHistory();
     {
-    $("todoList").innerHTML = rows.map(r =>
+    $("roadmapList").innerHTML = rows.map(r =>
       // The group's own row gets the same `live` as its steps now: its arrow
       // stands for the next one, so it is as clickable as that one is.
       `<div class="grp${r.shelved ? " shelved" : ""}">${stepRow(r, -1, live)}${
         (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
         // How a plain item becomes a plan: give it a step. Hidden while
         // reordering, where the question is only where things sit.
-        nb.todoOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
+        nb.roadmapOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
         type="button" class="link">+ step</button></div>`}</div>`).join("");
-    $("todoList").querySelectorAll(".addstep").forEach(box => {
+    $("roadmapList").querySelectorAll(".addstep").forEach(box => {
       box.querySelector("button").onclick = () => openStepInput(box);
     });
-    $("todoList").querySelectorAll(".todo").forEach(row => {
+    $("roadmapList").querySelectorAll(".roadmap").forEach(row => {
       const id = Number(row.dataset.id), step = Number(row.dataset.step);
       row.querySelectorAll(".mv").forEach(b => b.onclick = () =>
         moveLocally(id, step < 0 ? null : step, Number(b.dataset.dir)));
@@ -251,9 +251,9 @@ function nbRoadmapView({$, nb}){
       // A group's title arrow stands for its next step, so both resolve to the
       // same choice and light up together.
       if (go) go.onclick = () => {
-        const r = (nb.todoItems || []).find(x2 => String(x2.id) === String(id));
+        const r = (nb.roadmapItems || []).find(x2 => String(x2.id) === String(id));
         const steps = r?.steps || [];
-        pickTodo(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
+        pickRoadmap(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
       };
       // Shelving never asks: nothing is lost and the same tap undoes it. That
       // is the whole difference between it and the bin beside it.
@@ -289,19 +289,19 @@ function nbRoadmapView({$, nb}){
       row.querySelector(".txt").onclick = reword;
     });
     }
-    nb.todoItems = rows;
-    nb.todoUnsaved = j.unsaved || {};
+    nb.roadmapItems = rows;
+    nb.roadmapUnsaved = j.unsaved || {};
     if (j.batch !== undefined) nb.noteBatch(j.batch);
     nb.drawBatchNote();
     nb.syncSave();
-    $("todoOrder").hidden = !rows.length;
-    $("todoOrder").classList.toggle("on", nb.todoOrdering);
-    $("todoLog").classList.toggle("on", nb.todoLogOn);
+    $("roadmapOrder").hidden = !rows.length;
+    $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
+    $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
     // Groups, not steps: a plan cut in half by a page boundary is a plan
     // nobody can read. The roadmap caps at 30 open items anyway, so this only
     // ever bites a list that has grown its steps.
-    paginate($("todoList"), ":scope > .grp", {noun: "items"});
+    paginate($("roadmapList"), ":scope > .grp", {noun: "items"});
   }
 
   // What a session can be switched to on the way in. Tables, not free text:
@@ -331,7 +331,7 @@ function nbRoadmapView({$, nb}){
       placeholder="${esc(placeholder)}"></textarea>
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
-      <button type="button" class="primary" id="todoGo">Send</button></div>`;
+      <button type="button" class="primary" id="roadmapGo">Send</button></div>`;
     const more = box.querySelector("#sendMore");
     more.value = nb.sendNoteText;
     // Kept on every keystroke rather than read at the end: a redraw between the
@@ -341,7 +341,7 @@ function nbRoadmapView({$, nb}){
       if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); onCancel(); }
     };
     box.querySelector(".stop").onclick = onCancel;
-    box.querySelector("#todoGo").onclick = onSend;
+    box.querySelector("#roadmapGo").onclick = onSend;
     return box;
   }
 
@@ -358,78 +358,78 @@ function nbRoadmapView({$, nb}){
   // under whatever row happened to take that place. Cheap, and it cannot end up
   // pointing at the wrong line.
   function drawSendBox(live){
-    const list = $("todoList");
+    const list = $("roadmapList");
     list.querySelectorAll(".sendbox").forEach(b => b.remove());
-    if (!nb.todoSel || !live || nb.todoOrdering || nb.todoLogOn){ nb.sendShownFor = ""; return; }
-    const step = nb.todoSel.step === null ? -1 : nb.todoSel.step;
+    if (!nb.roadmapSel || !live || nb.roadmapOrdering || nb.roadmapLogOn){ nb.sendShownFor = ""; return; }
+    const step = nb.roadmapSel.step === null ? -1 : nb.roadmapSel.step;
     const row = list.querySelector(
-      `.todo[data-id="${CSS.escape(String(nb.todoSel.id))}"][data-step="${step}"]`);
+      `.roadmap[data-id="${CSS.escape(String(nb.roadmapSel.id))}"][data-step="${step}"]`);
     if (!row){ nb.sendShownFor = ""; return; }
     const box = sendBoxEl({
       label: "Send this one?",
       sub: step >= 0 ? `step ${step + 1}` : "",
       placeholder: "anything to send with it (optional)",
       onSend: reallySend,
-      onCancel: () => pickTodo(nb.todoSel.id, nb.todoSel.step),
+      onCancel: () => pickRoadmap(nb.roadmapSel.id, nb.roadmapSel.step),
     });
     row.after(box);
     // Only the first time this arrow arms, never again while it stays armed:
     // the box is rebuilt on every draw, and a poll landing while it is open
     // would otherwise replay the arrival two or three times a minute.
-    const key = `${nb.todoSel.id}:${step}`;
+    const key = `${nb.roadmapSel.id}:${step}`;
     if (key !== nb.sendShownFor) arriveBox(box);
     nb.sendShownFor = key;
   }
 
-  nb.todoItems = [];
-  nb.todoSession = null;
-  nb.todoUnsaved = {};  // {todo, memory}: what a session has not been told
-  nb.todoSel = null;  // {id, step}: the arrow that is armed, if any
+  nb.roadmapItems = [];
+  nb.roadmapSession = null;
+  nb.roadmapUnsaved = {};  // {roadmap, memory}: what a session has not been told
+  nb.roadmapSel = null;  // {id, step}: the arrow that is armed, if any
   // Which arrow's box has already unrolled. The box is rebuilt on every draw
   // (see drawSendBox), so without this a poll landing while it is open would
   // replay the arrival two or three times a minute: the animation belongs to
   // the arrow being pressed, not to the box being drawn.
   nb.sendShownFor = "";
-  nb.todoOrdering = false;  // the rows are showing move controls instead
+  nb.roadmapOrdering = false;  // the rows are showing move controls instead
   // Reordering is the one edit held back. Everything else here is a decision:
   // ticked, crossed, dropped, and is written the moment it is made; arranging
   // is a draft you are in the middle of, and closing the panel on a half-done
   // shuffle should leave the order alone. So the moves live here until Save,
   // and the snapshot is what Cancel puts back.
-  nb.todoPending = [];  // staged changes, in the order they were made
-  nb.todoWas = null;  // the list as it was before the first staged change
+  nb.roadmapPending = [];  // staged changes, in the order they were made
+  nb.roadmapWas = null;  // the list as it was before the first staged change
   // A session's open batch, and whether one has closed since this copy of the
   // list was read. Both block Save: while it is open the list is moving, and
   // once it has closed what is on screen is out of date.
-  nb.todoBatch = null;
-  nb.todoStale = false;
+  nb.roadmapBatch = null;
+  nb.roadmapStale = false;
 
   // Picking one arms the Send button; picking it again puts it down. The
   // highlight is the whole confirmation: the line it would send is the line the
   // arrow is sitting next to, and a sentence repeating it back was noise.
-  function pickTodo(id, step){
-    nb.todoSel = (nb.todoSel && String(nb.todoSel.id) === String(id) && nb.todoSel.step === step)
+  function pickRoadmap(id, step){
+    nb.roadmapSel = (nb.roadmapSel && String(nb.roadmapSel.id) === String(id) && nb.roadmapSel.step === step)
       ? null : {id, step};
     // A new target starts with an empty note. The text survives a *redraw* of
     // the box it was typed into, which is what the variable is for, but it
     // must not follow you to another step, or to a bug on the other tab, where
     // it would arrive pre-filled with words written about something else.
     nb.sendNoteText = "";
-    drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
   }
 
   // Putting the selection down, and the box with it. It redraws rather than
   // only clearing the variable: the box and the lit arrow are both drawn from
-  // nb.todoSel, and a sent row stays selectable now (that is the point of being
+  // nb.roadmapSel, and a sent row stays selectable now (that is the point of being
   // able to send it again), so nothing else is going to take them off screen.
   function cancelSend(){
-    nb.todoSel = null;
-    drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
+    nb.roadmapSel = null;
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
   }
 
   async function reallySend(){
-    if (!nb.todoSel) return;
-    let {id, step} = nb.todoSel;
+    if (!nb.roadmapSel) return;
+    let {id, step} = nb.roadmapSel;
     // Always told, where this used to be a checkbox. The question the checkbox
     // asked ("shall I mention the list moved?") cannot have a useful "no" any
     // more: nothing can be sent until the panel is saved, so by the time a step
@@ -442,29 +442,29 @@ function nbRoadmapView({$, nb}){
     // necessarily the one that was pressed, but a switch that was asked for
     // still has to be the one that gets sent.
     const note = nb.sendNoteText;
-    const go = $("todoGo");
+    const go = $("roadmapGo");
     busy(go, "Sending");
     // Staged changes go first, always, not only when "also save" is ticked.
     // The line about to be typed into a session is one of them, and sending it
     // against a list the server has not been told about would hand over a step
     // that does not exist there. An item added in this panel has a negative id
     // until that flush; the real one comes back from it.
-    if (nb.todoPending.length){
+    if (nb.roadmapPending.length){
       nb.clashResume = null;                 // settled by hand, then Send again
       const map = await flushPending();
       if (map.has(String(id))) id = map.get(String(id));
       // Refused: the step about to be typed into a session is described by a
       // list the server has not accepted, so it must not go.
-      if (nb.todoPending.length){
+      if (nb.roadmapPending.length){
         unbusy(go, "Send");
         return;
       }
     }
     // The note rides on the same line as the step rather than chasing it: two
     // messages into one input box is how the second ends up glued to the first.
-    const j = await postTodo({action: "send", id, step, tell: true, note});
+    const j = await postRoadmap({action: "send", id, step, tell: true, note});
     unbusy(go, "Send");
-    if (!j) { drawSendBox(!!nb.todoSession); return; }
+    if (!j) { drawSendBox(!!nb.roadmapSession); return; }
     if (!j.sent){
       // Which line stalled matters: a step left in the box is one to press
       // Enter on, but a `/model` left there has the step still to come, and
@@ -475,7 +475,7 @@ function nbRoadmapView({$, nb}){
           + "send it again"
         : "typed into the session but not sent; something else has the "
           + "keyboard there; press Enter in that tab when it is clear", true);
-      drawSendBox(!!nb.todoSession);
+      drawSendBox(!!nb.roadmapSession);
       return;
     }
     // Cleared only once it has gone. The pickers are a standing preference and
@@ -492,10 +492,10 @@ function nbRoadmapView({$, nb}){
 
   // Wrapped so the poll can tell this panel's own write from somebody
   // else's while it is still out. See nbWriting.
-  async function postTodo(body, quiet){ return nb.writing(() => postTodoDo(body, quiet)); }
-  async function postTodoDo(body, quiet){
+  async function postRoadmap(body, quiet){ return nb.writing(() => postRoadmapDo(body, quiet)); }
+  async function postRoadmapDo(body, quiet){
     try{
-      const r = await postJSON("/api/todo", {project: nb.memProj, ...body});
+      const r = await postJSON("/api/roadmap", {project: nb.memProj, ...body});
       const j = await r.json();
       // Somebody else wrote this item first (roadmap #26). Not a toast: the op
       // stays at the head of the queue and the band asks which version wins,
@@ -505,7 +505,7 @@ function nbRoadmapView({$, nb}){
       if (j.error){ notify(j.error, true); return null; }
       // quiet: one of a run of moves being flushed, where redrawing between
       // each would flicker the list through every intermediate arrangement.
-      if (!quiet){ drawTodo(j); refresh(); }
+      if (!quiet){ drawRoadmap(j); refresh(); }
       return j;
     }catch(e){ notify("could not reach the server: " + e, true); return null; }
   }
@@ -532,8 +532,8 @@ function nbRoadmapView({$, nb}){
     if (!c) return;
     // Either way the head of the queue is what moves: mine goes again saying it
     // replaces what is there NOW, theirs wins by the op simply being dropped.
-    if (mine && nb.todoPending[0]) nb.todoPending[0].was = c.current;
-    else nb.todoPending.shift();
+    if (mine && nb.roadmapPending[0]) nb.roadmapPending[0].was = c.current;
+    else nb.roadmapPending.shift();
     drawClash();
     // Read before the redraw above, which is what raised this the first time
     // round: drawClash used to clear the resume itself, so settling a conflict
@@ -544,7 +544,7 @@ function nbRoadmapView({$, nb}){
   }
 
   function drawClash(){
-    const box = $("todoClash");
+    const box = $("roadmapClash");
     if (!box) return;
     box.hidden = !nb.clash;
     if (!nb.clash){ box.innerHTML = ""; return; }
@@ -583,7 +583,7 @@ function nbRoadmapView({$, nb}){
     if (row.nextElementSibling?.classList.contains("dropbox")) return;
     row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
     const what = row.querySelector(".txt").textContent;
-    const r = (nb.todoItems || []).find(x => String(x.id) === String(id));
+    const r = (nb.roadmapItems || []).find(x => String(x.id) === String(id));
     const also = step >= 0
       ? "the one behind it takes its place"
       : (r?.steps || []).length ? `its ${r.steps.length} steps go too` : "";
@@ -675,7 +675,7 @@ function nbRoadmapView({$, nb}){
       if (!inp.value.trim()) return closeStepInput(box);
       if (stageAddStep(id, _clean(inp.value))){
         // The redraw replaced this box; find the new one and carry on typing.
-        const again = $("todoList").querySelector(`.addstep[data-id="${id}"]`);
+        const again = $("roadmapList").querySelector(`.addstep[data-id="${id}"]`);
         if (again) openStepInput(again);
       }
     };
@@ -697,14 +697,14 @@ function nbRoadmapView({$, nb}){
     box.querySelector("button").onclick = () => openStepInput(box);
   }
 
-  async function addTodo(){
-    const t = $("todoText");
+  async function addRoadmap(){
+    const t = $("roadmapText");
     if (!t.value.trim()) return;
     if (stageAdd(_clean(t.value))){
       t.value = "";
       // It lands at the end now, which on a phone is below the fold. Scrolled
       // to, because "did that work?" should not need a swipe to answer.
-      $("todoList").lastElementChild?.scrollIntoView({block: "nearest"});
+      $("roadmapList").lastElementChild?.scrollIntoView({block: "nearest"});
     }
     // Kept, not taken: the keyboard is already up because they just typed, and
     // a list is usually added to more than one line at a time.
@@ -712,25 +712,25 @@ function nbRoadmapView({$, nb}){
   }
 
 
-  $("todoAdd").onclick = addTodo;
-  $("todoOrder").onclick = () => {
+  $("roadmapAdd").onclick = addRoadmap;
+  $("roadmapOrder").onclick = () => {
     // Entering the mode throws nothing away either: whatever is already staged
     // stays staged, and the moves join it.
-    nb.todoOrdering = !nb.todoOrdering;
-    if (nb.todoOrdering) cancelSend();
-    redrawTodo();
+    nb.roadmapOrdering = !nb.roadmapOrdering;
+    if (nb.roadmapOrdering) cancelSend();
+    redrawRoadmap();
   };
 
   // Put the list back the way it was found. The server never saw any of it, so
   // this is only the page's own copy going back to the snapshot taken when the
   // first change was staged.
   function revertPending(){
-    if (nb.todoPending.length && nb.todoWas) nb.todoItems = nb.todoWas;
-    nb.todoPending = []; nb.todoWas = null;
+    if (nb.roadmapPending.length && nb.roadmapWas) nb.roadmapItems = nb.roadmapWas;
+    nb.roadmapPending = []; nb.roadmapWas = null;
   }
 
-  const redrawTodo = () =>
-    drawTodo({items: nb.todoItems, session: nb.todoSession, unsaved: nb.todoUnsaved});
+  const redrawRoadmap = () =>
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
 
   // ---- staging -------------------------------------------------------------
   // Nothing the panel does touches the list until Save. Reordering worked this
@@ -747,24 +747,24 @@ function nbRoadmapView({$, nb}){
   // Save button can take back. It flushes whatever is pending first, so the line
   // that goes carries the list as the operator has just arranged it.
   nb.tmpId = 0;  // ids for items the server has never heard of
-  // Moves on every staged change, and never goes back. loadTodo reads it before
+  // Moves on every staged change, and never goes back. loadRoadmap reads it before
   // asking and again before drawing, which is how a reply that left before the
   // operator typed is told from one that left after; see the guard there.
-  nb.todoStaged = 0;
+  nb.roadmapStaged = 0;
 
   function stage(op, apply){
-    if (!nb.todoPending.length) nb.todoWas = structuredClone(nb.todoItems);
+    if (!nb.roadmapPending.length) nb.roadmapWas = structuredClone(nb.roadmapItems);
     const out = apply();
     if (out === false) return false;      // nothing actually changed
-    nb.todoPending.push(op);
-    nb.todoStaged++;
-    redrawTodo();
+    nb.roadmapPending.push(op);
+    nb.roadmapStaged++;
+    redrawRoadmap();
     return true;
   }
 
-  const findRow = id => nb.todoItems.find(r => String(r.id) === String(id));
+  const findRow = id => nb.roadmapItems.find(r => String(r.id) === String(id));
 
-  // The same tidy todo.py's _clean does, so the row on screen before Save is
+  // The same tidy roadmap.py's _clean does, so the row on screen before Save is
   // the row that lands after it rather than one that quietly loses a space.
   const _clean = t => String(t ?? "").replace(/\r\n?/g, "\n").split("\n")
     .map(l => l.split(/\s+/).filter(Boolean).join(" "))
@@ -774,7 +774,7 @@ function nbRoadmapView({$, nb}){
   function stageAdd(text){
     const id = --nb.tmpId;                   // negative: not on the server yet
     return stage({action: "add", text, tmp: id}, () => {
-      nb.todoItems.splice(nb.todoItems.filter(r => !r.shelved).length, 0,
+      nb.roadmapItems.splice(nb.roadmapItems.filter(r => !r.shelved).length, 0,
                        {id, text, by: "you", sent: 0, steps: [], shelved: 0});
       return true;
     });
@@ -830,23 +830,23 @@ function nbRoadmapView({$, nb}){
   function stageRemove(id, step, why){
     return stage({action: "remove", id, ...(step >= 0 ? {step} : {}), why,
                   was: wasOf(id, step, "remove")}, () => {
-      const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
+      const i = nb.roadmapItems.findIndex(r => String(r.id) === String(id));
       if (i < 0) return false;
-      if (step >= 0) nb.todoItems[i].steps.splice(step, 1);
-      else nb.todoItems.splice(i, 1);
+      if (step >= 0) nb.roadmapItems[i].steps.splice(step, 1);
+      else nb.roadmapItems.splice(i, 1);
     });
   }
 
   function stageShelve(id, on){
     return stage({action: "shelve", id, on}, () => {
-      const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
+      const i = nb.roadmapItems.findIndex(r => String(r.id) === String(id));
       if (i < 0) return false;
-      const [r] = nb.todoItems.splice(i, 1);
+      const [r] = nb.roadmapItems.splice(i, 1);
       r.shelved = on ? Math.floor(Date.now() / 1000) : 0;
       // The same place the server would put it: the shelf is the bottom of the
       // list, and coming back off it means the end of the live ones.
-      if (on) nb.todoItems.push(r);
-      else nb.todoItems.splice(nb.todoItems.filter(x => !x.shelved).length, 0, r);
+      if (on) nb.roadmapItems.push(r);
+      else nb.roadmapItems.splice(nb.roadmapItems.filter(x => !x.shelved).length, 0, r);
     });
   }
 
@@ -854,9 +854,9 @@ function nbRoadmapView({$, nb}){
   // replaying the list of them at Save arrives at what is on screen.
   function moveLocally(id, step, dir){
     stage({action: "move", id, step, dir}, () => {
-      const i = nb.todoItems.findIndex(r => String(r.id) === String(id));
+      const i = nb.roadmapItems.findIndex(r => String(r.id) === String(id));
       if (i < 0) return false;
-      const seq = step === null ? nb.todoItems : (nb.todoItems[i].steps || []);
+      const seq = step === null ? nb.roadmapItems : (nb.roadmapItems[i].steps || []);
       const at = step === null ? i : step;
       const to = at + dir;
       if (to < 0 || to >= seq.length) return false;
@@ -882,30 +882,30 @@ function nbRoadmapView({$, nb}){
     // used to discard everything behind it as well, which turned one rejected
     // edit into the loss of a whole panel's work. What is left stays staged, so
     // Save can be pressed again once whatever it was is dealt with.
-    while (nb.todoPending.length){
-      const op = nb.todoPending[0];
+    while (nb.roadmapPending.length){
+      const op = nb.roadmapPending[0];
       const body = {...op};
       delete body.tmp;
       if (body.id !== undefined) body.id = real(body.id);
       if (body.was !== undefined && now.has(fkey(body)))
         body.was = now.get(fkey(body));
-      const j = await postTodo(body, true);
-      if (!j) return map;                 // postTodo has already said why
-      nb.todoPending.shift();
+      const j = await postRoadmap(body, true);
+      if (!j) return map;                 // postRoadmap has already said why
+      nb.roadmapPending.shift();
       if (op.action === "add" && j.item) map.set(String(op.tmp), j.item.id);
       if (body.was !== undefined && op.action !== "remove")
         now.set(fkey(body), body.text);
     }
-    nb.todoWas = null;
+    nb.roadmapWas = null;
     return map;
   }
-  $("todoText").onkeydown = e => {
-    if (e.key === "Enter"){ e.preventDefault(); addTodo(); }
+  $("roadmapText").onkeydown = e => {
+    if (e.key === "Enter"){ e.preventDefault(); addRoadmap(); }
     // Escape in a field with something in it clears the field, not the panel.
     if (e.key === "Escape" && e.target.value){
       e.preventDefault(); e.stopPropagation(); e.target.value = "";
     }
   };
 
-  return {cancelSend, drawSendBox, flushPending, loadTodo, postTodo, redrawTodo, revertPending, sendBoxEl, shutSendBoxes};
+  return {cancelSend, drawSendBox, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending, sendBoxEl, shutSendBoxes};
 }

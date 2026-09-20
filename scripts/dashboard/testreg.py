@@ -4,8 +4,8 @@
 Two records that only mean something together.
 
 THE REGISTRY is written by hand, the way the roadmap and the tracker are: a
-line per test saying what behavior it protects and what it actually exercises
-— which fixtures, which stubs, what is real and what is faked. That last half
+line per test saying what behavior it protects and what it actually exercises:
+which fixtures, which stubs, what is real and what is faked. That last half
 is the part nobody can recover from the code in a hurry, and it is what
 decides whether a red run is a bug or a fixture. The deal is the same as the
 roadmap's: when you write or change a test, record it in the same change.
@@ -17,7 +17,7 @@ on" with a number somebody measured. A short history per test rather than only
 the last run, so a test that got slow is tellable from one that always was.
 
 WHAT A TEST IS CALLED HERE. Not its prose. The names in this suite are
-sentences and the continuations begin with "..." — they are written to be read
+sentences and the continuations begin with "..."; they are written to be read
 in order, and they get reworded. So a test is keyed on where the RUNNER puts
 it, `<file>#<ordinal>`, and the prose is a field. Renaming a test therefore
 keeps its registry entry, which is the point.
@@ -27,11 +27,11 @@ blindly: it aligns the roster it just read against the roster it had, longest
 common subsequence on the names first and then position for whatever is left
 over. A rename in place matches by position; an insertion matches by name; the
 entries follow their tests either way. What genuinely arrived or genuinely
-went is what is left, and that is the drift report — which is the failure mode
+went is what is left, and that is the drift report, which is the failure mode
 this whole file exists to catch, because a registry that has quietly stopped
 describing the code is worse than no registry.
 
-Same arrangement as todo.py and bugs.py: the server or the `bb` CLI hands over
+Same arrangement as roadmap.py and bugs.py: the server or the `bb` CLI hands over
 write_json and the state directory; nothing here reaches back.
 """
 import difflib
@@ -99,7 +99,7 @@ def _project(d, project):
 # The dashboard's own runner, which is a shell script and 24 node files rather
 # than a framework: it prints a banner per file, one line per result, and a
 # total per file. With BB_TEST_TIMING=1 each result carries the seconds since
-# the previous one, which is that test's duration — the harness measures it
+# the previous one, which is that test's duration; the harness measures it
 # that way because there is nothing else between two results.
 #
 # SKIP and TODO are parsed although this suite emits neither today. They cost
@@ -107,6 +107,10 @@ def _project(d, project):
 # parser that only knows the two statuses one runner happens to print is a
 # parser that has to be rewritten the day a test is skipped.
 BANNER = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) ==\s*$")
+# A file run again, alone, after it failed in the whole run (B124). Its lines
+# are not recorded: the run's own timings are the ones worth keeping, and
+# the second copy of a file's roster would read as every test doubled.
+RETRY = re.compile(r"^\[(?:dashboard-test|builderbot)\] == (\S+) again ==\s*$")
 RESULT = re.compile(r"^(PASS|FAIL|SKIP|TODO)\s+(?:\[\+([0-9.]+)s\]\s+)?(.+?)\s*$")
 FILETOT = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([0-9.]+)s)?\s*$")
 STATUS = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "TODO": "todo"}
@@ -115,7 +119,7 @@ STATUS = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "TODO": "todo"}
 def parse(text):
     """The runner's output as a roster: [{suite, ord, name, status, ms}].
 
-    Tolerant of a line it does not know, because this is fed whole run logs —
+    Tolerant of a line it does not know, because this is fed whole run logs:
     a `bb` error, a stray warning and a python traceback all appear in one,
     and none of them is a result.
     """
@@ -125,6 +129,9 @@ def parse(text):
         # carries an epoch in front. Stripped here rather than asked for, so
         # the same command takes a log either way.
         line = re.sub(r"^\d{9,}\.\d+ ", "", raw)
+        if RETRY.match(line):
+            suite = ""
+            continue
         m = BANNER.match(line)
         if m:
             suite, n = m.group(1), 0
@@ -159,7 +166,7 @@ def _align(old, new):
     Longest common subsequence on the NAMES, so inserting a test in the middle
     of a file moves nobody's entry: the unchanged names around it still line
     up. Whatever neither side matched is then paired by position, which is
-    what catches a rename — same place, different words.
+    what catches a rename: same place, different words.
 
     Returns {new index: old index}, and anything unpaired is genuinely new or
     genuinely gone.
@@ -172,8 +179,8 @@ def _align(old, new):
     # and never falls through to the likeness pass where a neighbour of
     # similar wording could claim it (bug B121).
     a, b = [_stem(x["name"]) for x in old], [_stem(x["name"]) for x in new]
-    # Standard LCS table. These are per-file rosters — a couple of hundred at
-    # most — so the quadratic table is cheaper than being clever.
+    # Standard LCS table. These are per-file rosters (a couple of hundred at
+    # most), so the quadratic table is cheaper than being clever.
     t = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
     for i in range(len(a) - 1, -1, -1):
         for j in range(len(b) - 1, -1, -1):
@@ -196,8 +203,8 @@ def _align(old, new):
     #
     # Zipping the two leftover lists in order was the obvious version and it
     # was wrong: one genuine addition near the top of a file shifts every pair
-    # after it, and a file whose names carry a uid or a port — which change on
-    # every run, so every one of them is a rename — is then entirely
+    # after it, and a file whose names carry a uid or a port (which change on
+    # every run, so every one of them is a rename) is then entirely
     # mispaired. That combination lost five descriptions the first time it
     # happened.
     #
@@ -221,13 +228,13 @@ def _align(old, new):
 def ingest(project, text, by="you"):
     """Record a run: durations onto the tests, and what drifted.
 
-    Returns the drift — added, gone, renamed — because that is the answer
+    Returns the drift (added, gone, renamed) because that is the answer
     somebody wants at the moment of ingesting, not on a tab they might open.
     """
     roster, suites = parse(text)
     if not roster:
-        return {"error": "nothing in that looks like a test run — "
-                         "is it the runner's output, and was BB_TEST_TIMING=1 set?"}
+        return {"error": "nothing in that looks like a test run. "
+                         "Is it the runner's output, and was BB_TEST_TIMING=1 set?"}
     now = int(time.time())
     added, gone, renamed = [], [], []
     with _lock:
@@ -311,7 +318,7 @@ def describe(project, key, protects=None, notes=None):
         p = _project(d, project)
         t = (p.get("tests") or {}).get(key)
         if not t:
-            return {"error": f"no test called {key} here — `bb tests` lists them"}
+            return {"error": f"no test called {key} here; `bb tests` lists them"}
         if protects is not None:
             t["protects"] = str(protects).strip()[:MAX_TEXT]
         if notes is not None:
@@ -321,8 +328,8 @@ def describe(project, key, protects=None, notes=None):
 
 
 def accept(project, key, why):
-    """The wait is the work: a test that has to sit on a round number — a
-    real boot, a real timeout being proved — is marked so, with why, and
+    """The wait is the work: a test that has to sit on a round number (a
+    real boot, a real timeout being proved) is marked so, with why, and
     stops being flagged. "" takes the mark off again. The reason is kept
     beside the test, because the next reader's first question is whether
     this was decided or merely tolerated."""
@@ -331,7 +338,7 @@ def accept(project, key, why):
         p = _project(d, project)
         t = (p.get("tests") or {}).get(key)
         if not t:
-            return {"error": f"no test called {key} here — `bb tests` lists them"}
+            return {"error": f"no test called {key} here; `bb tests` lists them"}
         why = " ".join(str(why or "").split())[:MAX_TEXT]
         if why:
             t["accepted"] = why
@@ -346,7 +353,7 @@ def describe_many(project, rows):
 
     One load and one save for the lot. The per-test verb takes the file lock
     and rewrites the store each time it is called, which is right for a
-    sentence somebody just typed and wrong for two thousand — a bulk fill
+    sentence somebody just typed and wrong for two thousand: a bulk fill
     through it is two thousand rewrites of a file that grows as it goes.
 
     Keys it does not recognize are counted and handed back rather than
@@ -382,8 +389,8 @@ def describe_many(project, rows):
 
 # ---- the heuristic ---------------------------------------------------------
 # A test that takes 30.0s is not doing 30 seconds of work. It is waiting out
-# something with a round number in it — a default timeout, a poll interval, a
-# sleep — and those are the cheapest thing in a suite to fix, because the work
+# something with a round number in it (a default timeout, a poll interval, a
+# sleep), and those are the cheapest thing in a suite to fix, because the work
 # is already done and only the waiting has to go.
 #
 # The rule is one-sided on purpose: a fixed wait lands just ABOVE its boundary,
@@ -434,7 +441,7 @@ def payload(project):
             "protects": t.get("protects", ""), "notes": t.get("notes", ""),
             "ms": ms, "history": hist[-KEEP:], "seen": t.get("seen", 0),
             # A continuation only reads correctly next to the test it follows,
-            # and this view sorts by duration — which would otherwise strand
+            # and this view sorts by duration, which would otherwise strand
             # every "..." line miles from the sentence it finishes.
             "cont": t.get("name", "").startswith("..."),
             # Not flagged when the wait was accepted: the boundary is still
@@ -501,17 +508,17 @@ def _median(xs):
 
 
 def counts():
-    """{project: how many tests are on record} — for the poll, like the rest."""
+    """{project: how many tests are on record}, for the poll, like the rest."""
     with _lock:
         d = load()
     return {p: len((v.get("tests") or {})) for p, v in (d.get("projects") or {}).items()}
 
 
 def revisions():
-    """{project: a number that moves when this tab has to re-read} — the same
+    """{project: a number that moves when this tab has to re-read}, the same
     shape bugs.revisions() has. What moves it is a run, and a bulk fill from
     `bb tests describe --from FILE`: both change rows an open tab has no other
-    way to notice. Describing ONE deliberately does not — the panel draws its
+    way to notice. Describing ONE deliberately does not: the panel draws its
     own save, and a redraw it did not need would take a neighbouring row's
     unsaved typing with it.
 

@@ -2,12 +2,12 @@
 """Delivering a line to a running Claude session, and knowing whether it landed.
 
 There is no IPC into a Claude session. `--remote-control` is for claude.ai, not
-for anything on this box, and no subcommand posts a message to a local one — so
+for anything on this box, and no subcommand posts a message to a local one, so
 the only door is the terminal it is sitting in, through tmux send-keys.
 
 Which makes pressing Enter the whole problem. A session that is "waiting for
 input" is either sitting at its prompt, where Enter is exactly right, or
-holding a permission dialog, where Enter answers it — and answering a
+holding a permission dialog, where Enter answers it. Answering a
 permission dialog on the operator's behalf, blind, is the worst thing anything
 in this dashboard could do. The pane title cannot tell those apart: both are
 waiting.
@@ -16,10 +16,10 @@ So this does not try to recognise a dialog, which would mean pattern-matching a
 TUI that changes with every release. It uses the one property every text input
 has and no dialog does: **it echoes what you type**. Type the line, look at the
 pane, and press Enter only if the line is now on the screen. A dialog swallows
-stray characters, so nothing appears, so nothing is sent — and the line is
+stray characters, so nothing appears, so nothing is sent, and the line is
 left where the operator can see it and deal with it themselves.
 
-The server imports this and hands it `run`; memory.py and todo.py are handed
+The server imports this and hands it `run`; memory.py and roadmap.py are handed
 this module's `tell`.
 """
 import time
@@ -78,7 +78,7 @@ def live(session, sessions):
 def settle(session, tries=12, quiet=2):
     """Wait until the pane stops changing, or give up.
 
-    A slash command is not finished when Enter is pressed — claude answers it
+    A slash command is not finished when Enter is pressed: claude answers it
     and re-renders, and `/effort` in particular prints six lines about what
     the level means. Typing the next thing into that is how a message ends up
     in a box that is busy being redrawn: it does not echo inside the window
@@ -116,8 +116,8 @@ def tell(session, text, sessions=()):
             return node_tell(row["node_id"], row["node_name"], text)
         return {"error": "no session is running here"}
     # Counted before, not merely looked for after. The same line may already be
-    # on the screen — it is the second send of a step that did not take, and
-    # the first one's echo is still scrolled up there — and "is it visible?"
+    # on the screen (it is the second send of a step that did not take, and
+    # the first one's echo is still scrolled up there), and "is it visible?"
     # says yes to that. What means the input box took it is that there is now
     # one *more* of it than there was.
     mark = text[:FINGERPRINT]

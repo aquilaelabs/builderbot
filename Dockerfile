@@ -14,7 +14,7 @@
 #trivy:ignore:AVD-DS-0002
 
 ##############################################################################
-# BuilderBot — a Claude Code workstation and the controller for build nodes:
+# BuilderBot: a Claude Code workstation and the controller for build nodes,
 # the machines where builds, tests, CI and the Android emulator actually run.
 ##############################################################################
 FROM ubuntu:24.04
@@ -45,10 +45,10 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # information: the funding appeal and the "a new pip is available" nag. Set as
 # container env rather than in the shell profile, because that profile is
 # guarded on an interactive shell and a Claude session's commands are not one.
-# Deliberately NOT disabling `npm audit` — that one is a real signal.
+# Deliberately NOT disabling `npm audit`: that one is a real signal.
 # PYTHONDONTWRITEBYTECODE: a session that runs `python3 -m py_compile` (or any
 # script) in a mounted project should not leave __pycache__ litter in the
-# repo. NODE_PATH: the image's global modules — Playwright above all — resolve
+# repo. NODE_PATH: the image's global modules (Playwright above all) resolve
 # from a `require()` in any directory, instead of every session symlinking
 # them into a scratch node_modules first. (ESM `import` ignores NODE_PATH;
 # use createRequire, as scripts/dashboard/test/lib.mjs does.)
@@ -90,7 +90,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Node.js (NodeSource), GitHub CLI, Docker CLI + compose plugin
 #   The Docker CLI talks to the host daemon through a mounted
-#   /var/run/docker.sock — no daemon runs inside this container.
+#   /var/run/docker.sock; no daemon runs inside this container.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     install -m 0755 -d /etc/apt/keyrings; \
@@ -116,19 +116,19 @@ RUN set -eux; \
 # Linters for the file types every project here carries: Dockerfiles, GitHub
 # workflows, YAML, Python. shellcheck came from apt above; these three are
 # static single binaries with no Ubuntu package worth having. Resolved to the
-# newest release at build time, same policy as the runner and bundletool —
+# newest release at build time, same policy as the runner and bundletool:
 # the weekly rebuild is what keeps them current. `ruff` installs via pipx so
 # it is isolated from both the system Python and any project venv.
 #
 # Resolved WITHOUT api.github.com, deliberately: the API allows 60 anonymous
 # calls per hour per IP, and CI builds run from shared Actions egress
-# addresses that have usually spent that budget already — the "latest release"
+# addresses that have usually spent that budget already, so the "latest release"
 # JSON comes back as a rate-limit error, jq reads a null tag, and the build
 # dies on a 404. The releases/latest/download/ endpoint and the /releases/
 # latest redirect carry the same information with no such limit.
 #
 # The point of having them *in the image* rather than only in CI: a session
-# (or a person) can run the same checks CI will run, before the push — that
+# (or a person) can run the same checks CI will run, before the push. That
 # is what `bb lint` does.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
@@ -151,7 +151,7 @@ RUN set -eux; \
 # Language/version tooling that lives outside apt: uv (Python) and mise.
 #
 # Both vendors' install scripts take a destination env var, but they have
-# changed names before — so after each install we also sweep the usual drop
+# changed names before, so after each install we also sweep the usual drop
 # points and relocate anything we find. The final `--version` calls make a
 # silently-missing tool a build failure rather than a runtime surprise.
 # ---------------------------------------------------------------------------
@@ -174,15 +174,15 @@ RUN set -eux; \
 
 # ---------------------------------------------------------------------------
 # Playwright: the module and the system libraries here, the browsers on the
-# package store.
+# toolchain store.
 #
-# The three browsers are 1.3GB of pure download — the largest thing left that
-# /opt would throw away on every image update — so `install-deps` (apt
+# The three browsers are 1.3GB of pure download, the largest thing left that
+# /opt would throw away on every image update, so `install-deps` (apt
 # packages, which have to be in the image because they integrate with the
 # system) is split from `install` (the browser bundles, which do not). The
 # startup hook fetches those into the share on first boot and symlinks
 # PLAYWRIGHT_BROWSERS_PATH at them, so every path the image has always
-# promised — /opt/pw-browsers/chromium above all — still resolves.
+# promised (/opt/pw-browsers/chromium above all) still resolves.
 #
 # The env var keeps its value for the same reason: every project's playwright,
 # the dashboard's tests and `bb shot` name that directory, and it is now a
@@ -206,7 +206,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Unprivileged user. UID/GID are remapped at startup from PUID/PGID, so the
 # build-time numbers here are only a placeholder. Ubuntu 24.04 ships a stock
-# "ubuntu" user on 1000 — drop it so 1000 is free.
+# "ubuntu" user on 1000, dropped here so 1000 is free.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     userdel -r ubuntu 2>/dev/null || true; \
@@ -220,7 +220,7 @@ RUN set -eux; \
     echo 'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/mint-runner-token' > /etc/sudoers.d/builder; \
     chmod 0440 /etc/sudoers.d/builder; \
     # Explicitly lock both accounts' passwords: password auth must never be a
-    # path to privilege in this container — there is nothing to brute-force,
+    # path to privilege in this container, and there is nothing to brute-force,
     # which is stronger than any lockout policy. (They are created locked;
     # this pins the guarantee against future drift.)
     passwd -l root; \
@@ -232,14 +232,14 @@ RUN set -eux; \
 # Claude Code is NOT in this image, and is not installed at boot either: this
 # container runs no session. A session runs on the node its project is bound
 # to, which is where Claude Code is installed and where the login it uses
-# lives (R47). Two reasons, and either would do — it is Anthropic's
+# lives (R47). Two reasons, and either would do. It is Anthropic's
 # proprietary binary ("all rights reserved") and this image is published, so
 # baking it in would be redistributing it; and a controller that cannot start
 # a conversation cannot start one on the wrong machine.
 #
 # web-ext (MPL) is here: the controller carries what it needs in the image,
 # and there is no package list at boot (R29, then the operator's call:
-# everything else comes from the package manager on a node).
+# everything else is a toolchain installed on a node).
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     npm install -g --foreground-scripts web-ext; \
@@ -250,7 +250,7 @@ RUN set -eux; \
 # BuilderBot scripts + home skeleton
 # ---------------------------------------------------------------------------
 # ttyd: fetched rather than apt-installed so the version is pinned and the
-# binary is static — nothing to keep in step with the base image.
+# binary is static, with nothing to keep in step with the base image.
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -266,10 +266,11 @@ RUN set -eux; \
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
 COPY config/templates/ /opt/builderbot/templates/
-# The package catalog the Tools tab renders and `bb packages` walks. Under config/
-# so that the path relative to both bb and server.py is the same here as it is
-# in a checkout, which is what lets `bb dashboard dev` and the tests read it.
-COPY config/packages.json /opt/builderbot/config/packages.json
+# The toolchain catalog the Toolchains tab renders and `bb toolchains` walks.
+# Under config/ so that the path relative to both bb and server.py is the same
+# here as it is in a checkout, which is what lets `bb dashboard dev` and the
+# tests read it.
+COPY config/toolchains.json /opt/builderbot/config/toolchains.json
 # What a sandbox VM is made from, one per hypervisor, which the Nodes tab
 # renders with an identity per VM (vmtemplate.py). Two levels above
 # server.py, where a checkout keeps them too.
@@ -288,7 +289,7 @@ COPY nodes/vm/ /opt/builderbot/nodes/vm/
 # where a checkout keeps it too.
 COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
 # Carried in the image so the container can seed Unraid's icon cache itself
-# rather than depending on a URL Unraid can reach — see
+# rather than depending on a URL Unraid can reach. See
 # scripts/startup.d/05-unraid-icon.root.sh.
 COPY config/icon.png /opt/builderbot/icon.png
 
@@ -305,10 +306,10 @@ RUN set -eux; \
 # Baked in so `docker exec` sessions also see it: when the entrypoint has
 # loaded shielded keys from /secrets/ssh into the root-owned agent, every
 # session's ssh/git picks them up through this socket. Harmless when no
-# agent is running — ssh falls back to ~/.ssh key files.
+# agent is running: ssh falls back to ~/.ssh key files.
 # Two scanners flag this and both are wrong in the same way: the value is a
 # PATH, and the rules pattern-match names containing AUTH/KEY/TOKEN/SECRET.
-# Nothing sensitive is in the image — `docker history` shows a string — and
+# Nothing sensitive is in the image (`docker history` shows a string) and
 # the keys it leads to are root-owned in /secrets, mounted at runtime and
 # unreadable to sessions by design. The socket being public is the point:
 # everyone needs to reach an agent nobody can extract from.
@@ -316,7 +317,7 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# Where the package store is. Runtime-only, so it lives down here: an ENV in the
+# Where the toolchain store is. Runtime-only, so it lives down here: an ENV in the
 # top block invalidates every layer below it, and the host then re-pulls the lot.
 ENV SDK_ROOT=/sdk
 
@@ -329,14 +330,14 @@ ENV PUID=99 \
 #
 # "Does this container have that fix yet?" had no answer from the running
 # system: /opt is the image's, an Unraid container keeps serving whatever it
-# last pulled, and the only clue was the uptime — which is how three rounds of
+# last pulled, and the only clue was the uptime, which is how three rounds of
 # one bug went by with the fix already published and the box still on the build
 # before it. CI passes the commit and the time it built; an image built any
 # other way carries neither, and the dashboard says `unstamped` rather than
 # inventing something.
 #
 # Last, deliberately. These change on every single build, and an ARG or ENV
-# invalidates every layer below it — down here that is nothing but metadata, so
+# invalidates every layer below it; down here that is nothing but metadata, so
 # the host's pull is unaffected. In the top block this would re-download the
 # whole toolchain for every commit.
 # Named apart from the ENVs they fill, the way the Android baseline above is:

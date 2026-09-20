@@ -1,14 +1,14 @@
 """The code base, counted: what git tracks in a project, by language, with
-the files and the lines — the Briefing tab's first section, above the
+the files and the lines. It is the Briefing tab's first section, above the
 rules, the way a repository's front page shows its language bar.
 
 Tracked files only (`git ls-files`), so nothing a build left behind, nothing
 ignored and nothing untracked is in the count: dist/, node_modules/, a
-stray archive — none of it exists as far as this is concerned. Of the
+stray archive. None of it exists as far as this is concerned. Of the
 tracked files, binaries are skipped (a NUL in the first 8KB), as are lock
 files, minified bundles and anything under a vendored directory, which are
 in the repository without being anybody's code. Lines are counted as a
-person would — every line of the file — because "logical lines" is a
+person would (every line of the file) because "logical lines" is a
 different answer per language and this is a breakdown, not a benchmark.
 
 The percentage bar follows GitHub's habit: prose (Markdown, plain text)

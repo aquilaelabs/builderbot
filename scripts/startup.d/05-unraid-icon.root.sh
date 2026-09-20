@@ -16,8 +16,8 @@
 #
 # It downloads only when *both* are missing. The RAM copy is tmpfs and is gone
 # after every reboot; the disk copy survives, and is what we write here. So a
-# private repo — whose raw.githubusercontent URL answers 404 to Unraid's
-# unauthenticated fetch — stops mattering: there is nothing left to fetch.
+# private repo, whose raw.githubusercontent URL answers 404 to Unraid's
+# unauthenticated fetch, stops mattering: there is nothing left to fetch.
 #
 # Two things this cannot paper over:
 #
@@ -42,7 +42,7 @@ NAME="BuilderBot"          # the container's name on Unraid, which the icon cach
 [ -f "$SRC" ]   || { warn "icon source $SRC is missing"; exit 0; }
 
 if [ ! -w "$CACHE" ]; then
-    warn "$CACHE is mounted read-only — set the mount to rw for the container icon"
+    warn "$CACHE is mounted read-only; set the mount to rw for the container icon"
     exit 0
 fi
 

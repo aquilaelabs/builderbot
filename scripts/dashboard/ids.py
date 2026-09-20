@@ -2,13 +2,13 @@
 
 A roadmap item is R12 and a bug is B62. Before this both were "#12", and a
 reply, a commit message or a log line saying "#12" could be read against
-either tab — and #137 in the same sentence was a GitHub pull request. The
+either tab, and #137 in the same sentence was a GitHub pull request. The
 operator asked for something that cannot be misread (roadmap #28), and one
 letter is the smallest thing that does it: it fits a sentence, survives
 `bb history --find B62`, and is not what GitHub uses.
 
 Rules are keyed by name (`agent-compat`), not by number, so they need no
-letter — which also keeps R from having to mean two things. A test is keyed
+letter, which also keeps R from having to mean two things. A test is keyed
 `file#ordinal` already.
 
 The letter is a CHECK on the way in, not only a label on the way out: every
@@ -18,8 +18,8 @@ refusal is the whole reason for the letter existing.
 """
 import re
 
-LETTERS = {"todo": "R", "bugs": "B"}
-NAMES = {"todo": "a roadmap item", "bugs": "a bug"}
+LETTERS = {"roadmap": "R", "bugs": "B"}
+NAMES = {"roadmap": "a roadmap item", "bugs": "a bug"}
 # The lower-case forms and a leading '#' are accepted because they are what
 # somebody types from memory; only what is printed is canonical.
 _RE = re.compile(r"^#?([A-Za-z]?)0*(\d+)$")
@@ -33,7 +33,7 @@ def label(kind, n):
 def parse(kind, word):
     """(number, error) out of whatever named an item.
 
-    An int passes through — the dashboard sends those, and it never gets a
+    An int passes through: the dashboard sends those, and it never gets a
     letter wrong. A string may be "12", "R12", "r12" or "#12" for the
     roadmap. Another tab's letter is the one refusal, worded so the reader
     learns both letters from it. Anything else is (None, None): the caller
@@ -54,7 +54,7 @@ def parse(kind, word):
     if letter and letter != LETTERS[kind]:
         other = next((k for k, v in LETTERS.items() if v == letter), None)
         if other is None:
-            return None, (f"{word.strip()} is not {NAMES[kind]}'s number — "
+            return None, (f"{word.strip()} is not {NAMES[kind]}'s number; "
                           f"those are {label(kind, n)}")
         return None, (f"{label(other, n)} is {NAMES[other]}; {NAMES[kind]} is "
                       f"{label(kind, n)}")

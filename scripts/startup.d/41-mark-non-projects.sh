@@ -4,8 +4,8 @@
 # dashboard stops calling them projects.
 #
 # The projects folder is mounted whole, so anything an operator puts under it
-# becomes a project — including paths this container asked them to create.
-# The package store is the one that bites: its default sits at
+# becomes a project, including paths this container asked them to create.
+# The toolchain store is the one that bites: its default sits at
 # /mnt/user/development/SDK, which is inside /mnt/user/development, so the
 # same directory is both /sdk and /workspace/SDK and the Projects card lists
 # it as a repository with nothing in it.
@@ -24,7 +24,7 @@ set -euo pipefail
 
 MARKER=".bbignore"
 
-# mark DIR WHY — drop the marker, explaining itself to whoever finds it.
+# mark DIR WHY: drop the marker, explaining itself to whoever finds it.
 mark() {
     local dir="$1" why="$2"
     [ -d "$dir" ] || return 0
@@ -35,7 +35,7 @@ mark() {
     if cat > "$dir/$MARKER" <<EOF 2>/dev/null
 # BuilderBot: this directory is ${why}, not a project.
 #
-# The file's existence is the whole signal — the dashboard skips any
+# The file's existence is the whole signal: the dashboard skips any
 # directory under the projects share that holds one. Delete it to have this
 # directory listed as a project again; create one anywhere else you would
 # rather the Projects card left alone.
@@ -43,13 +43,13 @@ EOF
     then
         log "not-a-project: marked ${dir#"$WORKSPACE"/} (${why})"
     else
-        warn "could not write ${dir}/${MARKER} — it will be listed as a project"
+        warn "could not write ${dir}/${MARKER}; it will be listed as a project"
     fi
 }
 
 # The paths this container is responsible for. Both are only inside the
 # projects share when the operator put them there, which the mark() guard
 # checks rather than assumes.
-mark "$(sdk_store_root)" "the package store"
+mark "$(sdk_store_root)" "the toolchain store"
 # An old runner's tree, if an install from before CI moved to nodes left one.
 [ -d "$WORKSPACE/_work" ] && mark "$WORKSPACE/_work" "a retired Actions runner's work directory"

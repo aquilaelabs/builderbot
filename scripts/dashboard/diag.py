@@ -34,10 +34,12 @@ doctor_payload = None     # () -> the Doctor card's payload
 settings = None           # the settings module
 nodes = None              # the node registry
 db = None                 # the store
+plugins = None            # plugins.py: each account's Claude plugins
+users = None              # the account store, for names
 log_dir = None            # () -> Path of the controller's logs
 IMAGE_LOG = Path(os.environ.get("BB_IMAGE_LOG", "/config/image-log.tsv"))
 
-SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "jobs", "errors", "audit")
+SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "plugins", "jobs", "errors", "audit")
 
 
 def configure(**deps):
@@ -144,6 +146,20 @@ def nodes_now():
     return out
 
 
+def plugins_now():
+    """The Claude plugins each account installed, per node, by name: what a
+    session that behaves oddly may be carrying beside BuilderBot's own hooks
+    and briefing (plugins.py). Names and versions only."""
+    who = {u.get("uid"): n for n, u in (users.load().get("users") or {}).items()}
+    where = {n["id"]: n.get("name") for n in nodes.node_list(all=True)}
+    return [{"account": who.get(uid, uid), "node": where.get(nid, nid),
+             "plugins": [p["id"] + (f" {p['version']}" if p.get("version") else "")
+                         + (" (off)" if p.get("enabled") is False else "")
+                         + (f" (project {p['project']})" if p.get("scope") == "project" else "")
+                         for p in rows]}
+            for uid, per in sorted(plugins.everyone().items()) for nid, rows in sorted(per.items())]
+
+
 def jobs(failed_n=15):
     since = int(time.time()) - 86400
     counts = {r["state"]: r["n"] for r in db._rows(
@@ -187,7 +203,7 @@ def audit(n=30):
 
 
 _BUILD = {"controller": controller, "images": images, "settings": settings_now,
-          "doctor": doctor, "nodes": nodes_now, "jobs": jobs, "errors": errors,
+          "doctor": doctor, "nodes": nodes_now, "plugins": plugins_now, "jobs": jobs, "errors": errors,
           "audit": audit}
 
 

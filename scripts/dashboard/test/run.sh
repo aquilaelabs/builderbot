@@ -5,10 +5,10 @@
 # port with its own scratch state directory, a fake workspace of four projects
 # (one broken, one locked), a crafted SARIF report, a stub `bb` whose doctor
 # output the tests can flip, and throwaway tmux sessions on a PRIVATE tmux
-# server (TMUX_TMPDIR under the scratch dir) — the live dashboard lists every
+# server (TMUX_TMPDIR under the scratch dir): the live dashboard lists every
 # session on the shared server, and a test session showing up there as a
 # real tab was the first thing an operator noticed. Everything is torn down by
-# PID and by name — never by pattern, which is how a previous session managed
+# PID and by name, never by pattern, which is how a previous session managed
 # to kill the real dashboard while trying to stop a test one.
 #
 #   bb dashboard test            # every *.mjs in this directory
@@ -18,7 +18,7 @@
 # One run at a time: a second one is refused while the first is alive.
 #
 # Playwright comes from the image (/usr/lib/node_modules); the browsers live
-# on the package store and are found the way bb finds them. Missing either, the
+# on the toolchain store and are found the way bb finds them. Missing either, the
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -67,7 +67,7 @@ DASH="$(dirname "$HERE")"
 }
 
 # Missing pieces FAIL, by name. They used to print [skip] and exit 0, and
-# on a node — where the runner's jobs had no node or Playwright on PATH —
+# on a node, where the runner's jobs had no node or Playwright on PATH,
 # every CI run of this suite was green without running a test (bug B74).
 # A run that could not start is not a pass.
 #
@@ -79,20 +79,20 @@ NODE_PATH="$(bash "$DASH/../bb" shot --print-node-path 2>/dev/null \
             || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
 export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
-    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH) — on a node they are the playwright recipe in the packages store, installed from the Tools tab"
+    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Tools tab"
 CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
-[ -x "${CHROME:-}" ] || die "no Playwright chromium — install it with: bb packages install playwright"
+[ -x "${CHROME:-}" ] || die "no Playwright chromium: install it with: bb toolchains install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
 
 # The port is picked, not fixed. It was 8093 for everybody, which meant a run
 # on this box and the CI job for the push that started it fought over one
-# number: the second refused to start, and the message's first suggestion —
-# kill the pid holding it — would have killed a live CI job. Worse than the
+# number: the second refused to start, and the message's first suggestion
+# (kill the pid holding it) would have killed a live CI job. Worse than the
 # collision was what it did to the run that DID start, since the two suites
 # then shared the box's CPU and the loser went red on timing (bug #13).
 #
 # So: ask the kernel for a free one. Bound and released, then handed to the
-# server — a race in principle, and not one in practice on a box running two
+# server, a race in principle, and not one in practice on a box running two
 # of these at most, where the alternative is a constant that collides every
 # time. DASHBOARD_TEST_PORT still pins it for anyone who needs a known port.
 free_port() {
@@ -109,7 +109,7 @@ PORT="${DASHBOARD_TEST_PORT:-$(free_port)}"
 # Refuse a port we do not own, before doing anything else. An interrupted run
 # (SIGKILL, or the session that launched it dying) leaves a server holding this
 # one with a scratch dir that no longer exists. Ours then exits on EADDRINUSE
-# while the old one keeps answering — same port, same test:test credential — so
+# while the old one keeps answering (same port, same test:test credential), so
 # the readiness curl below succeeds and the whole suite runs against the wrong
 # fixtures. The failures that produces read as real regressions and are not;
 # that cost an hour once, and the tell was obscure enough to be worth this check.
@@ -120,27 +120,27 @@ PORT="${DASHBOARD_TEST_PORT:-$(free_port)}"
 if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$holder" ]; then
     where="$(tr '\0' ' ' < "/proc/$holder/cmdline" 2>/dev/null || true)"
     case "$where" in
-        */_work/*) die "port $PORT is held by pid $holder, which is a CI run on this box (${where# }) — do NOT kill it; leave DASHBOARD_TEST_PORT unset to get a free port." ;;
+        */_work/*) die "port $PORT is held by pid $holder, which is a CI run on this box (${where# }). Do NOT kill it; leave DASHBOARD_TEST_PORT unset to get a free port." ;;
     esac
-    die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)${where:+ — $where}) — if that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise leave DASHBOARD_TEST_PORT unset and one will be picked."
+    die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)${where:+: $where}). If that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise leave DASHBOARD_TEST_PORT unset and one will be picked."
 fi
 # One run at a time on this box. The port used to be fixed, which stopped a
 # second run by accident; picking a free one removed that stop, and three
 # suites then ran side by side on a box that also serves the live dashboard
-# — the contention bug #13 describes, made to order. A pid lock says so
+# the contention bug #13 describes, made to order. A pid lock says so
 # instead, with how long the other has been going. BB_TEST_CONCURRENT=1
 # overrides it for whoever knows what they are doing.
 #
 # The other run may be ANOTHER ACCOUNT'S: on a node the CI runner shares the
 # box with every session, and its run holds this same lock. So liveness is
-# /proc, not kill -0 — which answers "no" for a pid that is not yours and
-# read a live CI run as a stale lock — and the lock is written world-
+# /proc, not kill -0 (which answers "no" for a pid that is not yours and
+# read a live CI run as a stale lock), and the lock is written world-
 # writable, so the next account can take over one a killed run left.
 #
 # In a directory of its own, NOT a file straight under /tmp. /tmp is sticky,
 # and with fs.protected_regular (on by default since Ubuntu 20.04) a file
 # there that another account owns cannot be opened for writing whatever its
-# mode — so a lock a cancelled CI job left as `bb` could never be taken over
+# mode, so a lock a cancelled CI job left as `bb` could never be taken over
 # by a session, or the reverse, and every run died on "cannot take" until
 # somebody with that account removed it (measured on bb-sandbox, 9 Sep). A
 # world-writable directory that is not sticky has no such rule: anyone can
@@ -155,33 +155,33 @@ for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     other="$(cat "$l" 2>/dev/null || true)"
     if [ -n "$other" ] && [ -d "/proc/$other" ]; then
         owner="$(stat -c %U "$l" 2>/dev/null || echo somebody)"
-        die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago) — one at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
+        die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
     fi
 done
 # Taken over by unlinking first: a stale lock another account wrote is
 # unlinkable in a non-sticky directory, and a fresh file is then ours.
 rm -f "$LOCK" 2>/dev/null || true
 ( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
-    || die "cannot take $LOCK — $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
+    || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
-# Every tmux call from here on — ours and the server's — talks to a private
+# Every tmux call from here on (ours and the server's) talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
 #
 # TMUX must be unset first. This script is usually run FROM a tmux session
 # (a dashboard terminal, a Claude session), and inside one the tmux client
-# takes its socket from $TMUX and ignores TMUX_TMPDIR entirely — which is how
+# takes its socket from $TMUX and ignores TMUX_TMPDIR entirely, which is how
 # a first version of this file put its test sessions on the real server and,
 # on cleanup, killed the real server, the operator's shell and the Claude
 # session running the tests along with it. Verified below, not assumed.
 unset TMUX
 # Same reasoning, for the credential. This script is usually run FROM a Claude
-# session, which is given BB_TOKEN — a token scoped to ONE project with `user`
+# session, which is given BB_TOKEN, a token scoped to ONE project with `user`
 # rights and a twelve-hour life. `bb` prefers it over DASHBOARD_AUTH, so every
 # test that shells out to `bb` was quietly using the outer session's
 # credential instead of the harness's: it worked while that token was fresh
 # and the project happened to match, and stopped the moment it expired. What
-# that looked like was agent.mjs dying on "no node called agentbox" — a 401
-# the caller reads as an empty node list — hours into a session, with nothing
+# that looked like was agent.mjs dying on "no node called agentbox" (a 401
+# the caller reads as an empty node list) hours into a session, with nothing
 # in the diff to explain it.
 # ---- the container is the boundary, where the project says so (R65) --------
 #
@@ -213,13 +213,13 @@ fi
 unset BB_TOKEN
 # And the role. Run from a session ON A NODE, this script inherits
 # BUILDERBOT_ROLE=node, the real controller's address and pin, and the
-# account the session runs as — and every `bash scripts/bb` a test makes
+# account the session runs as, and every `bash scripts/bb` a test makes
 # then relays to the real controller with no token, or reads a node's
 # home. The suite drives the checkout's bb as the CONTROLLER's, against its
 # own server; the tests that mean a node say so in their own env.
 unset BUILDERBOT_ROLE BB_CONTROLLER BB_CONTROLLER_PIN BB_NODE BUILDERBOT_NODE \
       BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_TREE_OWNER BB_CI_LOG_DIR \
-      BB_NODE_PACKAGES BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
+      BB_NODE_TOOLCHAINS BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
 # git's global and system config are the suite's own, not the machine's. The
@@ -246,7 +246,8 @@ cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
-    # The private server only — guarded again, because this is the line that
+    [ -n "${PIDF:-}" ] && rm -f "$PIDF"
+    # The private server only, guarded again, because this is the line that
     # once took the real one down.
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
@@ -284,7 +285,7 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
            && git -C "$d" config user.email "test@example.invalid"; done \
     && git -C alpha remote add origin git@github.com:owner/alpha.git \
     && git -C ep.silon remote add origin https://gitlab.example/eps.git )
-    # alpha is linked to GitHub and beta to nothing — the link-to-GitHub
+    # alpha is linked to GitHub and beta to nothing: the link-to-GitHub
     # button must show on exactly one of them. ep.silon is linked to a
     # non-GitHub remote: still "linked", but the GitHub command card must
     # ghost there all the same.
@@ -292,7 +293,7 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
 # its own that land in the projects share, and an operator can write one by
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
-# ...and one with no marker at all, the shape the package store actually has when
+# ...and one with no marker at all, the shape the toolchain store actually has when
 # somebody maps a share inside the projects folder and nothing has told the
 # container about it. It is not a project because the Projects card did not
 # accept it, which is the only test that matters now.
@@ -306,8 +307,8 @@ echo '["delta"]' > "$S/state/locked-projects.json"
 printf '{"alpha":{"repo":"owner/alpha","host":"github.com","how":"key","at":1756000000}}\n' \
     > "$S/state/push-rights.json"
 # A git that stalls on one magic URL and is the real git for everything else.
-# Cloning is a background job now, and the two properties that matters for —
-# it outlives the page, and it can be stopped — can only be checked against a
+# Cloning is a background job now, and the two properties that matters for
+# (it outlives the page, and it can be stopped) can only be checked against a
 # clone that is still going when the test looks.
 REAL_GIT="$(command -v git)"
 cat > "$S/bin/git" <<GEOF
@@ -386,33 +387,24 @@ MEOF
 seed_memories
 # A scratch ssh-agent holding one throwaway key, so the deploy-key endpoint
 # has something deterministic to list. Its socket replaces the real agent's in
-# the server's environment — the tests must see this key and no operator key.
+# the server's environment: the tests must see this key and no operator key.
 ssh-keygen -q -t ed25519 -N '' -C github_testkey -f "$S/testkey"
 ssh-agent -a "$S/ssh-agent.sock" > "$S/agent.env"
 agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, and an `bb packages` that makes and removes
-# directories instead of downloading gigabytes — enough for the Tools card to
-# watch a package appear and disappear.
+# Stub: deterministic `bb doctor`, the emulator's image listings, and a
+# `bb toolchains` that makes and removes directories instead of downloading
+# gigabytes, which is enough for the Toolchains tab to watch a toolchain
+# appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
-if [ "${1:-}" = packages ]; then
-    # Where this stub pretends a package lives. Shared by every verb, so
-    # check and versions answer for what install and remove actually did —
-    # a stub that claimed 1.0 for everything let a bug through where the page
-    # showed an installed version on a row that had nothing installed.
-    _d() {
-        local n="${1#android:}"
-        if [ "$n" != "$1" ]; then printf '%s/%s' "${ANDROID_HOME:?}" "$n"
-        else printf '%s/%s' "${SDK_TEST_ROOT:?}" "$n"; fi
-    }
+# The emulator's system images: the index of what could be added (with
+# --available) and what is on disk, one of each plus one that is both, so the
+# picker has something to leave out.
+if [ "${1:-}" = emu ]; then
     case "${2:-}" in
-        root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
-        images)  # --available is the index of what could be installed; bare is
-                 # what is on disk. One of each, plus one that is both, so the
-                 # picker has something to leave out.
-                 if [ "${3:-}" = --available ]; then
+        images)  if [ "${3:-}" = --available ]; then
                      printf 'system-images;android-31;google_apis;x86_64\t31\tgoogle_apis\t1470822277\n'
                      printf 'system-images;android-30;google_apis;x86_64\t30\tgoogle_apis\t1438186618\n'
                      printf 'system-images;android-30;google_apis_playstore;x86_64\t30\tgoogle_apis_playstore\t1404405641\n'
@@ -423,6 +415,20 @@ if [ "${1:-}" = packages ]; then
                  fi ;;
         flavors) printf 'google_apis\tx86_64\tGoogle APIs\tPlay services, no Play Store app. Rootable.\n'
                  printf 'google_apis_playstore\tx86_64\tGoogle APIs + Play Store\tThe Play Store app itself; not rootable.\n' ;;
+    esac
+fi
+if [ "${1:-}" = toolchains ]; then
+    # Where this stub pretends a toolchain lives. Shared by every verb, so
+    # check and versions answer for what install and remove actually did:
+    # a stub that claimed 1.0 for everything let a bug through where the page
+    # showed an installed version on a row that had nothing installed.
+    _d() {
+        local n="${1#android:}"
+        if [ "$n" != "$1" ]; then printf '%s/%s' "${ANDROID_HOME:?}" "$n"
+        else printf '%s/%s' "${SDK_TEST_ROOT:?}" "$n"; fi
+    }
+    case "${2:-}" in
+        root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
         versions) # local only: installed version, no upstream asked. Called
                   # with no names by the server, which wants the lot.
                  for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
@@ -430,10 +436,10 @@ if [ "${1:-}" = packages ]; then
                      else printf '%s\t-\t-\tabsent\n' "$n"; fi
                  done ;;
         check)   # one line per name: installed, latest, status. Absent rows
-                 # answer too — what they would install is the other half of
+                 # answer too: what they would install is the other half of
                  # what the button is for.
                  # A fifth column on the absent rows: what an install would
-                 # download, which is the only size a package this box has
+                 # download, which is the only size a toolchain this box has
                  # never had can honestly show.
                  if [ ! -d "$(_d "$3")" ];  then printf '%s\t-\t9.9\tabsent\t123456789\n' "$3"
                  elif [ "$3" = flutter ];   then printf '%s\t1.0\t2.0\tupdate\n' "$3"
@@ -442,11 +448,11 @@ if [ "${1:-}" = packages ]; then
         install|remove)
                  d="$(_d "$3")"
                  if [ "${2}" = install ]; then
-                     # One package takes its time and draws a bar, with the
+                     # One toolchain takes its time and draws a bar, with the
                      # carriage returns a real tool uses, so a test can watch
                      # the progress reach the row through the whole path:
                      # streamed output, parser, payload, poll, render. Every
-                     # other package installs instantly, as before.
+                     # other toolchain installs instantly, as before.
                      # One that fails, loudly and then quietly: a real
                      # install writes pages of progress and one useful line,
                      # and what reaches the operator has to be the line.
@@ -462,11 +468,8 @@ if [ "${1:-}" = packages ]; then
                          printf 'error: could not download file from upstream\n' >&2
                          exit 1
                      fi
-                     # A system image takes its time too, so a test can see
-                     # where a job started from Add reports itself.
-                     case "$3" in *system-images*) sleep 1.5 ;; esac
                      if [ "$3" = go ]; then
-                         # Takes a while, and counts loudly while it does —
+                         # Takes a while, and counts loudly while it does,
                          # shaped like sdkmanager, whose meter runs one fraction
                          # across the whole operation and parks part way. None
                          # of it should reach the row; that is the point of the
@@ -490,7 +493,7 @@ EOF
 chmod +x "$S/bin/bb"
 # Stub claude: `auth status` answers from a fixture the tests flip, and
 # `auth logout` rewrites that fixture rather than going anywhere near the
-# operator's real credentials — which is the entire reason this stub exists,
+# operator's real credentials, which is the entire reason this stub exists,
 # since the real one would sign this container out for good.
 cat > "$S/bin/claude" <<'EOF'
 #!/usr/bin/env bash
@@ -514,8 +517,8 @@ if [ "${1:-}" = auth ]; then
                 good*) cat "${CLAUDE_AUTH_IN:?}" > "${CLAUDE_AUTH_FIXTURE:?}"
                        printf '\nLogin successful.\n'; exit 0 ;;
                 # The code it was handed, echoed back. The dashboard trims
-                # what a copy brought along with it — a line break, the URL
-                # the code page sets flush against the code — and this is how
+                # what a copy brought along with it (a line break, the URL
+                # the code page sets flush against the code), and this is how
                 # a test sees what actually arrived rather than assuming.
                 *) printf '\nLogin failed: Request failed with status code 400 [got %s]\n' "$code"
                    exit 1 ;;
@@ -537,7 +540,7 @@ cp "$S/auth-in.json" "$S/auth.json"
 # out to the real ones, and a suite whose answers depend on whether somebody
 # has a handset paired right now is not a suite. These answer as a phone that
 # is always there, so the card can be exercised on a box with nothing attached
-# — and, more to the point, cannot reach a box that has.
+# and, more to the point, cannot reach a box that has.
 cat > "$S/bin/adb" <<'ADBEOF'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -592,14 +595,14 @@ if [ -n "${DOCKER_HOST:-}" ] && [ -f "$ST/deadhosts" ] \
 fi
 # The one-shot `run` the dev-data probe makes (mkdir, mv, test -d on one
 # share). Answers yes by default; run.testfail is the suite saying the marker
-# is NOT over there — a clean exit 1 with nothing said, as `test -d` does.
+# is NOT over there: a clean exit 1 with nothing said, as `test -d` does.
 if [ "$1" = run ] && [ -f "$ST/run.testfail" ]; then exit 1; fi
 case "$1" in
-  # A daemon that is not there at all — the VM powered off, or an address that
+  # A daemon that is not there at all: the VM powered off, or an address that
   # is not a sandbox VM. availability is what the page gates every Docker
   # control on, so the suite has to be able to take it away.
   # Shaped like docker's real connect error, which leads with the command it
-  # ran and hides the reason at the end after `stderr=` — the shape the row
+  # ran and hides the reason at the end after `stderr=`, the shape the row
   # used to cut the reason off (B106).
   version) [ -f "$ST/version.fail" ] && {
       echo 'error during connect: Get "http://docker.example.com/v1.56/version": command [ssh -l bb -o ConnectTimeout=30 -T -- 10.0.0.9 docker system dial-stdio] has exited with exit status 255, make sure the URL is valid, and Docker 18.09 or later is installed on the remote host: stderr=ssh: connect to host 10.0.0.9 port 22: No route to host'
@@ -607,7 +610,7 @@ case "$1" in
     echo "99.stub"; exit 0 ;;
   # What the daemon says it is. The provisioner's label lives here, and this is
   # how BuilderBot tells the sandbox from any other machine that answers
-  # Docker — so the suite can take the stamp away (unlabelled.fail) and can
+  # Docker, so the suite can take the stamp away (unlabelled.fail) and can
   # make it a DIFFERENT sandbox (uid file), which is the other question:
   # whether records from the last one are cleared when a new one is plugged in.
   info)
@@ -637,7 +640,7 @@ case "$1" in
       printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
         "$pn" "$pn" "$pn" "$pn"
     done
-    # An exited container is still THERE — holding its name and its network —
+    # An exited container is still THERE, holding its name and its network,
     # which is why Down stays live for one and why the manager has to see it.
     for f in "$ST"/*.exited; do
       [ -e "$f" ] || continue
@@ -680,7 +683,7 @@ case "$1" in
           [ -f "$ST/config.fail" ] && { echo "yaml: line 2: mapping values are not allowed"; exit 1; }
           exit 0; }
         done
-        # A service that declares a build, which is what the fixture has —
+        # A service that declares a build, which is what the fixture has,
         # unless a test wants a different shape, which it leaves here.
         if [ -f "$ST/$proj.config" ]; then cat "$ST/$proj.config"
         else echo '{"services":{"app":{"build":{"context":"."},"ports":[{"target":7474,"published":"7475","protocol":"tcp"}],"volumes":[{"type":"bind","source":"/mnt/user/plex-media","target":"/library","read_only":true},{"type":"bind","source":"/mnt/user/appdata/x/config","target":"/config"}]}}}'
@@ -702,11 +705,11 @@ case "$1" in
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
         # A build that takes its time and says so, for the two properties a
         # fast one cannot show: that its output arrives WHILE it runs, and
-        # that it can be interrupted. Line-buffered on purpose — a pull writes
+        # that it can be interrupted. Line-buffered on purpose: a pull writes
         # a line at a time and the reader is asserting it sees them early.
         if [ -f "$ST/build.slow" ]; then
           # Long enough that a test can see it running, open the manager and
-          # press Abort while it still is — the manager repaints on its own
+          # press Abort while it still is: the manager repaints on its own
           # fetch, so "the log has a line in it" and "the click lands" are
           # several seconds apart on a loaded box.
           for i in $(seq 1 60); do
@@ -717,7 +720,7 @@ case "$1" in
         echo "stub built ok"; exit 0 ;;
       up)
         # A failing up, for the row that has to survive one: compose creates
-        # the container and then cannot start it — the shape of a bind mount
+        # the container and then cannot start it, the shape of a bind mount
         # landing on a share that squashes root.
         if [ -f "$ST/up.fail" ]; then
           touch "$ST/$proj.exited"
@@ -748,7 +751,7 @@ while :; do sleep 1; done
 WEEOF
 chmod +x "$S/bin/web-ext"
 
-# Stub gh: always unauthenticated, so `pat` is deterministically false — the
+# Stub gh: always unauthenticated, so `pat` is deterministically false; the
 # real gh would answer from the operator's own login state.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
 chmod +x "$S/bin/gh"
@@ -775,10 +778,10 @@ doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "testscan", "ru
 open(sys.argv[1], "w").write(json.dumps(doc))
 EOF
 # Each test file starts from the same place: an unwritten layout and both
-# throwaway sessions present — a file that minimizes tabs or ends a session
+# throwaway sessions present: a file that minimizes tabs or ends a session
 # must not hand that state to the next.
 fresh() {
-    rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json" \
+    rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/roadmap.json" \
           "$S/state/bugs.json"
     # ...nor the rules and the approval queue (roadmap #7, #27): a rule or a
     # held change left by pending.mjs lit the bell and filled the Briefing
@@ -791,7 +794,7 @@ fresh() {
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # ...nor one that binds a project to a node. nodes.mjs saves alpha's node
     # from the settings dialog; agent.mjs then asserts that a project with no
-    # node is refused, and inherited the binding — a deterministic failure of
+    # node is refused, and inherited the binding, a deterministic failure of
     # the pair that neither file showed alone.
     rm -f "$S/state/claude-prefs.json"
     # ...nor one that built a dev instance. agent.mjs runs a compose action
@@ -800,10 +803,10 @@ fresh() {
     # somewhere else. Per-run state, like the rest of this list.
     rm -f "$S/state/devapps.json"
     rm -rf "$S/state/devenv"
-    # Projects a test created through /api/create go too — anything that is
+    # Projects a test created through /api/create go too: anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     # .claude stays: it is where every account's ~/.claude/projects points
-    # (roadmap #24), and removing it leaves the home's link dangling — which
+    # (roadmap #24), and removing it leaves the home's link dangling, which
     # is what made seed_memories' mkdir fail with "File exists" on the
     # second file of a run. It is per-run state like the home is.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
@@ -811,7 +814,7 @@ fresh() {
         ! -name toolstore ! -name vendored-junk ! -name .claude -exec rm -rf {} +
     # ...nor one that UNLINKED a project. create.mjs unlinks alpha through the
     # real /api/unlink, which is meant to take the remote, the stored token
-    # and the push grant all at once — so `run.sh create cards` handed cards
+    # and the push grant all at once, so `run.sh create cards` handed cards
     # an alpha that pushes nowhere, and its chain dialog, which expects a
     # deploy key, failed on two assertions and then timed out. Alphabetical
     # order is why CI never met it: cards runs first in a whole run.
@@ -833,7 +836,7 @@ fresh() {
     # it. artifacts.mjs renames bin/adb aside to prove Push goes dead; when
     # its next wait timed out the rename never reversed, and every suite
     # after it ran with no phone and failed on things that had nothing to do
-    # with phones — a cascade that read as five bugs and was one.
+    # with phones, a cascade that read as five bugs and was one.
     [ -e "$S/bin/adb.hidden" ] && mv -f "$S/bin/adb.hidden" "$S/bin/adb"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     cp "$S/auth-in.json" "$S/auth.json"   # a test that signs out must not hand that on
@@ -841,8 +844,8 @@ fresh() {
     seed_memories                   # memory.mjs edits and deletes these for real
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
-        # A test that typed into a pane without pressing Enter — the memory
-        # book's note does exactly that — must not hand the half-typed line
+        # A test that typed into a pane without pressing Enter (the memory
+        # book's note does exactly that) must not hand the half-typed line
         # to the next file. C-u is kill-line, not a signal.
         tmux send-keys -t "$n" C-u 2>/dev/null || true
     done
@@ -852,7 +855,7 @@ fresh
 # ---- server ----------------------------------------------------------------
 # BB_DEV_DATA_DIR belongs in here with the rest: devapp.py defaults the
 # dev-data root to /devdata, and everything else was redirected while that
-# was not — so the ep.silon fixture's instance did an mkdir in the operator's
+# was not, so the ep.silon fixture's instance did an mkdir in the operator's
 # REAL /devdata, which this suite's whole story is that it cannot do. It is
 # per-command env, deliberately: the node tests further down still see the
 # container's own /devdata, which is what the module-level host_map() and
@@ -866,12 +869,18 @@ fresh
 # DOCKER_HOST_PATHS is cleared for the same reason and was found the same way.
 # Unset here, it inherited the REAL container's mapping, so what the dev row
 # said about a fixture's compose file depended on how the operator had wired
-# their own daemon — a suite that passes on one box and fails on the next with
+# their own daemon, a suite that passes on one box and fails on the next with
 # nothing in the diff to explain it. Found when a check on an identity pair
 # started firing against this box's /workspace:/workspace.
-env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+# The server and the stub are started from a subshell, so init adopts them
+# and this shell never has them as children: bash reaping a killed child of
+# its own asynchronously was "wait_for: No record of process", which ended
+# the whole run now and then. Their pids come back through a file outside $S.
+PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
+start_server() {
+( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
-    PKG_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
+    TC_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
@@ -886,20 +895,23 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_ARCHIVE_SPOOL="$S/spool" \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
-    python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
-pid=$!
+    python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
+  echo $! > "$PIDF" )
+pid="$(cat "$PIDF")"
 for _ in $(seq 40); do
     curl -fs -u test:test -o /dev/null "http://127.0.0.1:$PORT/api/status" && break
     kill -0 "$pid" 2>/dev/null || { cat "$S/server.log"; die "server exited"; }
     sleep 0.25
 done
+}
+start_server
 
 # ---- the owner ---------------------------------------------------------------
 # There is no DASHBOARD_AUTH any more: a fresh container serves a first-run
 # screen and the person at it makes the owner. The harness cannot use that
-# form — its credential is `test:test`, and the form enforces an eight
+# form: its credential is `test:test`, and the form enforces an eight
 # character password, which every other file here would then have to know
-# about — so it claims the store directly, which is the same call the form
+# about. So it claims the store directly, which is the same call the form
 # makes. The form's own path is covered in auth.mjs, against a store of its
 # own.
 python3 - "$DASH/users.py" "$S/state" <<'PY'
@@ -920,8 +932,8 @@ d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
 u._save(d)
 PY
 
-# ...and its Claude identity. The controller holds no credential now (R47) —
-# each machine signs in for itself — so "signed in" here is a RECORD: which
+# ...and its Claude identity. The controller holds no credential now (R47),
+# and each machine signs in for itself, so "signed in" here is a RECORD: which
 # Anthropic account this BuilderBot account is bound to, and which nodes
 # report being signed in as it. Without one every suite reads the box as
 # signed out, which ghosts every Claude button and reddens every project row.
@@ -936,7 +948,7 @@ chmod 600 "$S/home/.claude/.bb-grant.json"
 # The suite needs one node whose daemon the controller can address, and it
 # used to get one from DOCKER_HOST: the server mirrored the variable into an
 # `ssh`-kind row at boot. That kind is retired (roadmap #24) and so is the
-# seed, so the harness enrolls the node the way an operator now does — mint a
+# seed, so the harness enrolls the node the way an operator now does: mint a
 # token, then present it on the agent channel.
 #
 # Two things are written rather than probed, because this container is not a
@@ -964,12 +976,78 @@ sandbox_node=$(curl -fs -H "Authorization: Bearer $sandbox_tok" \
 # the agent's, so without this every Up and Rebuild in the suite would queue
 # and then be reconciled away. agent-stub.py's header says why it is a stub
 # and not the shipped agent.
-STUB_AGENT_URL="http://127.0.0.1:$PORT" \
-STUB_AGENT_DIR="$S/sandboxdata" \
-STUB_AGENT_TOKEN="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')" \
-DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
-    python3 "$HERE/agent-stub.py" > "$S/agent-stub.log" 2>&1 &
-stub_pid=$!
+stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+start_stub() {
+    ( STUB_AGENT_URL="http://127.0.0.1:$PORT" \
+    STUB_AGENT_DIR="$S/sandboxdata" \
+    STUB_AGENT_TOKEN="$stub_token" \
+    DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
+        python3 "$HERE/agent-stub.py" >> "$S/agent-stub.log" 2>&1 &
+      echo $! > "$PIDF" )
+    stub_pid="$(cat "$PIDF")"
+}
+start_stub
+
+# ---- one world per file (B124) ---------------------------------------------
+# Every file starts from the same world, whatever the one before it did. The
+# fixture above is built once and kept whole (everything under $S but the
+# private tmux server, the ssh-agent's socket, the logs and the copy itself);
+# before each file the server and the stub agent stop, the copy is put back
+# and both start again. Before this, fresh() below kept a hand-written list
+# of files to reset, and every leak it missed was a failure that showed only
+# in a whole run: a node, an account or a setting one file made, in the
+# database, in memory, read by the next. A list cannot keep up with that; a
+# copy of everything does. It costs a server start per file, about a second.
+stop_world() {
+    local p _
+    for p in "$pid" "$stub_pid"; do [ -z "$p" ] || kill "$p" 2>/dev/null || true; done
+    # Polled, not waited for: bash's wait on a child it has already reaped
+    # is an internal error that ended the script, and the database has to be
+    # closed before its files are copied or put back.
+    for p in "$pid" "$stub_pid"; do
+        [ -n "$p" ] || continue
+        for _ in $(seq 50); do kill -0 "$p" 2>/dev/null || break; sleep 0.1; done
+        kill -9 "$p" 2>/dev/null || true
+    done
+    pid=""; stub_pid=""
+}
+WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar)
+snapshot_world() {
+    local ex=() n
+    for n in "${WORLD_OUT[@]}"; do ex+=("--exclude=./$n"); done
+    ( cd "$S" && tar cf .world.tar "${ex[@]}" . )
+}
+restore_world() {
+    local keep=() n
+    for n in "${WORLD_OUT[@]}"; do keep+=(! -name "$n"); done
+    find "$S" -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf {} +
+    ( cd "$S" && tar xf .world.tar )
+}
+# Up and dialed in: the stub says hello the moment it starts, and a file that
+# opens on the node's row must not meet it still marked as not answering.
+wait_stub() {
+    local since="$1" _
+    for _ in $(seq 40); do
+        curl -fs -u test:test "http://127.0.0.1:$PORT/api/v1/nodes" 2>/dev/null \
+            | python3 -c 'import json,sys; since=float(sys.argv[1]); d=json.load(sys.stdin)
+n=[x for x in d.get("nodes",[]) if x.get("name")=="sandbox"]
+sys.exit(0 if n and float((n[0].get("agent") or {}).get("last_seen") or 0) >= since else 1)' "$since" \
+            && return 0
+        sleep 0.25
+    done
+    warn "the stub agent did not dial in again within ten seconds"
+}
+fresh_world() {
+    local since
+    stop_world
+    restore_world
+    since="$(date +%s)"
+    start_server
+    start_stub
+    wait_stub "$since"
+}
+stop_world
+snapshot_world
 
 # ---- tests -----------------------------------------------------------------
 if [ $# -gt 0 ]; then
@@ -983,12 +1061,34 @@ else
         case "$(basename "$t")" in lib.mjs|lab-*.mjs) ;; *) tests+=("$t") ;; esac
     done
 fi
-rc=0
-for t in "${tests[@]}"; do
+run_file() {
+    fresh_world
     fresh
-    log "== $(basename "$t") =="
+    log "== $(basename "$1")${2:+ $2} =="
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" node "$t" || rc=1
+    DASHBOARD_TEST_DIR="$S" node "$1"
+}
+rc=0
+failed=()
+for t in "${tests[@]}"; do
+    run_file "$t" || failed+=("$t")
 done
+# Once more, alone, for each file that failed, in a world of its own like
+# every other. A file that passes then is FLAKY: it failed under the whole
+# run's load and not on its own, and it is named as that, never folded into
+# a pass. A file that fails again is a failure. Only in a run of more than
+# one file: asking for one file and getting it twice would be noise.
+flaky=()
+if [ "${#tests[@]}" -gt 1 ]; then
+    for t in "${failed[@]}"; do
+        if run_file "$t" again; then flaky+=("$(basename "$t")"); else rc=1; fi
+    done
+elif [ "${#failed[@]}" -gt 0 ]; then
+    rc=1
+fi
+stop_world
+if [ "${#flaky[@]}" -gt 0 ]; then
+    warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
+fi
 [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
 exit "$rc"

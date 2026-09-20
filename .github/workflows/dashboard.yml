@@ -4,7 +4,7 @@ name: dashboard tests
 # different reasons and one was hiding the other. The browser suite is
 # timing-sensitive and this runner shares its box with the live dashboard, any
 # session and any build, so it fails here far more often than it does when run
-# by hand — and while it was a step in the lint job it took shellcheck,
+# by hand, and while it was a step in the lint job it took shellcheck,
 # hadolint and actionlint's verdict down with it, and the compose and XML
 # checks that came after it never ran at all. Twelve consecutive lint runs were
 # red on exactly that, and the deterministic half of them had passed every
@@ -13,19 +13,19 @@ name: dashboard tests
 # So: a red run here says "the browser tests are flaky again", and a red lint
 # says the code is actually wrong. Two answers, two checks.
 #
-# This does NOT make the suite reliable on a loaded box — see bug #19. It makes
+# This does NOT make the suite reliable on a loaded box; see bug #19. It makes
 # its unreliability stop costing the checks that are reliable.
 on:
   pull_request:
-    # Replaces the git-diff test the old step did by hand. Same intent — only
-    # worth running when it could have changed — expressed where GitHub can
+    # Replaces the git-diff test the old step did by hand. Same intent (only
+    # worth running when it could have changed), expressed where GitHub can
     # act on it, so the job is never queued rather than started and skipped.
     paths:
       - "scripts/dashboard/**"
       - ".github/workflows/dashboard.yml"
   workflow_dispatch:
 
-# A superseded push's result is worthless — cancel it rather than make the
+# A superseded push's result is worthless, so cancel it rather than make the
 # (single) self-hosted runner work through the backlog serially.
 concurrency:
   group: dashboard-${{ github.ref }}
@@ -33,14 +33,14 @@ concurrency:
 
 jobs:
   dashboard:
-    # A node: Playwright and Chromium are its packages store's, on the PATH
+    # A node: Playwright and Chromium are its toolchain store's, on the PATH
     # the runner's .env carries (the agent writes the same environment every
     # bb job gets). The harness FAILS by name when they are missing rather
-    # than passing by omission — it skipped with exit 0 until 8 Sep, and every
+    # than passing by omission: it skipped with exit 0 until 8 Sep, and every
     # run here was green without a test (bug B74).
     runs-on: [self-hosted, bb-sandbox]
     # `bash` rather than the default `bash -e`, because that one difference is
-    # pipefail — and the run below is piped into tee. Without it the tee's exit
+    # pipefail, and the run below is piped into tee. Without it the tee's exit
     # status is the step's, and a failing suite would report success.
     defaults:
       run:
@@ -51,7 +51,7 @@ jobs:
       - name: Open a log this container can read afterwards
         # The same archive lint.yml keeps, and for the same reason: the runner
         # streams a step's output to GitHub and keeps none of it on disk, so a
-        # session in this container — which has no PAT — could see that CI was
+        # session in this container, which has no PAT, could see that CI was
         # red and nothing about why. `bb ci-log` reads what this writes.
         #
         # The run id is unique per workflow, so this cannot collide with the
@@ -73,7 +73,7 @@ jobs:
           echo "CI_LOG=$log" >> "$GITHUB_ENV"
           echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
           {
-            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "# ${GITHUB_WORKFLOW} on ${GITHUB_REPOSITORY}"
             echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
             echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
             echo "commit: ${GITHUB_SHA}"
@@ -83,13 +83,13 @@ jobs:
 
       - name: Dashboard browser tests
         # An isolated instance on a spare port with a private tmux server and a
-        # scratch state dir — nothing it does can reach the live dashboard this
+        # scratch state dir; nothing it does can reach the live dashboard this
         # runner's container is also serving.
         #
         # Retried once, and only once, because of what this suite's failures
         # actually are. It drives a real browser against a page that repaints on
         # a poll, on a runner sharing its box with the live dashboard, any
-        # session and any image build — so a file times out under load and
+        # session and any image build, so a file times out under load and
         # passes alone, every time, which is bug #13. A run that fails twice in
         # a row is worth reading; a run that fails once is worth running again,
         # and mailing somebody about the first one teaches them to ignore the
@@ -100,7 +100,7 @@ jobs:
           # any image build, so every wait in the suite is competing for CPU
           # that a quiet run has to itself. Doubling them costs seconds on a
           # green run and removes the commonest way this goes red for reasons
-          # that are not the code — bug #13.
+          # that are not the code (bug #13).
           BB_TEST_SLOW: "2"
         run: |
           set -o pipefail
@@ -108,7 +108,7 @@ jobs:
             exit 0
           fi
           echo | tee -a "$CI_LOG"
-          echo "== first attempt failed — running once more ==" | tee -a "$CI_LOG"
+          echo "== first attempt failed, running once more ==" | tee -a "$CI_LOG"
           echo "   (this suite is timing-sensitive on a shared box; see bug #13)" \
             | tee -a "$CI_LOG"
           bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"

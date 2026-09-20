@@ -1,37 +1,37 @@
 {
   "_comment": [
-    "Everything the container needs in order to offer, fetch and install a package.",
-    "The dashboard's Tools tab renders it and `bb packages` acts on it; adding a package",
+    "Everything the container needs in order to offer, fetch and install a toolchain.",
+    "The dashboard's Tools tab renders it and `bb toolchains` acts on it; adding a toolchain",
     "here is the whole job, as long as it fits one of the five kinds below.",
     "",
-    "  name     what `bb packages install|remove` is called with.",
+    "  name     what `bb toolchains install|remove` is called with.",
     "  probe    where it lands, so the page can tell installed from not: a bare",
-    "           name is a directory under the package store root, android:<pkg> a package",
-    "           directory under ANDROID_HOME. System images are not packages;",
+    "           name is a directory under the toolchain store root, android:<pkg> a package",
+    "           directory under ANDROID_HOME. System images are not toolchains;",
     "           they have a section of their own, above.",
     "  platforms  which <os>/<arch> this recipe actually works on. Seven of these",
     "           name linux-x86_64 in their URL, and swift names ubuntu24.04, so",
     "           \"Linux\" is not one platform here. `*` in the arch position means",
-    "           the payload is arch-independent — shell and jars, a git clone, or",
+    "           the payload is arch-independent: shell and jars, a git clone, or",
     "           a tool that resolves its own platform. An install onto a node",
     "           outside the list is refused by name rather than downloading a",
     "           couple of hundred megabytes and failing on exec.",
-    "  requires   other packages this one needs in order to work. Installed",
+    "  requires   other toolchains this one needs in order to work. Installed",
     "           first, and only when missing. android-tools drives sdkmanager,",
     "           which is a Java program, and without this it failed inside",
-    "           sdkmanager with a message naming neither Java nor the package",
+    "           sdkmanager with a message naming neither Java nor the toolchain",
     "           that supplies it.",
-    "  layout     where this package lands, once, for everybody who needs to",
+    "  layout     where this toolchain lands, once, for everybody who needs to",
     "           know. `bin` are directories under it to put on PATH, `env` the",
     "           variables it sets (valued as a path under it, \"\" meaning the",
-    "           package directory itself), `tool` the file whose presence",
+    "           toolchain directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
-    "           places — sdk_env_snippet, the agent's STORE_TOOLS and",
-    "           STORE_PATHS, and sdk_check_one — and they drifted three times",
+    "           places (sdk_env_snippet, the agent's STORE_TOOLS and",
+    "           STORE_PATHS, and sdk_check_one) and they drifted three times",
     "           in one day.",
     "           A path may start `root:` to mean relative to the store rather",
-    "           than to this package — the android packages share one tree,",
+    "           than to this toolchain; the android toolchains share one tree,",
     "           since sdkmanager installs into <root>/android whatever the",
     "           package is called.",
     "  system   the machine's own packages this one needs at runtime, by",
@@ -41,7 +41,12 @@
     "           other it names them and carries on, and the tool says which",
     "           are missing when it is used. Playwright's browsers are the",
     "           case: forty libraries the image gets from install-deps and a",
-    "           node got from nowhere.",
+    "           node got from nowhere. An entry may name alternatives,",
+    "           \"libasound2t64|libasound2\": a library renamed between",
+    "           releases, met by whichever is installed and otherwise the",
+    "           first the machine's repositories carry, since apt refuses a",
+    "           whole install for one unknown name. tools/check-sysdeps.py",
+    "           checks every name against each release's package index.",
     "",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
@@ -57,7 +62,7 @@
     "  verify       run after installing, so a broken unpack fails the install",
     "               rather than waiting to fail the first time somebody uses it.",
     "",
-    "time upstream ships: what a package weighs is measured from the disk once it",
+    "time upstream ships: what a toolchain weighs is measured from the disk once it",
     "is installed, remembered after it is removed, and read from the download's",
     "own Content-Length before that when the URL is the payload itself.",
     "",
@@ -69,24 +74,24 @@
     "             and the row shows no size until it has been installed once.",
     "",
     "No size is written down here. One typed into a file is wrong the next time",
-    "upstream ships: a row shows what the package takes on this disk once it is",
+    "upstream ships: a row shows what the toolchain takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
-    "before that — never a number somebody guessed.",
+    "before that. Never a number somebody guessed.",
     "             \"url-matches\" fetches a file upstream publishes and matches the",
     "             URLs out of it, which is how rust's three minimal-profile",
     "             components are counted; \"android-repo\" reads sdkmanager's own",
     "             index, keyed by the package id an install resolves to; and",
     "             \"approximate\" is a number written down, for the one recipe whose",
-    "             download cannot be measured before it happens — a git clone has",
+    "             download cannot be measured before it happens: a git clone has",
     "             no content length. It is marked as an approximation everywhere",
     "             it is shown."
   ],
   "android_images": {
     "_comment": [
-      "System images, which are not packages. A package is one thing at one",
+      "System images, which are not toolchains. A toolchain is one thing at one",
       "version; a system image exists at every API level at once, and which of",
       "them you want is a question about what you are testing, not about the",
-      "catalog. So the flavors live here as data, and the Tools tab offers an",
+      "catalog. So the flavors live here as data, and the Emulator tab offers an",
       "API level and a flavor rather than a row per flavor that could only",
       "ever install the newest one.",
       "",
@@ -119,7 +124,7 @@
       }
     }
   },
-  "packages": [
+  "toolchains": [
     {
       "name": "jdk",
       "label": "JDK 21 (Temurin)",
@@ -140,7 +145,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's packages store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
+      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's toolchain store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -182,7 +187,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager: the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager: the bootstrap every other android:* toolchain installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -204,7 +209,7 @@
           "JAVA_HOME": "{dir}/../jdk"
         },
         "after": [
-          "system images and the emulator install through it: bb packages install android:emulator, bb packages images"
+          "system images and the emulator install through it: bb toolchains install android:emulator, bb emu image add ID"
         ],
         "download": {
           "resolver": "approximate",
@@ -265,7 +270,7 @@
           "libpulse0",
           "libgl1",
           "libglu1-mesa",
-          "libasound2t64",
+          "libasound2t64|libasound2",
           "libegl1",
           "libvulkan1"
         ],
@@ -293,7 +298,7 @@
           "libvulkan1"
         ],
         "apk": [
-          "pulseaudio-libs",
+          "libpulse",
           "mesa-gl",
           "glu",
           "alsa-lib",
@@ -464,8 +469,14 @@
         "reports": "dotnet"
       },
       "system": {
+        "apt": [
+          "libicu78|libicu76|libicu74|libicu72|libicu70"
+        ],
         "dnf": [
           "libicu"
+        ],
+        "zypper": [
+          "libicu78|libicu73_2|libicu69|libicu-suse65_1"
         ],
         "apk": [
           "icu-libs"
@@ -578,28 +589,32 @@
       },
       "system": {
         "apt": [
-          "at-spi2-common",
+          "at-spi2-common|at-spi2-core",
           "fontconfig",
           "fonts-freefont-ttf",
           "fonts-liberation",
           "fonts-noto-color-emoji",
           "fonts-unifont",
-          "libasound2t64",
-          "libatk-bridge2.0-0t64",
-          "libatk1.0-0t64",
-          "libatspi2.0-0t64",
-          "libcairo-gobject2", "libcairo2",
-          "libcups2t64",
+          "libasound2t64|libasound2",
+          "libatk-bridge2.0-0t64|libatk-bridge2.0-0",
+          "libatk1.0-0t64|libatk1.0-0",
+          "libatspi2.0-0t64|libatspi2.0-0",
+          "libcairo-gobject2",
+          "libcairo2",
+          "libcups2t64|libcups2",
           "libdrm2",
-          "libgbm1", "libgdk-pixbuf-2.0-0",
+          "libgbm1",
+          "libgdk-pixbuf-2.0-0",
           "libgl1",
           "libgl1-mesa-dri",
           "libglx-mesa0",
-          "libgraphite2-3", "libgtk-3-0t64",
+          "libgraphite2-3",
+          "libgtk-3-0t64|libgtk-3-0",
           "libharfbuzz0b",
           "libnspr4",
           "libnss3",
-          "libpango-1.0-0", "libpangocairo-1.0-0",
+          "libpango-1.0-0",
+          "libpangocairo-1.0-0",
           "libvulkan1",
           "libx11-xcb1",
           "libxcb-dri3-0",
@@ -610,7 +625,8 @@
           "libxcb-shm0",
           "libxcb-sync1",
           "libxcb-xfixes0",
-          "libxcomposite1", "libxcursor1",
+          "libxcomposite1",
+          "libxcursor1",
           "libxdamage1",
           "libxfixes3",
           "libxi6",
@@ -618,7 +634,118 @@
           "libxrandr2",
           "libxrender1",
           "libxshmfence1",
-          "mesa-libgallium"
+          "mesa-libgallium|libgl1-mesa-dri"
+        ],
+        "dnf": [
+          "alsa-lib",
+          "at-spi2-atk",
+          "at-spi2-core",
+          "atk",
+          "cairo",
+          "cairo-gobject",
+          "cups-libs",
+          "dbus-libs",
+          "fontconfig",
+          "gdk-pixbuf2",
+          "google-noto-color-emoji-fonts|google-noto-emoji-color-fonts",
+          "graphite2",
+          "gtk3",
+          "harfbuzz",
+          "libdrm",
+          "liberation-sans-fonts",
+          "mesa-dri-drivers",
+          "mesa-libGL",
+          "mesa-libgbm",
+          "nspr",
+          "nss",
+          "pango",
+          "vulkan-loader",
+          "libX11-xcb",
+          "libxcb",
+          "libXcomposite",
+          "libXcursor",
+          "libXdamage",
+          "libXext",
+          "libXfixes",
+          "libXi",
+          "libxkbcommon",
+          "libXrandr",
+          "libXrender",
+          "libxshmfence",
+          "libXtst"
+        ],
+        "pacman": [
+          "alsa-lib",
+          "at-spi2-core",
+          "cairo",
+          "dbus",
+          "fontconfig",
+          "gdk-pixbuf2",
+          "gnu-free-fonts",
+          "graphite",
+          "gtk3",
+          "harfbuzz",
+          "libcups",
+          "libdrm",
+          "libglvnd",
+          "libx11",
+          "libxcb",
+          "libxcomposite",
+          "libxcursor",
+          "libxdamage",
+          "libxext",
+          "libxfixes",
+          "libxi",
+          "libxkbcommon",
+          "libxrandr",
+          "libxrender",
+          "libxshmfence",
+          "libxtst",
+          "mesa",
+          "noto-fonts-emoji",
+          "nspr",
+          "nss",
+          "pango",
+          "ttf-liberation",
+          "vulkan-icd-loader"
+        ],
+        "zypper": [
+          "Mesa-dri",
+          "Mesa-libGL1",
+          "fontconfig",
+          "google-noto-coloremoji-fonts|noto-coloremoji-fonts",
+          "liberation-fonts",
+          "libX11-xcb1",
+          "libXcomposite1",
+          "libXcursor1",
+          "libXdamage1",
+          "libXext6",
+          "libXfixes3",
+          "libXi6",
+          "libXrandr2",
+          "libXrender1",
+          "libXtst6",
+          "libasound2",
+          "libatk-1_0-0",
+          "libatk-bridge-2_0-0",
+          "libatspi0",
+          "libcairo-gobject2",
+          "libcairo2",
+          "libcups2",
+          "libdbus-1-3",
+          "libdrm2",
+          "libgbm1",
+          "libgdk_pixbuf-2_0-0",
+          "libgraphite2-3",
+          "libgtk-3-0",
+          "libharfbuzz0",
+          "libpango-1_0-0",
+          "libvulkan1",
+          "libxcb1",
+          "libxkbcommon0",
+          "libxshmfence1",
+          "mozilla-nspr",
+          "mozilla-nss"
         ]
       },
       "platforms": [
@@ -700,6 +827,83 @@
       "updatable": true
     },
     {
+      "name": "language-servers",
+      "label": "Language servers (Python, TypeScript)",
+      "probe": "language-servers",
+      "layout": {
+        "bin": [
+          "node_modules/.bin"
+        ],
+        "env": {},
+        "tool": "node_modules/.bin/pyright-langserver",
+        "reports": "pyright"
+      },
+      "platforms": [
+        "linux/*",
+        "darwin/*"
+      ],
+      "requires": [
+        "node"
+      ],
+      "about": "What Claude Code's pyright-lsp and typescript-lsp plugins run, so a session sees type errors as it edits instead of at the next build. A session cannot npm install -g into the store, so the servers live here. TypeScript is held at 5, the line typescript-language-server drives; a project's own node_modules copy wins where it has one.",
+      "source": {
+        "kind": "command",
+        "requires": "npm",
+        "run": [
+          "sh",
+          "-c",
+          "npm install --prefix \"$1\" --no-audit --no-fund --loglevel=error pyright@latest typescript-language-server@latest typescript@5",
+          "--",
+          "{dir}"
+        ],
+        "download": {
+          "resolver": "approximate",
+          "bytes": 46000000
+        }
+      },
+      "updatable": true
+    },
+    {
+      "name": "kotlin-lsp",
+      "label": "Kotlin language server",
+      "probe": "kotlin-lsp",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/kotlin-lsp",
+        "reports": "kotlin-lsp"
+      },
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "about": "What Claude Code's kotlin-lsp plugin runs: JetBrains' standalone Kotlin server, with the Java runtime it needs inside it, from the project's latest release. Named kotlin-lsp the way JetBrains' own Homebrew formula names it.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "url": "https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest",
+        "run": [
+          "sh",
+          "-ec",
+          "v=\"$(sed -n 's#.*\"tag_name\": *\"kotlin-lsp/v\\([0-9.]*\\)\".*#\\1#p' \"$1\" | head -1)\"; [ -n \"$v\" ] || { echo 'no kotlin-lsp release named in the answer' >&2; exit 1; }; a=''; [ \"$(uname -m)\" = aarch64 ] && a='-aarch64'; t=\"$(mktemp -d)\"; curl -fsSL --retry 3 -o \"$t/k.tgz\" \"https://download.jetbrains.com/language-server/kotlin-server/$v/kotlin-server-$v$a.tar.gz\"; mkdir -p \"$2/server\" \"$2/bin\"; tar -xzf \"$t/k.tgz\" -C \"$2/server\" --strip-components=1; ln -sfn ../server/bin/intellij-server \"$2/bin/kotlin-lsp\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/kotlin-lsp",
+          "--version"
+        ],
+        "download": {
+          "resolver": "approximate",
+          "bytes": 368000000
+        }
+      },
+      "updatable": true
+    },
+    {
       "name": "rust",
       "label": "Rust",
       "probe": "rust",
@@ -740,7 +944,7 @@
         ],
         "after": [
           "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
-          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb packages install zig + cargo-zigbuild"
+          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb toolchains install zig + cargo-zigbuild"
         ],
         "download": {
           "resolver": "url-matches",

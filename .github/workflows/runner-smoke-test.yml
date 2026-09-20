@@ -1,12 +1,12 @@
 name: runner smoke test
 
-# Manual only — this is a proof that a self-hosted BuilderBot runner picks up
+# Manual only. This is a proof that a self-hosted BuilderBot runner picks up
 # work and has the toolchain it advertises. Run it from the Actions tab:
 # "runner smoke test" -> Run workflow.
 #
 # The label is an input because every BuilderBot runner carries `builderbot`,
 # so dispatching against that alone is a coin flip between the controller and
-# every node — which is no use when the question is "did THIS machine take
+# every node, which is no use when the question is "did THIS machine take
 # it". A node's runner also carries the node's own name, so putting that name
 # in here pins the run to it, and the "Where am I" step below prints the
 # hostname that proves where it landed.
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: "Runner label — a node's name (e.g. bb-sandbox) pins it to that machine"
+        description: "Runner label: a node's name (e.g. bb-sandbox) pins it to that machine"
         default: builderbot
         type: string
 
@@ -50,5 +50,5 @@ jobs:
 
       - name: Docker (expected unavailable unless the socket is mounted)
         continue-on-error: true
-        run: docker info >/dev/null 2>&1 && echo "docker reachable" || echo "no docker socket — expected default"
+        run: docker info >/dev/null 2>&1 && echo "docker reachable" || echo "no docker socket; expected default"
 

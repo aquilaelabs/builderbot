@@ -17,7 +17,7 @@ warnings and errors from the other two as they happen, so the session's story
 is in one place and the detail is next door.
 
 Kept for a number of DAYS rather than a number of boots. A count is the wrong
-unit for the question anybody actually has — "was that this week?" — and a
+unit for the question anybody actually has ("was that this week?") and a
 crash loop can burn five generations in a minute. The count survives as a
 ceiling for exactly that case, not as the policy.
 """
@@ -35,7 +35,7 @@ write_json = None
 _lock = threading.Lock()
 
 # The streams this container writes. Anything else there is somebody else's and is
-# listed but never pruned or cleared — /logs may be a share the operator put
+# listed but never pruned or cleared: /logs may be a share the operator put
 # other things in.
 STREAMS = ("builderbot.log", "dashboard.log", "docker.log", "ttyd.log")
 
@@ -51,7 +51,7 @@ def configure(*, state, write_json):
 
 
 def log_dir():
-    """Where the logs are — the same three-step answer bb_log_dir gives.
+    """Where the logs are: the same three-step answer bb_log_dir gives.
 
     Kept in step with lib/common.sh by having the same priority in the same
     order: an explicit BB_LOG_DIR, then a mounted /logs share, then inside
@@ -96,7 +96,7 @@ def set_days(n):
 
 # --- what is there ---------------------------------------------------------
 
-# builderbot.log, and builderbot.log.3 — the generation is the boot count back.
+# builderbot.log, and builderbot.log.3; the generation is the boot count back.
 _GEN = re.compile(r"^(?P<stem>[A-Za-z0-9._-]+?\.log)(?:\.(?P<gen>\d+))?$")
 
 
@@ -119,7 +119,7 @@ def _entries():
         out.append({
             "name": name,
             "stream": m.group("stem"),
-            # 0 is the live one — this session's — and N is N boots back.
+            # 0 is the live one (this session's) and N is N boots back.
             "generation": int(m.group("gen") or 0),
             "bytes": st.st_size,
             "mtime": int(st.st_mtime),
@@ -149,7 +149,7 @@ def payload():
 def prune():
     """Drop what is past the policy. Returns how many files went.
 
-    Only the streams this container writes — a /logs share may hold somebody
+    Only the streams this container writes: a /logs share may hold somebody
     else's files, and a retention setting on this page is not a licence to
     delete them.
 
@@ -200,8 +200,8 @@ def clear():
 # --- taking a copy ---------------------------------------------------------
 
 # In the archive but not in the session bundle. ttyd.log is the terminal
-# server's connection churn — 22,000 lines and 1.5MB on this box against 4KB
-# of boot log — so bundling it means the thing somebody opens to read what
+# server's connection churn (22,000 lines and 1.5MB on this box against 4KB
+# of boot log), so bundling it means the thing somebody opens to read what
 # happened is 99% libwebsockets tagging its own sockets.
 SESSION_STREAMS = tuple(n for n in STREAMS if n != "ttyd.log")
 
@@ -238,7 +238,7 @@ def archive_bytes():
     ci = _ci_entries()
     total = sum(e["bytes"] for e in es) + sum(e["bytes"] for e in ci)
     if total > 256 * 1024 * 1024:
-        return None, f"the log directory is {total // (1024*1024)}MB — too big to send"
+        return None, f"the log directory is {total // (1024*1024)}MB, too big to send"
     buf = io.BytesIO()
     try:
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
@@ -261,7 +261,7 @@ def archive_bytes():
 
 # --- CI, which is already per project and per run ---------------------------
 #
-# Deliberately NOT moved in here. A CI run is not a container session — it
+# Deliberately NOT moved in here. A CI run is not a container session: it
 # belongs to a workflow run, spans whatever session happened to be up, and is
 # already one file per run under a directory per repository, which is the
 # grouping somebody actually wants. `bb ci-log` reads them by run id.

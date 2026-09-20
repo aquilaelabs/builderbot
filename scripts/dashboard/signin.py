@@ -3,7 +3,7 @@
 
 `claude auth login` is interactive: it prints a URL and waits for the code the
 browser gives back. That made it look like a job for a terminal, so it got
-one — a tmux session behind ttyd behind a tab. Every part of that turned out
+one: a tmux session behind ttyd behind a tab. Every part of that turned out
 to be a place for it to go wrong. ttyd reconnects a dropped socket, so closing
 the flow started another; a phone cannot select a wrapped URL out of a canvas,
 and a paste into one silently does not arrive, so the code reaching the prompt
@@ -15,7 +15,7 @@ opposite directions, and a program that wants a terminal only wants a pty.
 
 So the pty is held where Claude IS, which is a node: the flow runs there as a
 `claude-login` job, its output comes back as that job's log, and the code goes
-down on the reply to a log post — the channel `cancel` has always used. What
+down on the reply to a log post, the channel `cancel` has always used. What
 the operator sees is a link and a text field, which is what a phone is good
 at, and it is the same card whichever machine is answering.
 
@@ -37,7 +37,7 @@ PROMPT = "Paste code"
 # How long start_on_node() waits for the URL before answering. The flow takes
 # about a second to print it once the node picks the job up, and a button that
 # returns before then leaves the card saying "starting the sign-in…" until the
-# next poll — which is how a link that is ready in a second took fifteen to
+# next poll, which is how a link that is ready in a second took fifteen to
 # appear. Longer than the local flow's six, because a job has to be handed out
 # by the long-poll first.
 URL_WAIT = 10
@@ -50,13 +50,13 @@ class NodeFlow:
     """The same flow, run on a NODE (roadmap R47).
 
     Claude Code is installed where sessions run, and after R47 this container
-    carries none — so the flow has to happen over there. It is a job of its
+    carries none, so the flow has to happen over there. It is a job of its
     own on the node, under a pty, as that machine's session account; what it
     prints comes back as the job's log and the code goes down on the reply to
     a log post, the channel `cancel` has always used.
 
-    The same three questions the local Flow answers — what is the URL, is it
-    asking, did it work — read off the job's log and state instead of a pty
+    The same three questions the local Flow answers (what is the URL, is it
+    asking, did it work) read off the job's log and state instead of a pty
     this process holds. Everything above this line is what the page sees, so
     the card does not know or care which of the two it is talking to.
     """
@@ -73,7 +73,7 @@ class NodeFlow:
     def submit(self, code):
         j, _ = self._log()
         if not j or j.get("state") in ("succeeded", "failed", "canceled"):
-            return {"error": "that sign-in is over — start another"}
+            return {"error": "that sign-in is over; start another"}
         r = self._nodes.job_input(self.job, code)
         if r.get("error"):
             return r

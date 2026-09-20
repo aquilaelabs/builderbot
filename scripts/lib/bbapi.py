@@ -1,11 +1,11 @@
-"""The controller's API, from `bb` — one client for the verbs that reach it.
+"""The controller's API, from `bb`: one client for the verbs that reach it.
 
 bb used to carry four copies of the same twelve lines: build a Request to
 http://127.0.0.1:<port>, send the auth header, decode the answer or the
 error. Each assumed the dashboard was on the loopback, which was true for as
 long as bb only ran on the controller. Since roadmap #24 a session runs ON A
 NODE, where the controller is at BB_CONTROLLER over the LAN and possibly
-https with a self-signed certificate — and then the four copies would each
+https with a self-signed certificate, and then the four copies would each
 have needed the same three changes.
 
 So this is where those changes live:
@@ -15,7 +15,7 @@ So this is where those changes live:
   * https is verified by PIN, not by CA, exactly as the node agent verifies
     it: BB_CONTROLLER_PIN is the certificate digest the node learned at
     enrollment, and a different one is refused. No pin and https is allowed
-    and unverified — the node's own choice at enrollment, repeated here;
+    and unverified, which is the node's own choice at enrollment, repeated here;
   * the auth header is whatever bb_auth_or_die produced: a session token
     (Bearer) or a name:password for the command (Basic).
 
@@ -72,7 +72,17 @@ def url():
 
 def _conn(timeout):
     u = urllib.parse.urlsplit(url())
-    port = u.port or (443 if u.scheme == "https" else 80)
+    # A setting typed by hand with no scheme ("controller.lan:7680") parses
+    # with no host at all, and a port that is not a number raises: both used
+    # to escape as a TypeError traceback from every bb verb (B179). As OSError
+    # they are what the callers already turn into {"error": ...}, naming it.
+    try:
+        port = u.port or (443 if u.scheme == "https" else 80)
+    except ValueError:
+        port = 0
+    if not u.hostname or not port or u.scheme not in ("http", "https"):
+        raise OSError(f"BB_CONTROLLER {url()!r} is not an address: it wants "
+                      "http://HOST:PORT or https://HOST:PORT")
     if u.scheme != "https":
         return http.client.HTTPConnection(u.hostname, port, timeout=timeout), u.path.rstrip("/")
     ctx = ssl.create_default_context()

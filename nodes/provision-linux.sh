@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Turn a fresh Linux machine into a BuilderBot node — the Debian, RHEL, Arch and
+# Turn a fresh Linux machine into a BuilderBot node: the Debian, RHEL, Arch and
 # SUSE families, Alpine, Void and Gentoo; see "the machine's own tools" below.
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
-# itself stays the container it is — this box is only ever a Docker host, and
+# itself stays the container it is; this box is only ever a Docker host, and
 # keeping it only that is what makes it disposable.
 #
 # Run it inside the VM, once:
@@ -17,8 +17,8 @@
 # enrolls the machine as a node: the agent is fetched from the controller and
 # left running under systemd, dialing out.
 #
-# It makes two accounts. `bb` runs Docker and answers ssh — the one jobs
-# run as — with no sudo and no bb-sandbox, so the mounts this machine has
+# It makes two accounts. `bb` runs Docker and answers ssh (the one jobs
+# run as) with no sudo and no bb-sandbox, so the mounts this machine has
 # stay a decision made by a person with root at a console. And `builder` is
 # the one a Claude SESSION
 # works as (roadmap #24): the agent runs ttyd for it, and it is in no docker
@@ -31,8 +31,8 @@ set -euo pipefail
 
 USER_NAME="bb"
 # The session account (roadmap #24), with the uid:gid the CONTROLLER writes
-# files as — Unraid's nobody:users, the container template's PUID:PGID
-# defaults — so a file a session saves on the projects share is owned exactly
+# files as (Unraid's nobody:users, the container template's PUID:PGID
+# defaults), so a file a session saves on the projects share is owned exactly
 # as one saved from the controller is. A different uid here would leave the
 # share with files the rest of the array does not expect, which is the one
 # part of this that can spoil somebody's data. `none` makes no such account,
@@ -44,7 +44,7 @@ SSH_KEY=""
 CONTROLLER=""
 TOKEN=""
 STORE_DATA=/var/lib/builderbot/data
-STORE_PACKAGES=/var/lib/builderbot/packages
+STORE_TOOLCHAINS=/var/lib/builderbot/toolchains
 STORE_CACHE=/var/lib/builderbot/cache
 STORE_ARTIFACTS=/var/lib/builderbot/artifacts
 # What a dev instance KEEPS on this node: its databases, its uploads, the
@@ -62,7 +62,7 @@ usage: sudo bash provision-linux.sh [options]
        sudo bash provision-linux.sh --check
 
 With no arguments this prints the help and changes nothing. With options it
-provisions the machine (safe to run again — every step checks before it
+provisions the machine (safe to run again: every step checks before it
 acts); --check runs only the pre-flight.
 
 The command to run is the one the dashboard's Nodes tab gives you: Enroll
@@ -78,7 +78,7 @@ it, which is a paste rather than a questionnaire.
                        what it is for.
   --session-user NAME|none   the account a Claude SESSION works as on this
                        node (builder), made with --session-uid/--session-gid
-                       (99:100 — the controller's PUID:PGID, so files it saves
+                       (99:100, the controller's PUID:PGID, so files it saves
                        on the projects share are owned as the controller's
                        are). In kvm for the emulator, in NO docker group. The
                        agent runs ttyd for it and the dashboard's terminals
@@ -100,8 +100,8 @@ it, which is a paste rather than a questionnaire.
                        that away and nothing else, because nothing else was
                        added.
   --check              only the pre-flight: say whether this machine is one
-                       the script can provision — its family, its tools, its
-                       init, a writable root — and change nothing. Exit 0 when
+                       the script can provision (its family, its tools, its
+                       init, a writable root) and change nothing. Exit 0 when
                        it is, 1 when it is not. The same checks run first on
                        every real run, before anything is installed.
   --dev                go ahead on a family this script has never been run
@@ -115,10 +115,10 @@ it, which is a paste rather than a questionnaire.
                        controller holds no key that logs in anywhere, and
                        nothing opens a Docker port.
   --share TAG:PATH[:ro]  a virtiofs/9p share the HYPERVISOR passes in, mounted
-                       at PATH. Requires one — on bare metal there is nothing
+                       at PATH. Requires one: on bare metal there is nothing
                        to pass a share in, so use --nfs instead. Repeatable.
                        PATH MUST match the path BuilderBot uses. `:ro` mounts
-                       it read-only — right for the projects share on a
+                       it read-only: right for the projects share on a
                        Docker-only sandbox, where nothing writes source code;
                        WRONG on a node with a session account, whose Claude
                        sessions edit that share and are refused until it is
@@ -126,7 +126,7 @@ it, which is a paste rather than a questionnaire.
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
-                       share path — on Unraid /mnt/user/<share>/... — and not
+                       share path (on Unraid /mnt/user/<share>/...) and not
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
@@ -134,17 +134,17 @@ it, which is a paste rather than a questionnaire.
   --token bbe_…        enrollment token its Nodes tab minted. Given together,
                        this machine also becomes a NODE: the agent is
                        downloaded from the controller, enrolled, and left
-                       running under systemd, dialing out — nothing here is
+                       running under systemd, dialing out; nothing here is
                        opened for it. It runs jobs as the docker account
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
   --data PATH          the four stores, all defaulting under
-  --packages PATH      /var/lib/builderbot/: a job's working tree and AVDs,
+  --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
   --artifacts PATH     caches, and this node's copy of what projects built
                        (per project underneath, so one VM can be several
-                       projects' node). A store may be a mount — point it at
-                       one of the --share paths — and its free space is what
+                       projects' node). A store may be a mount (point it at
+                       one of the --share paths), and its free space is what
                        the Nodes tab reports for it. A system path is refused:
                        a store is a directory of its own, since the agent
                        creates, fills and (for the cache) empties it.
@@ -154,7 +154,7 @@ resolved by whatever runs the container, so if this VM calls the projects
 share /workspace exactly as BuilderBot does, a relative bind means the same
 directory on both sides and nothing has to translate between them. Mount it
 anywhere else and every project's compose file becomes wrong in a way that
-fails silently — docker creates the missing directory and mounts it empty.
+fails silently: docker creates the missing directory and mounts it empty.
 EOF
 }
 
@@ -197,7 +197,7 @@ while [ $# -gt 0 ]; do
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
-        --packages) STORE_PACKAGES="$2"; STORE_PACKAGES_SET=1; shift 2 ;;
+        --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
         --artifacts) STORE_ARTIFACTS="$2"; STORE_ARTIFACTS_SET=1; shift 2 ;;
         --appdata) STORE_APPDATA="$2"; STORE_APPDATA_SET=1; shift 2 ;;
@@ -268,7 +268,7 @@ guest_remove() {
 }
 
 guest_run() {
-    local foot unit agent node_json packages py
+    local foot unit agent node_json toolchains py
     foot="$(guest_foot)"; unit="$(guest_unit)"
     [ "$(id -u)" != 0 ] || {
         warn "do not run --guest as root: the whole point is a footprint your own account owns, in your own home. Run it as yourself, with no sudo."
@@ -301,8 +301,8 @@ guest_run() {
     s_cache="${STORE_CACHE_SET:+$STORE_CACHE}";        s_cache="${s_cache:-$foot/cache}"
     s_art="${STORE_ARTIFACTS_SET:+$STORE_ARTIFACTS}";  s_art="${s_art:-$foot/artifacts}"
     s_app="${STORE_APPDATA_SET:+$STORE_APPDATA}";      s_app="${s_app:-$foot/appdata}"
-    packages="${STORE_PACKAGES_SET:+$STORE_PACKAGES}"; packages="${packages:-$foot/packages}"
-    mkdir -p "$packages" "$s_data" "$s_cache" "$s_art" "$s_app"
+    toolchains="${STORE_TOOLCHAINS_SET:+$STORE_TOOLCHAINS}"; toolchains="${toolchains:-$foot/toolchains}"
+    mkdir -p "$toolchains" "$s_data" "$s_cache" "$s_art" "$s_app"
     agent="$foot/bin/builderbot-agent"
     node_json="$foot/node.json"
 
@@ -329,7 +329,7 @@ guest_run() {
     systemctl --user stop "$GUEST_UNIT_NAME" 2>/dev/null || true
     BUILDERBOT_NODE_JSON="$node_json" python3 "$agent" enroll \
         --controller "$CONTROLLER" --token "$TOKEN" --user "$(id -un)" \
-        --store "data=$s_data" --store "packages=$packages" \
+        --store "data=$s_data" --store "toolchains=$toolchains" \
         --store "cache=$s_cache" --store "artifacts=$s_art" \
         --store "appdata=$s_app" \
         || { warn "enrolment failed: the token is good once and for a day, so mint a fresh one if this is a second try"; exit 1; }
@@ -377,7 +377,7 @@ EOF
 # This is for a VM, and a container is not one. BuilderBot's own base is
 # Ubuntu and runs as root under `docker exec`, so both checks above pass there
 # and the script would go on to install seven packages before failing on
-# `systemctl enable --now docker` — a container has no systemd, and the error
+# `systemctl enable --now docker`: a container has no systemd, and the error
 # it gives ("unit docker.service does not exist") names the symptom rather
 # than the mistake. Which is exactly how it went the first time somebody ran
 # this in the wrong shell.
@@ -406,8 +406,8 @@ fi
 ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
 [ -r /etc/os-release ] && . /etc/os-release
 # --- the machine's own tools -------------------------------------------------
-# One script, many distributions. Everything BuilderBot's own — the accounts,
-# the stores, fstab, the agent — is the same on all of them, because none of
+# One script, many distributions. Everything BuilderBot's own (the accounts,
+# the stores, fstab, the agent) is the same on all of them, because none of
 # it is the distribution's. What differs is the package manager, where Docker
 # and ttyd come from, who owns the firewall, and which init system runs a
 # service. FAMILY and INIT decide those, through the small functions below;
@@ -419,7 +419,7 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 #
 # What has been RUN, and what has only been written: Ubuntu and Debian are
 # what this grew up on. Rocky is written against the RHEL family's documented
-# commands. The rest — Arch, SUSE, Alpine, Void, Gentoo — are best effort
+# commands. The rest (Arch, SUSE, Alpine, Void, Gentoo) are best effort
 # from their documentation, warn rather than abort where a package is not
 # where it was expected, and want a first run to shake out. Say so in the
 # repository when one is proven.
@@ -461,7 +461,7 @@ elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
 elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
 fi
 
-# pkg_refresh — the package index, once, before the first install.
+# pkg_refresh: the package index, once, before the first install.
 pkg_refresh() {
     case "$FAMILY" in
         deb)    export DEBIAN_FRONTEND=noninteractive; apt-get update -qq ;;
@@ -476,7 +476,7 @@ pkg_refresh() {
         gentoo) : ;;   # emerge --sync takes minutes; the tree the machine has is used
     esac
 }
-# pkg NAME... — install what is named, quietly, with the manager the family
+# pkg NAME...: install what is named, quietly, with the manager the family
 # has. The names are the family's own where they differ (nfs-common against
 # nfs-utils against nfs-client), given by the caller.
 pkg() {
@@ -494,7 +494,7 @@ pkg() {
         gentoo) emerge --quiet --noreplace "$@" ;;
     esac
 }
-# svc_enable NAME — a service the DISTRIBUTION ships (docker, the guest
+# svc_enable NAME: a service the DISTRIBUTION ships (docker, the guest
 # agent), started now and at boot, whichever init runs this machine.
 svc_enable() {
     case "$INIT" in
@@ -531,14 +531,14 @@ svc_active() {
         runit)   sv status "$1" 2>/dev/null | grep -q '^run' ;;
     esac
 }
-# svc_install NAME DESCRIPTION COMMAND — a service of OUR OWN (the agent),
+# svc_install NAME DESCRIPTION COMMAND: a service of OUR OWN (the agent),
 # written the way this init wants one: a unit, an OpenRC script under
 # supervise-daemon, or a runit directory. Rewritten on every run, then
 # enabled and (re)started. Ordered after the network mounts (remote-fs,
 # netmount): the agent's first census says whether /workspace is mounted,
 # and one taken before the share landed ghosted every Claude button bound
 # to the node for the ten minutes until the next.
-# svc_install NAME DESC CMD [EXTRA] — the service, whichever init this is.
+# svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
 # EXTRA is extra [Service] lines for systemd, where a unit's settings decide
 # what a stop reaches; the other inits take the command and nothing else.
 svc_install() {
@@ -605,7 +605,7 @@ is_vm() {
 # What a package is called here, for the handful this script installs
 # itself: the family's name for the NFS client, GnuPG, python, and what a
 # session needs. A recipe's system packages are the recipe's business, per
-# family, in config/packages.json.
+# family, in config/toolchains.json.
 pkg_names() {
     case "$1:$FAMILY" in
         base:deb)     echo "ca-certificates curl gnupg nfs-common" ;;
@@ -650,7 +650,7 @@ pkg_names() {
 # --- pre-flight: is this machine one this script can provision? -------------
 # Before a single package lands. The family says what the machine CLAIMS to
 # be; these check what it actually has, because the variants that go wrong
-# are the ones whose os-release looks fine — an immutable Fedora whose dnf
+# are the ones whose os-release looks fine: an immutable Fedora whose dnf
 # refuses, a MicroOS whose /usr is read-only, an Ubuntu Core with snaps and
 # no apt, a Debian that dropped systemd, a live image running from RAM. A
 # FAIL stops the run here with every finding printed, so one run says the
@@ -669,7 +669,7 @@ chk() {
 # 1. what it is, and whether that is a family this handles
 if [ -n "$FAMILY" ]; then chk ok "${PRETTY_NAME:-$ID}: the ${FAMILY} family"
 else chk fail "$FAMILY_WHY"; fi
-# 2. the tools the family implies are really here — a derivative can claim a
+# 2. the tools the family implies are really here: a derivative can claim a
 #    parent whose package manager it replaced (Ubuntu Core has no apt;
 #    Silverblue's dnf is a stub that refuses)
 if [ -n "$FAMILY" ]; then
@@ -681,12 +681,12 @@ if [ -n "$FAMILY" ]; then
     missing=""
     for t in $need; do command -v "$t" >/dev/null 2>&1 || missing="${missing} ${t}"; done
     if [ -z "$missing" ]; then chk ok "package manager: ${need%% *}"
-    else chk fail "the ${FAMILY} family's package manager is not here (missing:${missing}) — a variant that replaced it, which this script cannot install onto"; fi
+    else chk fail "the ${FAMILY} family's package manager is not here (missing:${missing}): a variant that replaced it, which this script cannot install onto"; fi
 fi
 # 3. the immutable and image-based variants, by the marks they leave: these
 #    have a package manager on PATH and still cannot be installed onto
 if [ -f /run/ostree-booted ]; then
-    chk fail "this is an OSTree (image-based) system — Fedora Silverblue/Kinoite/CoreOS/IoT, RHEL image mode: packages are layered by rpm-ostree and a reboot, not installed; use the ordinary Server/Minimal image instead"
+    chk fail "this is an OSTree (image-based) system, such as Fedora Silverblue/Kinoite/CoreOS/IoT or RHEL image mode: packages are layered by rpm-ostree and a reboot, not installed; use the ordinary Server/Minimal image instead"
 elif command -v transactional-update >/dev/null 2>&1 && ! touch /usr/.bb-probe 2>/dev/null; then
     chk fail "this is a transactional system (openSUSE MicroOS/Aeon, SLE Micro): /usr is read-only and changes want transactional-update and a reboot; use Leap or Tumbleweed instead"
 elif [ -d /snap/core ] && ! command -v apt-get >/dev/null 2>&1; then
@@ -700,7 +700,7 @@ fi
 # 4. a writable root: /etc and /usr/local take files, /var takes the stores
 for d in /etc /usr/local /var/lib; do
     if [ -d "$d" ] && touch "$d/.bb-probe" 2>/dev/null; then rm -f "$d/.bb-probe"
-    else chk fail "$d is not writable — a read-only root, a live image, or a mount this cannot change"; fi
+    else chk fail "$d is not writable: a read-only root, a live image, or a mount this cannot change"; fi
 done
 # 5. an init this can hand a service to, and one that is actually running
 #    (systemd's directory exists in a chroot too, where systemctl does not work)
@@ -709,7 +709,7 @@ case "$INIT" in
         st="$(systemctl is-system-running 2>/dev/null || true)"
         case "$st" in
             running|degraded|starting|maintenance) chk ok "init: systemd (${st})" ;;
-            *) chk fail "systemd is on the disk but not running this machine (is-system-running says '${st:-nothing}') — a chroot, a container, or a rescue shell" ;;
+            *) chk fail "systemd is on the disk but not running this machine (is-system-running says '${st:-nothing}'): a chroot, a container, or a rescue shell" ;;
         esac ;;
     openrc) chk ok "init: OpenRC" ;;
     runit)  if [ -d /var/service ] || [ -d /run/runit ]; then chk ok "init: runit"
@@ -719,43 +719,43 @@ esac
 # 6. the architecture: what Docker, the agent and the Actions runner build for
 case "$(uname -m)" in
     x86_64|aarch64) chk ok "architecture: $(uname -m)" ;;
-    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker and ttyd have builds; the Actions runner, the JDK and the emulator do not — this can be a Docker node and little else" ;;
+    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker and ttyd have builds; the Actions runner, the JDK and the emulator do not, so this can be a Docker node and little else" ;;
     *) chk fail "architecture $(uname -m): nothing this installs is built for it" ;;
 esac
 # 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
 if [ -f /sys/fs/cgroup/cgroup.controllers ]; then chk ok "cgroups v2"
 elif [ -d /sys/fs/cgroup/memory ]; then chk warn "cgroups v1: Docker still runs, but current distributions and the emulator's memory accounting expect v2"
-else chk fail "no cgroup filesystem is mounted — Docker cannot start containers here"; fi
+else chk fail "no cgroup filesystem is mounted, so Docker cannot start containers here"; fi
 if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/null; then chk ok "overlay filesystem"
-else chk warn "the overlay filesystem is not available — Docker will fall back to a slower storage driver"; fi
+else chk warn "the overlay filesystem is not available, so Docker will fall back to a slower storage driver"; fi
 if [ -e /dev/kvm ]; then chk ok "/dev/kvm: the emulator can be accelerated"
 else chk warn "no /dev/kvm: the Android emulator would run unaccelerated (a VM needs nested virtualization on its host)"; fi
-# 8. room: Docker images, the packages store and a build all land on / by default
+# 8. room: Docker images, the toolchain store and a build all land on / by default
 avail_mb="$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')"
-if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the packages store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
+if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 10240 ]; then chk warn "only $((avail_mb / 1024))G free on /: the toolchain store alone wants tens of gigabytes; point the stores at a share, or grow the disk"
 elif [ -n "$avail_mb" ]; then chk ok "$((avail_mb / 1024))G free on /"; fi
 # 9. the network: Docker's repository and the controller, if one was named.
-#    Warnings, not failures — an offline node is still a node, but every
+#    Warnings, not failures: an offline node is still a node, but every
 #    install below will fail and it is better said once here.
 if command -v curl >/dev/null 2>&1; then
     if curl -fsI --max-time 10 https://download.docker.com/ >/dev/null 2>&1; then chk ok "internet: download.docker.com answers"
-    else chk warn "download.docker.com does not answer — no package will download; an offline node needs its packages brought in by hand"; fi
+    else chk warn "download.docker.com does not answer: no package will download; an offline node needs its packages brought in by hand"; fi
     if [ -n "$CONTROLLER" ]; then
         if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/api/v1/agent/download" 2>/dev/null \
            || curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "${CONTROLLER%/}/" 2>/dev/null | grep -q '^[234]'; then
             chk ok "controller: ${CONTROLLER} answers"
-        else chk warn "controller ${CONTROLLER} does not answer from here — enrollment will fail; check the address and that the dashboard is up"; fi
+        else chk warn "controller ${CONTROLLER} does not answer from here: enrollment will fail; check the address and that the dashboard is up"; fi
     fi
 else
-    chk warn "no curl yet — it is installed below; the network is untested until then"
+    chk warn "no curl yet; it is installed below, and the network is untested until then"
 fi
 # 10. the accounts: what the script uses to make them
 if command -v useradd >/dev/null 2>&1 && command -v groupadd >/dev/null 2>&1; then chk ok "useradd/groupadd"
 elif [ "$FAMILY" = alpine ]; then chk ok "useradd: from the shadow package, installed below"
-else chk warn "no useradd/groupadd — the shadow tools are missing and the accounts step will fail"; fi
+else chk warn "no useradd/groupadd: the shadow tools are missing and the accounts step will fail"; fi
 if [ "$CHECK_FAILED" = 1 ]; then
     printf '\n'
-    warn "this machine is not one this script can provision — nothing was changed"
+    warn "this machine is not one this script can provision; nothing was changed"
     exit 1
 fi
 case "$VETTED_FAMILIES" in
@@ -777,28 +777,28 @@ fi
 say "packages"
 pkg_refresh
 # Only what the agent, Docker and the mounts need. The NFS client matters if
-# --nfs is used and costs nothing if not. What a PACKAGE needs from the
-# machine — Chromium's forty libraries, say — is that package's business:
-# its recipe in config/packages.json names them under `system`, per family,
-# and the agent installs them when the package is.
+# --nfs is used and costs nothing if not. What a TOOLCHAIN needs from the
+# machine (Chromium's forty libraries, say) is that toolchain's business:
+# its recipe in config/toolchains.json names them under `system`, per family,
+# and the agent installs them when the toolchain is.
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
-command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install — every download below will fail"
+command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install, so every download below will fail"
 # ...and the guest agent only where there is a host to talk to, so Unraid can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
-# otherwise particular to a VM — this runs on bare metal just as well, and an
+# otherwise particular to a VM: this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
-        || warn "the qemu guest agent did not install — Unraid will pull the plug instead of shutting this VM down"
+        || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
 fi
 
 say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin
 # and a current engine are the entire point of this machine, and Debian's
 # docker.io lags both.
-# Which suite to ask Docker for. Normally this release's own codename — but
+# Which suite to ask Docker for. Normally this release's own codename, but
 # Docker's repository can lag a brand-new Ubuntu or Debian by weeks, and the
 # symptom is an apt 404 that names a URL and not a reason. So the suite is
 # checked before it is committed to, and falls back to the newest stable one
@@ -825,7 +825,7 @@ if ! command -v docker >/dev/null 2>&1; then
             # suite in it. A derivative uses its parent's: Mint and Pop!_OS
             # carry UBUNTU_CODENAME for exactly this; Kali's own codename
             # is nothing Docker publishes, and Raspberry Pi OS is Debian's
-            # stable — both fall through docker_suite to it.
+            # stable; both fall through docker_suite to it.
             case " ${ID} ${ID_LIKE:-} " in
                 *" ubuntu "*) DOCKER_DEB=ubuntu; code="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; fall="noble jammy" ;;
                 *)            DOCKER_DEB=debian; code="${VERSION_CODENAME:-}"; fall="bookworm bullseye" ;;
@@ -837,7 +837,7 @@ if ! command -v docker >/dev/null 2>&1; then
                 exit 1
             }
             [ "$suite" = "$code" ] \
-                || echo "note: docker has no ${code:-$ID} suite — using ${suite}, which is the same build"
+                || echo "note: docker has no ${code:-$ID} suite; using ${suite}, which is the same build"
             install -m 0755 -d /etc/apt/keyrings
             curl -fsSL "https://download.docker.com/linux/${DOCKER_DEB}/gpg" \
                 | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -865,7 +865,7 @@ if ! command -v docker >/dev/null 2>&1; then
             # themselves, which is the point of using theirs.
             # shellcheck disable=SC2046
             pkg $(pkg_names docker) \
-                || warn "docker did not install from the distribution's packages — this machine is not a Docker host until it does" ;;
+                || warn "docker did not install from the distribution's packages, so this machine is not a Docker host until it does" ;;
     esac
 fi
 command -v docker >/dev/null 2>&1 && svc_enable docker
@@ -878,7 +878,7 @@ command -v docker >/dev/null 2>&1 && svc_enable docker
 # as root on the far side, which is fine on a box whose whole job is being
 # wrecked and reset, and is a different act entirely against a NAS, a
 # workstation or the server itself. An ssh address only proves somebody typed
-# one — a machine can answer Docker without being this one. So the provisioner
+# one, and a machine can answer Docker without being this one. So the provisioner
 # says so, on the machine, and nothing else can.
 #
 # Written into daemon.json rather than kept beside it, because `docker info`
@@ -894,7 +894,7 @@ stamp_daemon() {
         printf '{\n  "labels": ["%s"]\n}\n' "$label" > "$f"
         return 0
     fi
-    # An existing file is merged rather than replaced — it may carry storage
+    # An existing file is merged rather than replaced: it may carry storage
     # or logging settings this script knows nothing about, and a sandbox that
     # came up with different storage would be a surprising way to find out.
     have_jq || pkg jq >/dev/null 2>&1 || true
@@ -914,7 +914,7 @@ have_jq() { command -v jq >/dev/null 2>&1; }
 if stamp_daemon; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
-    svc_restart docker || warn "docker did not restart — restart it by hand so the label is read"
+    svc_restart docker || warn "docker did not restart; restart it by hand so the label is read"
     say "stamped this daemon as BuilderBot's sandbox"
 fi
 
@@ -925,7 +925,7 @@ authorize() {
     local who="$1" key="$2" home
     case "$key" in
         *"-----BEGIN"*)
-            echo "that is a PRIVATE key. It wants the .pub half — the private" >&2
+            echo "that is a PRIVATE key. It wants the .pub half; the private" >&2
             echo "one stays where it was made and this machine never holds it." >&2
             exit 1 ;;
     esac
@@ -947,7 +947,7 @@ say "user ${USER_NAME}"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
 usermod -aG docker "$USER_NAME"
 # ...and kvm, where the host exposes it. Without this the Android emulator on
-# this node runs with no hardware acceleration and is unusably slow — measured
+# this node runs with no hardware acceleration and is unusably slow, measured
 # on bb-sandbox, where /dev/kvm is present and root:kvm 0660, and a job as the
 # enrolled account got EACCES opening it. `bb emu start` warns and carries on,
 # so the symptom is a boot that never finishes rather than an error naming the
@@ -959,7 +959,7 @@ if [ -n "$SSH_KEY" ]; then
     # parse leaves a VM nothing can ssh into, found from the console after
     # provisioning has finished and you have walked away. And a PRIVATE key
     # pasted here is a secret written onto the machine whose whole premise is
-    # that it holds nothing — authorized_keys wants the .pub half, and the
+    # that it holds nothing: authorized_keys wants the .pub half, and the
     # private one never leaves BuilderBot's shielded agent.
     authorize "$USER_NAME" "$SSH_KEY"
 fi
@@ -972,19 +972,19 @@ fi
 # afternoon.
 #
 # BE CLEAR ABOUT WHAT THIS DOES NOT DO. bb is in the docker group, and the
-# docker group is root on this machine to anyone who wants it — one
+# docker group is root on this machine to anyone who wants it: one
 # `docker run -v /:/host --privileged` and the separation is over. That is not
 # a hole to plug, it is the whole point of the VM: it exists to be wrecked, and
 # BuilderBot needs the daemon to do its job. What the split buys is that the
 # machine's OWN configuration is not one command away from a session that
-# wandered — the fstab that decides whether /workspace is the projects share,
+# wandered: the fstab that decides whether /workspace is the projects share,
 # and read-only, needs root, which neither account here has.
 #
 # NO ADMINISTRATOR ACCOUNT IS MADE, and none is needed: the agent runs as
 # root under systemd and drops to --user for every job, bb-sandbox refuses to
 # run as anyone but root whoever invokes it, and the controller never names
-# an administrator. Whatever account already has root here — yours, a cloud
-# image's ubuntu or ec2-user, or root itself — administers this machine,
+# an administrator. Whatever account already has root here (yours, a cloud
+# image's ubuntu or ec2-user, or root itself) administers this machine,
 # which is the operator's business and not this script's. What is enforced
 # below: the DOCKER account has no sudo, and the SESSION account is in
 # neither docker nor sudo.
@@ -992,7 +992,7 @@ fi
 # --- the session account (roadmap #24) ------------------------------------
 # The second account, and the one the design turns on: a Claude session on
 # this node's projects runs HERE, as this account, in a tmux the agent's
-# ttyd starts — with this machine's toolchains and the projects share this
+# ttyd starts, with this machine's toolchains and the projects share this
 # machine mounts. Not bb, on purpose: bb is in the docker group, which is
 # root on any machine running a daemon, and a session is exactly the thing
 # to keep away from that. So: no docker, no sudo, kvm
@@ -1000,7 +1000,7 @@ fi
 # transcripts, and the same uid:gid the controller writes the share as.
 say "session account ${SESSION_NAME}"
 if [ "$SESSION_NAME" = none ] || [ -z "$SESSION_NAME" ]; then
-    printf '   none asked for — this node runs jobs and no sessions\n'
+    printf '   none asked for; this node runs jobs and no sessions\n'
     SESSION_NAME=""
 elif [ "$SESSION_NAME" = "$USER_NAME" ]; then
     warn "--session-user ${SESSION_NAME} is the docker account: a session must not be it"
@@ -1012,8 +1012,8 @@ else
             || groupadd -g "$SESSION_GID" "$SESSION_NAME" 2>/dev/null \
             || groupadd -g "$SESSION_GID" "bbusers"
         if getent passwd "$SESSION_UID" >/dev/null 2>&1; then
-            # The uid is somebody else's here. The account is still made —
-            # a node without sessions is worse — but every file it saves on
+            # The uid is somebody else's here. The account is still made
+            # (a node without sessions is worse), but every file it saves on
             # the share will be owned by whatever uid it got, and that is
             # worth a line at provision time rather than a surprise later.
             warn "uid ${SESSION_UID} is already $(getent passwd "$SESSION_UID" | cut -d: -f1) on this machine"
@@ -1041,13 +1041,13 @@ else
     # What a session needs on the box: tmux keeps it alive across a dropped
     # browser, ttyd is what the controller's terminal proxy dials, and jq
     # and git are what bb-tty and bb reach for. From the distribution where
-    # it packages them — and ttyd, which the RHEL family, SUSE Leap and
+    # it packages them, and ttyd, which the RHEL family, SUSE Leap and
     # Gentoo do not carry, from the static binary in ttyd's own release,
     # pinned to this machine's architecture: the one download here that
     # is not a package manager's, so an offline node copies it in by hand.
     # shellcheck disable=SC2046
     pkg $(pkg_names session) >/dev/null 2>&1 \
-        || warn "tmux, jq or git did not install — sessions will not start until they do"
+        || warn "tmux, jq or git did not install; sessions will not start until they do"
     ttyd_pkg="$(pkg_names ttyd)"
     if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
         pkg "$ttyd_pkg" >/dev/null 2>&1 || true
@@ -1075,24 +1075,24 @@ else
             printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
         else
             rm -f /usr/local/bin/ttyd.new
-            warn "ttyd did not install — fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
+            warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
         fi
     fi
     # Claude Code, into the account's own home by its native installer: no
     # node runtime to keep up, and `claude update` from inside a session
-    # keeps it current. Best effort — a node without internet at provision
+    # keeps it current. Best effort: a node without internet at provision
     # time is still a node; the session says so when it starts.
     # su rather than sudo: root is already here, and a minimal Alpine or
     # Void has no sudo to hand.
     if ! su -s /bin/sh "$SESSION_NAME" -c 'test -x "$HOME/.local/bin/claude"'; then
         printf '   installing Claude Code for %s\n' "$SESSION_NAME"
         su -s /bin/bash - "$SESSION_NAME" -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
-            || warn "Claude Code did not install for ${SESSION_NAME} — from a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
+            || warn "Claude Code did not install for ${SESSION_NAME}. From a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
     fi
     # A login shell as this account gets what a dashboard session gets: the
     # role, the controller's address, and bb from the bundle the agent keeps
-    # current under the packages store. That is what makes proving the node
-    # by hand — ssh in, run bb-tty, run bb roadmap — the same path the
+    # current under the toolchain store. That is what makes proving the node
+    # by hand (ssh in, run bb-tty, run bb roadmap) the same path the
     # dashboard takes, rather than a second one.
     cat > /etc/profile.d/builderbot-session.sh <<EOF
 # Written by BuilderBot's provision-linux.sh. A session on this node, at a console.
@@ -1101,8 +1101,8 @@ case "\$(id -un)" in
         export BUILDERBOT_ROLE=node WORKSPACE=/workspace
         export BB_NODE="\$(hostname)"
         ${CONTROLLER:+export BB_CONTROLLER="${CONTROLLER%/}"}
-        [ -d "${STORE_PACKAGES}/.bb/current/scripts" ] \\
-            && PATH="${STORE_PACKAGES}/.bb/current/scripts:\$PATH"
+        [ -d "${STORE_TOOLCHAINS}/.bb/current/scripts" ] \\
+            && PATH="${STORE_TOOLCHAINS}/.bb/current/scripts:\$PATH"
         PATH="\$HOME/.local/bin:\$PATH"
         ;;
 esac
@@ -1113,7 +1113,7 @@ say "bb-sandbox"
 # The tool that configures this machine after today: mounts, which one holds
 # container appdata, and the path mapping for this machine's row. Installed here and
 # then USED below, so the fstab logic has one implementation rather than a copy
-# in each entry point — its comments were paid for one silent failure at a time
+# in each entry point; its comments were paid for one silent failure at a time
 # and are not worth writing twice.
 #
 # Embedded rather than fetched: provision-linux.sh is one file you curl onto a fresh
@@ -1129,7 +1129,7 @@ say "bb-sandbox"
 # /dev/stdin being openable BY PATH, and whether it is depends on what bash
 # did with the here-document: a pipe reopens fine, a temp file that bash
 # unlinked does not, and opening it then fails with exactly the message this
-# produced on a real VM — "install: No such file or directory", naming
+# produced on a real VM: "install: No such file or directory", naming
 # nothing. Which of the two bash picks is a size and version question, so the
 # form worked everywhere it was tried and failed on the machine it was for.
 # cat reads the descriptor it was given and asks no such question.
@@ -1137,16 +1137,16 @@ BBSANDBOX_TMP="$(mktemp)"
 cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 #!/usr/bin/env bash
 #
-# bb-sandbox — configure this Docker sandbox after it has been provisioned.
+# bb-sandbox: configure this Docker sandbox after it has been provisioned.
 #
 # Installed by provision-linux.sh, which also uses it for its own mounts: this is the
 # only copy of the fstab logic, so the wizard and the first run cannot drift.
 #
-# Root, on this machine. Run by a person at the console, and — since phase 5
-# of docs/nodes.md — by the node agent, which applies the Nodes tab's desired
+# Root, on this machine. Run by a person at the console, and (since phase 5
+# of docs/nodes.md) by the node agent, which applies the Nodes tab's desired
 # mounts and stores through these same verbs as audited `system` jobs, so the
 # GUI and this menu can never disagree about what the machine is configured
-# to be. `sdk` is the exception to all of that: it reads the packages store
+# to be. `sdk` is the exception to all of that: it reads the toolchain store
 # through the controller's own bb and needs no privilege. Still deliberately NOT reachable by a session: the agent is offered
 # system jobs only because it enrolled as a sandbox, and `list --json` is the
 # whole of what it reads back. The docker account cannot run this at all.
@@ -1158,7 +1158,7 @@ CONF=/etc/bb-sandbox.conf
 APPDATA="${APPDATA:-}"
 # The account BuilderBot ssh's in as, recorded by provision-linux.sh because this is
 # the one thing here it knows and the tool cannot work out. `logname` was the
-# guess before, and it answers with whoever ran sudo — a different name the
+# guess before, and it answers with whoever ran sudo: a different name the
 # moment the operator administers this box from an account of their own, and
 # an empty one where there is no controlling terminal at all.
 DOCKER_USER="${DOCKER_USER:-bb}"
@@ -1166,8 +1166,8 @@ DOCKER_USER="${DOCKER_USER:-bb}"
 say()  { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
 die()  { warn "$*"; exit 1; }
-# Everything here writes to the machine — fstab, netplan, /etc — except `sdk`,
-# which only reads the packages store and needs no privilege to do it.
+# Everything here writes to the machine (fstab, netplan, /etc) except `sdk`,
+# which only reads the toolchain store and needs no privilege to do it.
 case "${1-}" in
     sdk) ;;
     *) [ "$(id -u)" -eq 0 ] || die "run this as root: sudo bb-sandbox" ;;
@@ -1177,7 +1177,7 @@ esac
 # kept in a list of our own: fstab is what the machine actually boots from, and
 # a second list would be a claim about it rather than a reading of it. Which
 # means the type list has to hold every type a share is really mounted with,
-# not only the two this tool writes — a /workspace mounted by hand with nfs4 is
+# not only the two this tool writes: a /workspace mounted by hand with nfs4 is
 # invisible to a filter that knows only nfs, and `settings` then prints a
 # a path mapping with the projects share missing from it.
 ours() {
@@ -1185,8 +1185,8 @@ ours() {
         /etc/fstab 2>/dev/null | sort -u
 }
 
-# The fstab line for a mountpoint, as "N:the whole line" — empty if there is
-# none. On field TWO, and skipping comments, because every caller below either
+# The fstab line for a mountpoint, as "N:the whole line", or empty if there
+# is none. On field TWO, and skipping comments, because every caller below either
 # rewrites or deletes what this finds: matching ` $path ` anywhere on the line
 # also hits a comment that mentions the path, and `# /workspace comes from the
 # NAS` has it in field two of a line that is not a mount. Measured: add-nfs
@@ -1200,14 +1200,14 @@ fstab_line() {
 # --- the stores, read from the file the AGENT writes ---------------------
 #
 # One invariant, enforced from both ends: a store's path and the mount it
-# sits on must agree. The agent holds the other end — it refuses to POINT a
+# sits on must agree. The agent holds the other end: it refuses to POINT a
 # store at a share that is configured and not mounted, because mkdir would
 # make an ordinary directory there and everything would land on this
 # machine's own disk looking healthy. This end is the same failure reached
 # from the console: unmounting a share a store is inside.
 #
 # The anti-drift is structural rather than a matching rule: there is ONE
-# list of where the stores are — the agent's node.json — and this reads it
+# list of where the stores are (the agent's node.json), and this reads it
 # rather than keeping a copy. A store repointed from the dashboard is
 # visible here on the next command, with nothing to keep in step.
 NODE_JSON=/etc/builderbot/node.json
@@ -1231,10 +1231,10 @@ PY
 add_fstab() {
     local line="$1" path="$2" hit lineno old tmp
     # A mountpoint whose export has gone away answers every syscall with
-    # ESTALE — including the stat that `mkdir -p` begins with.
+    # ESTALE, including the stat that `mkdir -p` begins with.
     if ! mkdir -p "$path" 2>/dev/null; then
         if findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then
-            warn "$path is mounted but unreadable — a stale handle, left by a share that moved or stopped being exported."
+            warn "$path is mounted but unreadable: a stale handle, left by a share that moved or stopped being exported."
             printf '   Clear it and try again:\n     umount -l %s\n' "$path"
         else
             warn "could not create the mountpoint $path"
@@ -1250,7 +1250,7 @@ add_fstab() {
     fi
     lineno="${hit%%:*}"
     # `#*: ` with the space, because fstab_line emits "N: LINE". Stripping only
-    # "*:" left a leading space on every comparison — so an unchanged entry
+    # "*:" left a leading space on every comparison, so an unchanged entry
     # never matched and was rewritten on every run, and "it was" printed
     # nothing, the first word of " x y" being empty.
     old="${hit#*: }"
@@ -1261,8 +1261,8 @@ add_fstab() {
     # cat rather than mv, so /etc/fstab keeps its own inode and permissions.
     cat "$tmp" > /etc/fstab
     rm -f "$tmp"
-    # Say which half moved. A changed SOURCE is the one worth staring at — it
-    # means this mountpoint now points somewhere else — and reporting an
+    # Say which half moved. A changed SOURCE is the one worth staring at (it
+    # means this mountpoint now points somewhere else), and reporting an
     # options-only edit in the same words made `readonly` read as if it had
     # repointed the share.
     if [ "${old%% *}" != "${line%% *}" ]; then
@@ -1277,24 +1277,24 @@ add_fstab() {
     have systemctl && systemctl daemon-reload 2>/dev/null || true
 }
 
-# mount_one PATH — mount it and say plainly whether it worked.
+# mount_one PATH: mount it and say plainly whether it worked.
 #
 # `nofail` is right at boot and wrong here: it means a share that cannot mount
 # does so quietly and `mount -a` still succeeds. So the SOURCE is checked, not
-# merely that something is mounted — `mount -a` skips a busy mountpoint, so a
+# merely that something is mounted: `mount -a` skips a busy mountpoint, so a
 # path whose entry was just rewritten stays on the old share and looks fine.
 mount_one() {
     local path="$1" want got held n
     want="$(fstab_line "$path")"; want="${want#*: }"; want="${want%% *}"
     # ONLY WHEN NOTHING IS THERE. `mount /path` does not refuse a path that
-    # already has something on it — for NFS it stacks another mount on top —
+    # already has something on it (for NFS it stacks another mount on top),
     # so the unconditional `mount` this used to open with added a layer every
     # time storage was applied. Two applies were enough: findmnt then printed
     # two sources, the equality test below failed on a healthy mount, and the
     # job reported a mismatch between a source and itself.
     # This path only. `mount -a` mounted every entry in fstab, so one export
     # the server refuses printed its refusal on every check of every OTHER
-    # mount — three copies of one unrelated failure, above the answers.
+    # mount: three copies of one unrelated failure, above the answers.
     # findmnt exits 1 for a path that is not mounted, and under pipefail
     # that ended this function on its first line for every FIRST mount,
     # silently, before mount ran: a fresh node's Storage apply always
@@ -1310,7 +1310,7 @@ mount_one() {
     # only one anything opening a file there actually reaches.
     got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | tail -1 || true)"
     if [ "$n" -gt 1 ]; then
-        warn "$path is mounted ${n} times, stacked — only the top one is visible."
+        warn "$path is mounted ${n} times, stacked; only the top one is visible."
         printf '   Take the layers off, and this will put it back:\n'
         printf '     while mountpoint -q %s; do umount -l %s; done; mount %s\n' \
             "$path" "$path" "$path"
@@ -1330,7 +1330,7 @@ mount_one() {
     held="$(stores_under "$path")"
     [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
         "$(printf '%s' "$held" | tr '\n' ' ')"
-    printf '   On Unraid an export is a SHARE — /mnt/user/<share> — never a\n'
+    printf '   On Unraid an export is a SHARE (/mnt/user/<share>), never a\n'
     printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
     printf '   mount and is not exported. Check it allows this host:\n'
     printf '     showmount -e <server>\n'
@@ -1345,14 +1345,14 @@ cmd_add_share() {
     # container that mounts its project tree cannot scribble on the source.
     case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
     tag="${spec%%:*}"; path="${spec#*:}"
-    [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH — got '$spec'"
-    case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
+    [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH, got '$spec'"
+    case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
     add_fstab "$tag $path virtiofs $opts,nofail 0 0" "$path" && mount_one "$path"
 }
 
 # This machine's own address, for the settings line. hostname -I is a GNU
 # extension busybox lacks; the route table is the fallback, and neither
-# failing is an error — an offline box prints a placeholder.
+# failing is an error: an offline box prints a placeholder.
 my_ip() {
     hostname -I 2>/dev/null | awk '{print $1}' | grep . \
         || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1 \
@@ -1365,20 +1365,20 @@ cmd_add_nfs() {
     host="${spec%%:*}"; rest="${spec#*:}"; exp="${rest%%:*}"; path="${rest#*:}"
     # Three fields, and getting two produces nonsense rather than an error:
     # the export and the mountpoint both come out as the export.
-    case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH — '$spec' has no mountpoint" ;; esac
-    case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
+    case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH; '$spec' has no mountpoint" ;; esac
+    case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
     add_fstab "$host:$exp $path nfs $opts,nofail,_netdev 0 0" "$path" && mount_one "$path"
 }
 
-# readonly PATH [on|off] — flip an existing mount between ro and rw.
+# readonly PATH [on|off]: flip an existing mount between ro and rw.
 #
 # The :ro suffix on add-share/add-nfs decides it when a mount is made; this
 # decides it afterwards, which is what somebody actually has, and without it
 # the only way to make /workspace read-only was to retype its whole spec.
 #
 # /workspace is the one that wants it: the daemon over here only ever RESOLVES
-# bind sources in the projects share — nothing on this machine compiles or
-# edits anything — so read-only costs nothing and means a container that mounts
+# bind sources in the projects share (nothing on this machine compiles or
+# edits anything), so read-only costs nothing and means a container that mounts
 # its project tree cannot write to your source. The data shares stay writable,
 # being what they are for.
 cmd_readonly() {
@@ -1399,7 +1399,7 @@ cmd_readonly() {
     case "$want" in
         on)  new_opts="${new_opts:+$new_opts,}ro" ;;
         off) new_opts="${new_opts:+$new_opts,}rw" ;;
-        *)   die "readonly wants on or off — got '$want'" ;;
+        *)   die "readonly wants on or off, got '$want'" ;;
     esac
     add_fstab "$src $path $fstype $new_opts ${dump:-0} ${pass:-0}" "$path"
     # remount first, and a full cycle only if the kernel will not take it: a
@@ -1408,9 +1408,9 @@ cmd_readonly() {
     mount -o "remount,$want" "$path" 2>/dev/null \
         || mount -o remount "$path" 2>/dev/null \
         || { umount "$path" 2>/dev/null && mount "$path" 2>/dev/null; } \
-        || warn "fstab says $want, but $path could not be remounted now — it will be at the next boot"
+        || warn "fstab says $want, but $path could not be remounted now; it will be at the next boot"
     if [ "$want" = on ] && [ -w "$path" ]; then
-        warn "$path is still writable — the export itself may be rw-only"
+        warn "$path is still writable: the export itself may be rw-only"
     else
         say "$path is now mounted ${want/on/read-only}"
         [ "$want" = off ] && say "$path is writable again"
@@ -1430,8 +1430,8 @@ cmd_remove() {
         warn "$path holds $(printf '%s' "$held" | tr '\n' ' ')"
         printf "   Unmounting it would leave those on this machine's own disk,\n"
         printf '   where the agent would report them as healthy stores with the\n'
-        printf '   root filesystem free space. Move them first — the Nodes tab\n'
-        printf '   copies a store when you repoint it — or, if you mean it:\n'
+        printf '   root filesystem free space. Move them first (the Nodes tab\n'
+        printf '   copies a store when you repoint it), or, if you mean it:\n'
         printf '     bb-sandbox remove %s --force\n' "$path"
         return 1
     fi
@@ -1454,18 +1454,18 @@ cmd_remove() {
     fi
 }
 
-# bb-sandbox sdk [...] — the controller's own bb, for the questions that make
+# bb-sandbox sdk [...]: the controller's own bb, for the questions that make
 # sense on this machine.
 #
 # Not a second copy of anything. The agent unpacks the controller's bb into
-# the packages store to run jobs with, and it has been sitting there
+# the toolchain store to run jobs with, and it has been sitting there
 # unreachable: a person at this console could not ask what toolchains the
 # store holds, though the tool that answers was already on the disk. This
 # hands it over, with the same environment a job gets.
 #
 # READ-ONLY verbs only. Installing from here would go around the arbitration
-# the controller keeps across every machine that shares this store — one
-# install at a time, or two unpackings land in one directory — so those are
+# the controller keeps across every machine that shares this store (one
+# install at a time, or two unpackings land in one directory), so those are
 # refused with the place that does it properly.
 BB_READONLY_VERBS="status root list versions images flavors env plan"
 
@@ -1475,24 +1475,24 @@ cmd_sdk() {
         *" $verb "*) ;;
         *) die "bb-sandbox sdk reads; it does not install. '$verb' changes the store, and
    doing it from here would go around the one-install-at-a-time rule the
-   controller keeps across every machine sharing it — use the dashboard's
+   controller keeps across every machine sharing it. Use the dashboard's
    Tools tab, with this node picked. Readable: $BB_READONLY_VERBS" ;;
     esac
-    [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable) — there is no store to read"
+    [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable): there is no store to read"
     store="$(python3 -c 'import json,sys
-print(((json.load(open(sys.argv[1])).get("stores") or {}).get("packages")) or "")' "$NODE_JSON" 2>/dev/null)"
+print(((json.load(open(sys.argv[1])).get("stores") or {}).get("toolchains")) or "")' "$NODE_JSON" 2>/dev/null)"
     user="$(python3 -c 'import json,sys
 print(json.load(open(sys.argv[1])).get("user") or "")' "$NODE_JSON" 2>/dev/null)"
-    [ -n "$store" ] || die "this node has no packages store"
+    [ -n "$store" ] || die "this node has no toolchain store"
     # The newest bundle the agent has unpacked. It appears the first time a
-    # package job runs here, so before that there is honestly nothing to run.
+    # toolchain job runs here, so before that there is honestly nothing to run.
     newest="$(ls -1dt "$store"/.bb/*/scripts/bb 2>/dev/null | head -1 || true)"
-    [ -n "$newest" ] || die "no bb on this machine yet — the controller unpacks one into
-   ${store}/.bb the first time a package job runs on this node. Install
+    [ -n "$newest" ] || die "no bb on this machine yet: the controller unpacks one into
+   ${store}/.bb the first time a toolchain job runs on this node. Install
    something from the dashboard's Tools tab and it will be here."
     bb="$newest"
     local -a env=(env
-        "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_PACKAGES=1"
+        "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_TOOLCHAINS=1"
         "ANDROID_HOME=$store/android" "ANDROID_SDK_ROOT=$store/android"
         "JAVA_HOME=$store/jdk"
         "PATH=$store/jdk/bin:$store/android/cmdline-tools/latest/bin:$store/android/platform-tools:$store/android/emulator:$PATH")
@@ -1521,11 +1521,11 @@ cmd_list() {
         held="$(stores_under "$path")"
         [ -n "$held" ] && state="$state · holds $(printf '%s' "$held" | tr '\n' ' ')"
         # Where it is REALLY mounted from, not what fstab claims. Those two
-        # disagree exactly when something needs attention — an entry rewritten
-        # under a mount that was busy at the time — and printing fstab's
+        # disagree exactly when something needs attention (an entry rewritten
+        # under a mount that was busy at the time), and printing fstab's
         # version called that healthy.
         if [ -n "$real" ] && [ "$real" != "$src" ]; then
-            state="$state — fstab says $src"
+            state="$state · fstab says $src"
             src="$real"
         fi
         printf '%-24s %-34s %s\n' "$path" "$src" "$state"
@@ -1533,11 +1533,11 @@ cmd_list() {
     [ -n "$(ours)" ] || printf '(none yet)\n'
 }
 
-# list --json — the same facts as a machine reads them: the agent's census
+# list --json prints the same facts as a machine reads them: the agent's census
 # carries this, and the Nodes tab draws the operator's desired mounts against
 # it. Escaped by hand, since jq may not be here.
 # Newlines stripped as well as quotes escaped. A raw newline inside a JSON
-# string is not JSON, and the whole document is then unparseable — which is
+# string is not JSON, and the whole document is then unparseable, which is
 # how one stacked mount (findmnt printing a source per layer) took EVERY
 # mount off the Nodes tab at once: the controller read the census, could not
 # parse it, and drew a node with no mounts at all, so all four read "not
@@ -1592,13 +1592,13 @@ cmd_appdata() {
         printf '%s\n' "${APPDATA:-(not set)}"
         return 0
     fi
-    ours | grep -qxF "$path" || die "$path is not one of this machine's mounts — add it first"
+    ours | grep -qxF "$path" || die "$path is not one of this machine's mounts; add it first"
     write_conf "$path"
     say "$path is where containers keep their data"
 }
 
-# The lines to put in BuilderBot's own template. This machine cannot set them —
-# they are the CONTAINER's environment, on the other box — so it prints them
+# The lines to put in BuilderBot's own template. This machine cannot set them
+# (they are the CONTAINER's environment, on the other box), so it prints them
 # rather than pretending. Derived from what is actually mounted here, which is
 # the half that is easy to get wrong by hand.
 cmd_settings() {
@@ -1617,7 +1617,7 @@ On BuilderBot's dashboard, Nodes tab, on this machine's row (${ip:-<this-vm>}):
 
   Path mapping:    ${pairs:-<none yet>}
 
-Only for the paths BuilderBot ALSO mounts at the same place — a share that is
+Only for the paths BuilderBot ALSO mounts at the same place: a share that is
 this machine's alone belongs in neither list, and BuilderBot will say so.
 ${APPDATA:+
 Container appdata is ${APPDATA}. Mount that same share in BuilderBot at that
@@ -1825,13 +1825,13 @@ case "${1-}" in
     sdk)         shift; cmd_sdk "$@" ;;
     -h|--help|help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown command: $1 — try: bb-sandbox --help" ;;
+    *) die "unknown command: $1. Try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
 install -m 0750 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
 rm -f "$BBSANDBOX_TMP"
 # Root's, and nobody else's: 0750 root:root. Anyone the operator has given
-# sudo reaches it as `sudo bb-sandbox`, which is how it is meant to be run —
+# sudo reaches it as `sudo bb-sandbox`, which is how it is meant to be run;
 # it refuses to run as anyone but root anyway. The docker account cannot read
 # it, let alone run it, which is most of what "bb cannot reconfigure this
 # machine" means in practice.
@@ -1851,30 +1851,30 @@ if [ -f /etc/bb-sandbox.conf ] \
 else
     printf 'DOCKER_USER=%s\n' "$USER_NAME" >> /etc/bb-sandbox.conf
 fi
-printf '   /usr/local/sbin/bb-sandbox — run it as root to add mounts later\n'
+printf '   /usr/local/sbin/bb-sandbox: run it as root to add mounts later\n'
 
 say "shares"
 # Written to fstab rather than mounted once, because a sandbox that comes back
 # from a reboot without the projects share is a sandbox that builds the wrong
 # thing rather than failing. bb-sandbox does the writing, and keeps doing it
-# every time a share is added after today — one implementation, not a copy per
+# every time a share is added after today: one implementation, not a copy per
 # entry point.
 declare -a MOUNTED=()
 # A share that will not mount is reported, not fatal. set -e would otherwise
-# abandon the rest of provisioning — the tcp option, the closing summary — over
+# abandon the rest of provisioning (the tcp option, the closing summary) over
 # an NFS export that is not ready yet, which is the most ordinary way for this
 # to fail and the one the check below exists to report.
 for spec in "${SHARES[@]:-}"; do
     [ -n "$spec" ] || continue
-    /usr/local/sbin/bb-sandbox add-share "$spec" || warn "$spec did not mount — see the check below"
+    /usr/local/sbin/bb-sandbox add-share "$spec" || warn "$spec did not mount; see the check below"
     p="${spec%:ro}"; MOUNTED+=("${p#*:}")
 done
 for spec in "${NFS[@]:-}"; do
     [ -n "$spec" ] || continue
-    /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount — see the check below"
+    /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount; see the check below"
     p="${spec%:ro}"; MOUNTED+=("${p##*:}")
 done
-# SELinux stays enforcing on the RHEL family — nothing here needs it off —
+# SELinux stays enforcing on the RHEL family (nothing here needs it off),
 # but by default it stops a container from reading an NFS mount, which is
 # exactly what a dev instance's bind of the projects share is. One boolean,
 # persistent, says containers may; the mounts themselves are unaffected.
@@ -1883,11 +1883,11 @@ done
 # which does not know this, and the boolean costs nothing with no NFS.
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
     setsebool -P virt_use_nfs 1 2>/dev/null \
-        || warn "could not set virt_use_nfs — containers will be refused the NFS shares until it is on"
+        || warn "could not set virt_use_nfs, so containers will be refused the NFS shares until it is on"
 fi
 # Checked rather than assumed, which is the difference between finding out now
 # and finding out from an app that came up with no data. bb-sandbox owns the
-# check for the same reason it owns the writing — one implementation — and the
+# check for the same reason it owns the writing (one implementation), and the
 # operator can run it again any day with `bb-sandbox check`.
 if [ "${#MOUNTED[@]}" -gt 0 ]; then
     /usr/local/sbin/bb-sandbox check || true
@@ -1895,7 +1895,7 @@ fi
 
 # Docker listens on its socket and nothing else. An open 2375 is root on this
 # machine to anyone who can reach it, and BuilderBot will not talk to one
-# anyway — ssh is the only way in, which is why no port has to be opened here.
+# anyway: ssh is the only way in, which is why no port has to be opened here.
 if [ -f /etc/systemd/system/docker.service.d/tcp.conf ]; then
     say "closing tcp/2375, which an earlier run opened"
     rm -f /etc/systemd/system/docker.service.d/tcp.conf
@@ -1906,8 +1906,8 @@ fi
 # --- the agent ------------------------------------------------------------
 # With --controller and --token this machine also becomes a node: it dials
 # the controller, takes jobs, and reports what it has. The agent is one
-# Python file the controller itself serves — fetched with the enroll token,
-# so nothing else has to be published or kept in step — and it runs under
+# Python file the controller itself serves, fetched with the enroll token,
+# so nothing else has to be published or kept in step, and it runs under
 # systemd as root ONLY so that it can drop to ${USER_NAME} for every job it
 # runs, and so that phase 5's system jobs (mounts, network) have somewhere to
 # run. The credential it ends up holding (/etc/builderbot/node.json, 0600)
@@ -1917,7 +1917,7 @@ AGENT=/usr/local/sbin/builderbot-agent
 # control-group: a stop takes every process in the cgroup with it, and the
 # agent's cgroup holds the ttyds it starts, the tmux servers under them and
 # the Claude sessions inside those. So pressing Update agent ended every
-# conversation on the machine, mid-work, with nothing said (B107) — and the
+# conversation on the machine, mid-work, with nothing said (B107). The
 # agent's own shutdown already stops what is its to stop: its ttyds, and now
 # its jobs. KillMode=process makes systemd's half match that.
 AGENT_KILLMODE='KillMode=process'
@@ -1930,7 +1930,7 @@ if [ -n "$CONTROLLER" ]; then
     hdr="$(mktemp)"
     curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
-        || { warn "could not download the agent from ${CONTROLLER} — is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
+        || { warn "could not download the agent from ${CONTROLLER}. Is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
     # The digest the controller says it served, against what arrived. The
     # same check the agent makes of its own updates, made once by hand here.
     want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
@@ -1944,14 +1944,14 @@ if [ -n "$CONTROLLER" ]; then
     svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
-        --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
+        --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
-    # Enrolled on an earlier run. The agent does NOT keep itself current —
-    # the dashboard's Update button queues that as a job, and nothing runs
-    # it unasked — so a re-run here is the console path to the same thing:
+    # Enrolled on an earlier run. The agent does NOT keep itself current
+    # (the dashboard's Update button queues that as a job, and nothing runs
+    # it unasked), so a re-run here is the console path to the same thing:
     # fetch what the controller ships with this node's own token, check it
     # against the digest the controller sends, and swap it in only when it
     # differs. The token never leaves this shell; the same check the agent
@@ -1978,15 +1978,15 @@ elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
                 say "agent: updated ${have:7:12} -> ${got:7:12} and restarted"
             fi
         else
-            warn "could not fetch the agent from ${ctl} — is the controller up? The installed agent is left as it is"
+            warn "could not fetch the agent from ${ctl}. Is the controller up? The installed agent is left as it is"
             rm -f "${AGENT}.new"
         fi
         rm -f "$hdr"
     else
-        warn "/etc/builderbot/node.json carries no controller or token — re-enroll with a fresh token to update"
+        warn "/etc/builderbot/node.json carries no controller or token; re-enroll with a fresh token to update"
     fi
     # The session account is part of the enrollment record, and a node
-    # enrolled before there was one carries none — so a re-run that made
+    # enrolled before there was one carries none, so a re-run that made
     # the account has to say so in the record too, or the agent keeps
     # reporting "no session account" and the dashboard keeps the button
     # dead. Written here rather than by re-enrolling: a re-enrollment is a
@@ -2002,7 +2002,7 @@ if d.get("session_user", "") != want:
     print("changed")
 PY
     )" ]; then
-        say "agent: sessions now run as ${SESSION_NAME:-nobody} — restarting the agent"
+        say "agent: sessions now run as ${SESSION_NAME:-nobody}; restarting the agent"
         svc_restart builderbot-agent 2>/dev/null || true
     fi
     svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
@@ -2010,7 +2010,7 @@ fi
 
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----
 # The agent binds ttyd on this machine's LAN address so the controller's
-# terminal proxy can dial it — and a ttyd on the LAN with no credential of
+# terminal proxy can dial it, and a ttyd on the LAN with no credential of
 # its own is a shell for anyone who can reach the port, cookie or no cookie
 # (the proxy is the gate, and it is on the other machine). So the two ports
 # are opened to the controller's address and nothing else, with nftables,
@@ -2025,12 +2025,12 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
     if [ -z "$ctl_ip" ]; then
-        warn "could not resolve the controller's host ${ctl_host} — the session ports are NOT filtered"
+        warn "could not resolve the controller's host ${ctl_host}, so the session ports are NOT filtered"
     elif systemctl is-active --quiet firewalld 2>/dev/null; then
         # firewalld owns nftables here (the RHEL family, or a Debian that
         # chose it): a table of our own beside it would be flushed on its
-        # next reload. Its rich rules say the same thing — the two ports to
-        # the controller and to nobody else — and the default zone already
+        # next reload. Its rich rules say the same thing (the two ports to
+        # the controller and to nobody else), and the default zone already
         # drops what no rule allows. Rewritten on every run, like the table.
         case "$ctl_ip" in *:*) fam=ipv6 ;; *) fam=ipv4 ;; esac
         for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
@@ -2095,7 +2095,7 @@ EOF
             esac
             printf '   from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
         else
-            warn "nft could not apply the rule — the session ports are NOT filtered"
+            warn "nft could not apply the rule, so the session ports are NOT filtered"
         fi
     fi
 fi
@@ -2122,7 +2122,7 @@ EOF
 # Asked of bb-sandbox rather than echoed back from the arguments. Re-running
 # with no --share and no --nfs is the ordinary way to pick up a newer
 # bb-sandbox, and the old summary then printed a heading with nothing under it
-# on a machine with three mounts — which reads as "none", on the exact question
+# on a machine with three mounts, which reads as "none", on the exact question
 # this whole design turns on.
 /usr/local/sbin/bb-sandbox list || true
 
@@ -2142,13 +2142,13 @@ Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
 machine's LAN address (port 7681, read-only twin on 7682) running bb-tty from
 the bb the controller ships, so a Claude session on a project bound to this
 node lives on this machine. It needs the projects share mounted at /workspace
-— add it on the Nodes tab, the way any mount is — and the account signed in
+(add it on the Nodes tab, the way any mount is) and the account signed in
 to Claude once, from a shell here:
 
   su - ${SESSION_NAME}              then: claude login
 
 bb itself is not on this account's PATH: it is the controller's, fetched
-into the packages store by the agent (<store>/<scope>/.bb/current/scripts/bb)
+into the toolchain store by the agent (<store>/<scope>/.bb/current/scripts/bb)
 and put on PATH for ${USER_NAME} and ${SESSION_NAME} by
 /etc/profile.d/builderbot-session.sh. A shell as either account has it;
 this one does not, and needs none.
@@ -2165,21 +2165,21 @@ something different on each side is an app that comes up with no data.
 Two accounts, and the split is deliberate:
 
   ${USER_NAME}   runs Docker and answers ssh. This is the one jobs run as.
-        No sudo, and it cannot run bb-sandbox — reconfiguring this machine
+        No sudo, and it cannot run bb-sandbox: reconfiguring this machine
         is not what it is for.
   ${SESSION_NAME:-(none)}  is the one a Claude SESSION works as. In kvm for
         the emulator and in NO docker group: docker is root on a machine
         with a daemon, and this is the account that edits your source.
 
-This script makes no administrator account. Whatever already has root here —
-your own account, a cloud image's ubuntu or ec2-user, or root — runs
+This script makes no administrator account. Whatever already has root here
+(your own account, a cloud image's ubuntu or ec2-user, or root) runs
 `sudo bb-sandbox` to change what this machine mounts.
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be
 wrecked, so that is the arrangement and not a hole in it. What the split buys
-is that the machine's own configuration — the fstab deciding whether /workspace
-is the projects share, and read-only — is not one command away from a session
+is that the machine's own configuration (the fstab deciding whether /workspace
+is the projects share, and read-only) is not one command away from a session
 that wandered.
 
   sudo bb-sandbox settings     the path mapping for this machine's row

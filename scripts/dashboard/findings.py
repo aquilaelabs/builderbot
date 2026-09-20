@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """What the scanner used to say, so a finding that goes away leaves a trace.
 
-The other three notebook views keep a log because somebody *did* something —
+The other three notebook views keep a log because somebody *did* something:
 a step reworded, a bug closed, a memory written. Nothing here is written by
 anyone: the scan runs on the host, the container gets a read-only report, and
 between two runs a finding can simply stop being in it. Fixed, or the file
-went, or a rule changed on the host, or the scanner never reached that project
-— the report cannot tell those apart and neither can this. What it can say is
-*it was here on the 3rd and it is not here now*, which is the question worth
-answering and had no answer at all before.
+went, or a rule changed on the host, or the scanner never reached that
+project: the report cannot tell those apart and neither can this. What it can
+say is *it was here on the 3rd and it is not here now*, which is the question
+worth answering and had no answer at all before.
 
 So this log is derived rather than recorded: each read of the report is
 compared against the last one, and the difference is the entry.
 
-**What counts as the same finding.** (rule, path) within a project —
+**What counts as the same finding.** (rule, path) within a project,
 deliberately not the line. Line numbers move whenever anything is inserted
 above them, so a key including the line turns one edit into a gone-and-found
 pair for every finding below it, and a log full of that is a log nobody reads.
@@ -26,7 +26,7 @@ on the day this was added would stamp a discovery date on findings older than
 the feature, and a confidently wrong date is worse than none.
 
 **An empty report is not the same as a clean one.** If a project is absent
-from the scan entirely — the scanner failed, or never covered it — every
+from the scan entirely (the scanner failed, or never covered it), every
 finding it had would read as fixed. That is exactly the SARIF trap the rest of
 this project is careful about, so `seen()` is told whether the project was
 actually covered, and a project that was not covered is left alone.
@@ -62,7 +62,7 @@ def configure(*, write_json, state, workspace=None):
 # The same lock the roadmap and the tracker take, and for the same reason: the
 # dashboard is one process and a `bb` invocation is another, and a threading
 # lock guards the threads of one. Both would load, both mutate their own copy,
-# both write — and os.replace makes each write atomic while doing nothing about
+# both write, and os.replace makes each write atomic while doing nothing about
 # the second landing on top of the first. See statefile.py.
 _lock = statefile.on(lambda: FILE)
 
@@ -89,7 +89,7 @@ def save(d):
 
 
 def _key(row):
-    """(rule, path) — see the module docstring for why the line is left out."""
+    """(rule, path). See the module docstring for why the line is left out."""
     return "\t".join([str(row.get("rule") or ""), str(row.get("path") or "")])
 
 
@@ -121,7 +121,7 @@ def seen(project, rows, covered=True):
     `covered` is whether the scan actually looked at this project. A report
     that simply does not mention it says nothing about its findings, and
     treating that as "everything was fixed" is the exact SARIF mistake this
-    project refuses to make elsewhere — so it returns without touching
+    project refuses to make elsewhere, so it returns without touching
     anything.
 
     Returns the number of entries written, which is zero on the overwhelming
@@ -182,8 +182,8 @@ def history(project, limit=None, since=None, find=None):
     out = sorted(h, key=lambda e: -e.get("at", 0))
     if since is not None:
         # An absolute epoch, the same as the roadmap's and the tracker's take.
-        # Both callers already compute it — the CLI from a day count or a
-        # date, the panel from its dropdown — and having one of the four logs
+        # Both callers already compute it (the CLI from a day count or a
+        # date, the panel from its dropdown), and having one of the four logs
         # mean something different by the same argument is a trap.
         cut = _int(since)
         if cut is not None:
@@ -196,7 +196,7 @@ def history(project, limit=None, since=None, find=None):
                                       str(e.get("level", ""))]).lower()]
     n = _int(limit)
     out = out if n in (None, 0) else out[:n]
-    # Shaped like the other three logs — at / act / text / note / by — so the
+    # Shaped like the other three logs (at / act / text / note / by), so the
     # same pane renders it and the same eye reads it. `by` is empty on
     # purpose: nobody here did this, which is the one honest thing to say
     # about a finding that stopped being reported.
@@ -216,7 +216,7 @@ def revisions():
     """{project: how many things have happened to its findings}.
 
     The poll's cheap way to notice the log moved, the same shape the tracker
-    uses — one read of the file for every project rather than one each.
+    uses: one read of the file for every project rather than one each.
     """
     with _lock:
         h = load().get("history", {})
@@ -251,7 +251,7 @@ def _project_of(uri, known, nonproject=frozenset()):
     matches a directory in the workspace.
 
     A component that matches a directory in the share that is NOT a project
-    (the package store, the runner's tree, anything else living in there)
+    (the toolchain store, the runner's tree, anything else living in there)
     attributes to IGNORED rather than to nothing. The host scanner sweeps the
     whole share, so the flutter checkout alone lands thousands of findings,
     and filing those as "unattributed" buried the handful of genuinely
@@ -281,9 +281,9 @@ def share_siblings():
 
     The subtraction below derives "not a project" from what sits INSIDE
     /workspace, which worked while /workspace was the whole development share:
-    the package store was a directory in it, so it fell out for free. Pointing
+    the toolchain store was a directory in it, so it fell out for free. Pointing
     /workspace at the projects folder (a better arrangement, and the one that
-    cut most of this noise) took the package store outside it, and 267 findings
+    cut most of this noise) took the toolchain store outside it, and 267 findings
     about downloaded Flutter, Go and Android toolchains went straight to
     "unattributed", which is the label meant for a path that is genuinely
     wrong. Improving the layout regressed the classifier.
@@ -354,7 +354,7 @@ def nonproject_dirs(valid):
     away only the listed names and its thousands of findings stay in play; take
     away the valid ones and it falls out with the rest.
 
-    That width is the point. The package store is the case that made it matter: on
+    That width is the point. The toolchain store is the case that made it matter: on
     this box it lives *inside* the development share, so the host's scanner
     walks it like anything else and a report grew nine thousand findings
     attributed to a "project" that is a pile of downloaded toolchains. Those
@@ -468,7 +468,7 @@ def payload(ps):
     files = [f for f in files if f.name not in dropped]
     # Only the projects worth reading findings for get attributed to: listed,
     # no error-level issue. Everything else under the share
-    # (a project shut out, one that is broken, the package store, a directory
+    # (a project shut out, one that is broken, the toolchain store, a directory
     # nobody has explained) attributes to IGNORED and is counted aside.
     #
     # Counted rather than silently dropped: a report that quietly shrinks
@@ -605,7 +605,7 @@ def counts(ps):
             good += 0 if rep.get("error") else 1
             for row in rep["findings"]:
                 if row["project"] == IGNORED:
-                    continue        # the package store et al: see _project_of
+                    continue        # the toolchain store et al: see _project_of
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
                 rows_by.setdefault(row["project"] or "", []).append(row)

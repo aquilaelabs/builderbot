@@ -1,4 +1,4 @@
-# A BuilderBot node on QEMU alone — no libvirt, no manager, one command.
+# A BuilderBot node on QEMU alone: no libvirt, no manager, one command.
 # Run as a user who can reach /dev/kvm.
 #
 # Rendered by the dashboard's Create sandbox VM (vmtemplate.py). Two things

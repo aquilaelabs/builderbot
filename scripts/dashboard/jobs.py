@@ -1,10 +1,10 @@
-"""jobs.py — the controller's own runner, and the numbers (docs/nodes.md §2,
+"""jobs.py: the controller's own runner, and the numbers (docs/nodes.md §2,
 §9; phase 4 of the nodes design).
 
 nodes.py holds the queue: rows, placement, cancel flags. This module is the
 side of it that RUNS things here. An agent takes its own work over the
-channel; everything else — a compose action against some node's daemon, an
-exec on a node that has no agent — is taken from the same table by a thread
+channel; everything else (a compose action against some node's daemon, an
+exec on a node that has no agent) is taken from the same table by a thread
 in this process, through the same job_next() the agent calls, and reported
 back through the same job_log() / job_result(). One queue, two runners, and
 the rows cannot tell which one served them, which is what lets a node be
@@ -14,17 +14,17 @@ What the executor owns:
 
   - the loop: every node the controller may run work for is asked for its
     next controller job, and each one found starts on a thread;
-  - Run: what a runner talks back through — log lines (folded, so a docker
-    pull is frames and not a transcript), the step it is on, the process
-    to interrupt, and whether it has been asked to stop;
+  - Run: what a runner talks back through, holding log lines (folded, so a
+    docker pull is frames and not a transcript), the step it is on, the
+    process to interrupt, and whether it has been asked to stop;
   - cancel: a flag on the row, read by a watcher that kills the held
-    process group — the same verb an agent gets on the wire, delivered
+    process group, the same verb an agent gets on the wire, delivered
     the local way (door 9: nothing on the wire names a signal);
   - the restart sweep: a job this process was running when it died is
     failed as lost at the next start, because it is;
   - /healthz and /metrics, made of nodes.job_counts().
 
-Registered runners by type: "exec" is here, "compose" is devapp's — it
+Registered runners by type: "exec" is here, "compose" is devapp's, which
 registers itself through configure(), so the compose code stays in the
 compose module and this one knows nothing about compose files.
 """
@@ -50,7 +50,7 @@ LOG_TAIL = 4000
 FLUSH_S = 0.5
 # The longest a held-back frame may wait. A pull writes a progress line
 # many times a second and every one folds into the last, so the buffered
-# line is always fresh and would never be written until the pull ended —
+# line is always fresh and would never be written until the pull ended:
 # minutes of nothing, the exact hang this streaming exists to prevent. Two
 # seconds a frame is a log that moves; thirty frames a second is not a log.
 HOLD_S = 2.0
@@ -109,7 +109,7 @@ class Run:
     """One controller-run job's side of the conversation with the store.
 
     Lines are folded and buffered, and flushed on a clock rather than per
-    line — except the LAST buffered line, which is held back while it is
+    line, except the LAST buffered line, which is held back while it is
     fresh, so a progress frame that is about to be superseded is written to
     the log once, as its final frame, and never as thirty. Held only while
     fresh: a job that prints one line and then works in silence would
@@ -143,7 +143,7 @@ class Run:
         return now - self._line_at > FLUSH_S or now - self._at > HOLD_S
 
     def quiet(self):
-        """Buffered output that is due — the watcher's cue to flush it."""
+        """Buffered output that is due, the watcher's cue to flush it."""
         return bool(self._buf) and self._held_too_long()
 
     def step(self, name):
@@ -173,7 +173,7 @@ class Run:
             self.cancel()
 
     def cancel(self):
-        """Asked to stop: the process group, not the process — a compose CLI
+        """Asked to stop: the process group, not the process. A compose CLI
         waiting on a pull leaves the download running if only the CLI is
         signalled. What is already built stays; an abort is for the rest of
         the work, not for undoing what finished."""
@@ -192,7 +192,7 @@ def kill_group(p):
 
 def stream(argv, run, timeout, env=None, cwd=None):
     """Run argv with its output going to the run's log as it is produced,
-    in its own process group, killable. {"code", "out"} — the tail of the
+    in its own process group, killable. {"code", "out"}: the tail of the
     output rides back for the runner's own reporting."""
     try:
         p = subprocess.Popen(argv, stdout=subprocess.PIPE,
@@ -248,7 +248,7 @@ def run_exec(job, run):
     env["BUILDERBOT_NODE"] = job["node"]
     env["BUILDERBOT_JOB"] = job["id"]
     # Only local work reaches this runner. Everything on a node is the
-    # agent's, compose included, and runner_of places it there — so a job
+    # agent's, compose included, and runner_of places it there, so a job
     # arriving here for another node is a placement fault, not something to
     # paper over by reaching for ssh. This used to run compose on the legacy
     # ssh kind over a key from this container; that kind is gone (#24).
@@ -256,7 +256,7 @@ def run_exec(job, run):
         cmd = argv
     else:
         return {"state": "failed",
-                "error": f"{job['node']} is not this controller's to run — "
+                "error": f"{job['node']} is not this controller's to run; "
                          "its agent takes its own jobs"}
     r = stream(cmd, run, timeout, env=env)
     if run.canceled:
@@ -354,7 +354,7 @@ def cancel(principal, job_id):
 # the numbers (docs/nodes.md §9)
 
 def healthz():
-    """Alive, and whether the store answers — no auth, no detail: what a
+    """Alive, and whether the store answers (no auth, no detail): what a
     monitor asks, not what an operator reads."""
     try:
         c = nodes.job_counts()

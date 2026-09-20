@@ -5,7 +5,7 @@ the person reading them: a line, from somebody, at a time.
 
   * a DIRECT conversation between two accounts, kept per pair;
   * a PROJECT feed, which everybody with that project sees, carrying both what
-    people type into it and what the box notices them doing — a Claude session
+    people type into it and what the box notices them doing: a Claude session
     started, a rebuild, a prompt sent. The events are the point: on a shared
     project, "alice just started a session here" is the thing you want to know
     before you start one too.
@@ -17,8 +17,8 @@ does not decide.
 
 PROMPTS ARE RELAYED, and that is worth being plain about rather than quiet:
 what somebody types to Claude on a shared project is shown to the others who
-share it. That is the feature — it is how three people avoid doing the same
-work twice — and it means a project is not a private place to think. The UI
+share it. That is the feature (it is how three people avoid doing the same
+work twice) and it means a project is not a private place to think. The UI
 says so where the feed is drawn, because a person should not find that out by
 accident.
 
@@ -42,7 +42,7 @@ _rev = 0
 # has to delete by hand.
 KEEP = 400
 # How long since an account's last poll still counts as "here". The status
-# poll is every fifteen seconds, so this is four missed ones — long enough to
+# poll is every fifteen seconds, so this is four missed ones, long enough to
 # survive a slow page and short enough that a closed laptop goes quiet.
 ONLINE_S = 70
 
@@ -76,7 +76,7 @@ def _load():
 
 def pair(a, b):
     """The key for a direct conversation. Sorted, so it is the same key
-    whichever end is asking — the alternative is two half-conversations that
+    whichever end is asking; the alternative is two half-conversations that
     each hold what the other said."""
     return "|".join(sorted([str(a), str(b)]))
 
@@ -95,7 +95,7 @@ def _append(kind, key, row):
 
 # Sub-second, unlike every other timestamp in this dashboard. Read state is
 # "everything before when I looked", and two messages in the same second is
-# what a conversation IS — at whole seconds the second one is indistinguishable
+# what a conversation IS: at whole seconds the second one is indistinguishable
 # from one already read, and stays unread forever or never.
 def now():
     return round(time.time(), 3)
@@ -113,7 +113,7 @@ def say(from_uid, to_uid, text):
 
 def post(project, from_uid, text, kind="said"):
     """Into a project's feed. `kind` is "said" for something a person typed
-    and a verb for something the box noticed — the reader is told which,
+    and a verb for something the box noticed; the reader is told which,
     because "alice: rebuild it" and "alice started a rebuild" are different
     claims and only one of them is the box's own observation."""
     text = str(text or "").strip()[:4000]
@@ -150,7 +150,7 @@ def feed(project, since=0):
 def unread(uid, others, projects, seen):
     """{key: count} of what has arrived since this account last looked.
 
-    `seen` is the account's own {key: timestamp}, kept on its user record —
+    `seen` is the account's own {key: timestamp}, kept on its user record;
     read state is per person, so it cannot live beside the messages.
     """
     d = _load()
@@ -175,8 +175,8 @@ def online(polls, now=None):
     """Account names whose last status poll was recent enough to count as here.
 
     `polls` is {name: when}, kept in memory by the server rather than on the
-    user records. Presence is ephemeral by nature — a restart having cleared
-    it is the right answer — and the alternative was rewriting a file holding
+    user records. Presence is ephemeral by nature (a restart having cleared
+    it is the right answer), and the alternative was rewriting a file holding
     password hashes four times a minute per open browser.
     """
     now = now or time.time()

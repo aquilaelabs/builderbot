@@ -121,7 +121,7 @@ function nodeTools(n){
   const sys = unmet.length
     ? `<div class="sub ndsys warn">system packages missing here for ${unmet.map(([r, ps]) =>
         `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: the Tools tab installs them on this
-        node without reinstalling the package</div>` : "";
+        node without reinstalling the toolchains</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -195,7 +195,7 @@ function nodeRunnerSection(n, c){
   if (d.runner === undefined) d.runner = {url: "", token: "", forge: "", labels: ""};
   const busyNow = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
-  const when = t => new Date((t || 0) * 1000).toLocaleString([], {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   const hostOf = (want, rep) => (rep.forge || want.forge) === "gitea" ? "Gitea" : (rep.forge || want.forge) === "github" ? "GitHub" : "";
   let worst = "";
   const rows = slots.map(slot => {
@@ -325,9 +325,35 @@ function nodeSessionsSection(n){
         : iso.sessions ? `<div class="sub">Each session here sees only its own project: its tree, logs, cache and processes.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}:
-        listed on the Sessions card, and ended from there</div>` : ""}`;
+        listed on the Sessions card, and ended from there</div>` : ""}
+      ${nodeTurnsRow(n)}`;
   }
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
+}
+
+// How many Claude sessions here may work on a prompt at once (turns.py on
+// the controller). What is working and waiting now is on the status line,
+// so the number is set against what the machine is actually doing. The
+// typed value is a draft, kept across the repaints a poll brings.
+function nodeTurnsRow(n){
+  const t = n.turns || {};
+  const have = String(t.limit || 0);
+  const c = nodeDraft(n);
+  if (c.draft.turnsText === undefined || c.draft.turnsFrom !== have){
+    c.draft.turnsText = have; c.draft.turnsFrom = have;
+  }
+  const now = `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${
+    t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
+  const inp = `ndTurns-${n.id}`;
+  return `<div class="logdays setrow col">
+      ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
+      <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
+        value="${esc(c.draft.turnsText)}">
+    </div>
+    <div class="actbar">
+      <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
+      <button type="button" data-nd="turns" title="save the limit: the next prompt here is held to it">Save</button>
+    </div>`;
 }
 
 // The node's path mapping (docs/nodes.md §11): what this container's paths
@@ -532,10 +558,10 @@ function nodeConfSections(n){
     </div>`;
   }).join("");
   const STORE_ABOUT = {
-    data: "job workspaces and AVDs", packages: "toolchains installed here",
+    data: "job workspaces and AVDs", toolchains: "toolchains installed here",
     cache: "build caches, per project", artifacts: "what projects built, per project",
   };
-  const stores = ["data", "packages", "cache", "artifacts"].map(role => {
+  const stores = ["data", "toolchains", "cache", "artifacts"].map(role => {
     const r = rep.stores?.[role];
     const now = r ? (r.free_mb === null ? `${r.path}: missing` : `${r.path}, ${
       r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
@@ -693,7 +719,7 @@ function nodeConfSections(n){
       : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
          provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}), so its mounts
          and its address are its own to change.${rep.system === "darwin"
-           ? " Its packages land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
+           ? " Its toolchains land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -768,7 +794,7 @@ function renderNodesInto(i){
   // that is how a share it mounts is recognized as the same store a node
   // mounts, and how install arbitration works across the pair, but it is
   // not a machine anybody configures from here: it runs no work (roadmap
-  // #16), takes no packages (#26), and every section on this tab is about
+  // #16), takes no toolchains (#26), and every section on this tab is about
   // something it does not have. So it is registry plumbing, not a row.
   const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local");
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
@@ -1211,7 +1237,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
                retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
-               rename: "Renaming"}[act] || "Working");
+               rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -1229,6 +1255,15 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (j.error) return notify(j.error, true);
         const c = nodesConf[id]; if (c && c.draft) c.draft.nameText = undefined;
         notify(`${was} is now ${name}. A runner already installed there keeps the label ${was} until it is reinstalled.`);
+        return;
+      }
+      if (act === "turns"){
+        const inp = box.querySelector('[data-k="turns"]');
+        const j = await nodeAct({action: "turns", id, limit: Number(inp ? inp.value : 0)});
+        if (j.error) return;
+        const c = nodesConf[id]; if (c && c.draft) c.draft.turnsText = undefined;
+        notify(j.limit ? `at most ${j.limit} Claude session${j.limit === 1 ? "" : "s"} work here at once`
+                       : "no limit on Claude sessions working here at once");
         return;
       }
       if (act === "paths"){
@@ -1272,6 +1307,24 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       pi.onfocus = () => { nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
       pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
                            nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+    }
+    // ...and the name under Advanced: without it a heartbeat's repaint
+    // between typing a new name and pressing Rename put the old one back,
+    // and Rename said to type one (B176: nodes.mjs's rename wait timed out
+    // on exactly that, now and then).
+    const ni = box.querySelector('.ndname [data-k="name"]');
+    if (ni){
+      ni.onfocus = () => { nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
+      ni.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.nameText = ni.value;
+                           nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
+    }
+    // The same for the limit on sessions working at once, in the Sessions
+    // section: a number is typed across a heartbeat as easily as a path.
+    const ti = box.querySelector('[data-k="turns"]');
+    if (ti){
+      ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
+      ti.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.turnsText = ti.value;
+                           nodesFocus = {id, key: "turns"}; };
     }
   });
   // The field that had the caret before this repaint gets it back: the

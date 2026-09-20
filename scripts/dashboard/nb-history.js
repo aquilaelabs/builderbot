@@ -9,8 +9,8 @@ function nbHistoryView({$, nb, project}){
   // dropped the third one?". Removing is now the only way a line leaves: the
   // cross-off-by-hand is gone, which makes the log the thing that stops a
   // deletion being final: the words are still here to retype.
-  nb.todoLogOn = false;  // the panel is showing the log instead of the list
-  nb.todoLog = null;  // what it is showing, or null while it loads
+  nb.roadmapLogOn = false;  // the panel is showing the log instead of the list
+  nb.roadmapLog = null;  // what it is showing, or null while it loads
 
   const ACT = {
     add:           ["added", "new"],
@@ -31,25 +31,24 @@ function nbHistoryView({$, nb, project}){
     unshelved:     ["off the shelf", ""],
   };
 
-  // Local time, like everything else this container prints: its clock is set
-  // from the host's TZ.
-  const stamp = t => new Date(t * 1000).toLocaleString(undefined,
+  // In this browser's time zone (Profile), like every time on the page.
+  const stamp = t => fmtTime(t * 1000,
     {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false});
 
   function drawHistory(){
-    if (!nb.todoLog){
-      $("todoHist").innerHTML = `<div class="loading">loading…</div>`;
+    if (!nb.roadmapLog){
+      $("roadmapHist").innerHTML = `<div class="loading">loading…</div>`;
       return;
     }
-    if (!nb.todoLog.length){
+    if (!nb.roadmapLog.length){
       const narrowed = $("histFind").value.trim() || $("histWhen").value !== "0";
-      $("todoHist").innerHTML = `<div class="hint">${narrowed
+      $("roadmapHist").innerHTML = `<div class="hint">${narrowed
         ? "Nothing in the log matches that. Widen the window, or clear the search."
         : `Nothing has happened to this list yet. Every add, reword, send, shelve
          and drop lands here from now on.`}</div>`;
       return;
     }
-    $("todoHist").innerHTML = nb.todoLog.map(e => {
+    $("roadmapHist").innerHTML = nb.roadmapLog.map(e => {
       const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
       // R on the number, as everywhere an item is named (ids.py): a log line
       // is exactly where a bare number could be read against the bug tracker.
@@ -68,22 +67,22 @@ function nbHistoryView({$, nb, project}){
           e.approved ? ", approved by you" : ""}</span>${
           e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}${
           // A dropped item comes back from here, as it was: the log carries
-          // the row (todo.remove). Only a drop: done is a session's word.
+          // the row (roadmap.remove). Only a drop: done is a session's word.
           e.act === "remove" && e.step == null && e.row && !onList(e.id)
             ? `<button type="button" class="hput" data-id="${esc(String(e.id))}" data-at="${esc(String(e.at || 0))}"${
                 nb.nbUnsaved() ? ` disabled title="${esc(`save or revert first: ${nb.nbUnsaved()} not on disk yet`)}"` : ""
               }>Put back</button>` : ""}</span>
     </div>`;
     }).join("");
-    $("todoHist").querySelectorAll(".hput").forEach(b => b.onclick = async () => {
+    $("roadmapHist").querySelectorAll(".hput").forEach(b => b.onclick = async () => {
       busy(b, "Putting back");
-      const j = await nb.postTodo({action: "restore", id: Number(b.dataset.id), at: Number(b.dataset.at)});
+      const j = await nb.postRoadmap({action: "restore", id: Number(b.dataset.id), at: Number(b.dataset.at)});
       if (j) loadHistory(); else unbusy(b, "Put back");
     });
     // Paged like the other three, now that it has a pane to page.
-    paginate($("todoHist"), ":scope > .hist", {key: "todoHist", noun: "entries"});
+    paginate($("roadmapHist"), ":scope > .hist", {key: "roadmapHist", noun: "entries"});
   }
-  const onList = id => nb.todoItems.some(r => String(r.id) === String(id));
+  const onList = id => nb.roadmapItems.some(r => String(r.id) === String(id));
 
   // The window the panel is asking for. Narrowed on the server, not here: the
   // log is capped at 300 events a project and most of a search is bytes that
@@ -98,13 +97,13 @@ function nbHistoryView({$, nb, project}){
 
   nb.histTimer = null;
   async function loadHistory(){
-    nb.todoLog = null;
-    nb.redrawTodo();
-    // quiet, because the answer is not a list payload and drawTodo must not be
+    nb.roadmapLog = null;
+    nb.redrawRoadmap();
+    // quiet, because the answer is not a list payload and drawRoadmap must not be
     // handed one that has no items in it.
-    const j = await nb.postTodo(histQuery(), true);
-    nb.todoLog = j?.history || [];
-    nb.redrawTodo();
+    const j = await nb.postRoadmap(histQuery(), true);
+    nb.roadmapLog = j?.history || [];
+    nb.redrawRoadmap();
   }
 
   // Typing searches, but not on every keystroke: each one is a round trip, and
@@ -122,13 +121,13 @@ function nbHistoryView({$, nb, project}){
   $("histWhen").onchange = loadHistory;
   $("histN").onchange = loadHistory;
 
-  $("todoLog").onclick = () => {
-    if (nb.todoLogOn){ nb.closeSheet(); return; }
-    nb.todoOrdering = false;
-    nb.todoLogOn = true;
+  $("roadmapLog").onclick = () => {
+    if (nb.roadmapLogOn){ nb.closeSheet(); return; }
+    nb.roadmapOrdering = false;
+    nb.roadmapLogOn = true;
     nb.cancelSend();
-    nb.openSheet("Roadmap: history", [$("histBar"), $("todoHist")],
-                 () => { nb.todoLogOn = false; nb.todoLog = null; $("todoLog").classList.remove("on"); });
+    nb.openSheet("Roadmap: history", [$("histBar"), $("roadmapHist")],
+                 () => { nb.roadmapLogOn = false; nb.roadmapLog = null; $("roadmapLog").classList.remove("on"); });
     loadHistory();
   };
 

@@ -1,7 +1,7 @@
 // The dev instance: a project's compose app, built and run through the host's
 // daemon, controlled from the Docker tab in the file rows' own language.
 //
-// Everything here drives the stub docker the harness provides — the argv it
+// Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
@@ -9,8 +9,8 @@ import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-// ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
-// and never shows a notebook button. The dot in the name is a bonus: it
+// ep.silon gets the compose file, since delta is the harness's EXCLUDED
+// fixture and never shows a notebook button. The dot in the name is a bonus: it
 // proves the compose project-name sanitizer (ep-silon) with the same
 // fixture that proves tmux's.
 const D = `${DIR}/ws/ep.silon`;
@@ -23,7 +23,7 @@ const env = {
   GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x.invalid',
 };
 // The server under test polls git on every project every fifteen seconds,
-// and `git status` takes index.lock when it refreshes the index — so a
+// and `git status` takes index.lock when it refreshes the index, so a
 // commit here can land exactly on one and die with "Unable to create
 // index.lock". It is the fixture racing the thing it is testing, not a
 // finding about either, so it is waited out rather than reported. Anything
@@ -42,8 +42,8 @@ function git(...args){
 git('add', '-A');
 git('commit', '-qm', 'compose');
 
-// Every compose action is a job now, and a job goes on writing — its final
-// log flush, its result row — for a moment after the row already shows the
+// Every compose action is a job now, and a job goes on writing (its final
+// log flush, its result row) for a moment after the row already shows the
 // outcome. An assertion about what a job LEFT BEHIND waits for the queue to
 // empty first, rather than sampling the row mid-settle (bug #13's shape).
 const idle = async (ms = 20000) => {
@@ -70,8 +70,8 @@ await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 
-// The controls live on the Docker manager now — the artifact row only sends
-// you there — so everything that presses one drives it from that tab.
+// The controls live on the Docker manager now, and the artifact row only
+// sends you there, so everything that presses one drives it from that tab.
 const DM = '.dmtab .row[data-inst^="ep.silon|"]';
 // Unconditional, because openTab focuses a tab that is already open and
 // openDocker reloads the list either way. A guard on "is the row already
@@ -92,7 +92,7 @@ async function dmDisabled(act){
 // The manager repaints from its own fetch, not the artifacts poll, so a test
 // that acted through the API has to ask it to look again.
 // Bring the artifact row's tab back in front. openManager leaves the manager
-// there, and anything that CLICKS on the row needs it visible again — reading
+// there, and anything that CLICKS on the row needs it visible again; reading
 // what the row rendered does not, which is why most assertions here wait on
 // attachment instead.
 async function showRow(){
@@ -107,8 +107,8 @@ async function dmRefresh(){
   await page.waitForFunction(() => document.querySelector('.dmtab') && !document.querySelector('.dmtab.dmstale'),
                              null, { timeout: 30000 });
 }
-// The manager lists what has been SENT to it — a project with a compose file
-// no longer gets a phantom row there — so the fixture's instance has to exist
+// The manager lists what has been SENT to it (a project with a compose file
+// no longer gets a phantom row there), so the fixture's instance has to exist
 // before anything can be pressed on it. Through the API rather than the modal:
 // the modal builds as well as creates, which is its whole point and exactly
 // what the tests below want to watch happening for the first time.
@@ -126,8 +126,8 @@ const row = async () => ({
 });
 // The state, read from the parenthetical beside the name and never out of the
 // row's whole text: that text carries the buttons' own labels, so "down" in it
-// could as easily be the Down button. The pill says what the row IS — docker,
-// the way the file rows say apk or xpi — and never what it is doing.
+// could as easily be the Down button. The pill says what the row IS: docker,
+// the way the file rows say apk or xpi. It never says what it is doing.
 const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/g, '').trim());
 const pillIs = async (want) => { await openManager(); return page.waitForFunction(
   ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
@@ -149,7 +149,7 @@ ok(await page.$$eval('#devRow .grow > .dim.li:not(.warn)', els => els.length) ==
 // port with nothing behind it is a broken link.
 ok(!await page.$('#devRow a.btn'),
    'no Open link while the instance is down, whatever it publishes');
-// One fact per line, never a run-on joined by semicolons — these are separate
+// One fact per line, never a run-on joined by semicolons: these are separate
 // facts about separate services, and reading them is the point of showing them.
 // The wiring lines carry .li too and are not what these two are counting, so
 // they are told apart by their class rather than by where they sit.
@@ -157,8 +157,14 @@ const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li.${cls}`,
   els => els.map(e => e.textContent.trim()));
 ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Build',
-   'the button says Build before a first image exists — nothing auto-builds');
-ok(!r.rebuild, '...and it is live for that first build');
+   'the button says Build before a first image exists; nothing auto-builds');
+// Waited for, not read once: the button goes live when the manager has the
+// node's answer, and on a server that started a moment ago (every file gets
+// its own now, B124) that answer can be a poll away.
+await openManager();
+const live = await page.waitForFunction(sel => document.querySelector(sel)?.disabled === false,
+  `${DM} [data-dm="rebuild"]`, { timeout: 20000 }).then(() => true).catch(() => false);
+ok(live, '...and it is live for that first build');
 ok(r.up, '...and Up is dead: the env is missing PORT, and starting against a '
         + 'known-missing env is a crash with extra steps');
 ok(r.down, '...and Down is dead with nothing running');
@@ -191,7 +197,7 @@ await page.waitForTimeout(1200);
 // classic builder rides along for exactly that case, since an implicit build
 // through buildx would 403 against a socket proxy.
 ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
-   'a filled env wakes Up — compose builds what is missing, so it would work');
+   'a filled env wakes Up: compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
      // data-tip, not title: the manager's controls carry the page's own
      // tooltip now, which is the same words moved off an attribute that waits
@@ -200,10 +206,10 @@ ok(/builds the image first, as compose does/.test(
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
-// (newPage auto-accepts dialogs and records them — no handler of our own.)
+// (newPage auto-accepts dialogs and records them, with no handler of our own.)
 await dmClick('rebuild');
 // Watched on the MANAGER's row, which is where a container's state lives now.
-// The Artifacts row used to carry it and no longer does — building and running
+// The Artifacts row used to carry it and no longer does: building and running
 // moved here, and the state moved with them.
 // A running instance says so and counts its containers; "built from <sha>" is
 // what it says when it is NOT running, so waiting for both at once waits for a
@@ -222,8 +228,8 @@ ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
 // The classic builder, deliberately: compose's default boots a buildx helper
 // container and attaches to it, and attach is a hijacked connection a socket
-// proxy worth having refuses. Measured against a real proxy — buildx dies
-// with "unable to upgrade to tcp, received 403", classic succeeds — so the
+// proxy worth having refuses. Measured against a real proxy (buildx dies
+// with "unable to upgrade to tcp, received 403", classic succeeds), so the
 // build asks for exactly the POST /build permission the setup docs grant.
 ok(/BUILDKIT=0/.test(log),
    '...and builds with the classic builder, which needs no helper container');
@@ -281,8 +287,8 @@ ok(!r.down && r.up, 'running: Down is live, Up is dead');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
 // to: a button that refuses is not information, and the operator met it by
 // pinning an instance to a branch, pressing Apply, and having nothing to
-// press. What "the code has moved" is worth is a sentence — the row's state
-// line and the button's own title both carry it — and a rebuild that changed
+// press. What "the code has moved" is worth is a sentence (the row's state
+// line and the button's own title both carry it), and a rebuild that changed
 // nothing is a cached build and a restart, behind a confirm that says so.
 ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
    'Rebuild stays live once the build matches the code, and says which it is');
@@ -290,8 +296,8 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
 // ---- the route (phase 8) --------------------------------------------------
 // The instance is up on the sandbox and publishes 7475: its route is lan on
 // that port at the node's address, drawn on the row with the picker beside
-// it. funnel is offered only when the node has tailscale — the sandbox is an
-// ssh node and has none — and public is named as unbuilt.
+// it. funnel is offered only when the node has tailscale (the sandbox is an
+// ssh node and has none), and public is named as unbuilt.
 {
   await openManager();
   await page.waitForFunction(sel => /http:\/\/stub:7475\//.test(
@@ -307,20 +313,20 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   const fun = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'funnel', port: 7475 });
   // The reason is tailscale, not the sandbox stamp (roadmap #23): a funnel
   // is tailscale's own CLI doing the certificate, the DNS and the firewall,
-  // so it is offered to any node that HAS tailscale — a container node or
+  // so it is offered to any node that HAS tailscale, a container node or
   // somebody's own machine included. What still needs the stamp is storage
   // and network, which edit fstab and netplan. The harness's node has no
   // tailscale, so that is what it says.
   ok(/no tailscale/.test(fun.error || ''),
-     `a funnel says what it actually lacks — tailscale, not a provisioner (${fun.error})`);
+     `a funnel says what it actually lacks: tailscale, not a provisioner (${fun.error})`);
   const lan = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'lan', port: 7475 });
   ok(lan.ok && lan.state.route.mode === 'lan' && lan.state.route.url === 'http://stub:7475/' && lan.state.route.ready,
      'lan on a published port is a record with the URL that follows from the node');
 }
 
 // ---- a row is listed under the node its buttons act on --------------------
-// An instance with no node of its own belongs to its PROJECT's node — that
-// is what every action on the row resolves — and the LISTING resolved it one
+// An instance with no node of its own belongs to its PROJECT's node, which
+// is what every action on the row resolves, and the LISTING resolved it one
 // step short, straight to the default node. So an unbound instance of a
 // project bound to one machine was listed under another, offering buttons
 // that would act somewhere other than where the row said, and a node nobody
@@ -462,7 +468,7 @@ await page.waitForFunction(
   () => /built from [0-9a-f]{7}/.test(document.querySelector('#devRow')?.textContent || ''),
   { timeout: 20000 });
 
-// The code moves — Rebuild wakes.
+// The code moves, and Rebuild wakes.
 writeFileSync(`${D}/newfile.txt`, 'x');
 git('add', '-A');
 git('commit', '-qm', 'more');
@@ -472,11 +478,11 @@ await page.waitForFunction((SEL) => {
   const b = document.querySelector(SEL + ' [data-dm="rebuild"]');
   return b && !b.disabled;
 }, DM, { timeout: 20000 });
-ok(true, 'a commit unghosts Rebuild — the code has moved since the build');
+ok(true, 'a commit unghosts Rebuild: the code has moved since the build');
 // ---- a long build is watchable, and stoppable ---------------------------
 // Both were missing. The log was assigned after the command returned, so a
-// pull was minutes of nothing and then everything at once — a download that
-// looked like a hang — and there was no way to interrupt one at all.
+// pull was minutes of nothing and then everything at once (a download that
+// looked like a hang), and there was no way to interrupt one at all.
 writeFileSync(`${DIR}/dockerstate/build.slow`, '1');
 await dmClick('rebuild');
 await page.waitForFunction(sel => {
@@ -497,7 +503,7 @@ ok(/stopped/.test(stoppedText),
    `...saying what was kept, because an abort is not an undo (${stoppedText.slice(0, 90)})`);
 rmSync(`${DIR}/dockerstate/build.slow`, { force: true });
 // Nothing to restore: an aborted build records no rev and never reaches down
-// or up, so it leaves the instance exactly as it found it — which is the
+// or up, so it leaves the instance exactly as it found it, which is the
 // property being asserted anyway. A tidying rebuild here was worse than
 // nothing: it recorded a rev, unset "the code has moved", and the gate test
 // below then found Rebuild ghosted and never ran.
@@ -546,7 +552,7 @@ ok(/compose --project-name ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
-// A container that EXITED still exists — it holds its name and the project's
+// A container that EXITED still exists: it holds its name and the project's
 // network, and `down` is the only thing that clears it. Asking compose only
 // about RUNNING containers left a crashed instance with a greyed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
@@ -554,7 +560,7 @@ writeFileSync(`${DIR}/dockerstate/ep-silon.exited`, '1');
 await page.evaluate(() => refresh());
 await pillIs('stopped');
 r = await row();
-ok(!r.down, 'a crashed instance offers Down — its containers are still there');
+ok(!r.down, 'a crashed instance offers Down: its containers are still there');
 ok(!r.up, '...and Up, which recreates them rather than colliding with them');
 await dmClick('down');
 await pillIs('down');
@@ -563,7 +569,7 @@ ok(!existsSync(`${DIR}/dockerstate/ep-silon.exited`),
 
 // An Up that FAILS. The row used to lose everything about it the moment the
 // job released: the reply carried the reason to the one browser that pressed
-// the button, and the row — which reads the job — was left saying "stopped"
+// the button, and the row, which reads the job, was left saying "stopped"
 // with no account of why it had not started, and its tail gone.
 writeFileSync(`${DIR}/dockerstate/up.fail`, '1');
 await dmClick('up');
@@ -580,26 +586,26 @@ await page.waitForSelector(`${DM} .dmlog`, { timeout: 20000 });
 // The row's one-line summary is the REASON, not the label. A compose failure
 // arrives as "up failed:\n<docker's output>" kept from the end, so reading its
 // first line put "up failed:" on the row and dropped what docker actually
-// said — the same shape as a node reporting ".NET said: Process terminated."
+// said, the same shape as a node reporting ".NET said: Process terminated."
 // and losing the sentence that named the missing library.
 ok(await page.evaluate(() => [
      jobWhy('up failed:\ncreating network: pool overlaps'),
-     jobWhy('build failed — the tail of its output is below'),
+     jobWhy('build failed; the tail of its output is below'),
      jobWhy(''),
-   ].join(' | ')) === 'creating network: pool overlaps | build failed — the tail of its output is below | ',
+   ].join(' | ')) === 'creating network: pool overlaps | build failed; the tail of its output is below | ',
    'a failed job is summarised by its reason, not by the label above it');
 ok(await page.$eval(`${DM} .dmlog`, e => e.dataset.tail === '1'),
    '...and that tail is pinned to its end, which is where the error is');
 // Rebuild has to wake for the retry. A build records itself before the up
 // that follows it, so a failed up left the row insisting the build was
-// current — true, and not what somebody looking at a red row wants offered.
+// current: true, and not what somebody looking at a red row wants offered.
 ok(!(await row()).rebuild,
    '...and Rebuild is live again, because the run failed even though the build did not');
 rmSync(`${DIR}/dockerstate/up.fail`);
 await dmClick('down');
 await pillIs('down');
 
-// A build in flight when BuilderBot restarts is lost — compose build is a
+// A build in flight when BuilderBot restarts is lost: compose build is a
 // subprocess of the dashboard and dies with it. Everything already recovered
 // correctly (the last SUCCESSFUL build is still what built_rev says, and
 // Rebuild is live because the code moved), but the operator was told nothing
@@ -621,8 +627,8 @@ ok(/still on [0-9a-f]{7}/.test(await page.$eval('#devRow', e => e.textContent)),
    'an interrupted build says so, and still names the last one that finished');
 // And it clears the moment a build reaches any end, rather than sticking.
 // The code has to move first: Rebuild is correctly asleep while the last
-// build matches HEAD, interrupted marker or not — the marker says what
-// happened, it does not invent work to do.
+// build matches HEAD, interrupted marker or not. The marker says what
+// happened; it does not invent work to do.
 writeFileSync(`${D}/after-interrupt.txt`, 'x');
 git('add', '-A');
 git('commit', '-qm', 'moves on');
@@ -668,8 +674,8 @@ rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 // is named as innocently as any other. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
 const stubCfg = `${DIR}/dockerstate/ep-silon.config`;
-// The dev row reloads on job_rev — the in-memory counter plus devapps.json's
-// mtime — and a stub config file moves neither, so a plain refresh() would
+// The dev row reloads on job_rev (the in-memory counter plus devapps.json's
+// mtime), and a stub config file moves neither, so a plain refresh() would
 // leave the row showing the answer to the previous question. Touch the file
 // the poll actually watches.
 const nudge = async () => {
@@ -687,7 +693,7 @@ if (await pill() !== 'down') {
   await pillIs('down');
 }
 // A path of OURS handed to the host's daemon: it resolves bind-mount sources
-// on its own filesystem, where /workspace/<project> does not exist — and
+// on its own filesystem, where /workspace/<project> does not exist, and
 // docker answers a missing source by creating an empty directory rather than
 // by failing, so the app starts with no data and it reads as the app's bug.
 // Said on the row, kept apart from the risks below: those are decisions the
@@ -723,8 +729,8 @@ await nudge();
 // attached, not visible: the manager tab is in front now, and what is being
 // asserted is what the row RENDERS, not which pane is on top.
 await page.waitForSelector('#devRow a.btn', { state: 'attached', timeout: 20000 });
-// The DAEMON's host, not this page's. They are different machines — the whole
-// point of the sandbox VM — and a container publishing 7475 publishes it over
+// The DAEMON's host, not this page's. They are different machines (the whole
+// point of the sandbox VM), and a container publishing 7475 publishes it over
 // there. This used to be location.hostname, which on a real box is the Unraid
 // server: a link to a port where either nothing answers or something else does.
 // The sandbox node dialed in from `stub`, so the answer is `stub`.
@@ -774,7 +780,7 @@ await pillIs('running');
 ok(page.dialogs.slice(seen).some(d => /process namespace/.test(d)),
    '...and asks again the moment the file asks for something new');
 
-// A docker call that is not a namespaced compose call does not run at all —
+// A docker call that is not a namespaced compose call does not run at all:
 // the invariant the whole feature's blast radius rests on, asserted at the
 // one place every call passes through.
 const guard = execFileSync('python3', ['-c', `
@@ -853,12 +859,12 @@ mp2, bad2 = m.host_map()
 out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': ['./data:/data']}}})]
 # The same pair against a daemon on THIS box, which is the shipped default's
 # hazard: an identity skips the mount-table check by design, so nothing else
-# can catch a sandbox mapping left behind on a socket proxy — and the daemon
+# can catch a sandbox mapping left behind on a socket proxy, and the daemon
 # resolves /workspace on the host, where Unraid does not have one.
 sethost('tcp://proxy:2375')
 out['falseparity'] = m.host_map()
 sethost('ssh://bb@vm')
-# A bind under a path this container has that the mapping is silent about —
+# A bind under a path this container has that the mapping is silent about:
 # here the projects share itself, with nothing declared at all. The complaint
 # used to say "the daemon does not have it", which is a claim this side cannot
 # make: nothing here can see the other machine's filesystem, which is the whole
@@ -898,7 +904,7 @@ ok(hp.devdata.length === 0,
    'a bind under the dev-data share is the VM\'s business, and is not judged here');
 ok(hp.unmapped.length === 1 && !/does not have it/.test(hp.unmapped[0])
    && /\/workspace:\/workspace/.test(hp.unmapped[0]),
-   'an unmapped path says the mapping is silent, not that the daemon lacks it — '
+   'an unmapped path says the mapping is silent, not that the daemon lacks it, '
    + 'and names the pair to add');
 ok(hp.falseparity[0]['/workspace'] === '/workspace'
    && /sandbox-VM mapping/.test(hp.falseparity[1][0] || ''),
@@ -906,7 +912,7 @@ ok(hp.falseparity[0]['/workspace'] === '/workspace'
 
 // Who makes the dev-data directory. It has to exist before a bind can use it,
 // docker's own attempt fails on a root-squashing share (it makes it, fails the
-// chown, fails the run — and leaves it behind, so the second press works), and
+// chown, fails the run, and leaves it behind, so the second press works), and
 // for a long time the only candidate was this container. That is the entire
 // reason /devdata had to be mounted here as well as over there.
 const dd = execFileSync('python3', ['-c', `
@@ -916,8 +922,8 @@ spec = importlib.util.spec_from_file_location('d', ${
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
-# Which daemon this is addressed at — DOCKER_HOST is not read any more
-# (roadmap #18), the node record carries it. Both seams are stubbed: the
+# Which daemon this is addressed at. DOCKER_HOST is not read any more
+# (roadmap #18); the node record carries it. Both seams are stubbed: the
 # per-instance entry points re-enter on_node() themselves, which resolves the
 # address through node_addr and would otherwise wipe what was set here.
 HOST = ['ssh://bb@vm']          # the sandbox, as every call below assumes
@@ -952,8 +958,8 @@ def fake(argv, timeout=60, **kw):
     return {'code': 0, 'out': ''}
 m._run = fake
 
-# The guard asks whether the daemon is a VERIFIED sandbox — an ssh address and
-# a daemon carrying the provisioner's label — and asking costs a docker info,
+# The guard asks whether the daemon is a VERIFIED sandbox (an ssh address and
+# a daemon carrying the provisioner's label), and asking costs a docker info,
 # which the fake above cannot answer. Primed rather than stubbed out: the memo
 # is the real path, so what is tested below is the real check reading a real
 # answer, and blanking it is how the proxy case says no.
@@ -967,7 +973,7 @@ verified(True)
 
 out = {}
 sethost('ssh://bb@vm')
-# The VM makes it, and BB_DEV_DATA is the path on THAT machine — the share is
+# The VM makes it, and BB_DEV_DATA is the path on THAT machine: the share is
 # not mounted on this side at all, which is the point of doing it over there.
 m.DEVDATA = '/devdata-not-here'
 out['remote'] = [m._dev_data_env('alpha'), calls[:]]
@@ -1001,7 +1007,7 @@ out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
 
 # Renaming a PROJECT, which is asked per project rather than per directory:
 # only the default instance's directory is named for the project, so that one
-# moves and a named instance's does not — its name never carried the project.
+# moves and a named instance's does not, since its name never carried the project.
 # Asked as was == now rather than known, so a change to _pname is picked up
 # here rather than orphaning what it renames.
 calls.clear()
@@ -1011,13 +1017,13 @@ out['project'] = [m.rename_project_data('alpha', 'beta'),
                    for c in calls if 'mv' in c['argv']]]
 
 # Bind directories on the DAEMON's side. The shares are mounted over there
-# and not here, which is the shipped arrangement — and which shares the VM has
+# and not here, which is the shipped arrangement, and which shares the VM has
 # is the VM's business: nothing is declared on this side, so a share added
 # over there next month needs no BuilderBot setting touched. Neither share is
 # in the fake mount table above, so nothing goes down the local branch.
 # Names no machine has. missing_dirs skips a bind whose source EXISTS, on the
 # real filesystem, so a fixture share called /auxiliary was silently dropped
-# from the answer on any box that happens to have one — which every Unraid
+# from the answer on any box that happens to have one, which every Unraid
 # node does (B83). The mount table below is a fixture; these have to be too.
 m.DEVDATA = '/bbfix-devdata'
 cfg = {'services': {'s': {'volumes': [
@@ -1040,7 +1046,7 @@ out['anyshare'] = m._guard(m._devdata_argv('mkdir', 'x', root='/undeclared'))
 out['climb'] = m._guard(m._devdata_argv('mkdir', '../etc', root='/bbfix-devdata'))
 out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/bbfix-devdata'))
 
-# What the guard lets through is these commands, rebuilt and compared — not
+# What the guard lets through is these commands, rebuilt and compared, not
 # the verb. A run with a bind is root on whatever answers.
 sethost('ssh://bb@vm')
 mk = m._devdata_argv('mkdir', 'bbdev-alpha')
@@ -1086,7 +1092,7 @@ ok(DDD.onto[0][0] === false && /already has a data directory/.test(DDD.onto[0][1
    '...and refuses onto a name the sandbox already has: every call it made names '
    + 'one directory, so the two-path mv that would bury one never ran');
 ok(JSON.stringify(DDD.project[1]) === JSON.stringify([['/d/alpha', '/d/beta']]),
-   'renaming a project moves the data of every instance named after it — which '
+   'renaming a project moves the data of every instance named after it, which '
    + 'is the default one, and only it');
 ok(DDD.project[0][0].length === 1 && !DDD.project[0][1].length,
    '...and a named instance is left alone rather than reported as a failure: '
@@ -1100,7 +1106,7 @@ ok(JSON.stringify(DDD.split[0]) === JSON.stringify(
      ['/bbfix-aux/plex-library', '/bbfix-devdata/sonarr/config', '/bbfix-devdata/sonarr/data'])
    && JSON.stringify(DDD.split[1]) === JSON.stringify(['/bbfix-lone']),
    "every bind under a share of the daemon's is BuilderBot's to make, with "
-   + 'nothing declared anywhere — only a bind AT a share root is not, since '
+   + 'nothing declared anywhere; only a bind AT a share root is not, since '
    + 'docker itself creates that one as root');
 ok(DDD.made[0].length === 3 && !DDD.made[1].length
    && JSON.stringify(DDD.made[3]) === JSON.stringify([
@@ -1115,7 +1121,7 @@ ok(/not a share root/.test(DDD.slash) && /not a share root/.test(DDD.nested)
 // One thing at a time on an instance, and it covers every verb that runs a
 // compose call. A compose action is a job on the queue now (phase 4): `up`,
 // `down`, `rebuild` and `remove` all submit one, and a second on the same
-// instance is refused while the first is queued or running — where before
+// instance is refused while the first is queued or running, where before
 // `up` never set the flag, so a thirty-minute implicit build inside it was
 // invisible to the guard. A different instance queues behind it rather than
 // being refused: the one-at-a-time is per instance, the queue serialises the
@@ -1176,15 +1182,15 @@ ok([SL.second_up, SL.rebuild_during_up, SL.down_during_up]
      .every(r => /one at a time/.test(r.error || '')),
    '...and every other verb on that instance is refused while it is queued or running, not only a build');
 ok(SL.other_instance.ok && SL.queued[0].join() === 'j_2,up,staging,n_sandbox,operator',
-   '...while another instance of the same project queues behind it — one at a time is per instance');
+   '...while another instance of the same project queues behind it: one at a time is per instance');
 ok(SL.view && SL.view.running && SL.view.step === 'queued' && SL.view.action === 'up'
    && SL.view.node === 'n_sandbox',
    'the row reads its job from the queue: running, on the step "queued", with the node');
 ok(SL.free_now.ok && SL.free_now.job === 'j_3',
    '...and the instance is free again when its job has ended, however it ended');
 
-// Abort during the stopping step. It reached nothing — the phase held no
-// process to signal, and nothing read the flag again until after `up` — so the
+// Abort during the stopping step. It reached nothing: the phase held no
+// process to signal, and nothing read the flag again until after `up`, so the
 // container came up and the job then reported that it had been stopped. Both
 // halves are asserted: that `up` never runs, and that what the row says
 // matches what happened. Driven through _job_rebuild with a run whose cancel
@@ -1229,7 +1235,7 @@ ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
 
 // The tail is a display, not a transcript. Compose with no terminal writes a
 // new line per progress tick instead of rewriting one, so a single layer of a
-// single image arrives as dozens of near-identical lines — enough to push
+// single image arrives as dozens of near-identical lines, enough to push
 // whatever went wrong out of a 4000-character tail entirely. The fold lives
 // in the runner now (jobs.fold), where every job's log goes through it.
 const tail = execFileSync('python3', ['-c', `
@@ -1262,9 +1268,9 @@ ok(/operation not permitted/.test(TL.pull[1][TL.pull[1].length - 1]),
 ok(TL.pull[1].some(l => /Extracting 3B/.test(l)) && !TL.pull[1].some(l => /Extracting 2B/.test(l)),
    '...and the frame kept is the latest one, not the first');
 ok(TL.build.length === 3,
-   'a build transcript is not collapsed — three words in common is a frame, prose is not');
+   'a build transcript is not collapsed: three words in common is a frame, prose is not');
 
-// The address. One arrangement — a sandbox VM over ssh — so the operator
+// The address. One arrangement only (a sandbox VM over ssh), so the operator
 // writes the machine and the rest is filled in; and anything that is NOT that
 // arrangement is refused by name here rather than half-working further down,
 // where a `docker run` as root would land on somebody's real daemon.
@@ -1283,7 +1289,7 @@ out = {}
 for k, v in [('bare', '10.0.0.9'), ('scheme', 'ssh://10.0.0.9'),
              ('user', 'ssh://someone@10.0.0.9'), ('proxy', 'tcp://p:2375'),
              ('unset', '')]:
-    # What the node's record says its address is — on_node() puts it here.
+    # What the node's record says its address is; on_node() puts it here.
     m._node_ctx.addr = v
     out[k] = [m.docker_host(), m.sandbox_daemon(), m.available()['why'],
               m._pname('alpha'), m._pname('alpha', 'dev')]
@@ -1299,10 +1305,10 @@ ok(AD.proxy[1] === false && /sandbox/.test(AD.proxy[2]) && /tcp:/.test(AD.proxy[
 ok(AD.unset[1] === false && /enroll the sandbox VM/.test(AD.unset[2]),
    '...as is no node at all, which is the shipped state and not a fault');
 ok(AD.bare[3] === 'alpha' && AD.bare[4] === 'dev',
-   'a container is called exactly what it was named — no prefix in front of it');
+   'a container is called exactly what it was named, with no prefix in front of it');
 
 // Container names and project names are separate groups. A project existing
-// reserves nothing — an earlier version checked that it did, and refused a
+// reserves nothing; an earlier version checked that it did, and refused a
 // name the operator had every right to use. What is refused is two INSTANCES
 // resolving to one compose project, which is one set of containers with two
 // rows driving it.
@@ -1329,7 +1335,7 @@ print(json.dumps(out))
 `], { encoding: 'utf8' });
 const NM = JSON.parse(nm.trim().split('\n').pop());
 ok(NM.after_a_project.name === 'ep-silon',
-   'a container may be named after a project — they are separate name groups');
+   'a container may be named after a project: they are separate name groups');
 ok(/already alpha/.test(NM.twice.error || ''),
    '...but not twice, because that is one compose project with two rows on it');
 ok(Object.keys(NM.owner)[0] === 'alpha'
@@ -1339,7 +1345,7 @@ ok(/already alpha/.test(NM.project_told),
    'a project whose own name was taken is told by whom, not quietly merged into it');
 
 // Making a compose file's bind directories. Docker creates a missing bind
-// source itself — as root, then chowning it — which on a share that squashes
+// source itself (as root, then chowning it), which on a share that squashes
 // root fails and takes the run down, leaving the directory behind so the
 // SECOND press works. So they are made first, by whoever owns them.
 const mkd = execFileSync('python3', ['-c', `
@@ -1366,7 +1372,7 @@ os.environ['BB_MOUNTINFO'] = d + '/mi'
 open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw\\n')
 sethost('ssh://bb@vm')
 # Faked, like every sibling block: without this the daemon-side half ran the
-# REAL docker CLI against whatever DOCKER_HOST the box has — a test that
+# REAL docker CLI against whatever DOCKER_HOST the box has, a test that
 # reached out and made a directory on the operator's live VM.
 calls = []
 def fake(argv, timeout=60, **kw):
@@ -1405,7 +1411,7 @@ ok(!MK.split[0].concat(MK.split[1]).some(p => /already/.test(p)),
 ok(MK.exists && MK.made.made.length === 2 && !MK.made.failed.length
    && JSON.stringify(MK.ran) === JSON.stringify([['/vm-share:/d', '/d/z']]),
    'making them is a local mkdir on this side and one container per share on '
-   + 'the VM\'s — with nothing declared to make that allowed');
+   + 'the VM\'s, with nothing declared to make that allowed');
 
 
 // ...and it happens as part of starting, not as a button somebody remembers.
@@ -1515,7 +1521,7 @@ ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
    '...and main is the instance the project has');
 // The project is no longer spelled into the name. A default instance is
 // named for its project because nobody typed a name for it; a named one is
-// called what it was called, which is the whole of the change — the old
+// called what it was called, which is the whole of the change. The old
 // scheme rendered MediaReducer-Dev's instance of the same name as
 // mediareducer-dev-mediareducer-dev.
 ok(ij.pnames[0] === 'alpha' && ij.pnames[1] === 'staging',
@@ -1523,17 +1529,17 @@ ok(ij.pnames[0] === 'alpha' && ij.pnames[1] === 'staging',
 ok(ij.pnames[2] === 'two-words',
    '...slugged, so a name with spaces cannot reach a compose call');
 ok(ij.envpaths[0] !== ij.envpaths[1],
-   'and they do not share an env file — two instances exist to differ');
+   'and they do not share an env file: two instances exist to differ');
 
 
 
 // A row knows its own build is running. The manager used to look for the job
-// on the status snapshot, under a key nothing has ever set — so `busy` was
+// on the status snapshot, under a key nothing has ever set, so `busy` was
 // permanently false: a row said "never built" through its own build, and its
 // buttons stayed live for a second click the server then refused.
 await openManager();
 // Waited for rather than sampled. A revision bump nulls dockerList and
-// refetches, and the rows stay on screen through it — so openManager can
+// refetches, and the rows stay on screen through it, so openManager can
 // return, on a selector that is still the last paint, while the answer this
 // asks about is briefly gone. Sampling it there fails on the harness's timing
 // rather than on the code: the same shape as bug #13.
@@ -1543,7 +1549,7 @@ ok(await page.evaluate(() => typeof dockerList?.job !== "undefined"),
    'the manager is told about the running job with the rest of its page');
 
 // The wiring fold: what the container publishes and what it mounts, fetched
-// when it is opened and not before — parsing the compose file is the one thing
+// when it is opened and not before: parsing the compose file is the one thing
 // the manager's page deliberately does not do for every row at once.
 await openManager();
 ok(await page.$eval(`${DM} .sect .wire`, e => /reading/.test(e.textContent)),
@@ -1551,7 +1557,7 @@ ok(await page.$eval(`${DM} .sect .wire`, e => /reading/.test(e.textContent)),
 await page.click(`${DM} .sect > summary`);
 // 20s like its neighbours, not 15. The fold fetches, and this is the one
 // assertion in this file that has timed out in a full run while passing 3/3
-// alone — three times now, always with a CI job or another suite sharing the
+// alone, three times now, always with a CI job or another suite sharing the
 // box. See bug #13: the code is not what is slow.
 await page.waitForFunction((sel) => /7475/.test(
   document.querySelector(sel + ' .sect .wire')?.textContent || ''), DM,
@@ -1564,8 +1570,8 @@ ok(/\/config/.test(wire) && /↔/.test(wire),
    '...beside a writable one, which gets the other arrow');
 
 // A published port is a link, and it points at the machine the DAEMON runs on.
-// It used to be built from location.hostname — the machine serving this page,
-// which is the Unraid box and not the sandbox VM — so every port label and
+// It used to be built from location.hostname (the machine serving this page,
+// which is the Unraid box and not the sandbox VM), so every port label and
 // every Open link named a host where either nothing answers or something else
 // does. The sandbox node dialed in from `stub`, so the answer is `stub`.
 ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
@@ -1574,7 +1580,7 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
 
 // Where the row's state sits, asserted by geometry rather than by a
 // screenshot. It used to be a third column beside the name; it is the action
-// bar's status line now, which is the shared rule — what a thing is doing
+// bar's status line now, which is the shared rule: what a thing is doing
 // gets a line of its own, and the verbs go under it. Measured because the
 // point is the pixels: a status that shared a line with four buttons was the
 // layout this framework exists to stop.
@@ -1646,14 +1652,14 @@ await holdPoll(page);
 // would be testing a payload the server does not send.
 // PLANTED AND READ IN ONE EVALUATE. Every assertion below is about the same
 // painted moment, and asking for them one at a time gave the page eight
-// chances to repaint between the plant and the last of them — which is how
+// chances to repaint between the plant and the last of them, which is how
 // this block went red on a loaded box with nothing changed, at a different
 // assertion each time (B99's family). holdPoll stops the fifteen-second
 // refresh; it does not stop a revision landing, and there is no need to make
 // it: drawPanes() is synchronous, so one call reads one frame.
 const dead = await page.evaluate(() => {
   state.docker = { on: false, node: dockerNode,
-                   why: 'no node with a daemon — nothing to talk to' };
+                   why: 'no node with a daemon: nothing to talk to' };
   dockerRev++; drawPanes();
   const q = s2 => [...document.querySelectorAll(s2)];
   const mk = document.getElementById('bDockerNew');
@@ -1672,29 +1678,29 @@ const dead = await page.evaluate(() => {
 ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
 // data-tip, not title: tipify() runs after the gate on this surface and turns
-// one into the other, which is the point — the reason is worn the way every
+// one into the other, which is the point: the reason is worn the way every
 // other explanation here is.
 ok(/no node with a daemon/.test(dead.tip),
    '...each carrying the reason rather than just refusing');
 ok(/no node with a daemon/.test(dead.empty),
    '...and the tab says it in words, since a tooltip is unreachable on a phone');
 ok(dead.refreshLive,
-   'Refresh stays live — it is the retry, and disabling it would strand you');
+   'Refresh stays live: it is the retry, and disabling it would strand you');
 ok(dead.files.every(x => !x),
    '...as do Edit and Env: a compose file is a file whatever can run it');
 // ...and so does Remove, which is the correction: it is a record on this side
 // with a `down` in front of it as a courtesy. Gated with the daemon buttons,
-// a row on a machine that had gone away could be removed by nobody — and the
+// a row on a machine that had gone away could be removed by nobody, and the
 // row is the only control over the thing it names.
 ok(dead.removes.length > 0 && dead.removes.every(x => !x),
    '...and so does Remove: the record is this side\'s, and a stranded row must go');
 // The rows stay, and stop claiming anything. The tab used to render one error
 // line and no rows at all, throwing away everything it could still honestly
-// say — which is most of it: what an instance is, and what it was built from,
+// say, which is most of it: what an instance is, and what it was built from,
 // live on this side. Only "running" is the daemon's to know, and an
 // unreachable daemon is not evidence that anything stopped.
 ok(dead.off.length > 0,
-   'the rows are still listed with no daemon — the tab shows what is on record');
+   'the rows are still listed with no daemon: the tab shows what is on record');
 ok(dead.off.every(Boolean),
    '...greyed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
@@ -1722,7 +1728,7 @@ ok(!/state unknown/.test(await page.$eval('.dmtab', e => e.textContent)),
    '...and they still say what is running, rather than state unknown');
 // ...and a verdict that names no node gates nothing. This is the shape that
 // actually shipped: the field was absent, so `node || dockerNode` matched
-// itself and one node's silence greyed them all. Failing open here is safe —
+// itself and one node's silence greyed them all. Failing open here is safe:
 // a row whose own daemon is down is greyed by the tab's own overview.
 await page.evaluate(() => {
   state.docker = { on: false, why: 'docker does not answer: no route to host' };
@@ -1758,8 +1764,8 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 //
 // This block drives the FIRST: the node's own census stops reporting a
 // daemon, which is a docker that died on a machine still talking to us. The
-// server must not spend its `ps` timeout finding that out — every row it can
-// draw comes from the store on this side — and the tab must come back with
+// server must not spend its `ps` timeout finding that out (every row it can
+// draw comes from the store on this side), and the tab must come back with
 // them rather than with one error line.
 {
   writeFileSync(`${DIR}/dockerstate/version.fail`, '');
@@ -1785,15 +1791,15 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   }, nodeNow);
   await freePoll(page);
   ok(seen.on === false && Date.now() - t0 < 25000,
-     `a daemon the node does not report is asked nothing — no ps timeout to sit through (${
+     `a daemon the node does not report is asked nothing: no ps timeout to sit through (${
         seen.why.slice(0, 40)})`);
   ok(/reports no daemon|not dialing in/.test(seen.why),
      `...and the reason is the node's own, not the controller's ssh (${seen.why.slice(0, 70)})`);
   ok(seen.ups.length > 0 && seen.ups.every(Boolean),
      `...so every control is off, which is what "cannot act" means (${JSON.stringify(seen.ups)})`);
   // Waited for, not drawn by hand. The build the Send above queued is still
-  // moving the devapp revision, and every move nulls dockerList and refetches
-  // — a drawPanes() here can land on the null and paint "loading…" with no
+  // moving the devapp revision, and every move nulls dockerList and refetches,
+  // so a drawPanes() here can land on the null and paint "loading…" with no
   // rows (B69). loadDocker repaints when its answer lands; that is the draw
   // this asks about.
   await page.waitForFunction(() => dockerList?.blind === true
@@ -1802,7 +1808,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   ok(true, '...and the manager still lists what is on record');
 
   // THE SECOND QUESTION, and the one B111 is about. The node reports its
-  // daemon again — so it can be acted on — while the controller's own `docker
+  // daemon again, so it can be acted on, while the controller's own `docker
   // ps` to it fails, which is exactly the arrangement that ghosted everything:
   // a probe the WORK does not use deciding whether the work may happen.
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
@@ -1814,7 +1820,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
       const raw = await (await fetch('/api/docker?node=' + encodeURIComponent(id))).json();
       if (raw.on === true && raw.blind === true){
         // The status poll's own copy, which is held still by holdPoll and is
-        // about this same node — the tab reads it too, and a stale "docker
+        // about this same node: the tab reads it too, and a stale "docker
         // does not answer" there would gate the row whatever this answer
         // says. Set to what the next poll would fetch.
         state.docker = { on: true, why: '', node: id };
@@ -1836,7 +1842,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
         seenWhy.slice(0, 60)})`);
   // ...in docker's own words, cut from the TAIL. Its connect error leads with
   // the ssh command it ran and hides the reason at the very end, so cutting
-  // from the front left "command [ssh -l bb -o Connect…" and nothing else —
+  // from the front left "command [ssh -l bb -o Connect…" and nothing else,
   // the half the operator already knew (B106). This line is now the whole
   // account of what is not known, so it is the message.
   ok(/No route to host/.test(seenWhy) && !/ConnectTimeout/.test(seenWhy),
@@ -1898,7 +1904,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
                              null, { timeout: 20000 });
   // Asked again until it holds rather than sampled once: the status poll can
   // have caught the daemon down inside the window above, and its verdict
-  // greys every row until the next poll — the tab repaints only when its own
+  // greys every row until the next poll; the tab repaints only when its own
   // revision moves, so refresh() and a fresh ask go together (B69).
   {
     const until = Date.now() + patience(20000);
@@ -1916,7 +1922,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 // A daemon that answers is not the same thing as the sandbox. Everything the
 // manager does beyond compose runs a container as root over there, and the
 // whole reason that is acceptable is that the far side is a box built to be
-// wrecked — so the daemon has to carry the label nodes/provision-linux.sh puts on the
+// wrecked, so the daemon has to carry the label nodes/provision-linux.sh puts on the
 // one it made, and an unlabelled machine is refused rather than driven.
 {
   // Through the CENSUS, because that is where the stamp is read from on an
@@ -1957,8 +1963,8 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 }
 
 // Plug in a DIFFERENT sandbox and that one becomes the source of truth. Two
-// VMs can wear one address — a rebuilt sandbox, a second machine given the old
-// one's IP — so what a build was recorded against is checked by the daemon's
+// VMs can wear one address (a rebuilt sandbox, a second machine given the old
+// one's IP), so what a build was recorded against is checked by the daemon's
 // own id as well, and a record from the machine no longer in play is cleared
 // rather than left quoting a build that this daemon has never heard of.
 {
@@ -1992,7 +1998,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
      '...and pointing this at another sandbox clears it: the new daemon is the '
      + 'source of truth, not the last one\'s answers');
   ok(!!(store()['ep.silon'] || {}).main,
-     '...while the instance itself stays — its compose and its env are this side\'s');
+     '...while the instance itself stays: its compose and its env are this side\'s');
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await page.waitForFunction(() => dockerList && !dockerList.blind, null, { timeout: 20000 });
@@ -2032,8 +2038,8 @@ print(json.dumps(out))
      '...and with no node the feature is off, with the reason said');
 }
 
-// Which paths a compose file is judged against. It was a hardcoded pair —
-// /workspace and /devdata — which is what the mapping held on the day it was
+// Which paths a compose file is judged against. It was a hardcoded pair,
+// /workspace and /devdata, which is what the mapping held on the day it was
 // written and not what it holds now: a share added to BOTH sides was
 // translated by to_host and checked by nothing, so a bind under it could name
 // a directory the daemon does not have, and the answer to a missing bind
@@ -2083,7 +2089,7 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
 // that one. Nothing is refused now, so nothing may be logged.
 const errs = await page.errors;
 ok(errs.length === 0,
-   `no console errors from the dev row${errs.length ? ' — got: ' + JSON.stringify(errs) : ''}`);
+   `no console errors from the dev row${errs.length ? ', got: ' + JSON.stringify(errs) : ''}`);
 
 // ---- a container with no project behind it ------------------------------
 // The shape every other Docker front end uses: a name, a compose file and an
@@ -2096,7 +2102,7 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    'the new-container dialog opens with the keyboard down');
 // Empty, with the shape offered as a placeholder. Seeded as a VALUE it was
 // a working compose for a radarr nobody asked for, one unread click from
-// being created under whatever name was typed — a hint cannot be submitted.
+// being created under whatever name was typed. A hint cannot be submitted.
 ok(await page.$eval('#cYml', e => e.value) === ''
    && await page.$eval('#cEnv', e => e.value) === '',
    '...with both definitions empty, so nothing can be saved by accident');
@@ -2117,7 +2123,7 @@ await page.click('#cTabEnv');
 await slides;
 ok(!await page.$eval('#cEnvField', e => e.hidden),
    '...and the segment swaps them, on the same slide as the project dialog');
-// An empty compose is refused rather than written — the placeholder is not
+// An empty compose is refused rather than written: the placeholder is not
 // a value, and nothing here invents one.
 await page.click('#cTabYml');
 await page.fill('#cName', 'radarr');
@@ -2186,7 +2192,7 @@ await page.click('#cCancel');
 
 // ...and one it has only after slugging. The guard compared the typing, and
 // everything downstream compares the slug: `ep-silon` is not the project
-// `ep.silon` by string and is exactly it by the time _pname has run — same
+// `ep.silon` by string and is exactly it by the time _pname has run: same
 // compose project name, same env file, same dev-data directory, with nothing
 // anywhere saying the two had met.
 await page.click('#bDockerNew');
@@ -2218,7 +2224,7 @@ ok(/already has an instance/.test(await page.$eval('#dnErr', e => e.textContent)
    'a name the project already uses is refused, in place');
 await page.click('#dnCancel');
 
-// Removing takes it down and drops it from the list — and the project's
+// Removing takes it down and drops it from the list, and the project's
 // Artifacts tab is untouched, which is where it comes back from.
 await openManager();
 await page.click('.dmtab .row[data-inst="ep.silon|staging-two"] [data-dm="remove"]');
@@ -2235,8 +2241,8 @@ ok(await page.$('#devSend'),
 
 
 // ---- building an instance from another branch -----------------------------
-// A project's tree is SHARED — one checkout for every session and every
-// person on it — so "build the other branch" cannot mean switching it. An
+// A project's tree is SHARED (one checkout for every session and every
+// person on it), so "build the other branch" cannot mean switching it. An
 // instance pinned to a ref builds from a worktree of its own, beside the
 // project and carrying a .bbignore, and the project's checkout is untouched.
 {
@@ -2259,7 +2265,7 @@ ok(await page.$('#devSend'),
   const set = await api({ project: 'ep.silon', instance: 'main', action: 'ref', ref: 'sidebranch' });
   ok(set.ok && set.ref === 'sidebranch', `an instance can be pinned to a branch (${
      JSON.stringify(set).slice(0, 50)})`);
-  // What it is built FROM is that branch's tip, not the checkout's — so the
+  // What it is built FROM is that branch's tip, not the checkout's, so the
   // row stops saying "the code has moved" every time the project's own
   // branch does, and says it when the pinned one moves.
   await dmRefresh();
@@ -2269,7 +2275,7 @@ ok(await page.$('#devSend'),
   ok((st.state || {}).ref === 'sidebranch', 'the state carries the pin for the row');
   // The PIN is not a build. Pressing Apply changes what the next build is made
   // of and moves nothing that already exists, so what is built here still
-  // names no branch — the commit is the truth, the branch is the setting, and
+  // names no branch: the commit is the truth, the branch is the setting, and
   // this is the moment they disagree.
   ok(!(st.state || {}).built_ref,
      `...and what is already built names no branch, because it was built before the pin (${
@@ -2295,7 +2301,7 @@ ok(await page.$('#devSend'),
   // NOW it is true, and the line says it: the ref is stamped by the build that
   // used it, so it names the branch and the commit together. Read off dmBuilt
   // rather than the row, because a running instance's state line says it is
-  // running — this is the sentence it falls back to, and the one the blind
+  // running. This is the sentence it falls back to, and the one the blind
   // listing carries.
   const after = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
   ok((after.state || {}).built_ref === 'sidebranch',
@@ -2307,7 +2313,7 @@ ok(await page.$('#devSend'),
   // TWO AT ONCE is the case this is for, and the obstacle is ports: two
   // instances of one project are the same compose file, so the second
   // publishes what the first already has. Said before the press rather than
-  // by compose after it — read off the container list the manager already
+  // by compose after it, read off the container list the manager already
   // has, so it costs nothing.
   {
     const two = await api({ project: 'ep.silon', action: 'new', instance: 'onbranch',
@@ -2329,19 +2335,19 @@ ok(await page.$('#devSend'),
   // THE ARRANGEMENT THE OPERATOR WAS IN: the project's own checkout standing
   // on the branch the instance is pinned to. git allows a branch in one
   // worktree at a time, so a build tree that CLAIMED the name was refused
-  // outright — "'rack-drift' is already used by worktree at
-  // /workspace/word-jumble" — for what is the ordinary arrangement rather
+  // outright ("'rack-drift' is already used by worktree at
+  // /workspace/word-jumble") for what is the ordinary arrangement rather
   // than an edge of one.
   {
     // The trap in the OTHER direction, and the one that fails first: a build
     // tree holding a branch is a branch the person's own shell can no longer
-    // check out — a button here taking a name hostage. Asserted rather than
+    // check out: a button here taking a name hostage. Asserted rather than
     // called, so it reads as a failure with a name on it and not a stack.
     let moved = '';
     try { G('checkout', '-q', 'sidebranch'); }
     catch (e) { moved = String(e.stderr || e).split('\n')[0]; }
     ok(!moved, `the project's own checkout can still move onto the branch a build tree was made from${
-       moved ? ` — ${moved.slice(0, 90)}` : ''}`);
+       moved ? `: ${moved.slice(0, 90)}` : ''}`);
     const again = await api({ project: 'ep.silon', instance: 'main', action: 'rebuild' });
     ok(!again.error, `a branch the project itself is standing on still builds (${
        JSON.stringify(again).slice(0, 70)})`);
@@ -2370,7 +2376,7 @@ ok(await page.$('#devSend'),
 // ---- who may rebuild it: the dial on the docker row -----------------------
 // Making a container, removing one, Up, Down and Env are the operator's.
 // REBUILD is the one a project can hand to its session, because a project
-// whose work IS the container has a loop that cannot close without it —
+// whose work IS the container has a loop that cannot close without it:
 // change it, rebuild it, look at what it did. Three settings, the notebook's
 // own words: deny (the default, refused with the sentence that names the
 // dial rather than a bare 403), ask (a person reads the reason and allows
@@ -2383,7 +2389,7 @@ ok(await page.$('#devSend'),
                                WORKSPACE: `${DIR}/ws` } }).trim();
   // From NODE, not from the page: a fetch in the browser carries the
   // operator's cookie as well as the header, and the server answers the
-  // cookie — so the call would be the operator's and the gate under test
+  // cookie, so the call would be the operator's and the gate under test
   // would never be reached. A session has a token and nothing else.
   const asSession = async (body) => {
     const r = await fetch(URL.replace(/\/$/, '') + '/api/devapp',
@@ -2402,7 +2408,7 @@ ok(await page.$('#devSend'),
   // The two verbs that make and unmake a container are not on the dial at
   // all: they are docker-write, which a session's principal never has, so
   // the grant cannot reach them however it is set. This is the operator's
-  // own line — the user makes them, Claude rebuilds them — and it is checked
+  // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
   for (const act of ['new', 'remove', 'env-set', 'route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
@@ -2467,7 +2473,7 @@ ok(await page.$('#devSend'),
        return (j.asks || []).some(a => a.id === id && a.kind === 'rebuild');
      }, asked.id),
      '...and it is waiting on a person, in the one list of asks');
-  // The session sees its own request's outcome and nothing else — the same
+  // The session sees its own request's outcome and nothing else, the same
   // scoping the phone and root asks have.
   const pend = await (await fetch(URL.replace(/\/$/, '') + '/api/phone',
     { method: 'POST', headers: { 'Content-Type': 'application/json',
@@ -2498,7 +2504,7 @@ ok(await page.$('#devSend'),
   const SW = '.dmtab [data-dmclaude="ep.silon"]';
   // Through the manager's own opener, which waits for the ROWS to be there.
   // A bare openDocker() returns before the list has arrived, so this was a
-  // twenty-second bet on a fetch finishing — and it lost in a full run on a
+  // twenty-second bet on a fetch finishing, and it lost in a full run on a
   // loaded box while passing alone straight afterwards (B118). The dial is
   // drawn from that list, so the row being present is the real condition.
   await dmRefresh();
@@ -2514,7 +2520,7 @@ ok(await page.$('#devSend'),
      '...with its Apply asleep until something is picked');
   ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
      '...and not on the artifact row, which is where it was asked not to be');
-  // Turned off from the row itself, which is the gesture this is for —
+  // Turned off from the row itself, which is the gesture this is for,
   // and waited on the SERVER's own copy of the setting rather than on the
   // checkbox, because the checkbox is redrawn from the poll and its state
   // between the click and the next payload is nobody's answer.

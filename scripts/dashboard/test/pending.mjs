@@ -1,12 +1,12 @@
 // What a session adds to the notebook, held for the operator (roadmap #27).
 //
 // Per project and per tab the operator picks auto, ask or deny for what a
-// session ENTERS — a roadmap item, a bug report, a rule. What is exercised
+// session ENTERS, be it a roadmap item, a bug report or a rule. What is exercised
 // for real: the three stores through bb (the gate lives in them), the
 // settings dialog that sets the words, the band above the notebook's tabs,
 // the review modal with its checkboxes and two verbs, the bell's row, the
 // hook line that tells the session what was decided, and the endpoint's
-// refusal of a session's own token. What is faked: nothing — the hook is the
+// refusal of a session's own token. What is faked: nothing. The hook is the
 // shipped script run as a process, and bb is the checkout's.
 import { launch, newPage, ok, done, ready, URL, DIR, nbShown, sleep } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -25,7 +25,7 @@ const bbErr = (...a) => { try { return bb(...a); }
                           catch (e) { return String(e.stdout || '') + String(e.stderr || ''); } };
 const file = name => existsSync(`${DIR}/state/${name}`)
   ? JSON.parse(readFileSync(`${DIR}/state/${name}`, 'utf8')) : {};
-const todos = () => file('todos.json').projects?.alpha || [];
+const roadmapItems = () => file('roadmap.json').projects?.alpha || [];
 const bugs = () => file('bugs.json').projects?.alpha || [];
 const rulesOf = () => file('rules.json').projects?.alpha?.rules || [];
 const waiting = () => file('pending.json').projects?.alpha || [];
@@ -48,8 +48,8 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- auto is today ----------------------------------------------------------
 const first = bb('roadmap', 'add', 'a thing added under auto');
-ok(/added R\d+/.test(first) && todos().some(r => r.text === 'a thing added under auto'),
-   'with nothing set, what a session adds lands at once — the default changes nothing');
+ok(/added R\d+/.test(first) && roadmapItems().some(r => r.text === 'a thing added under auto'),
+   'with nothing set, what a session adds lands at once: the default changes nothing');
 const firstId = first.match(/added R(\d+)/)[1];
 
 // ---- the setting, in the project's settings dialog -------------------------
@@ -81,7 +81,7 @@ await gone('#rnmodal');
 // ---- ask: held, and the follow-ups ride behind ------------------------------
 const held = bb('roadmap', 'add', 'make the picker wrap', '--step', 'measure it');
 const num = (held.match(/held for approval as R(\d+)/) || [])[1];
-ok(!!num && !todos().some(r => r.text === 'make the picker wrap'),
+ok(!!num && !roadmapItems().some(r => r.text === 'make the picker wrap'),
    `under ask a session's add is held with a number and is NOT on the list (${held.trim().slice(0, 60)})`);
 ok(Number(num) === Number(firstId) + 1,
    '...and the number it is told is the next one, reserved for it');
@@ -92,14 +92,14 @@ ok(/held behind R\d+/.test(bb('roadmap', 'step', 'add', `R${num}`, 'fix it')),
 ok(/still waiting/.test(bbErr('roadmap', 'done', `R${num}`)),
    '...while ticking it off is refused: there is nothing to tick yet');
 ok(/reworded R\d+/.test(bb('roadmap', 'edit', `R${firstId}`, 'a thing added under auto, reworded')),
-   'modifying what is already on the list passes under ask — the setting is about creation');
+   'modifying what is already on the list passes under ask: the setting is about creation');
 const listed = bb('roadmap', 'pending');
 ok(/make the picker wrap/.test(listed) && /↳.*details/.test(listed) && /↳.*fix it/.test(listed)
    && /setting.*ask/.test(listed),
    'bb roadmap pending lists what is waiting, the follow-ups under their item, and the setting');
 const second = bb('roadmap', 'add', 'a second held item');
 ok(Number((second.match(/R(\d+)/) || [])[1]) === Number(num) + 1,
-   'a second held add gets the next number — the reserved one is not handed out twice');
+   'a second held add gets the next number: the reserved one is not handed out twice');
 
 const bheld = bb('bug', 'add', 'the picker loses focus', '--sev', 'high', '--area', 'picker');
 const bnum = (bheld.match(/held for approval as B(\d+)/) || [])[1];
@@ -155,7 +155,7 @@ ok(await page.$$eval('#pendList input[data-pend]', bs => bs.every(b => b.checked
 ok(await page.$$eval('#pendList .prow.dep', ds => ds.length) === 3,
    '...with the follow-ups drawn under the change they ride behind');
 ok(await page.$eval('#pendList .prow:not(.dep) details pre', p => /1\. measure it/.test(p.textContent)),
-   '...and the full text of an add — its steps here — under a fold');
+   '...and the full text of an add (its steps here) under a fold');
 // Untick the held roadmap add: its two follow-ups go with it.
 const parent = await page.$eval('#pendList .prow:not(.dep) input[data-pend]', b => b.dataset.pend);
 await page.click(`#pendList input[data-pend="${parent}"]`);
@@ -167,9 +167,9 @@ await page.waitForFunction(() => document.querySelectorAll('#pendList .prow').le
                            null, { timeout: 15000 });
 ok(bugs().some(b => b.title === 'the picker loses focus' && /seen on chrome too/.test(b.notes || '')
                     && String(b.id) === bnum && b.by === 'claude')
-   && todos().some(r => r.text === 'a second held item'),
+   && roadmapItems().some(r => r.text === 'a second held item'),
    'Approve replays the ticked ones in order: the report lands with the note that rode behind it, under the number it was told');
-ok(!todos().some(r => r.text === 'make the picker wrap'),
+ok(!roadmapItems().some(r => r.text === 'make the picker wrap'),
    '...and what was not ticked is still waiting');
 ok(/approved by the operator/.test(bb('bug', 'history', '-n', '3')),
    'the tracker\'s log says the filing was approved, not merely that a session filed it');
@@ -177,7 +177,7 @@ ok(await page.$$eval('#pendList input[data-pend]', bs => bs.length === 3 && bs.e
    'the modal redraws from the answer with what is left, ticked again');
 await page.click('#pendApprove');
 await page.waitForSelector('#pendEmpty:not([hidden])', { timeout: 15000 });
-const landed = todos().find(r => r.text === 'make the picker wrap');
+const landed = roadmapItems().find(r => r.text === 'make the picker wrap');
 ok(!!landed && String(landed.id) === num && landed.info === 'the details, written early'
    && landed.steps.length === 2 && landed.steps[1].text === 'fix it',
    'the roadmap item lands with its details and both steps, under the number it was told');
@@ -203,7 +203,7 @@ await page.waitForFunction(() => document.querySelectorAll('#pendList .prow').le
                            null, { timeout: 10000 });
 await page.click('#pendDeny');
 await page.waitForSelector('#pendEmpty:not([hidden])', { timeout: 15000 });
-ok(!todos().some(r => r.text === 'an item to be denied') && waiting().length === 0,
+ok(!roadmapItems().some(r => r.text === 'an item to be denied') && waiting().length === 0,
    'Deny drops the change and what rode behind it, and nothing lands');
 ok(/denied/.test(bb('history', '--find', 'to be denied')),
    '...and the merged log records the denial under "waiting"');

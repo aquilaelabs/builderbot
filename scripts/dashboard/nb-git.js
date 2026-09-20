@@ -367,7 +367,7 @@ function nbGitView({$, nb, project}){
       const c = await r.json();
       if (sha !== gitPick) return;               // moved on meanwhile
       if (c.error){ box.innerHTML = `<div class="hint bad">${esc(c.error)}</div>`; return; }
-      const when = c.when ? new Date(c.when * 1000).toLocaleString() : "";
+      const when = c.when ? fmtTime(c.when * 1000) : "";
       box.innerHTML = `<div class="gcommit">
         <div class="name"><code>${esc(c.short)}</code> ${esc(c.message.split("\n")[0])}</div>
         <div class="sub">${esc(c.author)} &lt;${esc(c.email)}&gt; · ${esc(when)}${

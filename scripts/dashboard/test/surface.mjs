@@ -3,18 +3,18 @@
 // deliberate line in a diff rather than something that happens.
 //
 // index.html is one file of vanilla JS with no build step and no module
-// boundary — the stated design, and the reason `bb dashboard test` can drive
+// boundary: the stated design, and the reason `bb dashboard test` can drive
 // its internals directly. What it lacks is any way to notice code landing in
 // the WRONG scope. That is not hypothetical: a feature written this week was
 // declared three braces deep inside makeNotebook, a per-notebook factory, so
-// the projects card calling it got "openTrash is not defined" — and an earlier
+// the projects card calling it got "openTrash is not defined", and an earlier
 // one read a const before its initializer across ten thousand lines (bug #27).
 // Both were eventually caught by a console error in a suite that happened to
 // exercise the path. This catches them by name, in one place, immediately.
 //
 // It runs in BOTH directions on purpose.
 //
-//   MISSING means a name that used to be top-level is not any more — deleted,
+//   MISSING means a name that used to be top-level is not any more: deleted,
 //   renamed, or fallen into a nested scope. The last of those is the bug.
 //
 //   NEW means a global appeared. That is not an error, but it should be a
@@ -25,7 +25,7 @@
 // A `function` or `var` at the top level of a classic script becomes a
 // property of window; `let` and `const` go into the global LEXICAL scope,
 // reachable by bare name and invisible to getOwnPropertyNames. So the
-// inventory below covers the function/var half — 192 names — and the named
+// inventory below covers the function/var half (192 names), and the named
 // check underneath asks by bare name instead, which is how the markup and the
 // suite actually reach them. Worth knowing rather than discovering: a feature
 // written entirely as `const fn = () => …` is not covered by the inventory.
@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 // Sorted, and one entry per name. Regenerate by failing the test and reading
-// what it prints — do not hand-edit it into agreement without looking at why
+// what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
@@ -52,21 +52,23 @@ const SURFACE = [
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
   'endCardDrag', 'endDrag', 'endSession', 'evictFrames',
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
-  'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
-  'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeDraft', 'mountState', 'nodeStale', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'dmRowsHtml', 'dmRefLine', 'dmGrantLine', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
+  'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'nodeDraft', 'mountState', 'nodeStale', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'dmRowsHtml', 'dmRefLine', 'dmGrantLine', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionWord',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
-  'openNewContainer', 'openNewProject', 'openNotebook', 'openPackages', 'openPending', 'drawPendingModal', 'pendAct',
+  'openNewContainer', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
   'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
-  'phFetch', 'pinTo', 'pkgAct', 'pkgPick', 'pkgRow', 'pkgTickDots', 'placeCard',
+  'phFetch', 'pinTo', 'tcAct', 'tcPick',
+  // The Emulator tab (tab-emulator.js).
+  'openEmulator', 'emuPick', 'loadEmulator', 'emuAdder', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcSystemLine', 'tcTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
@@ -82,7 +84,7 @@ const SURFACE = [
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive',
   'globalRulesSection', 'paintGlobalRulesCount', 'loadGlobalRules', 'globalRuleRow', 'drawGlobalRules',
   'wireGlobalRules', 'openGlobalRules', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
-  'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
+  'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
   'rnDrawPrefs', 'rnFillColor', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadModelNow', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
@@ -121,10 +123,10 @@ const added = live.filter(n => !declared.has(n));
 
 ok(missing.length === 0,
    `every name the page declares at the top level is still there${
-     missing.length ? ` — missing: ${missing.join(', ')}` : ''}`);
+     missing.length ? `; missing: ${missing.join(', ')}` : ''}`);
 ok(added.length === 0,
    `and nothing has quietly become a global${
-     added.length ? ` — new: ${added.join(', ')}` : ''}`);
+     added.length ? `; new: ${added.join(', ')}` : ''}`);
 
 // The ones other code reaches for by name: the inline handlers in the markup
 // and the suite's own page.evaluate calls. Named separately because a generic
@@ -133,7 +135,7 @@ const REACHED = ['refresh', 'openTab', 'hideTab', 'tabOf', 'sessionOf',
                  'newShell', 'setProjectPinned', 'renameProject', 'drawProjects',
                  'drawSessions', 'drawBell', 'notify', 'openTrash', 'drawTrash',
                  'paint', 'slideCard', 'drawUiMenu', 'toggleBell'];
-// NOT the bridges out of makeNotebook — ruleStagedCount and its version
+// NOT the bridges out of makeNotebook: ruleStagedCount and its version
 // equivalents. They are top-level `let`, and `new Function` below cannot see
 // the global LEXICAL environment, so asking about one here answers
 // "unreachable" for a name that is reachable from every line of the file.
@@ -150,7 +152,7 @@ const kinds = await page.evaluate(names => names.map(n => {
 const notFn = kinds.filter(([, t]) => t !== 'function').map(([n]) => n);
 ok(notFn.length === 0,
    `the names the markup and the suite call are callable at the top level${
-     notFn.length ? ` — not: ${notFn.join(', ')}` : ''}`);
+     notFn.length ? `; not: ${notFn.join(', ')}` : ''}`);
 
 // Every name a script reads or writes is declared at the top level of some
 // script the page loads, or is the browser's. Code moved into a view file

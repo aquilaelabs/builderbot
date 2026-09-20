@@ -1,7 +1,7 @@
 // One version identity per project, and who is allowed to move it.
 //
 // No browser: version.py has no UI yet, and the part worth protecting is the
-// policy gate — a session must not be able to bump past what the operator
+// policy gate: a session must not be able to bump past what the operator
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
@@ -80,7 +80,7 @@ rmSync(`${ROOT}/scratch.txt`);
 // the operator opts into delegating it rather than out of it.
 let r = bb('bump', 'patch');
 ok(r.code !== 0 && /locked/.test(r.out),
-   'locked by default — a session cannot bump at all');
+   'locked by default: a session cannot bump at all');
 ok(readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.4.0',
    '...and a refused bump leaves the file alone');
 ok(/locked/.test(bb('policy').out),
@@ -104,7 +104,7 @@ ok(r.code !== 0 && /not major/.test(r.out),
 
 // ---- the release: the second gesture, and the outward-facing one -----------
 // A bump decides the number and closes the changelog under it. The tag says
-// it HAPPENED — and until it exists a build reads X.Y.Z-dev.<n>, which sorts
+// it HAPPENED, and until it exists a build reads X.Y.Z-dev.<n>, which sorts
 // before X.Y.Z. That is the half that was missing: nothing cut the tag, so
 // the two ideas of "released" never met.
 //
@@ -159,7 +159,7 @@ print(json.dumps(m.release('relproj', **json.loads(${
 // Work lands through a pull request, so what CI builds and the box runs is
 // the MERGE commit on the default branch, while the checkout stays on the
 // branch that was merged. Releasing there tags a commit no image was ever
-// built from, and leaves the build that did ship reading -dev forever — which
+// built from, and leaves the build that did ship reading -dev forever, which
 // is what would have happened to 0.5.0, measured (B94).
 //
 // A real bare remote rather than a stub: the whole question is what
@@ -222,8 +222,8 @@ print(json.dumps(m.release('shipproj', push=False)))`], { env })
 }
 
 // ---- start: the first version, and nothing after ---------------------------
-// Creating a version and moving one are different decisions — the first has
-// no claim to overwrite — and until this policy existed the only way to let a
+// Creating a version and moving one are different decisions (the first has
+// no claim to overwrite), and until this policy existed the only way to let a
 // session write the first VERSION was to hand it the bumping too.
 {
   const S = `${WS}/startpol`;
@@ -341,11 +341,11 @@ ok(yb('changelog', 'add', 'Worked before any version existed').code === 0,
 setPolicyFor('young', 'open');
 yb('version', 'init', '0.1.0');
 const born = yb('changelog').out;
-ok(/## 0\.1\.0 — \d{4}-\d{2}-\d{2}/.test(born) && !/## Unreleased/.test(born),
+ok(/## 0\.1\.0: \d{4}-\d{2}-\d{2}/.test(born) && !/## Unreleased/.test(born),
    '...and init dates the accrued entries as the first version\u2019s section');
 rmSync(Y, { recursive: true, force: true });
 
-// A project that has not adopted this still answers — the point is that every
+// A project that has not adopted this still answers: the point is that every
 // project can be asked, not that every project has opted in.
 const BARE = `${WS}/unversioned`;
 rmSync(BARE, { recursive: true, force: true });
@@ -361,7 +361,7 @@ const bare = (...a) => {
   } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
 };
 ok(bare('--code').out === '1',
-   'a project with no VERSION file still has an ordinal — it is pure git');
+   'a project with no VERSION file still has an ordinal: it is pure git');
 ok(bare('--msi').code !== 0,
    '...but a format that cannot be produced without one refuses');
 ok(/no VERSION file/.test(bare().out), '...and says how to opt in');
@@ -372,7 +372,7 @@ rmSync(BARE, { recursive: true, force: true });
 // ---- a repo that ships two products --------------------------------------
 // One number cannot state two maturities: an extension at 2.1 beside a new
 // app at 0.3. So a directory with its own VERSION file is a component, and
-// its ordinal counts only the commits that touched it — otherwise a shipped
+// its ordinal counts only the commits that touched it; otherwise a shipped
 // extension appears to change every time the app beside it is edited.
 const M = `${WS}/two-products`;
 rmSync(M, { recursive: true, force: true });
@@ -408,7 +408,7 @@ ok(/two-products\/extension\s+2\.1\.0/.test(mb('--list').out)
 // `comp` reaches this from a browser, so it must not read arbitrary files.
 ok(mb('--for', '../../..', '--code').code !== 0 && mb('--for', 'nope', '--code').code !== 0,
    'a component outside the project is refused, not resolved');
-// Bumping one must leave the other alone — that is the entire point.
+// Bumping one must leave the other alone; that is the entire point.
 setPolicyFor('two-products', 'open');
 ok(mb('--for', 'extension', 'bump', 'minor').out.includes('2.1.0 -> 2.2.0'),
    'a component bumps on its own');
@@ -422,7 +422,7 @@ ok(/^Set extension version to 2\.2\.0 \(session\)$/m.test(
    '...with a message naming which one moved');
 // ---- the changelog: accrued by sessions, dated by the bump ---------------
 // The record and the number are decoupled on purpose: entries land under
-// Unreleased as work is done, and a bump — whoever presses it — only renames
+// Unreleased as work is done, and a bump, whoever presses it, only renames
 // that section to the new version with the date. The operator keeping the
 // number costs the record nothing.
 const cl = (...a) => {
@@ -443,7 +443,7 @@ ok(/forgets its settings \([0-9a-f]{7}\)/.test(cl('--for', 'extension').out),
 ok(cl('add', '').code !== 0, 'an empty entry is refused');
 
 // A change that tweaks something already logged this cycle corrects the
-// line rather than adding a second one about the same thing — the reader
+// line rather than adding a second one about the same thing: the reader
 // should meet each change once, and the honest record is one line that is
 // right. Positional numbers, because the section is short-lived by design.
 cl('add', 'Pairing shows the code larger');
@@ -516,7 +516,7 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 
   // ...and the order is nobody's to derive. It used to be sorted by commit
   // date on every write, which quietly moved a line under the reader every
-  // time an old entry was reworded — an edit stamps it with a newer commit.
+  // time an old entry was reworded; an edit stamps it with a newer commit.
   // Now the file's order IS the order, and a reword leaves the line where
   // somebody put it.
   {
@@ -538,7 +538,7 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 // ---- categories: the shape a changelog reader already knows ---------------
 // A cycle's lines are written one at a time by whoever did the work; what a
 // reader meets at a release wants grouping. `### Name` subsections, because
-// that is the Keep a Changelog convention anybody who has read one knows —
+// that is the Keep a Changelog convention anybody who has read one knows,
 // and it makes a recategorised entry a moved line in the diff rather than a
 // rewritten file.
 //
@@ -589,7 +589,7 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 
   // A move is not a change, and a pass over the wording is not one either.
   // An edit normally names the commit that made the change, which is the
-  // whole point of the stamp — so a categorisation pass over a cycle's
+  // whole point of the stamp, so a categorisation pass over a cycle's
   // entries would otherwise leave every line naming the commit that filed it,
   // which is a record of nothing.
   {
@@ -633,8 +633,8 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 // The bump dates the section, in the same commit that moves VERSION.
 mb('bump', 'patch');
 const rolled = cl().out;
-ok(/## 2\.2\.1 — \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
-   === false && /## 0\.4\.1 — \d{4}-\d{2}-\d{2}/.test(rolled)
+ok(/## 2\.2\.1: \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
+   === false && /## 0\.4\.1: \d{4}-\d{2}-\d{2}/.test(rolled)
    && /- Pairing works/.test(rolled) && !/## Unreleased/.test(rolled),
    "the project's bump dates its Unreleased section");
 ok(/## Unreleased/.test(cl('--for', 'extension').out),
@@ -711,7 +711,7 @@ rmSync(M, { recursive: true, force: true });
 
 // ---- taking a bump back, while it is still nobody's release --------------
 // The code never reverts; the number returns and the changelog section the
-// bump dated dissolves into Unreleased with whatever was logged after — so
+// bump dated dissolves into Unreleased with whatever was logged after, so
 // the next bump dates the whole group as one release.
 const U = `${WS}/rethink`;
 rmSync(U, { recursive: true, force: true });
@@ -741,7 +741,7 @@ ub('version', 'bump', 'minor');
 const redone = ub('changelog').out;
 ok(/## 0\.3\.0/.test(redone) && !/## Unreleased/.test(redone),
    '...and the next bump dates the whole group as one release');
-// Released numbers are immutable — somebody may have installed one.
+// Released numbers are immutable: somebody may have installed one.
 execFileSync('git', ['-C', U, 'tag', '-a', 'v0.3.0', '-m', 'r'], { env });
 ok(/released/.test(ub('version', 'unbump').out),
    'a released version refuses to be taken back');
@@ -815,11 +815,11 @@ rmSync(AK, { recursive: true, force: true });
 
 // ---- the same module, in the Artifacts tab head --------------------------
 // The display answers "what is this at" and needs no decision. The buttons
-// answer "what next", which is the rare half — and the evidence beside them
+// answer "what next", which is the rare half, and the evidence beside them
 // is the point, because by bump time nobody remembers what three weeks of
 // prompting contained.
 // alpha is a git repo in the fixtures but has no commits, so give it the
-// history a version needs. beta gets a commit and no VERSION file — a repo
+// history a version needs. beta gets a commit and no VERSION file: a repo
 // with history that never adopted the scheme, which is the case the block has
 // to degrade on rather than break. (A repo with NO commits is a third state,
 // and it reports that instead: there is nothing to version yet.)
@@ -842,7 +842,7 @@ execFileSync('git', ['-C', A, 'commit', '-qm', 'two'], { env });
 
 // The notebook whose title names this project. Two open notebooks are two
 // clones of one template, so every id inside exists twice, and neither
-// :visible nor offsetParent separates them — both are laid out. The title is
+// :visible nor offsetParent separates them: both are laid out. The title is
 // the only thing in the markup that tells them apart.
 const nb = name => `.nb:has(#memTitle:text-is("Notebook: ${name}"))`;
 let NB = nb('alpha');
@@ -852,7 +852,7 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } })
 await page.goto(DURL);
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
-await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
 await page.waitForSelector('#verBox .verln', { timeout: 20000 });
 
@@ -906,9 +906,9 @@ ok(labels.some(l => /Patch → 0\.4\.1/.test(l)) && labels.some(l => /Minor → 
    && labels.some(l => /Major → 1\.0\.0/.test(l)),
    'each button previews the value it would set');
 
-// The operator's bump is allowed regardless of the policy — the policy is
+// The operator's bump is allowed regardless of the policy: the policy is
 // about sessions. And it STAGES: pressing Minor records the intent, git is
-// untouched until the notebook's Save — a misclicked "Major → 1.0.0" must
+// untouched until the notebook's Save. A misclicked "Major → 1.0.0" must
 // never be a commit before the finger has left the button.
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
 await page.waitForFunction(sel => {
@@ -920,15 +920,15 @@ ok(/staged: 0\.5\.0 on Save/.test(await page.$eval(`${NB} #verBox`, e => e.textC
 ok(execFileSync('git', ['-C', A, 'show', 'HEAD:VERSION'], { env }).toString().trim()
      === '0.4.0',
    '...and git holds the old number until Save');
-// Pressing the same part again clears the stage — the undialog misclick path.
+// Pressing the same part again clears the stage: the undialog misclick path.
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
 ok(!/staged:/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
    '...and pressing it again unstages, no dialog needed');
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
-await page.click(`${NB} #todoSaveQuiet`);
+await page.click(`${NB} #roadmapSaveQuiet`);
 await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
-   'Save commits the staged bump — the operator can, whatever the policy');
+   'Save commits the staged bump: the operator can, whatever the policy');
 ok(execFileSync('git', ['-C', A, 'log', '-1', '--format=%s'], { env }).toString().trim()
      === 'Set version to 0.5.0',
    '...and the commit says the operator moved it, with no "(session)" mark');
@@ -944,7 +944,7 @@ await page.waitForFunction(() => [...document.querySelectorAll('.nb #verBox .ver
   .some(e => /staged: on Save/.test(e.textContent)), null, { timeout: 10000 });
 ok((await page.evaluate(async () => (await (await fetch('/api/version?project=alpha')).json()).policy)) !== 'minor',
    'picking a policy stages it and writes nothing yet');
-await page.click(`${NB} #todoSaveQuiet`);
+await page.click(`${NB} #roadmapSaveQuiet`);
 await page.waitForFunction(async () => {
   const r = await fetch('/api/version?project=alpha');
   return (await r.json()).policy === 'minor';
@@ -991,10 +991,10 @@ ok(polOpts.join(",") === "locked,start,patch,minor,open",
 // The harness's tab state survives between test files, so an earlier file
 // can leave this notebook parked out of a pane: the input then resolves but
 // is never visible, and a plain fill waits its timeout out. Re-showing the
-// notebook is the fix the operator would make by hand — click the project
+// notebook is the fix the operator would make by hand: click the project
 // row (which goes to the existing tab) and the view strip again.
 // Atomic on purpose: setting the field and pressing the button in two
-// round trips leaves a gap a redraw can land in — the box re-renders when a
+// round trips leaves a gap a redraw can land in: the box re-renders when a
 // revision key moves, the fresh input comes back holding its default, and
 // the click then submits a value the test never typed.
 async function initWith(val){
@@ -1019,7 +1019,7 @@ const fallback = (await page.$eval(`${NB} #verBox`, e => e.textContent)).replace
 ok(/No version yet/.test(fallback) && /start at/.test(fallback),
    '...and its tab says so, offering a starting point rather than inventing one');
 ok((await page.$$(`${NB} #verBox [data-verlog]`)).length === 1,
-   '...while the changelog stays reachable — entries accrue before a version exists');
+   '...while the changelog stays reachable: entries accrue before a version exists');
 ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 0,
    '...offering no bump buttons for a version that does not exist');
 
@@ -1032,13 +1032,13 @@ ok((await page.$$(`${NB} #verBox [data-verinit]`)).length === 1,
 ok((await page.$$(`${NB} #verBox [data-verask]:not([data-verask="@fold"])`)).length === 1,
    '...and offering to put the question to the project\u2019s own session');
 // Two products with different maturities is a state a fresh project can
-// already be in — StreamLift proposed 0.2.0 for the app and 0.1.0 for its
-// extension while neither file existed — so the component door has to be
+// already be in (StreamLift proposed 0.2.0 for the app and 0.1.0 for its
+// extension while neither file existed), so the component door has to be
 // visible before the root version is, not only after.
 ok(await page.$(`${NB} #verBox .veradd .vdir`) !== null,
    'the component fold is offered before the project has any version at all');
 
-// A starting number is arbitrary — nothing can derive it — so it is the one
+// A starting number is arbitrary (nothing can derive it), so it is the one
 // value here that is typed. Which means it has to be checked.
 await initWith('v1.2');
 await page.waitForTimeout(400);
@@ -1054,7 +1054,7 @@ ok(lastMsg === 'Add VERSION at 0.2.0',
 ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 3,
    '...and the bump buttons appear once there is something to bump');
 ok((await page.$$(`${NB} #verBox [data-verask]:not([data-verask="@fold"])`)).length === 1,
-   '...with Ask Claude still there — the question changes, the door stays');
+   '...with Ask Claude still there: the question changes, the door stays');
 
 // A component is created the same way, from what is actually on disk rather
 // than a path typed from memory.
@@ -1065,7 +1065,7 @@ ok(!dirs.includes('.git'), '...and not the ones that are nobody\'s product');
 // The changelog pane, on beta which has none: the message says how to start
 // one rather than rendering an error, and the button toggles it away.
 // NB is a Playwright selector (:has, :text-is), which the page's own
-// querySelector cannot parse — so the polling stays on this side.
+// querySelector cannot parse, so the polling stays on this side.
 await page.click(`${NB} #verBox [data-verlog]`);
 let paneText = "";
 // Ten seconds of 200ms polls on a quiet box, and BB_TEST_SLOW's multiple of
@@ -1080,7 +1080,7 @@ ok(/no CHANGELOG\.md here yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
 // The flake this suite carried for weeks, as a rule instead. The pane used to
 // live in #verBox and be MOVED into the sheet, so a repaint of that box while
-// the sheet was open — a version poll, a commit, a dist change — put a second
+// the sheet was open (a version poll, a commit, a dist change) put a second
 // empty one back in the box, and "the changelog pane" was then whichever came
 // first in the document. Repaint under it and count.
 await page.evaluate(() => drawPanes());
@@ -1092,8 +1092,8 @@ ok(panes.length === 1 && panes[0].inSheet && /no CHANGELOG/.test(panes[0].text),
      JSON.stringify(panes)})`);
 // It reads in the same window a history does, and fills it: a document in a
 // strip at the top of an empty screen is the shape this move was undoing.
-// $eval, not evaluate: NB is a Playwright selector — :text-is() is theirs,
-// and querySelector has never heard of it.
+// $eval, not evaluate: NB is a Playwright selector, and :text-is() is
+// theirs, which querySelector has never heard of.
 const clog = await page.$eval(`${NB} .verlogpane`, (pane) => {
   const slot = pane.closest('.sheetslot');
   return { inSheet: !!slot,
@@ -1263,7 +1263,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // On a phone this was a wall: every entry a one-line box showing thirty of
   // its three hundred characters, and a category band drawn the same size and
   // shape as an entry, so the arrangement could not be read at all. The words
-  // are a proseline now — wrapping, as tall as they need — and the band is a
+  // are a proseline now (wrapping, as tall as they need), and the band is a
   // heading. Measured, because the rule that broke it is one stylesheet line
   // away: `.modal textarea` is white-space:pre at the same specificity, and
   // this editor opens inside a sheet, which is a modal.
@@ -1343,7 +1343,7 @@ await page.evaluate(async () => {
 // the browser logs as a failed resource. An expected refusal is not a defect,
 // and folding it into this assertion would blunt the thing it exists to catch.
 const cleanSoFar = [...(await page.errors)];
-ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFar.length ? ' — got: ' + JSON.stringify(cleanSoFar.slice(0, 3)) : ''}`);
+ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFar.length ? ', got: ' + JSON.stringify(cleanSoFar.slice(0, 3)) : ''}`);
 
 
 // ---- a repo's own stamps travel with the number ----------------------------
@@ -1352,8 +1352,8 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
 // compatibility window, written again in the agent, and 0.5.0 only came out
 // consistent because a person moved both by hand before pressing Bump (B91).
 //
-// The hook is generic — an executable tools/version-stamp, run from the repo
-// root with the new version and the part — so this exercises the mechanism on
+// The hook is generic (an executable tools/version-stamp, run from the repo
+// root with the new version and the part), so this exercises the mechanism on
 // a repository of its own rather than on BuilderBot's two files, and rather
 // than on the shared fixture, whose ordinal everything above depends on.
 {
@@ -1383,7 +1383,7 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
      `...and it is in the SAME commit as VERSION, so neither can land alone (${inCommit.join(', ')})`);
 
   // A hook that fails stops the bump rather than leaving the number moved and
-  // its twin behind — the state the whole thing exists to prevent.
+  // its twin behind: the state the whole thing exists to prevent.
   writeFileSync(`${S}/tools/version-stamp`,
     '#!/usr/bin/env bash\necho "no thanks" >&2\nexit 3\n');
   chmodSync(`${S}/tools/version-stamp`, 0o755);
@@ -1394,7 +1394,7 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
      '...leaving VERSION exactly where it was');
 
   // And the stamps come BACK with the number. Without this, taking a bump
-  // back leaves what the bump moved where it was — for BuilderBot, a
+  // back leaves what the bump moved where it was: for BuilderBot, a
   // controller returned to its old version still promising the new
   // compatibility window to every node and every briefing.
   writeFileSync(`${S}/tools/version-stamp`,
@@ -1483,7 +1483,7 @@ ok((await page.errors).every(e => /400/.test(e)),
 }
 
 // fresh() removes stray projects but does not reach inside a fixture, so the
-// commits and the VERSION file this planted in alpha and beta have to go —
+// commits and the VERSION file this planted in alpha and beta have to go;
 // otherwise every later file runs against projects this one changed.
 for (const d of [A, B]) rmSync(`${d}/.git`, { recursive: true, force: true });
 rmSync(`${A}/VERSION`, { force: true });

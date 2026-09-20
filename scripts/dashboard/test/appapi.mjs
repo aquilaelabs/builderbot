@@ -3,7 +3,7 @@
 // number server.py's APP_API and the app's TARGET_API both carry. This file
 // holds the running dashboard to that: a path that stops answering, a field
 // that is renamed, or a number moved on one side and not the others fails
-// here — before the app finds out by drawing blanks. Moving the surface is
+// here, before the app finds out by drawing blanks. Moving the surface is
 // fine; moving it without the app is what this catches.
 import { ok, done, URL, DIR } from './lib.mjs';
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -36,7 +36,7 @@ ok(typeof meta.body.built === 'string',
 
 // ---- every GET the app makes answers with the fields it reads ------------------------
 // Against the fixture project alpha, which has a roadmap, bugs, rules and a
-// dist/ from the other files' fixtures — or empty lists, which still carry
+// dist/ from the other files' fixtures, or empty lists, which still carry
 // the keys.
 let missing = [];
 for (const e of surface.endpoints) {
@@ -68,7 +68,7 @@ for (const e of surface.endpoints) {
     for (const f of want) if (!(f in rows[0])) missing.push(`${e.path}: rows of "${key}" carry no "${f}"`);
   }
 }
-ok(missing.length === 0, `every path the app reads answers with the fields it draws${missing.length ? ' — ' + missing.join('; ') : ''}`);
+ok(missing.length === 0, `every path the app reads answers with the fields it draws${missing.length ? ': ' + missing.join('; ') : ''}`);
 
 // ---- every POST action the app sends is one the server knows --------------------------
 // Read from the source rather than sent: a real send would change the
@@ -82,6 +82,6 @@ for (const e of surface.endpoints) {
     if (!new RegExp(`"${a}"`).test(serverPy)) unknown.push(`${e.path}: ${a}`);
   }
 }
-ok(unknown.length === 0, `every action the app posts is one the server names${unknown.length ? ' — ' + unknown.join('; ') : ''}`);
+ok(unknown.length === 0, `every action the app posts is one the server names${unknown.length ? ': ' + unknown.join('; ') : ''}`);
 
 await done();

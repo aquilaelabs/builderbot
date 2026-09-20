@@ -8,7 +8,9 @@ fails by name; the house rule `design` points here and runs it.
 ## Colour
 
 Colour comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
-`--sunk` (page, raised box, set-into-the-panel), edge `--line`, text `--ink`
+`--sunk` / `--flyout` (page, raised box, set-into-the-panel, and what the
+terminal's bottom bar opens: tinted towards the accent, with an accent edge
+and a shadow, so it never reads as part of the bar or the page), edge `--line`, text `--ink`
 and `--dim`, status `--accent` / `--warn` / `--bad` / `--note`, buttons
 `--btn` / `--btn-hi`. Twelve schemes repaint the page by swapping nine of
 them, so a hardcoded hex is a spot the schemes cannot reach.
@@ -102,7 +104,10 @@ screen-reader semantics are still the browser's. It is all inside `@supports`,
 so a browser without it renders the native picker rather than nothing. The one
 thing to know when placing one: a base select wraps a label that will not fit
 where a native select truncated it, and `test/uniform.mjs` measures every
-select as one line high at phone width.
+select as one line high at phone width. The arrow owns the end padding of
+every base select (`padding-inline-end: 0` on the select, the padding on
+`::picker-icon`), or a long choice slides under the arrow and shows again in
+the strip beyond it.
 
 **A button says what it does and stops.** No ellipsis on a label: "Enroll
 node", not "Enroll node…": whether a dialog follows is not the reader's
@@ -110,14 +115,14 @@ problem, and the dots are not a word.
 
 **A list of choices is in ALPHABETICAL order unless something says
 otherwise, and what says otherwise says why in place.** The colour schemes,
-the git hosts, the hypervisors and the package catalog were each in the order
+the git hosts, the hypervisors and the toolchain catalog were each in the order
 somebody happened to write them in; this box's own hypervisor first, then
 whatever was added next, which is an order only that person can predict, and
 a reader ends up scanning the whole list twice. Alphabetical is the default
 because it needs no explanation and a new entry has one place to go. Three
 exceptions exist and each is a sentence in the code: `Default` leads the
 schemes because it is what you get having made no choice, *Another git host*
-trails the hosts because it is not a host, and the package list puts what is
+trails the hosts because it is not a host, and the toolchain list puts what is
 installed first because that is the half you came to act on.
 
 **A value that is one line of PROSE is a `textarea.proseline`, never an
@@ -180,7 +185,7 @@ it at the right, where a row's buttons and a section's status already sit, so
 every tab's Refresh is in one place and lines up with the column of actions
 under it. The band spans the tab; the controls in it are capped one by one
 like any other. A tab that builds its own chrome instead misses all of this:
-the Packages tab kept its picker in a band of its own and its Refresh landed
+the Toolchains tab kept its picker in a band of its own and its Refresh landed
 somewhere no other tab's does.
 
 A new tab lands as: its own classic script file beside `index.html`, an entry
@@ -200,6 +205,11 @@ arrangement the server holds, and on a phone on the device itself, so a
 card opened there stays open across a reload without reaching the desk.
 Reset opens every card on both.
 
+`hidden` means hidden. `[hidden]{display:none !important}` is global,
+because any class that sets `display` otherwise beats the attribute: a fold
+that never closed and a Select all with nothing to select were both that. To
+show something, take the attribute off; never give a hidden thing a display.
+
 Every set of two or more text buttons is an action bar (`.actbar`): the
 status on its own `.state` line, the buttons after it at the right, their
 own size at every width: a phone gives them the finger height, never the
@@ -207,6 +217,22 @@ row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
+
+## Dialogs
+
+A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
+`h3`. Every line of its body is a `.field` band, which is where the inset
+lives: a hint, a control, a list, never text at box level, which draws flush
+against the edge. A group of fields inside it is headed by a `label`, the dim
+small heading every dialog uses, never an `h4`; a dialog that is prose to
+read rather than fields to fill (About) says so with `.box.prose` and may use
+headings. The buttons are the `.foot`: a
+`.state` first when there is one, then `.sp`, then the verbs, the primary
+first and anything destructive last. A switch is a checkbox inside its label,
+beside the thing it names, the way the Settings tab draws them
+(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
+hidden rather than disabled: a dialog with an empty list says so in one
+sentence and offers Close.
 
 ## Rows you open
 
@@ -236,7 +262,7 @@ the work has to happen in, so "page 4" names nothing.
 
 Two judgements are yours. A list that only just crosses the line is left
 whole, which `paginate` does for you. And a list somebody SCANS for a name
-rather than reads in order (the package catalog) is not paged at all,
+rather than reads in order (the toolchain catalog) is not paged at all,
 because hiding half of it behind a button is worse than a long page.
 
 The state is per list and per notebook. A notebook is a clone of one
@@ -273,6 +299,16 @@ The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
 a phone, no control spans the screen at either, and controls are 16px on a
 phone so iOS does not zoom.
+
+A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
+every button in a dialog and in the notebook is `--tap` high, and the small
+controls a thumb meets (a tab's close and minimize, the new-tab button, the
+colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
+of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
+rather than each taking its text's, so the last one is never cut off: at
+344px, a folding phone's cover screen, four did not fit. "Both widths" means
+a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
+840, still the phone layout) and a desktop.
 
 ## Motion
 
@@ -347,8 +383,8 @@ the doctor. A revision does not belong on it.
 
 **A timer of a view's own is for watching something in flight, never for
 noticing a change.** Noticing is the revisions poll's job, always. The
-Packages tab is the one that keeps a timer, and only while a job is running:
-an install of a small package starts and finishes inside one revision poll,
+Toolchains and Emulator tabs are the ones that keep a timer, and only while a job is running:
+an install of a small toolchain starts and finishes inside one revision poll,
 so the tab would go from idle to done having never said "installing". It
 stops when the job does. Anything else with a clock of its own is a tab that
 notices things sooner than the tab beside it for no reason anybody chose,

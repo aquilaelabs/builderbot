@@ -5,8 +5,8 @@ Two things that were each implemented several times, and one of them was
 implemented wrong.
 
 **The write.** Every state file goes to a temp file in the same directory and
-is then renamed over the real one, so a reader — including bb-tty, which parses
-the lock list on every session launch — never sees half a file. The temp name
+is then renamed over the real one, so a reader (including bb-tty, which parses
+the lock list on every session launch) never sees half a file. The temp name
 is unique per call, from mkstemp. It used to be a fixed `<name>.json.tmp`, and
 the dashboard is a threading server: two saves landing together each opened the
 SAME temp file, the second truncating what the first was writing, and whichever
@@ -14,8 +14,8 @@ renamed first published a torn file. That was fixed in the server and NOT in
 the five copies inside `bb`, which is the ordinary fate of a function that
 exists six times.
 
-**The lock.** todo.py and bugs.py already wrap every read-modify-write in
-`with _lock:`, which was a threading.Lock — and a threading lock guards the
+**The lock.** roadmap.py and bugs.py already wrap every read-modify-write in
+`with _lock:`, which was a threading.Lock. A threading lock guards the
 threads of ONE process. The notebook has two writers: the dashboard, and a
 `bb roadmap`/`bb bug` invocation, which is a separate short-lived process. Both
 would load the file, both mutate their own copy, both write; os.replace makes
@@ -24,7 +24,7 @@ of the first. An item added from a terminal while the panel was saving simply
 was not there afterwards, and nothing anywhere said so.
 
 So the lock is on the FILE, taken with flock, and held across the load and the
-save rather than around the save alone — locking the write is locking the wrong
+save rather than around the save alone: locking the write is locking the wrong
 half, because the read that produced the stale copy already happened.
 
 Re-entrant on purpose. flock is per open file description, so a second
@@ -32,7 +32,7 @@ Re-entrant on purpose. flock is per open file description, so a second
 another through the front door would deadlock on itself. The depth count makes
 the outermost `with` the one that takes and releases it.
 
-One lock per path, and each module locks only its own file — so there is no
+One lock per path, and each module locks only its own file, so there is no
 order in which two of them can be taken, and therefore no order to get wrong.
 """
 import contextlib
@@ -73,8 +73,8 @@ def locked(path):
     """Hold `path` exclusively, against this process's threads and every other
     process, for as long as the block runs.
 
-    Never fatal. A state directory that cannot hold a lock file — read-only,
-    full, a filesystem with no flock — degrades to the threading lock alone,
+    Never fatal. A state directory that cannot hold a lock file (read-only,
+    full, a filesystem with no flock) degrades to the threading lock alone,
     which is what there was before this existed. Refusing to let somebody read
     their roadmap because a lock could not be taken would be a worse failure
     than the one being prevented.
@@ -103,7 +103,7 @@ class on:
 
     Modules set their FILE in configure(), after import, so a lock built at
     import time would close over None. This reads the path when the block is
-    entered — and it can be entered again, which a contextmanager object
+    entered, and it can be entered again, which a contextmanager object
     cannot: `with locked(p):` twice reuses a generator that is already
     finished. Its own stack is per-thread, so two threads entering the same
     handle do not pop each other's.

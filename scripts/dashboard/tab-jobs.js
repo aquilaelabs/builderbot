@@ -61,7 +61,8 @@ function jobTitle(j){
       s.instance && s.instance !== "main" ? "/" + esc(s.instance) : ""}`;
   if (j.type === "self-update") return "agent self-update";
   if (j.type === "system") return `apply ${esc(s.apply || "config")} on the node`;
-  if (j.type === "package") return `${esc(s.action || "install")} ${esc((s.names || []).join(", "))}`;
+  if (j.type === "toolchain") return `${esc(s.action || "install")} ${esc((s.names || []).join(", "))}`;
+  if (j.type === "image") return `${esc(s.action || "add")} image ${esc(s.image || "")}`;
   if (j.type === "cache-clear") return `clear ${s.project ? esc(s.project) + "'s caches" : "every cache"}`;
   const argv = Array.isArray(s.argv) ? s.argv.join(" ") : "";
   // A job with a source is a build of that project's tree, and says so

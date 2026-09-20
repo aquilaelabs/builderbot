@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Read config/packages.json on bb's behalf.
+"""Read config/toolchains.json on bb's behalf.
 
-The recipes are data now — every URL, branch, flag, archive layout and
-environment variable a package needs lives in that file — and this is the part
+The recipes are data now: every URL, branch, flag, archive layout and
+environment variable a toolchain needs lives in that file, and this is the part
 that reads them out: fields, argument vectors with their placeholders filled
 in, and the version each upstream currently offers.
 
 It sits beside bb rather than inside it because the reading is JSON work and
 the resolvers are not alike. Each upstream announces its current release in a
-different shape — a bare line of text, a redirect to a tag, a JSON index of
-every build it has ever made — and that is a paragraph of python apiece
+different shape (a bare line of text, a redirect to a tag, a JSON index of
+every build it has ever made), and that is a paragraph of python apiece
 against a page of shell.
 
 Placeholders, substituted into url templates and argv:
 
-    {dir}      where the package is being installed
+    {dir}      where the toolchain is being installed
     {version}  whatever the version resolver returned
     {script}   the installer this recipe downloaded, for kind "script"
 
@@ -46,12 +46,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# BB_PACKAGES_JSON points this at another catalog. It exists so the install
-# machinery can be exercised against a fake one — five recipes fetched from
+# BB_TOOLCHAINS_JSON points this at another catalog. It exists so the install
+# machinery can be exercised against a fake one: five recipes fetched from
 # file:// URLs prove the fetching, unpacking, environment and verify steps
-# without spending gigabytes or touching the real package store root.
-CATALOG = os.environ.get("BB_PACKAGES_JSON") or os.path.join(
-    HERE, "..", "..", "config", "packages.json")
+# without spending gigabytes or touching the real toolchain store root.
+CATALOG = os.environ.get("BB_TOOLCHAINS_JSON") or os.path.join(
+    HERE, "..", "..", "config", "toolchains.json")
 TIMEOUT = 30
 # Some of these hosts hand a bare urllib a different answer, or none: go.dev
 # serves the plain version file happily, github's release redirect does not
@@ -65,8 +65,8 @@ def die(msg):
 
 
 def _catalog():
-    """The whole file. Packages are most of it, but not all — see
-    android_images, which is data about a thing that is not a package."""
+    """The whole file. Toolchains are most of it, but not all: see
+    android_images, which is data about a thing that is not a toolchain."""
     try:
         with open(CATALOG) as f:
             return json.load(f)
@@ -76,23 +76,23 @@ def _catalog():
 
 def catalog():
     try:
-        return _catalog()["packages"]
+        return _catalog()["toolchains"]
     except KeyError as e:
         die(f"cannot read {CATALOG}: {e}")
 
 
-def package(name):
+def toolchain(name):
     for p in catalog():
         if p.get("name") == name:
             return p
-    die(f"no package named {name!r} in the catalog")
+    die(f"no toolchain named {name!r} in the catalog")
 
 
 def dig(obj, path):
     """A dotted path into nested dicts and lists, or None.
 
-    A number walks into a list — source.then.0.run is the first follow-up step
-    — which is not decoration: without it the .NET recipe's workload step
+    A number walks into a list (source.then.0.run is the first follow-up
+    step), which is not decoration: without it the .NET recipe's workload step
     resolved to nothing and quietly did not run, leaving a plain SDK behind
     where a MAUI one was asked for.
     """
@@ -142,7 +142,7 @@ def for_platform(value):
 
 # Documents fetched while resolving, kept briefly on disk.
 #
-# A check asks about thirteen packages in thirteen separate processes, and
+# A check asks about thirteen toolchains in thirteen separate processes, and
 # several of them want the same file: sdkmanager's package index answers for
 # the emulator, the NDK and CMake alike, which is four hundred kilobytes
 # fetched three times over. Anything upstream publishes as a catalogue changes
@@ -200,14 +200,14 @@ def final_url(url):
         return r.url
 
 
-def resolve(pkg):
-    """(version, url) for a package, asking upstream what it currently offers.
+def resolve(tc):
+    """(version, url) for a toolchain, asking upstream what it currently offers.
 
     Either may come back empty: a recipe that needs no version does not have a
     resolver, and one whose resolver supplies the download URL itself has no
     template to fill in.
     """
-    src = pkg.get("source") or {}
+    src = tc.get("source") or {}
     spec = src.get("version") or {}
     kind = spec.get("resolver")
     version, url = "", ""
@@ -217,7 +217,7 @@ def resolve(pkg):
         version = get(spec["url"]).strip().splitlines()[0].strip()
         want = spec.get("expect_prefix")
         if want and not version.startswith(want):
-            die(f"{pkg['name']}: expected a version starting {want!r}, got {version!r}")
+            die(f"{tc['name']}: expected a version starting {want!r}, got {version!r}")
 
     elif kind == "github-release":
         tag = final_url(f"https://github.com/{spec['repo']}/releases/latest").rstrip("/")
@@ -227,7 +227,7 @@ def resolve(pkg):
             if spec.get(k):
                 version = cut(version, spec[k])
         if spec.get("numeric") and not version.replace(".", "").isdigit():
-            die(f"{pkg['name']}: could not read a version out of the tag {tag!r}")
+            die(f"{tc['name']}: could not read a version out of the tag {tag!r}")
 
     elif kind == "zig-index":
         # An index of every build, newest release first and "master" among
@@ -237,7 +237,7 @@ def resolve(pkg):
         asset = index[version].get(spec["asset"]) or {}
         url = asset.get("tarball") or ""
         if not url:
-            die(f"{pkg['name']}: the index offers no {spec['asset']} build for {version}")
+            die(f"{tc['name']}: the index offers no {spec['asset']} build for {version}")
 
     elif kind == "node-index":
         # nodejs.org's own index, newest release first. LTS only: a node
@@ -248,15 +248,15 @@ def resolve(pkg):
         index = json.loads(get(spec["url"]))
         version = next((r["version"] for r in index if r.get("lts")), "")
         if not version:
-            die(f"{pkg['name']}: the index offers no LTS release")
+            die(f"{tc['name']}: the index offers no LTS release")
 
     elif kind:
-        die(f"{pkg['name']}: unknown version resolver {kind!r}")
+        die(f"{tc['name']}: unknown version resolver {kind!r}")
 
     if src.get("url"):
         url = fill(for_platform(src["url"]) or "", {"version": version})
         if not url:
-            die(f"{pkg['name']}: no download for {this_platform()} — the recipe names "
+            die(f"{tc['name']}: no download for {this_platform()}; the recipe names "
                 f"{', '.join(sorted(src['url']))}")
     return version, url
 
@@ -268,15 +268,15 @@ def content_length(url):
     return int(n) if n and n.isdigit() else 0
 
 
-def download_urls(pkg):
-    """Every URL an install of this package would fetch, or none.
+def download_urls(tc):
+    """Every URL an install of this toolchain would fetch, or none.
 
-    Two ways to know. A recipe whose own source.url is the payload — a tarball
-    — is its own answer. Everything else has to ask the installer, and most of
+    Two ways to know. A recipe whose own source.url is the payload (a tarball)
+    is its own answer. Everything else has to ask the installer, and most of
     them will say: playwright's dry run names the five bundles it would pull,
     the .NET installer names the SDK archive it would pull. That is a command
     to run and a pattern to match, both of which are catalog entries rather
-    than code here, so a package that can be asked the same way needs no
+    than code here, so a toolchain that can be asked the same way needs no
     python at all.
 
     Some cannot be asked: a git clone has no content length, rustup fetches
@@ -284,10 +284,10 @@ def download_urls(pkg):
     repository index this does not read. Those report nothing, which is the
     honest answer and is what the row then shows.
     """
-    src = pkg.get("source") or {}
+    src = tc.get("source") or {}
     spec = src.get("download")
     if spec is None:
-        _, url = resolve(pkg)
+        _, url = resolve(tc)
         return [url] if url and src.get("kind") == "tarball" else []
     kind = spec.get("resolver")
     if kind in ("android-repo", "approximate"):
@@ -298,19 +298,19 @@ def download_urls(pkg):
         # the three a minimal profile installs are the honest answer to what
         # `rustup` is about to fetch.
         if not spec.get("url") or not spec.get("match"):
-            die(f"{pkg['name']}: a url-matches download needs both url and match")
+            die(f"{tc['name']}: a url-matches download needs both url and match")
         try:
             return re.findall(spec["match"], get(spec["url"]))
         except Exception:  # noqa: BLE001
             return []
     if kind != "command-urls":
-        die(f"{pkg['name']}: unknown download resolver {kind!r}")
+        die(f"{tc['name']}: unknown download resolver {kind!r}")
     if not spec.get("run") or not spec.get("match"):
-        die(f"{pkg['name']}: a command-urls download needs both run and match")
+        die(f"{tc['name']}: a command-urls download needs both run and match")
     env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
     # Cached like a fetched document, and for the same reason: the .NET dry run
     # downloads and executes a vendor script, and it was being run twice per
-    # check — once to learn the version, once to learn the size.
+    # check: once to learn the version, once to learn the size.
     def dry_run():
         try:
             return subprocess.run(spec["run"], capture_output=True,
@@ -332,12 +332,12 @@ def _revision(pkg_el):
 def android_size(spec, pkg_id):
     """The size sdkmanager's own repository index gives for exactly this id.
 
-    sdkmanager will not say what a package weighs, but the index it reads does
-    — and that index is the only place an android download size exists before
-    the download. Looked up by the id bb resolved rather than by picking the
-    newest entry: the index's newest playstore image is an android-CANARY
-    build nobody is installing, and the emulator appears twice, once stable
-    and once on the dev channel, sixteen megabytes apart.
+    sdkmanager will not say what a package weighs, but the index it reads
+    does, and that index is the only place an android download size exists
+    before the download. Looked up by the id bb resolved rather than by
+    picking the newest entry: the index's newest playstore image is an
+    android-CANARY build nobody is installing, and the emulator appears twice,
+    once stable and once on the dev channel, sixteen megabytes apart.
     """
     best = None
     for url in spec.get("xml") or []:
@@ -379,7 +379,7 @@ IMAGE_ID = re.compile(r"^system-images;android-([A-Za-z0-9.-]+);([A-Za-z0-9_-]+)
 def available_images():
     """Every system image the catalog's flavors offer, from sdkmanager's index.
 
-    One line per image — id, API level, flavor, bytes — which is what makes an
+    One line per image (id, API level, flavor, bytes), which is what makes an
     API level offerable at all: sdkmanager cannot be asked what exists without
     a network round trip that prints a thousand rows, and cannot be asked what
     anything weighs at any price. The index answers both.
@@ -427,7 +427,7 @@ def available_images():
         m = IMAGE_ID.match(key)
         out.append((key, m.group(1), m.group(2), size))
     # Newest level first, and a plain level ahead of the extension builds that
-    # share its number — android-34 is what somebody picking "34" means, and
+    # share its number: android-34 is what somebody picking "34" means, and
     # android-34-ext11 is a thing they would have to have gone looking for.
     # The index itself is in no order worth relying on.
     def key(row):
@@ -437,9 +437,9 @@ def available_images():
     return sorted(out, key=key)
 
 
-def size_of(pkg, pkg_id=""):
+def size_of(tc, pkg_id=""):
     """What an install would download, in bytes, or empty when unknowable."""
-    spec = (pkg.get("source") or {}).get("download") or {}
+    spec = (tc.get("source") or {}).get("download") or {}
     if spec.get("resolver") == "android-repo":
         return str(android_size(spec, pkg_id)) if pkg_id else ""
     if spec.get("resolver") == "approximate":
@@ -449,7 +449,7 @@ def size_of(pkg, pkg_id=""):
         n = spec.get("bytes")
         return f"~{n}" if isinstance(n, int) and n > 0 else ""
     total = 0
-    for url in download_urls(pkg):
+    for url in download_urls(tc):
         try:
             total += content_length(url)
         except Exception:  # noqa: BLE001
@@ -479,20 +479,20 @@ def main(argv):
         return
 
     if len(argv) < 2:
-        die(f"{op} needs a package name")
-    pkg = package(argv[1])
+        die(f"{op} needs a toolchain name")
+    tc = toolchain(argv[1])
 
     if op == "field":
         # A per-platform value (a dict keyed "<os>/<arch>") answers for the
         # machine running this: a tarball's strip count, a script's url.
-        v = for_platform(dig(pkg, argv[2])) if len(argv) > 2 else None
+        v = for_platform(dig(tc, argv[2])) if len(argv) > 2 else None
         if isinstance(v, bool):
             v = "1" if v else ""
         print("" if v is None else v)
 
     elif op == "argv":
         subs = dict(a.split("=", 1) for a in argv[3:] if "=" in a)
-        items = dig(pkg, argv[2]) or []
+        items = dig(tc, argv[2]) or []
         if not isinstance(items, list):
             die(f"{argv[2]} is not a list")
         # NUL-separated, because an argument may hold anything a JSON string
@@ -502,18 +502,18 @@ def main(argv):
     elif op == "env":
         # KEY=VALUE per line, NUL-terminated for the same reason.
         subs = dict(a.split("=", 1) for a in argv[3:] if "=" in a)
-        for k, v in (dig(pkg, argv[2]) or {}).items():
+        for k, v in (dig(tc, argv[2]) or {}).items():
             sys.stdout.write(f"{k}={fill(str(v), subs)}\0")
 
     elif op == "resolve":
-        version, url = resolve(pkg)
+        version, url = resolve(tc)
         print(f"{version}\t{url}")
 
     elif op == "size":
         # An optional package id, for the recipes whose size lives in an index
-        # keyed by one — bb resolves it, so that the id asked about here is
+        # keyed by one: bb resolves it, so that the id asked about here is
         # exactly the id that would be installed.
-        print(size_of(pkg, argv[2] if len(argv) > 2 else ""))
+        print(size_of(tc, argv[2] if len(argv) > 2 else ""))
 
     else:
         die(f"unknown operation {op!r}")

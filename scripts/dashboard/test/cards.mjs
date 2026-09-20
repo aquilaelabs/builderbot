@@ -18,7 +18,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 // A card whose body repaints WHILE it folds. contentIn starts at opacity 0
 // and lasts 180ms, the same as the fold, so an entrance animation landing on
 // a collapsing card blanked its body at full height and faded it back in as
-// the card shut — the flicker seen on Runner and Projects, the two cards
+// the card shut: the flicker seen on Runner and Projects, the two cards
 // whose bodies redraw from the poll and so the two a fold can collide with.
 {
   const trace = await page.evaluate(async () => {
@@ -45,7 +45,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   });
   const mid = trace.slice(1, -2);
   ok(mid.every(f => f.op === '1.00'),
-     'a repaint while a card folds does not blank its body — the fold is the motion that matters');
+     'a repaint while a card folds does not blank its body: the fold is the motion that matters');
   ok(trace[0].h > trace[trace.length - 1].h
      && mid.some(f => f.shown === 'block' && f.h < trace[0].h && f.h > trace[trace.length - 1].h),
      '...and the body stays visible while the height comes down, rather than after it');
@@ -61,7 +61,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 // The nostromo theme's stencil tick is an inset shadow on the card header, and
 // an inset shadow is drawn to its own box: square against the card's 8px
 // corner, it left a few pixels of amber outside the rounded edge. A notch on a
-// still card, and a glitch while one folded — which is when the eye is there.
+// still card, and a glitch while one folded, which is when the eye is there.
 {
   await page.evaluate(() => document.documentElement.dataset.theme = 'nostromo');
   await page.waitForFunction(() => getComputedStyle(
@@ -99,8 +99,8 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 }
 
 // The header fits, at every width a phone comes in. It did not: measured at
-// 320px it wanted 369px and overflowed by 57, and the uptime — the only item
-// there that shrinks, because .meta clips — was squeezed away on the way,
+// 320px it wanted 369px and overflowed by 57, and the uptime (the only item
+// there that shrinks, because .meta clips) was squeezed away on the way,
 // rendering "up 09:52:…", which is not a truncated number but a different one.
 //
 // Both halves are asserted, because they fail separately: a header that does
@@ -133,10 +133,10 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   const cut = measured.filter(m => m.clipped.length);
   ok(over.length === 0,
      `the header fits at every phone width${
-       over.length ? ` — over by ${over.map(m => `${m.over}px at ${m.w}`).join(', ')}` : ''}`);
+       over.length ? `: over by ${over.map(m => `${m.over}px at ${m.w}`).join(', ')}` : ''}`);
   ok(cut.length === 0,
      `...with nothing inside it ellipsised${
-       cut.length ? ` — ${cut.map(m => `${m.clipped.join('/')} at ${m.w}`).join(', ')}` : ''}`);
+       cut.length ? `: ${cut.map(m => `${m.clipped.join('/')} at ${m.w}`).join(', ')}` : ''}`);
 }
 
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
@@ -187,7 +187,7 @@ await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
 
 // projects: fold-away toggle at the foot; slides the card. It counts one kind
-// now — it used to have to split the number, because half of what it hid was
+// now; it used to have to split the number, because half of what it hid was
 // excluded, which was a decision rather than a fault. Only faults are folded.
 ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Error (2)',
    'the toggle says how many are folded away, and they are all faults');
@@ -196,9 +196,9 @@ ok((await animatedDuring(page, () => page.click('#projects #bAll')))
    'in-card toggle slides the card');
 await page.click('#projects #bAll');
 
-// The Analysis tab: the findings, browsable. The sidebar card is gone — its
-// rows were only doors into each notebook, a summary nothing could be read
-// through — and the server logic it exercised (valid-project attribution,
+// The Analysis tab: the findings, browsable. The sidebar card is gone, since
+// its rows were only doors into each notebook, a summary nothing could be
+// read through, and the server logic it exercised (valid-project attribution,
 // stale-report exclusion, the named aside) is asserted here against the tab
 // that replaced it.
 ok(await page.$('#cardFindings') === null,
@@ -228,12 +228,12 @@ ok(opts.join(',') === 'alpha,beta,delta,unattributed paths',
 ok(/somewhere\/else/.test(await page.$eval('.fxtab', e => e.textContent)),
    'the aside names the paths it could not place, rather than only counting them');
 
-// Narrowing. One project, one level, a search — each redraws the list, and
+// Narrowing. One project, one level, a search: each redraws the list, and
 // the counts on the options are the whole report's, so choosing is informed.
 await page.selectOption('.fxtab #fxProject', 'alpha');
 await page.waitForFunction(() => !document.querySelector('.fxtab .fxproj'),
                            { timeout: 10000 });
-ok(true, 'picking a project drops the per-project headings — the picker already says it');
+ok(true, 'picking a project drops the per-project headings: the picker already says it');
 await page.selectOption('.fxtab .fxLevel', 'error');
 // On the condition the assertion is about, not on the row count changing:
 // the count is a proxy that need not move at all, and swallowing its timeout
@@ -251,8 +251,8 @@ await page.waitForFunction(() => document.querySelector('.fxtab .fxproj'),
                            { timeout: 10000 });
 
 // A report a whole cycle behind its siblings is not counted, and the tab says
-// so. A scanner that dies leaves its previous report in place — the host
-// script does not overwrite a good report with nothing — so without this a
+// so. A scanner that dies leaves its previous report in place (the host
+// script does not overwrite a good report with nothing), so without this a
 // dead scanner goes on supplying findings about a tree that has since moved.
 const before = await page.$$eval('.fxtab .rule', rs => rs.length);
 writeFileSync(`${DIR}/reports/old.sarif`, readFileSync(`${DIR}/reports/test.sarif`));
@@ -263,7 +263,7 @@ await refreshUntil(page, () => (state?.reports_ages || []).some(r => r.stale),
 await page.waitForFunction(() => /left out/.test(
   document.querySelector('.fxtab')?.textContent || ''), { timeout: 20000 });
 ok(await page.$$eval('.fxtab .rule', rs => rs.length) === before,
-   'a stale copy of the same report adds nothing — it is not read at all');
+   'a stale copy of the same report adds nothing: it is not read at all');
 const foot = await page.$eval('.fxtab', e => e.textContent);
 ok(/old\.sarif left out/.test(foot) && /3d behind/.test(foot),
    '...and the tab names it, so a number that did not move is not a mystery');
@@ -286,9 +286,9 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      'the Analysis tab\'s filter field wears the same skin as every other field');
 }
 // Every band of the tab starts at the same x. It shipped with four different
-// left edges — the filter bar flush against the edge (its padding rule named
+// left edges: the filter bar flush against the edge (its padding rule named
 // an id the markup never had), the rules at 11px, the headings and the footer
-// at 14 — which is what a retyped inset looks like from a phone.
+// at 14, which is what a retyped inset looks like from a phone.
 {
   const xs = await page.evaluate(() => {
     // The content edge, not the box: every band is full width and it is the
@@ -366,7 +366,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `...and one with findings is not told to run --all, which the relay refuses (${
        (loud.split('\n').find(l => l.startsWith('# ')) || '').slice(0, 50)})`);
 }
-// Nothing readable in /reports and the way in goes quiet — three ways to have
+// Nothing readable in /reports and the way in goes quiet: three ways to have
 // nothing (no mount, nothing in it, nothing that parses) and one greyed button
 // carrying the reason. A tab already open on it is closed once, when the page
 // first learns: a layout restored from last session can carry an Analysis tab
@@ -396,7 +396,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => state?.reports === true && state?.reports_ok === false,
                      { timeout: 20000 });
   ok(/nothing readable/.test(await page.$eval('#bFindings', b => b.title)),
-     'a report that does not parse is not a report — the button says so');
+     'a report that does not parse is not a report, and the button says so');
   rmSync(`${DIR}/reports/broken.sarif`, { force: true });
   writeFileSync(`${DIR}/reports/test.sarif`, keep);
   await refreshUntil(page, () => state?.reports_ok === true, { timeout: 20000 });
@@ -405,7 +405,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await page.click('#bFindings');
   await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }
-// Two projects whose names shorten to one slug are one dev instance — the same
+// Two projects whose names shorten to one slug are one dev instance: the same
 // compose project, env file and data directory, driven by two rows that know
 // nothing about each other. Nothing owns the moment a directory appears under
 // /workspace, so it cannot be refused; this list is the only place that sees
@@ -436,7 +436,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
 // ---- a phone folds the rest of a row behind one icon -----------------------
 // Three icons beside the name, the rest on demand: a row was 140px against 98
 // on a desktop and a third of it was six buttons. What this pins is the
-// FOLDING OUT, which shipped broken — the rule that hides the extra icons
+// FOLDING OUT, which shipped broken: the rule that hides the extra icons
 // carries three :not()s and outranked the rule that showed them again, so
 // pressing … re-stacked the row and produced nothing (the operator found it
 // on their phone, which is the only place it renders).
@@ -506,7 +506,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await holdPoll(page);
   const line = () => page.$eval('#projects .row:has(.name:text-is("alpha"))',
     r => (r.querySelector('.sessline')?.textContent || '').trim());
-  // WHO is here wins the line, and the fixture has a session open on alpha —
+  // WHO is here wins the line, and the fixture has a session open on alpha,
   // so the half being tested here only ever draws with nobody in it. Put back
   // at the end rather than left cleared: the next block reads this fixture.
   const were = await page.evaluate(() => {
@@ -519,19 +519,19 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await line() === '', 'a project whose node takes sessions says nothing about which machine');
   await plant({ session_at: 'shed', locked: false,
                 session_why: "alpha's sessions run on shed, which is offline. Sessions run on a "
-                           + 'node and nowhere else — this container carries no Claude Code — so '
+                           + 'node and nowhere else (this container carries no Claude Code), so '
                            + 'the way on is that machine coming back, or another node in the '
                            + "project's settings." });
   ok(/offline/.test(await line()),
      `a node that cannot take one puts the reason on the row (${await line()})`);
   ok((await line()).split(' ').length <= 14 && !/Sessions run on a node and nowhere else/.test(await line()),
-     '...the first clause of it, not the paragraph — the rest is on the button');
+     '...the first clause of it, not the paragraph: the rest is on the button');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline',
                       e => e.classList.contains('bad')),
      '...in red, because a dead button with no reason is what somebody stares at');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
-     '...and the whole of it, fix included, is on the ghosted button — a tap on a phone, since these rows are tipified');
+     '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
   // A no-node project says nothing on the line: "(node: none)" beside the
   // name is the whole fact, and a sentence about sessions under every such
   // row was noise (the operator's call, 15 Sep). The ghosted button still
@@ -563,7 +563,7 @@ await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
 
 // Which shares count as "not a project" no longer comes only from what sits
 // inside /workspace. That worked while /workspace was the whole development
-// share; pointing it at the projects folder took the package store outside it and
+// share; pointing it at the projects folder took the toolchain store outside it and
 // sent 267 findings about downloaded toolchains to the label meant for a path
 // that is genuinely wrong. The rule asks the mount table instead.
 //
@@ -590,7 +590,7 @@ ok(!sib.includes('BuilderBot'),
 ok(!sib.includes('reports') && sib.length === 1,
    '...and a whole-filesystem mount names no directory, so it says nothing');
 
-// .bbignore hides a directory from the card entirely — not listed, not
+// .bbignore hides a directory from the card entirely: not listed, not
 // counted, not folded away under the Excluded/Error toggle either.
 const names = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
 ok(!names.includes('toolstore'), 'a directory carrying .bbignore is not a project');
@@ -598,7 +598,7 @@ await page.click('#projects #bAll');
 const all = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
 await page.click('#projects #bAll');
 ok(!all.includes('toolstore'), '...not even with the error rows shown');
-// An unmarked directory IS still listed, as a project with an error — that is
+// An unmarked directory IS still listed, as a project with an error, and that is
 // the card doing its job, and how you find out something in the share is not a
 // repository. What changed is that its findings no longer count as anybody's.
 ok(all.includes('vendored-junk'),
@@ -606,7 +606,7 @@ ok(all.includes('vendored-junk'),
 
 // drag: reorder + slide + persistence; the click ending a drag is not a toggle
 // Into view first: bounding boxes are viewport coordinates, and a section
-// above this one may leave the sidebar scrolled — a drag aimed at y=-282
+// above this one may leave the sidebar scrolled, and a drag aimed at y=-282
 // grabs nothing and the test reads as the FEATURE failing.
 await page.$eval('.side', e => e.scrollTo(0, 0));
 await new Promise(r => setTimeout(r, 150));
@@ -614,7 +614,7 @@ const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 // Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
 // round trip AFTER the drag only works if that round trip happens to land
-// inside those 140ms — true on an idle box, false on a loaded one, which is
+// inside those 140ms: true on an idle box, false on a loaded one, which is
 // the test timing the browser rather than the behaviour. Wrapping
 // Element.animate says whether the displaced card WAS animated, whenever
 // that was. Undone straight after, so nothing later in this file is
@@ -649,8 +649,8 @@ ok(await page.$$eval('#uiMenu .sw', s => s.length) === 12,
    'the gear opens a menu of twelve schemes');
 ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contains('on')),
    '...with the one in use marked, which is Default until something says otherwise');
-// A swatch is the palette itself at 1cm — the stylesheet defines each scheme
-// for .sw[data-theme] as well as for the page — so this reads the computed
+// A swatch is the palette itself at 1cm (the stylesheet defines each scheme
+// for .sw[data-theme] as well as for the page), so this reads the computed
 // colour rather than trusting that two lists match.
 const swAccent = t => page.$eval(`#uiMenu .sw[data-theme="${t}"] .swa`,
                                  e => getComputedStyle(e).backgroundColor);
@@ -663,7 +663,7 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === 'nostro
 ok(await page.evaluate(() => { try { return localStorage.getItem('bb.theme'); }
                                catch (e) { return null; } }) === 'nostromo',
    '...and remembers it here rather than on the server: it is about the room, not the work');
-// Nostromo's flare is drawn, not fetched — no image files in a repo whose
+// Nostromo's flare is drawn, not fetched: no image files in a repo whose
 // image is rebuilt weekly. The header's decal is the visible half.
 ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
@@ -682,12 +682,12 @@ const scan = await page.evaluate(() => {
 });
 ok(scan.box && !scan.content,
    `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);
-// A surface that stops following the scheme does it silently — the text
+// A surface that stops following the scheme does it silently: the text
 // fields, the memory folds and the pane's title bar all sat in the default
 // scheme's blue-grey through the first twelve because their colour was typed
 // in rather than named. A field is the cheapest one to keep honest.
 // The notebook's add field, open just above: the sidebar has no text field now that the phone is a tab.
-const fieldBg = () => page.$eval('.pane .nb #todoText', e => getComputedStyle(e).backgroundColor);
+const fieldBg = () => page.$eval('.pane .nb #roadmapText', e => getComputedStyle(e).backgroundColor);
 const nosField = await fieldBg();
 
 await page.click('#uiMenu .sw[data-theme="default"]');
@@ -710,14 +710,14 @@ await page.waitForFunction(() => document.querySelector('.side .card[data-card]'
 ok(true, 'reset restores default order and expands everything');
 
 // The whole-report tab came back, on purpose and different: the retired one
-// was an unfiltered dump, and the Analysis tab is the findings browsable —
-// a project picker, a level filter, a search. What this asserts now is that
+// was an unfiltered dump, and the Analysis tab is the findings browsable,
+// with a project picker, a level filter and a search. What this asserts now is that
 // reset did not conjure one open: it is opened from Tools, not by default.
 ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')),
    'the Analysis tab is opened from Tools, not open by default');
 
 // The favicon set: served by the allow-list, linked from the head. Sizes and
-// content types matter — a wrong type is a globe in the tab, silently.
+// content types matter: a wrong type is a globe in the tab, silently.
 const fav = await page.evaluate(async () => {
   const get = async u => { const r = await fetch(u);
     return [r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength]; };
@@ -742,7 +742,7 @@ const build = await page.$eval('#build', e => ({ text: e.textContent.trim() }));
 // anybody reading this is actually asking.
 ok(build.text === '0.4.0-dev.390+abc1234',
    'the header carries the ordered version the image was stamped with');
-// The detail lives in the About popup now — a phone cannot hover a tooltip,
+// The detail lives in the About popup now, since a phone cannot hover a tooltip,
 // and the truncated string it showed instead answered nothing.
 await page.click('#bAbout');
 await page.waitForSelector('#aboutModal:not([hidden])');
@@ -765,11 +765,11 @@ await page.waitForSelector('#aboutModal', { state: 'hidden' });
   await page.reload(); await ready(page);
   await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
-     'an account that has not read the guide gets the panel on sign-in, open on the guide — the administrator\'s, for an owner');
+     'an account that has not read the guide gets the panel on sign-in, open on the guide: the administrator\'s, for an owner');
   await page.click('.abswitch [data-ab="log"]');
   // Whatever the top section is: Unreleased while entries are accumulating,
-  // a dated number the moment somebody bumps. Asserted on the SHAPE — a
-  // heading and at least one line under it — rather than on the wording of
+  // a dated number the moment somebody bumps. Asserted on the SHAPE (a
+  // heading and at least one line under it) rather than on the wording of
   // one of the two, which a bump changes and which reddened this file the
   // day 0.5.0 was cut.
   // Waited on the rendered shape, not on "any text": the panel is filled by
@@ -786,7 +786,7 @@ await page.waitForSelector('#aboutModal', { state: 'hidden' });
      `...and the switch shows the changelog, from the file beside the server (${
        JSON.stringify(logShown)})`);
   // What the panel is FOR is "what changed in the build in front of me", and
-  // the file behind it grows for the life of the project — the first bump
+  // the file behind it grows for the life of the project, and the first bump
   // here put a year of work into one section nobody could read. So it shows
   // what is unreleased plus the newest minor's own releases, and counts what
   // it left out rather than quietly ending. Checked against the real file,
@@ -838,8 +838,8 @@ print(json.dumps({"kept": [s["title"] for s in kept], "held": held, "series": se
      `a release's categories are shown, each over its own lines (${
        JSON.stringify(grouped.cats)}, ${grouped.lists.length} lists)`);
 
-  // A release the size of the first bump — everything ever logged, dated in
-  // one move — is capped with a press to see the rest (B95). Not the section
+  // A release the size of the first bump (everything ever logged, dated in
+  // one move) is capped with a press to see the rest (B95). Not the section
   // holding the "new since you last looked" line, which is the one thing
   // somebody opening this panel came for.
   await page.evaluate(() => abDrawLog({ present: true, seen: '', held: 0, series: '0.7',
@@ -903,7 +903,7 @@ ok(await page.evaluate(() => { drawBuild({ rev: 'deadbee1234', built: '' });
                                       .textContent === 'deadbee'; }),
    '...falling back to the commit for an image with no version');
 // An image built outside CI carries no stamp, and says so rather than leaving
-// a gap that reads as "this dashboard is too old to tell you" — in the label
+// a gap that reads as "this dashboard is too old to tell you", in the label
 // and in the popup both.
 ok(await page.evaluate(() => { drawBuild({ rev: '', built: '' });
                                return document.getElementById('build')
@@ -962,7 +962,7 @@ ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => 
 
 // And back. There is no credential here to take away: a machine signs in for
 // itself and keeps the grant it alone refreshes (R47). Signed in, to this
-// card, means SOME NODE reports being signed in — and signing out moves a
+// card, means SOME NODE reports being signed in, and signing out moves a
 // generation, which is the only thing that can reach a node that is not
 // listening, because being signed out has no date to compare.
 mkdirSync(`${DIR}/home/.claude`, { recursive: true });
@@ -987,7 +987,7 @@ claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
 
 // ---- the sign-in runs where Claude IS, which is a node ------------------
 // Claude Code is installed for the account that runs sessions, and that is a
-// node — so the flow goes there as a job of its own, under a pty on that
+// node, so the flow goes there as a job of its own, under a pty on that
 // machine, and the grant it makes stays there (R47). The card does not know
 // which of the two it is driving: same link, same code field.
 {
@@ -1013,8 +1013,8 @@ claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
 // ---- ...and nowhere, when no node is running sessions -------------------
 // There is no fallback: this container carries no Claude Code, so a sign-in
 // has no machine to run on and says so. The local pty flow that used to live
-// here went with the binary (R47); what the card does with a flow — the
-// link, the code field, the focus across polls — is driven in agent.mjs now,
+// here went with the binary (R47); what the card does with a flow (the
+// link, the code field, the focus across polls) is driven in agent.mjs now,
 // where a node's job log can actually be posted to.
 await page.evaluate(async () => {
   const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
@@ -1119,11 +1119,11 @@ rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false
 ok(/installing/.test(rc.body) && !/not reported yet/.test(rc.body),
    '...and one being installed right now says that instead');
 ok(await page.$('#runner [data-m]') === null,
-   'the card carries no Start/Stop of its own — those are the Nodes tab\'s');
+   'the card carries no Start/Stop of its own: those are the Nodes tab\'s');
 await page.evaluate(() => refresh());
 
 // The padlock: a project the operator keeps and runs themselves. Its whole
-// point is being the OTHER button — excluding hides a row, this one leaves it
+// point is being the OTHER button: excluding hides a row, this one leaves it
 // intact and takes away only the session, so that is what gets asserted.
 await page.evaluate(() => refresh());
 await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000 });
@@ -1156,8 +1156,8 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
      '...marked with the padlock alone, not a sentence under the name as well');
 await page.evaluate(() => setLocked('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
-// the reason. The button stays dead here for a different one — alpha has no
-// node in this fixture and a Claude session runs on one — and that is the
+// the reason. The button stays dead here for a different one (alpha has no
+// node in this fixture and a Claude session runs on one), and that is the
 // row saying one thing at a time rather than two.
 await page.waitForFunction(
   () => !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
@@ -1199,7 +1199,7 @@ ok(await page.$eval('.doc .projtab .row:has([data-p="alpha"])',
      r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-m]')),
    '...still carrying every control, which is the whole promise of the pin');
 // The tab is a document, not a card adrift in one. It used to draw itself
-// inside .card — rounded, bordered, floating on a darker gutter — while the
+// inside .card, rounded, bordered and floating on a darker gutter, while the
 // notebook in the pane beside it filled the pane. One language.
 ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
    && await page.$eval('.doc:has(.projtab)', e => e.classList.contains('flush')),
@@ -1236,7 +1236,7 @@ ok(true, 'pinning it puts it back on the sidebar');
   while (held < before + 2 && Date.now() - t0 < 15000)
     await new Promise(r => setTimeout(r, 50));
   ok(held >= before + 2,
-     `...and the asking is remembered, not dropped — one more goes when it lands (${
+     `...and the asking is remembered, not dropped: one more goes when it lands (${
         held - before} in ${Date.now() - t0}ms)`);
   await page.unroute('**/api/status*');
 }
@@ -1300,11 +1300,11 @@ ok(true, 'pinning it puts it back on the sidebar');
        dead.op}, ${dead.tip.slice(0, 46)}…)`);
 }
 
-ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render
 // the same rows from the same state, and a tab that drew once showed a lit
-// thumbtack for a project that was no longer pinned — then clicking it sent
+// thumbtack for a project that was no longer pinned, and then clicking it sent
 // the state it was already in, which is what "pinning only works sometimes"
 // was. No poll is waited for: the answer to the pin request is the new set.
 await page.click('#projects #bAllProj');
@@ -1335,11 +1335,11 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // ...and back, which is the direction that used to be a plain redraw: pinning
 // is watched from the Projects tab, which on a desktop sits in the column
 // beside the sidebar, so the row has to unroll rather than shove the projects
-// under it down between two frames. The tween is caught while it runs — the
-// row exists before it, so waiting for the row alone would prove nothing.
+// under it down between two frames. The tween is caught while it runs, since
+// the row exists before it and waiting for the row alone would prove nothing.
 // Watched at the call rather than caught mid-flight: the tween is 170ms,
 // and a poll that evaluates in the page over CDP can take longer than that
-// on a loaded box — this passed on the controller and failed three times
+// on a loaded box; this passed on the controller and failed three times
 // out of four on bb-sandbox with the row rendered, motion allowed and no
 // stub in the way. What is asserted is the same: the row was tweened rather
 // than snapped in.
@@ -1361,8 +1361,8 @@ await page.waitForFunction(() =>
     .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
 
 // The docker manager opens from Tools. What it LISTS is asserted in
-// devapp.mjs, where a project actually has a compose file and an instance —
-// here there are none, so the only honest assertion is that the tab opens and
+// devapp.mjs, where a project actually has a compose file and an instance.
+// Here there are none, so the only honest assertion is that the tab opens and
 // shows the daemon's own containers.
 await page.click('#bDocker');
 await page.waitForSelector('.dmtab', { timeout: 15000 });
@@ -1377,7 +1377,7 @@ ok(await page.$$eval('.dmtab .row', rs =>
 // Each button on the Tools card carries an icon, and the tab it opens wears
 // the same one: a button and its tab are one thing in two places.
 ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
-     bs.length === 6 && bs.every(b => b.querySelector('svg'))),
+     bs.length === 7 && bs.every(b => b.querySelector('svg'))),
    'every Tools button carries an icon');
 ok(await page.evaluate(() => {
      const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
@@ -1408,8 +1408,8 @@ ok(await page.$eval('#rnTokenField', el => el.hidden)
    '...and holds no credential: the gear is the project, the chain is its remote');
 await page.click('#rnCancel');
 
-// The chain, on a project that already has one. alpha can push — the
-// retroactive seeding granted it, on the deploy key its remote uses — so it
+// The chain, on a project that already has one. alpha can push (the
+// retroactive seeding granted it, on the deploy key its remote uses), so it
 // is offered a token, and told what setting one does and does not do.
 await page.click('.doc .projtab [data-l="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
@@ -1423,7 +1423,7 @@ const kh = await page.$eval('#rnTokenHint', e => e.textContent);
 ok(/deploy key/.test(kh) && /does nothing until the switch below/.test(kh),
    '...told in a line that setting one does not switch anything by itself');
 // The switch that makes it take effect. alpha's remote is ssh and it has no
-// token, so the choice is real but one-sided until a token exists — and the
+// token, so the choice is real but one-sided until a token exists, and the
 // side you cannot take is disabled rather than absent, because a control that
 // silently does nothing is worse than one that says why.
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
@@ -1454,7 +1454,7 @@ ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
 
 // The remaining states need a project holding both credentials, which no
-// fixture here does — so the answer the dialog was given is set directly and
+// fixture here does, so the answer the dialog was given is set directly and
 // the real draw runs against the real DOM. What is being tested is the state
 // machine, and it takes exactly this one input.
 const authState = (opts, now) => page.evaluate(([o, n]) => {
@@ -1492,7 +1492,7 @@ v = await seen();
 ok(v.closed && v.key && !v.token && v.onToken,
    'with no deploy key the key side is ghosted and the pick stays on the token');
 // Clearing does NOT slide the pick somewhere else. It stays where it was put,
-// goes invalid, and Save refuses — being corrected without being asked is how
+// goes invalid, and Save refuses: being corrected without being asked is how
 // you end up on a credential you did not choose.
 await page.click('#rnTokenClear');
 v = await seen();
@@ -1507,14 +1507,14 @@ ok(/no access token after this save/.test(await page.$eval('#rnErr', e => e.text
 // Disabled is the third answer, and always takeable: it is the absence of a
 // credential rather than the presence of one.
 ok(!await page.$eval('#rnAuthNone', b => b.disabled),
-   'Disabled is always offered — turning pushing off is a real answer');
+   'Disabled is always offered: turning pushing off is a real answer');
 await page.click('#rnAuthNone');
 v = await seen();
 ok(v.onNone && !v.bad,
    '...and picking it settles the dialog, because nothing is missing any more');
 
 // What Claude runs on here, back through the gear. Per project, and applied
-// when a session starts rather than typed into a running one — so the dialog's
+// when a session starts rather than typed into a running one, so the dialog's
 // job is to say which of those two you are doing.
 await page.click('#rnCancel');
 await page.click('.doc .projtab [data-rn="alpha"]');
@@ -1583,7 +1583,7 @@ await page.click('#rnCancel');
 // Saving and interrupting are two decisions, and only one of them is asked
 // about. Declining the restart used to return before anything was written, so
 // somebody who wanted the setting kept and their conversation left alone got
-// neither — and restarting the session by hand afterwards changed nothing,
+// neither, and restarting the session by hand afterwards changed nothing,
 // because there was nothing stored to read (B88).
 {
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
@@ -1663,7 +1663,7 @@ await page.evaluate(() => renameProject('gamma'));
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnModel', e => e.disabled)
    && await page.$eval('#rnEffort', e => e.disabled),
-   'a locked project cannot be given a model — no session starts there to have one');
+   'a locked project cannot be given a model: no session starts there to have one');
 ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
@@ -1695,12 +1695,12 @@ ok(await page.$eval('#rnmodal', el => el.hidden), 'Cancel closes it');
 
 // Deleting: on the full list only, and it moves rather than destroys.
 ok(!await page.$('#projects [data-del]'),
-   'the sidebar card has no delete — that one is brushed past on a phone');
+   'the sidebar card has no delete: that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
    '...and the Projects tab does');
 // The thumbtack went the same way. The card IS the pinned view, so a control
 // on it that takes a row off it is a button whose only effect is to remove
-// the thing you pressed — and the row it lived on is now one control shorter
+// the thing you pressed, and the row it lived on is now one control shorter
 // on the crowded side.
 ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
    'pinning is the Projects tab\'s, not the card the pins are shown in');
@@ -1721,7 +1721,7 @@ ok(await page.$(`${dRow} [data-m]`) !== null && await page.$(`${dRow} [data-s]`)
 // The refusal is the server's. A read-only state enforced by a dimmed button
 // is a suggestion, and the endpoint behind it is reachable without the page.
 const refused = await page.evaluate(async () => {
-  const r = await fetch('/api/todo', { method: 'POST',
+  const r = await fetch('/api/roadmap', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
   return { status: r.status, error: (await r.json()).error || '' };
@@ -1755,7 +1755,7 @@ ok(await page.evaluate(() => {
 
 // ...and not while it is pressed. Every button dips a pixel on :active, and a
 // transform makes the element the containing block for its own absolutely
-// positioned ::after — so a sidebar tip measured against the ROW suddenly
+// positioned ::after, so a sidebar tip measured against the ROW suddenly
 // measures against a 32px button, wraps to one character per line and runs
 // down the whole card. Reported as "something crazy with the tooltips".
 const tipBtn = '#projects .row .acts [data-tip]';
@@ -1770,7 +1770,7 @@ ok(pressed === 'none',
    '...and goes away while the button is held, where a transform would mis-measure it');
 // ...and STAYS away with the pointer still on it. `:active` ends at the
 // release and `:hover` does not, so the tip used to come straight back and sit
-// over the next control down — the Resume button, in this strip. You have read
+// over the next control down: the Resume button, in this strip. You have read
 // the label and acted on it; it has nothing left to tell you.
 const after = [];
 for (let i = 0; i < 4; i++){
@@ -1781,7 +1781,7 @@ ok(after.every(d => d === 'none'),
    `...and stays away once clicked, rather than covering what is under it (${after.join(', ')})`);
 // Cleared by reaching a different control, not by a timer: this is one button's
 // label being finished with, not tooltips being switched off. Its size is the
-// other half — the press TRANSITIONS back over 100ms, and while a transform was
+// other half: the press TRANSITIONS back over 100ms, and while a transform was
 // what dipped the button it went on being the containing block for its own
 // ::after after :active stopped matching, so the next tip opened one character
 // wide and ran down the whole card. Reported as "something crazy with the
@@ -1819,7 +1819,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   // What "crossfades" means, asserted without racing the 320ms window: the
   // swap turns a colour transition ON for its duration. Sampling the colour
   // partway through needed the evaluate to land inside that window, which a
-  // loaded box does not promise — it read as a cut on the node running the
+  // loaded box does not promise; it read as a cut on the node running the
   // suite, and reading it synchronously instead caught the value before the
   // transition had started. So: the class and the transition it brings are
   // the claim, and the colour is checked once the swap has finished.
@@ -1849,7 +1849,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
 // ---- one field skin, everywhere ----------------------------------------
 // Every text control on the page shares its ground, edge and radius from one
-// rule, and a site declares only what is its own — font aside, that is the
+// rule, and a site declares only what is its own: font aside, that is the
 // whole contract. A field in a context the rule does not list silently wears
 // the BROWSER's default instead, which is how the log-retention box ended up
 // a 2px grey square in Arial beside a page of sunk monospace fields.
@@ -1881,7 +1881,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 // strip owns the top corners and its own bottom edge, the panes carry the
 // sides with no top border, the bar owns the bottom corners. .col's 10px gap
 // pushed them apart into three boxes with the seams showing, which is what
-// this measures — the pieces have to touch exactly.
+// this measures, and the pieces have to touch exactly.
 {
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')]
     .find(x => /^Terminal$/.test(x.textContent.trim())); b && b.click(); });
@@ -1925,7 +1925,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
   // Through the button, because that is the whole point of it: lowering the
   // number CROPS, and a number field fires `change` on its way through every
-  // value the keyboard passes — typing 30 over 300 would have pruned at 3.
+  // value the keyboard passes, so typing 30 over 300 would have pruned at 3.
   writeFileSync(`${LD}/docker.log.2`, 'x'.repeat(64));
   const week = Date.now() / 1000 - 7 * 86400;
   utimesSync(`${LD}/docker.log.2`, week, week);
@@ -1994,7 +1994,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 }
 
 // The command pin and the project pin are different features that spent an
-// afternoon sharing four names — /api/pin, _pin, PINS_FILE and setPinned — and
+// afternoon sharing four names (/api/pin, _pin, PINS_FILE and setPinned), and
 // nothing went red, because pinning a command had no test at all (bug #20).
 // This is that test: the two write to their own files and neither can be
 // reached through the other's endpoint.

@@ -30,5 +30,5 @@ command -v mise >/dev/null 2>&1 && eval "$(mise activate bash)"
 
 if [ -z "${BUILDERBOT_MOTD_SHOWN:-}" ]; then
     export BUILDERBOT_MOTD_SHOWN=1
-    echo "BuilderBot — 'bb status' for an overview, 'claude' to start a session."
+    echo "BuilderBot: 'bb status' for an overview, 'claude' to start a session."
 fi

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """What a project has built, found in one place: its dist/ directory.
 
-The convention is the feature. Build systems scatter their outputs — gradle
-five directories deep, web-ext into web-ext-artifacts/, cargo into target/ —
+The convention is the feature. Build systems scatter their outputs (gradle
+five directories deep, web-ext into web-ext-artifacts/, cargo into target/)
 and a tab that went looking for all of those would be a catalogue of build
 systems that is wrong the week a new one arrives. So the deal is one word
 long: **a project puts what it ships in dist/**, and this lists dist/ and
@@ -12,8 +12,8 @@ step is missing, and the tab says exactly that rather than guessing.
 
 Kinds are by extension, and the kind is what decides the actions offered:
 everything can be downloaded, an .xpi can additionally be pushed to the
-paired phone — unpacked into a scratch directory and handed to web-ext, since
-an XPI is a zip of exactly the source layout web-ext runs — and a script can
+paired phone (unpacked into a scratch directory and handed to web-ext, since
+an XPI is a zip of exactly the source layout web-ext runs), and a script can
 be read without leaving the tab.
 
 A script is the one kind that cannot be settled by extension alone: a shipped
@@ -35,8 +35,8 @@ WORKSPACE = None
 DIST = "dist"
 
 # Extension -> kind. A short list on purpose: these are the things this
-# operator's projects actually produce, and an unknown extension still shows —
-# as "file", download only — rather than being hidden.
+# operator's projects actually produce, and an unknown extension still shows
+# (as "file", download only) rather than being hidden.
 KINDS = {
     ".apk": "apk", ".aab": "aab", ".xpi": "xpi",
     ".ipa": "ipa", ".deb": "deb", ".rpm": "rpm",
@@ -135,8 +135,8 @@ def resolve(project, rel):
 
 def source_zip(project):
     """The code base as a zip, for the Artifacts tab's Download source:
-    what git tracks plus what it would track — untracked files that are not
-    ignored — under one top-level directory named for the project, and
+    what git tracks plus what it would track (untracked files that are not
+    ignored) under one top-level directory named for the project, and
     never .git itself, dist/ (the artifacts have their own downloads) or
     anything .gitignore hides, which is where build output, node_modules
     and caches live. Without git, the tree minus the directories every
@@ -174,7 +174,7 @@ def source_zip(project):
                 continue
             total += fp.stat().st_size
             if total > SOURCE_CAP:
-                return {"error": f"the tree is over {SOURCE_CAP >> 20}MB before build output — "
+                return {"error": f"the tree is over {SOURCE_CAP >> 20}MB before build output: "
                                  "something large is not ignored; .gitignore it, or fetch the "
                                  "repository with git instead"}
             z.write(fp, f"{project}/{f}")

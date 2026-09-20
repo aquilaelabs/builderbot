@@ -121,7 +121,7 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Dim("Sign in with your dashboard account. The address is the one you open in a browser — on your network, or over your tailnet.")
+        Dim("Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(server, { server = it }, label = { Text("Dashboard address") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
@@ -175,7 +175,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
             if (asks > 0 || att.isNotEmpty()) item {
                 Card(Modifier.fillMaxWidth().padding(16.dp, 4.dp)) {
                     Column(Modifier.padding(12.dp)) {
-                        if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer — see Approvals", color = Warn)
+                        if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer; see Approvals", color = Warn)
                         for (a in att) Text(WatchService.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
                     }
                 }
@@ -189,7 +189,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
                     }
                     val bits = mutableListOf<String>()
                     if (p.str("git").isNotBlank()) bits += p.str("git")
-                    if (p.int("todo") > 0) bits += "${p.int("todo")} on the roadmap"
+                    if (p.int("roadmap") > 0) bits += "${p.int("roadmap")} on the roadmap"
                     if (p.int("bugs") > 0) bits += "${p.int("bugs")} open bug${if (p.int("bugs") == 1) "" else "s"}"
                     if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
                     Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })
@@ -219,7 +219,7 @@ fun ApprovalsScreen(store: Store) {
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing — a session asking for your phone, or for root on a node, appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, or for root on a node, appears here") } }
         items(asks) { a ->
             val root = a.str("kind") == "root"
             Card(Modifier.fillMaxWidth().padding(16.dp, 4.dp)) {
@@ -239,13 +239,13 @@ fun ApprovalsScreen(store: Store) {
             }
         }
         val waiting = st.value?.arr("projects")?.filter { it.int("pending") > 0 } ?: emptyList()
-        item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none — roadmap items, bugs and rules a session added under an ask gate are listed here") } }
+        item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs and rules a session added under an ask gate are listed here") } }
         items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt) }
     }
 }
 
 suspend fun answer(api: Api, id: Int, allow: Boolean): String = try {
-    api.decide(id, allow); if (allow) "allowed — the node is running it" else "denied"
+    api.decide(id, allow); if (allow) "allowed: the node is running it" else "denied"
 } catch (e: Exception) { e.message ?: e.toString() }
 
 @Composable
@@ -283,7 +283,7 @@ fun NodesScreen(store: Store) {
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Accent)
             if (nd.error != null) Problem(nd.error)
-            if (nd.value != null && rows.isEmpty()) Dim("no node is enrolled — the dashboard's Nodes tab mints a token for one")
+            if (nd.value != null && rows.isEmpty()) Dim("no node is enrolled; the dashboard's Nodes tab mints a token for one")
         }
         items(rows) { n ->
             val rep = n.obj("reported")
@@ -409,7 +409,7 @@ private fun AddAccount(api: Api, roles: List<String>, onDone: (String) -> Unit) 
                        onDone(try { api.userAdd(name.trim(), pw, role); "${name.trim()} added" }
                               catch (e: Exception) { e.message ?: e.toString() })
                    } }, modifier = Modifier.padding(top = 8.dp)) { Text("Add account") }
-            Dim("Projects are given after it exists — open the row.")
+            Dim("Projects are given after it exists: open the row.")
         }
     }
 }
@@ -463,7 +463,7 @@ private fun EditAccount(api: Api, u: JSONObject, roles: List<String>, everyProje
 // and an intent.
 //
 // Android asks the person to confirm the install every time, and asks for
-// "install unknown apps" the first time — this cannot and should not install
+// "install unknown apps" the first time. This cannot and should not install
 // anything quietly. What it removes is the desktop, not the decision.
 @Composable
 private fun InstallNewer(api: Api, apk: String) {
@@ -618,9 +618,9 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
 
 // ---- tools: what a node carries, and adding to it -------------------------------
 // The dashboard's Tools tab, as much of it as a phone is the right shape for:
-// which packages a store holds, and Install or Remove on one of them. The
-// listing is everybody's — what a node carries decides whether a build can run
-// there — and the two buttons are an administrator's, which is the server's
+// which toolchains a store holds, and Install or Remove on one of them. The
+// listing is everybody's (what a node carries decides whether a build can run
+// there), and the two buttons are an administrator's, which is the server's
 // rule and not this screen's opinion.
 //
 // Android system images are deliberately not here. They are a picker over an
@@ -635,7 +635,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
     var said by remember { mutableStateOf("") }
     var ask by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
     val (nd, _) = load("tools-nodes") { api.nodes() }
-    val (pk, reload) = load("tools-$node") { api.packages(node) }
+    val (pk, reload) = load("tools-$node") { api.toolchains(node) }
     val nodes = nd.value?.arr("nodes")
         ?.filter { it.str("kind") == "agent" && it.str("state") != "retired" } ?: emptyList()
     val job = pk.value?.obj("job")
@@ -648,7 +648,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
         ask = null
         scope.launch {
             said = try {
-                api.packageAct(node, action, listOf(name))
+                api.toolchainAct(node, action, listOf(name))
                 if (action == "install") "installing $name…" else "removing $name…"
             } catch (e: Exception) { e.message ?: e.toString() }
             reload()
@@ -665,7 +665,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                 Column {
                     Text(if (action == "install")
                             "It downloads onto the store " + (if (node.isBlank()) "here" else "on this node") +
-                            (if (size.isNotBlank()) " — $size." else ".")
+                            (if (size.isNotBlank()) " ($size)." else ".")
                          else "The files go; nothing that was built with it is touched.")
                     if (item.strs("needs").isNotEmpty())
                         Dim("needs " + item.strs("needs").joinToString(", "))
@@ -732,7 +732,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                 Dim(listOf(p.str("size"), if (p.strs("needs").isEmpty()) "" else "needs " + p.strs("needs").joinToString(", "))
                         .filter { it.isNotBlank() }.joinToString(" · "))
                 when {
-                    wrong.isNotBlank() -> Text("not for this node — $wrong", color = Warn,
+                    wrong.isNotBlank() -> Text("not for this node: $wrong", color = Warn,
                                                style = MaterialTheme.typography.bodySmall)
                     p.bool("unknown") -> Text("this node has not reported its store yet",
                                               color = Warn, style = MaterialTheme.typography.bodySmall)
@@ -747,6 +747,6 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             }
             HorizontalDivider()
         }
-        item { if (!isAdmin) Dim("Installing and removing is an administrator's — these are gigabytes on somebody else's disk.") }
+        item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
     }
 }

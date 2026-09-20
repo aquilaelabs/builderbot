@@ -5,7 +5,7 @@ Three stores contribute to the block bb-tty hands `claude` as
 `--append-system-prompt`: the house rules first (how the operator wants this
 worked on comes before what there is to work on), then the open roadmap, then
 the open bugs. That order and those joins used to live in bb-tty as shell,
-which was fine while the launcher was the only reader — and stopped being fine
+which was fine while the launcher was the only reader, and stopped being fine
 the moment the Briefing tab wanted to SHOW a person what their sessions are
 sent. Two assemblies of the same text drift, and the one that drifts is the
 one nobody runs.
@@ -32,7 +32,7 @@ from pathlib import Path
 # The three stores, set by configure(). Named here so the module reads as
 # what it is on its own, and so a typo is a lint finding rather than a
 # NameError on somebody's first session of the day.
-rules_mod = todo_mod = bugs_mod = None
+rules_mod = roadmap_mod = bugs_mod = None
 
 # The projects share, for deciding which parts of the briefing apply to this
 # project. From the environment rather than configure(), because both readers
@@ -41,17 +41,17 @@ WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
 MAX = 200000
 
-CUT = ("[the rest of this list did not fit in the prompt — `bb roadmap`"
+CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
        " and `bb bug` show all of it]")
 
 
-def configure(*, rules_mod, todo_mod, bugs_mod):
+def configure(*, rules_mod, roadmap_mod, bugs_mod):
     """The three stores, injected rather than imported.
 
     Same shape as every other module here: server.py owns configuring them,
     and `bb` hands in the same three after configuring them itself.
     """
-    globals().update(rules_mod=rules_mod, todo_mod=todo_mod, bugs_mod=bugs_mod)
+    globals().update(rules_mod=rules_mod, roadmap_mod=roadmap_mod, bugs_mod=bugs_mod)
 
 
 # Where the environment briefing is written. The image puts config/templates/
@@ -134,7 +134,7 @@ def parts(project):
     out = []
     for name, fn in (("briefing", lambda: briefing(project)),
                      ("rules", lambda: rules_mod.block(project)),
-                     ("roadmap", lambda: todo_mod.prompt(project)),
+                     ("roadmap", lambda: roadmap_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):
         try:
             text = (fn() or "").strip("\n")
@@ -156,7 +156,7 @@ def fit(text):
     """(what a session gets, whether it was cut, how big it was).
 
     The cut lands on a line boundary rather than mid-line, and never inside a
-    UTF-8 character — `head -c` was happy to do both.
+    UTF-8 character; `head -c` was happy to do both.
     """
     raw = text.encode("utf-8")
     if len(raw) <= MAX:

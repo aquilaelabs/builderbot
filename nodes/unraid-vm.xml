@@ -16,8 +16,8 @@
   and sizes for a machine that compiles.
 
   ONE FILE FOR EVERY DISTRIBUTION. The hardware is the same whatever is
-  installed on it — virtio has been in every Linux kernel for fifteen
-  years — so the only line that changes per distribution is the installer
+  installed on it (virtio has been in every Linux kernel for fifteen
+  years), so the only line that changes per distribution is the installer
   ISO below, and provision-linux.sh sorts out the rest inside the guest (the
   Debian, RHEL, Arch and SUSE families, Alpine, Void and Gentoo; a
   derivative is recognised by its ID_LIKE). The <vmtemplate> line is
@@ -26,7 +26,7 @@
 <domain xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0" type="kvm">
   <uuid>b091db01-cbdd-07b7-c797-79ca40d31a00</uuid>
   <name>bb-sandbox</name>
-  <description>BuilderBot node — builds, tests, CI, the emulator and sessions run here; containers it can wreck</description>
+  <description>BuilderBot node: builds, tests, CI, the emulator and sessions run here; containers it can wreck</description>
   <metadata>
     <vmtemplate xmlns="http://unraid" name="Linux" icon="linux.png" os="linux" storage="default"/>
   </metadata>
@@ -48,7 +48,7 @@
        Form view later if it starts competing with the emulator. -->
 
   <!-- host-passthrough hands the guest the host's CPU as it is, which is
-       what lets /dev/kvm exist INSIDE the VM — and without /dev/kvm the
+       what lets /dev/kvm exist INSIDE the VM. Without /dev/kvm the
        Android emulator on this node has no acceleration and never finishes
        booting. The other half is the host's: nested virtualization has to be
        on for the kvm module. On Unraid that is one file, then a reboot:
@@ -101,10 +101,10 @@
     <emulator>/usr/local/sbin/qemu</emulator>
 
     <!-- The disk. qcow2 so it grows rather than being claimed up front, and
-         discard='unmap' so the file SHRINKS again when Docker prunes images —
+         discard='unmap' so the file SHRINKS again when Docker prunes images;
          without it a sandbox only ever gets bigger. Make it 200G, not the
-         64G a Docker sandbox got by with: the packages store lands here
-         (/var/lib/builderbot/packages — the Android SDK's system images
+         64G a Docker sandbox got by with: the toolchain store lands here
+         (/var/lib/builderbot/toolchains: the Android SDK's system images
          alone are tens of gigabytes, the JDK, Flutter and the Playwright
          browsers on top) unless provision-linux.sh points the stores at a share
          instead. The guest grows into it; the file only takes what is used. -->
@@ -117,7 +117,7 @@
 
     <!-- The installer. The ONE line that differs per distribution: put the
          ISO you downloaded into /mnt/user/isos and name it here, install
-         (headless, no desktop, ssh on — docs/sandbox-vm.md has the screens
+         (headless, no desktop, ssh on; docs/sandbox-vm.md has the screens
          that matter), then delete this whole block so it stops booting from
          the ISO. The filenames as their projects publish them:
            ubuntu-26.04-live-server-amd64.iso          Ubuntu Server (tested)
@@ -149,7 +149,7 @@
     <!-- No virtiofs shares here on purpose. They belong in this file and
          they are the faster answer, but virtiofsd is a host-side daemon that
          can refuse to start ("internal error: virtiofsd died unexpectedly")
-         for reasons that are about the host and not about this XML — a
+         for reasons that are about the host and not about this XML: a
          source directory that is not there, or shfs under /mnt/user not
          giving it the xattrs passthrough mode wants. A recipe whose first
          step can fail that way is a bad recipe.
@@ -231,13 +231,13 @@
 
     <!-- The GPU, when it moves here (roadmap R20): the emulator renders on
          the card instead of falling back to software. Both functions of the
-         card go together — the video device and its audio function — and the
+         card go together (the video device and its audio function), and the
          BuilderBot container has to give the card up first (its NVIDIA_*
          settings off, then a restart), because a device is one guest's at a
          time. Find the addresses under Tools -> System Devices and bind them
          to VFIO there; then uncomment this with them filled in. The guest
          still needs the driver and the headless X server provision-linux.sh does
-         not yet install — R20's remaining step — so leave this commented
+         not yet install (R20's remaining step), so leave this commented
          until it does.
     <hostdev mode="subsystem" type="pci" managed="yes">
       <source><address domain="0x0000" bus="0x0X" slot="0x00" function="0x0"/></source>

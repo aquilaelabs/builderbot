@@ -1,7 +1,7 @@
 // The dashboard's API, as the app speaks it: Basic auth on every request
 // (the same credential the browser sends), JSON in and out, one place that
 // knows the server's address. Kept to the platform's own HTTP client and
-// org.json so the app carries no networking stack of its own — the surface
+// org.json so the app carries no networking stack of its own. The surface
 // it calls is small, and android/api-surface.json names every path here.
 package dev.builderbot.app
 
@@ -68,19 +68,19 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun pendingAct(project: String, allow: Boolean, ids: List<String>) =
         post("/api/pending", json("project" to project, "action" to (if (allow) "approve" else "deny"),
                                   "ids" to JSONArray(ids)))
-    suspend fun todo(project: String) = get("/api/todo?project=${enc(project)}")
-    suspend fun todoAdd(project: String, text: String) =
-        post("/api/todo", json("project" to project, "action" to "add", "text" to text))
-    suspend fun todoShelve(project: String, id: Any) =
-        post("/api/todo", json("project" to project, "action" to "shelve", "id" to id))
-    suspend fun todoRemove(project: String, id: Any, why: String) =
-        post("/api/todo", json("project" to project, "action" to "remove", "id" to id, "why" to why))
+    suspend fun roadmap(project: String) = get("/api/roadmap?project=${enc(project)}")
+    suspend fun roadmapAdd(project: String, text: String) =
+        post("/api/roadmap", json("project" to project, "action" to "add", "text" to text))
+    suspend fun roadmapShelve(project: String, id: Any) =
+        post("/api/roadmap", json("project" to project, "action" to "shelve", "id" to id))
+    suspend fun roadmapRemove(project: String, id: Any, why: String) =
+        post("/api/roadmap", json("project" to project, "action" to "remove", "id" to id, "why" to why))
     // A step, into the session's own input. `step` null means the next one
     // that has not gone, which is what the panel sends and what somebody on a
     // phone means by "send the next bit". The answer says whether the line
-    // actually landed — a step is marked sent only when it did.
-    suspend fun todoSend(project: String, id: Any, step: Int?, note: String) =
-        post("/api/todo", json("project" to project, "action" to "send", "id" to id,
+    // actually landed: a step is marked sent only when it did.
+    suspend fun roadmapSend(project: String, id: Any, step: Int?, note: String) =
+        post("/api/roadmap", json("project" to project, "action" to "send", "id" to id,
                                "step" to step, "note" to note))
     suspend fun bugs(project: String) = get("/api/bugs?project=${enc(project)}")
     suspend fun bugAdd(project: String, title: String, severity: String, area: String, repro: String) =
@@ -101,18 +101,18 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun nodes() = get("/api/v1/nodes")
     suspend fun nodeAct(id: String, action: String) =
         post("/api/v1/nodes", json("action" to action, "id" to id))
-    // The packages store, and what may be added to it. The listing is NOT
-    // administrators-only — what a node carries decides whether a build can
+    // The toolchain store, and what may be added to it. The listing is NOT
+    // administrators-only: what a node carries decides whether a build can
     // run there, and that is everybody's question; installing is theirs.
     // `node` empty means the controller's own store, which is what the
     // dashboard's picker calls the first entry.
-    suspend fun packages(node: String) =
-        get("/api/packages" + if (node.isBlank()) "" else "?node=${enc(node)}")
-    suspend fun packageAct(node: String, action: String, names: List<String>) =
-        post("/api/packages", json("action" to action, "node" to node,
-                                   "names" to JSONArray(names)))
+    suspend fun toolchains(node: String) =
+        get("/api/toolchains" + if (node.isBlank()) "" else "?node=${enc(node)}")
+    suspend fun toolchainAct(node: String, action: String, names: List<String>) =
+        post("/api/toolchains", json("action" to action, "node" to node,
+                                     "names" to JSONArray(names)))
     suspend fun users() = get("/api/users")
-    /** One account, in one Save — the same verb the dashboard's modal uses, so
+    /** One account, in one Save, using the same verb the dashboard's modal uses, so
      *  the owner protections that live in users.py hold here too. A blank
      *  password leaves the existing one alone. */
     suspend fun userEdit(name: String, role: String, projects: List<String>, password: String) =
@@ -135,7 +135,7 @@ class Api(private val base: String, private val user: String, private val passwo
      *  the newer APK is an artifact like any other, and installing it from the
      *  phone is the difference between an app that can update itself and one
      *  that needs a desktop to reach the same file. Streamed rather than read
-     *  into memory — this is twelve megabytes. */
+     *  into memory: this is twelve megabytes. */
     suspend fun download(path: String, dest: java.io.File): java.io.File = withContext(Dispatchers.IO) {
         val c = open(path, "GET")
         c.setRequestProperty("Accept", "*/*")

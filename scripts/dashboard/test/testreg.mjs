@@ -1,10 +1,10 @@
 // The notebook's test registry: the hand-written half, the parsed half, and
-// the thing that makes them worth keeping together — the drift between them.
+// the thing that makes them worth keeping together: the drift between them.
 //
 // What is exercised for real here: the module through `bb tests` (the CLI a
 // session drives), the endpoint through the page, and the tab against a run
 // log this file writes itself. What is faked: the run log. Nothing here runs
-// a suite — a test that ran the suite to test the thing that reads the suite
+// a suite: a test that ran the suite to test the thing that reads the suite
 // would be the slowest test in the suite.
 import { launch, newPage, ok, done, ready, nbShown, nbTab, URL, DIR } from './lib.mjs';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync,
@@ -59,7 +59,7 @@ const t = read().tests;
 ok(t['slow.mjs#1'] && t['slow.mjs#1'].ms[0] === 30000,
    'a duration is stored in milliseconds, off the timing prefix the runner printed');
 ok(t['fast.mjs#1'].suite === 'fast.mjs' && t['fast.mjs#1'].ord === 1,
-   'a test is keyed on where the runner put it — file and ordinal, not its prose');
+   'a test is keyed on where the runner put it: file and ordinal, not its prose');
 
 // ---- the numbers the header is for ---------------------------------------
 const listed = bb('list');
@@ -75,7 +75,7 @@ ok(/slow\.mjs\s+3 tests\s+2 flagged/.test(listed),
 // run` takes the files to run and passes them to the project's test command.
 // The projection has to follow it: asked about named suites it is those
 // suites' own measured time, and asked about the whole thing it ignores the
-// narrowed runs — projecting a full run from a two-file one would call it
+// narrowed runs: projecting a full run from a two-file one would call it
 // stuck while it was still getting started.
 ok(/^projected 44s, what those 3 tests last measured, in 1 of 2 suites;/m
      .test(bb('projection', 'slow')),
@@ -96,8 +96,8 @@ ok(!/4\.0s/.test(flagged),
    '...and 4.0s is not: it is under the floor, where a round number is a coincidence');
 
 // ---- accepting a wait that is the work ------------------------------------
-// A test that has to sit on a round number — a real boot, a timeout being
-// proved — is marked so once, with why, and stops bothering anybody. The
+// A test that has to sit on a round number (a real boot, a timeout being
+// proved) is marked so once, with why, and stops bothering anybody. The
 // reason stays on the test, because "decided" and "tolerated" look the same
 // from the number alone.
 ok(/accepted; it will not be flagged/.test(bb('accept', 'slow.mjs#1', 'a real thirty-second boot')),
@@ -106,7 +106,7 @@ const afterAccept = bb('flagged');
 ok(!/slow\.mjs#1/.test(afterAccept) && /10\.0s\s+slow\.mjs#3/.test(afterAccept)
    && /1 accepted as the work/.test(afterAccept),
    '...and it leaves the flagged list, which says how many were accepted');
-ok(/accepted: sits on 30s, and that is the work — a real thirty-second boot/.test(bb('show', 'slow.mjs#1')),
+ok(/accepted: sits on 30s, and that is the work: a real thirty-second boot/.test(bb('show', 'slow.mjs#1')),
    '...with the reason kept on the test');
 ok(/1 flagged \(10s waiting\)/.test(bb('list')),
    '...and the header counts only what is still flagged');
@@ -116,7 +116,7 @@ ok(/no longer accepted/.test(bb('accept', 'slow.mjs#1', '--no')) && /30\.0s\s+sl
 // ---- sequence context -----------------------------------------------------
 const shown = bb('show', 'slow.mjs#3');
 ok(/follows: the daemon answers/.test(shown),
-   'a continuation keeps the test it follows — the names are prose and "..." '
+   'a continuation keeps the test it follows: the names are prose and "..." '
    + 'read alone says nothing');
 
 // ---- the hand-written half ------------------------------------------------
@@ -173,7 +173,7 @@ ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
    '...and stays on the drift report, which is where the two halves are compared');
 
 // A name that carries a uid or a port changes on every run, so every one of
-// them is a rename — and an assertion inserted ABOVE such a name shifts it.
+// them is a rename, and an assertion inserted ABOVE such a name shifts it.
 // Pairing the leftovers in list order got that wrong and lost the
 // description; they are paired by how much of the wording survived.
 {
@@ -309,7 +309,7 @@ await page.click(`${box} .tstSave`);
 await page.waitForFunction(s => !document.querySelector(s + ' .tstP'), box, { timeout: 15000 });
 ok(read().tests['slow.mjs#2'].protects === 'the daemon address is parsed, not guessed',
    'the tab writes a description through, with no Save for the panel to hold');
-// The editor is built when a row opens rather than when the list draws —
+// The editor is built when a row opens rather than when the list draws:
 // 1950 rows would otherwise be 3900 textareas and 28k nodes for a first
 // screen of 25. Which means a redraw has to put back the fold, or saving a
 // description folds away the row you were in.
@@ -373,7 +373,7 @@ ok(await page.$eval(`${box} .tstP`, e => e.value)
 // ---- filling in a registry that already has a suite in it -----------------
 // The per-test verb takes the file lock and rewrites the store on every call,
 // which is right for a sentence somebody just typed and wrong for two
-// thousand. The bulk form is one load and one save — and it refuses to invent
+// thousand. The bulk form is one load and one save, and it refuses to invent
 // a row for a key that names no test, because a descriptions file that has
 // drifted from the roster is the same failure the drift report is for.
 writeFileSync(`${DIR}/desc.json`, JSON.stringify({
@@ -424,7 +424,7 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
 }
 
 // `bb tests run` is the loop this file's subject was missing: run the
-// project's own test command, time it, record it — so the registry stops
+// project's own test command, time it, record it, so the registry stops
 // going stale because somebody forgot the second step.
 //
 // What is asserted here is the part that is this file's: a run that never
@@ -441,7 +441,7 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
       stdio: ['ignore', 'pipe', 'pipe'] }).toString();
   } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
   // Before anything runs it says when the run should finish, from the wall
-  // time the last WHOLE run reported — so a run is waited for rather than
+  // time the last WHOLE run reported, so a run is waited for rather than
   // guessed at, and one well past it is read as stuck. The last whole one,
   // because a run narrowed to two files takes a fraction of the time and
   // projecting the next full one from it would call it stuck while it was
@@ -451,7 +451,7 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
   ok(/nothing timed, so nothing recorded/.test(out),
      'a run that could not start records nothing, and says so');
   ok(!/looks like a test run/.test(out),
-     '...once — the ingest is not asked to explain a log that was never written');
+     '...once: the ingest is not asked to explain a log that was never written');
 }
 
 // The bundle a node gets carries bb and its library and none of the
@@ -493,11 +493,11 @@ ok((await page.evaluate(async () => {
        body: JSON.stringify({ project: 'alpha', action: 'ingest', text: 'x' }) });
      return r.status;
    })) === 400,
-   'ingesting is not an endpoint — a run log does not fit in a request');
+   'ingesting is not an endpoint: a run log does not fit in a request');
 // That refusal is a 400 by design, and the harness's console collector counts
 // every one. Cleared here so the check below is about the page.
 page.errors = [];
 
 ok(page.errors.length === 0, `zero console errors${
-  page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+  page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

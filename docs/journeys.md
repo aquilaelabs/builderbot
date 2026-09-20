@@ -36,11 +36,11 @@ What was pressed, in order:
 4. **The row of a node with no shares.** It reported its four stores on its
    own disk and its session half up with no `/workspace`. The Storage section
    took the three NFS mounts and the three store paths, and **Apply** moved
-   them as a job. *Snag, fixed on the spot:* moving the packages store onto
+   them as a job. *Snag, fixed on the spot:* moving the toolchain store onto
    the squashed share failed on `cp` preserving the destination root's
    timestamp, an empty store at that; the agent copies a store's entries now.
    Applied again, every store was on the share and the row said so.
-5. **Tools.** Installing `node` was refused: the packages store is a share,
+5. **Tools.** Installing `node` was refused: the toolchain store is a share,
    and an earlier node had already put `node` and Playwright on it. The
    refusal names the path and the remove verb; the tab shows them installed.
    Not a snag, and a good property: a second node inherits the first one's
@@ -99,7 +99,7 @@ keeps, and a node that is on a job is not probed (a probe queued behind a
 build would wait the build out): the last answer stands until the job ends.
 
 **An Android app, built on the node.** JDK, the Android command-line tools
-and the platform tools were installed from the Tools tab with the node
+and the platform tools were installed from the Toolchains tab with the node
 picked (a job each; the tab shows the running one). A new empty project
 (`droid`) took a one-screen Java app with Gradle 8.14 and AGP 8.10, its
 settings took the node, `./gradlew assembleDebug` and the APK glob, and
@@ -113,7 +113,7 @@ that view wrote `VERSION` and the block read `0.1.0-dev.2+…` at once. No
 snag in the product. *Two snags beside it:* a console login shell on the
 node had no `bb` on PATH because the provisioner's profile line named the
 store the node was born with, not the one Storage had moved it to (B135,
-fixed: the agent rewrites the line after every apply); and the Tools tab
+fixed: the agent rewrites the line after every apply); and the Toolchains tab
 asked to install the emulator's libraries on a node that had never
 installed the emulator, because every android recipe shares one directory
 (B139, fixed: a recipe is held when its own tool exists).
@@ -148,7 +148,7 @@ answers for the node the manager would open on.
 What this walk moved or confirmed:
 
 - Alpha, new evidence: the Docker manager against an agent node end to end
-  (Send, build, Up, the route); the Android toolchain from the Tools tab and
+  (Send, build, Up, the route); the Android toolchain from the Toolchains tab and
   a Gradle build on a node with the store's JDK and SDK; several accounts
   with sessions on one project at once, each in its own tree; the users
   editor and the API's per-account refusals.

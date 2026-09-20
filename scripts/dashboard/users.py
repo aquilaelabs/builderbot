@@ -5,7 +5,7 @@ unrelated jobs: that one hands a code to `claude auth login`, this one decides
 whether the person at the browser gets a page at all.
 
 The design is docs/users.md; this is step 1 of roadmap #22 and deliberately
-enforces nothing. It replaces one string comparison — `DASHBOARD_AUTH` — with a
+enforces nothing. It replaces one string comparison (`DASHBOARD_AUTH`) with a
 store of accounts, so that a later step has somebody to ask about. Every
 account created here is an owner or an admin, and both can do everything, which
 is why a single-operator install notices no difference at all.
@@ -41,7 +41,7 @@ _lock = threading.RLock()
 ROLES = ("owner", "admin", "user")
 # 600k is the OWASP floor for pbkdf2-sha256 at the time of writing. It costs
 # about a fifth of a second here, which is the right price for a login and the
-# wrong one for anything on a poll — nothing calls this per request.
+# wrong one for anything on a poll. Nothing calls this per request.
 ITERATIONS = 600_000
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$")
 
@@ -86,8 +86,8 @@ def check_password(stored, password):
 def mint_uid():
     """A stable id for an account, minted once and never reused.
 
-    The NAME is not it. The owner is deliberately renameable — that is the
-    only way to retire the seeded one, since it cannot be deleted — and every
+    The NAME is not it. The owner is deliberately renameable, which is the
+    only way to retire the seeded one since it cannot be deleted, and every
     other account can be renamed too, so anything durable hung off a name is
     orphaned the first time somebody uses that. Homes, tab layouts, themes and
     the Claude-session holder all hang off this instead. Same rule as a node's
@@ -109,7 +109,7 @@ def load():
 def _save(d):
     write_json(_file(), d)
     # The file holds password hashes. write_json does not know that, so the
-    # mode is set here rather than assumed — and tolerated when it fails,
+    # mode is set here rather than assumed, and tolerated when it fails,
     # because a dashboard that will not start is worse than one whose file is
     # readable by an account that could read /config anyway.
     try:
@@ -153,7 +153,7 @@ def uid_of(u):
 def tmux_prefix(u):
     """What this account's shell sessions are named with, or "" for none.
 
-    A SHELL is per account — two people opening a terminal on one project must
+    A SHELL is per account: two people opening a terminal on one project must
     not land in each other's, which is what one name would do, since tmux
     attaches to an existing session rather than making a second.
 
@@ -179,7 +179,7 @@ def owner_uid():
 
 
 def prefs(u):
-    """This account's own settings — the theme, today. Never secret, and
+    """This account's own settings: the theme, today. Never secret, and
     carried in the state payload, so nothing here may hold a credential."""
     rec = get((u or {}).get("name") or "") or {}
     p = rec.get("prefs")
@@ -194,7 +194,7 @@ PROFILE_FIELDS = {"full_name": 120, "email": 200, "git_name": 120, "git_email": 
 
 def account_of(u):
     """The account behind a principal: itself, or for a session's token the
-    account it was minted for, found by uid — a session has an author too,
+    account it was minted for, found by uid. A session has an author too,
     and it is the person's."""
     u = u or {}
     if u.get("session") and u.get("uid"):
@@ -212,8 +212,8 @@ def profile(u):
 
 def git_identity(u, project=""):
     """The name and email this account's commits carry: its git identity
-    where it set one, else its real name and email, else nothing — a made-up
-    address would be a lie in every log it landed in (git_ready).
+    where it set one, else its real name and email, else nothing, because a
+    made-up address would be a lie in every log it landed in (git_ready).
 
     Per ACCOUNT, not per project: two people working on one project are
     two authors, and a repo-level user.name would make them one. It reaches
@@ -252,7 +252,7 @@ def identity_over(base, over):
 def git_ready(u, project=""):
     """Whether this account's commits would carry an author: a name and an
     email, from the git fields or the plain ones. A Claude session is not
-    started without it — every project is a repository, and a commit with
+    started without it: every project is a repository, and a commit with
     no author is one git refuses, halfway through whatever the session was
     doing. Nothing is invented to fill the gap: an address made up from an
     account name would be a lie in every log it lands in."""
@@ -271,7 +271,7 @@ def git_env(u, project=""):
 
 
 def profile_set(name, patch):
-    """Merge the Profile tab's fields — PROFILE_FIELDS only, each capped."""
+    """Merge the Profile tab's fields: PROFILE_FIELDS only, each capped."""
     keep = {}
     for k, n in PROFILE_FIELDS.items():
         if k in patch:
@@ -285,7 +285,7 @@ def profile_set(name, patch):
 
 
 # One local part, one @, a host with a dot in it, no whitespace. Not the
-# RFC — that grammar admits addresses no mail server has seen — but the
+# RFC, whose grammar admits addresses no mail server has seen, but the
 # shape every address anybody types here has, and the one a typo breaks.
 EMAIL_RE = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 
@@ -299,7 +299,7 @@ def change_password(name, current, new):
 
 
 def prefs_set(name, patch):
-    """Merge into an account's prefs. Keys are whitelisted by the caller —
+    """Merge into an account's prefs. Keys are whitelisted by the caller:
     this is reached from a signed-in browser, so an unbounded dict here would
     be a place to park arbitrary data in a file the login path reads."""
     with _lock:
@@ -334,7 +334,7 @@ def authenticate(name, password):
 # suite makes, and a pbkdf2 verify costs a fifth of a second BY DESIGN. So the
 # answer is remembered for a minute: the price stays on the sign-in rather than
 # on the poll. What is kept is a digest of the credential and never the
-# credential, and the account's stamp with it — so changing a password drops
+# credential, and the account's stamp with it, so changing a password drops
 # the cached answer on the next request instead of a minute later.
 _recent = {}
 _RECENT_S = 60
@@ -366,7 +366,7 @@ def authenticate_pair(pair):
 
 
 def touch(name):
-    """Record that this account was just used. Best effort — a failed write
+    """Record that this account was just used. Best effort: a failed write
     here must never cost somebody their sign-in."""
     try:
         with _lock:
@@ -382,7 +382,7 @@ def stamp(u):
     """What a session cookie is bound to, besides the name.
 
     The hash itself, folded down. Changing a password or deleting an account
-    changes it, so every cookie issued against the old one stops verifying —
+    changes it, so every cookie issued against the old one stops verifying,
     which is how a stateless token gets revocation without a table to keep.
     """
     return hashlib.sha256(str((u or {}).get("password", "")).encode()).hexdigest()[:16]
@@ -392,8 +392,8 @@ def stamp(u):
 #
 # Enforced from step 2. The shape to hold to: a project somebody cannot see is
 # ABSENT rather than refused, which server.project_list() does by filtering,
-# and that makes the existence check and the permission check the same check —
-# asking about a project you were not given returns what a typo returns.
+# and that makes the existence check and the permission check the same check.
+# Asking about a project you were not given returns what a typo returns.
 
 # The server's own non-request contexts: a boot log, a background sweep, the
 # doctor. They are not a person and are not filtered, and they say so by
@@ -409,14 +409,14 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
 USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
-               "docker-write", "packages-write", "jobs", "lock", "pin", "version")
+               "docker-write", "toolchains-write", "jobs", "lock", "pin", "version")
 
 
 def sees_all(u):
     """Whether every project is LISTED for this account.
 
     Owner and admin see everything, and this is deliberately not the same
-    question as whether they may touch it — see may_work. An administrator
+    question as whether they may touch it (see may_work). An administrator
     hidden from a project could not administer it, and a list with holes in it
     is how somebody goes looking for a project that is right there.
 
@@ -435,7 +435,7 @@ def may_work(u, name):
 
     The project list means the same thing for every role, which is the whole
     point of it: a project you did not take on is one you cannot edit, start a
-    Claude session in, or rebuild — for an administrator exactly as for a
+    Claude session in, or rebuild, for an administrator exactly as for a
     user. What differs is the remedy. An administrator can add any project to
     their own list and carry on; a user has to be given one.
 
@@ -465,7 +465,7 @@ def may_see(u, name):
 
 
 def is_admin(u):
-    """Whether this account owns the machinery: nodes, packages, settings,
+    """Whether this account owns the machinery: nodes, toolchains, settings,
     other accounts. Everything that is not a project.
 
     A session token is never one, whatever it says: session_principal builds
@@ -479,7 +479,7 @@ def is_admin(u):
 def may(u, action, project=None):
     """Whether this account may do `action`, optionally to `project`.
 
-    Returns "" when it may, and the reason when it may not — so a caller says
+    Returns "" when it may, and the reason when it may not, so a caller says
     the reason rather than inventing one, and a refusal reads the same
     wherever it is made.
     """
@@ -493,22 +493,22 @@ def may(u, action, project=None):
     if project is not None and not may_see(u, project):
         return "not a project"              # the same answer a typo gets
     if project is not None and not may_work(u, project):
-        return ("you have not taken this project on — add it to your own list "
+        return ("you have not taken this project on: add it to your own list "
                 "on the Users tab" if is_admin(u) else
                 "you were not given this project")
     # A session may never write the house rules it is being held to. Ahead of
     # the admin pass, because the operator's OWN session carries a token with
-    # the operator's uid on it — this is not a question about who somebody is
+    # the operator's uid on it. This is not a question about who somebody is
     # but about what a session is, which is the same reason is_admin refuses
     # to be talked out of `user` above.
     if action == "rules" and (u or {}).get("session"):
-        return ("a session cannot change the rules it is being held to — they "
+        return ("a session cannot change the rules it is being held to: they "
                 "are the operator's, written on the notebook's Briefing tab")
     # ...and may not approve what it has waiting (roadmap #27): a session
     # signing off its own additions is the setting not existing.
     if action == "pending" and (u or {}).get("session"):
         return ("what a session has waiting is the operator's to approve or "
-                "deny, on the notebook — a session cannot answer for itself")
+                "deny, on the notebook; a session cannot answer for itself")
     if is_admin(u):
         return ""
     if action in USER_DENIES:
@@ -524,34 +524,34 @@ def may(u, action, project=None):
                 "jobs": "running a command on a node is an administrator's: a job "
                         "runs outside every session's view, as the node's own "
                         "account, so it reaches everything on that machine",
-                "node": "which node a project builds on is an administrator's — "
+                "node": "which node a project builds on is an administrator's: "
                         "a node is shared, so changing it reaches every project "
                         "on it",
                 # The one that makes the rest of the role mean something.
                 # Everything else here is enforced by this server, in Python,
                 # and a shell is the way around all of it: one uid, one tmux
                 # server, and Bash covered by no deny list. Without a terminal
-                # there is no hole to argue about — which is why an account
+                # there is no hole to argue about, which is why an account
                 # that may not have one gets a Claude console instead of a
                 # window it could point somewhere else (roadmap #27).
                 # A project this account made would not be in the list an
                 # administrator gave it, so it would vanish on the next
-                # paint — and the create dialog is one of the two places a
+                # paint, and the create dialog is one of the two places a
                 # git token is written.
-                "create": "making a project is an administrator's — the "
+                "create": "making a project is an administrator's: the "
                           "projects you can work on are the ones you were "
                           "given",
-                "terminal": "a shell is an administrator's — your Claude "
+                "terminal": "a shell is an administrator's: your Claude "
                             "session opens as a console instead",
                 "git-auth": "how a project authenticates to its remote is an "
                             "administrator's: the token is what pushes, and "
                             "changing the method or clearing it reaches "
                             "everybody who works on it",
                 "docker-write": "starting and stopping containers is an "
-                                "administrator's — you can see what is "
+                                "administrator's: you can see what is "
                                 "running and open it",
-                "packages-write": "installing on a node is an administrator's "
-                                  "— these are gigabytes on shared disk"}[action]
+                "toolchains-write": "installing on a node is an administrator's: "
+                                  "these are gigabytes on shared disk"}[action]
     if action == "admin":
         return "that is an administrator's"
     return ""
@@ -560,14 +560,14 @@ def may(u, action, project=None):
 # --- what a session gets instead of the operator's password --------------
 #
 # A Claude session used to inherit DASHBOARD_AUTH, which is how "only the
-# operator may install a package" ended up being a rule the code asked nicely
+# operator may install a toolchain" ended up being a rule the code asked nicely
 # about (bug #16). It gets one of these instead: one project, `user` rights,
 # and an expiry. Whoever holds it can do what a user can do on that project
-# and nothing else — no other project, no nodes, no packages, no accounts.
+# and nothing else: no other project, no nodes, no toolchains, no accounts.
 #
 # Stateless, signed with a key kept in the store. That buys revocation without
 # a table to keep: rotating the key invalidates every session token at once,
-# which is the granularity that matters here — they are minted fresh on every
+# which is the granularity that matters here: they are minted fresh on every
 # connection, so there is nothing long-lived to revoke individually.
 SESSION_PREFIX = "bbs_"
 SESSION_TTL = 12 * 3600
@@ -594,7 +594,7 @@ def revoke_sessions():
 
 
 def mint_session(project, ttl=SESSION_TTL, uid=""):
-    """A token for one project, and — when it is for a terminal on a node —
+    """A token for one project and, when it is for a terminal on a node,
     for one ACCOUNT: `uid` names whose session it is, which is what lets
     the node fetch that account's Claude login and nobody else's (roadmap
     #24). A token minted with no account can do what a session on the
@@ -608,19 +608,19 @@ def mint_session(project, ttl=SESSION_TTL, uid=""):
 
 def renewal(tok):
     """A fresh token for the same session, when this one is past half its
-    life — or "" when it is not (or is not a session token at all).
+    life, or "" when it is not (or is not a session token at all).
 
     A token lasts twelve hours and a conversation does not: one that was
     minted when its tab was opened ran out overnight while the session was
     still working, and every bb verb stopped with "expired" until the tab
-    was opened again — from the remote view there is no tab to open, so the
+    was opened again. From the remote view there is no tab to open, so the
     operator ended the session. So every authenticated call from a session
     is an opportunity to renew: past the halfway mark the answer carries a
     new token for the same project and account, and bb writes it where it
     looks. A session in use never runs out; only one idle for twelve hours
     does, and that one is told what to do.
 
-    Only a token that still VERIFIES is renewed. An expired one is not — that
+    Only a token that still VERIFIES is renewed. An expired one is not, which
     is what makes twelve hours mean something for a token that leaked.
     """
     p = session_principal(tok)
@@ -672,8 +672,8 @@ def session_principal(tok):
 def claim(name, password):
     """Make the owner, on a store that has none. The first-run screen's verb.
 
-    Not `add`, which refuses the owner role on purpose — there is only ever
-    one and it is not somebody an administrator creates. This is the one path
+    Not `add`, which refuses the owner role on purpose: there is only ever
+    one, and it is not somebody an administrator creates. This is the one path
     that makes it, and it is closed by its own result: the second call finds
     an account and refuses.
     """
@@ -700,7 +700,7 @@ def add(name, password, role="user", projects=None):
     if not NAME_RE.match(name):
         return {"error": "a name is letters, digits and . _ @ + - , up to 64"}
     if role not in ROLES or role == "owner":
-        return {"error": "role must be admin or user — there is only one owner"}
+        return {"error": "role must be admin or user: there is only one owner"}
     if len(password or "") < 8:
         return {"error": "a password is at least 8 characters"}
     with _lock:
@@ -729,7 +729,7 @@ def set_password(name, password):
 
 
 def set_role(name, role):
-    """Change a role — never to or from owner.
+    """Change a role, never to or from owner.
 
     The owner is the account every other rule is a guard rail around: it cannot
     be demoted, and nobody can be promoted into a second one. Renaming it is
@@ -782,7 +782,7 @@ def remove(name):
         if not u:
             return {"error": f"no account called {name}"}
         if u.get("role") == "owner":
-            return {"error": "the owner cannot be deleted — rename it instead"}
+            return {"error": "the owner cannot be deleted: rename it instead"}
         d["users"].pop(name)
         _save(d)
     return {"ok": True, "name": name}

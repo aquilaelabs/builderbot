@@ -1,4 +1,4 @@
-# A BuilderBot node on plain libvirt/KVM — any Linux host with virt-install.
+# A BuilderBot node on plain libvirt/KVM: any Linux host with virt-install.
 # Run as root, or as a user in the libvirt group with --connect qemu:///system.
 #
 # Rendered by the dashboard's Create sandbox VM (vmtemplate.py). virt-install

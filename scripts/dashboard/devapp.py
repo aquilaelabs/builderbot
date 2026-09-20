@@ -3,42 +3,42 @@
 
 The question this answers used to be a GitHub Actions bill: a private
 project's image was built on hosted minutes and pulled back to the same box
-that could have built it. Now the box builds it — `docker compose build`
-against the project's own compose file — and the Docker tab carries the
+that could have built it. Now the box builds it, running `docker compose
+build` against the project's own compose file, and the Docker tab carries the
 controls, one row per instance: Up, Down, Env, Rebuild, Remove. The project's
 Artifacts tab keeps the row that sends it there in the first place.
 
 **Where docker actually is.** Not in this container, and not on this box: the
-daemon belongs to a sandbox VM — a node the operator enrolled with a token,
+daemon belongs to a sandbox VM, a node the operator enrolled with a token,
 whose address the node itself reports on every dial-in. That machine's only job
 is running Docker. It holds no container anybody minds losing and has no route to the
-server's, which is what makes build+run+bind-mounts — root-shaped power
-wherever it lands — an acceptable thing to put behind a dashboard button.
+server's, which is what makes build+run+bind-mounts (root-shaped power
+wherever it lands) an acceptable thing to put behind a dashboard button.
 
 That is the boundary. What is left in here bounds the SHAPE of what gets sent
 rather than what it may reach: _guard() lets through table-lookup compose
 commands, two reads, and three one-shot runs rebuilt argv-for-argv, so a bug
 in a caller cannot become a freeform docker call. risks() answers the half no
-check on a command can — a compose FILE saying `privileged: true` and mounting
+check on a command can: a compose FILE saying `privileged: true` and mounting
 / is an ordinary-looking file, so it is read and what it reaches for is named
 on the row and confirmed once per set before anything starts.
 
 **What "rebuild needs the env filled in" means.** The one detectable signal:
 the repo's .env.example gained keys the dev env file does not have. A rebuild
 that hits that stops after `down`, rewrites the env file as the new example
-with the old values preserved in comments, and leaves Up for the operator —
+with the old values preserved in comments, and leaves Up for the operator:
 starting a service against an env it is known to be missing would just be a
 crash with extra steps.
 
 **BuilderBot itself is NOT excluded**, and the reason is worth a line: its
 dev instance is a second container from the same compose file, on another
-machine — building or bouncing it never touches the container this dashboard is
-running in, whose lifecycle belongs to Unraid. The first cut excluded it on a
-stale argument (replacing the running container kills the builder mid-flight
-— true, and not what this does). Expect `up` to refuse while the real
-instance holds the same host ports; that refusal is compose saying so, and
-the env file is where a second instance gets different ones. A dev build
-shows `unstamped` for its version, which is honest: it is one.
+machine, so building or bouncing it never touches the container this dashboard
+is running in, whose lifecycle belongs to Unraid. The first cut excluded it on
+a stale argument (replacing the running container kills the builder
+mid-flight, which is true and not what this does). Expect `up` to refuse while
+the real instance holds the same host ports; that refusal is compose saying
+so, and the env file is where a second instance gets different ones. A dev
+build shows `unstamped` for its version, which is honest: it is one.
 
 State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
@@ -87,7 +87,7 @@ def _slug(s):
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # Injected rather than worked out here: three readers already answer "where do
 # the logs live" and a fourth copy of that rule is how they drift. None when
-# nothing injected one — `bb doctor` loads this module on its own to ask
+# nothing injected one: `bb doctor` loads this module on its own to ask
 # available(), and a probe should not start writing files.
 log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
@@ -98,7 +98,7 @@ node_paths = None     # a node's path mapping, from its record (docs/nodes.md §
 # address of any other kind turns the feature off with the reason on it rather
 # than half-working.
 #
-# One arrangement because the boundary is the machine — reached over ssh with a
+# One arrangement because the boundary is the machine: reached over ssh with a
 # key BuilderBot cannot read, holding nothing anybody minds losing. Aim the
 # same feature at a daemon worth protecting and it needs a filter in front of
 # it, and a filter that can be got wrong is not a boundary.
@@ -138,7 +138,7 @@ def _default_node():
 
 
 def _instance_node(project, instance):
-    """The node an instance is bound to — its record's, else the project's
+    """The node an instance is bound to: its record's, else the project's
     own node (one setting for everything a project does on a node), else
     the default docker host.
 
@@ -233,8 +233,8 @@ def docker_host():
 
     Three sources, in order: the node context an entry point opened (the
     multi-host path), the environment (the arrangement that predates nodes,
-    kept working untouched), nothing. The operator writes the machine —
-    `10.0.0.9` — and the scheme and the account are filled in; what is not
+    kept working untouched), nothing. The operator writes the machine, say
+    `10.0.0.9`, and the scheme and the account are filled in; what is not
     allowed is a different KIND of address, which available() refuses by name
     rather than by handing docker something it will fail on obscurely.
     """
@@ -254,7 +254,7 @@ def docker_host():
 
 # What nodes/provision-linux.sh stamps on the daemon it set up: a label in
 # /etc/docker/daemon.json. Docker reports its own labels on `docker info`, so
-# the check costs one read over the connection already being used — no second
+# the check costs one read over the connection already being used: no second
 # channel, no file to fetch, nothing on the VM to keep in step but the
 # provisioner.
 #
@@ -295,8 +295,8 @@ def is_sandbox(labels):
 def adopt(uid):
     """Make the daemon now answering the one the records are about.
 
-    Two VMs can wear one address — a rebuilt sandbox, a second machine given
-    the old one's IP — and the address alone cannot tell them apart, so what a
+    Two VMs can wear one address (a rebuilt sandbox, or a second machine given
+    the old one's IP) and the address alone cannot tell them apart, so what a
     build was recorded against is checked by the daemon's OWN id as well. When
     it turns out to be a different machine, everything claiming a build on the
     old one is cleared: the rev, its date, the env gate a build tripped. The
@@ -305,7 +305,7 @@ def adopt(uid):
 
     The point is that "unknown" is a state to leave, not to live in. A manager
     pointed at a new VM should say what THIS daemon has, and rows quoting a
-    build from a machine no longer in play are neither true nor unknown — they
+    build from a machine no longer in play are neither true nor unknown: they
     are the last one's answers, and clearing them is what makes the new one the
     source of truth.
     """
@@ -381,7 +381,7 @@ LOG_TAIL = 4000
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
 # calls on one project; two rows are two jobs, and the queue orders those.
-BUSY = {"error": "something is already running on this instance — one at a time"}
+BUSY = {"error": "something is already running on this instance: one at a time"}
 
 
 def _active_job(project, instance):
@@ -397,12 +397,12 @@ def _active_job(project, instance):
 # The plan an agent node runs for one action (roadmap #18). The controller
 # still decides what: these are the same docker calls the controller used to
 # make over ssh, in the same order, with the compose file and env travelling
-# beside them — so a node needs nothing but the token it enrolled with.
+# beside them, so a node needs nothing but the token it enrolled with.
 # `{cdir}` is the directory the agent writes those files into.
 def work_tree(project, instance):
     """Where an instance pinned to a REF is built from, or None.
 
-    A git worktree beside the project on the share — the same
+    A git worktree beside the project on the share, in the same
     `<project>-<something>` shape a second person's session already uses, so
     the projects list knows what it is looking at (and it carries a .bbignore
     besides). A worktree rather than a checkout, because the tree is shared:
@@ -433,7 +433,7 @@ def sync_work_tree(project, instance):
     # DETACHED, both when it is made and every time it moves. A branch can be
     # checked out in one worktree at a time, and this tree is not the one that
     # matters: the project's own checkout is where people work. Claiming the
-    # branch here broke it in both directions —
+    # branch here broke it in both directions:
     #
     #   building an instance pinned to the branch the project is standing on
     #   was refused outright ("'rack-drift' is already used by worktree at
@@ -444,8 +444,8 @@ def sync_work_tree(project, instance):
     #   `git checkout main`, a dashboard button quietly taking a branch
     #   hostage from somebody's shell.
     #
-    # Nothing is ever committed here — the tree exists to be compose's
-    # --project-directory — so it wants the ref's COMMIT and no claim on the
+    # Nothing is ever committed here (the tree exists to be compose's
+    # --project-directory), so it wants the ref's COMMIT and no claim on the
     # name. A tree made before this and still holding a branch detaches on its
     # next build and gives the name back.
     if not at.exists():
@@ -491,7 +491,7 @@ def _plan(project, instance, action, extra=None):
     #
     # The controller's own runner decides this between the down and the up,
     # with the build already done. Here the whole plan is fixed before the
-    # node sees it, so it is decided up front — which is the same answer,
+    # node sees it, so it is decided up front, which is the same answer,
     # because neither the build nor the down touches .env.example or the
     # instance env. What it must NOT do is send `up` anyway and gate
     # afterwards: that is the broken start the gate exists to prevent.
@@ -541,7 +541,7 @@ def _plan_spec(project, instance, action, extra=None):
 
 def compose_done(job, state):
     """The records for an action the AGENT ran. Same bookkeeping the
-    controller's own runner does, applied from the result — the node
+    controller's own runner does, applied from the result: the node
     executes, this side remembers.
 
     Addressed at the job's node throughout, which is not decoration: a build
@@ -549,7 +549,7 @@ def compose_done(job, state):
     runs from the agent's result post, where nothing has set that context.
     Without it every build a node ran was filed under the daemon "none", so
     state() read it as belonging to another machine and the row went back to
-    saying nothing — the build happened, and the tab forgot it.
+    saying nothing: the build happened, and the tab forgot it.
     """
     # Whatever the node's listing said before this action is no longer
     # true of it, and the row is read the moment the job ends.
@@ -564,7 +564,7 @@ def _compose_done(job, state):
     action = sp.get("action")
     # Only for a plan the AGENT ran. The controller's own runner does this
     # bookkeeping inline as it goes, and running it again from here undid
-    # what it had decided — the env gate sets await_env after stopping, and
+    # what it had decided: the env gate sets await_env after stopping, and
     # a second pass through the up branch cleared the flag the row is for.
     if not project or not action or not sp.get("plan"):
         return
@@ -581,8 +581,8 @@ def _compose_done(job, state):
         _clear_marker(project, instance)
         _bump()
         # The row's sentence, in the controller's words. The node reports
-        # "exit 1", which is all it can honestly know — it ran an argv this
-        # side composed — and the step names in that plan are what say which
+        # "exit 1", which is all it can honestly know (it ran an argv this
+        # side composed), and the step names in that plan are what say which
         # part of the action died. Returned rather than written: job_result
         # owns the row (see nodes.job_result).
         if state == "canceled":
@@ -591,9 +591,9 @@ def _compose_done(job, state):
         for o in (job.get("outputs") or []):
             if isinstance(o, dict) and o.get("kind") == "compose":
                 step = str(o.get("failed_at") or "")
-        return {"building": "build failed — the tail of its output is below",
-                "stopping": "stopping it failed — the tail of its output is below",
-                "starting": "up failed — the tail of its output is below",
+        return {"building": "build failed; the tail of its output is below",
+                "stopping": "stopping it failed; the tail of its output is below",
+                "starting": "up failed; the tail of its output is below",
                 "testing": "the tests failed: their output is the job's log",
                 "preparing": "a bind directory could not be made on the node: its line is below",
                 }.get(step, "")
@@ -627,8 +627,8 @@ def _stamp(row, project, instance):
     """Write down what a build produced: the revision, and the ref it came from.
 
     The ref is written HERE, at the moment of the build, rather than read off
-    the record when the row is drawn. The record's `ref` is the SETTING —
-    which branch the NEXT rebuild will use — and changing it does not move
+    the record when the row is drawn. The record's `ref` is the SETTING,
+    which branch the NEXT rebuild will use, and changing it does not move
     what is already built. A row that describes a finished build from the
     setting says "built from <branch> <sha>" about a branch that may never
     have been built at all.
@@ -673,7 +673,7 @@ def _submit(project, instance, action, extra=None):
 # the route (docs/nodes.md §7, phase 8)
 #
 # A deployment is an instance up on a node plus a ROUTE: how somebody reaches
-# it. The record is uniform — {mode, port, url} — and the modes are tiers of
+# it. The record is uniform ({mode, port, url}) and the modes are tiers of
 # one thing: `lan` is a published port on the node's LAN address, which is
 # what the manager always offered; `funnel` is Tailscale Funnel on the node,
 # a public HTTPS URL with no DNS or certificate to arrange, applied by the
@@ -734,9 +734,9 @@ def route_view(project, instance, ports, prefer=None):
         out["why"] = ("" if out["ready"] else
                       "the node reports no tailscale" if not ts.get("installed") else
                       f"the node's funnel forwards to {fwd}, not {port}" if fwd and fwd != port else
-                      "asked for — waiting for the node to report it")
+                      "asked for; waiting for the node to report it")
     else:
-        out["why"] = "public is not built — the record is shaped for it (docs/nodes.md §7)"
+        out["why"] = "public is not built; the record is shaped for it (docs/nodes.md §7)"
     return out
 
 
@@ -747,7 +747,7 @@ def route_set(project, instance, mode, port=None):
     if mode not in ROUTE_MODES:
         return {"error": f"a route is {', '.join(ROUTE_MODES)}"}
     if mode == "public":
-        return {"error": "public routes are not built — lan and funnel are (docs/nodes.md §7)"}
+        return {"error": "public routes are not built; lan and funnel are (docs/nodes.md §7)"}
     try:
         port = int(port) if port not in (None, "") else None
     except (TypeError, ValueError):
@@ -762,7 +762,7 @@ def route_set(project, instance, mode, port=None):
             return {"error": "no node to apply a funnel on"}
         fport = port or (route_view(project, instance, state_ports(project, instance)).get("port"))
         if not fport:
-            return {"error": "a funnel needs a port — the instance publishes none"}
+            return {"error": "a funnel needs a port, and the instance publishes none"}
         r = queue.node_funnel("operator", nid, fport, on=(mode == "funnel"))
         if r.get("error"):
             return r
@@ -780,7 +780,7 @@ def state_ports(project, instance):
     that has to pick one."""
     try:
         return next((x["ports"] for x in states(project) if x["instance"] == instance), [])
-    except Exception:            # noqa: BLE001 — a listing failure is 'none published'
+    except Exception:            # noqa: BLE001 (a listing failure is 'none published')
         return []
 
 
@@ -849,7 +849,7 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
 
 
 def job_rev():
-    """The poll's cheap tell that something here moved — the store, and the
+    """The poll's cheap tell that something here moved: the store, and the
     queue's own rev, since a job's every log chunk is a repaint."""
     q = queue.jobs_rev() if queue is not None else 0
     return f"{_rev}:{q}:{_mtime(FILE)}"
@@ -871,7 +871,7 @@ def _learn_host_key(addr):
     """Meet a node's ssh host key once, when that is the only thing in the way.
 
     `docker -H ssh://…` shells out to ssh, and ssh run non-interactively
-    REFUSES an unknown host rather than asking — so a node the controller has
+    REFUSES an unknown host rather than asking, so a node the controller has
     never ssh'd to fails with "Host key verification failed" and every Docker
     control on the tab greys out. The documented cure was a person running
     ssh-keyscan on the controller, which R47 took away with sessions: there
@@ -879,7 +879,7 @@ def _learn_host_key(addr):
 
     So it is done here, on the failure, and only on the first meeting. The
     address came from the node's own authenticated dial-in, and a scan trusts
-    whatever answers at it — which is exactly the exposure the manual step
+    whatever answers at it, which is exactly the exposure the manual step
     always had, no more. What is NOT done is replacing a key that CHANGED:
     that is a rebuilt VM or something worth looking at, and quietly accepting
     it would throw away the one thing host keys are for. Returns "learned",
@@ -956,7 +956,7 @@ def source():
             # The status poll carries ONE daemon's verdict (the default
             # node's) and the manager may be looking at another, so a page
             # that cannot match the two applies the default node's absence to
-            # every node there is — B109, which was fixed on the client by
+            # every node there is. B109, which was fixed on the client by
             # comparing this id and then shipped with nothing setting it, so
             # the comparison quietly fell back to "yes, that is us" and the
             # bug came back whole.
@@ -966,7 +966,7 @@ def source():
 
 def _agent_here():
     """The node these docker calls are addressed at, when it is an AGENT node
-    whose agent is dialing in — else None.
+    whose agent is dialing in, else None.
 
     THE WHOLE OF B111 IS THIS DISTINCTION. On an agent node nothing about
     compose goes over ssh: _submit sends the entire plan to the agent and the
@@ -1086,7 +1086,7 @@ def _available_agent(n):
     Two facts, both already in its census and neither of them ours to probe:
     `docker` is the server version that node's own `docker version` printed,
     which is exactly "can the agent run compose here", and `sandbox` is the
-    provisioner's stamp — the same thing the label check below reads over ssh,
+    provisioner's stamp, the same thing the label check below reads over ssh,
     asked on the machine that carries it.
 
     Nothing is run. That matters: this sits on the status poll's path, which
@@ -1100,20 +1100,20 @@ def _available_agent(n):
 
     The daemon's own id comes with them, from the same census. It is how two
     VMs wearing one address are told apart (adopt), and it used to be read
-    over ssh with `docker info` — the reader this replaces. An agent too old
+    over ssh with `docker info`, the reader this replaces. An agent too old
     to report it sends nothing, and a record with no id is judged on its
     address alone, which is what every record written before the field is
     judged on and is documented as safe.
     """
     if not n.get("live"):
         return {"on": False,
-                "why": f"{n['name']}'s agent is not dialing in — everything "
+                "why": f"{n['name']}'s agent is not dialing in, and everything "
                        "here runs as a job on it, so nothing can until it "
                        "does. The Nodes tab says when it was last seen"} | source()
     rep = n.get("reported") or {}
     if not rep:
         return {"on": False,
-                "why": f"{n['name']} has not said what it carries yet — its "
+                "why": f"{n['name']} has not said what it carries yet; its "
                        "agent dials in every few seconds, so this answers "
                        "itself shortly"} | source()
     if not rep.get("docker"):
@@ -1124,7 +1124,7 @@ def _available_agent(n):
                        "docker group"} | source()
     if not rep.get("sandbox"):
         return {"on": False,
-                "why": f"{n['name']} is not a BuilderBot sandbox — it does "
+                "why": f"{n['name']} is not a BuilderBot sandbox: it does "
                        "not report the provisioner's stamp, and a container "
                        "here runs as root on that machine. Run "
                        "nodes/provision-linux.sh on it (again is fine, it "
@@ -1137,10 +1137,10 @@ def _available_agent(n):
 
 
 def available():
-    """Whether the VM answers, and if not, why — said rather than guessed.
+    """Whether the VM answers, and if not, why: said rather than guessed.
 
     A sandbox VM is the arrangement, not one of several. Everything the
-    manager does beyond `compose` — making a data directory, migrating one —
+    manager does beyond `compose` (making a data directory, migrating one)
     is a container run as root on the far side, which is only safe on a
     machine whose job is being wrecked and reset. So an address of any other
     kind is refused here, in one place, rather than half-working down the
@@ -1152,16 +1152,16 @@ def available():
     addr = docker_host()
     if not addr:
         return {"on": False,
-                "why": "no node with a daemon — enroll the sandbox VM on the "
+                "why": "no node with a daemon; enroll the sandbox VM on the "
                        "Nodes tab (Enroll node mints a token, then provision-linux.sh "
                        "on the machine); see docs/sandbox-vm.md"} | source()
     if not addr.startswith("ssh://"):
         return {"on": False,
-                "why": f"the node answers at {addr} — dev instances need a "
+                "why": f"the node answers at {addr}, and dev instances need a "
                        "sandbox VM; see docs/sandbox-vm.md"} | source()
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0 and "host key verification failed" in (r["out"] or "").lower():
-        # Never met this machine. Meet it, once, and ask again — the answer
+        # Never met this machine. Meet it, once, and ask again; the answer
         # to that is the real one either way.
         met = _learn_host_key(addr)
         if met == "learned":
@@ -1170,7 +1170,7 @@ def available():
             return {"on": False,
                     "why": f"this machine's ssh host key is not the one already "
                            f"recorded for {addr.split('@')[-1]}. A rebuilt VM does "
-                           "that, and so does something worth looking at — clear "
+                           "that, and so does something worth looking at. Clear "
                            "the old line from the controller's known_hosts if the "
                            "machine really was rebuilt"} | source()
     if r["code"] != 0:
@@ -1188,7 +1188,7 @@ def available():
                        + info["error"]} | source()
     if not is_sandbox(info["labels"]):
         return {"on": False,
-                "why": "this daemon is not a BuilderBot sandbox — it carries no "
+                "why": "this daemon is not a BuilderBot sandbox: it carries no "
                        f"{SANDBOX_LABEL} label. Run nodes/provision-linux.sh on the VM "
                        "(again is fine, it only adds what is missing); see "
                        "docs/sandbox-vm.md"} | source()
@@ -1202,14 +1202,14 @@ def available():
 
 _avail = {"when": 0.0, "val": None}
 # The same memo per node address, for calls made inside on_node(). The default
-# arrangement keeps its own entry above — it predates nodes, and the tests
+# arrangement keeps its own entry above, since it predates nodes, and the tests
 # prime it directly.
 _avail_hosts = {}
 
 
 def _uid():
-    """The verified daemon's own id, as last seen. Empty until one answers —
-    a stamp with no id is judged on its address, which is how every record
+    """The verified daemon's own id, as last seen. Empty until one answers.
+    A stamp with no id is judged on its address, which is how every record
     written before this field is judged."""
     with _avail_lock:
         return ((_avail["val"] or {}).get("id") or "")
@@ -1218,13 +1218,13 @@ AVAIL_TTL = 30
 
 
 def available_default():
-    """available_cached() for the node nothing named — what the status poll
+    """available_cached() for the node nothing named: what the status poll
     asks, since the page's daemon gate is one answer for the whole box.
 
     It used to need no context: docker_host() fell back to DOCKER_HOST, so a
     call from anywhere found the one daemon there was. With the ssh kind
     retired the address comes from the node record and nothing else, so this
-    has to say WHICH node it means — and the default node is the same one
+    has to say WHICH node it means, and the default node is the same one
     the manager opens on.
     """
     with on_node(_default_node()):
@@ -1235,8 +1235,8 @@ def available_cached():
     """available(), memoised for AVAIL_TTL seconds.
 
     available() shells out to `docker version` with a ten-second timeout, and
-    the status poll runs every fifteen. Asking it on the poll — and the poll is
-    what the page's Docker controls read — would put a subprocess and a network
+    the status poll runs every fifteen. Asking it on the poll (and the poll is
+    what the page's Docker controls read) would put a subprocess and a network
     round trip on the page's heartbeat, for an answer that changes when the
     operator wires something up rather than between two polls.
 
@@ -1264,7 +1264,7 @@ def available_cached():
 
 
 def forget_available():
-    """Drop the memo — for a control that has just been told to try again.
+    """Drop the memo, for a control that has just been told to try again.
     All of them: Refresh means "look again", and a stale verdict on the node
     beside the one that was refreshed is the same staleness."""
     with _avail_lock:
@@ -1277,23 +1277,23 @@ def forget_available():
 # entirely daemon-side through POST /build and needs no attach at all.
 #
 # Against the VM nothing is refusing that attach, so this is now costing the
-# inline layer cache for no reason — every rebuild repeats every layer. Turning
+# inline layer cache for no reason: every rebuild repeats every layer. Turning
 # it back on is roadmap #12, which wants measuring rather than assuming: keep
 # the flags until buildx is verified against the sandbox.
 _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
 # Every docker call that CHANGES anything is a compose call naming its own
-# project. That keeps a bug in a caller to the containers that call is about —
+# project. That keeps a bug in a caller to the containers that call is about,
 # and until this guard it was true only because every call site happened to go
 # through _compose(). The invariant is asserted at the one place they all pass
 # through, which turns "the code always passes --project-name" into "the code
-# cannot not". It says nothing about what a compose FILE asks for — see
+# cannot not". It says nothing about what a compose FILE asks for; see
 # risks().
 #
 # `ps` is allowed alongside `version`. On the sandbox the containers are this
 # dashboard's and whatever else was put there deliberately, so being unable to
-# see them is not safety, it is a blind spot — the Docker Manager exists to
+# see them is not safety, it is a blind spot: the Docker Manager exists to
 # show what is actually running.
 #
 # Both are READS. Nothing here lets a verb that changes something in, and the
@@ -1319,15 +1319,16 @@ def _guard(argv):
     # allowing these gives away a mkdir, a mv and a test on one directory.
     # Every template is rebuilt from the names the argv itself carries and
     # compared whole, so the only way through is a command _devdata_argv could
-    # have produced — and only where the daemon is a machine whose job is
+    # have produced, and only where the daemon is a machine whose job is
     # being wrecked.
     if verb == "run":
         if not verified_sandbox():
-            return ("`docker run` — only where the daemon is a sandbox VM the "
-                    "provisioner made, and this one does not say it is")
+            return ("`docker run` is only allowed where the daemon is a "
+                    "sandbox VM the provisioner made, and this one does not "
+                    "say it is")
         names = [a[3:] for a in argv if a.startswith("/d/")]
         # The mount source is read back out of the argv and required to be a
-        # share root — one absolute component, a plain name — so the rebuild
+        # share root (one absolute component, a plain name) so the rebuild
         # below cannot be satisfied by mounting / or anything nested. This
         # says WHERE, the rebuild says WHAT; the reach is any share on the
         # daemon, which is the sandbox premise doing its job.
@@ -1342,10 +1343,10 @@ def _guard(argv):
             return ""
         return "a `docker run` this module did not build"
     if verb != "compose":
-        return (f"`docker {verb}` — only compose, and the reads in "
-                f"{'/'.join(sorted(_BARE_OK))}, are reachable here")
+        return (f"`docker {verb}` is not reachable here: only compose, and "
+                f"the reads in {'/'.join(sorted(_BARE_OK))}, are")
     # Every compose call names its project explicitly, so none of them can
-    # fall back to compose's default — the directory it happens to be run
+    # fall back to compose's default, the directory it happens to be run
     # from. The VALUE is checked, not just the flag: _slug() returns "" for a
     # name with no letter or digit in it (a project directory called `---`),
     # and an empty --project-name is exactly the fallback this is here to
@@ -1363,8 +1364,8 @@ def _guard(argv):
 def _docker_log(line):
     """One line into the Docker manager's own log, best effort.
 
-    Its own file because these are somebody else's build output — minutes of
-    layer progress per press — and putting that in the boot log would bury the
+    Its own file because these are somebody else's build output (minutes of
+    layer progress per press) and putting that in the boot log would bury the
     session's own story in it. What DOES reach the boot log is the verdict: see
     _run, which prints a failure to stderr as well.
     """
@@ -1384,7 +1385,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
 
     `sink` and `hold` are what make a long one watchable and stoppable. Without
     them the output arrives when the process exits, which for `compose build`
-    is minutes of nothing followed by everything at once — a pull that looks
+    is minutes of nothing followed by everything at once, a pull that looks
     like a hang. With a sink the lines are handed over as they are read, so
     the row's tail fills while it runs; with `hold` the process is offered to
     the caller so Abort has something to interrupt.
@@ -1396,7 +1397,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     if bad:
         # Refused rather than raised: a build runs on a job thread, where an
         # exception would end the job with nothing to show for it. A code and a
-        # message travel the path a real docker failure already travels — and
+        # message travel the path a real docker failure already travels, and
         # say plainly that this one is a bug here, not a daemon that said no.
         msg = "refused by BuilderBot, and this is a bug in it: " + bad
         print("[devapp] " + msg, file=sys.stderr, flush=True)
@@ -1414,7 +1415,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
             return _agent_read(n, argv, timeout)
     _docker_log("$ " + " ".join(argv))
     env = dict(os.environ)
-    # The resolved address, so `auto` never reaches the docker CLI — it does
+    # The resolved address, so `auto` never reaches the docker CLI, which does
     # not know the word.
     host = docker_host()
     if host:
@@ -1430,7 +1431,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
         except subprocess.TimeoutExpired:
             # Ahead of the general case, which it is a subclass of. str() on
             # this one dumps the whole argv, and the argv is this module's own
-            # doing — noise in a row or a doctor line that has room for a
+            # doing: noise in a row or a doctor line that has room for a
             # sentence.
             return {"code": 1, "out": f"timed out after {timeout}s"}
         except (OSError, subprocess.SubprocessError) as e:
@@ -1444,7 +1445,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
 
 
 def _docker_result(argv, code, out):
-    """How a call ended, in the manager's log — and on stderr when it failed.
+    """How a call ended, in the manager's log, and on stderr when it failed.
 
     The failure goes to stderr because that is the container's own stream and
     therefore the boot log: a compose call that did not work is exactly the
@@ -1463,11 +1464,11 @@ def _run_streamed(argv, timeout, env, sink, hold):
     """The watchable form: read as it goes, and let it be killed.
 
     stderr is folded into stdout because that is where docker writes its
-    progress and where compose writes everything — two streams read separately
+    progress and where compose writes everything; two streams read separately
     would interleave by luck rather than by time.
 
     Its own process group, so a kill reaches what the CLI is waiting on rather
-    than only the CLI: the packages installer learned this against a `bb` that
+    than only the CLI: the toolchain installer learned this against a `bb` that
     was itself waiting on a curl, and a compose call waiting on a pull is the
     same shape.
     """
@@ -1523,7 +1524,7 @@ def containers():
 
     All of them, not only ours. The operator asked to see what is running on
     that machine and showing half of it would be a listing that lies by
-    omission — a port conflict with something this dashboard did not start is
+    omission: a port conflict with something this dashboard did not start is
     exactly the thing you open a list to find out about.
 
     `ours` is the honest part: a container is this dashboard's when its compose
@@ -1536,7 +1537,7 @@ def containers():
     if r["code"] != 0:
         # From the TAIL, through the same reader availability uses. Cut from
         # the front, as this was, docker's connect error reads "command [ssh
-        # -l bb -o Connect…" and stops — the half the operator already knew
+        # -l bb -o Connect…" and stops, which is the half the operator knew
         # (B106). It mattered less when a failed listing only greyed rows
         # nobody could act on; now that the controls stay live and this line
         # is the whole account of what is not known, it is the message.
@@ -1559,7 +1560,7 @@ def containers():
         proj = labels.get(COMPOSE_LABEL, "")
         out.append({
             # Short, because the full id is 64 characters of nothing anyone
-            # reads — and the whole one is still what docker was asked for, so
+            # reads, and the whole one is still what docker was asked for, so
             # this is a display choice rather than a lossy fetch.
             "id": (c.get("ID") or "")[:12],
             "name": c.get("Names", ""),
@@ -1594,7 +1595,7 @@ def _ports(raw):
     """The published ports, deduplicated and without the noise.
 
     docker prints each mapping once per address family, so a single published
-    port arrives twice — as 0.0.0.0:8080->80/tcp and [::]:8080->80/tcp. Shown
+    port arrives twice, as 0.0.0.0:8080->80/tcp and [::]:8080->80/tcp. Shown
     both ways it reads as two ports.
     """
     seen = []
@@ -1618,7 +1619,7 @@ def compose_file(project, instance=MAIN):
     """The compose file behind an instance.
 
     Two sources, and the record says which. A project's instance is built from
-    the working copy — that is the whole point of it. A container written here
+    the working copy, which is the whole point of it. A container written here
     has no working copy at all: its compose file lives in /config beside the
     rest of the notebook's storage, where the project scan cannot see it and
     the backup that takes /config takes it too.
@@ -1635,7 +1636,7 @@ def compose_file(project, instance=MAIN):
 
 def pname(project, instance=MAIN):
     """What the container is called, for anybody outside this module who has
-    to name one in a sentence — the rebuild request the operator reads, for
+    to name one in a sentence: the rebuild request the operator reads, for
     instance. The underscore one stays the module's own."""
     return _pname(project, instance)
 
@@ -1643,7 +1644,7 @@ def pname(project, instance=MAIN):
 def _pname(project, instance=MAIN):
     """The compose project name: the prefix, then what the thing is called.
 
-    The PROJECT used to be in here as well — <project>-<instance> —
+    The PROJECT used to be in here as well, as <project>-<instance>,
     which for a project called MediaReducer-Dev with an instance named after
     it read `mediareducer-dev-mediareducer-dev`. The project half only
     ever bought uniqueness, and uniqueness is checked directly now
@@ -1662,7 +1663,7 @@ def name_clash(project, instance=MAIN):
 
     Container names and PROJECT names are separate things. A project called
     MediaReducer-Dev does not reserve `mediareducer-dev` for a container, and
-    an earlier version of this checked that it did — which made a name the
+    an earlier version of this checked that it did, which made a name the
     operator had every right to use come back refused. Nothing is reserved in
     advance; a project blocks no name until it actually has an instance.
 
@@ -1681,7 +1682,7 @@ def name_clash(project, instance=MAIN):
             if (proj, inst) == (project, instance) or _pname(proj, inst) != want:
                 continue
             whose = f"{proj}'s " + ("own" if inst == MAIN else f"'{inst}'")
-            return (f"{want} is already {whose} — two of them would drive one "
+            return (f"{want} is already {whose}, and two of them would drive one "
                     f"set of containers, so this one needs another name")
     return ""
 
@@ -1689,8 +1690,8 @@ def name_clash(project, instance=MAIN):
 def env_path(project, instance=MAIN):
     """One env file per INSTANCE, not per project.
 
-    Two instances of one codebase exist to differ — different ports at the very
-    least, or they cannot both run — so sharing an env would make the second
+    Two instances of one codebase exist to differ (different ports at the very
+    least, or they cannot both run) so sharing an env would make the second
     one impossible. Named for the compose project, which is already unique and
     already slugged.
     """
@@ -1702,13 +1703,13 @@ def _compose(project, instance, *args):
     name and env and to its project's file. A table of verbs, not a command
     string.
 
-    The project directory and the compose file are the PROJECT's — every
+    The project directory and the compose file are the PROJECT's: every
     instance of a project is built from the same codebase, which is the whole
     point of having more than one of them.
     """
     cf = compose_file(project, instance)
     # What a relative bind source resolves against, and it must be a path the
-    # DAEMON has. A project's own directory is one — /workspace has parity with
+    # DAEMON has. A project's own directory is one: /workspace has parity with
     # the sandbox by construction. /config does not: it is this container's
     # alone, so a container written here points at its data directory under
     # DEVDATA instead, which the daemon has whichever side made it, and which
@@ -1717,7 +1718,7 @@ def _compose(project, instance, *args):
         # The NAME of it, not a promise that it is there: _compose is on the
         # poll path (`ps`, `config`) and where the daemon makes this directory
         # itself, making it here would be a container launch every few seconds.
-        # Compose does not care — a missing --project-directory is only a
+        # Compose does not care, since a missing --project-directory is only a
         # problem for a bind that has to resolve, which is `up` and `build`,
         # and those go through _dev_data_env, which does make it. Checked
         # against compose rather than assumed: `config -q`, `config --format
@@ -1729,7 +1730,7 @@ def _compose(project, instance, *args):
         # The SAME answer _plan gives, because the two are one command built
         # twice: the controller's runner uses this and an agent node gets the
         # plan, and the first version of this shipped with only the plan
-        # changed — so a controller-run build quietly came from the project's
+        # changed, so a controller-run build quietly came from the project's
         # checkout while the row said it came from a branch.
         at = work_tree(project, instance)
         pdir = str(at) if at is not None else str(WORKSPACE / project)
@@ -1747,8 +1748,8 @@ def _compose(project, instance, *args):
 # The one thing about a remote daemon that is easy to forget and impossible to
 # see: a bind mount's SOURCE is resolved by whoever runs the container, and
 # that is the host. `/workspace/alpha` and `/devdata/alpha` mean
-# something here and nothing over there — docker does not error on a missing
-# bind source, it creates an empty directory and mounts that. On Unraid the
+# something here and nothing over there, and docker does not error on a
+# missing bind source, it creates an empty directory and mounts that. On Unraid the
 # root filesystem is RAM, so the failure is an app that starts with no data
 # and loses it again at reboot, which reads as a bug in the app.
 #
@@ -1780,7 +1781,7 @@ def _mount_roots():
 
 def _pairs():
     """The mapping's pairs, from the node being addressed: its record's
-    `config.paths` (docs/nodes.md §11 — the row is where it is edited)."""
+    `config.paths` (docs/nodes.md §11; the row is where it is edited)."""
     nid = getattr(_node_ctx, "node", None) or _default_node()
     got = node_paths(nid) if node_paths and nid else {}
     return [(k, v) for k, v in got.items()]
@@ -1805,8 +1806,9 @@ def host_map():
     is checked against the mount it claims to describe: a host path has to end
     with that mount's own root path, so /devdata (root /appdata/builderbot-dev)
     accepts /mnt/cache/appdata/builderbot-dev and rejects /mnt/user/something.
-    That is not proof — two shares can end alike — but it catches the case
-    this has to catch, which is a template whose two sides were edited apart.
+    That is not proof, since two shares can end alike, but it catches the
+    case this has to catch, which is a template whose two sides were edited
+    apart.
     A rejected pair is dropped rather than used: no answer beats a wrong one,
     because a wrong one is the silent failure above wearing a fix.
     """
@@ -1829,7 +1831,7 @@ def host_map():
             continue
         # An identity pair is not a translation and there is nothing to check
         # it against: it says the daemon calls this path what we call it, which
-        # is the sandbox-VM arrangement — the shares mounted over there at the
+        # is the sandbox-VM arrangement, the shares mounted over there at the
         # paths used over here. This container's mount table describes its own
         # mounts and says nothing about that machine's, so running the check
         # below on one would reject a mapping that is correct by construction.
@@ -1840,7 +1842,7 @@ def host_map():
             # only TRUE of a daemon on another machine, which is what
             # sandbox_daemon() answers. Asked THROUGH that rather than by
             # reading the address here, because it is as often written with
-            # the scheme left off as with it — reading it directly reported
+            # the scheme left off as with it, and reading it directly reported
             # the shipped default as misconfigured.
             #
             # Left in place while the daemon is not the sandbox, the pair
@@ -1848,14 +1850,14 @@ def host_map():
             # compose that believes it comes up on an empty directory.
             if not sandbox_daemon():
                 bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
-                           f"this node's daemon is not a sandbox VM — unless "
+                           f"this node's daemon is not a sandbox VM. Unless "
                            f"that daemon really has {here}, name its path "
                            f"instead")
         elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
         elif root != "/" and not there.endswith(root):
             bad.append(f"{here} is mounted from {root}, which {there} "
-                       f"does not end with — one side of the mapping moved")
+                       f"does not end with: one side of the mapping moved")
         else:
             out[here] = there
     return out, bad
@@ -1882,13 +1884,13 @@ def to_host(path, mapping=None):
 #
 # Docker will not do it itself: given a bind source that does not exist it
 # makes the directory as root and then chowns it, and on a share that squashes
-# root the chown fails and takes the run down with it — measured on this box,
+# root the chown fails and takes the run down with it, measured on this box,
 # "error while creating mount source path ...: chown ...: operation not
 # permitted". The directory is left behind, so the SECOND press works. An
 # intermittent-looking failure with a fixed cause.
 #
 # So the daemon makes it, in a container of its own. That is a `docker run`,
-# which is root-equivalent on whichever machine answers — acceptable only
+# which is root-equivalent on whichever machine answers, and acceptable only
 # because that machine is the sandbox. Hence the gate below, and hence _guard
 # recognising these commands by rebuilding them rather than by allowing the
 # verb: neither is load-bearing today, and both are what keeps this from
@@ -1901,23 +1903,23 @@ DEVDATA_IMAGE = "alpine"
 # Every operation this module will ask the daemon to perform on that share.
 _DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"], "test": ["test", "-d"]}
 
-# What may follow /d/. Components separated by single slashes — a compose
-# names /devdata/<instance>/config, which is two deep — with every component
+# What may follow /d/. Components separated by single slashes (a compose
+# names /devdata/<instance>/config, which is two deep) with every component
 # starting on a letter or digit, so `..` is not a name and nothing can climb
 # out of the mount. No leading, trailing or doubled slash.
 _DEV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*$")
 
 
 def sandbox_daemon():
-    """Is the daemon a sandbox VM — a machine whose whole job is being wrecked?
+    """Is the daemon a sandbox VM, a machine whose whole job is being wrecked?
 
     Which is the only daemon this talks to, so this is available()'s first
-    check asked on its own — kept as the guard's own question rather than
+    check asked on its own, kept as the guard's own question rather than
     inherited, because it is what decides whether a `docker run` is allowed
     and a security check should not depend on a display function.
 
     The ADDRESS only, deliberately: this is asked while available() is still
-    computing — source() reads host_map(), which reads this — so a version of
+    computing (source() reads host_map(), which reads this) so a version of
     it that consulted availability would call itself round in a circle. The
     stronger question, which is the one the guard asks, is verified_sandbox()
     below.
@@ -1930,7 +1932,7 @@ def verified_sandbox():
     nodes/provision-linux.sh puts on the VM it made.
 
     An ssh address only proves somebody typed one. The label is the only thing
-    that says the machine on the end is the box built to be wrecked — which is
+    that says the machine on the end is the box built to be wrecked, which is
     the entire reason running a container as root over there is acceptable.
     Read through the memo, so a run does not pay for a round trip the poll made
     thirty seconds ago, and never from the cache alone: an empty memo asks.
@@ -1941,7 +1943,7 @@ def verified_sandbox():
 def mkdir_root(path):
     """The share a mkdir on the daemon mounts to make this path, or "".
 
-    The first component — /auxiliary for /auxiliary/plex-library — because
+    The first component (/auxiliary for /auxiliary/plex-library) because
     that is the shape of a share, and it is what has to exist over there for
     the rest to be creatable as BuilderBot's own uid. Deliberately NOT a
     declared list: the VM's shares are the VM's business, and a field naming
@@ -1950,7 +1952,7 @@ def mkdir_root(path):
     what a compose file names plus a button press is the bound.
 
     "" for a path this will not touch: the share root itself (nothing below it
-    to make — and docker creates a missing mount source as root, which is the
+    to make, and docker creates a missing mount source as root, which is the
     failure this whole mechanism exists to avoid), or components that are not
     plain names, which is what keeps `..` and its relatives out of an argv.
     """
@@ -1966,10 +1968,10 @@ def _devdata_argv(op, *names, root=None):
     """One of the commands above, as the exact argv it will be run as.
 
     In one place because _guard rebuilds it from a candidate argv and compares
-    — so what is allowed is these commands, not the verb they begin with. The
-    root is the mount and the names are paths under it, which confines every
-    one of them to it by construction rather than by checking; which roots may
-    be named is mkdir_roots(), checked separately.
+    against it, so what is allowed is these commands, not the verb they begin
+    with. The root is the mount and the names are paths under it, which
+    confines every one of them to it by construction rather than by checking;
+    which roots may be named is mkdir_roots(), checked separately.
 
     Owned by whoever BuilderBot runs as. That is the point of doing it this
     way rather than letting docker create a missing bind source itself: docker
@@ -1997,7 +1999,7 @@ def dev_data_dir(project, instance=MAIN, make=True):
 
     DEVDATA is a path on the VM and the VM makes the directory, through the
     throwaway container above. So it does not have to be mounted on this side
-    at all — one path meaning one thing, instead of a path here, a path there
+    at all: one path meaning one thing, instead of a path here, a path there
     and a mapping between them that nothing could check.
 
     None when the mkdir failed. The caller then leaves BB_DEV_DATA unset and
@@ -2051,21 +2053,21 @@ def check_paths(node_id=None):
     the projects share? (roadmap #13)
 
     Under an identity mapping host_map() accepts the pair unchecked and
-    problems() has nothing to say — correct, because this container's mount
-    table says nothing about the other machine's — so NOTHING verified that
-    the two sides still agree, and the failure is silent twice over: docker
+    problems() has nothing to say, which is correct, because this container's
+    mount table says nothing about the other machine's, so NOTHING verified
+    that the two sides still agree, and the failure is silent twice over: docker
     answers a missing bind source by creating an empty directory, and the
     row says nothing. It bit on 27 Aug: /workspace was repointed here while
     the VM still mounted the parent directory, every project path was wrong
     by one component, and it took three silent rounds to settle. Make dirs
-    raised the stakes since — a mismatch now builds a stray tree over there.
+    raised the stakes since: a mismatch now builds a stray tree over there.
 
     So: a marker directory is made under the share HERE, and the daemon is
     asked whether it can see it at the path the mapping says the node calls
     the share. Through the same one-shot container the dev-data directory is
     made with (_devdata_argv, `test`), so the guard's rules cover it: the
     mount is a share root and the name is under it. The marker is removed
-    whatever happens. Off the poll — this is for when something changed.
+    whatever happens. Off the poll, because this is for when something changed.
 
     Three answers, never a guess: True (found), False (a clean "not there"),
     None with a sentence (the daemon could not be asked, or refused).
@@ -2108,8 +2110,8 @@ def check_paths(node_id=None):
             # `test -d` says no with nothing on its output; a daemon that
             # could not be reached says so.
             out.update(same=False, why=(f"NOT the same directory: a marker made under "
-                                        f"{here} here was not at {there} on the node — "
-                                        "a compose over there would bind an empty tree, "
+                                        f"{here} here was not at {there} on the node. "
+                                        "A compose over there would bind an empty tree, "
                                         "and Make dirs would build one"))
         else:
             out["why"] = ("could not ask the daemon: "
@@ -2118,7 +2120,7 @@ def check_paths(node_id=None):
 
 
 def rename_dev_data(old, new):
-    """Move an instance's data when its project is renamed — (moved?, error).
+    """Move an instance's data when its project is renamed: (moved?, error).
 
     The case projects.py cannot reach with a rename(2), because the directory
     is on the daemon's disk and not on ours. It handles the mounted case
@@ -2126,23 +2128,23 @@ def rename_dev_data(old, new):
     nothing is done twice.
 
     A project that never had a dev instance has nothing to move and is not a
-    failure — the same rule as the local move.
+    failure, the same rule as the local move.
     """
     if Path(DEVDATA).is_dir() or not sandbox_daemon():
         return False, ""
     if not _devdata_run("test", old, quiet=True):
         return False, ""
-    # `mv a b` with b an existing DIRECTORY does not fail — it puts a inside
+    # `mv a b` with b an existing DIRECTORY does not fail: it puts a inside
     # it, as /d/<new>/<old>. The local move checks the target first and this
     # did not, so the one arrangement that cannot be checked by looking was
     # also the one that silently nested somebody's data one level deeper.
     if _devdata_run("test", new, quiet=True):
         return False, (f"the sandbox already has a data directory called "
-                       f"{new} — moving onto it would bury one inside the "
+                       f"{new}, and moving onto it would bury one inside the "
                        f"other, so nothing was moved")
     if not _devdata_run("mv", old, new):
         return False, ("the dev instance's data is on the sandbox and could "
-                       "not be moved — it is still under the old name")
+                       "not be moved: it is still under the old name")
     return True, ""
 
 
@@ -2163,7 +2165,7 @@ def rename_project_data(old, new):
     anything else, because nobody typed a name for the default one). So a
     rename moves exactly that one, and a named instance keeps its directory
     because its name never contained the project. Skipped explicitly rather
-    than by knowing — was == now is asked, so a change to _pname is picked up
+    than by knowing: was == now is asked, so a change to _pname is picked up
     here instead of quietly orphaning what it renames.
 
     Both arrangements, because which one is live is this module's business
@@ -2195,7 +2197,7 @@ def rename_project_data(old, new):
                 failed.append(f"{what} could not be moved: {e}")
             continue
         # The daemon-side move runs against the daemon this instance is
-        # bound to — with several nodes, "the sandbox" is a per-record fact.
+        # bound to: with several nodes, "the sandbox" is a per-record fact.
         with on_node(_instance_node(new, inst)):
             did, err = rename_dev_data(was, now)
         if did:
@@ -2240,8 +2242,8 @@ def _build_env(project, instance=MAIN):
 
 
 def _dev_data_env(project, instance=MAIN):
-    """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
-    cache-backed volumes by convention, nothing forced on a compose that never
+    """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... paths.
+    Cache-backed volumes by convention, nothing forced on a compose that never
     mentions it.
     """
     d = dev_data_dir(project, instance)
@@ -2271,7 +2273,7 @@ def starter(project, instance=MAIN):
     """What an empty editor opens on: the repo's .env.example, seeded.
 
     A blank box under a list of six key names asks the operator to type out
-    what the example already spells — with its own comments explaining each
+    what the example already spells, with its own comments explaining each
     one, which is the half a list of names throws away. Seeded, not saved:
     nothing reaches disk until Save, so `missing_env` keeps answering about
     the stored file and Up stays honestly dead until the values are real.
@@ -2284,13 +2286,13 @@ def starter(project, instance=MAIN):
     if not example.strip():
         return ""
     return ("# Started from this project's .env.example. Fill in the values\n"
-            "# and press Save — nothing is written until you do.\n\n"
+            "# and press Save; nothing is written until you do.\n\n"
             + example.rstrip() + "\n")
 
 
 def write_env(project, text, instance=MAIN):
     if len(text or "") > 65536:
-        return {"error": "that env file is over 64KB — this holds settings, "
+        return {"error": "that env file is over 64KB, and this holds settings, "
                          "not data"}
     try:
         ENVDIR.mkdir(parents=True, exist_ok=True)
@@ -2365,8 +2367,8 @@ def _gate_env(project, instance=MAIN):
     stamp = time.strftime("%Y-%m-%d %H:%M")
     kept = "\n".join("# old: " + ln for ln in old.splitlines() if ln.strip())
     text = (f"# The rebuild on {stamp} found new settings in .env.example.\n"
-            f"# Fill them in below — your previous env is preserved in the\n"
-            f"# 'old:' comments at the bottom — then press Up.\n\n"
+            f"# Fill them in below (your previous env is preserved in the\n"
+            f"# 'old:' comments at the bottom) and then press Up.\n\n"
             f"{example.rstrip()}\n\n"
             f"# ---- what this file held before the rebuild ----\n{kept}\n")
     write_env(project, text)
@@ -2379,14 +2381,14 @@ def overview(node_id=None):
     """Every instance, and everything else on the daemon, from ONE ps.
 
     `node_id` is the manager's picker: the containers come from that node's
-    daemon, and the instance rows are the ones BOUND there — an instance
+    daemon, and the instance rows are the ones BOUND there: an instance
     belongs to the node it was created against, and showing it under every
     daemon would offer buttons that act somewhere other than where the row
     says. Unset means the default docker node, which is the arrangement that
     predates the picker.
 
-    state() asks the daemon twice per instance — is it running, does anything
-    exist — which is fine for one row and absurd for a manager listing all of
+    state() asks the daemon twice per instance (is it running, does anything
+    exist) which is fine for one row and absurd for a manager listing all of
     them. The container list already answers both for everything at once: an
     instance's containers are the ones whose compose project is its name. So
     the whole page costs one docker call plus what is already on disk.
@@ -2397,7 +2399,7 @@ def overview(node_id=None):
     """
     # A daemon that is not there is asked nothing. `docker ps` over ssh to a
     # VM that is off sits until its 25-second timeout, so the manager spent
-    # that long on a spinner and then showed one error line — when everything
+    # that long on a spinner and then showed one error line, when everything
     # the page can honestly say (which instances exist, what each was built
     # from, what its env still wants) is on this side of the wire and needs no
     # daemon at all. The rows come back either way; what the daemon owns is
@@ -2420,12 +2422,12 @@ def _overview_here(picked):
         by_proj.setdefault(c["project"], []).append(c)
     store = _load()
     out = []
-    # The STORE's instances, not instances() — that one synthesises `main` for
+    # The STORE's instances, not instances(): that one synthesises `main` for
     # any project with a compose file, which is right for "what may I act on"
     # and wrong here: it filled the manager with a row per project that had
     # never been sent anywhere, indistinguishable from ones that had. A record
     # exists because somebody pressed Send.
-    # Nothing was asked, or asking failed — either way nothing is known: the
+    # Nothing was asked, or asking failed, and either way nothing is known: the
     # client draws the row from the store and refuses to say running or
     # stopped. False on those fields would be a claim, and a daemon that died
     # inside the availability memo answers the same as one that was never
@@ -2446,7 +2448,7 @@ def _overview_here(picked):
             # the row resolve it (_instance_node): the record's node, else
             # the PROJECT's, else the default. Those two chains used to
             # differ by the middle step, so an unbound instance of a project
-            # bound to one node was listed under a different one — every
+            # bound to one node was listed under a different one: every
             # button on the row acting somewhere other than where the row
             # said, and two projects' containers appearing under a machine
             # nobody had ever sent them to.
@@ -2469,12 +2471,12 @@ def _overview_here(picked):
                 # compose file: what is published is what the daemon says it
                 # published, and a stopped instance publishes nothing.
                 "ports": sorted({p for c in mine for p in c["ports"]}),
-                # The same rule state() uses — a build belongs to the daemon
+                # The same rule state() uses: a build belongs to the daemon
                 # it happened on, and a record from another names nothing here.
                 "built_rev": rec.get("rev", "") if same_daemon else "",
                 "built_at": rec.get("at", 0) if same_daemon else 0,
-                # The ref that build was made from, stamped when it was made —
-                # a different question from `ref` below, which is the pin the
+                # The ref that build was made from, stamped when it was made.
+                # A different question from `ref` below, which is the pin the
                 # NEXT build will use. Repointing an instance does not rebuild
                 # it, so reading the pin to describe what is already built
                 # names a branch that may never have been built here.
@@ -2482,13 +2484,13 @@ def _overview_here(picked):
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
                 "compose": compose_file(project, inst) is not None,
                 "source": "file" if filed else "project",
-                # A file read and one git call. risks/problems stay out —
+                # A file read and one git call. risks/problems stay out:
                 # those are judgements to put in front of somebody about to
                 # press a button, and belong on the row that asked.
                 "missing_env": missing_env(project, inst),
                 # A written container's revision is its definition, so
-                # "changed" can mean what it means everywhere else — the source
-                # has moved since the build — instead of being permanently true
+                # "changed" can mean what it means everywhere else (the source
+                # has moved since the build) instead of being permanently true
                 # because there was no revision to compare.
                 "changed": (not (rec.get("rev") if same_daemon else "")
                             or (same_daemon
@@ -2520,7 +2522,7 @@ def _overview_here(picked):
                                 else ""),
             })
     return {"error": cs["error"], "blind": blind, "node": picked,
-            # TWO QUESTIONS, kept apart — which is the whole of B111. "Can we
+            # TWO QUESTIONS, kept apart, which is the whole of B111. "Can we
             # ACT" is availability: on an agent node compose runs on the
             # agent, against that machine's own socket, so a controller that
             # cannot ssh there changes nothing about whether Up works. "Can we
@@ -2529,7 +2531,7 @@ def _overview_here(picked):
             # every control on a node where all of them would have worked.
             "on": bool(got.get("on")), "why": got.get("why") or "",
             # WHICH DAEMON THIS ANSWER IS ABOUT, in its own words. The page had
-            # only the status poll's copy, which is the DEFAULT node's — so the
+            # only the status poll's copy, which is the DEFAULT node's, so the
             # line under the picker named a machine the picker was not on, and
             # said so in an address, which is the one thing there that looks
             # like proof.
@@ -2542,8 +2544,8 @@ def _overview_here(picked):
             # second click the server then refused. It belongs here, with the
             # rest of what this page draws from.
             # While it is running OR while it has something to say about how it
-            # ended. Dropped the moment it stopped, a build that failed — or one
-            # stopped on purpose, which ends a job with no other trace — left
+            # ended. Dropped the moment it stopped, a build that failed (or one
+            # stopped on purpose, which ends a job with no other trace) left
             # the row showing whatever state it happened to be in and no account
             # of why. It is replaced by the next job, which is when it stops
             # being the answer to "what just happened here".
@@ -2561,7 +2563,7 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     """A container from a compose file written here, with no project behind it.
 
     The shape every other Docker front end uses: a stack is a name, a compose
-    file and an environment. Labels are not a third field — in compose they
+    file and an environment. Labels are not a third field: in compose they
     live in the YAML, and a separate box for them would be inventing a concept
     this format does not have.
 
@@ -2579,7 +2581,7 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
         return {"error": f"that compose file is over {COMPOSE_MAX // 1000}kB"}
     with _lock:
         if slug in _load():
-            return {"error": f"{slug} already exists — pick another name"}
+            return {"error": f"{slug} already exists; pick another name"}
         clash = name_clash(slug, MAIN)
         if clash:
             return {"error": clash}
@@ -2618,16 +2620,16 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
 
 
 def overview_names():
-    """Every name the store knows — what an endpoint checks a request against."""
+    """Every name the store knows: what an endpoint checks a request against."""
     return set(_load())
 
 
 def update_container(name, compose_text, env_text):
     """Change what a container is, after it exists.
-    (Validation runs against the container's own node — see the on_node in
+    (Validation runs against the container's own node; see the on_node in
     the body.)
 
-    Ports move, a volume is added, an image is pinned — a compose file written
+    Ports move, a volume is added, an image is pinned: a compose file written
     here is edited far more often than it is created, and without this the only
     way to change one was to remove it and write it again from memory.
 
@@ -2676,8 +2678,8 @@ def forget_container(name):
     """Drop the record and the files. Only ever for one this wrote.
 
     Including the env, which it did not before. For a PROJECT's instance
-    Remove deliberately keeps the env and the data — the promise is that
-    sending it again finds them — but a written container has nowhere to
+    Remove deliberately keeps the env and the data (the promise is that
+    sending it again finds them) but a written container has nowhere to
     come back FROM, which is the argument the compose file below is deleted
     on, and it applies to the env just the same. Kept, it left one file per
     removed container in /config/devenv with nothing that would ever read it
@@ -2706,15 +2708,15 @@ def forget_container(name):
 def create_instance(project, name, node="", for_project=""):
     """Register a new instance of a project. Nothing is built or started.
 
-    `node` is which docker-host the instance is bound to — the daemon every
+    `node` is which docker-host the instance is bound to: the daemon every
     action on it will address. Empty means the default node, resolved at USE
     rather than stored, so an instance made before a second node existed
     follows the default when it moves.
 
     The name is slugged the same way it will be when it reaches a compose
-    call, and checked against the slug rather than the typing — `My App` and
-    `my-app` are the same instance and the second should be refused rather
-    than silently becoming the first.
+    call, and checked against the slug rather than the typing, because
+    `My App` and `my-app` are the same instance and the second should be
+    refused rather than silently becoming the first.
     """
     slug = _slug(name) or ""
     if not slug:
@@ -2728,7 +2730,7 @@ def create_instance(project, name, node="", for_project=""):
         # And not one that another project has taken. The name no longer
         # carries the project, so two of them asking for `dev` would be one
         # compose project, one env file and one data directory wearing two
-        # rows — which is the collision the old spelling prevented by being
+        # rows, which is the collision the old spelling prevented by being
         # long, and this prevents by asking.
         clash = name_clash(project, slug)
         if clash:
@@ -2754,7 +2756,7 @@ def set_ref(project, instance, ref):
     What it changes is where the next BUILD comes from, and nothing else: the
     running containers, the env and the data are the instance's own either
     way. Validated against the project's own repository rather than taken as
-    given, because this string reaches `git checkout` — and refusing an
+    given, because this string reaches `git checkout`, and refusing an
     unknown ref here is a sentence, where finding out at build time is a
     failed job.
     """
@@ -2797,7 +2799,7 @@ def remove_instance(project, instance):
     """Take a container out of the manager: down it, then forget the record.
 
     What is NOT removed is the env file and the data directory. Removing is
-    the way to tidy the list, not a way to destroy work — and an instance
+    the way to tidy the list, not a way to destroy work, and an instance
     remade under the same name finding its old env there is the behaviour
     somebody who removed one by mistake would want. Deleting those is a shell
     away and is not something a button here should do quietly.
@@ -2806,7 +2808,7 @@ def remove_instance(project, instance):
     first half of this and needs the daemon; forgetting the record is the
     second and is this side's own file. Making the whole verb wait on the
     daemon meant a row on a machine that had gone away could be removed by
-    nobody — the one state a list must not have, because the row is the only
+    nobody, the one state a list must not have, because the row is the only
     control over the thing it names. So when the daemon is unreachable the
     record goes and what could not be done is said: anything up over there is
     left up, and the env and the data directory stay where they always do, so
@@ -2829,12 +2831,12 @@ def _job_remove(project, instance, run):
     r = _run(_compose(project, instance, "down"), timeout=180,
              sink=run.line, hold=run.hold)
     if run.canceled:
-        return {"state": "canceled", "error": "stopped — it is still in the manager"}
+        return {"state": "canceled", "error": "stopped; it is still in the manager"}
     if r["code"] != 0:
         return {"state": "failed",
                 "error": ("could not take it down, so it was left alone:\n"
                           + r["out"])[-500:]}
-    # A container written here has nowhere else to come back from — its
+    # A container written here has nowhere else to come back from: its
     # compose file IS the thing, and leaving it behind would keep the name
     # taken by something with no row to remove it from. A project's instance
     # keeps its env and data, which is what that button already promises.
@@ -2921,7 +2923,7 @@ def _config(project, instance=MAIN):
 
     Deliberately not memoised. A cache on the compose file's mtime is wrong:
     what compose resolves also depends on an `include:`, an `extends:`, a
-    `.env` beside the file — none of which that key can see, and a stale
+    `.env` beside the file, none of which that key can see, and a stale
     resolved compose means the row judges a file nobody has any more. The call
     is a subprocess, so the discipline is asking it once per answer rather
     than making it cheap to ask carelessly: state() does that for one row, and
@@ -2945,8 +2947,8 @@ def _services(cfg):
 def needs_build(cfg):
     """Whether this compose has anything to build at all.
 
-    A compose that only runs published images — `image: postgres` and no
-    `build:` — has nothing for Build to do, and Up should not wait on one.
+    A compose that only runs published images (`image: postgres` and no
+    `build:`) has nothing for Build to do, and Up should not wait on one.
     A compose that declares a build must not be brought up before it has
     been: `compose up` would build it ITSELF, silently, through the buildx
     path this feature deliberately avoids, and the operator would get the
@@ -2954,7 +2956,7 @@ def needs_build(cfg):
     """
     if cfg is None:
         # Unreadable compose: assume it builds, which is the cautious way
-        # round — Up stays gated rather than firing an implicit build.
+        # round: Up stays gated rather than firing an implicit build.
         return True
     return any(bool(sv.get("build")) for sv in _services(cfg).values())
 
@@ -2991,7 +2993,7 @@ def _binds(sv, project):
 def missing_dirs(project, cfg, instance=MAIN):
     """Bind sources that do not exist yet, split by whether we can make them.
 
-    Docker creates a missing bind source itself — as root, then chowning it —
+    Docker creates a missing bind source itself (as root, then chowning it)
     which on a share that squashes root fails and takes the whole run down
     ("operation not permitted"), leaving the directory behind so the SECOND
     press works. An intermittent-looking failure with a fixed cause, and the
@@ -2999,7 +3001,7 @@ def missing_dirs(project, cfg, instance=MAIN):
 
     Only what this container can actually reach through its own mounts. A path
     it cannot see is not a path it should be inventing on the other machine's
-    disk — that one is already what problems() is complaining about, and the
+    disk: that one is already what problems() is complaining about, and the
     answer there is the mapping rather than a mkdir.
 
     Two ways to make one, and a third case that is neither:
@@ -3007,19 +3009,19 @@ def missing_dirs(project, cfg, instance=MAIN):
     - This container mounts it. mkdir here, and the daemon sees it because the
       share is the same one.
     - It is a path under a share the daemon has. A one-shot container over
-      there makes it, as BuilderBot's uid — see _devdata_argv. The ordinary
+      there makes it, as BuilderBot's uid; see _devdata_argv. The ordinary
       case with a sandbox VM: the dev-data and media shares are mounted over
       there and need not be here, and which shares those are is the VM's
       business, not a list kept on this container.
     - It is a share root itself, or not a path made of plain names. Named on
-      the row and left alone — there is nothing below a share root to make,
+      the row and left alone: there is nothing below a share root to make,
       and docker creating the root itself is the as-root failure this exists
       to avoid.
 
     Returns (makeable, unreachable), both sorted lists of paths.
 
     A path on the daemon's side cannot be looked at from here, so one this has
-    already made is remembered instead — otherwise the row goes on saying three
+    already made is remembered instead; otherwise the row goes on saying three
     directories are missing after the button that made them, and the button
     that worked looks like it did nothing. `mkdir -p` either way, so a record
     that has gone stale costs a directory being made twice.
@@ -3054,7 +3056,7 @@ def ensure_dirs(project, instance=MAIN, sink=None):
     button somebody has to remember.
 
     It was a button, and a button you must press before another button is not
-    a step — it is a trap: Up failed, and the reason it failed was a control
+    a step, it is a trap: Up failed, and the reason it failed was a control
     sitting unpressed two inches away. Nothing about the decision was ever the
     operator's. Docker will create a missing bind source itself if this does
     not, as root, which is the failure the whole mechanism exists to avoid.
@@ -3072,7 +3074,7 @@ def ensure_dirs(project, instance=MAIN, sink=None):
     for line in r.get("failed") or []:
         say(f"could not make {line}\n")
     for d in r.get("unreachable") or []:
-        say(f"{d} is not BuilderBot's to make — docker will try it as root\n")
+        say(f"{d} is not BuilderBot's to make, so docker will try it as root\n")
     return r
 
 
@@ -3086,7 +3088,7 @@ def make_dirs(project, instance=MAIN):
     and pressing this twice is the same as pressing it once.
 
     Made HERE when this container mounts the share, and on the DAEMON when it
-    does not and the operator has declared the path — same result, different
+    does not and the operator has declared the path: same result, different
     side, and the row does not distinguish because the operator should not
     have to care which.
     """
@@ -3128,7 +3130,7 @@ def risks(project, cfg):
     The half of the blast radius no check on a COMMAND can bound. A container
     started from a file saying `privileged: true` and mounting `/` is named as
     innocently as any other and passes every check that can be made on a
-    name — so the file itself is read, and what it asks for is put in front of
+    name, so the file itself is read, and what it asks for is put in front of
     the operator before anything starts.
 
     Warned and confirmed rather than refused: a legitimate compose may want a
@@ -3140,7 +3142,7 @@ def risks(project, cfg):
     out = []
     for name, sv in sorted(_services(cfg).items()):
         if sv.get("privileged"):
-            out.append(f"{name} runs privileged — root on the host, in effect")
+            out.append(f"{name} runs privileged: root on the host, in effect")
         # Named beside privileged rather than left out: a check that catches
         # `privileged: true` and misses `cap_add: [SYS_ADMIN]` has a hole in
         # it that is obvious to anyone who would use it.
@@ -3159,7 +3161,7 @@ def risks(project, cfg):
             out.append(f"{name} is on the host's own network")
     # Bind mounts are NOT listed here any more, and their absence is the
     # design rather than an oversight. wiring() puts every one of them on the
-    # row, always, with the path it lands on — so repeating the ones that
+    # row, always, with the path it lands on, so repeating the ones that
     # reach outside the project restated what was already on screen two lines
     # above it, in worse words. What is left is the set that is invisible
     # otherwise: the flags that make a container more than a container.
@@ -3169,7 +3171,7 @@ def risks(project, cfg):
 def our_paths(mapping):
     """The paths this container has that the mapping speaks for.
 
-    Was a hardcoded pair — /workspace and /devdata — which is what the mapping
+    Was a hardcoded pair (/workspace and /devdata) which is what the mapping
     held on the day it was written and not what it holds now. A share added to
     both sides (an /auxiliary for general storage, say) was then translated by
     to_host and judged by nothing: a bind under it could name a directory the
@@ -3178,7 +3180,7 @@ def our_paths(mapping):
 
     Derived instead, so adding a mount to both sides is a setting rather than a
     code change. Existence is the filter, and it is the honest one: a mapping
-    may name a path that only the DAEMON has — which is fine and common, and is
+    may name a path that only the DAEMON has, which is fine and common, and is
     not something this side can check anything about.
     """
     ours = [p for p in mapping if Path(p).is_dir()]
@@ -3188,8 +3190,8 @@ def our_paths(mapping):
     #
     # DEVDATA deliberately NOT: it is a path on the VM, which makes those
     # directories itself. Adding it here judged binds under it against THIS
-    # container's mount table and called every correct compose file broken —
-    # "/devdata/x is this container's path, the daemon does not have it" — on
+    # container's mount table and called every correct compose file broken,
+    # "/devdata/x is this container's path, the daemon does not have it", on
     # the one path the daemon certainly does have. If it is mounted on both
     # sides and named in the mapping, the line above covers it like any other.
     if str(WORKSPACE) not in ours and WORKSPACE.is_dir():
@@ -3211,8 +3213,8 @@ def stray_map_entries(mapping):
 def _root_of(path):
     """The first component of a path, which is the pair a mapping would name.
 
-    /devdata/binhex-sonarr/data is not what goes in the node's mapping —
-    /devdata is — and a message that suggests the bind's whole path teaches the
+    /devdata/binhex-sonarr/data is not what goes in the node's mapping;
+    /devdata is, and a message that suggests the bind's whole path teaches the
     wrong shape.
     """
     parts = [p for p in str(path).split("/") if p]
@@ -3224,10 +3226,10 @@ def problems(project, cfg):
 
     A different thing from risks(): those are decisions the operator may
     reasonably make, this is a compose file that cannot work. Kept apart so
-    the confirmation stays about the first kind — asking someone to confirm a
+    the confirmation stays about the first kind: asking someone to confirm a
     configuration error teaches them to confirm without reading.
 
-    Only OUR paths are judged — every path this container has that the mapping
+    Only OUR paths are judged: every path this container has that the mapping
     speaks for, see our_paths(). Anything else is taken for a host path, which
     it usually is and which nothing here can check anyway.
     """
@@ -3253,13 +3255,13 @@ def problems(project, cfg):
             # "the daemon does not have it" was the old wording, and it is a
             # claim this side cannot make: nothing here can see the other
             # machine's filesystem, which is the whole reason the mapping is a
-            # setting. Against a sandbox VM it was usually false as well — the
+            # setting. Against a sandbox VM it was usually false as well: the
             # share is mounted over there at the same path, and the honest
             # answer is that BuilderBot has not been told so.
             out.append(
-                f"{name} mounts {src}, which is this container's path — "
-                + (f"the daemon calls that {there}" if there else
-                   f"and the node's path mapping does not say what the daemon calls "
+                f"{name} mounts {src}, which is this container's path. "
+                + (f"The daemon calls that {there}" if there else
+                   f"The node's path mapping does not say what the daemon calls "
                    f"it. Add a pair for it on the node's row (Nodes tab, Advanced, "
                    f"Path mapping): {_root_of(src)}:{_root_of(src)} if the daemon "
                    f"mounts the same share at the same path"))
@@ -3270,10 +3272,10 @@ def taken_ports(project, instance, ports):
     """The host ports this instance would publish that something ELSE on the
     same daemon already has, as ["6789 (jumble)", ...].
 
-    Two instances of one project publish the same ports by construction —
-    they are the same compose file — so "run the branch beside the one that
-    is up" collides on the second Up and compose says so in its own words,
-    after the press. This is the same fact before it: read off the container
+    Two instances of one project publish the same ports by construction,
+    because they are the same compose file, so "run the branch beside the one
+    that is up" collides on the second Up and compose says so in its own
+    words, after the press. This is the same fact before it: read off the container
     list the manager already has, which is one `ps` it already paid for.
 
     A compose file whose published ports come from the env has an answer (the
@@ -3301,7 +3303,7 @@ def wiring(cfg):
     Shaped the way Unraid's own Docker tab shows it, because that is where the
     operator reads the same facts about every other container on the box: the
     container's side on the left, the host's on the right, and an arrow that
-    says which way it goes — one way into the container for a read-only mount,
+    says which way it goes: one way into the container for a read-only mount,
     both ways for a writable one.
 
     Off the resolved config, so a path or a port assembled out of variables is
@@ -3370,7 +3372,7 @@ def _risk_gate(project, instance=MAIN, ack=""):
             _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
-    return ("this compose asks for more than its own directory — "
+    return ("this compose asks for more than its own directory: "
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else ""))
 
 
@@ -3385,7 +3387,7 @@ def _running(project, instance=MAIN):
 def _exists(project, instance=MAIN):
     """Does compose know about any container here, running or not?
 
-    A container that EXITED — a crash, a bad entrypoint, an OOM — is still
+    A container that EXITED (a crash, a bad entrypoint, an OOM) is still
     there, still holding its name and the project's network, and `down` is the
     only thing that clears it. Asking only about RUNNING containers is what
     left a crashed instance with a greyed-out Down and no way out of the
@@ -3407,14 +3409,14 @@ def built_rev(project, instance=MAIN):
 
     A project's is its git commit. A container WRITTEN here has no repository
     behind it, so _head asked git about a directory that is not one, got ""
-    back — and warned about it on every poll — and the record's rev stayed
+    back, and warned about it on every poll, and the record's rev stayed
     empty. built_rev being empty is what the row reads as never-built, so the
     button said Build forever on a container that had been built a dozen
     times, and Rebuild could never appear.
 
     Its revision is its definition: the compose file and the env, hashed. That
     is the thing a rebuild would pick up, so it is the honest answer to both
-    questions the row asks — what was this built from, and has it moved since.
+    questions the row asks: what was this built from, and has it moved since.
     """
     if not is_file_source(project):
         return _head(project, instance)
@@ -3472,7 +3474,7 @@ def state(project, instance=MAIN):
     # build tripped, the marker saying one is in flight. What stays is the
     # operator's risk acknowledgement, which is about what the compose file
     # asks for and would be true on any daemon. Dropping the env gate costs
-    # nothing — up() refuses on a live missing_env() rather than on the flag.
+    # nothing: up() refuses on a live missing_env() rather than on the flag.
     if built.get("daemon") != daemon_id():
         built = {k: v for k, v in built.items()
                  if k not in ("rev", "at", "built_ref", "await_env",
@@ -3481,7 +3483,7 @@ def state(project, instance=MAIN):
            # WHICH machine that was about, which the row could not say. An
            # instance is pinned to the node it was made on and a project
            # repointed since keeps it, so "the node I pointed it at" and the
-           # machine this actually asked are not always the same one — and
+           # machine this actually asked are not always the same one, and
            # when the answer is a refusal, that is the first thing to know.
            "where": a.get("where", ""),
            # The compose project name, which is what actually groups the
@@ -3503,8 +3505,8 @@ def state(project, instance=MAIN):
            # A marker with no build running behind it means the container went
            # away mid-build: docker compose build is a subprocess of the
            # dashboard, so it died with it. Everything else already recovers
-           # correctly — the last SUCCESSFUL build is still what built_rev
-           # says, and Rebuild is live because the code has moved — but
+           # correctly (the last SUCCESSFUL build is still what built_rev
+           # says, and Rebuild is live because the code has moved) but
            # without this the operator sees a button they thought they had
            # already pressed and is told nothing.
            "interrupted": bool(built.get("building_since")
@@ -3529,11 +3531,11 @@ def state(project, instance=MAIN):
         clash = taken_ports(project, instance, out.get("ports"))
         if clash:
             out["problems"] = out["problems"] + [
-                "port " + ", ".join(clash) + " — two instances of one project "
+                "port " + ", ".join(clash) + ": two instances of one project "
                 "publish the same ports, so the second needs its own in its env"]
         out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
-        # True when nothing stands in the way — either the file asks for
+        # True when nothing stands in the way: either the file asks for
         # nothing beyond its own directory, or the operator has already said
         # yes to exactly this set.
         out["risks_ack"] = (not rs
@@ -3586,7 +3588,7 @@ def up(project, instance=MAIN, ack=""):
     if miss:
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
-                         + " — fill it in first (Env)"}
+                         + ": fill it in first (Env)"}
     clash = name_clash(project, instance)
     if clash:
         return {"error": clash}
@@ -3600,7 +3602,7 @@ def _job_up(project, instance, run):
     # is missing, so Up on a never-built project does what the CLI does
     # rather than refusing on a rule of this dashboard's invention. The
     # classic builder rides along for exactly that case, for the same reason
-    # the explicit build uses it — see _CLASSIC_BUILD. Streamed, because that
+    # the explicit build uses it; see _CLASSIC_BUILD. Streamed, because that
     # implicit build can pull for half an hour.
     r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
              env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
@@ -3720,7 +3722,7 @@ def _job_down(project, instance, run):
 
 @_on_instance
 def rebuild(project, instance=MAIN, ack=""):
-    """Build, then bounce — or stop at the env gate. A job: a build is
+    """Build, then bounce, or stop at the env gate. A job: a build is
     minutes, and the poll watches it through job_rev."""
     if compose_file(project) is None:
         return {"error": "no compose file here"}
@@ -3733,8 +3735,8 @@ def rebuild(project, instance=MAIN, ack=""):
     if clash:
         return {"error": clash}
     # Pinned to a ref: put its build tree there first. Before the job rather
-    # than inside it, because the tree is the CONTROLLER's to write — it holds
-    # the credentials and the share is mounted here — and a node's agent runs
+    # than inside it, because the tree is the CONTROLLER's to write (it holds
+    # the credentials and the share is mounted here) and a node's agent runs
     # compose against a directory that must already be right.
     moved = sync_work_tree(project, instance)
     if moved:
@@ -3766,7 +3768,7 @@ def run_compose_job(job, run):
 
 
 def _clear_marker(project, instance=MAIN):
-    """Drop the started-marker — the build reached an end, whichever end."""
+    """Drop the started-marker: the build reached an end, whichever end."""
     with _lock:
         d = _load()
         rec = (d.get(project) or {}).get(instance)
@@ -3784,10 +3786,10 @@ def _job_rebuild(project, instance, run):
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",
-                    "error": "stopped — what had already been built is kept"}
+                    "error": "stopped; what had already been built is kept"}
         if r["code"] != 0:
             return {"state": "failed",
-                    "error": "build failed — the tail of its output is below"}
+                    "error": "build failed; the tail of its output is below"}
         with _lock:
             d = _load()
             _stamp(_rec(d, project, instance), project, instance)
@@ -3796,17 +3798,17 @@ def _job_rebuild(project, instance, run):
         _run(_compose(project, instance, "down"), timeout=180,
              sink=run.line, hold=run.hold)
         # Checked here as well as after each of the other two. Abort during
-        # this step reached nothing once — there was no held process to
-        # signal and nothing read the flag again until after `up` — so the
+        # this step reached nothing once: there was no held process to
+        # signal and nothing read the flag again until after `up`, so the
         # container came up and the job then reported that it had been
         # stopped. Every phase boundary asks now.
         if run.canceled:
             return {"state": "canceled",
-                    "error": "stopped — the image is built; it was not started"}
+                    "error": "stopped: the image is built, but not started"}
         if missing_env(project, instance):
             # The gate: new settings exist that the env does not answer.
             # Rewrite the env with the old values in comments and leave Up
-            # to the operator — see the module docstring.
+            # to the operator; see the module docstring.
             _gate_env(project, instance)
             with _lock:
                 d = _load()
@@ -3817,18 +3819,18 @@ def _job_rebuild(project, instance, run):
         ensure_dirs(project, instance, sink=run.line)
         # Streamed too: `up` pulls anything the build did not, which is the
         # long wait on a compose file made of published images rather than a
-        # Dockerfile — exactly the case that looked like a hang.
+        # Dockerfile, exactly the case that looked like a hang.
         r = _run(_compose(project, instance, "up", "-d"), timeout=600,
                  env_extra=_dev_data_env(project, instance),
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",
-                    "error": "stopped — the image is built; it was not started"}
+                    "error": "stopped: the image is built, but not started"}
         if r["code"] != 0:
             return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
         return {"state": "succeeded"}
     finally:
-        # Whatever happened — built, failed, gated — the build is no longer in
+        # Whatever happened (built, failed, gated) the build is no longer in
         # flight, so the marker goes. Only a killed process leaves it behind,
         # which is exactly what it is for.
         _clear_marker(project, instance)

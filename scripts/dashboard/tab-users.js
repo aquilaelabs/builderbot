@@ -114,7 +114,7 @@ function renderUsersInto(i){
         <div class="sub">Two people on one project each get a worktree on a branch of
           their own. The notebook stays shared; memories do not.</div>
         <div class="sub">A <b>user</b> has no shell: their Claude session is a console,
-          and Docker and packages are read-only apart from Rebuild and Abort on their
+          and Docker and toolchains are read-only apart from Rebuild and Abort on their
           own projects.</div>
         <div class="sub warn">An <b>admin</b> has a shell, which reaches every account's
           files. Give that role to people you would give the server to.</div>`)}
@@ -208,7 +208,7 @@ function usersEditOpen(name){
         ? lbl("", "Projects this account works on", "an admin sees every project and works on the ones ticked here; the rest are read-only for them")
         : lbl("", "Projects this account sees", "a project not on the list does not appear for them at all")}
       <div class="upick">${usersMeta.projects.length
-        ? usersMeta.projects.map(p => `<label class="pkg"><input type="checkbox"
+        ? usersMeta.projects.map(p => `<label class="tc"><input type="checkbox"
             data-ueproj="${esc(p)}"${(u.projects || []).includes(p) ? " checked" : ""}>
             <span class="grow"><span class="nm">${esc(p)}</span></span></label>`).join("")
         : `<div class="sub">no projects to give</div>`}</div>

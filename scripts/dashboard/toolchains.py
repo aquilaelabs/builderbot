@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Everything behind the dashboard's Tools tab.
 
-The catalog, where a package's files land, what it weighs, what version it is
+The catalog, where a toolchain's files land, what it weighs, what version it is
 and what version upstream has, and the one-job-at-a-time worker that installs,
 updates, removes and checks. The server imports this and hands it two helpers;
 nothing here reaches back into the server.
 
 The division of labour with bb is the point. This module decides *when* to ask
-and remembers the answers; bb decides *how*, out of config/packages.json,
+and remembers the answers; bb decides *how*, out of config/toolchains.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
-a package name written into it.
+a toolchain name written into it.
 """
 import contextlib
 import hashlib
@@ -35,39 +35,39 @@ nodes = None          # the node store, once the server has opened it (phase 6)
 def configure(*, run, write_json, state):
     """Hand over the server's helpers and read what is on disk."""
     globals().update(run=run, write_json=write_json, STATE=Path(state))
-    globals()["VERSIONS_FILE"] = Path(state) / "pkg-versions.json"
-    globals().update(zip(("_pkg_versions", "_pkg_checked", "_pkg_remembered",
-                          "_pkg_local"), load_versions(), strict=True))
+    globals()["VERSIONS_FILE"] = Path(state) / "toolchain-versions.json"
+    globals().update(zip(("_tc_versions", "_tc_checked", "_tc_remembered",
+                          "_tc_local"), load_versions(), strict=True))
 
 
-# The catalog lives beside the code rather than in it: config/packages.json,
+# The catalog lives beside the code rather than in it: config/toolchains.json,
 # which ships to /opt/builderbot/config/ and so sits at the same place relative
 # to this file in the image and in a checkout.
 #
-# Adding a package is an entry there and nothing else, as long as it fits one
+# Adding a toolchain is an entry there and nothing else, as long as it fits one
 # of the five kinds sdk_install dispatches on (tarball, script, git, command,
-# sdkmanager) — plus a version resolver in sdkmeta.py when upstream publishes
+# sdkmanager), plus a version resolver in sdkmeta.py when upstream publishes
 # its releases in a shape none of the existing ones read. Node.js was exactly
 # that: one catalog row, one resolver, no install code.
 #
 # What is NOT in the catalog, and is worth knowing before adding one: where a
-# package LANDS is written down in several places that must agree — the
+# toolchain LANDS is written down in several places that must agree: the
 # version probe in sdk.sh's sdk_check_one, sdk_env_snippet's PATH lines, and
 # the agent's own STORE_TOOLS and STORE_PATHS. They have drifted (roadmap
 # #18).
-PACKAGES_FILE = HERE.parent.parent / "config" / "packages.json"
+TOOLCHAINS_FILE = HERE.parent.parent / "config" / "toolchains.json"
 
 
-def load_packages():
-    """The package catalog, or an empty one.
+def load_toolchains():
+    """The toolchain catalog, or an empty one.
 
     Empty rather than an exception: this runs at import, and a missing or
     malformed file must leave a dashboard that says the tab is empty, not one
     that will not start. Every field is checked because the page renders them.
     """
     try:
-        doc = json.loads(PACKAGES_FILE.read_text())
-        rows = doc["packages"]
+        doc = json.loads(TOOLCHAINS_FILE.read_text())
+        rows = doc["toolchains"]
     except (OSError, ValueError, KeyError, TypeError):
         return []
     out = []
@@ -81,13 +81,13 @@ def load_packages():
         # ...and the platforms it works on, when the catalog says. A list of
         # "<os>/<arch>", `*` allowed in the arch position. Projected here
         # like the four above rather than taken whole, so a field the page
-        # does not render cannot arrive through this — and checked, because
+        # does not render cannot arrive through this, and checked, because
         # a malformed one would otherwise refuse every install silently.
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
             row["platforms"] = plats[:8]
-        # Whether `bb packages update` has a case for this recipe. Five do — a git
-        # clone, two installers and sdkmanager's own — and the rest are a
+        # Whether `bb toolchains update` has a case for this recipe. Five do (a git
+        # clone, two installers and sdkmanager's own), and the rest are a
         # tarball fetched and unpacked whole, where getting a newer one means
         # removing this one first. Declared rather than inferred from the
         # source kind, the same way platforms is (bug #43).
@@ -103,30 +103,37 @@ def load_packages():
                 "env": {str(k)[:40]: str(v) for k, v in (lay.get("env") or {}).items()},
                 "tool": str(lay.get("tool") or ""),
                 "reports": str(lay.get("reports") or ""),
-                # A file that has to exist for the package to count as
+                # A file that has to exist for the toolchain to count as
                 # installed, when the directory alone does not prove it.
                 "needs": str(lay.get("needs") or ""),
             }
+        # The machine's own packages it needs, per package manager: said on
+        # the row, so what a tool pulls onto a node is known before Install,
+        # not discovered in a job log.
+        sysd = r.get("system")
+        if isinstance(sysd, dict):
+            row["system"] = {str(k)[:12]: [str(x)[:80] for x in (v or [])][:64]
+                             for k, v in sysd.items() if isinstance(v, list)}
         out.append(row)
-    # Sorted here rather than trusted from the file, so a package added at the
+    # Sorted here rather than trusted from the file, so a toolchain added at the
     # end of the catalog still lands where somebody would look for it. Leading
     # punctuation is ignored: ".NET" belongs under N, not above everything.
     out.sort(key=lambda p: re.sub(r"^[^0-9a-z]+", "", p["label"].lower()))
     return out
 
 
-PACKAGES = load_packages()
+TOOLCHAINS = load_toolchains()
 
 # What the catalog says, as one short string. It is the other half of every
 # cache key here: a remembered answer describes a recipe, and editing that
-# recipe — a probe path, a version command, a new package — makes the answer
+# recipe (a probe path, a version command, a new toolchain) makes the answer
 # about something that no longer exists. Digested rather than compared whole
 # so the key stays a line rather than the file.
 CATALOG_DIGEST = hashlib.sha256(
-    json.dumps(PACKAGES, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    json.dumps(TOOLCHAINS, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 # What the last check found, kept on the state volume. Held only in memory
-# until now, which meant a dashboard restart — or a container update — wiped
+# until now, which meant a dashboard restart (or a container update) wiped
 # every version the tab had been told, and the rows for things that are not
 # installed went back to saying nothing at all. The answers are a network
 # round trip each and they do not go stale quickly; the tab says how old they
@@ -141,7 +148,7 @@ def load_versions():
         return {}, 0, {}, {"key": None, "versions": {}}
     if not isinstance(v, dict) or not isinstance(v.get("items"), dict):
         return {}, 0, {}, {"key": None, "versions": {}}
-    known = {p["name"] for p in PACKAGES}
+    known = {p["name"] for p in TOOLCHAINS}
     out = {}
     for name, row in v["items"].items():
         # Shape-checked like every other stored file: it is read into a page
@@ -166,8 +173,8 @@ def load_versions():
             and all(isinstance(x, str) for x in loc["versions"].values())):
         loc = {"key": None, "versions": {}}
     at = v.get("at")
-    # A check answers a RECIPE. Edit config/packages.json — a new package, a
-    # moved probe, a different version command — and the stored answers are
+    # A check answers a RECIPE. Edit config/toolchains.json (a new toolchain, a
+    # moved probe, a different version command) and the stored answers are
     # about something that is no longer there, so the clock is reset and the
     # loop asks again rather than waiting out the week on stale ones.
     if v.get("catalog") != CATALOG_DIGEST:
@@ -178,21 +185,21 @@ def load_versions():
 # One install at a time, in a worker thread, because these are minutes long
 # and megabytes wide: a request that waited for them would time out, and two
 # at once would fight over the same sdkmanager lock.
-_pkg_lock = threading.Lock()
-# What `bb packages check` last reported: {name: {installed, latest, status}}.
-# Filled only when asked — every probe in it reaches the network, so doing it
-# on the fifteen-second poll would be a background service nobody requested —
-# and reloaded from disk at startup, so what it found outlives this process.
+_tc_lock = threading.Lock()
+# What `bb toolchains check` last reported: {name: {installed, latest, status}}.
+# Filled only when asked: every probe in it reaches the network, so doing it
+# on the fifteen-second poll would be a background service nobody requested.
+# Reloaded from disk at startup, so what it found outlives this process.
 # ...and what it last weighed on disk, which is the honest answer to "how big
-# is this" for a package that has been installed here before — better than any
+# is this" for a toolchain that has been installed here before, better than any
 # number typed into a file, and better than the download, which for Swift is a
 # gigabyte that unpacks to three.
-_pkg_versions, _pkg_checked, _pkg_remembered = {}, 0, {}
+_tc_versions, _tc_checked, _tc_remembered = {}, 0, {}
 # `errors` rather than a log: the tab used to end in a scrolling box of every
 # line every command printed, which was ninety-nine parts progress frames to
-# one part the sentence that mattered. What mattered was always *which package
-# failed and why*, so that is what is kept — per package, on its own row.
-_pkg_job = {"running": False, "queue": [], "current": "", "action": "",
+# one part the sentence that mattered. What mattered was always *which toolchain
+# failed and why*, so that is what is kept: per toolchain, on its own row.
+_tc_job = {"running": False, "queue": [], "current": "", "action": "",
             "errors": {}, "done": [], "failed": [], "auto": False,
             "aborting": False}
 _sdk_root_cache = []
@@ -200,7 +207,7 @@ _sdk_root_cache = []
 
 # The bb that ships with this server.py: /opt/builderbot/scripts/bb in the
 # image, the checkout's copy under `bb dashboard dev`. Same relative position
-# either way, and it keeps the pair in step — a page offering a subcommand
+# either way, and it keeps the pair in step: a page offering a subcommand
 # the bb beside it does not have would be a button that cannot work.
 # BB_BIN exists for the test harness, which points it at a stub: the suite
 # must be able to drive install and remove without downloading gigabytes.
@@ -208,21 +215,21 @@ BB = os.environ.get("BB_BIN") or str(HERE.parent / "bb")
 
 
 def sdk_root_path():
-    """Where bb decided the package store root is — asked once, since it cannot change
+    """Where bb decided the toolchain store root is: asked once, since it cannot change
     without a container restart."""
     if not _sdk_root_cache:
-        r = run([BB, "packages", "root"], timeout=15)
+        r = run([BB, "toolchains", "root"], timeout=15)
         _sdk_root_cache.append(r["out"].strip() if r["code"] == 0 else "")
     return _sdk_root_cache[0]
 
 
-def _pkg_cands(probe):
-    """Where a package could be, in the order worth looking."""
+def _tc_cands(probe):
+    """Where a toolchain could be, in the order worth looking."""
     if probe.startswith("android:"):
         cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()
-        # The share first, then the home volume — anything installed before a
+        # The share first, then the home volume: anything installed before a
         # share was mapped lives there, and calling it uninstalled while 8GB
         # of it sits on disk is how this went wrong once already.
         home = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".sdk"
@@ -232,19 +239,19 @@ def _pkg_cands(probe):
     return cands
 
 
-def _pkg_paths(probe):
-    """Every directory a package actually occupies.
+def _tc_paths(probe):
+    """Every directory a toolchain actually occupies.
 
     Resolved rather than assumed: the android directories are symlinks into
     the share, and the whole point of the card is showing where a thing
     actually landed.
 
-    Usually one. A system-image flavor is the exception — it can be installed
+    Usually one. A system-image flavor is the exception: it can be installed
     at several API levels at once, all of them real directories and all of
-    them its footprint — which is why this returns a list and the size adds
+    them its footprint, which is why this returns a list and the size adds
     them up."""
     out = []
-    for p in _pkg_cands(probe):
+    for p in _tc_cands(probe):
         try:
             if p.is_dir() and any(p.iterdir()):
                 out.append(str(p.resolve()))
@@ -257,9 +264,9 @@ def _pkg_paths(probe):
     return out
 
 
-def _pkg_path(probe):
-    """The directory a package occupies, or "" when it is not installed."""
-    paths = _pkg_paths(probe)
+def _tc_path(probe):
+    """The directory a toolchain occupies, or "" when it is not installed."""
+    paths = _tc_paths(probe)
     return paths[0] if paths else ""
 
 
@@ -268,41 +275,41 @@ def _pkg_path(probe):
 # slow to say their own name), and they cannot change while nothing is being
 # installed. Re-read when that set does.
 #
-# ON DISK as well as in memory, since it is what made the Packages tab slow to
-# open after every container restart: the answer had not changed — the same
-# toolchains on the same share — and the tab paid four seconds to hear it
+# ON DISK as well as in memory, since it is what made the Toolchains tab slow to
+# open after every container restart: the answer had not changed (the same
+# toolchains on the same share) and the tab paid four seconds to hear it
 # again. The key is what makes that safe rather than stale. It is the set of
-# (package, path), so anything installed or removed changes it, PLUS the
-# catalog's own digest, so editing config/packages.json changes it too — a
+# (toolchain, path), so anything installed or removed changes it, PLUS the
+# catalog's own digest, so editing config/toolchains.json changes it too: a
 # recipe whose probe or version command moved would otherwise be answered from
 # a cache of what the old one said.
-_pkg_local = {"key": None, "versions": {}}
+_tc_local = {"key": None, "versions": {}}
 
 
 def _local_key():
     return "\n".join([CATALOG_DIGEST]
-                      + sorted(f"{p['name']}={_pkg_path(p['probe'])}"
-                               for p in PACKAGES))
+                      + sorted(f"{p['name']}={_tc_path(p['probe'])}"
+                               for p in TOOLCHAINS))
 
 
 def local_versions():
     key = _local_key()
-    if _pkg_local["key"] == key:
-        return _pkg_local["versions"]
+    if _tc_local["key"] == key:
+        return _tc_local["versions"]
     out = {}
-    r = run([BB, "packages", "versions"], timeout=180)
+    r = run([BB, "toolchains", "versions"], timeout=180)
     for ln in r["out"].splitlines():
         f = ln.rstrip().split("\t")
         if len(f) == 4 and f[1] not in ("", "-"):
             out[f[0]] = f[1]
-    _pkg_local.update(key=key, versions=out)
+    _tc_local.update(key=key, versions=out)
     save_versions()
     return out
 
 
 # Measured sizes in KB, {name: kb}. The catalog's "~3 GB" is a download
 # estimate written by hand; once something is on disk there is a real number,
-# and it is not the estimate — a toolchain grows after installation (a pub
+# and it is not the estimate: a toolchain grows after installation (a pub
 # cache, a .NET workload, an NDK unpacked bigger than it shipped).
 #
 # du walks the tree to get it, which is instant on a warm share and seconds on
@@ -312,25 +319,25 @@ def local_versions():
 # rather than cached forever, because "it grew" is exactly what this is for.
 # How long a percentage may sit unchanged before the row stops quoting it.
 #
-PKG_SIZE_TTL = 120
-_pkg_sizes = {}
-_pkg_sized_at = [0.0]
-_pkg_sizing = [False]
+TC_SIZE_TTL = 120
+_tc_sizes = {}
+_tc_sized_at = [0.0]
+_tc_sizing = [False]
 
 
 def save_versions():
-    write_json(VERSIONS_FILE, {"at": _pkg_checked, "items": _pkg_versions,
-                               "sizes": _pkg_remembered,
-                               "local": _pkg_local,
+    write_json(VERSIONS_FILE, {"at": _tc_checked, "items": _tc_versions,
+                               "sizes": _tc_remembered,
+                               "local": _tc_local,
                                # What the answers above are answers ABOUT.
                                "catalog": CATALOG_DIGEST})
 
 
 def _measure_sizes():
     out = {}
-    for p in PACKAGES:
+    for p in TOOLCHAINS:
         total, answered = 0, False
-        for path in _pkg_paths(p["probe"]):
+        for path in _tc_paths(p["probe"]):
             r = run(["du", "-sk", path], timeout=300)
             head = r["out"].split("\t")[0].strip() if r["code"] == 0 else ""
             if head.isdigit():
@@ -342,23 +349,23 @@ def _measure_sizes():
         # quietly show the catalog's guess for something that is on the disk.
         if answered:
             out[p["name"]] = total
-    _pkg_sizes.clear()
-    _pkg_sizes.update(out)
+    _tc_sizes.clear()
+    _tc_sizes.update(out)
     # Remembered past the removal: having installed a thing once is how this
     # box knows what it costs, and that knowledge should outlive it.
     if out:
-        _pkg_remembered.update(out)
+        _tc_remembered.update(out)
         save_versions()
-    _pkg_sized_at[0] = time.monotonic()
-    _pkg_sizing[0] = False
+    _tc_sized_at[0] = time.monotonic()
+    _tc_sizing[0] = False
 
 
 def _size_refresh():
     """Kick a measurement if what we have is older than the TTL. One at a
     time: du on thirteen trees twice over would fight itself for the disk."""
-    if _pkg_sizing[0] or time.monotonic() - _pkg_sized_at[0] < PKG_SIZE_TTL:
+    if _tc_sizing[0] or time.monotonic() - _tc_sized_at[0] < TC_SIZE_TTL:
         return
-    _pkg_sizing[0] = True
+    _tc_sizing[0] = True
     threading.Thread(target=_measure_sizes, daemon=True).start()
 
 
@@ -370,177 +377,30 @@ def human_kb(kb):
     return f"{kb} KB"
 
 
-# The android system images on disk, cached like the sizes are: `du` over
-# forty gigabytes is not something to do on a poll.
-_images = {"at": 0.0, "rows": []}
-IMAGES_TTL = 300
-
-
-def installed_images(refresh=True):
-    """One row per android system image actually installed here.
-
-    Not catalog packages: which exist depends on what has been installed, and
-    a system image lands there by a choice on the Tools tab or bb emu create, never by a baseline
-    them one at a time. They accumulate — several API levels' worth were on
-    this box, most of them for versions nobody had configured in months — and
-    until now the tab could neither show nor remove one.
-
-    refresh=False serves what is cached without going back to disk, which is
-    what a running job wants: the tree is being written to and a size read
-    from it mid-install describes the moment rather than the package. The
-    first version of this returned nothing at all while a job ran, and since
-    the section is only rebuilt when the tab redraws, the images stayed gone
-    afterwards until something unrelated forced one.
-    """
-    if not refresh or time.monotonic() - _images["at"] < IMAGES_TTL:
-        return _images["rows"]
-    rows = []
-    r = run([BB, "packages", "images"], timeout=300)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip("\n").split("\t")
-            if len(f) >= 4 and f[0].startswith("system-images;") and f[3].isdigit():
-                rows.append({"id": f[0], "api": f[1], "kind": f[2],
-                             "size": human_kb(int(f[3])),
-                             # Which AVDs are built on it. An image nothing
-                             # names is one that can go; an image an AVD names
-                             # is one that AVD cannot boot without.
-                             "avds": [a for a in (f[4].split(",") if len(f) > 4 else [])
-                                      if a]})
-    _images.update(at=time.monotonic(), rows=rows)
-    return rows
-
-
-_choices = {"at": 0.0, "rows": [], "flavors": [], "loading": False}
-_choices_lock = threading.Lock()
-CHOICES_TTL = 3600            # the index changes when Google ships a level
-
-
-def image_choices():
-    """Every system image that could be installed, and what each flavor is for.
-
-    Two questions the operator cannot answer from here otherwise: which API
-    levels exist, and what one weighs before it is fetched. Both come out of
-    sdkmanager's own index, which is the only place a download size lives
-    before the download — bb reads it, this asks bb.
-
-    An hour's cache. The answer changes when Google ships an API level, and
-    the rows are also what the picker is drawn from, so it must not be a
-    network round trip per redraw.
-    """
-    if time.monotonic() - _choices["at"] < CHOICES_TTL and _choices["rows"]:
-        return _choices
-    # Off the request. Four XML indexes on a cold cache is a second or two of
-    # network, and doing it inline made the first draw of the whole tab wait
-    # for Google — for a picker most visits never touch. The tab says it is
-    # reading, and the picker arrives on the next poll.
-    with _choices_lock:
-        if _choices["loading"]:
-            return _choices
-        _choices["loading"] = True
-    threading.Thread(target=_load_choices, daemon=True).start()
-    return _choices
-
-
-def _load_choices():
-    rows, flavors = [], []
-    r = run([BB, "packages", "images", "--available"], timeout=120)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip().split("\t")
-            if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
-                rows.append({"id": f[0], "api": f[1], "kind": f[2],
-                             # The rendered size for the picker, and the raw
-                             # kilobytes beside it: a node's headroom check
-                             # needs a number, and this index is the only
-                             # place an image's size exists before it is
-                             # fetched.
-                             "kb": int(f[3]) // 1024,
-                             "size": human_kb(int(f[3]) // 1024)})
-    r = run([BB, "packages", "flavors"], timeout=30)
-    if r["code"] == 0:
-        for line in r["out"].splitlines():
-            f = line.rstrip().split("\t")
-            if len(f) >= 3:
-                flavors.append({"kind": f[0], "label": f[2],
-                                "about": f[3] if len(f) > 3 else ""})
-    with _choices_lock:
-        if rows:
-            _choices.update(at=time.monotonic(), rows=rows, flavors=flavors)
-        _choices["loading"] = False
-
-
-def image_kb(image_id):
-    """What the index says this image weighs, in KB, or 0."""
-    for r in image_choices()["rows"]:
-        if r["id"] == image_id:
-            return int(r.get("kb") or 0)
-    return 0
-
-
-def node_images(n):
-    """The system images a node reports, in the shape the tab draws.
-
-    The node walks its store for the ids and the AVDs built on them; the size
-    is joined here, from Google's index. That split is deliberate: an image is
-    a guest artifact, identical on every host, so the controller already knows
-    what one weighs — and `du` over a tens-of-gigabytes tree on an NFS-mounted
-    store is not something to do on every census for a number that is already
-    known. It is the DOWNLOAD size rather than the footprint, so the row says
-    where it came from.
-    """
-    idx = {r["id"]: r for r in image_choices()["rows"]}
-    rows = []
-    for im in (n.get("reported") or {}).get("images") or []:
-        c = idx.get(im.get("id")) or {}
-        rows.append({"id": im.get("id", ""), "api": im.get("api", ""),
-                     "kind": im.get("kind", ""), "size": c.get("size", ""),
-                     "size_from": "the download size, from Google's index — a node does not "
-                                  "measure its image tree" if c.get("size") else "",
-                     "avds": list(im.get("avds") or [])})
-    rows.sort(key=lambda r: (r["kind"], r["api"]))
-    return rows
-
-
-def is_node_image(n, name):
-    """Whether a name is one of the images THIS node just reported. The same
-    rule the local endpoint follows, asked of the node's own inventory: what
-    reaches a command line is a string this server handed out."""
-    return name.startswith("android:") and any(
-        r["id"] == name[len("android:"):] for r in node_images(n))
-
-
-def is_choosable_image(name):
-    """Is this one of the image ids the picker offered? Same rule as every
-    executing endpoint here: the server acts only on names it handed out."""
-    want = name.removeprefix("android:")
-    return any(r["id"] == want for r in image_choices()["rows"])
-
-
 def payload():
     items = []
-    with _pkg_lock:
-        busy = _pkg_job["running"]
-    # Nothing is probed while a job runs. The package being installed has a
+    with _tc_lock:
+        busy = _tc_job["running"]
+    # Nothing is probed while a job runs. The toolchain being installed has a
     # directory that is filling up, and every probe here reads a non-empty
     # directory as a finished install: a half-written NDK reported itself
     # version "installed" at 1.2GB of what turned out to be a 3.3GB tree.
-    # Both were true of the moment and false about the package. The worker
+    # Both were true of the moment and false about the toolchain. The worker
     # invalidates these caches when it finishes, so the first draw afterwards
     # is a fresh reading.
-    local = _pkg_local["versions"] if busy else local_versions()
+    local = _tc_local["versions"] if busy else local_versions()
     if not busy:
         _size_refresh()
-    for p in PACKAGES:
-        path = _pkg_path(p["probe"])
-        # The directory is there but the file that completes the package is
-        # not (layout.needs): not installed, so Install is offered — the
+    for p in TOOLCHAINS:
+        path = _tc_path(p["probe"])
+        # The directory is there but the file that completes the toolchain is
+        # not (layout.needs): not installed, so Install is offered; the
         # recipe fills the directory in rather than starting over.
         need = (p.get("layout") or {}).get("needs")
         if path and need and not os.path.exists(os.path.join(path, need)):
             path = ""
-        v = _pkg_versions.get(p["name"], {})
-        # A check answer about a package that has since been installed or
+        v = _tc_versions.get(p["name"], {})
+        # A check answer about a toolchain that has since been installed or
         # removed describes a state that no longer holds, so it is not an
         # answer any more. The worker drops these as it goes; this catches the
         # ones already on disk from before it did.
@@ -548,13 +408,13 @@ def payload():
             v = {}
         # Where a size comes from, in order of how much it is worth: what it
         # takes on this disk now, what it took the last time it was here, and
-        # — for a package this box has never had — what the download weighs.
+        # (for a toolchain this box has never had) what the download weighs.
         # Nothing is typed into the catalog, because a number typed there is
         # wrong the next time upstream ships.
-        kb = _pkg_sizes.get(p["name"]) if path else None
+        kb = _tc_sizes.get(p["name"]) if path else None
         origin = "measured on disk"
         if kb is None:
-            kb = _pkg_remembered.get(p["name"])
+            kb = _tc_remembered.get(p["name"])
             origin = "measured the last time it was installed"
         size, dl = "", v.get("bytes")
         if kb is not None:
@@ -564,7 +424,7 @@ def payload():
             # three. Said as a download, so it does not read as one.
             about = dl.startswith("~")
             size = ("~" if about else "") + human_kb(int(dl.lstrip("~")) // 1024) + " download"
-            origin = ("an approximation — a git clone has no size to ask for"
+            origin = ("an approximation: a git clone has no size to ask for"
                       if about else "the size of the download, from upstream")
         else:
             origin = ""
@@ -572,11 +432,11 @@ def payload():
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
-                      # What it needs, and what needs it — so a package that
+                      # What it needs, and what needs it, so a toolchain that
                       # exists to serve another says so rather than looking
                       # like an unexplained independent choice.
                       "needs": list(p.get("requires") or []),
-                      "needed_by": sorted(o["name"] for o in PACKAGES
+                      "needed_by": sorted(o["name"] for o in TOOLCHAINS
                                           if p["name"] in (o.get("requires") or [])),
                       "installed": bool(path), "path": path,
                       "size": size, "size_from": origin,
@@ -590,26 +450,19 @@ def payload():
                                  and v["installed"] or local.get(p["name"], ""),
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
-    with _pkg_lock:
+    with _tc_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
-               for k, v in _pkg_job.items()}
-    choices = image_choices()
-    here = {i["id"] for i in installed_images(refresh=not busy)}
-    return {"images": installed_images(refresh=not busy),
-            # What could be added, minus what is already here.
-            "addable": [c for c in choices["rows"] if c["id"] not in here],
-            "flavors": choices["flavors"],
-            "images_loading": bool(choices["loading"]),
-            "root": sdk_root_path(),
+               for k, v in _tc_job.items()}
+    return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
-            "checked": _pkg_checked,
-            "sizing": _pkg_sizing[0],
+            "checked": _tc_checked,
+            "sizing": _tc_sizing[0],
             "items": items, "job": job}
 
 
 def is_mount(path):
-    """Whether the package store root is a mapped share rather than a directory on the
-    home volume — the difference between "kept outside the image" and "kept
+    """Whether the toolchain store root is a mapped share rather than a directory on the
+    home volume: the difference between "kept outside the image" and "kept
     alongside everything else"."""
     if not path:
         return False
@@ -629,7 +482,7 @@ _PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
 # The decimal matters: on "100.0%" a bare \d{1,3} match lands on the 0 after
 # the point and reports nought percent for a finished download.
 def _job_tail(out, keep=16):
-    """The useful end of a command's output — the frames dropped."""
+    """The useful end of a command's output, with the frames dropped."""
     lines = [ln.strip() for ln in out.splitlines()]
     return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
 
@@ -637,26 +490,25 @@ def _job_tail(out, keep=16):
 def job_rev():
     """A token for "anything this tab draws has moved", for the revisions poll.
 
-    Everything the Packages tab used to keep its own timer for. It polled at
+    Everything the Toolchains tab used to keep its own timer for. It polled at
     half a second while a job ran and at eight seconds otherwise, and the
-    eight-second half was there for the two facts this used to leave out: the
-    daily version check, and the image index still being read. They are in
-    memory here and cost nothing to report, so the tab watches this instead of
-    holding a third clock.
+    eight-second half was there for the one fact this used to leave out: the
+    version check. It is in memory here and costs nothing to report, so the
+    tab watches this instead of holding a third clock.
 
     The store root's mtime is the one stat, and it is the case none of the
-    in-memory state can see: `bb packages install` run in a terminal is
+    in-memory state can see: `bb toolchains install` run in a terminal is
     another process entirely, and what it changes is a directory under the
     root. Nothing else here would notice it at all.
     """
-    j = _pkg_job
+    j = _tc_job
     try:
         store = int(Path(sdk_root_path()).stat().st_mtime_ns)
     except (OSError, TypeError, ValueError):
         store = 0
     return (f"{j['running']}:{j['action']}:{j['current']}:{len(j['done'])}"
-            f":{len(j['failed'])}:{_choices['at']}:{_choices['loading']}"
-            f":{_pkg_checked}:{_pkg_sizing[0]}:{store}")
+            f":{len(j['failed'])}"
+            f":{_tc_checked}:{_tc_sizing[0]}:{store}")
 
 
 def job_is_automatic():
@@ -665,63 +517,63 @@ def job_is_automatic():
     The refusal an operator sees depends on it, and being told "an install is
     already running" when nobody started an install wastes an evening.
     """
-    with _pkg_lock:
-        return bool(_pkg_job.get("auto"))
+    with _tc_lock:
+        return bool(_tc_job.get("auto"))
 
 
-def _pkg_worker():
+def _tc_worker():
     """Run the queued work one item at a time, keeping a tail of the output.
 
-    Everything it can do is `bb packages <verb> <name>` for a name that came out of
-    PACKAGES — the page posts an index into the table, never a command, which
+    Everything it can do is `bb toolchains <verb> <name>` for a name that came out of
+    TOOLCHAINS: the page posts an index into the table, never a command, which
     is the same rule the macro buttons follow. The verb is decided here rather
     than by the page: "install" on something already present means update it,
     and one button that does the obvious thing beats two that need explaining.
     """
     while True:
-        with _pkg_lock:
-            if not _pkg_job["queue"]:
+        with _tc_lock:
+            if not _tc_job["queue"]:
                 # Stored once the whole check is done rather than after each
-                # package: thirteen rewrites of the same file, each a temp file
+                # toolchain: thirteen rewrites of the same file, each a temp file
                 # and a rename, to record one answer at a time.
-                if _pkg_job["action"] == "check":
-                    globals()["_pkg_checked"] = int(time.time())
+                if _tc_job["action"] == "check":
+                    globals()["_tc_checked"] = int(time.time())
                     save_versions()
-                _pkg_job["running"] = False
-                _pkg_job["current"] = ""
+                _tc_job["running"] = False
+                _tc_job["current"] = ""
                 return
-            name = _pkg_job["queue"].pop(0)
-            action = _pkg_job["action"]
-            _pkg_job["current"] = name
+            name = _tc_job["queue"].pop(0)
+            action = _tc_job["action"]
+            _tc_job["current"] = name
         verb = action
         if action == "install":
-            row = next((p for p in PACKAGES if p["name"] == name), {})
+            row = next((p for p in TOOLCHAINS if p["name"] == name), {})
             probe = row.get("probe", name)
             # Only where the recipe HAS an update. Sending the rest to
-            # `bb packages update` earned a usage line naming five packages the
+            # `bb toolchains update` earned a usage line naming five toolchains the
             # operator had not asked about (bug #43); they go to install now,
             # which refuses with a sentence about the one they did.
-            verb = ("update" if _pkg_path(probe) and row.get("updatable")
+            verb = ("update" if _tc_path(probe) and row.get("updatable")
                     else "install")
-        with _pkg_lock:
+        with _tc_lock:
             # Whatever it said last time is about a state that no longer holds;
             # this run is the new answer.
-            _pkg_job["errors"].pop(name, None)
+            _tc_job["errors"].pop(name, None)
 
         # The child, so that an abort can reach it. bb's own EXIT trap removes
         # whatever the install had created, which is why this kills the process
         # rather than tearing the directory out from under it.
         #
         # Nothing is read out of the output while it runs. Every recipe meters
-        # differently and several mislead by accident — one fraction across a
+        # differently and several mislead by accident (one fraction across a
         # whole operation, a count that parks for minutes, five files metered
         # from zero apiece, the word "download" sitting inside the noun
-        # "installer" — and a row reporting any of it faithfully still read as
+        # "installer"), and a row reporting any of it faithfully still read as
         # broken. The row says what it is doing and animates. The output is
         # looked at only when the thing fails, which is the only time anybody
         # wanted it.
-        r = run([BB, "packages", verb, name], timeout=3600, register=_hold_child)
-        with _pkg_lock:
+        r = run([BB, "toolchains", verb, name], timeout=3600, register=_hold_child)
+        with _tc_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
                 for ln in r["out"].splitlines():
@@ -729,15 +581,15 @@ def _pkg_worker():
                     if len(f) >= 4 and f[3] != "local":
                         row = {"installed": f[1], "latest": f[2], "status": f[3]}
                         # The download, when the catalog names a URL that is
-                        # the payload. It is not the footprint — a gigabyte of
-                        # Swift unpacks to three — so it is only ever used for
-                        # a package this box has never had.
+                        # the payload. It is not the footprint (a gigabyte of
+                        # Swift unpacks to three), so it is only ever used for
+                        # a toolchain this box has never had.
                         # A leading tilde is the catalog saying this one is
                         # an approximation rather than a measurement, and it
                         # travels all the way to the row.
                         if len(f) > 4 and f[4].lstrip("~").isdigit():
                             row["bytes"] = f[4]
-                        _pkg_versions[f[0]] = row
+                        _tc_versions[f[0]] = row
                 pass
             elif r["code"] != 0:
                 # The end of what it said, plus the exit code in words: a
@@ -745,60 +597,48 @@ def _pkg_worker():
                 # progress bars reads exactly like a run that simply stopped.
                 # 137 is the OOM killer, 124 a timeout.
                 said = _job_tail(r["out"], keep=4)
-                _pkg_job["errors"][name] = " · ".join(
+                _tc_job["errors"][name] = " · ".join(
                     said + [f"{verb} failed (exit {r['code']})"])[-400:]
-            (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
+            (_tc_job["done"] if r["code"] == 0 else _tc_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
-            _images["at"] = 0.0           # an image may have just gone
-            _pkg_local["key"] = None      # whatever just happened moved a version
-            _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
-            # ...and made the last check's answer about this package a
+            _tc_local["key"] = None      # whatever just happened moved a version
+            _tc_sized_at[0] = 0.0        # ...and changed what is on the disk
+            # ...and made the last check's answer about this toolchain a
             # statement about a state that no longer holds. An unchecked row
             # says nothing, which is the honest thing for it to say until
             # somebody asks again.
-            with _pkg_lock:
-                _pkg_versions.pop(name, None)
+            with _tc_lock:
+                _tc_versions.pop(name, None)
                 save_versions()
 
 
 # The process a job is running right now, so that Abort has something to
 # interrupt. A list rather than a value because it is written from the worker
 # thread and read from a request thread.
-_pkg_child = [None]
+_tc_child = [None]
 
 
 def _hold_child(proc):
-    with _pkg_lock:
-        _pkg_child[0] = proc
-
-
-def is_installed_image(name):
-    """Whether a name is one of the images this server just listed.
-
-    The rule everything executing here follows: what reaches a command line is
-    a string this server chose. The page posts back an id out of the list it
-    was given, and it is checked against that list again before it is used.
-    """
-    return name.startswith("android:") and any(
-        r["id"] == name[len("android:"):] for r in installed_images())
+    with _tc_lock:
+        _tc_child[0] = proc
 
 
 def abort_job():
-    """Stop the running job after the package it is on.
+    """Stop the running job after the toolchain it is on.
 
     The queue is emptied so nothing further starts, and the child is asked to
     stop: bb removes the half-installed directory on its way out, which is the
     same cleanup a failed install gets, because a killed install and a failed
-    one leave exactly the same mess. Everything already installed stays — the
+    one leave exactly the same mess. Everything already installed stays: the
     abort is for the rest of the queue, not for undoing what worked.
     """
-    with _pkg_lock:
-        if not _pkg_job["running"]:
+    with _tc_lock:
+        if not _tc_job["running"]:
             return False
-        _pkg_job["queue"] = []
-        _pkg_job["aborting"] = True
+        _tc_job["queue"] = []
+        _tc_job["aborting"] = True
         pass
-        proc = _pkg_child[0]
+        proc = _tc_child[0]
     if proc is not None:
         try:
             # The group, not the process: bb is waiting on a curl or a tar, and
@@ -810,13 +650,13 @@ def abort_job():
 
 
 # ---------------------------------------------------------------------------
-# packages on another node (docs/nodes.md §6)
+# toolchains on another node (docs/nodes.md §6)
 #
 # The catalog is this one; the state is the node's. Its census reports the
 # toolchains it has (`reported.toolchains`, probed by the agent the way `bb
-# sdk` probes here) and its packages store's headroom, and an install there
-# is a `package` job the agent runs with the bundle this controller ships —
-# bb and its library — against that store. Nothing here guesses what a node
+# sdk` probes here) and its toolchain store's headroom, and an install there
+# is a `toolchain` job the agent runs with the bundle this controller ships
+# (bb and its library) against that store. Nothing here guesses what a node
 # has from what it was asked to install.
 
 def payload_for_node(nid):
@@ -825,13 +665,13 @@ def payload_for_node(nid):
         return {"error": "no such node"}
     rep = n.get("reported") or {}
     tc = rep.get("toolchains") or {}
-    pv = rep.get("packages_versions") or {}
+    pv = rep.get("toolchain_versions") or {}
     if not isinstance(pv, dict):
         pv = {}
     plat = platform_of(n)
-    store = (rep.get("stores") or {}).get("packages") or {}
+    store = (rep.get("stores") or {}).get("toolchains") or {}
     items = []
-    # What is IN the store, by directory, which is where bb packages puts things:
+    # What is IN the store, by directory, which is where bb toolchains puts things:
     # <root>/<name>, and android's parts under <root>/android/. The census's
     # `toolchains` is a six-name placement summary and reading it as an
     # inventory called the emulator, the NDK, Playwright and Zig missing on
@@ -840,7 +680,7 @@ def payload_for_node(nid):
     top = set(((rep.get("store_dirs") or {}).get("top")) or [])
     andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
     known = bool(top or andr)
-    for p in PACKAGES:
+    for p in TOOLCHAINS:
         probe, name = p["probe"], p["name"]
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
@@ -852,7 +692,7 @@ def payload_for_node(nid):
             here = False                    # the directory without what completes it
         # A node that has not reported its store yet is not evidence of
         # absence, so say nothing rather than "not installed".
-        # The node's own `bb packages versions` first — the same generator this
+        # The node's own `bb toolchains versions` first: the same generator this
         # controller runs for its own list, so one store is described one
         # way. The census's toolchains dict is the fallback for a node that
         # has not run it yet, and it is a placement summary rather than an
@@ -861,12 +701,12 @@ def payload_for_node(nid):
         # linux/amd64". That difference is what the operator was looking at.
         have = pv.get(name) or tc.get(
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
-        kb = _pkg_remembered.get(name)
+        kb = _tc_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
-                      # Said on the row, so a package this node cannot have
+                      # Said on the row, so a toolchain this node cannot have
                       # reads that way rather than offering an install that
                       # is refused at the press.
                       "wrong_platform": "" if supports(p, plat) else
@@ -877,9 +717,35 @@ def payload_for_node(nid):
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
     items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
+    # A toolchain that puts something on PATH (or sets a variable) reaches a
+    # session only when the session starts: one open since before the
+    # install still has the old PATH, and the plugin or build that wanted
+    # the new tool says "not found" with nothing on screen saying why. So a
+    # row that changes a session's environment counts this node's sessions
+    # that started before it last landed on the store.
+    # What each row pulls onto THIS machine, in its package manager's names,
+    # and for one the store already holds, which of those are missing here.
+    # Known per family from the census; a node that has not said its family
+    # gets no list rather than another family's.
+    fam = str((rep.get("sysdeps") or {}).get("family") or "")
+    unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+    sysl = {p["name"]: (p.get("system") or {}).get(fam) or [] for p in TOOLCHAINS} if fam else {}
+    for i in items:
+        names = sysl.get(i["name"]) or []
+        if names:
+            i["system"] = {"manager": fam, "names": names,
+                           "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
+    landed = _landed_at(nid)
+    started = [int(x.get("created") or 0) for x in rep.get("sessions") or [] if isinstance(x, dict)]
+    shapes = {p["name"]: p.get("layout") or {} for p in TOOLCHAINS}
+    for i in items:
+        lay = shapes.get(i["name"]) or {}
+        at = landed.get(i["name"], 0)
+        if i["installed"] and at and (lay.get("bin") or lay.get("env")):
+            i["reopen"] = sum(1 for c in started if 0 < c < at)
     job = None
     if nodes:
-        for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
+        for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
                    "queue": (j.get("spec") or {}).get("names", []), "current": j.get("step", ""),
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
@@ -889,14 +755,14 @@ def payload_for_node(nid):
             # The last FINISHED one, so the tab can clear what it selected.
             # Nothing did, on a node: done and failed were hardcoded empty
             # and the row vanished the moment the job ended, so every tick
-            # survived and the next press re-sent packages that had already
-            # landed — "installing 2" with one left to do.
+            # survived and the next press re-sent toolchains that had already
+            # landed: "installing 2" with one left to do.
             #
             # Both lists come from the census rather than from the job's log:
             # what is in the store now is the only thing actually true, and
-            # it is self-correcting — a job that half-worked reports exactly
-            # the packages that did land as done, whatever its exit code was.
-            for j in nodes.jobs_for(node_id=nid, type="package", n=1):
+            # it is self-correcting: a job that half-worked reports exactly
+            # the toolchains that did land as done, whatever its exit code was.
+            for j in nodes.jobs_for(node_id=nid, type="toolchain", n=1):
                 if j.get("state") not in ("succeeded", "failed", "canceled"):
                     break
                 sp = j.get("spec") or {}
@@ -908,62 +774,44 @@ def payload_for_node(nid):
                        "done": done, "failed": [x for x in names if x not in done],
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
-    # The images are the node's — it walks its own store for them — but which
-    # ones COULD be added is not a per-node question at all: an image is a
-    # guest artifact and the index that lists them is Google's, read here.
-    # So the picker is the controller's list minus what this node already has,
-    # and a node needs no network of its own to be offered one (roadmap #20).
-    imgs = node_images(n)
-    choices = image_choices()
-    here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
             "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
+            # Locked to its console: nothing on it is installed by itself.
+            "locked": bool((n.get("config") or {}).get("lock")),
+            # Whether the agent there installs system packages itself.
+            "administers": bool(rep.get("administers")),
             # The node's own scope under the store (roadmap R19), where its
-            # packages actually are. The share itself where the node has not
+            # toolchains actually are. The share itself where the node has not
             # reported one yet.
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
-            "images": imgs,
-            "addable": [c for c in choices["rows"] if c["id"] not in here],
-            "flavors": choices["flavors"],
-            "images_loading": bool(choices["loading"]),
-            # Whether the node has answered the question at all. An agent too
-            # old to report its images is not a node with none — the same
-            # distinction `unknown` draws on a package row, and without it the
-            # empty state claims something the controller does not know.
-            "images_known": "images" in (n.get("reported") or {}),
-            # An image install is sdkmanager's, so it needs the command-line
-            # tools there first. Said on the tab rather than discovered when
-            # the job dies inside sdkmanager naming neither.
-            "images_need": "" if not known or "android-tools" in node_has(n)
-                           else "android-tools",
             "items": items, "job": job or {"running": False}}
 
 
 def _store_share(n):
-    """What identifies this node's packages store, or None.
+    """What identifies this node's toolchain store, or None.
 
-    Two machines pointing `packages` at one share ARE one store, and the
+    Two machines pointing `toolchains` at one share ARE one store, and the
     controller has to know which pairs those are: the same path STRING says
-    nothing — /var/lib/builderbot/packages is every node's default and is a
+    nothing: /var/lib/builderbot/toolchains is every node's default and is a
     different disk on each.
 
-    The store's own id first (nodes.store_id — a marker file inside it),
+    The store's own id first (nodes.store_id, a marker file inside it),
     because it is the only answer that survives the transport differing. On
-    this box the package store is reached through Unraid's FUSE layer by the
+    this box the toolchain store is reached through Unraid's FUSE layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by the sandbox
     (192.168.1.10:/mnt/user/development/SDK); neither string can be derived
     from the other, so the pair was invisible and the one-install-at-a-time
     arbitration never engaged for it.
 
     The mount source stays as the fallback, for a node whose store has no
-    marker yet — a read-only share is the case that has to keep working.
+    marker yet: a read-only share is the case that has to keep working.
     """
     rep = n.get("reported") or {}
-    store = (rep.get("stores") or {}).get("packages") or {}
+    store = (rep.get("stores") or {}).get("toolchains") or {}
     path = store.get("path") or ""
     if store.get("id"):
         return ("id", store["id"])
@@ -980,8 +828,25 @@ def _store_share(n):
     return (best[1], path[len(best[0]):])
 
 
+def _landed_at(nid):
+    """{toolchain: when a job last installed or updated it} on this node's
+    store, which is also every node sharing it: installed from one, it is on
+    all of them, and so are the sessions it has not reached."""
+    out = {}
+    if not nodes:
+        return out
+    for x in [nid] + [o["id"] for o in store_sharers(nid)]:
+        for j in nodes.jobs_for(node_id=x, type="toolchain", n=50):
+            sp = j.get("spec") or {}
+            if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+                continue
+            for name in sp.get("names") or []:
+                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+    return out
+
+
 def store_sharers(node_id):
-    """Every other node whose packages store is the same share as this
+    """Every other node whose toolchain store is the same share as this
     one's. Empty for the ordinary arrangement, one store per node."""
     if not nodes:
         return []
@@ -1002,22 +867,22 @@ _ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm6
 
 
 def layout_for_node():
-    """Every package's layout, as the agent needs it: what to put on PATH,
-    what variables to set, and which file proves a package is there.
+    """Every toolchain's layout, as the agent needs it: what to put on PATH,
+    what variables to set, and which file proves a toolchain is there.
 
     Sent at hello rather than duplicated in the agent. It used to be three
-    hand-written tables — sdk_env_snippet here, STORE_TOOLS and STORE_PATHS
-    on the node — that had to agree about where every package lands and did
+    hand-written tables (sdk_env_snippet here, STORE_TOOLS and STORE_PATHS
+    on the node) that had to agree about where every toolchain lands and did
     not: node/bin was missing from one, the android-tools probe read the
     wrong directory, and the census disagreed with the inventory, all in one
     day. The catalog is the one place that knows, and this is how a machine
     with no catalog of its own finds out.
 
-    `dir` is where the package lives relative to the store: android's
-    packages share one tree, so theirs is `android`.
+    `dir` is where the toolchain lives relative to the store: android's
+    toolchains share one tree, so theirs is `android`.
     """
     out = []
-    for p in PACKAGES:
+    for p in TOOLCHAINS:
         lay = p.get("layout")
         if not lay:
             continue
@@ -1031,9 +896,9 @@ def layout_for_node():
 
 
 def node_has(n):
-    """The package names already in this node's packages store, by the
-    directories bb packages puts them in. Empty when the node has not reported
-    its store — which is not evidence of absence, so a caller must treat it
+    """The toolchain names already in this node's toolchain store, by the
+    directories bb toolchains puts them in. Empty when the node has not reported
+    its store, which is not evidence of absence, so a caller must treat it
     as "unknown" rather than "nothing"."""
     rep = n.get("reported") or {}
     top = set(((rep.get("store_dirs") or {}).get("top")) or [])
@@ -1042,14 +907,14 @@ def node_has(n):
         return set()
     tc = rep.get("toolchains") if isinstance(rep.get("toolchains"), dict) else {}
     out = set()
-    for p in PACKAGES:
+    for p in TOOLCHAINS:
         probe = p["probe"]
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
         elif probe == "android-tools":
             # A directory called cmdline-tools is not sdkmanager. On the
             # operator's node it held nothing but a symlink pointing at a
-            # directory a failed install had removed — so this said installed,
+            # directory a failed install had removed, so this said installed,
             # the requirement was never pulled in, and the android:* package
             # that needed it died on "no sdkmanager". The census answers from
             # the binaries, so it corroborates; where a node has reported no
@@ -1067,18 +932,18 @@ def node_has(n):
 def with_requires(names, have):
     """`names`, with anything they declare a requirement on put in front.
 
-    A recipe that needed another package used to say so only in its `env`
+    A recipe that needed another toolchain used to say so only in its `env`
     block: android-tools points JAVA_HOME at a sibling jdk that may not be
     there, and sdkmanager then fails with "Could not determine SDK root",
-    naming neither Java nor the package that would have supplied it. The
+    naming neither Java nor the toolchain that would have supplied it. The
     catalog says it now, and the requirement is pulled in rather than
     discovered.
 
-    Requirements already in the store are left out — this adds what is
+    Requirements already in the store are left out: this adds what is
     missing, ahead of what needs it, and never re-installs. Returns
     (ordered names, what was added).
     """
-    by = {p["name"]: p for p in PACKAGES}
+    by = {p["name"]: p for p in TOOLCHAINS}
     out, seen = [], set()
 
     def add(n, depth=0):
@@ -1102,10 +967,10 @@ def platform_of(n):
     return f"{os_}/{arch}" if os_ and arch else ""
 
 
-def supports(pkg, plat):
+def supports(tc, plat):
     """Whether this recipe works on that platform. Absent list means the
-    historical truth — this catalog only ever served linux/amd64."""
-    want = pkg.get("platforms") or ["linux/amd64"]
+    historical truth: this catalog only ever served linux/amd64."""
+    want = tc.get("platforms") or ["linux/amd64"]
     if not plat:
         return True                     # a node that has not said is not judged
     o, _, a = plat.partition("/")
@@ -1114,39 +979,62 @@ def supports(pkg, plat):
 
 def unsupported(names, plat):
     """[(name, platforms)] for the ones this platform cannot have."""
-    by = {p["name"]: p for p in PACKAGES}
+    by = {p["name"]: p for p in TOOLCHAINS}
     return [(x, ", ".join(by[x].get("platforms") or ["linux/amd64"]))
             for x in names if x in by and not supports(by[x], plat)]
 
 
-def is_image_name(name):
-    """A full sdkmanager system-image id, as the picker hands one back."""
-    return str(name).startswith("android:system-images;")
-
-
 def _need_kb(name):
-    """What installing this will cost the store, in KB. Measured here the
-    last time it was installed, for a catalog package; from Google's index,
-    for a system image — which is the only place an image's size exists
-    before the download, and the reason an image can be gated on headroom
-    even on a node this controller has never installed one for."""
-    if is_image_name(name):
-        return image_kb(name[len("android:"):])
-    return _pkg_remembered.get(name, 0)
+    """What installing this will cost the store, in KB: measured here the
+    last time it was installed, or 0 for one this controller never had."""
+    return _tc_remembered.get(name, 0)
+
+
+# The jobs that write into a toolchain store: a toolchain's, and an Android
+# system image's (emulator.py), which lives there without being one.
+STORE_JOBS = ("toolchain", "image")
+
+
+def _store_job_on(node_id):
+    return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
+
+
+def store_busy(nid):
+    """Why this node's toolchain store cannot take another job now, or "".
+
+    One at a time across every node that shares the store, not just this
+    one. docs/nodes.md section 6 names the trap: two agents unpacking into
+    one NFS directory, or one upgrading a toolchain under another mid-build,
+    is version skew nobody can debug. The rule is enforced across a shared
+    store or it is not enforced at all."""
+    n = nodes.node(nid)
+    sharers = store_sharers(nid)
+    for other in [n] + sharers:
+        if _store_job_on(other["id"]):
+            where = ("" if other["id"] == nid
+                     else f"; it shares this toolchain store with {n['name']}")
+            return f"a toolchain or image job is already running on {other['name']}{where}. One at a time."
+    # ...and this container's own installer, which is not a job and so is
+    # invisible to the loop above. It is the sharer that matters most here:
+    # the toolchain store is mounted by the controller and by the sandbox at once.
+    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
+        return ("this container is installing into the same toolchain store "
+                f"right now; it shares it with {n['name']}. One at a time.")
+    return ""
 
 
 def node_job(principal, nid, action, names):
-    """Queue the package job. Refused, with numbers, when the store cannot
-    hold what is asked — measured here the last time it was installed, so a
-    package this controller never had is not gated, and the log says so."""
+    """Queue the toolchain job. Refused, with numbers, when the store cannot
+    hold what is asked, measured here the last time it was installed, so a
+    toolchain this controller never had is not gated, and the log says so."""
     if not nodes:
         return {"error": "no node store"}
     n = nodes.node(nid)
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
-        return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
-    store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
+        return {"error": f"{n['name']} runs no agent; toolchains are installed there by hand"}
+    store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}
     added = []
     if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
         return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so its "
@@ -1155,19 +1043,11 @@ def node_job(principal, nid, action, names):
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
         have = node_has(n)
-        # A system image is installed BY sdkmanager, so the command-line tools
-        # have to be on the node first — and they need a JDK in turn.
-        # with_requires walks the catalog, and an image id is not a catalog
-        # row (which images exist is not a fixed list), so the head of that
-        # chain is named here rather than discovered inside a failing job.
-        pre = ["android-tools"] if (any(is_image_name(x) for x in names)
-                                    and "android-tools" not in have) else []
-        want = pre + [x for x in names if x not in pre]
-        ordered, _ = with_requires(want, have)
+        ordered, _ = with_requires(names, have)
         names, added = ordered, [x for x in ordered if x not in names]
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
-        # of hundred megabytes and fail on exec — or install and fail later.
+        # of hundred megabytes and fail on exec, or install and fail later.
         # Refused by name instead. arm64 Linux needs no new agent to reach
         # this, which is why it is a live wrong answer rather than a future
         # one (roadmap #18).
@@ -1181,42 +1061,73 @@ def node_job(principal, nid, action, names):
         need_kb = sum(_need_kb(x) for x in names)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
-            return {"error": f"{n['name']}'s packages store has {human_kb(free * 1024)} free "
-                             f"and this needs about {human_kb(int(need_kb * 1.2))} — "
+            return {"error": f"{n['name']}'s toolchain store has {human_kb(free * 1024)} free "
+                             f"and this needs about {human_kb(int(need_kb * 1.2))}: "
                              "point the store somewhere bigger first"}
-    # One install at a time — across every node that shares this store, not
-    # just this one. docs/nodes.md §6 names the trap: two agents unpacking
-    # into one NFS directory, or one upgrading a toolchain under another
-    # mid-build, is version skew nobody can debug. The rule is enforced
-    # across a shared store or it is not enforced at all.
-    sharers = store_sharers(nid)
-    for other in [n] + sharers:
-        if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
-            where = ("" if other["id"] == nid
-                     else f" — it shares this packages store with {n['name']}")
-            return {"error": f"a package job is already running on {other['name']}"
-                             f"{where}. One at a time."}
-    # ...and this container's own installer, which is not a job and so is
-    # invisible to the loop above. It is the sharer that matters most here:
-    # the package store is mounted by the controller and by the sandbox at once.
-    if _pkg_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
-        return {"error": "this container is installing into the same packages store "
-                         f"right now — it shares it with {n['name']}. One at a time."}
+    busy = store_busy(nid)
+    if busy:
+        return {"error": busy}
     # Two architectures on one store used to be refused here, because a flat
-    # store could not hold both. It is scoped by platform now — each machine
-    # installs under <store>/<os>-<arch> (roadmap R19) — so a Mac and a Linux
+    # store could not hold both. It is scoped by platform now: each machine
+    # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
-    r = nodes.job_add(principal, {"node": nid}, "package",
+    r = nodes.job_add(principal, {"node": nid}, "toolchain",
                       {"action": action, "names": names, "timeout": 3600})
     if r.get("ok") and added:
         r["added"] = added
     return r
 
 
+# The unmet set each node was last sent a system-packages job for, so one
+# that did not fix it is not sent again every hello: a failing apt would
+# otherwise be retried every ten minutes forever. In memory: a restart is
+# one more try, which is the right amount.
+_auto_sysdeps = {}
+
+
+def auto_sysdeps(nid):
+    """Install the system packages a node lacks for what its store holds,
+    without anybody pressing Install system packages.
+
+    The store is shared, so a toolchain installed from one node is on every
+    node that mounts it, while the libraries it needs are each machine's
+    own: the install job installs them only on the node it ran on, and every
+    other one showed a banner asking for a second press. Those packages were
+    already chosen when the recipe was installed, so a node BuilderBot
+    manages (the sandbox stamp) installs them itself when its census says
+    they are missing. Not on a guest node, whose system is its owner's, and
+    not while the node's system changes are locked to its console. The
+    banner stays for those, and for a job that did not fix it.
+
+    Called on every hello; a no-op unless something is missing. The queued
+    job, or None."""
+    if not nodes:
+        return None
+    n = nodes.node(nid)
+    if not n or n["kind"] != "agent" or n.get("state") != "online":
+        return None
+    rep = n.get("reported") or {}
+    unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+    # The agent's own word that it may (root and the stamp), not the stamp
+    # alone: a stamped node whose agent is not root refuses the job, and
+    # queueing it anyway held the store against the next real install.
+    if not unmet or not rep.get("administers") or nodes.node_locked(n):
+        return None
+    sig = json.dumps(unmet, sort_keys=True)
+    if _auto_sysdeps.get(nid) == sig:
+        return None
+    r = node_job("system", nid, "sysdeps", sorted(unmet)[:8])
+    # Only a job actually queued counts as tried: one refused because
+    # another toolchain job holds the store is tried again on a later hello.
+    if r.get("ok"):
+        _auto_sysdeps[nid] = sig
+    return r
+
+
 def start_job(action, names, auto=False):
-    """Queue a package job, unless one is already going. False if it is."""
-    with _pkg_lock:
-        if _pkg_job["running"]:
+    """Queue a toolchain job, unless one is already going. False if it is."""
+    with _tc_lock:
+        if _tc_job["running"]:
             return False
         # The other half of the shared-store rule: a node unpacking into the
         # store this container is about to write is the same collision, seen
@@ -1224,20 +1135,20 @@ def start_job(action, names, auto=False):
         if nodes:
             with contextlib.suppress(Exception):
                 for other in store_sharers(nodes.LOCAL):
-                    if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
+                    if _store_job_on(other["id"]):
                         return False
         if action == "install":
-            here = {p["name"] for p in PACKAGES if _pkg_path(p["probe"])}
+            here = {p["name"] for p in TOOLCHAINS if _tc_path(p["probe"])}
             names, _added = with_requires(list(names), here)
-        _pkg_job.update(running=True, queue=list(names), action=action,
+        _tc_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
                         aborting=False,
-                        # Fixed in phase 1 — toolchains install here — and a
+                        # Fixed in phase 1 (toolchains install here) and a
                         # seam on purpose: phase 6 makes this a job placed on
-                        # any node's packages store, and this call site is
+                        # any node's toolchain store, and this call site is
                         # where the node picker's answer lands.
                         node="local")
-    threading.Thread(target=_pkg_worker, daemon=True).start()
+    threading.Thread(target=_tc_worker, daemon=True).start()
     return True
 
 
@@ -1247,34 +1158,34 @@ def start_job(action, names, auto=False):
 # minutes, so this is a slow background errand rather than anything the poll
 # does: eight seconds of it, a while after boot so that a container coming up
 # is not doing this alongside everything else it does at start. It steps aside
-# for anything the operator started — a check that queued itself behind an
-# install would hold the tab hostage — and tries again later.
-# Weekly. It was daily, and a check is one network round trip per package to
-# somebody else's servers — for answers that move on a release cadence, not a
+# for anything the operator started and tries again later: a check that
+# queued itself behind an install would hold the tab hostage.
+# Weekly. It was daily, and a check is one network round trip per toolchain to
+# somebody else's servers, for answers that move on a release cadence, not a
 # daily one. The manual button is what a person presses when they actually
 # want to know now.
-PKG_CHECK_EVERY = 7 * 86400
+TC_CHECK_EVERY = 7 * 86400
 # Late enough that the startup hooks have finished. A hook installing into
 # the store can be running sdkmanager when the dashboard comes up, and two of
-# those on one package store root is a fight over the same lock.
-PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "180"))
-AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
+# those on one toolchain store root is a fight over the same lock.
+TC_CHECK_DELAY = int(os.environ.get("TC_CHECK_DELAY", "180"))
+AUTOCHECK = os.environ.get("TC_AUTOCHECK", "1") != "0"
 
 
 def versions_loop():
-    time.sleep(PKG_CHECK_DELAY)
+    time.sleep(TC_CHECK_DELAY)
     # From when the last check actually happened, not from zero. A container
     # restart used to mean a full round of upstream requests three minutes
-    # later, so an afternoon of image updates was an afternoon of checking —
+    # later, so an afternoon of image updates was an afternoon of checking,
     # for answers that had not moved. The timestamp is on the state volume and
     # outlives the container, which is the whole reason it is written there.
     #
     # A catalog edit still forces one, and that is decided when the file is
     # read: load_versions zeroes the timestamp when the digest it was saved
     # against is not the one running now.
-    due = _pkg_checked + PKG_CHECK_EVERY if _pkg_checked else 0
+    due = _tc_checked + TC_CHECK_EVERY if _tc_checked else 0
     while True:
-        if PACKAGES and time.time() >= due and not _pkg_job["running"]:
-            if start_job("check", [p["name"] for p in PACKAGES], auto=True):
-                due = time.time() + PKG_CHECK_EVERY
+        if TOOLCHAINS and time.time() >= due and not _tc_job["running"]:
+            if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
+                due = time.time() + TC_CHECK_EVERY
         time.sleep(300)

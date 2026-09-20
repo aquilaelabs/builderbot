@@ -276,7 +276,7 @@ function wireIdleSection(el){
 // on a project's Briefing tab: one reaches projects the person setting it may
 // not work on, so it is an administrator's. A session may not add one at all
 // and is told to say what it would add instead, the way it is told about a
-// package it cannot install.
+// toolchain it cannot install.
 //
 // The shipped ones are read-only. An edit would be undone by the next image,
 // and a change nobody can see reverted is worse than no change, so the only
@@ -344,8 +344,8 @@ function drawGlobalRules(){
   // buttons in the dialog's .foot: this one drew flush against the box.
   body.innerHTML = `
     <div class="field"><div class="hint">Every session on every project is handed these. A session cannot add one.</div></div>
-    ${shipped.length ? `<div class="field"><h4>Shipped with BuilderBot</h4>${shipped.map(globalRuleRow).join("")}</div>` : ""}
-    <div class="field"><h4>Yours</h4>
+    ${shipped.length ? `<div class="field"><label>Shipped with BuilderBot</label>${shipped.map(globalRuleRow).join("")}</div>` : ""}
+    <div class="field"><label>Yours</label>
       <div id="grOwn">${own.length ? own.map(globalRuleRow).join("") : `<div class="hint">none yet</div>`}</div></div>
     <div class="foot">
       <span class="state" id="grState"></span><span class="sp"></span>

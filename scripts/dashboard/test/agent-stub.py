@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""A node, stood in for — the suite's docker host, on the agent channel.
+"""A node, stood in for: the suite's docker host, on the agent channel.
 
 The harness needs ONE node whose docker the controller can address, and it
 used to get one from DOCKER_HOST: the server mirrored the variable into an
 `ssh`-kind row at boot, and compose for that kind ran on the controller. Both
 went with roadmap #24, so the node is enrolled with a token like any other and
-its compose is the agent's — which means something has to be there to take it.
+its compose is the agent's, which means something has to be there to take it.
 
 Two things this container cannot do are why the REAL agent is not run here:
 
   * it reports no sshd, because there is none and port 22 cannot be bound
-    without privileges — and nodes._addr hands out an ssh address only for a
+    without privileges, and nodes._addr hands out an ssh address only for a
     node that reports one, which devapp.available() requires before the whole
     dev-instance manager will turn on;
   * it would report 127.0.0.1 as its address, which is where every other node
@@ -19,11 +19,11 @@ Two things this container cannot do are why the REAL agent is not run here:
 
 So run.sh enrolls the row with a written census and this takes its jobs. The
 real agent is exercised end to end by agent.mjs, against a node of its own,
-which is where that belongs — this is a stand-in for a machine, in the same
+which is where that belongs. This is a stand-in for a machine, in the same
 spirit as the stub docker it ends up calling.
 
 It runs the plan the CONTROLLER sent and nothing of its own: same argvs, same
-order, same {cdir} substitution, same outputs. That is what keeps it honest —
+order, same {cdir} substitution, same outputs. That is what keeps it honest:
 if it had opinions about compose it could pass while the product failed.
 """
 import json
@@ -47,7 +47,7 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           # `info` prints, so the two agree about which daemon this is.
           "docker_id": "STUBDAEMON1",
           # Provisioned as a sandbox, so the controller offers it system
-          # jobs — the root ask (R38) is one, and it runs below as this
+          # jobs. The root ask (R38) is one, and it runs below as this
           # process rather than as root: the suite proves the asking and the
           # answering, and the real agent's own file proves the running.
           "sandbox": True,
@@ -59,7 +59,7 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           # What a provisioned sandbox reports about its own fstab, so the
           # Nodes tab's Storage and Network sections draw their editors here
           # rather than a heading over nothing. Without a row on screen every
-          # rule the suite holds those editors to measured an empty box —
+          # rule the suite holds those editors to measured an empty box,
           # which is how a mount row's controls came to sit at three
           # different heights without anything failing.
           "mounts": [{"path": "/workspace", "source": "nas:/mnt/user/projects",
@@ -70,7 +70,7 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
                       "real": "nas:/mnt/user/devdata"}],
           "network": {"interface": "ens3", "addresses": ["10.0.0.41/24"],
                       "gateway": "10.0.0.1", "dns": ["10.0.0.1"]},
-          # A session half that is up but on a read-only projects share —
+          # A session half that is up but on a read-only projects share:
           # the arrangement a Docker-only sandbox was told to have, and the
           # one that stranded the first real session (nothing could be
           # saved). What the proxy refuses on, and the row says.
@@ -106,14 +106,14 @@ def stream(job, seq, argv, cwd, env, timeout=300):
 
     Both halves are load-bearing rather than polish: the suite asserts that a
     long build's output appears in the row before the command returns, and
-    that Abort ends one — and a stub that buffered until exit, or ignored the
+    that Abort ends one; a stub that buffered until exit, or ignored the
     cancel flag the log reply carries, would fail neither test honestly. This
     is what the shipped agent does; the difference is only that it has more
     to say about it.
 
     `seq` is the JOB's counter, not this command's. Every chunk of one job
-    shares one sequence — the controller drops a seq it has already stored,
-    which is what makes an agent's retry safe — so a second counter starting
+    shares one sequence (the controller drops a seq it has already stored,
+    which is what makes an agent's retry safe), so a second counter starting
     at 1 had its output silently swallowed. The log then held the command
     and nothing it said, which is a failed build with no account of why.
     """
@@ -135,7 +135,7 @@ def stream(job, seq, argv, cwd, env, timeout=300):
     # Read with a timeout rather than line by line: a command that prints
     # three lines and then sits there (web-ext, once the add-on is on the
     # phone) must still have those lines posted, and must still hear a
-    # cancel — both ride the half-second post, which a blocked readline
+    # cancel: both ride the half-second post, which a blocked readline
     # never reached.
     import select
     while True:
@@ -239,12 +239,12 @@ def run_system(job):
     return state, code, []
 
 
-# A CENSUS IS THE AGENT'S TO SEND, so no API sets one — and the fields the
+# A CENSUS IS THE AGENT'S TO SEND, so no API sets one, and the fields the
 # controller reads off a census are exactly the ones worth testing against (a
 # runner's systemd unit, a store's headroom, what a node carries). This is the
 # way in: a test writes census-extra.json in the stub's own directory and the
 # next poll sends it, merged one level deep so adding `services` does not mean
-# restating the stores. Absent — the normal case — and the census is CENSUS.
+# restating the stores. Absent (the normal case), and the census is CENSUS.
 EXTRA = os.path.join(CDIR_ROOT, "census-extra.json")
 
 
@@ -298,8 +298,8 @@ def main():
                             "error": "" if state == "succeeded"
                             else "stopped" if state == "canceled"
                             else f"exit {code}"})
-        # The census only rides hello, and the row goes stale without it —
-        # and a test that has just rewritten the overlay is waiting for one,
+        # The census only rides hello, and the row goes stale without it;
+        # a test that has just rewritten the overlay is waiting for one,
         # so a changed file sends it now rather than in two minutes.
         now = _extra_stamp()
         if now != stamp or time.time() - last_hello > 120:

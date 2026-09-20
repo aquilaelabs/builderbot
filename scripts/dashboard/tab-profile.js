@@ -15,6 +15,21 @@ let profile = null, profileRev = 0;
 // emptied itself mid-sentence would be unusable (docs/design-language.md,
 // Settings; nothing takes effect until Save).
 const profileDraft = {};
+// The time zone picked and not yet applied, kept apart from the account's
+// draft: it is this browser's (a cookie, userTZ in index.html), and it has
+// its own Apply, so it must not light the account's Save.
+let tzDraft = null;
+
+// This browser's zone and every zone it knows, alphabetically after it. UTC
+// by that name, which some browsers leave out of their own list.
+function tzOptions(cur){
+  const own = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  let zones = [];
+  try{ zones = Intl.supportedValuesOf("timeZone"); }catch(e){ zones = own ? [own] : []; }
+  if (!zones.includes("UTC")) zones = [...zones, "UTC"];
+  return `<option value=""${cur ? "" : " selected"}>This device's own${own ? ` (${esc(own)})` : ""}</option>`
+    + [...zones].sort().map(z => `<option value="${esc(z)}"${z === cur ? " selected" : ""}>${esc(z)}</option>`).join("");
+}
 
 function openProfileTab(){
   openTab({kind: "profile", arg: "__profile", label: "Profile"});
@@ -77,6 +92,27 @@ function renderProfileInto(i){
     </div>
     <div class="row stack2">
       <div class="grow">
+        <h4>On this browser</h4>
+        <div class="logset">
+          <div class="logdays setrow col">
+            ${lbl("pfTZ", "Time zone", "kept on this browser rather than your account, so each device shows times where it is")}
+            <select id="pfTZ">${tzOptions(tzDraft ?? userTZ())}</select>
+          </div>
+          <div class="actbar">
+            <span class="state">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</span>
+            <button type="button" id="pfTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row stack2">
+      <div class="grow">
+        <h4>Claude plugins</h4>
+        <div class="logset">${profilePlugins(profile.plugins || [])}</div>
+      </div>
+    </div>
+    <div class="row stack2">
+      <div class="grow">
         <h4>Password</h4>
         <div class="logset">
           <div class="logdays setrow col">
@@ -100,6 +136,18 @@ function renderProfileInto(i){
     </div>`;
   d.setFoot(`Your commits carry the git name and email above in every session and shell you open, whichever project: the account name stays what you sign in with.`);
   wireProfile(d.el);
+}
+
+// What you installed with /plugin in your own sessions, per node, as each
+// node last said (plugins.py): read here, changed only in a session, where
+// a plugin takes effect.
+function profilePlugins(rows){
+  if (!rows.length) return `<div class="dim">None installed. <code>/plugin</code> in a Claude session adds one, for you alone.</div>`;
+  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${
+    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project || "a project")})` : ""}${
+    p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
+  return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
+    + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
 }
 
 function wireProfile(root){
@@ -135,6 +183,17 @@ function wireProfile(root){
       refresh();                      // the Claude buttons follow git_ready
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
+  };
+  const tz = root.querySelector("#pfTZ"), tzApply = root.querySelector("#pfTZApply");
+  if (tz) tz.onchange = () => {
+    tzDraft = tz.value;
+    if (tzApply) tzApply.disabled = tzDraft === userTZ();
+  };
+  if (tzApply) tzApply.onclick = () => {
+    setUserTZ(tzDraft || "");
+    tzDraft = null;
+    notify(userTZ() ? `times on this browser are in ${userTZ()} now` : "times on this browser follow this device again");
+    drawPanes();
   };
   const pw = root.querySelector("#pfPasswd");
   if (pw) pw.onclick = async () => {

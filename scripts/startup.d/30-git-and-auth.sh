@@ -17,7 +17,7 @@ git config --global core.editor "${GIT_EDITOR:-nano}"
 # Silence advice blocks that only *explain* a state git already reports, so the
 # state itself is never hidden: detached HEAD still shows in status/checkout,
 # and `git status` still lists every file. Advice that tells you how to resolve
-# something — push rejections, merge conflicts — is deliberately left on.
+# something (push rejections, merge conflicts) is deliberately left on.
 git config --global advice.detachedHead false
 git config --global advice.statusHints false
 git config --global advice.waitingForEditor false

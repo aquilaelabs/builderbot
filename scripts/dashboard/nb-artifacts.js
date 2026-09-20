@@ -219,8 +219,8 @@ project can have several"
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
-    if (!pkgDotsTimer && list.querySelector(".dots"))
-      pkgDotsTimer = setInterval(pkgTickDots, 400);
+    if (!tcDotsTimer && list.querySelector(".dots"))
+      tcDotsTimer = setInterval(tcTickDots, 400);
     const devOpenBtn = $("devOpen");
     if (devOpenBtn) devOpenBtn.onclick = () => {
       const box = document.createElement("div");

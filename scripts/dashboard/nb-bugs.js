@@ -263,23 +263,23 @@ function nbBugsView({$, nb, project}){
         const body = d.querySelector(".body");
         if (body.querySelector(".sendbox")) { nb.shutSendBoxes(); return; }
         nb.shutSendBoxes();
-        nb.sendNoteText = "";            // see nb.pickTodo: a note is not carried over
-        nb.todoSel = null;               // and only one thing is armed at a time
-        nb.drawSendBox(!!nb.todoSession);
+        nb.sendNoteText = "";            // see nb.pickRoadmap: a note is not carried over
+        nb.roadmapSel = null;               // and only one thing is armed at a time
+        nb.drawSendBox(!!nb.roadmapSession);
         // Same session the roadmap sends into, and the same reason it has to
         // exist first: there is no door into a Claude that is not running.
-        if (!nb.todoSession){
+        if (!nb.roadmapSession){
           notify("no Claude session is running here: start one from the "
                  + "project's card first", true);
           return;
         }
         const box = nb.sendBoxEl({
-          label: `Send bug #${id} to ${nb.todoSession}?`,
+          label: `Send bug #${id} to ${nb.roadmapSession}?`,
           sub: "as a number to look up, not as a copy",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,
           onSend: async () => {
-            const go = box.querySelector("#todoGo");
+            const go = box.querySelector("#roadmapGo");
             busy(go, "Sending");
             const j = await postBug({action: "send", id, note: nb.sendNoteText});
             unbusy(go, "Send");

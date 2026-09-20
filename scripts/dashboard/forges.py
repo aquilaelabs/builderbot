@@ -4,7 +4,7 @@ Everything BuilderBot does with a remote is plain git except three things, and
 those three are the whole of this file:
 
   * **what an address may look like.** `git clone` accepts transports a web
-    form must never reach — `ext::` runs a command — so a URL typed into the
+    form must never reach (`ext::` runs a command), so a URL typed into the
     dashboard is matched against the shapes below and refused otherwise. That
     check used to be "is it github.com", which is why nothing else could be
     linked.
@@ -13,7 +13,7 @@ those three are the whole of this file:
   * **creating the repository** when it does not exist yet. Only ever an
     empty private one, and only on a host whose API this knows.
 
-Everything else — proving a repository is empty, pushing, fetching — is git,
+Everything else (proving a repository is empty, pushing, fetching) is git,
 and git does not care whose server answers.
 
 **A forge is derived, never stored.** The host in a project's origin URL says
@@ -25,7 +25,7 @@ is the `git` entry, which promises nothing beyond git itself.
 The API dialects are three, not seven. Gitea's HTTP API is deliberately
 GitHub-shaped, so Forgejo (its fork) and Codeberg (which runs Forgejo) are
 the same code; GitLab's is its own. Only GitHub's path is exercised by the
-test suite here — there is no Gitea to point it at — so the other two are
+test suite here (there is no Gitea to point it at), so the other two are
 written to each project's documented API and fail with the server's own
 message rather than a traceback when they are wrong.
 """
@@ -56,7 +56,7 @@ def configure(*, run, state=None, write_json=None):      # noqa: A002 - injected
 # dialect, "" for a host this can only reach with git. `nested` allows the
 # owner half to carry slashes, which is GitLab's subgroups and nobody else's.
 # `user` is the username half of the stored credential when the host cannot be
-# asked for the real one — git's credential store is a URL, so a token has to
+# asked for the real one: git's credential store is a URL, so a token has to
 # go in beside SOME name, and each of these publishes the one it wants.
 
 # Whether unvetted hosts may be offered, from the controller's settings
@@ -108,8 +108,8 @@ FORGES = (
      "user": "oauth2",
      "kind": "gitlab", "nested": True,
      "token": None, "hint": "glpat-…",
-     "about": "gitlab.com, or your own — replace the host. Subgroups are "
-              "allowed in the path, which no other host here permits."},
+     "about": "gitlab.com, or your own if you replace the host. Subgroups "
+              "are allowed in the path, which no other host here permits."},
     {"id": "bitbucket", "name": "Bitbucket", "host": "bitbucket.org", "fixed": True,
      "vetted": "",
      # The username Bitbucket pairs a repository or workspace ACCESS TOKEN
@@ -179,7 +179,7 @@ def slug(host):
 # Gitea at git.example.com is indistinguishable from a Forgejo or a bare git
 # daemon until somebody says which, and only the person who set it up knows.
 # So they say it once, on the first link, and it is remembered PER HOST rather
-# than per project — the second project on the same server asks nobody.
+# than per project: the second project on the same server asks nobody.
 #
 # The file is a map and nothing else. Every value is checked against the
 # catalog on the way out, so an edited file cannot name a dialect this does
@@ -291,7 +291,7 @@ def path_ok(entry, path):
     if n < 2:
         return "an address needs an owner and a repository: owner/repo"
     if n > 2 and not entry["nested"]:
-        return (f"{entry['name']} addresses are owner/repo — "
+        return (f"{entry['name']} addresses are owner/repo, and "
                 f"{path} has {n} parts, so this is not a repository address")
     return ""
 
@@ -344,7 +344,7 @@ def api_base(entry, host, scheme="https"):
     The scheme is the remote's, not a constant: a Gitea brought up from its own
     compose file serves plain http on a LAN, and asking it over https is a
     connection refused reported as a bad token. github.com is the exception in
-    both directions — a separate hostname, always https — with `/api/v3` under
+    both directions (a separate hostname, always https), with `/api/v3` under
     the host itself for GitHub Enterprise Server.
     """
     if not entry["kind"]:
@@ -369,8 +369,8 @@ def _auth(kind, token):
 def _ask(url, kind, token, data=None):
     """One API call. (parsed body, "") or (None, why not).
 
-    Every caller wants the same three outcomes — it worked, the host said no
-    and here is its sentence, the host could not be reached — so they are
+    Every caller wants the same three outcomes (it worked, the host said no
+    and here is its sentence, the host could not be reached), so they are
     resolved once here rather than in three copies of the same try block.
     """
     headers = {"User-Agent": "BuilderBot", **_auth(kind, token)}
@@ -396,7 +396,7 @@ def _ask(url, kind, token, data=None):
 
 
 def whoami(entry, host, token, scheme="https"):
-    """The account a token belongs to, or "" — including when the host has no
+    """The account a token belongs to, or "", including when the host has no
     API to ask, which is not the same as a refusal and is why link() proves
     the credential with `git ls-remote` regardless."""
     base = api_base(entry, host, scheme)
@@ -419,7 +419,7 @@ def cred_user(entry, host, token, scheme="https"):
     and the request has to be made anyway to know the token is real. The
     catalog's own name is the fallback, and it is what every host here accepts
     when it cannot be asked: the password is the credential and the username
-    is a formality — except on GitLab, where `oauth2` is the formality it
+    is a formality, except on GitLab, where `oauth2` is the formality it
     insists on.
     """
     return whoami(entry, host, token, scheme) or entry["user"]
@@ -436,7 +436,7 @@ def create_repo(entry, host, token, path, scheme="https", user=""):
     base = api_base(entry, host, scheme)
     if not base:
         return (f"{entry['name']} is reached with git alone here, so the "
-                f"repository has to exist already — create {path} empty on it "
+                f"repository has to exist already: create {path} empty on it "
                 f"and link again")
     owner, _, repo = path.rpartition("/")
     if entry["kind"] == "gitlab":

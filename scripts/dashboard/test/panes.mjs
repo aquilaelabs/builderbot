@@ -1,7 +1,7 @@
 // A pane keeps the terminals behind the visible one loaded.
 //
 // Switching tabs used to rebuild the pane's innerHTML, which threw the iframe
-// away — and ttyd is 700KB of javascript that then had to parse, connect a
+// away, and ttyd is 700KB of javascript that then had to parse, connect a
 // websocket, attach to tmux and draw. On a phone that was a second and a half
 // of blank pane, every switch. The frames now sit on top of one another at the
 // same size with one visible, so coming back to one is a class toggle.
@@ -52,7 +52,7 @@ ok(await page.$eval('#pane0 .stack > [data-mark="first"]', el => {
 
 await show(ids[0]);
 ok(await page.$eval('#pane0 .slot.on', el => el.dataset.mark === 'first'),
-   'coming back shows the same element — no reload');
+   'coming back shows the same element (no reload)');
 ok(await page.$$eval('#pane0 .slot.on iframe', f => f.length === 1),
    '...and exactly one terminal is on screen');
 
@@ -70,7 +70,7 @@ ok(!rows.some(r => r.key?.startsWith(ids[1] + '|')),
 
 // A document tab is not kept: it redraws from state instantly, and one #docN
 // per pane is what renders into it.
-await page.evaluate(() => openTab({kind: 'packages', arg: '__packages', label: 'packages'}));
+await page.evaluate(() => openTab({kind: 'toolchains', arg: '__toolchains', label: 'toolchains'}));
 await page.waitForSelector('#pane0 .doc.on');
 ok(await page.$$eval('#pane0 .stack > .doc', d => d.length === 1
      && d[0].id === 'doc0'),
@@ -81,8 +81,8 @@ ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
 
 // Coming back to a page a phone had backgrounded reconnects the terminal that
 // is on screen, and only that one. All of them at once was six ttyd instances
-// starting together — 700KB of javascript, a websocket and a full repaint
-// each — on the device least able to afford it, which is what the page spent
+// starting together (700KB of javascript, a websocket and a full repaint
+// each) on the device least able to afford it, which is what the page spent
 // its first seconds back doing.
 await page.evaluate(() => openTab({kind: 'term', arg: 'shell', label: 'sh'}));
 await page.waitForSelector('#pane0 .slot.on iframe');
@@ -123,22 +123,22 @@ ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 // One window onto one thing. A notebook is per project and several may be
 // open; everything else is a single view, and a second open focuses the first
-// whatever argument it carries — enforced by the kind's own entry rather than
-// by every caller remembering to pass the same magic arg.
+// whatever argument it carries. That is enforced by the kind's own entry
+// rather than by every caller remembering to pass the same magic arg.
 const kindCount = (k) => page.evaluate((kk) => tabs.filter(t => t.kind === kk).length, k);
-for (const k of ['projects', 'docker', 'packages']){
+for (const k of ['projects', 'docker', 'toolchains']){
   await page.evaluate((kk) => { openTab({kind: kk, arg: 'one', label: kk});
                                 openTab({kind: kk, arg: 'two', label: kk}); }, k);
   ok(await kindCount(k) === 1, `only one ${k} tab, whatever it is opened with`);
 }
-await page.evaluate(() => { openTab({kind: 'todo', arg: 'alpha', label: 'a'});
-                            openTab({kind: 'todo', arg: 'beta', label: 'b'}); });
-ok(await kindCount('todo') >= 2,
+await page.evaluate(() => { openTab({kind: 'notebook', arg: 'alpha', label: 'a'});
+                            openTab({kind: 'notebook', arg: 'beta', label: 'b'}); });
+ok(await kindCount('notebook') >= 2,
    '...while notebooks are one per project, which is the whole point of them');
 
 // Every tab kind the page knows must be one the SERVER will keep. A kind
 // missing from TAB_KINDS is dropped from the saved layout without a word, so
-// the tab comes back from a reload as if it had never been opened — which has
+// the tab comes back from a reload as if it had never been opened, which has
 // happened, and is invisible until somebody reloads. Compared against the
 // files rather than trusted, because the two are in different languages and
 // nothing else makes them agree.

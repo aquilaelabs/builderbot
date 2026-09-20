@@ -1,5 +1,5 @@
 // The notebook's Artifacts view: what a project has built, from its dist/.
-// The convention IS the feature — the tab lists dist/ and nothing else, so a
+// The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
 import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync } from 'node:fs';
@@ -16,8 +16,8 @@ writeFileSync(`${DIR}/ws/alpha/dist/.provenance/android/streamlift-1.2.apk.json`
   job: 'j_fixture1', node: 'n_fixture', source: { digest: 'sha256:' + 'ab'.repeat(32) },
   sha256: 'cd'.repeat(32), size: 17 }));
 // ...and two shell scripts, which is a product like any other: one named
-// .sh, one named the way a shipped installer usually is — no extension, a
-// shebang on the first line, which is the only thing that says what it is.
+// .sh, one named the way a shipped installer usually is, with no extension
+// and a shebang on the first line, which is the only thing that says what it is.
 writeFileSync(`${DIR}/ws/alpha/dist/setup-1.2.sh`,
   '#!/usr/bin/env bash\nset -euo pipefail\necho "setting up"\n');
 writeFileSync(`${DIR}/ws/alpha/dist/install`,
@@ -49,7 +49,7 @@ await page.goto(URL);
 await ready(page);
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
 await page.click(`${row('alpha')} [data-m]`);
-await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
 
@@ -126,7 +126,7 @@ ok(dl.status === 200 && dl.disp.includes('streamlift-1.2.apk'),
 ok((await get('/api/artifact?project=alpha&path=dist/../CLAUDE.md')).status === 404,
    'a path that climbs out of dist/ is refused');
 ok((await get('/api/artifact?project=alpha&path=dist/leak.txt')).status === 404,
-   '...and so is a symlink pointing out of it — dist/ must not become a file server');
+   '...and so is a symlink pointing out of it: dist/ must not become a file server');
 
 // ---- the code base itself, as a zip ------------------------------------------
 // What git tracks and would track, under one directory named for the
@@ -154,8 +154,8 @@ page.errors = [];
 // ---- installing needs a phone on the project's node ----------------------
 // alpha has no node here, so Install and Push are offered and ghosted with
 // the reason: the phone is driven from a node, and this project has none.
-// The install and the push themselves — and the signature clash said in
-// words — are phone.mjs's, where a fixture node holds the phone.
+// The install and the push themselves, and the signature clash said in
+// words, are phone.mjs's, where a fixture node holds the phone.
 ok(await page.$eval('[data-artinstall]', b => b.disabled && /Phone tab/.test(b.title)),
    'with no phone on the project\'s node, Install is ghosted and says where to connect one');
 ok(await page.$eval('[data-artpush]', b => b.disabled && /Phone tab/.test(b.title)),
@@ -204,8 +204,8 @@ ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 // Put alpha back as it was found. fresh() between files resets state and
-// removes stray projects, but it does not reach inside a fixture project —
-// so a file that plants a dist/ tree and a symlink there has to clear them
+// removes stray projects, but it does not reach inside a fixture project, so
+// a file that plants a dist/ tree and a symlink there has to clear them
 // itself, or every later file runs against a project this one changed.
 rmSync(`${DIR}/ws/alpha/dist`, { recursive: true, force: true });
 rmSync(`${DIR}/ws/alpha/secret.txt`, { force: true });

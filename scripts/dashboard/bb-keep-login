@@ -7,7 +7,7 @@ step with the controller while the session is running.
 WHY THIS EXISTS (B100). The grant is an OAuth pair and a refresh ROTATES the
 refresh token: the moment any machine refreshes, the server retires the token
 every other copy is holding. `bb login --check` settles that correctly in both
-directions — newest `expiresAt` wins — but the only thing that ever ran it was
+directions (newest `expiresAt` wins), but the only thing that ever ran it was
 bb-tty, on a browser CONNECTION. So a session on one node refreshed, the
 controller's copy went stale, and a session on ANOTHER node sat holding a
 retired grant until somebody opened a terminal tab there. With sessions that
@@ -16,7 +16,7 @@ stay open for hours, that is hours, and what it looks like from the outside is
 
 A prompt is the right moment to do it: the session is about to work, it holds
 a token minted for its own account, and the file is in its own home. Nothing
-else on a node has all three — the agent runs continuously but has the node's
+else on a node has all three: the agent runs continuously but has the node's
 credentials rather than an account's.
 
 An access token lasts hours, so the sync does not have to be quick to be in
@@ -92,7 +92,7 @@ def main():
                                     BB_PROJECT=sys.argv[1] if len(sys.argv) > 1 else ""))
         # A refusal that will not fix itself is SAID. The rest stays silent:
         # a controller that is restarting, a network blip, a grant that was
-        # already current — none of those are worth a line on every prompt.
+        # already current. None of those are worth a line on every prompt.
         #
         # This is the half that was missing, and what it cost: the endpoint
         # 500'd for every node for a day, the sync swallowed it, and what the

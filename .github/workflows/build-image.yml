@@ -8,12 +8,13 @@ name: build image
 # image.
 #
 # And only on the way IN, not on the way there. This used to build the pull
-# request too — the same build, minutes earlier, publishing nothing, and then
-# again on the merge that followed it: two hosted builds for one answer, of
-# which only the second produces the image anybody runs. What it bought was
-# learning about a broken Dockerfile before the merge instead of after, and
-# after is cheap here: the build fails on main, :latest does not move, and
-# nothing broken is served — you fix forward instead of finding out early.
+# request too. That was the same build, minutes earlier, publishing nothing,
+# and then again on the merge that followed it: two hosted builds for one
+# answer, of which only the second produces the image anybody runs. What it
+# bought was learning about a broken Dockerfile before the merge instead of
+# after, and after is cheap here: the build fails on main, :latest does not
+# move, and nothing broken is served, so you fix forward instead of finding
+# out early.
 # The lint workflow still runs on every PR; it is self-hosted, so it is free.
 on:
   push:
@@ -28,9 +29,9 @@ on:
     # Weekly rebuild so the base image, Claude Code and the runner stay fresh.
     - cron: "0 6 * * 1"
   # The checkbox is off by default so a manual run is a cheap retry of a build
-  # that failed. It used to be implicit — every dispatch rebuilt from scratch,
+  # that failed. It used to be implicit: every dispatch rebuilt from scratch,
   # which gives every layer a new digest and makes the host re-pull the whole
-  # image — and that is a surprise when the intent was only "run that again".
+  # image, and that is a surprise when the intent was only "run that again".
   # Worth knowing beside it: GitHub's *Re-run all jobs* keeps the original
   # `push` event, so a re-run always used the cache; only this button differed.
   workflow_dispatch:
@@ -48,12 +49,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     # Two merges in quick succession queue two builds of the same branch, and
-    # only the newest result means anything — cancel the superseded one rather
-    # than pay for an image that is already out of date when it lands.
+    # only the newest result means anything, so cancel the superseded one
+    # rather than pay for an image already out of date when it lands.
     #
     # On THIS job, not the workflow. It used to be on the workflow, and then
-    # the `record` job below — a bookkeeping step that waits for the node's
-    # runner — kept a cancelled run alive in the group, and the next build
+    # the `record` job below (a bookkeeping step that waits for the node's
+    # runner) kept a cancelled run alive in the group, and the next build
     # (a manual dispatch included) sat in "waiting for build image #N" for as
     # long as that runner was busy or away. A recorder must not be able to
     # hold up the build it records.
@@ -74,7 +75,7 @@ jobs:
 
     steps:
       # Elapsed time is the only signal here for whether the layer cache was
-      # actually used — nothing in the API reports a cache hit — and the two
+      # actually used (nothing in the API reports a cache hit), and the two
       # cases are minutes apart: a scripts-only build reuses every toolchain
       # layer, a from-scratch one rebuilds all of them. Worth one variable.
       - name: Start the clock
@@ -82,7 +83,7 @@ jobs:
 
       # Full history, not the default depth-1: the version's ordinal is
       # `git rev-list --count HEAD`, and a shallow clone answers that with 1.
-      # It would not fail — every build would just silently call itself
+      # It would not fail; every build would just silently call itself
       # .dev.1, which is worse.
       - uses: actions/checkout@v5
         with:
@@ -91,15 +92,15 @@ jobs:
       # The hosted runner ships ~25GB of toolchains this build never uses
       # (dotnet, the runner's own Android SDK, GHC, CodeQL). This image was
       # large enough that the export phase ran the disk dry at "exporting
-      # layers" — silently, because a full disk kills the step before it can
-      # say why. Reclaim the space first, and print the number so the next
+      # layers", and silently, because a full disk kills the step before it
+      # can say why. Reclaim the space first, and print the number so the next
       # capacity failure is a figure in the log rather than a mystery.
       #
-      # The image has since lost ~2.9GB compressed to the package store, which is
+      # The image has since lost ~2.9GB compressed to the toolchain store, which is
       # headroom rather than a reason to stop: this step costs seconds, and
       # what it protects against gives no error message. Note also that the
       # paths below are the RUNNER's preinstalled toolchains, unrelated to
-      # what this image installs — /usr/local/lib/android is GitHub's Android
+      # what this image installs: /usr/local/lib/android is GitHub's Android
       # SDK, several GB, and is worth deleting no matter what we ship.
       - name: Reclaim runner disk
         run: |
@@ -111,7 +112,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       # For the push, and for reading the cache manifest out of :latest before
-      # it — the package is private, so even the read needs the token.
+      # it: the package is private, so even the read needs the token.
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -150,7 +151,7 @@ jobs:
         run: echo "at=$(date -u +%Y-%m-%dT%H:%MZ)" >> "$GITHUB_OUTPUT"
 
       # The ordered identity, derived the same way `bb version` derives it in
-      # a checkout — see scripts/dashboard/version.py for why rev-list and not
+      # a checkout; see scripts/dashboard/version.py for why rev-list and not
       # a run number or `git describe`'s count. Kept as shell here rather than
       # calling into the module: this runs on a hosted runner with only the
       # repo checked out, before any image exists to run bb from.
@@ -166,7 +167,7 @@ jobs:
           elif tag="$(git describe --tags --exact-match HEAD 2>/dev/null)"; then
             v="${tag#v}"
             if [ "$v" != "$target" ]; then
-              echo "::warning::tag $tag disagrees with VERSION ($target) — stamping the tag, but one of them is wrong"
+              echo "::warning::tag $tag disagrees with VERSION ($target); stamping the tag, but one of them is wrong"
             fi
           else
             v="${target}-dev.${ordinal}+${short}"
@@ -193,18 +194,18 @@ jobs:
           # plain manifest rather than an OCI image index.
           #
           # build-push-action attaches one by default, and an image with an
-          # attestation has to be an index — the image and the attestation are
+          # attestation has to be an index: the image and the attestation are
           # two entries in it. ghcr then serves the tag ONLY to a request that
           # accepts application/vnd.oci.image.index.v1+json, and answers 404 to
           # one that asks for the docker manifest types. Unraid's Docker page
           # asks for the docker types, so every image that moved to an index
-          # went to "not available" in its version column — measured on
+          # went to "not available" in its version column. That was measured on
           # ghcr.io/advplyr/audiobookshelf, which 404s for every Accept header
-          # but that one — and the box stopped being able to say whether it was
+          # but that one, and the box stopped being able to say whether it was
           # running the current BuilderBot.
           #
           # What it costs: no SLSA provenance on the published image. Worth it
-          # here — one platform, one private image, one consumer, and that
+          # here: one platform, one private image, one consumer, and that
           # consumer's whole job is to tell the operator whether the box is
           # current. Delete this line to get the attestation back, and the
           # version column goes blank again until Unraid can read an index.
@@ -214,10 +215,11 @@ jobs:
           # export evicted the previous build's entry: all of the cost, none
           # of the hits. A smaller image would now fit, but there is nothing
           # to go back for: this is a single-stage build, so every layer
-          # worth caching ends up in the published image — which is precisely
-          # what inline caches — and `mode=max`'s advantage, keeping
-          # intermediate layers that never ship, does not exist here. Inline embeds the cache metadata in the pushed image
-          # itself — no separate store, nothing to evict — and seeding from
+          # worth caching ends up in the published image, which is precisely
+          # what inline caches, and `mode=max`'s advantage, keeping
+          # intermediate layers that never ship, does not exist here. Inline
+          # embeds the cache metadata in the pushed image itself, with no
+          # separate store and nothing to evict, and seeding from
           # :latest lets an unchanged prefix of the Dockerfile reuse the
           # previous build's layers digest-for-digest. That reuse is also
           # what keeps the host's pull small: scripts/ and config/ are COPY'd
@@ -227,7 +229,7 @@ jobs:
           cache-to: type=inline
           # The weekly build exists to pick up fresh packages, and a fully
           # cached rebuild of an unchanged Dockerfile would reuse every layer
-          # and refresh nothing — so the schedule always pays for the full
+          # and refresh nothing, so the schedule always pays for the full
           # rebuild; that is the once a week the big download buys something.
           # A dispatch pays it only when asked: "freshen it now" and "that run
           # died, run it again" arrive through the same button and want
@@ -242,7 +244,7 @@ jobs:
         if: always()
         run: echo "s=$(( $(date +%s) - T0 ))" >> "$GITHUB_OUTPUT"
 
-  # The build runs on a hosted runner — out of reach of the container that
+  # The build runs on a hosted runner, out of reach of the container that
   # will eventually run its image, and invisible from inside it. So this job
   # comes back to the box and writes the outcome where `bb ci-log` reads it.
   #
@@ -260,16 +262,16 @@ jobs:
     #
     # It can still lose a race, and did on its first live run: the runner takes
     # one job at a time, this one queued behind the same branch's lint, and the
-    # operator updated the container — killing both — before it got a turn. The
+    # operator updated the container, killing both, before it got a turn. The
     # loss is survivable by construction, because the outcome most likely to be
     # lost that way is a SUCCESS whose image is about to be recorded in
     # /config/image-log.tsv anyway. A failed build publishes nothing, so nobody
-    # updates, so the runner stays up and the record gets written — which is
+    # updates, so the runner stays up and the record gets written, which is
     # the case this job exists for.
     runs-on: [self-hosted, bb-sandbox]
     # A bookkeeping job must not be able to paint a successful build red. It
     # still shows as failed on its own row, which is where a broken recorder
-    # belongs — the run's status stays the build's.
+    # belongs; the run's status stays the build's.
     continue-on-error: true
     steps:
       - name: Archive the outcome where the container can read it
@@ -294,8 +296,8 @@ jobs:
           fi
           dir="$dir/${GITHUB_REPOSITORY##*/}"
           # A box with no /config volume should lose the record, not fail the
-          # build over it — but it should say so rather than look successful.
-          mkdir -p "$dir" || { echo "no writable /config — nothing archived"; exit 0; }
+          # build over it, but it should say so rather than look successful.
+          mkdir -p "$dir" || { echo "no writable /config, so nothing archived"; exit 0; }
           log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
 
           case "$BUILD_ELAPSED" in
@@ -303,9 +305,9 @@ jobs:
             *) took="$((BUILD_ELAPSED / 60))m $((BUILD_ELAPSED % 60))s" ;;
           esac
           case "$GITHUB_EVENT_NAME" in
-            schedule) cache="off — the weekly rebuild always is" ;;
+            schedule) cache="off (the weekly rebuild always is)" ;;
             *) if [ "$NO_CACHE" = true ]; then
-                 cache="off — the run asked for a full rebuild, so the host re-pulls everything"
+                 cache="off (the run asked for a full rebuild, so the host re-pulls everything)"
                else
                  cache="seeded from :latest"
                fi ;;
@@ -314,7 +316,7 @@ jobs:
           # The same header the lint workflow writes, because `bb ci-log` reads
           # both out of this directory and tells them apart by the first line.
           {
-            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "# ${GITHUB_WORKFLOW} on ${GITHUB_REPOSITORY}"
             echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
             echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
             echo "commit: ${GITHUB_SHA}"

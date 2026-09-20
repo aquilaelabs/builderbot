@@ -1,15 +1,15 @@
 """What a session wants to add to the notebook, held for the operator.
 
 Per project, the operator says how much they want to be in the loop on what
-a session ENTERS into each of the three tabs — a roadmap item, a bug report,
-a house rule (roadmap #27, decided 7 Sep):
+a session ENTERS into each of the three tabs, meaning a roadmap item, a bug
+report or a house rule (roadmap #27, decided 7 Sep):
 
     auto   it lands as it always has, marked as the session's
     ask    it is held here; the operator approves or denies it on the notebook
     deny   it is refused, with a sentence the session can quote in its reply
 
-Creation only. Modifying what is already on a list — ticking an item off,
-noting a bug, rewording a step — passes under every setting: the stale-read
+Creation only. Modifying what is already on a list (ticking an item off,
+noting a bug, rewording a step) passes under every setting: the stale-read
 guard and the history already cover those, and the setting is about how
 much enters the notebook, not a lock on it. The one exception is a change
 aimed at something that is itself still held: details or a step added to a
@@ -17,21 +17,21 @@ held roadmap item, a note on a held bug. Those ride behind the record they
 depend on, land after it, and are denied with it.
 
 HOLD THE INTENT, NOT THE CHANGE. A record is the call that would have been
-made — verb and arguments — plus one line describing it. Approval replays the
+made (verb and arguments) plus one line describing it. Approval replays the
 call, in order; denial applies nothing. So there is no undo to write, and a
 list never shows an entry that was not agreed to. This is the opposite of a
-notebook batch (todo.py), which lands changes as they happen and defers only
+notebook batch (roadmap.py), which lands changes as they happen and defers only
 the record of them.
 
 THE NUMBER IS RESERVED WHEN THE RECORD IS HELD, not when it lands. A session
-writes `add`, then `info R12`, then `step add R12` — the template tells it
-to — so it has to be told the number at once, and the store beside this one
+writes `add`, then `info R12`, then `step add R12` (the template tells it
+to), so it has to be told the number at once, and the store beside this one
 keeps that number out of anyone else's hands until the record is settled. A
 denied add leaves a gap in the numbering, which the roadmap already documents
 as normal. Rules are keyed by name and reserve nothing.
 
-WHERE THE GATE SITS: in todo.add, bugs.add and rules.add, keyed on
-by == "claude" — not in bb and not in the server. bb imports those modules
+WHERE THE GATE SITS: in roadmap.add, bugs.add and rules.add, keyed on
+by == "claude", not in bb and not in the server. bb imports those modules
 directly on the controller, and a node's verbs relay through the server into
 the same bb, so the module is the one chokepoint that covers both. The
 dashboard's own writes (by="you") never come here. The dependents are the
@@ -40,7 +40,7 @@ arguments; the module sees a closure.
 
 Replays run through `applier`s the three modules register when they are
 configured, and a thread-local flag tells their gate the call is a replay
-rather than a fresh add — so the record lands instead of being held again,
+rather than a fresh add, so the record lands instead of being held again,
 and the module's own log marks the event approved.
 
 Approving and denying is the operator's, on the notebook or through the
@@ -78,7 +78,7 @@ MAX_SUMMARY = 300
 
 def configure(*, write_json, state):
     """Idempotent: every store that gates through here configures it, and
-    the first one wins nothing — they all pass the same two values."""
+    the first one wins nothing: they all pass the same two values."""
     globals().update(write_json=write_json, STATE=Path(state))
     globals()["FILE"] = Path(state) / "pending.json"
     # The mode lives with the project's other settings. Under the dashboard
@@ -91,7 +91,7 @@ def configure(*, write_json, state):
 _lock = statefile.on(lambda: FILE)
 
 # Replay, per tab: kind -> callable(project, verb, args) -> the module's
-# result. Registered by todo/bugs/rules.configure, so nothing here imports
+# result. Registered by roadmap/bugs/rules.configure, so nothing here imports
 # them (they import this).
 _apply = {}
 
@@ -104,7 +104,7 @@ _tl = threading.local()
 
 
 def replaying():
-    """True while a held call is being replayed — read by the three gates so
+    """True while a held call is being replayed, read by the three gates so
     the replay lands rather than being held a second time, and by their logs
     so the event says it was approved."""
     return bool(getattr(_tl, "on", False))
@@ -129,20 +129,20 @@ def save(d):
 
 
 def mode(project, kind):
-    """auto, ask or deny for one tab of one project — auto unless set."""
+    """auto, ask or deny for one tab of one project; auto unless set."""
     if kind not in KINDS:
         return "auto"
     try:
         return (prefs.get(project).get("gate") or {}).get(kind) or "auto"
-    except Exception:  # noqa: BLE001 — a broken prefs file must not stop a write
+    except Exception:  # noqa: BLE001  (a broken prefs file must not stop a write)
         return "auto"
 
 
 def refusal(kind):
-    """The sentence a session gets under deny — quotable, and it says what
+    """The sentence a session gets under deny: quotable, and it says what
     to do instead."""
     return (f"this project does not take new {NOUN.get(kind, 'entries')} from a "
-            "session — say it in your reply instead, and the operator adds it "
+            "session: say it in your reply instead, and the operator adds it "
             "if they agree")
 
 
@@ -161,7 +161,7 @@ def hold(project, kind, verb, args, summary, number=None, after=None, by="claude
         rs = d["projects"].setdefault(project, [])
         if len(rs) >= MAX_PENDING:
             return {"error": f"{MAX_PENDING} changes are already waiting for the "
-                             "operator here — say the rest in your reply"}
+                             "operator here; say the rest in your reply"}
         rec = {"id": d["next"], "kind": kind, "verb": verb,
                "args": args if isinstance(args, dict) else {},
                "summary": " ".join(str(summary or "").split())[:MAX_SUMMARY],
@@ -177,7 +177,7 @@ def hold(project, kind, verb, args, summary, number=None, after=None, by="claude
 
 
 def held(project, kind, number):
-    """The open record that CREATES `number` on `kind`'s tab, or None — how bb
+    """The open record that CREATES `number` on `kind`'s tab, or None. How bb
     finds out that R12 is not on the list because it is waiting here."""
     if number is None:
         return None
@@ -201,7 +201,7 @@ def count(project):
 
 
 def counts():
-    """{project: how many waiting} — for the project row, so the bell and the
+    """{project: how many waiting}, for the project row, so the bell and the
     notebook band read it off the poll."""
     with _lock:
         d = load()
@@ -247,8 +247,8 @@ def approve(project, ids, by="you"):
 
     A record whose parent is still waiting is skipped rather than replayed
     into a list that does not hold its item: the modal ticks the parent by
-    default, and the skip says what it waits on. A replay that fails — the
-    list is full, the rule's name clashed — is settled as failed with the
+    default, and the skip says what it waits on. A replay that fails (the
+    list is full, the rule's name clashed) is settled as failed with the
     module's own reason, and reported; it is not left waiting, because the
     operator already answered it.
     """
@@ -274,7 +274,7 @@ def approve(project, ids, by="you"):
             _tl.on = True
             try:
                 r = fn(project, rec.get("verb"), dict(rec.get("args") or {}))
-            except Exception as e:  # noqa: BLE001 — one bad replay must not strand the rest
+            except Exception as e:  # noqa: BLE001  (one bad replay must not strand the rest)
                 r = {"error": f"{type(e).__name__}: {e}"}
             finally:
                 _tl.on = False
@@ -319,7 +319,7 @@ def deny(project, ids, by="you"):
 
 def settled_line(project):
     """One sentence for the session about what the operator decided since it
-    was last told, and told — so the next prompt does not repeat it. "" when
+    was last told, and told, so the next prompt does not repeat it. "" when
     nothing was decided. Per project rather than per session: normally one
     session works a project, and a second one hearing the news is cheaper
     than the first one never hearing it."""

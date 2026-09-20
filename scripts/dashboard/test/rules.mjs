@@ -3,8 +3,8 @@
 //
 // What is exercised for real: the store through `bb rules`, the tab through
 // the page, the standing block exactly as bb-tty composes it, and both hooks
-// with the JSON a real Claude Code would hand them. What is faked: nothing —
-// the hooks are the shipped scripts, run as processes, because "does the rule
+// with the JSON a real Claude Code would hand them. What is faked: nothing.
+// The hooks are the shipped scripts, run as processes, because "does the rule
 // reach the session" is the only question this file is about and a stub of
 // the hook would be a stub of the answer.
 import { launch, newPage, ok, done, ready, URL, DIR, nbShown, nbTab, sleep, openFold } from './lib.mjs';
@@ -45,8 +45,8 @@ ok(/Nothing set/.test(await page.$eval('#rulesBox', e => e.textContent)),
 // the count is small and exact, and dist/ and the rest of the fixture's
 // untracked litter are not in it.
 // Tracked means tracked: alpha's working tree has files, but only what is
-// in git's index counts, so two files are committed first — a script and
-// the README — and dist/, the untracked archive fixtures and the like stay
+// in git's index counts, so two files are committed first (a script and
+// the README), and dist/, the untracked archive fixtures and the like stay
 // out of the number.
 writeFileSync(`${DIR}/ws/alpha/count.py`, 'print("one")\nprint("two")\n');
 const genv = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x' };
@@ -72,11 +72,11 @@ ok(await page.$('#memList') !== null,
    '...on the same tab as the memories, which is the point of the rename');
 
 // Two rules: one standing, one with a trigger. There is no picker for which
-// kind — the trigger is the answer, and the row says which it became.
+// kind: the trigger is the answer, and the row says which it became.
 //
-// The rules section is shut by default now — the code base above it is the
+// The rules section is shut by default now. The code base above it is the
 // answer this tab opens on, and the count on this heading says what is
-// behind it — so everything in it, Add included, is one fold away.
+// behind it, so everything in it, Add included, is one fold away.
 await openFold(page, '#rulesBox details.sect[data-sect="briefing:rules"]');
 await page.click('#rlAdd');
 await page.waitForSelector('#rulesBox .rulerow', { timeout: 10000 });
@@ -95,12 +95,12 @@ await page.fill(`${two} .rlPaths`, 'scripts/agent');
 await page.fill(`${two} .rlWords`, 'agent, protocol');
 ok((await page.$eval(`${two} .rlkind`, e => e.textContent)).includes('on its triggers'),
    '...and one with a trigger says so the moment the trigger is typed');
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'a written rule arms the panel\'s one Save, like everything else here');
 ok(read().length === 0, '...and nothing is on disk until it is pressed');
 
-await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+await page.click('#roadmapSaveQuiet');
+await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true', { timeout: 15000 });
 const saved = read();
 ok(saved.length === 2 && saved[0].name === 'voice',
@@ -111,8 +111,8 @@ ok(JSON.stringify(saved[1].paths) === '["scripts/agent"]'
    && JSON.stringify(saved[1].words) === '["agent","protocol"]',
    `...and splitting the triggers on the comma they were typed with (${
      JSON.stringify(saved[1])})`);
-// Written, a rule is READ: its name, its words and its triggers, no fields —
-// every row opening as a form read as a tab of half-finished edits. Edit
+// Written, a rule is READ: its name, its words and its triggers, no fields.
+// Every row opening as a form read as a tab of half-finished edits. Edit
 // brings the fields back for that one row; Cancel puts them away and drops
 // what was typed into them.
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
@@ -134,13 +134,13 @@ await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
 await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
-ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'typing into a rule arms the panel\'s Save');
 await page.click('#rulesBox .rulerow[data-i="1"] .rlCancel');
 await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .rlBody', e => e.textContent)),
    '...and Cancel puts them away, reading what was there before Edit');
-ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...with nothing left staged, so the Save goes quiet again');
 // A row Add made has nothing to go back to: cancelling it is removing it.
 await page.click('#rlAdd');
@@ -148,7 +148,7 @@ await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow')
 await page.click('#rulesBox .rulerow[data-i="2"] .rlCancel');
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
-ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    'cancelling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------
@@ -237,7 +237,7 @@ ok(/nothing changed here that a rule/.test(bb('check')),
 ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');
 ok(/add, do not change/.test(bb('show', 'agent-compat')),
-   'bb rules show reads one in full — how a session follows the name in its block');
+   'bb rules show reads one in full: how a session follows the name in its block');
 // What a session may NOT do is the narrow part, and it is about the whole
 // list rather than about writing at all: the tab's replace is a person's,
 // because one call rewriting every rule is exactly what the per-rule
@@ -246,7 +246,7 @@ let refused = '';
 try { execFileSync(BB, ['rules', 'replace'], { env: ENV }); }
 catch (e) { refused = String(e.stdout || '') + String(e.stderr || ''); }
 ok(/unknown/.test(refused),
-   'there is no verb that rewrites the whole list — that one is the tab\'s');
+   'there is no verb that rewrites the whole list: that one is the tab\'s');
 
 // ---- a session's own rules -------------------------------------------------
 // Both sides write these, the way both sides write the roadmap and the
@@ -273,15 +273,15 @@ ok(/reworded/.test(bb('edit', 'dont-edit-during-a-suite', 'Stage edits; apply af
 ok(/\*dont-edit-during-a-suite/.test(bb('list')),
    'the listing marks which are a session\'s, since that is what decides what it may do');
 ok(/^\* No em dashes/m.test(bb('--prompt')) || /\*dont-edit-during-a-suite/.test(bb('--prompt')),
-   'and the block says so too — a session\'s own note must not reach the next one '
+   'and the block says so too: a session\'s own note must not reach the next one '
    + 'wearing the operator\'s authority');
 {
   const h = bb('history');
   // The mark AND the account: "you" and "claude" say a person or a session,
-  // and the name says which person — the same thing the Nodes tab's audit
+  // and the name says which person, the same thing the Nodes tab's audit
   // has recorded since accounts existed.
   ok(/claude test\s+add\s+dont-edit-during-a-suite/.test(h) && /you test\s+add\s+voice/.test(h),
-     'every change is in a history that says who made it, and which account — '
+     'every change is in a history that says who made it, and which account, '
      + 'which is what makes this safe to share, rather than a lock');
 }
 ok(/dropped dont-edit-during-a-suite/.test(
@@ -289,7 +289,7 @@ ok(/dropped dont-edit-during-a-suite/.test(
    'a session can drop its own, with the reason kept');
 
 // The endpoint, not just the verb. `bb rules` has no write verb and the file
-// tools are denied on the file — but a session has a shell and a token, and
+// tools are denied on the file, but a session has a shell and a token, and
 // that token authenticates as a principal with user rights over exactly this
 // project. Without a refusal here the HTTP route would have been the way
 // around the whole arrangement, which is the kind of hole a design like this
@@ -373,5 +373,5 @@ print(users.mint_session('alpha'))`], { encoding: 'utf8' }).trim();
 }
 
 ok(page.errors.length === 0, `zero console errors${
-  page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+  page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

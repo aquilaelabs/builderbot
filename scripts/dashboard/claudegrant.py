@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One Anthropic account per BuilderBot account — without copying a grant.
+"""One Anthropic account per BuilderBot account, without copying a grant.
 
 **The credential does not travel, and this file is why.** Every failure this
 has had came from one OAuth grant living on several machines: a refresh
@@ -11,28 +11,28 @@ and the rotation is what punishes it.
 
 So each machine signs in for itself and keeps its own grant, which it alone
 refreshes. Nothing is pushed anywhere and the controller holds no credential
-at all — which is also what lets this container carry no Claude.
+at all, which is also what lets this container carry no Claude.
 
 **What the controller keeps instead is the IDENTITY**, per BuilderBot account:
 
     email, plan   the Anthropic account this BuilderBot account is bound to,
                   as the first node to sign in reported it
     gen           a counter, moved by a sign-out
-    nodes         {node id: {email, at}} — who reports being signed in, and
+    nodes         {node id: {email, at}}: who reports being signed in, and
                   as whom, which is what the card reads and what makes a
                   second Anthropic account visible the moment it appears
 
 **The one-account rule is enforced by observation, and that is honest.** A
 node reporting a different Anthropic account is refused and told to sign out
 first; its sessions do not get to run as somebody else's login. It is not
-enforcement by construction — nothing can stop a person typing another
+enforcement by construction: nothing can stop a person typing another
 account into `claude auth login` on a machine they have a shell on. What it
 replaces is worse: before, that second account was silently copied to every
 other node.
 
 **Signing out reaches a machine that is not listening.** The generation moves
-and the record is cleared; every node compares generations on its next check —
-every connection, every prompt — and runs `claude auth logout` when its own is
+and the record is cleared; every node compares generations on its next check
+(every connection, every prompt) and runs `claude auth logout` when its own is
 behind. A node that is offline does it when it comes back. There is no queue,
 because the node is the one that asks.
 
@@ -69,7 +69,7 @@ def _write(home, d):
 
 
 def state(home):
-    """{signed_in, email, plan, gen, nodes} — what the card draws and what a
+    """{signed_in, email, plan, gen, nodes}: what the card draws and what a
     node compares itself against.
 
     `signed_in` is "some node reports being signed in", because that is the
@@ -91,7 +91,7 @@ def report(home, node_id, email, plan="", signed_in=True):
 
     This is the whole of the one-account rule: the first report binds the
     BuilderBot account to an Anthropic one, and a later report of a different
-    one is refused rather than recorded. Refused, not merely flagged — a node
+    one is refused rather than recorded. Refused, not merely flagged: a node
     whose sessions would run as somebody else's login is not a warning.
     """
     if not home:
@@ -114,7 +114,7 @@ def report(home, node_id, email, plan="", signed_in=True):
     if bound and email.lower() != bound.lower():
         return {"error": f"this BuilderBot account is signed in to {bound}, and "
                          f"that machine is signed in as {email}. One Anthropic "
-                         "account per BuilderBot account — sign out first, which "
+                         "account per BuilderBot account: sign out first, which "
                          "signs out every node, or sign that machine in to "
                          f"{bound}."}
     d["email"] = bound or email

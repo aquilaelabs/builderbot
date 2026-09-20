@@ -1,5 +1,5 @@
 // Phase 1 of the controller design (docs/nodes.md): the seam, with nothing
-// visibly changing. What this file holds is the phase's whole contract —
+// visibly changing. What this file holds is the phase's whole contract:
 // the store exists behind the four one-way doors it owns, the local node and
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
@@ -19,7 +19,7 @@ writeFileSync(`${DIR}/ws/ep.silon/.env.example`, '');
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 
-// The store the harness server booted with — read through the module itself,
+// The store the harness server booted with, read through the module itself,
 // the way bb nodes reads it, so the test exercises the same path.
 const readStore = (py) => JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, sys
@@ -62,7 +62,7 @@ ok(!local.capabilities.includes('docker-host'),
    '...and no docker-host capability: the local node is not a sandbox');
 ok(await page.evaluate(() => !document.querySelector('.nodestab [data-cap], .nodestab [data-encap]')),
    'no capability toggles anywhere: a node does everything for the projects bound to it');
-// The docker host, enrolled by the harness with a token (roadmap #24 —
+// The docker host, enrolled by the harness with a token (roadmap #24:
 // there is no ssh kind and no DOCKER_HOST seed any more). Its address is
 // what it dialed in from, reported by the node rather than written here.
 const sandbox = list.find(n => n.name === 'sandbox');
@@ -73,7 +73,7 @@ ok(sandbox && /^n_[0-9a-f]{8}$/.test(sandbox.id) && sandbox.kind === 'agent'
 ok(!list.some(n => n.kind === 'ssh'),
    '...and no node is of the retired ssh kind, here or anywhere');
 ok(list[0].id === 'local',
-   'local lists first — the one node every deployment has');
+   'local lists first: the one node every deployment has');
 
 // ---- the default node runs docker, when any node says so (B113) -----------
 // node_for() took the newest node with an ADDRESS, and an address is not a
@@ -128,8 +128,8 @@ print(json.dumps(out))
 
 // ---- the seam: work says which node it belongs to --------------------------
 // A compose action claims the job slot; the claim now asks node_for() and
-// the answer rides the job the page polls. Fixed in phase 1 — docker work is
-// the sandbox record — and the call site is what phase 4's placement slides
+// the answer rides the job the page polls. Fixed in phase 1 (docker work is
+// the sandbox record), and the call site is what phase 4's placement slides
 // into.
 {
   const r = await page.evaluate(async () => (await (await fetch('/api/devapp', {
@@ -138,7 +138,7 @@ print(json.dumps(out))
   })).json()));
   ok(!r.error, `an instance exists to act on (${r.error || 'ok'})`);
   // Read from the job ROW, not from the live slot the manager polls. The
-  // first version of this raced the stub daemon — an up finishes in well
+  // first version of this raced the stub daemon: an up finishes in well
   // under a second and a finished job leaves the slot, so the stamp had to
   // be caught mid-flight, and on a loaded box the whole job could pass
   // between two polls. It flaked in full runs and passed in isolation, which
@@ -161,7 +161,7 @@ print(json.dumps(out))
 
 // ---- the audit trail -------------------------------------------------------
 // Door 2: every mutation through the POST funnel writes who/what/when with a
-// parameter digest — and never the parameters, which carry tokens.
+// parameter digest, and never the parameters, which carry tokens.
 {
   await page.evaluate(() => fetch('/api/bugs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -194,7 +194,7 @@ print(json.dumps(out))
     { encoding: 'utf8', cwd: REPO,
       env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
   ok(!/\blocal\b/.test(out) && /sandbox · stub/.test(out),
-     'bb nodes prints the enrolled machines, read-only — never the controller, which is registry plumbing');
+     'bb nodes prints the enrolled machines, read-only. Never the controller, which is registry plumbing');
 }
 
 // ---- phase 2: the Nodes tab ------------------------------------------------
@@ -228,7 +228,7 @@ print(json.dumps(out))
   // key as well as a token and a token-only node could do everything except
   // docker. Compose is an agent job now, so the tab offers one way in.
   ok(await page.$('#ndAdd') === null && await page.$('#ndEnroll') !== null,
-     'the tab offers enrollment and nothing else — no Add ssh node');
+     'the tab offers enrollment and nothing else: no Add ssh node');
   {
     const before = page.errors.length;
     const r = await page.evaluate(() => nodeAct({ action: 'add', name: 'buildbox',
@@ -285,7 +285,7 @@ print(json.dumps(out))
   ok(true, 'a deliberately restricted node can still be written through the API');
   {
     // A deliberate refusal: the server answers 400, and the browser logs
-    // every non-2xx as a console error. Asserted, then absolved — the final
+    // every non-2xx as a console error. Asserted, then absolved: the final
     // zero-errors check is for failures this file did not order.
     const before = page.errors.length;
     const r = await page.evaluate(() => nodeAct({ action: 'update',
@@ -315,7 +315,7 @@ print(json.dumps(out))
 {
   // Opened with the node list DELIBERATELY not loaded, because that is the
   // state a fresh page is in: the picker is drawn from that list, and the
-  // tab used to watch only its own revision — so the list landed, nothing
+  // tab used to watch only its own revision, so the list landed, nothing
   // redrew, and a box with two nodes showed no picker until something else
   // happened to repaint the tab. The tab asks for the list on open now and
   // watches its revision, and this is the case that proves it.
@@ -324,7 +324,7 @@ print(json.dumps(out))
   await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
   // Waited for AND read in one go: the tab redraws from the poll, so a list
   // read in a second round trip can land on the moment between two draws and
-  // come back empty (B99's family — this file has had three).
+  // come back empty (B99's family; this file has had three).
   const opts = await page.waitForFunction(() => {
     const os = [...document.querySelectorAll('.dmtab .dmpick option')];
     return os.length ? os.map(o => o.textContent.trim()) : false;
@@ -363,14 +363,14 @@ print(json.dumps(out))
   // available()'s two probes notices first depends on the box: `docker
   // version` failing gives "does not answer", and `docker version` answering
   // while `docker info` does not gives "answers but will not say what it is".
-  // Both are the thing under test — a reason on screen instead of a spinner —
+  // Both are the thing under test (a reason on screen instead of a spinner),
   // and listing only three made the fourth read as a failure in a full run
   // while the file passed alone.
   ok(/not a BuilderBot sandbox|does not answer|will not say what it is/.test(emptyWhy),
      `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
   await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
-     '...with the picker still live — the way back is the way in');
+     '...with the picker still live: the way back is the way in');
   // and back: the sandbox's last-known answer paints instantly from cache.
   // Waited for at the point of USE, not at the assertion above: the picker
   // is drawn only while nodesList holds more than one node, and a reload of
@@ -394,7 +394,7 @@ print(json.dumps(out))
                              null, { timeout: 30000 });
   ok(true, 'switching back to the live node recovers without a reload');
   // ...and the tab REMEMBERS which node that was. The pick lived in a page
-  // variable, so a reload went back to whichever node is the default — not
+  // variable, so a reload went back to whichever node is the default, not
   // the one anybody chose, and reliably the wrong entry in the picker. It
   // rides in the tab's arg now, which is the part of a tab that is saved,
   // and `identity()` for a kind that is not `multi` is the kind alone, so
@@ -404,7 +404,7 @@ print(json.dumps(out))
   ok(await page.evaluate(() => tabs.find(t => t.kind === 'docker')?.arg) === want,
      'the docker tab carries the node it is on, so it is saved with the layout');
   // The line under the picker names the daemon the PICKER is on, which it
-  // read off the status poll — and the poll is the default node's answer, so
+  // read off the status poll, and the poll is the default node's answer, so
   // it named a machine the tab was not talking to, in an address. Read
   // BEFORE the reload below, which throws the answer away on purpose.
   ok(await page.evaluate(() => (dockerList?.src?.where || '').length > 0),
@@ -425,7 +425,7 @@ print(json.dumps(out))
   await page.evaluate(() => toggleUiMenu(true));
   await page.waitForSelector('#uiProfile', { timeout: 10000 });
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logDays')),
-     'the gear keeps appearance only — the log setting moved out');
+     'the gear keeps appearance only: the log setting moved out');
   await page.evaluate(() => toggleUiMenu(false));
   await page.evaluate(() => { const c = document.getElementById('cardAdmin');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
@@ -461,7 +461,7 @@ print(json.dumps(out))
 // A node that enrolled as a sandbox gets a fold: mounts, stores and network
 // as the operator wants them, drawn against what the agent reports, with
 // Save keeping the record and Apply queuing the system job. Enrolled here by
-// hand — the census is a body — because the real agent has its own suite.
+// hand (the census is a body) because the real agent has its own suite.
 {
   const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
   const base = URL.replace(/\/$/, '');
@@ -470,28 +470,28 @@ print(json.dumps(out))
   const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed' });
   // The digest this controller ships, so the fixture node enrolls CURRENT.
   // Everything below drives Apply, the runner and installs, all of which are
-  // held while an agent is behind — the stale half is its own block at the
+  // held while an agent is behind: the stale half is its own block at the
   // end, where it can hold them without breaking the rest.
   const shipped = (await napi('/api/v1/nodes')).agent || {};
   // The census this node reports, kept as one object: a hello REPLACES it,
   // so a later poke that sends a partial one silently takes the node's
-  // mounts and address away — which is a confusing way to fail four tests
+  // mounts and address away, which is a confusing way to fail four tests
   // further down.
   const CENSUS = { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
-              sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
-                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
+              sandbox: true, administers: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
+                                       toolchains: { path: '/var/lib/builderbot/toolchains', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
-              // What `bb packages versions` says on the node — the controller's
+              // What `bb toolchains versions` says on the node: the controller's
               // own generator, run there. The toolchains dict above is a
               // placement summary and describes the same store differently,
               // which is the disparity this replaces.
-              packages_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
-              // What the packages store actually holds, which is what the
-              // Tools tab decides `installed` from — the census summary
+              toolchain_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
+              // What the toolchain store actually holds, which is what the
+              // Tools tab decides `installed` from; the census summary
               // above is a placement hint, not an inventory.
               store_dirs: { top: ['flutter', 'node'], android: [] },
-              // The android system images in the node's own packages store,
+              // The android system images in the node's own toolchain store,
               // and the AVDs built on them. Walked there; the size is joined
               // here from Google's index, because an image is a guest
               // artifact and weighs the same on every host (roadmap #20).
@@ -550,7 +550,7 @@ print(json.dumps(out))
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample: { cpu_pct: 3.5, mem_mb: 8192, mem_used_mb: 2048,
       stores: { data: { free_mb: 5000, total_mb: 9000 },
-                packages: { free_mb: 40000, total_mb: 90000 },
+                toolchains: { free_mb: 40000, total_mb: 90000 },
                 artifacts: { free_mb: 30000, total_mb: 90000 } } }, running: 0, wait: 0 }) });
   const lst = await napi('/api/v1/nodes');
   ok(lst.agent?.digest && lst.agent.digest === shipped.digest,
@@ -562,7 +562,7 @@ print(json.dumps(out))
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
   ok(await page.$(`${ROW} .ndstale`) === null && await page.$(`${ROW} [data-nd="update-agent"]`) === null,
      'a node running the shipped agent wears no update pill and is offered no update');
-  // The controller is not on this tab at all now — a stronger version of the
+  // The controller is not on this tab at all now, a stronger version of the
   // claim this used to make by picking it and finding no storage section and
   // no agent to update.
   ok(!(await nodeOptions(page)).includes('local')
@@ -579,7 +579,7 @@ print(json.dumps(out))
     label: m.querySelector('.lbl').textContent,
     val: m.querySelector('.val').textContent,
     width: m.querySelector('.fill').style.width })));
-  ok(meters.some(m => m.label === 'packages' && /GB free/.test(m.val))
+  ok(meters.some(m => m.label === 'toolchains' && /GB free/.test(m.val))
      && meters.some(m => m.label === 'data') && meters.some(m => m.label === 'artifacts')
      && !meters.some(m => /missing/.test(m.val))
      && meters.some(m => m.label === 'cpu') && meters.some(m => m.label === 'memory')
@@ -690,7 +690,7 @@ print(json.dumps(out))
   ok(await page.$eval(`${RUN} .ndrunstate`, e => /running a job/.test(e.textContent)
        && /registered as shed/.test(e.textContent)),
      '...and one that is working says which job-taking state it is in, by name');
-  // The label is the only thing that pins a workflow to THIS machine —
+  // The label is the only thing that pins a workflow to THIS machine.
   // `self-hosted` alone matches the controller and every other node, so
   // GitHub sends the job to whichever is idle (roadmap #19).
   ok(await page.$eval(`${ROW} .ndrunpin`, e =>
@@ -698,7 +698,7 @@ print(json.dumps(out))
      '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
   // most often here to check, and it was below three editors. The plane is
-  // sections now — one fold per concern, a status on each summary — and
+  // sections now (one fold per concern, a status on each summary), and
   // the order still holds.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {
        const kids = [...e.querySelectorAll(':scope > details.sect > summary .t')].map(t => t.textContent.trim());
@@ -709,7 +709,7 @@ print(json.dumps(out))
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
   // Every fold on this page is driven rather than left to the browser's
-  // instant snap — the memories, the bug reports, the version tab's fold, the
+  // instant snap: the memories, the bug reports, the version tab's fold, the
   // Docker manager's wiring. Sections shipped without it and were the one
   // kind that jumped.
   {
@@ -720,7 +720,7 @@ print(json.dumps(out))
     await openFold(page, sel);          // put it back for what reads inside it
   }
   // The sidebar's Runner card carries every node with a runner, not only
-  // this container's — a workflow lands on whichever runner its runs-on
+  // this container's: a workflow lands on whichever runner its runs-on
   // matches, and GitHub was the only place that answer existed.
   await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: false,
                                    name: 'shed', url: 'https://github.com/example-org',
@@ -728,7 +728,7 @@ print(json.dumps(out))
   // "shed" is not the condition: the card has carried the name since the
   // install press above, on whichever poll landed since, and refresh() asked
   // while the fifteen-second poll is out returns at once and re-polls after
-  // it — so the first draw here can be from an answer computed before this
+  // it, so the first draw here can be from an answer computed before this
   // hello. Wait for the state the assertion is about (B73).
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => {
@@ -739,8 +739,8 @@ print(json.dumps(out))
        && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      'the Runner card carries a node runner, with the runs-on that lands a job on it');
   await runnerCensus({});
-  // A node with mounts and no saved config opens on the ones it reports —
-  // an empty editor for a machine with three shares was the first thing the
+  // A node with mounts and no saved config opens on the ones it reports.
+  // An empty editor for a machine with three shares was the first thing the
   // operator hit.
   const seeded = await page.$$eval(`${ROW} .ndmount [data-k="source"]`, es => es.map(e => e.value));
   ok(seeded.includes('nas:/mnt/user/old'),
@@ -757,7 +757,7 @@ print(json.dumps(out))
   await page.fill(`${ROW} .ndmount[data-i="${last}"] [data-k="path"]`, '/mnt/appdata');
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
   ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
-     'the fold carries the artifacts store — this node\'s copy of what projects built');
+     'the fold carries the artifacts store: this node\'s copy of what projects built');
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);
@@ -842,6 +842,28 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
                                                     appdata: '/etc' } } })).error,
        '...and refused the same paths the others are, so it cannot be pointed at /etc');
   }
+  // A hand-made request's resolver that is not text is told what a resolver
+  // is, rather than raising on .strip() (B181).
+  {
+    const r = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...rec.config.desired, network: { mode: 'static', address: '10.0.0.40/24', dns: [1] } } });
+    ok(/a resolver is an address/.test(r.error || ''), `a resolver that is not text is refused in words (${r.error})`);
+  }
+  // json.loads takes Infinity, and int() of it raised, failing the node's
+  // whole hello (B180): a non-finite number in a census is no number.
+  {
+    const body = JSON.stringify({ census: { ...CENSUS, session: { up: true, up_s: '__INF__' },
+        stores: { ...CENSUS.stores, data: { ...CENSUS.stores.data, free_mb: '__INF__' } } },
+      version: shipped.version, digest: shipped.digest }).replaceAll('"__INF__"', 'Infinity');
+    const r = await fetch(base + '/api/v1/agent/hello', { method: 'POST', body,
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' } });
+    const back = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(r.status === 200 && back.reported.session?.up_s === null,
+       `a node reporting Infinity is heard, the number taken as absent (${r.status}, up_s ${back.reported.session?.up_s})`);
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
+  }
   // Applying a config that keeps what the node already has asks nothing:
   // the editor was seeded from the node, so this adds a mount rather than
   // taking one away.
@@ -897,22 +919,22 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
-  await page.evaluate(() => openPackages());
-  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
-  ok(await page.$$eval('.pkgtab #pkgNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
+  await page.evaluate(() => openToolchains());
+  await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
+  ok(await page.$$eval('.tctab #tcNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
-  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
-  await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
+  await page.selectOption('.tctab #tcNodeSel', minted.id);
+  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tchead:not(.tcnode)')?.textContent || ''),
                              null, { timeout: 15000 });
-  const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+  const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
      && !tools.some(t => /3\.24\.0/.test(t)),
-     'a node\'s versions come from its own bb packages versions, not the census summary');
-  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+     'a node\'s versions come from its own bb toolchains versions, not the census summary');
+  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
-       await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
-  ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
-     'an installed package on a node reads "installed", not "installed at" with nothing after it');
+       await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
+     'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
   // ---- system packages a held recipe needs (roadmap R51) ------------------
   // The store is a share, so a recipe installed from one node is on every
   // node, while the libraries it needs are each machine's own. The census
@@ -927,34 +949,112 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd },
                              version: shipped.version, digest: shipped.digest }) });
     await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
-    await page.evaluate(() => loadPackages());
-    await page.waitForSelector('.pkgtab .pkgsys', { timeout: 15000 });
-    const line = await page.$eval('.pkgtab .pkgsys', e => e.textContent.replace(/\s+/g, ' '));
+    await page.evaluate(() => loadToolchains());
+    await page.waitForSelector('.tctab .tcsys', { timeout: 15000 });
+    const line = await page.$eval('.tctab .tcsys', e => e.textContent.replace(/\s+/g, ' '));
     ok(/lacks for what its store holds \(dnf\): dotnet: libicu/.test(line),
        `the Tools tab names the missing system packages per recipe, for the node's family (${line.slice(0, 120)})`);
-    ok(await page.$('.pkgtab #pkgSysdeps') !== null,
+    ok(await page.$('.tctab #tcSysdeps') !== null,
        '...with one press to install them on a node the agent administers');
-    const sj = await pj('/api/packages', { action: 'sysdeps', names: [], node: minted.id });
-    ok(sj.ok && /^j_/.test(sj.job), `pressing it queues a package job of the sysdeps kind (${sj.job || sj.error})`);
+    // What each tool pulls onto this machine is on its own row, named in the
+    // node's package manager, before Install rather than in a job log after.
+    const dotnetRow = (await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' '))))
+      .find(t => /\.NET/.test(t)) || '';
+    ok(/Installs 1 system package with it here \(dnf\): libicu/.test(dotnetRow),
+       `a row names the system packages its tool installs on this node (${(dotnetRow.match(/Installs[^.]*libicu/) || ['none'])[0]})`);
+    // Nobody has to press it on a node BuilderBot manages: the census that
+    // named them queued the job itself, for exactly those recipes.
+    const tcJobs = async () => ((await pj(`/api/v1/jobs?node=${minted.id}&type=toolchain&n=20`)).jobs || []);
+    const auto = (await tcJobs()).filter(j => j.spec?.action === 'sysdeps');
+    ok(auto.length === 1 && JSON.stringify(auto[0].spec?.names) === '["dotnet"]' && auto[0].requested_by === 'system',
+       `a managed node installs what it lacks by itself, for the recipes that need it (${auto.map(j => `${j.requested_by}: ${j.spec?.names}`).join(', ') || 'no job'})`);
+    await pj('/api/v1/jobs', { action: 'cancel', id: auto[0]?.id });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+    ok((await tcJobs()).filter(j => j.spec?.action === 'sysdeps').length === 1,
+       '...once: the same lack said again is not a job every hello, so a failing install is not retried forever');
+    const sj = await pj('/api/toolchains', { action: 'sysdeps', names: [], node: minted.id });
+    ok(sj.ok && /^j_/.test(sj.job), `pressing it still queues a toolchain job of the sysdeps kind (${sj.job || sj.error})`);
     const sjob = await pj(`/api/v1/jobs?id=${sj.job}`);
-    ok(sjob.type === 'package' && sjob.spec?.action === 'sysdeps',
+    ok(sjob.type === 'toolchain' && sjob.spec?.action === 'sysdeps',
        '...carrying the action and no recipe names: every held one');
     await pj('/api/v1/jobs', { action: 'cancel', id: sj.job });
+    // Locked to its console: its root is its administrator's, so nothing is
+    // installed by itself, whatever goes missing.
+    await pj('/api/v1/nodes', { action: 'lock', id: minted.id });
+    await sysCensus({ family: 'dnf', unmet: { dotnet: ['libicu'], playwright: ['libgbm'] } });
+    ok((await tcJobs()).filter(j => j.spec?.action === 'sysdeps').length === 2,
+       'a node whose system changes are locked to its console installs nothing by itself');
+    await pj('/api/v1/nodes', { action: 'unlock', id: minted.id });
     await page.evaluate(() => openNodesTab());
     await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
       .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
     ok(true, 'the node\'s row says the same before a build fails on it');
+    // Held: the row says which of them are missing here, and who installs them.
+    {
+      const held = (sd) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd, store_dirs: { top: ['flutter', 'node', 'dotnet'], android: [] } },
+                               version: shipped.version, digest: shipped.digest }) });
+      await held({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
+      await page.evaluate(() => openToolchains());
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /missing here/.test(document.querySelector('.tctab')?.textContent || ''), null, { timeout: 15000 });
+      const row = (await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')))).find(t => /\.NET/.test(t)) || '';
+      ok(/1 of its 1 system package missing here \(dnf\), installed by itself: libicu/.test(row),
+         `an installed tool's row says which of its system packages this node lacks (${(row.match(/\d of its[^:]*: \S+/) || ['none'])[0]})`);
+      await held({ family: 'dnf', unmet: {} });
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /all installed/.test(document.querySelector('.tctab')?.textContent || ''), null, { timeout: 15000 });
+      ok(true, '...and that they are all there once they are');
+      await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
+    }
     await sysCensus({ family: 'dnf', unmet: {} });
-    await page.evaluate(() => openPackages());
-    await page.evaluate(() => loadPackages());
-    await page.waitForFunction(() => !document.querySelector('.pkgtab .pkgsys'), null, { timeout: 15000 });
+    await page.evaluate(() => openToolchains());
+    await page.evaluate(() => loadToolchains());
+    await page.waitForFunction(() => !document.querySelector('.tctab .tcsys'), null, { timeout: 15000 });
     ok(true, '...and both go quiet once the census says nothing is missing');
   }
+  // ---- sessions a fresh install has not reached ---------------------------
+  // A toolchain on PATH reaches a session when the session starts, so one open
+  // since before the install still says "not found". The row counts them,
+  // from when each session started (the agent reports it) and when a job
+  // last put the toolchain on the store.
+  {
+    const now = Math.floor(Date.now() / 1000);
+    execFileSync('python3', ['-c', `
+import importlib.util, sys, json
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
+        " spec, outputs, state, node, exit_code, queued, ended) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("j_landnode", "toolchain", "", "user:test", "{}", "{}",
+         json.dumps({"action": "install", "names": ["node"]}), "[]", "succeeded",
+         "${minted.id}", 0, ${now} - 200, ${now} - 100))
+`], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [
+        { name: `${uid}~claude-alpha`, created: now - 3600, title: '✳ Claude Code' },
+        { name: `${uid}~shell-2`, created: now - 10, title: 'bash' }] }, running: 0, wait: 0 }) });
+    await page.evaluate(() => loadToolchains());
+    await page.waitForSelector('.tctab .tcreopen', { timeout: 15000 });
+    const rows = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+    const nodeRow = rows.find(t => /Node\.js/.test(t)) || '';
+    ok(/1 session open here started before this was installed: reopen it to use it/.test(nodeRow),
+       `a row that changes PATH counts the sessions that started before it landed, and only those (${
+         (nodeRow.match(/\d+ sessions? open[^:]*/) || ['none'])[0]})`);
+    ok(!rows.some(t => /Flutter/.test(t) && /reopen/.test(t)),
+       '...and says nothing on a row no job has put there since they started');
+  }
   // ---- one store, two machines (roadmap #18) ------------------------------
-  // The controller reaches the package store through Unraid's FUSE layer and a
+  // The controller reaches the toolchain store through Unraid's FUSE layer and a
   // node reaches the same bytes over NFS, so neither mount string can be
   // derived from the other and the pair was invisible. A marker file inside
-  // the store answers exactly, whatever the transport — and once the pair is
+  // the store answers exactly, whatever the transport, and once the pair is
   // visible, two machines of different architectures sharing one store is a
   // thing that can be refused instead of failing later as binaries that will
   // not execute.
@@ -963,7 +1063,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const withId = (arch, token) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census: { ...CENSUS, arch, stores: { ...CENSUS.stores,
-          packages: { ...CENSUS.stores.packages, id: ID } } },
+          toolchains: { ...CENSUS.stores.toolchains, id: ID } } },
         version: shipped.version, digest: shipped.digest }) });
     await withId('x86_64', en.token);
     // A second machine on the same store, of another architecture.
@@ -971,7 +1071,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const oen = await napi('/api/v1/agent/enroll', {
       user: 'bb', version: shipped.version, digest: shipped.digest,
       census: { ...CENSUS, arch: 'aarch64', stores: { ...CENSUS.stores,
-        packages: { ...CENSUS.stores.packages, id: ID } } } },
+        toolchains: { ...CENSUS.stores.toolchains, id: ID } } } },
       { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
     ok(oen.ok, '(a second node enrolled on the same store)');
     // ...and the catalog says which platform each recipe is for, so an
@@ -980,46 +1080,46 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     // Linux needs no new agent to reach this (roadmap #18).
     // swift: an x86-64 tarball, and the catalog says so. (jdk used to be
     // the example; Temurin packages arm64 and the recipe resolves it now.)
-    const wrong = await napi('/api/packages', { action: 'install', names: ['swift'], node: other.id });
+    const wrong = await napi('/api/toolchains', { action: 'install', names: ['swift'], node: other.id });
     ok(/packaged for linux\/amd64/.test(wrong.error || ''),
        `an install onto the wrong platform is refused by name (${
          (wrong.error || 'no error').slice(0, 100)})`);
-    const fine = await napi('/api/packages', { action: 'install', names: ['flutter'], node: other.id });
+    const fine = await napi('/api/toolchains', { action: 'install', names: ['flutter'], node: other.id });
     ok(!/packaged for/.test(fine.error || ''),
-       `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
+       `...while one that resolves its own platform is not refused FOR ITS PLATFORM: this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
     if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
     // Two architectures on one store is the design now, not a clash: each
     // machine installs under its own <os>-<arch> scope (roadmap R19), so
     // the x86_64 node's install is queued while the arm64 node shares the
     // share. Cancelled at once, so the one-at-a-time rule below starts clean.
-    const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    const clash = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     ok(clash.job && !clash.error,
-       `a store shared across architectures takes the install — each machine has its own scope in it (${
+       `a store shared across architectures takes the install: each machine has its own scope in it (${
          clash.job || clash.error})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: clash.job });
     // Same architecture: allowed, but still one at a time across the pair.
     await fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + oen.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census: { ...CENSUS, arch: 'x86_64', stores: { ...CENSUS.stores,
-          packages: { ...CENSUS.stores.packages, id: ID } } },
+          toolchains: { ...CENSUS.stores.toolchains, id: ID } } },
         version: shipped.version, digest: shipped.digest }) });
-    const first = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
-    const second = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
-    ok(first.job && /shares this packages store/.test(second.error || ''),
+    const first = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+    const second = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: other.id });
+    ok(first.job && /shares this toolchain store/.test(second.error || ''),
        `...and one install at a time across the pair, naming why (${
          (second.error || 'no error').slice(0, 90)})`);
     if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
     await napi('/api/v1/nodes', { action: 'retire', id: other.id });
     await withId('x86_64', en.token);
-    // A package that needs another pulls it in, ahead of itself. Before
+    // A toolchain that needs another pulls it in, ahead of itself. Before
     // this, android-tools with no jdk failed inside sdkmanager with a
-    // message naming neither Java nor the package that supplies it.
-    const dep = await napi('/api/packages', { action: 'install',
+    // message naming neither Java nor the toolchain that supplies it.
+    const dep = await napi('/api/toolchains', { action: 'install',
                                               names: ['android-tools'], node: minted.id });
     const depjob = dep.job ? await napi(`/api/v1/jobs?id=${dep.job}`) : null;
     ok(depjob && JSON.stringify(depjob.spec.names) === JSON.stringify(['jdk', 'android-tools'])
        && JSON.stringify(dep.added) === JSON.stringify(['jdk']),
-       `a package that needs another installs it first, and says so (${
+       `a toolchain that needs another installs it first, and says so (${
          JSON.stringify(depjob?.spec?.names)} added=${JSON.stringify(dep.added)})`);
     if (dep.job) await napi('/api/v1/jobs', { action: 'cancel', id: dep.job });
     // ...and a bare directory does not count as having it. The operator's
@@ -1033,7 +1133,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       body: JSON.stringify({ census: { ...CENSUS, toolchains: { java: '21' },
         store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
         version: shipped.version, digest: shipped.digest }) });
-    const hollow = await napi('/api/packages', { action: 'install',
+    const hollow = await napi('/api/toolchains', { action: 'install',
                                                  names: ['android:ndk'], node: minted.id });
     const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
     ok(hj && (hj.spec.names || []).includes('android-tools'),
@@ -1043,16 +1143,16 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await runnerCensus({});     // put the fixture's store listing back
   }
 
-  // What a FINISHED job on a node reports. It used to report nothing — the
+  // What a FINISHED job on a node reports. It used to report nothing: the
   // row vanished the moment the job ended, with done and failed hardcoded
-  // empty — so the tab never cleared what the operator had ticked and the
-  // next press re-sent packages that had already landed.
+  // empty, so the tab never cleared what the operator had ticked and the
+  // next press re-sent toolchains that had already landed.
   {
-    const j = await napi('/api/packages', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
+    const j = await napi('/api/toolchains', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
     if (j.job) await napi('/api/v1/jobs', { action: 'cancel', id: j.job });
     let seen = null;
     for (let t = 0; t < 60 && !seen; t++){
-      const p = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
+      const p = await (await fetch(base + '/api/toolchains?node=' + minted.id, { headers: H })).json();
       if (p.job && p.job.running === false && p.job.action) seen = p.job;
       else await sleep(250);
     }
@@ -1061,63 +1161,124 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `a finished node job says what actually landed, read from the census (${
          JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
   }
-  // ---- android system images on a node (roadmap #20) ---------------------
-  // The node walks its own store for the ids and the AVDs built on them.
-  // What COULD be added is not a per-node question at all: an image is a
-  // guest artifact, identical on every host, so the index is read here and
-  // the node needs no network of its own to be offered one.
+  // ---- the Emulator tab: a node's android system images -------------------
+  // Not toolchains: one exists at every API level at once. The node walks its
+  // own store for the ids and the AVDs built on them; which could be ADDED is
+  // Google's index, read here, so a node needs no network of its own.
   {
-    await page.evaluate(() => { packages = null; loadPackages(); });
-    await page.waitForFunction(() => (packages?.images || []).length > 0,
+    const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
+    const emuApi = async () => (await fetch(base + '/api/emulator?node=' + minted.id, { headers: H })).json();
+    // The Tools card ghosts the button until some node has sdkmanager and
+    // the emulator, and says why on it.
+    await page.evaluate(() => refresh());
+    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === true,
                                null, { timeout: 15000 });
-    const imgs = await page.$$eval('.pkgtab .pkg.img',
+    ok(/command-line tools and the emulator/.test(
+         await page.$eval('#bEmulator', b => b.dataset.tip || '')),
+       'the Emulator button is ghosted while no node has sdkmanager and the emulator, saying so');
+    // No sdkmanager here yet: the tab says what is missing, and the server
+    // refuses an add rather than letting it die inside the job.
+    const bare = await emuApi();
+    ok(bare.sdkmanager === false && bare.missing.length === 2,
+       `a node without them is told which (${JSON.stringify(bare.missing)})`);
+    const noSm = await napi('/api/emulator', { action: 'add', node: minted.id,
+      image: 'system-images;android-31;google_apis;x86_64' });
+    ok(/command-line tools/.test(noSm.error || ''),
+       `...and adding an image there is refused, naming them (${noSm.error})`);
+
+    const ANDROID = { ...CENSUS, toolchains: { ...CENSUS.toolchains, 'android-sdk': 'present', emulator: 'present' },
+                      store_dirs: { top: ['flutter', 'node'], android: ['cmdline-tools', 'platform-tools', 'emulator'] } };
+    await hello(ANDROID);
+    await page.evaluate(() => refresh());
+    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === false,
+                               null, { timeout: 15000 });
+    ok(true, '...and live once one has');
+
+    await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
+    // The rows and the picker both wait on Google's index (the size is
+    // joined from it), which is read off the request.
+    await page.waitForFunction(() => document.querySelector('.emutab #imgApi option')
+      && /GB/.test(document.querySelector('.emutab .tc.emimg')?.textContent || ''),
+      null, { timeout: 15000 });
+    const imgs = await page.$$eval('.emutab .tc.emimg',
       ls => ls.map(l => l.textContent.replace(/\s+/g, ' ').trim()));
     ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
        && /AVD: fb30-node/.test(imgs[0]),
        `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
-    const apis = await page.$$eval('.pkgtab #imgApi option', o => o.map(x => x.value));
+    const apis = await page.$$eval('.emutab #imgApi option', o => o.map(x => x.value));
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
        `...and the picker offers what the NODE does not have (${JSON.stringify(apis)})`);
-    ok(/sdkmanager, which is part of/.test(await page.$eval('.pkgtab', e => e.textContent)),
-       'a node with no android-tools is told images are installed by sdkmanager');
-    // An image is installed BY sdkmanager, so the command-line tools have to
-    // be there first — and they need a JDK in turn. with_requires walks the
-    // catalog and an image id is not a catalog row, so the head of that chain
-    // is named rather than discovered inside a failing job.
-    const add = await napi('/api/packages', { action: 'install', node: minted.id,
-      names: ['android:system-images;android-31;google_apis;x86_64'] });
+    ok(await page.evaluate(async id => !('images' in await (await fetch('/api/toolchains?node=' + id)).json()),
+                           minted.id),
+       'the Toolchains tab no longer carries images: they are the Emulator tab\'s');
+
+    // An add is an `image` job, and it holds the store the way a toolchain
+    // job does: the two write into one directory tree.
+    const add = await napi('/api/emulator', { action: 'add', node: minted.id,
+      image: 'system-images;android-31;google_apis;x86_64' });
     const aj = add.job ? await napi(`/api/v1/jobs?id=${add.job}`) : null;
-    ok(aj && JSON.stringify(aj.spec.names) === JSON.stringify(
-         ['jdk', 'android-tools', 'android:system-images;android-31;google_apis;x86_64']),
-       `installing an image on a node pulls sdkmanager and its jdk in front of it (${
-         JSON.stringify(aj?.spec?.names)})`);
+    ok(aj && aj.type === 'image' && aj.spec.action === 'add'
+       && aj.spec.image === 'system-images;android-31;google_apis;x86_64',
+       `adding an image queues an image job for exactly that id (${JSON.stringify(aj?.spec)})`);
+    const clash = await napi('/api/toolchains', { action: 'install', names: ['zig'], node: minted.id });
+    ok(/image job is already running/.test(clash.error || ''),
+       `...and a toolchain install waits for it on the same store (${clash.error})`);
     if (add.job) await napi('/api/v1/jobs', { action: 'cancel', id: add.job });
-    // The same rule every executing endpoint here follows, asked of the
-    // node's own inventory: a removal names an image THIS node reported.
-    const badrm = await napi('/api/packages', { action: 'remove', node: minted.id,
-      names: ['android:system-images;android-31;google_apis;x86_64'] });
-    ok(/nothing selected/.test(badrm.error || ''),
-       `an image the node never reported cannot be removed from it (${badrm.error})`);
-    const rm = await napi('/api/packages', { action: 'remove', node: minted.id,
-      names: ['android:system-images;android-30;google_apis;x86_64'] });
+    // What reaches a command line is a string this server handed out: an add
+    // names one the picker offered, a removal one THIS node reported.
+    const bogus = await fetch(base + '/api/emulator', { method: 'POST', headers: H,
+      body: JSON.stringify({ action: 'add', node: minted.id, image: 'system-images;android-99;google_apis;x86_64' }) });
+    ok(bogus.status === 400, 'an image id the picker never offered cannot be added');
+    const badrm = await fetch(base + '/api/emulator', { method: 'POST', headers: H,
+      body: JSON.stringify({ action: 'remove', node: minted.id, image: 'system-images;android-31;google_apis;x86_64' }) });
+    ok(badrm.status === 400, 'an image the node never reported cannot be removed from it');
+    const rm = await napi('/api/emulator', { action: 'remove', node: minted.id,
+      image: 'system-images;android-30;google_apis;x86_64' });
     ok(rm.job, 'one it did report can be');
     if (rm.job) await napi('/api/v1/jobs', { action: 'cancel', id: rm.job });
+    // The same in a terminal: bb toolchains says where images went.
+    let said = '';
+    try { execFileSync('bash', [`${REPO}/scripts/bb`, 'toolchains', 'images'], { stdio: 'pipe' }); }
+    catch (e) { said = String(e.stderr); }
+    ok(/system images are the emulator's, not a toolchain: bb emu images/.test(said),
+       `bb toolchains images points at bb emu images (${said.trim()})`);
+
+    // A node whose platform the Android recipes are not packaged for can
+    // never hold an image, which is a different thing from not having the
+    // tools yet: it is said, and the add is refused, rather than pointing at
+    // a Toolchains tab that keeps both rows behind "Not for this node".
+    {
+      await hello({ ...ANDROID, system: 'darwin', arch: 'arm64', os: 'macOS 15.1' });
+      const mac = await emuApi();
+      ok(mac.wrong_platform === 'linux/*' && mac.missing.length === 0,
+         `a Mac node says the tools are packaged for linux, rather than offering an install (${
+           mac.wrong_platform} / ${JSON.stringify(mac.missing)})`);
+      const no = await napi('/api/emulator', { action: 'add', node: minted.id,
+        image: 'system-images;android-31;google_apis;x86_64' });
+      ok(/no system image can run there/.test(no.error || ''),
+         `...and an add there is refused with the platform (${no.error})`);
+      await page.evaluate(() => { emu = null; loadEmulator(); });
+      await page.waitForFunction(() => /no system image can run there/.test(
+        document.querySelector('.emutab .emneed')?.textContent || ''), null, { timeout: 15000 });
+      ok(await page.$('.emutab #imgAdd') === null,
+         '...and the tab offers no picker at all there, rather than a dead one');
+      await hello(ANDROID);
+    }
 
     // An agent too old to report the field at all is not a node with no
-    // images. Without the distinction the tab says "nothing installed" on
-    // behalf of a node the controller has not asked.
-    const noField = { ...CENSUS }; delete noField.images;
-    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
-      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ census: noField, version: shipped.version, digest: shipped.digest }) });
-    const old = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
-    ok(old.images_known === false && old.images.length === 0,
-       `an agent that does not report images says so, rather than reporting none (${
-         old.images_known})`);
+    // images: the tab would otherwise say "no image" for a node never asked.
+    const noField = { ...ANDROID }; delete noField.images;
+    await hello(noField);
+    const old = await emuApi();
+    ok(old.known === false && old.images.length === 0,
+       `an agent that does not report images says so, rather than reporting none (${old.known})`);
     await runnerCensus({});     // put the fixture's census back
+    await page.evaluate(() => { const t = tabs.find(t => t.kind === 'emulator'); if (t) dropTab(t.id); });
   }
 
-  const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local' });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
@@ -1134,7 +1295,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.waitForFunction(id => [...document.querySelectorAll('#rnNode option')].some(o => o.value === id),
                              minted.id, { timeout: 10000 });
   ok(await page.$eval('#rnNode', s => ![...s.options].some(o => o.value === 'local') && [...s.options].some(o => /sandbox/.test(o.textContent))),
-     'the project\'s node is any node but this container — the ssh sandbox included');
+     'the project\'s node is any node but this container: the ssh sandbox included');
   await page.selectOption('#rnNode', minted.id);
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
@@ -1200,7 +1361,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
 
   // ---- an apply that failed says so, where the button is -------------------
   // A failed apply leaves the drift exactly as it was, so the section went
-  // back to "1 change to apply" and mentioned the attempt nowhere — which
+  // back to "1 change to apply" and mentioned the attempt nowhere, which
   // reads as a button that did nothing, and is what the operator saw.
   {
     const ap = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
@@ -1273,14 +1434,14 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        JSON.stringify(off).slice(0, 120)})`);
   // The button is a courtesy; the rule is the server's.
   const refused = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
-  const refusedPkg = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
-  ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedPkg.error || ''),
+  const refusedTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+  ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedTc.error || ''),
      `...and the server refuses the same jobs, not only the buttons (${(refused.error || 'no error').slice(0, 60)})`);
-  await page.evaluate(() => openPackages());
-  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
-  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
-  await page.waitForSelector('.pkgtab .pkgstale', { timeout: 15000 });
-  ok(await page.$eval('.pkgtab [data-pkg="install"]', b => b.disabled),
+  await page.evaluate(() => openToolchains());
+  await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
+  await page.selectOption('.tctab #tcNodeSel', minted.id);
+  await page.waitForSelector('.tctab .tcstale', { timeout: 15000 });
+  ok(await page.$eval('.tctab [data-tc="install"]', b => b.disabled),
      'the Tools tab says so too, and installs nothing onto a node that is behind');
   // Its own update is the way out and is never held.
   const upd = await napi('/api/v1/nodes', { action: 'update-agent', id: minted.id });
@@ -1291,7 +1452,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // that replaces the button. pressing() only covers the round trip; the
   // render is what has to know, and node_list only tracked system jobs, so
   // Update agent came back live the instant it answered.
-  // Back to the Nodes tab — the block above left the Tools tab in front.
+  // Back to the Nodes tab: the block above left the Tools tab in front.
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
@@ -1323,7 +1484,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
   // Waited for rather than read once: the rows and the alerts are two reads
   // of the record in one poll, and a hello landing between them skews one
-  // poll's answer — the next agrees.
+  // poll's answer; the next agrees.
   await page.waitForFunction(() => /different compatibility window/.test(
     (state.projects || []).find(p => p.name === 'alpha')?.node_gap || ''), null, { timeout: 30000 });
   ok(true, 'the project row carries why nothing routed to its node runs');
@@ -1355,7 +1516,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
      `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
   // A mount the server refused is neither: the agent tried it and kept
-  // what the server said, and the fix is the export rule on the host —
+  // what the server said, and the fix is the export rule on the host,
   // which is what actually happened when the sandbox moved to an address
   // the rule did not name.
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
@@ -1430,7 +1591,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
 // What DOCKER_HOST_PATHS was: on the sandbox node's row now, validated to
 // pairs, and read by the manager through the node being addressed. It used
 // to draw on the ssh row only; with that kind retired (roadmap #24) it draws
-// on the agent row, which is the only remote row left — devapp.host_map
+// on the agent row, which is the only remote row left; devapp.host_map
 // still reads it for whichever node is being addressed, so a line that drew
 // nowhere would have taken an editable setting out of reach in silence.
 {
@@ -1466,6 +1627,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const loc = await papi({ action: 'update', id: 'local', fields: { name: 'box' } });
     ok(/not a node to rename/.test(loc.error || ''), 'the controller\'s own row is not renamed');
     await page.fill(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, 'sandbox-two');
+    // A heartbeat repaints the tab; the name being typed survives it (B176).
+    await page.evaluate(() => loadNodes());
+    await page.waitForTimeout(300);
+    ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, e => e.value) === 'sandbox-two',
+       'a new name being typed survives the repaint a heartbeat brings');
     await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="rename"]`);
     await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox-two', sb.id, { timeout: 15000 });
     ok(true, 'Rename on the row renames the node');
@@ -1510,7 +1676,7 @@ await page.evaluate(() => nodeAct({ action: 'paths', id: nodesList.find(n => n.n
 
 // Retire what this file made, the way agent.mjs does: the store outlives a
 // suite, and a node left online here becomes the DEFAULT node for the files
-// after it — which sent devapp's compose at a machine that does not exist.
+// after it, which sent devapp's compose at a machine that does not exist.
 for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
      { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).nodes){
   if (n.kind !== 'local' && n.name !== 'sandbox')
@@ -1587,7 +1753,7 @@ await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
    'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
 // Every hypervisor with a template here is offered, and the list is the
-// server's — the templates that actually ship, not a copy of them in the page.
+// server's: the templates that actually ship, not a copy of them in the page.
 await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv option') || []).length > 1,
                            null, { timeout: 15000 });
 const kinds = await page.$$eval('#ndBody #vm_hv option', os => os.map(o => o.value));
@@ -1618,7 +1784,7 @@ await page.waitForFunction(x => document.querySelector('#ndBody .vmxml')?.textCo
                            vm1, { timeout: 15000 });
 const [u2, m2] = idOf(await page.$eval('#ndBody .vmxml', p => p.textContent));
 ok(u2 !== u1 && m2 !== m1,
-   'a second render is a second machine — neither the uuid nor the MAC is reused');
+   'a second render is a second machine: neither the uuid nor the MAC is reused');
 ok((await page.$$eval('#ndBody .vmsteps li', ls => ls.length)) >= 5
    && await page.$eval('#ndBody .vmsteps', ol => /NFS Security Settings/.test(ol.textContent)),
    '...and the steps say how to get from here to an enrolled node, exports first');
@@ -1652,8 +1818,8 @@ ok(!!badId.error && !badId.text, '...and something that is not a uuid is refused
 
 // ---- and the same machine on somebody else's hypervisor ---------------------
 // A node is a machine, not an Unraid machine. The picker switches template,
-// and what changes with it is the artifact, the steps, and the MAC range —
-// the last being the one nobody gets right by hand: VMware refuses a static
+// and what changes with it is the artifact, the steps, and the MAC range.
+// The last is the one nobody gets right by hand: VMware refuses a static
 // address outside its own, Hyper-V and VirtualBox hand out their own, and a
 // machine wearing the wrong prefix is the one that collides.
 await page.selectOption('#ndBody #vm_hv', 'proxmox');
@@ -1690,8 +1856,8 @@ page.errors = [];
 await page.click('#ndBody #vmCancel');
 
 // ---- debug: whose machine logs a node's sessions may read -------------------
-// A session on a node reads the logs of its own WORK — its project's CI runs,
-// what its test runs left — and nothing of the machine. The agent's journal
+// A session on a node reads the logs of its own WORK (its project's CI runs,
+// what its test runs left) and nothing of the machine. The agent's journal
 // is root's there: the enrolled account is in neither adm nor
 // systemd-journal, so journalctl from a session answers "insufficient
 // permissions". This opens that deliberately, per node, and only while the
@@ -1716,7 +1882,7 @@ await page.click('#ndBody #vmCancel');
     return { status: r.status, ...(await r.json()) };
   }, [node, extra]);
 
-  // The switch first. Off — the default — nothing is offered to anybody,
+  // The switch first. Off (the default), nothing is offered to anybody,
   // whatever any node has been granted.
   let r = await read(n.name);
   ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
@@ -1729,7 +1895,7 @@ await page.click('#ndBody #vmCancel');
   });
 
   // On, and still refused: the switch grants nothing. A node is not granted
-  // its own journal either — that is the tick this exists to make somebody
+  // its own journal either; that is the tick this exists to make somebody
   // press.
   r = await read(n.name, { project: 'alpha' });
   ok(r.status === 403 && /has not been granted/.test(r.error || ''),
@@ -1771,7 +1937,7 @@ await page.click('#ndBody #vmCancel');
 
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
-   'still no nodes card — nodes are a tab, not sidebar chrome');
+   'still no nodes card: nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 // ---- Uninstall from the row --------------------------------------------------
