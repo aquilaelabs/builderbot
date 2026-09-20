@@ -6226,7 +6226,18 @@ NODEPY
         printf '  [FAIL] an agent socket exists but this user cannot use it; see: bb logs | grep ssh\n'
         ok=1
     fi
-    if [ -n "$ssh_src" ]; then
+    if on_node; then
+        # GitHub is not a question to ask of a key on a node. No git
+        # credential lives here by design and pushes relay through the
+        # controller, so a key on this machine is for reaching another one,
+        # and testing it against github.com reported a stray key as a fault
+        # two lines under the line saying pushes relay (B185).
+        if [ -n "$ssh_src" ]; then
+            printf '  [skip] %s, and not used for git here: a node pushes through the controller\n' "$ssh_src"
+        else
+            printf '  [skip] no ssh key here, which is the design: a node holds no credential\n'
+        fi
+    elif [ -n "$ssh_src" ]; then
         # A successful GitHub ssh auth still exits nonzero (no shell access),
         # so judge by the greeting instead of the exit code. On failure report
         # what ssh actually said: host-key verification, a refused key and an
@@ -6244,11 +6255,6 @@ NODEPY
             printf '         diagnose with: ssh -vT git@github.com\n'
             ok=1
         fi
-    elif on_node; then
-        # By design, and said so rather than left reading as a gap: no
-        # credential of any kind lives on a node, which is why pushing there
-        # goes through the controller.
-        printf '  [skip] no ssh key here, which is the design: a node holds no credential\n'
     else
         printf '  [skip] no ssh key on the controller: a project pushes with the token or key given when it was cloned or linked\n'
     fi
