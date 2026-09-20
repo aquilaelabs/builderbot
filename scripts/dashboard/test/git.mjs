@@ -232,6 +232,35 @@ print(json.dumps(next((a for a in seen if "fetch" in a), [])))
          withTok.filter(a => String(a).includes('credential')).join(' ') || 'none'})`);
     rmSync(`${DIR}/state/gitcreds/beta`, { force: true });
   }
+  // ...and when the host asks for a credential, the refusal names the way
+  // out rather than handing over git's own line, which says what happened
+  // and nothing a person can do about it. Asked of the translation with
+  // git's exact words, because reaching a host that actually demands one
+  // needs a host: walked on the dev instance instead, where a project whose
+  // token a Reset had taken away answered "could not read Username for
+  // http://...: terminal prompts disabled" and left a dead end.
+  {
+    const why = (token) => execFileSync('python3', ['-c', `
+import sys, json
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+from pathlib import Path
+import projects, git as g
+projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+said = {"code": 128, "out": "fatal: could not read Username for 'https://gitea.example': terminal prompts disabled"}
+print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
+`], { encoding: 'utf8' }).trim();
+    const none = JSON.parse(why(false)).error;
+    ok(/no access token stored/.test(none) && /Access token/.test(none)
+       && /gitea\.example/.test(none) && !/terminal prompts disabled/.test(none),
+       `no token: the refusal names the host and where to put one (${none.slice(0, 110)})`);
+    mkdirSync(`${DIR}/state/gitcreds`, { recursive: true });
+    writeFileSync(`${DIR}/state/gitcreds/beta`, 'https://oauth2:tok@gitea.example\n', { mode: 0o600 });
+    const stale = JSON.parse(why(true)).error;
+    ok(/rejected the token stored/.test(stale) && /Access token/.test(stale),
+       `a token that is there and refused reads as the other thing it is (${stale.slice(0, 110)})`);
+    rmSync(`${DIR}/state/gitcreds/beta`, { force: true });
+  }
   ok(named.host?.name === 'GitHub' && named.host?.kind === 'github',
      `the payload names the host from the remote's address, so the view can say GitHub and not origin (${JSON.stringify(named.host)})`);
   // origin/HEAD is a pointer, not a branch: its short name is "origin", and

@@ -774,14 +774,14 @@ def act(repo, action, args, env=None, may_push=True):
             return no
     if action == "fetch":
         r = _run(repo, "fetch", "--prune", env=env, timeout=NET_TIMEOUT)
-        return _done(r, "fetched")
+        return _done(r, "fetched", repo)
     if action == "pull":
         if _dirty(repo):
             return {"error": "there are uncommitted changes: commit or discard them first, so a pull cannot land on top of them"}
         r = _run(repo, "pull", "--ff-only", env=env, timeout=NET_TIMEOUT)
         if r["code"] and "diverged" in r["out"] or r["code"] and "Not possible to fast-forward" in r["out"]:
             return {"error": "the branch and its upstream have both moved: this only fast-forwards; merge or rebase from a shell, or ask Claude"}
-        return _done(r, "pulled")
+        return _done(r, "pulled", repo)
     if action == "push":
         if not may_push:
             return {"error": "this project has no push rights: they are granted in the clone dialog, once"}
@@ -791,7 +791,7 @@ def act(repo, action, args, env=None, may_push=True):
             return {"error": "not on a branch"}
         r = (_run(repo, "push", env=env, timeout=NET_TIMEOUT) if st.get("upstream")
              else _run(repo, "push", "-u", "origin", branch, env=env, timeout=NET_TIMEOUT))
-        return _done(r, "pushed")
+        return _done(r, "pushed", repo)
     if action == "branch":
         name = _ok_branch(args.get("name"))
         if not name:
@@ -975,10 +975,41 @@ def _merge_off_tree(repo, name, into, env):
     return {"ok": True, "out": f"merged {name} into {into}"}
 
 
-def _done(r, said):
+# What git says when it wanted a credential and had neither one nor a
+# terminal to ask at. It is the truth and it names nothing a person can do,
+# which is the half this replaces.
+NO_CRED = re.compile(r"could not read Username|could not read Password|Authentication failed", re.I)
+
+
+def _done(r, said, repo=None):
     if r["code"]:
-        return {"error": r["out"] or f"git failed ({r['code']})"}
+        out = r["out"] or f"git failed ({r['code']})"
+        if repo is not None and NO_CRED.search(out):
+            return {"error": _no_cred_why(repo, out)}
+        return {"error": out}
     return {"ok": True, "out": r["out"] or said}
+
+
+def _no_cred_why(repo, out):
+    """The refusal for a network action the host would not let through.
+
+    Two different situations wear one message from git, so they are told
+    apart here: a project with no stored token has nothing to authenticate
+    with, and one with a token that the host rejected has the wrong token.
+    Both name what to do; git's own line names only what happened.
+    """
+    host = ""
+    m = re.search(r"https?://([^/'\"\s]+)", out)
+    if m:
+        host = m.group(1)
+    where = f"{host} " if host else ""
+    if _creds(repo):
+        return (f"{where}rejected the token stored for this project: it is expired, revoked "
+                "or made for another scope. The project's settings dialog takes a new one "
+                "under Access token.")
+    return (f"this project has no access token stored, and {where}asks for one: put it in the "
+            "project's settings dialog under Access token, or point the remote at ssh. "
+            "Git said it had no credential and no terminal to ask at.")
 
 
 # ---- Send to Claude (R36 step 3) --------------------------------------------

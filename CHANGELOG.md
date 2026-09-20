@@ -10,6 +10,7 @@
 - A start-here page for somebody given an account rather than running the box, and the welcome panel now says the thing a new person hits first: sign in to Claude with your own account before a session will start. (5537a35)
 - Fetch and Pull work again on a project linked over https: the Git view was running git without the token the project was linked with, and said so as git does, by asking for a username it had no way to read. (058999c)
 - Debug settings in the controller's settings opens a dialog, the way a node's row already did, instead of unfolding inside the group where the group's Apply would save it. (058999c)
+- A Git view that cannot authenticate says which of the two things went wrong: no access token stored for the project, or one the host rejected, each naming where to put a new one. (f9e021a)
 
 ## 0.6.0: 2026-09-19
 
