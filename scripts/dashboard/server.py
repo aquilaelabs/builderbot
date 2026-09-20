@@ -6764,12 +6764,19 @@ class Handler(BaseHTTPRequestHandler):
             # headroom before a byte is downloaded.
             if NODES_OK:
                 return self._json({"error": "the node store did not open"}, 500)
-            if action not in ("install", "remove", "sysdeps"):
-                return self._json({"error": "a node takes install, remove or sysdeps"}, 400)
+            if action not in ("install", "remove", "sysdeps", "check"):
+                return self._json({"error": "a node takes install, remove, sysdeps or check"}, 400)
             node = nodes.node(nid)
             if not node:
                 return self._json({"error": "no such node"}, 400)
             known = {p["name"] for p in toolchains.TOOLCHAINS}
+            if action == "check":
+                # Every row, or the ones named: the question a check answers
+                # is "is any of this out of date", and an uninstalled row's
+                # answer is what it would fetch, which is half the reason to
+                # press it (R67).
+                names = [n for n in (req.get("names") or []) if n in known]
+                return self._result(toolchains.node_job(self._principal(), nid, action, names))
             if action == "sysdeps":
                 # The system packages the held recipes need, installed
                 # without the recipes (roadmap R51): named ones, or every

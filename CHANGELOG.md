@@ -15,6 +15,7 @@
 - Every dialog keeps one rhythm now: the same gap between the things in a band and a tighter one under a label, instead of a form whose spacing changed halfway down it. (2dd7542)
 - A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
 - A dialog on a phone stops dragging the page around behind it, and stops drifting while the browser's toolbar slides. (331b871)
+- Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
 
 ## 0.6.0: 2026-09-19
 

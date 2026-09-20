@@ -659,6 +659,42 @@ def abort_job():
 # (bb and its library) against that store. Nothing here guesses what a node
 # has from what it was asked to install.
 
+# What a node's last check said, parsed out of that job's log and kept by the
+# job's id (R67). Not a file: a check is a question about this moment, the
+# answer ages like a weather report, and a controller restart is a good reason
+# to ask again rather than to show yesterday's.
+_node_checks = {}
+
+
+def _check_rows(job_id):
+    """{name: {installed, latest, status}} from a finished check job's log.
+
+    `bb toolchains check` prints one TSV line per recipe: name, what is
+    installed, what upstream has, and a word for the difference. The log is
+    the transport because the job channel carries a log and not a payload,
+    and this is the same shape the controller's own checker writes into its
+    versions file.
+    """
+    if job_id in _node_checks:
+        return _node_checks[job_id]
+    rows = {}
+    for line in (nodes.job_tail(job_id, 20000) or "").splitlines():
+        f = line.rstrip("\n").split("\t")
+        if len(f) < 4 or f[0].startswith("=="):
+            continue
+        name, inst, latest, status = f[0].strip(), f[1].strip(), f[2].strip(), f[3].strip()
+        if not name or status not in ("current", "update", "absent", "local", "unknown"):
+            continue
+        rows[name] = {"installed": "" if inst == "-" else inst,
+                      "latest": "" if latest == "-" else latest, "status": status}
+    _node_checks[job_id] = rows
+    # One answer per node is what the tab draws; the rest are last week's.
+    if len(_node_checks) > 40:
+        for k in list(_node_checks)[:20]:
+            _node_checks.pop(k, None)
+    return rows
+
+
 def payload_for_node(nid):
     n = nodes.node(nid) if nodes else None
     if not n:
@@ -717,6 +753,7 @@ def payload_for_node(nid):
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
     items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
+    checked = 0
     # A toolchain that puts something on PATH (or sets a variable) reaches a
     # session only when the session starts: one open since before the
     # install still has the old PATH, and the plugin or build that wanted
@@ -774,6 +811,32 @@ def payload_for_node(nid):
                        "done": done, "failed": [x for x in names if x not in done],
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
+    # What the last check on this node said, if there has been one. Read from
+    # the job's log the first time and kept: a check is a round trip per
+    # recipe on the node, so the answer is worth holding on to until somebody
+    # asks for a fresh one.
+    for j in nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []:
+        if (j.get("spec") or {}).get("action") != "check":
+            continue
+        if j.get("state") not in ("succeeded", "failed"):
+            continue
+        rows = _check_rows(j["id"])
+        for i in items:
+            r = rows.get(i["name"])
+            if not r:
+                continue
+            i["latest"] = r["latest"]
+            # Said as the check found it. The controller's own list drops an
+            # answer that disagrees with its probe, because there both
+            # readings are of the same directory a moment apart. Here they
+            # are two different readings: the census sees a directory in the
+            # store, the check ran on the node and asked the binary. When
+            # they disagree the check is the one that looked properly, and a
+            # row that reads installed while the check says absent is a
+            # disagreement worth seeing rather than hiding.
+            i["state"] = r["status"]
+        checked = int(j.get("ended") or 0)
+        break
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
@@ -787,7 +850,7 @@ def payload_for_node(nid):
             # reported one yet.
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
-            "shared": False, "checked": 0, "sizing": False,
+            "shared": False, "checked": checked, "sizing": False,
             "items": items, "job": job or {"running": False}}
 
 
@@ -1036,6 +1099,8 @@ def node_job(principal, nid, action, names):
         return {"error": f"{n['name']} runs no agent; toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}
     added = []
+    if action not in ("install", "remove", "sysdeps", "check"):
+        return {"error": f"a node takes install, remove, sysdeps or check, not {action!r}"}
     if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
         return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so its "
                          "system packages are its owner's to install; the row names them"}

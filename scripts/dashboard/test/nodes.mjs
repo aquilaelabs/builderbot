@@ -935,6 +935,13 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
      'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
+  // Check for updates is a live control on a node (R67). It used to be
+  // disabled whenever a node was picked, and a node is the only thing this
+  // tab ever shows, so it could never be pressed: dead furniture with a
+  // tooltip explaining why it would stay that way.
+  ok(await page.$eval('.tctab [data-tc="check"]', b => !b.disabled && /upstream/.test(b.title || '')),
+     'Check for updates can be pressed on a node, and says what it does');
+
   // ---- system packages a held recipe needs (roadmap R51) ------------------
   // The store is a share, so a recipe installed from one node is on every
   // node, while the libraries it needs are each machine's own. The census
