@@ -13,6 +13,7 @@
 - A Git view that cannot authenticate says which of the two things went wrong: no access token stored for the project, or one the host rejected, each naming where to put a new one. (f9e021a)
 - bb doctor on a node stops reporting a stray ssh key as a failure: a node holds no git credential by design, so a key there is not what its pushes use. (55cfbfa)
 - Every dialog keeps one rhythm now: the same gap between the things in a band and a tighter one under a label, instead of a form whose spacing changed halfway down it. (2dd7542)
+- A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
 
 ## 0.6.0: 2026-09-19
 

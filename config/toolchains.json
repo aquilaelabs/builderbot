@@ -827,6 +827,37 @@
       "updatable": true
     },
     {
+      "name": "ffmpeg",
+      "label": "FFmpeg (video and audio)",
+      "probe": "ffmpeg",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/ffmpeg",
+        "reports": "ffmpeg"
+      },
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "about": "ffmpeg, ffprobe and ffplay, statically built with the codecs a recording actually uses: H.264, H.265, VP9, AV1 and Opus. A Claude session cannot watch a video, so what this is really for is turning one into frames it CAN look at (ffmpeg -i clip.mp4 -vf fps=1 dist/frames/%03d.png), plus the ordinary work of cutting, converting and sizing what a build produced. The image carries ffmpeg for the controller; a node carries nothing until this is installed.",
+      "source": {
+        "kind": "tarball",
+        "fresh_only": true,
+        "url": {
+          "linux/amd64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
+          "linux/arm64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+        },
+        "strip": 1,
+        "verify": [
+          "{dir}/bin/ffmpeg",
+          "-version"
+        ]
+      }
+    },
+    {
       "name": "language-servers",
       "label": "Language servers (Python, TypeScript)",
       "probe": "language-servers",
