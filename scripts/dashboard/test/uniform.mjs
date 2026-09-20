@@ -1073,6 +1073,38 @@ for (const [name, open] of Object.entries(DIALOGS)) {
      `[dialog ${name}] its lines in .field bands, no h4, buttons in a .foot${
        d.err ? ` (${d.err})` : d.loose.length ? `: loose ${d.loose.join(', ')}` : d.h4 ? `: ${d.h4} h4` : !d.foot ? ': no foot' : ''}`);
   ok(!d.nested, `[dialog ${name}] scrolls in one place${d.nested ? `: ${d.nested}` : ''}`);
+  // One rhythm down a form. The sandbox VM dialog measured 0, 0, 10, 10, 0
+  // between its fields, because a .prefrow carried a gap and the band's own
+  // stacked children carried none, so one form read as three depending on
+  // which container a field landed in. The token is --field-gap.
+  const rhythm = await page.evaluate(() => {
+    const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
+    const box = m?.querySelector('.box');
+    if (!box) return { err: 'no dialog' };
+    const css = getComputedStyle(document.documentElement);
+    const want = Math.round(parseFloat(css.getPropertyValue('--field-gap')) || 10);
+    // A label and the control under it are one thing, so they sit closer.
+    const tight = Math.round(parseFloat(css.getPropertyValue('--label-gap')) || 5);
+    // Within ONE band, never across two: the gap between bands is their
+    // padding twice over and is the band's business, not the form's.
+    const odd = [];
+    for (const parent of box.querySelectorAll('.field, .field .prefrow')) {
+      const rows = [...parent.children].filter(e => e.offsetHeight);
+      for (let i = 1; i < rows.length; i++) {
+        const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect();
+        if (b.top < a.bottom - 1) continue;            // side by side, not stacked
+        const gap = Math.round(b.top - a.bottom);
+        const expect = rows[i - 1].tagName === 'LABEL' ? tight : want;
+        if (Math.abs(gap - expect) > 1)
+          odd.push(`${gap}px (wanted ${expect}) before ${
+            rows[i].className || rows[i].tagName.toLowerCase()}`);
+      }
+    }
+    return { want, tight, odd };
+  });
+  ok(!rhythm.err && rhythm.odd.length === 0,
+     `[dialog ${name}] one rhythm down the band (${rhythm.want}px, ${rhythm.tight}px under a label)${
+       rhythm.err ? ` (${rhythm.err})` : rhythm.odd.length ? `: ${rhythm.odd.join('; ')}` : ''}`);
   await page.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
 }
 // ...and again on a small phone, where the room runs out first: every dialog

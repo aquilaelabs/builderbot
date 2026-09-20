@@ -103,6 +103,14 @@
      four different left edges. The sidebar keeps its own, tighter, values;
      this is the roomy one every document surface uses. */
   --row-y:11px; --row-x:14px;
+  /* The gap between the stacked things inside one band: a label-and-field
+     pair, a hint, a row of them. One value, so a dialog cannot invent its
+     own rhythm (the sandbox VM dialog had 0, 0, 10, 10, 0 down one form). */
+  --field-gap:10px;
+  /* ...and between a label and the control it heads, which is a tighter
+     gap because they are one thing. Two values existed for this, 5px on a
+     dialog's label and 4px inside .setrow.col. */
+  --label-gap:5px;
   /* The page's three secondary voices, named once. Before this they were
      retyped at every use: 11px/1.4, /1.45, /1.5 and /1.6 all coexisted for
      the same "quiet explainer under a control", which is the kind of drift
@@ -443,7 +451,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* A field with its label above it, and the ? that carries the explanation.
    .col stacks the row; the field takes the row's width, which the cap on
    .setrow already limits. */
-.setrow.col{flex-direction:column;align-items:stretch;gap:4px}
+.setrow.col{flex-direction:column;align-items:stretch;gap:var(--label-gap)}
 /* Outranks the row rule's flex-basis, which is a WIDTH in a row and would
    be a height here: a stacked field is as wide as its row and as tall as a
    field. */
@@ -989,10 +997,28 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    below. The guard is the other half: a field inside a field is a row of the
    outer one, and insetting twice is what put that same bar 28px in when the
    rows beside it were at 14. */
+/* The rhythm inside a band, owned by the band. It was margin arithmetic
+   between bare siblings, which COLLAPSES between two blocks and ADDS around
+   a replaced element, so one form measured 0, 10, 15, 16, 22 down its length
+   and read as several forms. A flex column with one gap cannot do that, and
+   the stray margins on the children go with it: uniform.mjs measures every
+   dialog for the two numbers below and nothing else. */
 .field{padding:var(--row-y) var(--row-x)}
+/* A dialog's band, which is a stack of things to fill in. Not the bars that
+   also wear .field (a tab's filter row, an action bar): those are rows, and
+   they say so with a class of their own. */
+.modal .field:not(.histbar):not(.actbar):not(.macros){display:flex;
+  flex-direction:column;gap:var(--field-gap);align-items:stretch}
+.modal .field>*,.modal .prefrow>*{margin-top:0;margin-bottom:0}
+/* A label and the control under it are one thing, so they sit closer: the
+   band's gap, pulled back to the label gap. A .prefrow wraps to a column on
+   a phone and carries the same gap, so its labels need it too. */
+.modal .field>label,.modal .prefrow>label{
+  margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 .field .field{padding:0}
+.prefrow{gap:var(--field-gap)}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
-  margin-bottom:5px}
+  margin-bottom:var(--label-gap)}
 /* The field skin, once, for EVERY control. This was an allowlist of container
    classes, which meant each new surface had to remember to join it, and the
    Analysis tab did not, so the same filter bar rendered house-styled inside a
@@ -1078,7 +1104,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
-.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}
+.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
@@ -1845,8 +1871,7 @@ pre.diff .d-ctx{color:var(--dim)}
    shape for a row you open, not two that drift. */
 #rlList{padding-top:0}
 .rulerow .rlName{width:100%;margin-bottom:6px}
-#grBody .field>label{margin-bottom:6px}
-#grBody .rulerow+.rulerow{margin-top:12px}
+#grBody .field>label{margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 #grBody .rulerow .hint{margin-top:2px}
 .rulerow .two{display:flex;gap:6px;align-items:center}
 .rulerow .two>*{flex:1;min-width:0}
@@ -2434,7 +2459,6 @@ button[aria-busy="true"]{opacity:.75}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
-#rnBuildCmd,#rnTestCmd{margin-bottom:6px}
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
