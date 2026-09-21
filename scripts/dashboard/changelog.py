@@ -178,6 +178,64 @@ def _clean_text(t):
     return t
 
 
+# ---- which category ---------------------------------------------------------
+# The six Keep a Changelog names, each with the one question that decides it.
+# They live HERE, in the tool, because that is the only place every session on
+# every project is certain to meet them: twenty-one of twenty-two unreleased
+# entries in this repository's own changelog had no category at all, and the
+# reason was not carelessness, it was that nothing anywhere said which
+# categories there were or when each applied. A reader of the result got a wall
+# of lines with one heading at the bottom.
+#
+# A default and not a law. A project that files its own way (this one keeps an
+# "Upgrading" section) names its own category and it is kept as typed; a house
+# rule is where a project says so. What is not accepted is NO category, since
+# an entry filed nowhere is the thing being fixed.
+CATEGORIES = (
+    ("Added", "somebody can do something they could not do before"),
+    ("Changed", "it was already here, and now behaves, looks or is named differently"),
+    ("Deprecated", "it still works, and is going away: stop relying on it"),
+    ("Removed", "it is gone"),
+    ("Fixed", "it was wrong, and now it is right"),
+    ("Security", "somebody should act on it because of what it exposed"),
+)
+_ALIASES = {
+    "add": "Added", "adds": "Added", "new": "Added", "feature": "Added", "features": "Added",
+    "change": "Changed", "changes": "Changed", "improved": "Changed", "improvement": "Changed",
+    "deprecate": "Deprecated", "deprecation": "Deprecated",
+    "remove": "Removed", "removes": "Removed", "removal": "Removed",
+    "fix": "Fixed", "fixes": "Fixed", "bugfix": "Fixed", "bug": "Fixed", "bugs": "Fixed",
+    "sec": "Security",
+}
+
+
+def canonical(cat):
+    """One of the six, spelled the one way, for a name that means one of them;
+    anything else back as it came, since a project may file its own way."""
+    c = " ".join(str(cat or "").split())
+    low = c.lower()
+    for name, _ in CATEGORIES:
+        if low == name.lower():
+            return name
+    return _ALIASES.get(low, c)
+
+
+def standard(cat):
+    return cat in {n for n, _ in CATEGORIES}
+
+
+def rules():
+    """The categories and when each applies, as the text a refusal and the
+    help both print, so there is one wording of it."""
+    width = max(len(n) for n, _ in CATEGORIES)
+    lines = [f"  {n:<{width}}  {why}" for n, why in CATEGORIES]
+    return ("an entry goes under a category: --cat NAME, one of\n" + "\n".join(lines) + "\n"
+            "When two fit, the one a reader would look under: a bug's fix is Fixed even\n"
+            "if fixing it added a button. Something nobody using the product would\n"
+            "notice gets no entry at all. A project that files its own way names its own\n"
+            "category (this is a default, and a house rule is where a project says so).")
+
+
 def _clean_name(n):
     n = " ".join(str(n or "").split())
     if len(n) > 40:
@@ -273,7 +331,7 @@ def add(d, text, sha="", cat=""):
     arrangements are the operator's.
     """
     try:
-        text, cat = _clean_text(text), _clean_name(cat)
+        text, cat = _clean_text(text), canonical(_clean_name(cat))
     except _Refused as e:
         return {"error": str(e)}
     if read(d) is None:
@@ -289,8 +347,20 @@ def add(d, text, sha="", cat=""):
     if hit is None:
         hit = {"name": cat, "entries": []}
         # An uncategorised entry belongs above the categories, where the file
-        # already puts them; a new category goes on the end.
-        gs.insert(0, hit) if not cat else gs.append(hit)
+        # already puts them. One of the six takes its conventional place
+        # among the six already there (Added before Changed before Fixed),
+        # which is a convention rather than anybody's arrangement; a
+        # project's own category goes on the end, as it always did, because
+        # where THAT sits is the operator's to say.
+        order = [n for n, _ in CATEGORIES]
+        if not cat:
+            gs.insert(0, hit)
+        elif cat in order:
+            later = next((i for i, g in enumerate(gs)
+                          if g["name"] in order and order.index(g["name"]) > order.index(cat)), None)
+            gs.insert(later, hit) if later is not None else gs.append(hit)
+        else:
+            gs.append(hit)
     hit["entries"].append({"text": text, "shas": [sha] if sha else []})
     return put(d, gs)
 

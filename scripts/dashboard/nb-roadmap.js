@@ -193,8 +193,38 @@ function nbRoadmapView({$, nb}){
   </div>`;
   }
 
-  function drawRoadmap(j){
+  // `force` is "the person just did this", and only a redraw somebody asked
+  // for may take the list apart while a box is open in it.
+  //
+  // The reword box, the drop box, the send note and the + step field are
+  // imperative DOM under a row, so the innerHTML below takes them and every
+  // word typed into them. The poll's own guard upstream watches for STAGED
+  // changes, and typing is not staged until the box's Save, so a session
+  // running `bb roadmap add` in the background deleted a half-written
+  // rewording under the finger holding it. Bugs has skipped its redraw while
+  // a form is open since it was built; this is the same rule on the one view
+  // that did not have it. `nb.roadmapItems` is still updated underneath, so
+  // the next deliberate action draws with whatever arrived meanwhile.
+  // Is there a box in the list that a redraw would take something from?
+  //
+  // The reword box, the drop confirmation and the send note are deliberate
+  // states a person leaves by Save or Cancel, so they are protected whenever
+  // they are open, the way the Bugs form is. The `+ step` field is not: it
+  // STAYS open after each step so several can be typed in a row, and
+  // protecting an open one unconditionally would mean an empty box nobody
+  // closed freezes this panel for the rest of the day. So that one is
+  // protected while it holds words or holds the cursor, and is fair game
+  // otherwise, which is the state it spends most of its life in.
+  function boxHoldingSomething(){
+    const list = $("roadmapList");
+    if (list.querySelector(".editbox, .dropbox, .sendbox")) return true;
+    return [...list.querySelectorAll(".addstep textarea")].some(
+      t => t.value.trim() !== "" || document.activeElement === t);
+  }
+
+  function drawRoadmap(j, force){
     if (j.error){ $("roadmapList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
+    if (!force && boxHoldingSomething()) return;
     // Every read and every write hands back where the list has got to, so the
     // poll below can tell this panel's own change from somebody else's. Without
     // it every write is followed by a redraw a second later, which detaches
@@ -345,10 +375,21 @@ function nbRoadmapView({$, nb}){
     return box;
   }
 
-  // Only ever one open, anywhere in the notebook: two half-written notes with
-  // one Send between them is a message going to the wrong place.
+  // Only ever one open, anywhere in THIS notebook: two half-written notes
+  // with one Send between them is a message going to the wrong place, and
+  // the Bugs view shares this one with the Roadmap, which is why it is not
+  // scoped to the list.
+  //
+  // This notebook and not the page: two projects can be open side by side,
+  // and their notes go to two different sessions, so neither is the other's
+  // ambiguity. Swept page-wide, opening a note in one project deleted a
+  // half-written one in the other.
   function shutSendBoxes(){
-    document.querySelectorAll(".sendbox").forEach(b => b.remove());
+    // The clone this view lives in: makeNotebook puts the project on its
+    // root, and every id inside it is the template's, so there is no id to
+    // reach it by. The state object holds no element.
+    const here = $("roadmapList")?.closest("[data-project]");
+    (here || document).querySelectorAll(".sendbox").forEach(b => b.remove());
   }
 
   // The roadmap's, under the step it would send.
@@ -415,7 +456,7 @@ function nbRoadmapView({$, nb}){
     // must not follow you to another step, or to a bug on the other tab, where
     // it would arrive pre-filled with words written about something else.
     nb.sendNoteText = "";
-    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved}, true);
   }
 
   // Putting the selection down, and the box with it. It redraws rather than
@@ -424,7 +465,7 @@ function nbRoadmapView({$, nb}){
   // able to send it again), so nothing else is going to take them off screen.
   function cancelSend(){
     nb.roadmapSel = null;
-    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved}, true);
   }
 
   async function reallySend(){
@@ -505,7 +546,7 @@ function nbRoadmapView({$, nb}){
       if (j.error){ notify(j.error, true); return null; }
       // quiet: one of a run of moves being flushed, where redrawing between
       // each would flicker the list through every intermediate arrangement.
-      if (!quiet){ drawRoadmap(j); refresh(); }
+      if (!quiet){ drawRoadmap(j, true); refresh(); }
       return j;
     }catch(e){ notify("could not reach the server: " + e, true); return null; }
   }
@@ -730,7 +771,7 @@ function nbRoadmapView({$, nb}){
   }
 
   const redrawRoadmap = () =>
-    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved});
+    drawRoadmap({items: nb.roadmapItems, session: nb.roadmapSession, unsaved: nb.roadmapUnsaved}, true);
 
   // ---- staging -------------------------------------------------------------
   // Nothing the panel does touches the list until Save. Reordering worked this

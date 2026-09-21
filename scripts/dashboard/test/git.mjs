@@ -397,6 +397,84 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
   ok((await act('delete', { name: main })).error && (await act('delete', { name: 'nope' })).error,
      'the main branch and a branch that is not there are refused');
 
+  // R69 step 3: commits main lacks, holding nothing main lacks. Work that
+  // shipped another way reads exactly like work that is waiting, and the
+  // only way to tell them apart was to go and diff it by hand.
+  {
+    git('checkout', '-q', '-b', 'shipped');
+    writeFileSync(`${B}/shipped.txt`, 'a\n'); git('add', 'shipped.txt'); git('commit', '-q', '-m', 'Ship it');
+    git('rm', '-q', 'shipped.txt'); git('commit', '-q', '-m', 'Take it back');
+    git('checkout', '-q', main);
+    const rows = (await api('what=branches')).branches || [];
+    const b = rows.find(r => r.name === 'shipped');
+    ok(b?.main_ahead === 2 && b?.same === true && rows.find(r => r.name === 'old-work')?.same === false,
+       `a branch whose commits change nothing ${main} lacks says so, where ancestry alone calls it ${
+         b?.main_ahead} waiting`);
+    const no = await act('delete', { name: 'shipped' });
+    ok(no.unmerged && no.same === true && /no work/.test(no.error || ''),
+       '...and its delete refusal separates the history, which goes, from the work, which does not');
+    ok((await act('delete', { name: 'shipped', force: true })).ok, '...and deletes it when told');
+  }
+
+  // R69 step 1: a branch that is only on the host. The fold knew nothing
+  // about its own rows, so the one delete that cannot lose work was the one
+  // thing the view could not do.
+  {
+    git('push', '-q', 'origin', `${main}:refs/heads/stale`);      // every commit already in main
+    git('push', '-q', 'origin', `${main}:refs/heads/gone`);       // ...and one to remove
+    git('push', '-q', 'origin', 'old-work:refs/heads/live');      // commits main does not have
+    await act('fetch');
+    const rows = (await api('what=branches')).branches || [];
+    const stale = rows.find(r => r.name === 'origin/stale'), live = rows.find(r => r.name === 'origin/live');
+    ok(stale?.merged === true && live?.merged === false,
+       `a remote row says whether ${main} already has it (stale ${stale?.merged}, live ${live?.merged})`);
+    const gone = await act('delete-remote', { name: 'origin/gone' });
+    ok(gone.ok && !execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'gone'], { encoding: 'utf8' }).trim(),
+       `...and Delete on the host removes it there (${gone.out || gone.error})`);
+    const kept = await act('delete-remote', { name: 'origin/live' });
+    ok(kept.error && /merge it first/.test(kept.error)
+       && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'live'], { encoding: 'utf8' }).includes('live'),
+       '...while one holding work main does not have is refused, and is still there');
+    ok((await act('delete-remote', { name: `origin/${main}` })).error
+       && (await act('delete-remote', { name: 'origin/nope' })).error
+       && (await act('delete-remote', { name: 'notaremote' })).error,
+       'the host\'s main branch, one that is not there, and a name that is not a remote branch are refused');
+  }
+
+  // R69 step 2: merging into a main the host has moved past. The merge
+  // itself is fine; what it leaves is a main both ahead and behind, which
+  // is how the copy on the share drifts 294 commits out of step.
+  {
+    const other = `${DIR}/beta-behind`;
+    const was = execFileSync('git', [`--git-dir=${origin}`, 'rev-parse', main], { encoding: 'utf8' }).trim();
+    // Its own author, spelled out: the suite's environment is not somebody's
+    // shell and a commit with no author is a crash halfway through a fixture.
+    const theirs = { ...process.env, GIT_AUTHOR_NAME: 'Somebody Else', GIT_AUTHOR_EMAIL: 'else@example.invalid',
+                     GIT_COMMITTER_NAME: 'Somebody Else', GIT_COMMITTER_EMAIL: 'else@example.invalid' };
+    const oth = (...a) => execFileSync('git', ['-C', other, ...a], { encoding: 'utf8', env: theirs });
+    execFileSync('git', ['clone', '-q', origin, other], { env: theirs });
+    writeFileSync(`${other}/theirs.txt`, 'theirs\n');
+    oth('add', 'theirs.txt');
+    oth('commit', '-q', '-m', 'Somebody else pushed');
+    oth('push', '-q', 'origin', `HEAD:${main}`);
+    await act('fetch');
+    const held = await act('merge', { name: 'old-work', into: main });
+    ok(held.error && /behind origin\//.test(held.error) && /Pull first/.test(held.error),
+       `Merge into ${main} waits while the host is ahead of it, naming the pull (${
+         (held.error || '').slice(0, 70)})`);
+    // The host put back where it was: this test moved somebody else's
+    // fixture, and every push and pull after it would meet the surprise.
+    execFileSync('git', [`--git-dir=${origin}`, 'update-ref', `refs/heads/${main}`, was]);
+    await act('fetch');
+    // A branch main already holds: what is being proved is that the check
+    // stops refusing, not that git can merge, and this leaves the fixture
+    // exactly as the rest of the file expects it.
+    const done_ = await act('merge', { name: 'claude/tabmade', into: main });
+    ok(done_.ok, `...and stops refusing once ${main} here is level with the host again (${
+      (done_.out || done_.error || '').trim().slice(0, 40)})`);
+    rmSync(other, { recursive: true, force: true });
+  }
+
   // The WRITES run none of the programs the tree names either (B153). The
   // reads were the first half; a commit, a switch and a merge are the half
   // that has to move the tree afterwards, and each of them is a hook git
@@ -503,12 +581,20 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     into: !!v.querySelector('[data-gitmerge="old-work"][data-gitinto]'),
     groups: [...v.querySelectorAll('.ggroup')].map(g => g.textContent),
-    originRows: [...v.querySelectorAll('.gbranch code')].filter(c => /^origin\//.test(c.textContent)).length,
+    originRows: [...v.querySelectorAll('.gbranch code')].map(c => c.textContent).filter(n => /^origin\//.test(n)),
     merged: !!v.querySelector('[data-gitdeletemerged]'),
+    remoteDel: [...v.querySelectorAll('[data-gitdeleteremote]')].map(b => b.dataset.gitdeleteremote),
     words: [...v.querySelectorAll('.gbranch .sub, .gbranch .sst')].map(e => e.textContent).join(' | ') }));
-  ok(grouped.into && grouped.groups.some(g => /not yet in/.test(g)) && grouped.merged && grouped.originRows === 0
+  ok(grouped.into && grouped.groups.some(g => /not yet in/.test(g)) && grouped.merged
+     && !grouped.originRows.some(n => ['origin/' + main, 'origin/old-work'].includes(n))
      && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words),
      `branches are grouped by what to do with them: work not yet in main offers Merge into main, branches already in main offer one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 200)})`);
+  // R69 step 1 in the view: the fold lists what is only on the host, and
+  // offers the delete on exactly the rows where it cannot lose work.
+  ok(grouped.originRows.includes('origin/stale') && grouped.originRows.includes('origin/live')
+     && grouped.remoteDel.includes('origin/stale') && !grouped.remoteDel.includes('origin/live'),
+     `the "only on the host" fold offers Delete on a branch main already has and not on one it does not (${
+       JSON.stringify(grouped.remoteDel)} of ${JSON.stringify(grouped.originRows)})`);
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
   await page.click('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] summary');

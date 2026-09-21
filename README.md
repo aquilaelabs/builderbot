@@ -358,12 +358,22 @@ bb version policy  what a session may move here, and who decides. The
                    one (a session writes the FIRST version and moves nothing
                    after), patch, patch and minor, or anything
 bb changelog       this project's user-facing changelog (--for DIR for a component)
-bb changelog add "..."   log what a change means for the person using it; the
-                   next version bump dates the accumulated lines. --cat NAME
-                   files it under a `### Name` category, made at the end of
-                   the section if it is new, which categories exist and what
-                   order they and their lines sit in is the operator's, on the
-                   Changelog editor beside the version
+bb changelog add "..." --cat NAME   log what a change means for the person using
+                   it; the next version bump dates the accumulated lines. A
+                   category is required, and the tool is where the rule lives:
+                   Added (somebody can do something they could not), Changed
+                   (already here, now different), Deprecated (going away),
+                   Removed (gone), Fixed (was wrong, now right), Security
+                   (act on it because of what it exposed). When two fit, the
+                   one a reader would look under; something nobody using the
+                   product would notice gets no entry. Run without a category
+                   and it prints this. A name that means one of the six is
+                   spelled the one way (`fix` files under Fixed), the six keep
+                   their usual order among themselves, and a project that
+                   files its own way names its own category, kept as typed and
+                   placed at the end: a default, which a house rule overrides.
+                   What order the categories and their lines sit in is still
+                   the operator's, on the Changelog editor beside the version
 bb changelog unreleased  the entries waiting for a bump, numbered straight
                    through the section by category, in the arranged order
 bb changelog edit N "..."  reword one of them: a change that tweaks something
@@ -525,6 +535,15 @@ bb phone run --why "..." -- adb args...
                    ask to reach it: the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb container       what container asks are waiting on an administrator
+bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                   ask for a container built from a compose file the session
+                   wrote: an administrator reads the file on the bell and
+                   allows or denies it, and Allow registers it through the
+                   Docker tab's own New container path and starts its build.
+                   A published image is a compose naming it; a repository
+                   with a Dockerfile is a compose with a build context on
+                   the projects share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
 bb root run --why "..." -- CMD...
                    ask for ONE command as root on this project's node: an
@@ -1821,7 +1840,14 @@ elsewhere (in place, so refused while the owner's Claude session stands in
 the directory, and a conflict is left standing for the Changes section to
 hand to Claude), **Switch** (refused under a session likewise, or with
 uncommitted changes) and **Delete**, which refuses a branch holding commits
-no other branch has until you say so twice; **Revert** and **Branch here**
+no other branch has until you say so twice, and says which of the two kinds
+it is: a branch whose commits change nothing `main` lacks is history going,
+not work. Merge into main waits while the copy of `main` here is behind the
+host, and names the pull, because merging into it is how that copy ends up
+both ahead and behind. The **only on `<host>`** fold says of each branch
+whether `main` already has every commit on it, and offers **Delete on
+`<host>`** for the ones where it does, which is the only case where removing
+a branch there can lose nothing. **Revert** and **Branch here**
 on a picked commit. A session's token
 has none of these (it has `bb git`) and a locked project takes no action.
 Send to Claude and the per-project git policy are roadmap R36's last step.

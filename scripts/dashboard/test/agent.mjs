@@ -1483,6 +1483,24 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     ok(fin && fin.state === 'succeeded' && /hi from the tree/.test(fin.log) && /workspace .*jobs\/j_/.test(fin.log),
        `the agent materializes the snapshot and runs there (${fin?.state}${fin?.state === 'succeeded' ? '' : ': ' + (fin?.error || '') + ' | ' + (fin?.log || '').slice(-400).replace(/\n/g, ' / ')})`);
     ok(fin && /\n0\n/.test(fin.log), '...dist/ stays behind: the snapshot carries the tree, not the shelf');
+    // B200: a one-second read does not queue behind a long job. This node runs
+    // one job at a time, and Test (uname, through the agent) used to wait for
+    // that one slot like a build would, time out, and be reported as an agent
+    // that "did not report back" on a machine that was healthy and busy.
+    {
+      const long = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['sh', '-c', 'sleep 14'] });
+      await until(async () => (await api(`/api/v1/jobs?id=${long.job}`)).state === 'running' ? true : null, 20000);
+      const t0 = Date.now();
+      const probe = await api('/api/v1/nodes', { action: 'test', id: minted.id });
+      const took = Date.now() - t0;
+      const still = (await api(`/api/v1/jobs?id=${long.job}`)).state;
+      ok(still === 'running' && took < 9000 && !probe.error,
+         `Test answers beside a job that holds the node's one slot, rather than after it (${took}ms, the long job ${still}: ${
+           JSON.stringify(probe).slice(0, 90)})`);
+      await api('/api/v1/jobs', { action: 'cancel', id: long.job });
+      await until(async () => ['succeeded', 'failed', 'canceled'].includes(
+        (await api(`/api/v1/jobs?id=${long.job}`)).state) ? true : null, 20000);
+    }
     // Bug #45: a plain exec, which is what bb build, bb test and bb run
     // submit, got a bare PATH, because the node's SDK environment was only
     // applied in the bb-verb branch. Measured on a real node: java and go

@@ -39,8 +39,9 @@ operator installs the tool.
 Your commit identity arrives as git's environment, so a commit that cannot find
 an author is a fault to report, not one to fix with `user.name`. On a node,
 pushing is `bb git push` (also `fetch`, `pull`, `ls-remote`): the controller
-holds the keys, so no credential is ever here and a plain `git push` fails
-asking for a username. `bb git policy` prints what you may push.
+holds the keys, so no credential is ever here, and a plain `git push` says so
+and names these instead. `bb git policy` prints what you may push, which is
+your own branches and not a tag, a deletion or a branch only the host has.
 
 ## No sudo
 
@@ -60,8 +61,10 @@ than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
 ## Versions
 
 `bb version` is this project's identity; `bb version policy` says what you may
-move, which is usually nothing. `bb changelog add` records what a change means
-for the person using the product.
+move, which is usually nothing. `bb changelog add "..." --cat NAME` records what
+a change means for the person using the product, under Added, Changed,
+Deprecated, Removed, Fixed or Security; run it with no category and it says
+when each applies.
 
 ## Which build is running
 
@@ -96,5 +99,8 @@ Making a container, removing one, Up, Down and Env are the operator's. Rebuild
 can be handed to you per project: `bb devapp` says what it was built from and
 whether it is running; on `deny` the refusal names the dial, on `ask` your
 reason goes to a person. You have no Docker socket of your own, because the
-daemon is the node's and its group is root there.
+daemon is the node's and its group is root there. A container that does not
+exist yet is asked for: write its compose file, then `bb container ask --why
+"..." --name NAME --compose FILE`, and an administrator reads the file and
+allows or denies it; `--node` puts it on another machine.
 <!-- BUILDERBOT:END -->

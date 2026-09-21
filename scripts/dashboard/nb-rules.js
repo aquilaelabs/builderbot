@@ -11,8 +11,36 @@ function nbRulesView({$, nb, project}){
     }catch(e){ nb.ruleData = {error: String(e), rules: []}; }
     nb.rulesRev = revs[`rules:${project}`] ?? nb.rulesRev;
     nb.rulePending = null;
+    nb.ruleClash = null;
     drawRules();
   }
+
+  // The global rules, read-only, under the project's own. The server has always
+  // sent them and the page never drew them, so somebody writing a project rule
+  // could not see what was already in force: the conflict worth preventing
+  // starts with not knowing. Under the project's list rather than above it, so
+  // Add stays the first band and what is this project's own comes first. A
+  // class of their own, NOT .rulerow: every handler and every selector in
+  // here means "one of this project's rules" by that class, and a read-only
+  // row wearing it was wired for an Edit button it does not have.
+  function globalRules(gs){
+    gs = gs.filter(g => !g.disabled);
+    if (!gs.length) return "";
+    const cond = r => (r.paths || []).length || (r.words || []).length;
+    return `<div class="sub dim ggroup">also in force here, set for every project in Controller settings</div>
+      <div class="field" id="rlGlobal">${gs.map(g => `
+        <details class="bug grule">
+          <summary><span class="btitle">${esc(g.name || "")}</span>
+            <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
+            <span class="pill">global</span></summary>
+          <div class="body"><div class="bfield"><label>rule</label><div class="bval">${esc(g.text || "")}</div></div>${
+            (g.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc(g.paths.join(", "))}</div></div>` : ""}${
+            (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}</div>
+        </details>`).join("")}</div>`;
+  }
+  // What a project rule shares with a global one, in a sentence for its row.
+  const overlapLine = r => (r.overlaps || []).map(o =>
+    `the global rule ${o.name} also fires on ${[...(o.words || []), ...(o.paths || [])].join(", ")}`).join("; ");
 
   // What is on screen: the staged copy if anything has been typed, otherwise
   // what the server last said.
@@ -65,7 +93,8 @@ function nbRulesView({$, nb, project}){
             <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>
             <span class="rlkind ${cond(r) ? "cond" : ""}">${
               cond(r) ? "on its triggers" : "every session"}</span>${
-              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
+              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}${
+              (r.overlaps || []).length ? `<span class="pill warn">shares ground with a global rule</span>` : ""}
           </summary>
           <div class="body">${nb.ruleEditing.has(i) ? `
             ${lbl("", "Name", "a short name; the listing and bb rules show NAME use it")}
@@ -102,6 +131,7 @@ function nbRulesView({$, nb, project}){
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
             ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
             ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
+            ${(r.overlaps || []).length ? `<div class="bfield rlover"><label>shares ground</label><div class="bval">${esc(overlapLine(r))}. Both reach a session; where they disagree it follows this one and says so.</div></div>` : ""}
             ${r.doc ? `<div class="bfield rlframe"><label>defined in</label><div class="bval">${esc(r.doc)}</div></div>` : ""}
             ${r.check ? `<div class="bfield rlframe"><label>checked by</label><div class="bval">${esc(r.check)} <span class="dim">· bb rules check ${esc(r.name || "")}</span></div></div>` : ""}
             <div class="actbar macts">
@@ -111,6 +141,7 @@ function nbRulesView({$, nb, project}){
             </div>`}
           </div>
         </details>`).join("")}</div>
+      ${globalRules(d.global || [])}
       <div class="fnote">${rows.length
           ? (chars === null
              ? "unsaved: the size is measured on what is written"
@@ -119,17 +150,29 @@ function nbRulesView({$, nb, project}){
                  d.loud ? "; that is a lot to pay on every conversation" : ""}`)
           : "Nothing set. A session can leave rules of its own with bb rules "
             + "add, marked as its; the ones you write here it cannot touch."}</div>`;
+    // The clash, where the rules are: their list as it stands now beside the
+    // choice, in the two words the roadmap's band uses, so the same decision
+    // reads the same way on both views.
+    const theirs = nb.ruleClash?.rules || [];
+    const clash = !nb.ruleClash ? "" : `<div class="field"><div class="hint bad">These rules changed while you had them open: a session or another person wrote to them. Theirs now holds ${
+        theirs.length} rule${theirs.length === 1 ? "" : "s"}${theirs.length ? ": " + theirs.map(r => esc(r.name)).join(", ") : ""}.</div>
+        <div class="actbar"><span class="state">nothing has been written</span>
+          <button type="button" id="rlKeepTheirs">Keep theirs</button>
+          <button type="button" class="primary" id="rlUseMine">Use mine</button></div></div>`;
     box.innerHTML = nb.codebaseSection()
       + docSection("briefing", "rules", "Your rules",
-      rows.length ? `${rows.length}` : "none", body,
+      rows.length ? `${rows.length}` : "none", clash + body,
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the
       // heading says there is something behind it.
-      {open: false, cls: d.loud && !ruleDirty() ? "warn" : ""})
+      {open: !!nb.ruleClash, cls: d.loud && !ruleDirty() ? "warn" : ""})
       // Last, because it CONTAINS the two above: the rules in full, then the
       // open roadmap and bugs. Reading it before them is reading the summary
       // before the thing.
       + nb.preambleSection();
+    const keep = box.querySelector("#rlKeepTheirs"), mine = box.querySelector("#rlUseMine");
+    if (keep) keep.onclick = () => loadRules();          // their list, my edits dropped
+    if (mine) mine.onclick = () => saveRules(true);
     wireSections(box);
     nb.ruleStagedCount = () => (ruleDirty() ? 1 : 0);
     nb.ruleClearStaged = () => { nb.rulePending = null; nb.ruleEditing.clear(); nb.ruleOpen.clear(); nb.ruleWas.clear(); drawRules(); };
@@ -214,13 +257,20 @@ function nbRulesView({$, nb, project}){
     nb.syncSave();
   }
 
-  async function saveRules(){
+  // `force` is the person's answer to the clash band, never a default.
+  async function saveRules(force){
     if (!ruleDirty()) return;
     const body = nb.rulePending;
     try{
-      const r = await postJSON("/api/rules", {project, action: "save", rules: body});
+      const r = await postJSON("/api/rules", {project, action: "save", rules: body,
+                                              rev: nb.ruleData?.rev, ...(force === true ? {force: true} : {})});
       const j = await r.json();
+      // Somebody else wrote these rules while they were open here (B195).
+      // Nothing is written and nothing typed is dropped: the staged copy
+      // stays, and the band puts the choice where the rules are.
+      if (j.conflict){ nb.ruleClash = j.current; drawRules(); return; }
       if (j.error){ notify(j.error, true); return; }
+      nb.ruleClash = null;
       nb.ruleData = j;
       nb.rulePending = null;
       nb.ruleEditing.clear();                   // written: back to reading them

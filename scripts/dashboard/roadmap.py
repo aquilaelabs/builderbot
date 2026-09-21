@@ -294,6 +294,24 @@ def begin(project, by="claude"):
     return {"ok": True}
 
 
+# How long a batch may stay open before it stops holding the notebook. A
+# session's batch is minutes of work; one open for half an hour belongs to a
+# session that was killed mid-way or a container that restarted under it, and
+# it used to disable Save for every person on the project for good, with no
+# way out that did not need a shell, which a user account does not have
+# (B198). Lifting the HOLD is safe by the batch's own design: a person's
+# change made while one is open goes straight to the history, the session's
+# commit still folds its own events in, and its revert already refuses to
+# roll back over a person's edit.
+BATCH_STALE = 30 * 60
+
+
+def _batch_view(b):
+    at = int(b.get("at") or 0)
+    return {"at": at, "by": b.get("by", ""), "changes": len(b.get("events") or []),
+            "stale": bool(at and time.time() - at > BATCH_STALE)}
+
+
 def batches():
     """Every project with a batch open, for the status poll.
 
@@ -302,17 +320,14 @@ def batches():
     """
     with _lock:
         d = load().get("batch", {})
-    return {p: {"at": b.get("at", 0), "by": b.get("by", ""),
-                "changes": len(b.get("events") or [])}
-            for p, b in d.items() if b}
+    return {p: _batch_view(b) for p, b in d.items() if b}
 
 
 def batch(project):
     """The open batch here, or None. What the panel shows a marker for."""
     with _lock:
         b = load().get("batch", {}).get(project)
-    return None if not b else {"at": b.get("at", 0), "by": b.get("by", ""),
-                               "changes": len(b.get("events") or [])}
+    return None if not b else _batch_view(b)
 
 
 # Two events about the same line are one event about that line. Ordered by
@@ -1082,7 +1097,7 @@ def restore(project, item_id, at=None, by="you", who=""):
     return {"ok": True, "item": row}
 
 
-def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
+def send(project, item_id, step=None, sessions=(), also_told=False, note="", prefix=""):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -1153,7 +1168,13 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
     # that is up is already on them, and a step is just the step. What used to
     # sit here typed /model ahead of it, which stopped working the day claude
     # put a confirmation behind that command: the step went into the dialog.
-    session = claude_session(project)
+    # The CALLER's session, not the project's bare one. Every session a node
+    # starts is named with the account's prefix (bb-tty's sess()), and the
+    # owner's prefix is the empty string, so the bare name is the owner's
+    # conversation and nobody else's. Sent without this, a second person's
+    # step was typed into the owner's window, or refused as "no session is
+    # running here" while their own sat there running (B194).
+    session = prefix + claude_session(project)
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r

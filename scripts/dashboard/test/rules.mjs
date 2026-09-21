@@ -372,6 +372,98 @@ print(users.mint_session('alpha'))`], { encoding: 'utf8' }).trim();
   ok(asSession.status === 403, `...and a session's token is refused by the endpoint too (${asSession.status})`);
 }
 
+// B195: the tab writes the WHOLE list, so a list that moved since it was loaded
+// is somebody else's rule about to be overwritten: one a session added, one an
+// administrator approved from the queue, another person's reword. It used to
+// go through, and the log then blamed the person saving for removing a rule
+// they had never seen.
+{
+  const call = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b === null ? {} : { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  }, [path, body ?? null]);
+  const first = await call('/api/rules?project=alpha');
+  const mine = [...(first.rules || []), { name: 'from-tab-one', text: 'a rule written in one window' }];
+  const one = await call('/api/rules', { project: 'alpha', action: 'save', rules: mine, rev: first.rev });
+  ok(typeof first.rev === 'number' && one.rev !== first.rev
+     && (one.rules || []).some(r => r.name === 'from-tab-one'),
+     `a save carrying the revision it loaded at goes through, and the revision moves (${first.rev} to ${one.rev})`);
+  const theirs = [...(first.rules || []), { name: 'from-tab-two', text: 'written in the other window' }];
+  const stale = await call('/api/rules', { project: 'alpha', action: 'save', rules: theirs, rev: first.rev });
+  ok(stale.status === 200 && stale.conflict === true
+     && (stale.current?.rules || []).some(r => r.name === 'from-tab-one')
+     && read().some(r => r.name === 'from-tab-one') && !read().some(r => r.name === 'from-tab-two'),
+     'a second window that loaded before that save is told the rules changed, handed what is there now, and writes nothing');
+  const forced = await call('/api/rules', { project: 'alpha', action: 'save', rules: theirs,
+                                            rev: first.rev, force: true });
+  ok(!forced.conflict && read().some(r => r.name === 'from-tab-two') && !read().some(r => r.name === 'from-tab-one'),
+     '...and Use mine writes it, which is then a decision somebody made rather than an accident');
+  await call('/api/rules', { project: 'alpha', action: 'save', rules: first.rules || [], force: true });
+}
+
+// A project's rules beside the global ones. Flat by construction: both lists
+// reach a session, and a global rule and a project rule with the same trigger
+// both fire. What was missing was everything around that: somebody writing a
+// project rule could not see the global ones at all, nothing said which wins,
+// and a shared NAME resolved to the global rule, which is backwards. Names
+// carry no meaning here on purpose: an override you can only make by knowing
+// the other rule's name helps exactly the person who did not need it.
+{
+  const auth = { 'Content-Type': 'application/json',
+                 Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  const post = async (path, body) => (await fetch(URL.replace(/\/$/, '') + path,
+    { method: 'POST', headers: auth, body: JSON.stringify(body) })).json();
+  const get = async path => (await fetch(URL.replace(/\/$/, '') + path, { headers: auth })).json();
+  const gWas = (await get('/api/global-rules')).rules || [];
+  await post('/api/global-rules', { action: 'save', rules: [
+    ...gWas.filter(r => !r.builtin),
+    { name: 'house-changelog', text: 'Every change gets a changelog line.', words: ['changelog'], paths: ['docs'] }] });
+  const first = await get('/api/rules?project=alpha');
+  await post('/api/rules', { project: 'alpha', action: 'save', force: true, rules: [
+    ...(first.rules || []),
+    { name: 'our-changelog', text: 'Here the changelog is grouped by component.', words: ['changelog', 'release'], paths: ['docs/guide.md'] },
+    { name: 'house-changelog', text: 'A rule that happens to pick a global rule\'s name.' },
+    { name: 'unrelated', text: 'Nothing to do with any of it.', words: ['gradle'] }] });
+  const got = await get('/api/rules?project=alpha');
+  const mine = (got.rules || []).find(r => r.name === 'our-changelog');
+  const over = (mine?.overlaps || []).find(o => o.name === 'house-changelog');
+  ok((got.global || []).some(g => g.name === 'house-changelog') && over
+     && JSON.stringify(over.words) === '["changelog"]' && JSON.stringify(over.paths) === '["docs"]',
+     `a project rule is told which global rule fires where it fires, and on what (${JSON.stringify(over)})`);
+  ok(((got.rules || []).find(r => r.name === 'unrelated')?.overlaps || []).length === 0,
+     '...and one that shares no trigger with any of them is told nothing');
+  ok(!(got.rules || []).some(r => r.name === 'house-changelog')
+     && (got.rules || []).some(r => r.name === 'house-changelog-2'),
+     "a project rule cannot take a global rule's name: it is suffixed, so bb rules show NAME is never ambiguous");
+  const told = execFileSync(BB, ['preamble'], { env: ENV }).toString();
+  ok(/Where one of this project's rules and a global one disagree, follow the project's, and say so in your reply/.test(told),
+     'a session is told which wins where they disagree, since no matching could find a disagreement in meaning');
+
+  // ...and on the page: the global rules are drawn, read-only, and the row says so.
+  // A FRESH notebook: the one this file has been driving may be holding
+  // staged edits by now, and a panel holding edits does not re-read.
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'notebook'); if (t) hideTab(t.id); });
+  await page.evaluate(() => openNotebook('alpha', 'briefing'));
+  await page.waitForFunction(() => !!document.querySelector('.pane .nb #rulesBox .rulerow, .pane .nb #rulesBox .grule'),
+                             null, { timeout: 20000 });
+  let seen = null;
+  for (let i = 0; i < 30 && !seen?.global; i++){
+    await page.evaluate(() => pollRevs());
+    await new Promise(r => setTimeout(r, 400));
+    seen = await page.evaluate(() => ({
+      global: [...document.querySelectorAll('.nb #rlGlobal .grule .btitle')].map(e => e.textContent).includes('house-changelog'),
+      edit: document.querySelectorAll('.nb #rlGlobal .rlEdit, .nb #rlGlobal .rlRm').length,
+      pill: [...document.querySelectorAll('.nb #rlList .rulerow')].some(r =>
+        r.querySelector('.btitle')?.textContent === 'our-changelog' && /shares ground/.test(r.textContent)) }));
+  }
+  ok(seen?.global && seen.edit === 0 && seen.pill,
+     `the project's Rules list the global ones read-only under its own, and the overlapping row says it shares ground (${JSON.stringify(seen)})`);
+
+  await post('/api/rules', { project: 'alpha', action: 'save', force: true, rules: first.rules || [] });
+  await post('/api/global-rules', { action: 'save', rules: gWas.filter(r => !r.builtin) });
+}
+
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

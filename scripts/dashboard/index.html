@@ -539,6 +539,8 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   text-decoration:none}
 .bnote.ask .acts a[data-ballow]{background:var(--warn);color:#1a1f26;
   border-color:var(--warn);font-weight:600}
+.bnote .bdetail summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:4px}
+.bnote .bdetail pre{font:12px/1.4 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:6px}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
 .bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
@@ -1894,8 +1896,8 @@ pre.diff .d-ctx{color:var(--dim)}
 /* Which kind it is, said rather than chosen: a rule is conditional exactly
    when it has a trigger, so this follows the fields instead of being a third
    thing to keep in step with them. */
-.rulerow .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
-.rulerow .rlkind.cond{color:var(--accent)}
+.rulerow .rlkind,.grule .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
+.rulerow .rlkind.cond,.grule .rlkind.cond{color:var(--accent)}
 @media(max-width:600px){
   .rulerow .two{display:block}
   .rulerow .two>*+*{margin-top:6px}
@@ -3308,6 +3310,7 @@ body.booting .pane>.loading{margin:auto}
            next look up, and that is not a difference worth a permanent
            control: the session's own tab is one tap away for the rare case
            where a minute matters. -->
+      <span class="state" id="roadmapMoved" hidden></span>
       <button id="roadmapSaveQuiet" type="button" disabled>Save</button>
       <span class="sp"></span>
       <!-- Where Close used to be. The tab does not go away when something is
@@ -8787,6 +8790,7 @@ function makeNotebook(project){
   // the tab opened and then held that drawing until it was closed and reopened,
   // which is a long time to be looking at a list a session has moved on from.
   nb.roadmapRev = null; nb.memRev = null;
+  nb.movedUnder = false;        // another writer moved a half this panel is holding edits to (B199)
 
   async function openMemory(name){
     nb.memProj = name;
@@ -8839,7 +8843,9 @@ function makeNotebook(project){
   // everything: the Saves, and the write-through controls on the memory and
   // bug views, because "a session is mid-change here" is a fact about the
   // notebook, not about one of its tabs.
-  function nbHeld(){ return !!nb.roadmapBatch || nb.roadmapStale; }
+  // A batch open past BATCH_STALE holds nothing (B198): its session is gone,
+  // and a hold nobody can lift is a notebook nobody can save.
+  function nbHeld(){ return (!!nb.roadmapBatch && !nb.roadmapBatch.stale) || nb.roadmapStale; }
 
   function drawBatchNote(){
     const el = $("roadmapBatch");
@@ -8848,7 +8854,12 @@ function makeNotebook(project){
     el.hidden = !nb.roadmapBatch && !nb.roadmapStale;
     if (el.hidden){ el.innerHTML = ""; return; }
     const n = nb.roadmapBatch?.changes || 0;
-    el.innerHTML = nb.roadmapBatch
+    const mins = nb.roadmapBatch?.at ? Math.max(1, Math.round((Date.now() / 1000 - nb.roadmapBatch.at) / 60)) : 0;
+    el.innerHTML = nb.roadmapBatch?.stale
+      ? `<div>A session opened a batch here ${mins} min ago and never closed it, which is
+         longer than a session takes, so it holds nothing: your saves go through.${
+         state?.can?.admin ? ` <button type="button" id="roadmapBatchClose">Close it</button>` : ""}</div>`
+      : nb.roadmapBatch
       ? `<div>${esc(nb.roadmapBatch.by || "a session")} is part-way through changing this
          notebook${n ? `: ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving
          and reporting are held until it commits; your own edits are safe where
@@ -8856,6 +8867,15 @@ function makeNotebook(project){
       : `<div>A session finished changing this notebook. What is on screen was
          read before that, so saving over it would undo the change.
          <button type="button" id="roadmapReread">Reload the list</button></div>`;
+    const bc = $("roadmapBatchClose");
+    if (bc) bc.onclick = async () => {
+      busy(bc, "Closing");
+      try{
+        const j = await (await postJSON("/api/roadmap", {project, action: "batch-close"})).json();
+        if (j.error) notify(j.error, true);
+      }catch(e){ notify("could not reach the server: " + e, true); }
+      await refresh();
+    };
     const rr = $("roadmapReread");
     if (rr) rr.onclick = rereadRoadmap;
     const rc = $("roadmapRecheck");
@@ -8910,8 +8930,20 @@ function makeNotebook(project){
     // Held while a session is mid-batch, and again until the list is re-read
     // after one finishes. Reverting is still allowed either way: throwing away
     // your own unsaved work never depends on what anybody else is doing.
-    const held = !!nb.roadmapBatch || nb.roadmapStale;
+    const held = nbHeld();
     q.disabled = !dirty || held;
+    // A panel holding unsaved work stops re-reading, which is right, since a
+    // redraw would eat the typing, and it used to say nothing while it did
+    // (B199): stage one line, go to lunch, and the list on screen was the
+    // pre-lunch one until Save was refused an op at a time. Said once, where
+    // the Save is, and true of all three halves now that the rules check
+    // their revision too.
+    if (!dirty) nb.movedUnder = false;
+    const mv = $("roadmapMoved");
+    if (mv){
+      mv.hidden = !(dirty && nb.movedUnder);
+      mv.textContent = mv.hidden ? "" : "this has changed since you loaded it: Save will ask which version wins";
+    }
     // Revert answers the same question the Saves do, from the other side.
     const rv = $("roadmapRevert");
     if (rv){
@@ -9245,6 +9277,15 @@ function makeNotebook(project){
   ];
   for (const [key, news, read] of HALVES)
     watch(key, k => { if (!nbWriting && news(k)) read(); });
+  // ...and the other half of each guard: the token moved and the panel did NOT
+  // re-read, because it is holding work. That is the moment to say so (B199).
+  const MOVED = [
+    [() => `roadmap:${project}`, k => nb.roadmapRev !== null && revs[k] > nb.roadmapRev && nb.roadmapPending.length > 0],
+    [() => `mem:${project}`, k => nb.memRev !== null && revs[k] && revs[k] !== nb.memRev && memDirty()],
+    [() => `rules:${project}`, k => nb.ruleData && nb.rulesRev !== null && revs[k] !== nb.rulesRev && ruleDirty()],
+  ];
+  for (const [key, moved] of MOVED)
+    watch(key, k => { if (!nbWriting && moved(k)){ nb.movedUnder = true; syncSave(); } });
   // The block a session is handed is the first, third and fifth of those
   // joined, so it is stale the moment any of them moves. Only re-read while
   // somebody is looking at it: it is a fold that is shut by default, and
@@ -10505,9 +10546,17 @@ function drawBell(){
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
           : a.kind === "rebuild" ? `rebuild in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>
+        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
+        // A container is approved by reading its compose file, the way root
+        // is approved by reading its argv (R71): the file is the request, so
+        // it is here whole, folded, with the env file's keys and never its
+        // values, which is where a token would be.
+        a.kind === "container" ? `<details class="bdetail"><summary>the compose file${
+            a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
+            a.for ? `, shown under ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>

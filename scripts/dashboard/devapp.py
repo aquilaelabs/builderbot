@@ -1304,6 +1304,39 @@ _CTR_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 LOG_LINES = 400
 
 
+def _mount_ok(root):
+    """Whether a devdata `docker run` may bind this path as /d.
+
+    Two shapes, and the second is why this is a function (B192). A SHARE ROOT
+    (/auxiliary for /auxiliary/plex-library), which is what a compose naming a
+    path on the VM needs: the mount is the share and the names under it are
+    made by the run. And THIS NODE'S APPDATA STORE, whatever depth the node
+    reports it at, which is where a dev instance's own data goes.
+
+    The second used to be covered by the first by accident, because the store
+    was /devdata and a one-component path is a share root. A node that reports
+    /var/lib/builderbot/appdata got its own module refused by its own guard,
+    on every poll, and the refusal said so: BuilderBot asking BuilderBot for
+    something and being told no is a bug in it, which is how this was found.
+
+    Worth saying plainly, because the fix looks like a loosening and is not:
+    the share-root rule ALREADY allows mounting /var to make a directory three
+    levels under it, so naming the deep path instead is the narrower of the
+    two, not the wider. What the rule is really for is stopping a mount of /
+    or of a path with `..` in it, and both stay refused.
+
+    The appdata root is read from this controller's own record of the node,
+    never from the argv, so there is nothing here an argv can talk into
+    matching that it could not already reach through the share root above.
+    """
+    root = (root or "").rstrip("/")
+    if not root.startswith("/") or not _DEV_NAME.match(root[1:]):
+        return False                              # "/", "", or a name with .. in it
+    if "/" not in root[1:]:
+        return True                               # a share root
+    return root == appdata_root().rstrip("/")
+
+
 def _guard(argv):
     """The reason to refuse this argv, or "" to let it run."""
     if not argv or argv[0] != DOCKER:
@@ -1334,9 +1367,9 @@ def _guard(argv):
         # daemon, which is the sandbox premise doing its job.
         mount = next((a for a in argv if a.endswith(":/d")), "")
         root = mount[:-3]
-        if not (root.startswith("/") and _DEV_NAME.match(root[1:])
-                and "/" not in root[1:]):
-            return f"a `docker run` mounting {root or '?'}, which is not a share root"
+        if not _mount_ok(root):
+            return (f"a `docker run` mounting {root or '?'}, which is neither a share "
+                    "root nor this node's appdata store")
         if names and all(_DEV_NAME.match(n) for n in names) and any(
                 argv == _devdata_argv(op, *names, root=root)
                 for op in _DEVDATA_OPS):
@@ -1932,14 +1965,22 @@ def host_map():
             # the scheme left off as with it, and reading it directly reported
             # the shipped default as misconfigured.
             #
+            # An agent node is the other machine that really does have this
+            # path: the storage plane mounts the projects share at /workspace
+            # on every node it manages, so the identity is correct there for
+            # the same reason it is correct on the sandbox VM, and saying
+            # otherwise put a warning on every start once a second node was
+            # enrolled (B193). Its own census is the evidence, rather than the
+            # address or an assumption about what a node must look like: it
+            # lists what is mounted where on that machine.
+            #
             # Left in place while the daemon is not the sandbox, the pair
             # claims that machine calls this path what we call it, and a
             # compose that believes it comes up on an empty directory.
-            if not sandbox_daemon():
-                bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
-                           f"this node's daemon is not a sandbox VM. Unless "
-                           f"that daemon really has {here}, name its path "
-                           f"instead")
+            if not (sandbox_daemon() or _daemon_mounts(here)):
+                bad.append(f"{here}:{there} says that machine calls this path "
+                           f"what we call it, and its census reports no mount "
+                           f"at {here}. Name the path its daemon really has")
         elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
         elif root != "/" and not there.endswith(root):
@@ -2123,6 +2164,24 @@ def appdata_root(node_id=None):
     rec = st.get("appdata") if isinstance(st, dict) else None
     path = str((rec or {}).get("path") or "") if isinstance(rec, dict) else ""
     return path or DEVDATA
+
+
+def _daemon_mounts(path):
+    """Does the node being addressed report a mount at this path?
+
+    The census lists what is mounted where on that machine, so this is the
+    one question in here that is answered with evidence from the other end
+    rather than inferred from an address (B193). False for a node that has
+    not reported, which fails the way the check always did: it says so.
+    """
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    ms = ((n or {}).get("reported") or {}).get("mounts")
+    if not isinstance(ms, list):
+        return False
+    want = path.rstrip("/") or "/"
+    return any(isinstance(m, dict) and m.get("mounted")
+               and str(m.get("path") or "").rstrip("/") == want for m in ms)
 
 
 def _agent_docker():
@@ -3612,14 +3671,15 @@ def state(project, instance=MAIN):
         out["problems"] = problems(project, cfg) + host_map()[1]
         out.update(wiring(cfg))
         # ...and the ports somebody else is already on. After wiring(), which
-        # is what says which ports this instance wants, and phrased as a
-        # problem because that is exactly what it is: a compose that cannot
-        # start as written, on this daemon, right now.
-        clash = taken_ports(project, instance, out.get("ports"))
-        if clash:
-            out["problems"] = out["problems"] + [
-                "port " + ", ".join(clash) + ": two instances of one project "
-                "publish the same ports, so the second needs its own in its env"]
+        # is what says which ports this instance wants. Its own field rather
+        # than a line in `problems`, because the two views that read this
+        # disagree about what it means: on the Docker manager, where Up is,
+        # it is a compose that cannot start as written, right now; on the
+        # Artifacts view, whose one button is Send, it is a note that the
+        # instance being sent will set its own port in its env, which is the
+        # form Send opens. Folded into `problems` it read there as "will not
+        # work", in red, over the button that makes it work.
+        out["port_clash"] = taken_ports(project, instance, out.get("ports"))
         out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way: either the file asks for

@@ -186,6 +186,9 @@ def _log(d, project, by, ev):
     series of decisions the operator needs to read one at a time. The tracker
     still changes as it goes, visibly; only the record waits for commit.
     """
+    # Counted here because every write to the tracker comes through here,
+    # batched or not: see revisions() for why a length is not enough.
+    d.setdefault("revn", {})[project] = int(d.get("revn", {}).get(project) or 0) + 1
     ev = {"at": int(time.time()),
           "by": "claude" if by == "claude" else "you",
           **_by_whom(),
@@ -388,8 +391,15 @@ def revisions():
     count of open bugs would miss.
     """
     with _lock:
-        h = load().get("history", {})
-    return {p: len(rows) for p, rows in h.items()}
+        d = load()
+    h, n = d.get("history", {}), d.get("revn", {})
+    # The history's length PLUS a counter that never stops. The length alone
+    # was the token, and the history is capped at MAX_HISTORY: past 300
+    # events it sat at 300 for good, the watch on it never fired again, and
+    # an open Bugs tab showed a tracker frozen at whatever it held when it
+    # was opened (B197). The sum only ever grows, and a tracker written
+    # before the counter existed still answers with the length it always had.
+    return {p: len(h.get(p) or []) + int(n.get(p) or 0) for p in set(h) | set(n)}
 
 
 def add(project, title, by="you", severity="medium", **fields):
@@ -574,7 +584,7 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     return _edit(project, bug_id, change, by, rev)
 
 
-def send(project, bug_id, sessions=(), note=""):
+def send(project, bug_id, sessions=(), note="", prefix=""):
     """Point a running session at one bug, by number rather than by contents.
 
     The message deliberately does NOT carry the report. It says which bug and
@@ -606,7 +616,9 @@ def send(project, bug_id, sessions=(), note=""):
                          "; reopen it first if it needs work again"}
     # No /model or /effort ahead of it: a project's pair are launch flags now,
     # so the session this reaches is already running on them.
-    session = claude_session(project)
+    # The caller's own session, not the project's bare one: see roadmap.send
+    # for why the bare name is the owner's conversation (B194).
+    session = prefix + claude_session(project)
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report: the area, how to "

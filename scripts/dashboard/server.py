@@ -2432,6 +2432,7 @@ if not NODES_OK:
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devapp.rebuild
+phone.container_maker = devapp.create_container
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -4230,7 +4231,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json(rules.payload(name))
+        # With the number a Save is checked against (B195): read in the same
+        # answer as the rules, so the two cannot describe different moments.
+        return self._json(rules.payload(name) | {"rev": rules.rev(name)})
 
     def _get_global_rules(self):
         """GET /api/global-rules."""
@@ -5582,6 +5585,26 @@ class Handler(BaseHTTPRequestHandler):
         # credited.
         me = self._who() or {}
         who = me.get("uid", "") if me.get("session") else ""
+        if act == "batch-close":
+            # A batch its session will never close: killed mid-way, or the
+            # container restarted under it (B198). The only way out was a
+            # shell running `bb roadmap commit`, which a user account does
+            # not have. Committed rather than reverted: what the session
+            # wrote is already on the list in front of everybody, and folding
+            # its log in loses nothing, where a revert would take work away
+            # on the say-so of somebody who did not do it. An
+            # administrator's, like the other decisions about other
+            # people's work.
+            if self._refused("admin"):
+                return
+            closed = 0
+            for mod in (roadmap, bugs):
+                if mod.batch(name) is not None:
+                    r = mod.commit(name)
+                    if r.get("error"):
+                        return self._json(r, 400)
+                    closed += 1
+            return self._json({"ok": True, "closed": closed} | self._roadmap_state(name, live))
         if act == "save":
             # The panel's one Save: settle the marker, say nothing. There used
             # to be a second action here that typed the change into a running
@@ -5598,7 +5621,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "send":
             r = roadmap.send(name, req.get("id"), req.get("step"), live,
                           also_told=roadmap.unsaved(name) if req.get("tell") else False,
-                          note=field(req, "note"))
+                          note=field(req, "note"),
+                          prefix=users.tmux_prefix(self._who()))
             if r.get("sent") and req.get("tell"):
                 roadmap.mark_told(name)
         elif act == "edit":
@@ -5662,7 +5686,12 @@ class Handler(BaseHTTPRequestHandler):
     def _roadmap_state(self, name, live):
         """What the panel needs after any change: the list, whether there is
         anywhere to send, and whether a session has been told about it yet."""
-        session = roadmap.claude_session(name)
+        # The session THIS ACCOUNT would be sending into, which is the one the
+        # arrows have to answer for: every session a node starts wears the
+        # account's prefix, and the owner's prefix is empty (B194). Read with
+        # the bare name, a second person's arrows said "no Claude session is
+        # running here" with their own session open in the next tab.
+        session = users.tmux_prefix(self._who()) + roadmap.claude_session(name)
         return {"items": roadmap.items(name),
                 # What the poll compares against, handed back with every read
                 # AND every write, so this panel's own change never reads as
@@ -6204,7 +6233,32 @@ class Handler(BaseHTTPRequestHandler):
             acct = users.account_of(who) or {}
             asker_uid = str(acct.get("uid") or "")
             asker_name = str(acct.get("name") or "")
-            if field(req, "kind") == "root":
+            if field(req, "kind") == "container":
+                # A container asked for (roadmap R71): the compose file the
+                # session wrote, on the node it names or the project's own.
+                # Always the administrators', whoever asks. The node is
+                # resolved here so the row can say where, and so a name that
+                # is not a node is refused before anybody is asked.
+                cnode = field(req, "node")
+                target = None
+                if cnode and not NODES_OK:
+                    target = nodes.node(cnode) or next(
+                        (n for n in nodes.node_list() if n.get("name") == cnode), None)
+                    if not target:
+                        return self._json({"error": f"no node called {cnode}"}, 400)
+                elif pn:
+                    target = pn
+                # The same check the New container form gets: a project
+                # that exists and this account may see, or nothing.
+                under = field(req, "for")
+                if under and self._not_project(under):
+                    return
+                r = phone.ask_container(field(req, "why"), field(req, "name"),
+                                        req.get("compose"), req.get("env"),
+                                        target["id"] if target else "",
+                                        target["name"] if target else "", proj,
+                                        for_project=under, asker_name=asker_name)
+            elif field(req, "kind") == "root":
                 r = phone.ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
                                    pn["name"] if pn else "", proj,
                                    bool(((pn or {}).get("reported") or {}).get("sandbox")),
@@ -6266,10 +6320,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(bad, 409)
         if field(req, "action") != "save":
             return self._json({"error": "unknown action"}, 400)
-        r = rules.replace(name, req.get("rules") or [])
+        r = rules.replace(name, req.get("rules") or [], rev=req.get("rev"),
+                          force=bool(req.get("force")))
+        if r.get("conflict"):
+            # 200, with what is there now: the roadmap's shape for the same
+            # moment, so the page can put both versions in front of the
+            # person instead of a toast over a form it then has to guess at.
+            return self._json({"conflict": True, "error": r["error"],
+                               "current": rules.payload(name) | {"rev": rules.rev(name)}})
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(rules.payload(name))
+        return self._json(rules.payload(name) | {"rev": rules.rev(name)})
 
     def _global_rules(self, req):
         """The rules that apply to EVERY project (R63). An administrator's.
@@ -6427,6 +6488,7 @@ class Handler(BaseHTTPRequestHandler):
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "send":
             r = bugs.send(name, req.get("id"), sessions_anywhere(),
+                          prefix=users.tmux_prefix(self._who()),
                           note=field(req, "note"))
             if r.get("error"):
                 return self._json(r, 400)

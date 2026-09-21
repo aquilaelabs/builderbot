@@ -286,7 +286,21 @@ def conditional(r):
     return bool(r.get("paths") or r.get("words"))
 
 
-def replace(project, rules):
+def _rev_of(rows):
+    """One project's rules as a number that moves when any of them does. The
+    same sum revisions() publishes, so what the tab loaded, what the poll
+    watches and what a save is checked against are one value."""
+    raw = json.dumps(rows or [], sort_keys=True)
+    return sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
+
+
+def rev(project):
+    """The number a save of this project's rules is checked against."""
+    with _lock:
+        return _rev_of(((load().get("projects") or {}).get(project) or {}).get("rules") or [])
+
+
+def replace(project, rules, rev=None, force=False):
     """Write the whole list, which is what the tab's Save sends.
 
     Whole rather than per-rule because the tab is an editor: somebody rewords
@@ -306,7 +320,13 @@ def replace(project, rules):
     # answering to the same `bb rules show`. Suffixed, the way a duplicate
     # inside the list already is.
     keep = []
-    seen = set(_builtin_names()) if project == GLOBAL else set()
+    # ...and a project's rule cannot take a GLOBAL rule's name, shipped or the
+    # operator's. `bb rules show NAME` walks the global rules first, so a
+    # project rule that shared one was shadowed by it and could never be read
+    # by name. Names carry no other meaning: sharing one is not how a project
+    # overrides anything (see block() for what is).
+    seen = set(_builtin_names()) if project == GLOBAL else {
+        str(x.get("name") or "") for x in globals_now()}
     for i, r in enumerate(rules):
         if not isinstance(r, dict):
             continue
@@ -328,6 +348,20 @@ def replace(project, rules):
         keep.append(c)
     with _lock:
         d = load()
+        # The tab writes the WHOLE list, so a list that moved since it was
+        # loaded is somebody else's work about to be overwritten: a rule a
+        # session added with `bb rules add`, one an administrator approved
+        # from the pending queue, another person's reword (B195). It used to
+        # go through, and the log then said "you removed" a rule the person
+        # saving had never seen. Checked inside the lock that guards the
+        # write, against the number the tab was handed when it loaded, and
+        # answered as a conflict rather than an error so the page can show
+        # both sides: nothing typed is thrown away by a refusal.
+        cur = _rev_of(_project(d, project).get("rules") or [])
+        if rev is not None and not force and int(rev) != cur:
+            return {"conflict": True, "rev": cur,
+                    "error": "these rules changed while you had them open: a session or "
+                             "another person wrote to them"}
         before = {x.get("name") for x in (_project(d, project).get("rules") or [])}
         now = {x["name"] for x in keep}
         for n in sorted(now - before):
@@ -405,6 +439,8 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
         r = _clean({"name": name, "text": text, "paths": paths,
                     "words": words, "by": by, "doc": doc, "check": check}, len(rs))
         taken = {x.get("name") for x in rs}
+        if project != GLOBAL:
+            taken |= {str(x.get("name") or "") for x in globals_now()}
         base, n = r["name"], 2
         while r["name"] in taken:
             r["name"] = f"{base}-{n}"
@@ -552,6 +588,15 @@ def block(project):
            " one seems wrong."
            + (" A rule marked (global) is set for every project on this"
               " BuilderBot." if any(r.get("scope") == "global" for r in rs) else "")
+           # Specific beats general, and it is said rather than computed: a
+           # project's rule and a global one that disagree cannot be found by
+           # matching their words, and a session is the one reader here that
+           # can tell when two pieces of prose contradict. "Say so" is what
+           # tells the operator about a conflict nobody spotted while writing.
+           + (" Where one of this project's rules and a global one disagree,"
+              " follow the project's, and say so in your reply."
+              if any(r.get("scope") == "global" for r in rs)
+              and any(r.get("scope") != "global" for r in rs) else "")
            + "\n"]
     # A rule with a framework behind it says where it is defined and how it
     # is checked, so the session reads the one and runs the other.
@@ -629,6 +674,52 @@ def matching(project, *, prompt="", path=""):
     return out
 
 
+def _stem(pat):
+    """A path trigger up to its first wildcard, with a bare directory read the
+    way matching() reads it: `scripts/agent` means everything under it."""
+    pat = str(pat or "").strip().lstrip("/")
+    cut = min([pat.find(c) for c in "*?[" if c in pat] or [len(pat)])
+    return pat[:cut].rstrip("/")
+
+
+def _paths_meet(a, b):
+    """Could these two path triggers fire on the same file? Equal, one a glob
+    the other satisfies, or one's fixed part inside the other's. A pattern with
+    no fixed part at all (`*.md`) meets only its equal: it would otherwise
+    meet everything, and a note on every row is a note nobody reads."""
+    if a == b:
+        return True
+    if fnmatch.fnmatch(a, b) or fnmatch.fnmatch(b, a):
+        return True
+    sa, sb = _stem(a), _stem(b)
+    if not sa or not sb:
+        return False
+    return sa == sb or sa.startswith(sb + "/") or sb.startswith(sa + "/")
+
+
+def overlaps(rule, others):
+    """Which of `others` fire where `rule` fires, and on what:
+    [{"name", "words": [...], "paths": [...]}].
+
+    For the person WRITING a project rule, who until this could not see the
+    global ones at all: the conflict worth preventing starts with not knowing
+    a rule about the same ground already exists. Mechanical on purpose and
+    honest about its limit. It compares triggers, so it says nothing about
+    two STANDING rules that disagree in meaning; no matching could, which is
+    why precedence is stated to the session as a principle (see block()).
+    It decides nothing: both rules still reach the session.
+    """
+    out = []
+    mine_w = {w.lower() for w in rule.get("words") or []}
+    mine_p = list(rule.get("paths") or [])
+    for o in others:
+        w = sorted(mine_w & {x.lower() for x in o.get("words") or []})
+        pp = sorted({q for q in o.get("paths") or [] for m in mine_p if _paths_meet(m, q)})
+        if w or pp:
+            out.append({"name": o.get("name") or "", "words": w, "paths": pp})
+    return out
+
+
 def payload(project):
     """The tab's read: the rules, and what the standing half costs.
 
@@ -643,8 +734,14 @@ def payload(project):
     own = rules(project)
     eff = effective(project)
     b = block(project)
+    glob = [r for r in eff if r.get("scope") == "global"]
+    # Each of the project's rules with the global ones it shares ground with,
+    # for the row. Decoration on the way out only: _clean keeps a fixed set
+    # of fields, so this never comes back in on a save.
+    if project != GLOBAL:
+        own = [dict(r, overlaps=overlaps(r, glob)) for r in own]
     return {"project": project, "rules": own,
-            "global": [r for r in eff if r.get("scope") == "global"],
+            "global": glob,
             "standing": sum(1 for r in eff if not conditional(r)),
             "conditional": sum(1 for r in eff if conditional(r)),
             "chars": len(b), "loud": len(b) > LOUD_CHARS, "max": MAX_RULES}
@@ -668,6 +765,5 @@ def revisions():
         d = load()
     out = {}
     for p, v in (d.get("projects") or {}).items():
-        raw = json.dumps(v.get("rules") or [], sort_keys=True)
-        out[p] = sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
+        out[p] = _rev_of(v.get("rules") or [])
     return out

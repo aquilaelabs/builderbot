@@ -46,6 +46,9 @@ nodes = None          # the node module, set by server.py once it is up: run_wai
 # keeps having one dependency (the node registry), and so the request queue
 # stays a queue rather than growing an opinion about compose.
 rebuilder = None
+# devapp.create_container, injected the same way: what Allow on a container
+# ask calls (R71). None where no docker path is wired up.
+container_maker = None
 
 # The phone's own adb server on the node, apart from the default one the
 # emulator and a session's plain adb use.
@@ -600,11 +603,22 @@ def _req_public(r):
     # `left` so the tab can count down: an approval that quietly stops being
     # possible, with the button still sitting there, is a worse failure than
     # being told it has gone.
-    return {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
-            "state": r["state"], "by": r["by"], "node": r["node"],
-            "node_name": r["node_name"], "project": r["project"],
-            "kind": r.get("kind") or "phone", "asker": r.get("asker") or "",
-            "left": max(0, WAIT_SECONDS - (int(time.time()) - r["at"]))}
+    out = {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
+           "state": r["state"], "by": r["by"], "node": r["node"],
+           "node_name": r["node_name"], "project": r["project"],
+           "kind": r.get("kind") or "phone", "asker": r.get("asker") or "",
+           "left": max(0, WAIT_SECONDS - (int(time.time()) - r["at"]))}
+    # A container ask is approved by READING it, the way a root ask is
+    # approved by reading its argv: the compose file is the request. The env
+    # file is not shown whole, since that is where a token would be; its
+    # keys are, so the reader knows what it sets.
+    if r.get("kind") == "container":
+        out["detail"] = r.get("compose") or ""
+        out["env_keys"] = [ln.split("=", 1)[0].strip() for ln in (r.get("env") or "").splitlines()
+                           if "=" in ln and not ln.lstrip().startswith("#")]
+        out["name"] = r.get("name") or ""
+        out["for"] = r.get("for") or ""
+    return out
 
 
 def _for(r, uid, admin):
@@ -619,7 +633,7 @@ def _for(r, uid, admin):
     # Root and a rebuild are both an administrator's to allow: root because a
     # sandbox is shared, a rebuild because starting and stopping containers is
     # docker-write, which a user does not have on a project they otherwise own.
-    if r.get("kind") in ("root", "rebuild") and not admin:
+    if r.get("kind") in ("root", "rebuild", "container") and not admin:
         return False
     if r["to"] == "admins":
         return bool(admin)
@@ -753,6 +767,39 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                   extra={"instance": str(instance or "")})
 
 
+def ask_container(why, name, compose, env, nid, node_name, project, for_project="",
+                  asker_name=""):
+    """A session asking for a CONTAINER: a compose file it wrote, built and
+    started on a node once an administrator approves (roadmap R71).
+
+    The root shape applied to docker. The session names nothing docker runs:
+    it hands over the file, and Allow gives that file to the same function
+    the Docker tab's New container uses, which asks compose to parse it before
+    anything is registered. To the administrators always, whoever asks: a
+    container is root-shaped power on the node, and starting one is
+    docker-write, which no user account holds.
+    """
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what the container is for: the administrator is answering "
+                         "a question about a file they did not write"}
+    name = " ".join(str(name or "").split())
+    if not name or len(name) > 60:
+        return {"error": "a container needs a name, under sixty characters"}
+    compose = str(compose or "")
+    if not compose.strip():
+        return {"error": "nothing to build: hand over the compose file"}
+    if len(compose) > 64000 or len(str(env or "")) > 16000:
+        return {"error": "that is too long to put in front of somebody: a compose file "
+                         "under 64kB and an env file under 16kB"}
+    where = node_name or nid or "the default node"
+    return _queue("container", why, ["container", "create", name, "on", where],
+                  nid, node_name, project, "claude", "admins", "the administrators",
+                  asker_name,
+                  extra={"name": name, "compose": compose, "env": str(env or ""),
+                         "for": str(for_project or "")})
+
+
 def _find(rid):
     for r in _reqs:
         if r["id"] == rid:
@@ -806,6 +853,32 @@ def decide(rid, allow, uid, name="", admin=False):
         # only give by pressing Rebuild on the row, where the risks are
         # actually listed. Silently ending the request would leave them
         # believing they had started a build.
+        if res.get("error"):
+            return {"error": res["error"]}
+        return {"ok": True}
+    if r.get("kind") == "container":
+        # Two steps and both said: the container registered through the
+        # Docker tab's own path, which refuses a file compose cannot read,
+        # then its build started as a job, whose id is what the session
+        # waits on next. A refusal at either step comes back to whoever
+        # pressed Allow as well as to the session, for the same reason a
+        # refused rebuild does: they believe they started something.
+        if container_maker is None:
+            with _lock:
+                r.update(state="done", out="no container path is wired up here", code=1)
+            return {"ok": True}
+        res = container_maker(r.get("name") or "", r.get("compose") or "",
+                              r.get("env") or "", r.get("node") or "", r.get("for") or "") or {}
+        if not res.get("error") and rebuilder is not None:
+            built = rebuilder(res.get("project") or "", res.get("instance") or "") or {}
+            if built.get("error"):
+                res = {"error": f"{res.get('name') or r.get('name')} is registered on the "
+                                f"Docker tab, and its build did not start: {built['error']}"}
+            else:
+                res = {"job": built.get("job"), "name": res.get("name")}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else 0,
+                     out=str(res.get("error") or res.get("job") or res.get("name") or "created"))
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}

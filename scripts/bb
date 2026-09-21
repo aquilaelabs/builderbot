@@ -37,10 +37,11 @@ bb: BuilderBot helper
   bb version --for DIR   ask about one component instead of the project
   bb version policy      what a session may move here, and who decides
   bb changelog           this project's user-facing changelog (--for DIR)
-  bb changelog add "..." log what a change means for the person using it;
-                         the next version bump dates the accumulated lines.
-                         --cat NAME files it under a category, made at the
-                         end if it is new; the arrangement is the operator's
+  bb changelog add "..." --cat NAME   log what a change means for the person
+                         using it; the next version bump dates the lines.
+                         A category is required: Added, Changed, Deprecated,
+                         Removed, Fixed or Security (run it without one for
+                         when each applies), or a project's own, kept as typed
   bb changelog unreleased  the entries waiting for a bump, numbered by
                          category, in the order somebody arranged them
   bb changelog edit N "..."  reword one of them: a change that tweaks something
@@ -149,6 +150,10 @@ bb: BuilderBot helper
                          project's node; an administrator allows or denies it
   bb phone run --why "..." -- adb args...    ask to reach it; the operator
                          allows it on the dashboard and this runs it there
+  bb container           what container asks are waiting on an administrator
+  bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                         ask for a container built from that compose file; an
+                         administrator reads it and allows or denies it
   bb catchup             what has happened here lately: commits and the first
                          line of their bodies, what moved in the notebook, the
                          builds, and which image this box is running
@@ -2930,6 +2935,17 @@ cmd_tests() {
             echo "nothing timed, so nothing recorded. \`bb tests run\` runs this" >&2
             echo "project's own test command with BB_TEST_TIMING=1 in front of it;" >&2
             echo "set that command in the project's settings dialog." >&2
+            # No timing prefix is ordinary: another project's runner prints
+            # none. No OUTPUT AT ALL with a zero exit is not: twice on 21 Sep
+            # a full run did nothing whatever, wrote an empty log, and was
+            # reported as a success (B202). A test command that says nothing
+            # and passes is possible, so there is a way to say yours is one.
+            if [ ! -s "$log" ] && [ "${rc:-0}" = 0 ] && [ -z "${BB_TESTS_SILENT_OK:-}" ]; then
+                echo "[builderbot] ERROR: the test command printed nothing at all and exited 0," >&2
+                echo "which is a run that did not happen rather than one that passed." >&2
+                echo "Run it again; if your tests really are silent, set BB_TESTS_SILENT_OK=1." >&2
+                rc=3
+            fi
         fi
         return "$rc"
     fi
@@ -3722,6 +3738,87 @@ sys.exit(1)
 PY
             ;;
         *) die "usage: bb root [status|run --why \"...\" -- command...]" ;;
+    esac
+}
+
+# bb container: ask for a container (roadmap R71). The root shape applied to
+# docker: the session writes the compose file, hands it over with a reason,
+# and an administrator reads it on the bell and allows or denies. Allow gives
+# the file to the Docker tab's own New container path and starts the build;
+# nothing here runs docker, and nothing runs until somebody has read it.
+cmd_container() {
+    local sub="${1:-status}" why="" name="" compose="" envf="" node="" forp="" auth
+    auth="$(bb_auth_or_die)"
+    case "$sub" in
+        status)
+            BB_PHONE_AUTH="$auth" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
+asks = [a for a in d.get("asks") or [] if a.get("kind") == "container"]
+if not asks:
+    print("container: nothing is waiting")
+for a in asks:
+    print("waiting: #{} {} ({}): {}".format(a.get("id"), a.get("name") or "?",
+          a.get("node_name") or "the default node", a.get("why")))
+PY
+            ;;
+        ask)
+            shift
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why)     [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --name)    [ $# -ge 2 ] || die "--name needs the name after it"; name="$2"; shift 2 ;;
+                    --compose) [ $# -ge 2 ] || die "--compose needs the file after it"; compose="$2"; shift 2 ;;
+                    --env)     [ $# -ge 2 ] || die "--env needs the file after it"; envf="$2"; shift 2 ;;
+                    --node)    [ $# -ge 2 ] || die "--node needs the node after it"; node="$2"; shift 2 ;;
+                    --for)     [ $# -ge 2 ] || die "--for needs the project after it"; forp="$2"; shift 2 ;;
+                    *) die "usage: bb container ask --why \"what it is for\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]" ;;
+                esac
+            done
+            [ -n "$why" ] || die "bb container ask needs --why \"what it is for\""
+            [ -n "$name" ] || die "bb container ask needs --name"
+            [ -n "$compose" ] || die "bb container ask needs --compose FILE"
+            [ -f "$compose" ] || die "no such file: $compose"
+            [ -z "$envf" ] || [ -f "$envf" ] || die "no such file: $envf"
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" BB_C_NAME="$name" BB_C_COMPOSE="$compose" \
+            BB_C_ENV="$envf" BB_C_NODE="$node" BB_C_FOR="$forp" \
+            BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
+                python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
+compose = open(os.environ["BB_C_COMPOSE"], encoding="utf-8", errors="replace").read()
+env = open(os.environ["BB_C_ENV"], encoding="utf-8", errors="replace").read() if os.environ.get("BB_C_ENV") else ""
+r = post({"action": "ask", "kind": "container", "why": os.environ["BB_PHONE_WHY"],
+          "name": os.environ["BB_C_NAME"], "compose": compose, "env": env,
+          "node": os.environ.get("BB_C_NODE", ""), "for": os.environ.get("BB_C_FOR", ""),
+          "project": os.environ.get("BB_PHONE_PROJECT", "")})
+if r.get("error"):
+    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+rid = r["id"]
+print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
+      "bell, waiting up to 15 minutes for Allow", file=sys.stderr)
+for _ in range(900):
+    time.sleep(1)
+    o = post({"action": "outcome", "id": rid})
+    if o.get("error"):
+        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
+    if o["state"] == "denied":
+        print("[builderbot] the administrator said no", file=sys.stderr); sys.exit(1)
+    if o["state"] == "done":
+        if o.get("code"):
+            print(f"[builderbot] ERROR: {o.get('out') or 'refused'}", file=sys.stderr); sys.exit(1)
+        print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs tab)")
+        sys.exit(0)
+print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
+sys.exit(1)
+PY
+            ;;
+        *) die "usage: bb container [status|ask --why \"...\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]]" ;;
     esac
 }
 
@@ -4932,7 +5029,18 @@ for g in rec.get("outputs") or []:
     # from running on the BuilderBot it is running on.
     if [ "$role" = test ]; then
         local inst
-        inst="$(BB_PROJECT="$proj" "$0" devapp status 2>/dev/null)"
+        # The refusal kept rather than thrown away. This was `2>/dev/null`,
+        # and when the controller did not answer (a relay call that timed out,
+        # a dashboard mid-restart) the tests quietly ran somewhere else, or
+        # nowhere, with the reason discarded: three runs on 21 Sep did nothing
+        # at all and said nothing (B202). Whatever the cause turns out to be,
+        # a test run that changes where it runs says so.
+        local inst_err; inst_err="$(mktemp)"
+        inst="$(BB_PROJECT="$proj" "$0" devapp status 2>"$inst_err")" || true
+        if [ -z "$inst" ]; then
+            warn "could not ask whether $proj's dev instance is up ($(head -c 240 "$inst_err" | tr '\n' ' ')): the tests run on this machine instead of inside it"
+        fi
+        rm -f "$inst_err"
         if [ "$(printf '%s\n' "$inst" | awk '$1 == "running" {print $2}')" = yes ]; then
             echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
             BB_PROJECT="$proj" exec "$0" devapp test "$@"
@@ -6629,8 +6737,18 @@ if "--no-stamp" in argv:
 if argv and argv[0] == "add":
     if len(argv) < 2 or not argv[1].strip():
         print('bb changelog add "what changed, for the person using it" '
-              '[--cat NAME] [--for DIR]', file=sys.stderr)
+              '--cat NAME [--for DIR]\n' + changelog.rules(), file=sys.stderr)
         raise SystemExit(1)
+    # A category is asked for rather than assumed. Filed under none, an entry
+    # lands in a heap above the headings, and a changelog that is mostly heap
+    # is what this repository's own had become: the refusal is where a session
+    # learns which categories there are, since nothing else ever told it.
+    if not cat.strip():
+        print(changelog.rules(), file=sys.stderr)
+        raise SystemExit(1)
+    if not changelog.standard(changelog.canonical(cat)):
+        print(f"filed under {cat!r}, which is this project's own category rather than one "
+              "of the six; kept as typed", file=sys.stderr)
     # Stamped with HEAD: the instruction in the template is to log after
     # committing, so the sha names the commit the entry describes.
     sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
@@ -6817,6 +6935,7 @@ case "${1:-help}" in
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;
     root)     shift; cmd_root "$@" ;;
+    container) shift; cmd_container "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;

@@ -983,6 +983,45 @@ ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .txt`,
      el => getComputedStyle(el).whiteSpace.startsWith('pre')),
    '...and the panel shows them rather than running the lines together');
+
+// ...and a box open in the list is not taken apart by somebody else's write.
+// The reword box, the drop box, the send note and the + step field are DOM
+// put under a row after the render, so a redraw takes them and every word
+// typed into them. The poll's guard upstream watches for STAGED changes, and
+// typing is not staged until Save, so a session running `bb roadmap add` in
+// the background deleted a half-written rewording under the finger holding
+// it. Bugs has skipped its redraw while a form is open since it was built.
+{
+  await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
+  await page.waitForSelector('.editbox textarea', { timeout: 10000 });
+  await page.fill('.editbox textarea', 'half a thought, still typing');
+  // Somebody else writes the same project, as a session does: another
+  // process entirely, through bb, which is the case the file lock exists for.
+  bbRoadmap('add', 'from somebody else');
+  // The re-read the revisions poll makes, driven rather than waited on: the
+  // poll's own timer is 30s while the page is hidden, which headless is, so
+  // waiting on a clock here would pass whatever the code did. The live
+  // notebook, off the map: getNotebook() MAKES one when the key misses, and a
+  // fresh notebook answers every question with "nothing is open here".
+  const tick = async () => {
+    await page.evaluate(() => getNotebook('alpha').reload());
+    await new Promise(r => setTimeout(r, 300));
+  };
+  await tick(); await tick();
+  ok(await page.$eval('.editbox textarea', t => t.value) === 'half a thought, still typing',
+     'a redraw from elsewhere leaves a half-typed rewording alone, box and words');
+  // And the arrival is not lost: the panel has not recorded the revision it
+  // skipped, so the next poll after the box shuts draws what came in.
+  await page.click('.editbox .stop');
+  await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: 10000 });
+  let landed = false;
+  for (let i = 0; i < 20 && !landed; i++){
+    await tick();
+    landed = await page.evaluate(() => /from somebody else/.test(
+      document.getElementById('roadmapList')?.textContent || ''));
+  }
+  ok(landed, '...and what arrived while it was open is drawn once the box is shut');
+}
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'first, widen it a lot');
@@ -1749,6 +1788,57 @@ await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb .nbtabs button').dataset.v),
    '...and a notebook closed and opened again starts on the strip\'s first view');
+
+// B198: a batch its session never closes. Killed mid-way, or the container
+// restarted under it, it used to disable Save for every person on the project
+// for good, with no way out that did not need a shell.
+{
+  const call = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b === null ? {} : { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  }, [path, body ?? null]);
+  const fs = await import('node:fs');
+  bbRoadmap('begin');
+  const d = read();
+  d.batch.alpha.at = Math.floor(Date.now() / 1000) - 31 * 60;
+  fs.writeFileSync(FILE, JSON.stringify(d));
+  const got = await call('/api/roadmap?project=alpha');
+  ok(got.batch?.stale === true, `a batch open past half an hour is reported as stale (${JSON.stringify(got.batch)})`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /never closed it/.test(
+    document.getElementById('roadmapBatch')?.textContent || ''), null, { timeout: 20000 });
+  ok(await page.evaluate(() => !document.querySelector('.nb')?.classList.contains('held')),
+     '...and holds nothing: the banner says so and the notebook is not held');
+  await page.click('#roadmapBatchClose');
+  await page.waitForFunction(() => document.getElementById('roadmapBatch')?.hidden, null, { timeout: 20000 });
+  ok(!read().batch?.alpha, 'an administrator closes it from the banner, which commits what the session wrote');
+}
+
+// B199: a panel holding unsaved work stops re-reading, which is right, and
+// used to say nothing while it did.
+{
+  // Onto the Roadmap first: by this point in the file the notebook has been
+  // closed and reopened, which lands it on the strip's first view, and the
+  // add box is in the DOM there and not on screen.
+  await nbTab(page, 'roadmap');
+  await page.waitForSelector('#roadmapText', { state: 'visible', timeout: 15000 });
+  await page.fill('#roadmapText', 'staged here and not saved');
+  await page.keyboard.press('Enter');
+  bbRoadmap('add', 'written underneath by somebody else');
+  let said = '';
+  for (let i = 0; i < 30 && !said; i++){
+    await page.evaluate(() => pollRevs());
+    await new Promise(r => setTimeout(r, 400));
+    said = await page.evaluate(() => { const m = document.getElementById('roadmapMoved');
+                                       return m && !m.hidden ? m.textContent : ''; });
+  }
+  ok(/changed since you loaded it/.test(said),
+     `a panel with unsaved work says when the list moved under it, where the Save is (${said || 'nothing said'})`);
+  await saveList();
+  ok(await page.evaluate(() => document.getElementById('roadmapMoved')?.hidden === true),
+     '...and stops saying it once there is nothing unsaved');
+}
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

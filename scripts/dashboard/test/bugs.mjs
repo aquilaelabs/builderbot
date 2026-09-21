@@ -633,4 +633,31 @@ if (page.errors.length) console.log(page.errors);
   bbBug('rm', String(n), 'numbering fixture');
 }
 
+// B197: the token an open Bugs tab watches was the history's LENGTH, and the
+// history is capped, so past 300 events it sat at 300 for good and the tab
+// never re-read again. A tracker at the cap, one more write, and the token has
+// to have moved.
+{
+  const call = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b === null ? {} : { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  }, [path, body ?? null]);
+  const fs = await import('node:fs');
+  const d = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  const h = (d.history = d.history || {}).alpha = d.history.alpha || [];
+  while (h.length < 300) h.unshift({ at: 1, by: 'you', act: 'pad' });
+  fs.writeFileSync(FILE, JSON.stringify(d));
+  const token = async () => { await page.evaluate(() => pollRevs());
+                              await new Promise(r => setTimeout(r, 500));
+                              return page.evaluate(() => revs['bug:alpha']); };
+  const before = await token();
+  const added = await call('/api/bugs', { project: 'alpha', action: 'add', title: 'one more, past the cap',
+                                          severity: 'low', area: '', repro: '', expected: '', actual: '', notes: '' });
+  const after = await token();
+  const len = JSON.parse(fs.readFileSync(FILE, 'utf8')).history.alpha.length;
+  ok(!added.error && len === 300 && after !== before,
+     `a tracker whose history is at its cap still moves its token on a write (${before} to ${after}, history ${len})`);
+}
+
 await done(browser);
