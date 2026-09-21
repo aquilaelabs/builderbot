@@ -141,6 +141,15 @@ const genv = k => { try { return execFileSync('tmux', ['show-environment', '-t',
 ok(genv('GIT_AUTHOR_NAME') === 'GIT_AUTHOR_NAME=Pat Tester'
    && genv('GIT_COMMITTER_EMAIL') === 'GIT_COMMITTER_EMAIL=pat@example.invalid',
    `the session carries the account's commit identity as git's environment (${genv('GIT_AUTHOR_NAME') || 'unset'})`);
+// ...and beside it, the wall its own git meets at the network. There is no
+// credential on a node by design, and git's answer to that names neither the
+// reason nor the way out, so the session carries one that does (R69 step 4).
+ok(genv('GIT_CONFIG_KEY_0') === 'GIT_CONFIG_KEY_0=credential.helper'
+   && /no git credential is on this machine/.test(genv('GIT_CONFIG_VALUE_0'))
+   && /bb git push/.test(genv('GIT_CONFIG_VALUE_0'))
+   && genv('GIT_TERMINAL_PROMPT') === 'GIT_TERMINAL_PROMPT=0',
+   `...and a credential helper that names bb git rather than asking for a username (${
+     (genv('GIT_CONFIG_VALUE_0') || 'unset').slice(0, 60)})`);
 const cmd = paneCmd();
 ok(cmd.length < 200 && /project\/alpha\/claude-run\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');

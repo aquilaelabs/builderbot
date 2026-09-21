@@ -527,6 +527,13 @@ def branches(repo):
         return {"error": "not a git repository"}
     main = _main_branch(repo)
     trees = _worktrees(repo)
+    # Which refs main already contains, in one call rather than one per row,
+    # and for the REMOTE refs too (roadmap R69 step 1). Until this the
+    # "only on <host>" fold knew nothing about its own rows, so the one safe
+    # delete, a branch whose every commit is already on main, was the one
+    # thing the view could not offer.
+    merged_refs = set((_git(repo, "for-each-ref", "--merged", main, "--format=%(refname)",
+                            "refs/heads", "refs/remotes") or "").split()) if main else set()
     rows = []
     for line in out.splitlines():
         f = line.split(US)
@@ -546,12 +553,23 @@ def branches(repo):
         if m:
             behind = int(m.group(1))
         ma = mb = 0
+        same = False
         if main and not remote and name != main:
             lr = _git(repo, "rev-list", "--left-right", "--count", f"{main}...{name}")
             if lr:
                 parts = lr.split()
                 if len(parts) == 2 and all(p.isdigit() for p in parts):
                     mb, ma = int(parts[0]), int(parts[1])
+            # Commits main lacks, but nothing in them main does not already
+            # have: work that shipped another way, a revert, a rebuild
+            # elsewhere (R69 step 3). Ancestry alone calls that "N commits
+            # waiting", which is what sent somebody merge-tree archaeology to
+            # find out that merging it would move no file. Three dots, so the
+            # question is what the branch ADDS since they parted, which does
+            # not stop being true the next time main moves.
+            if ma:
+                same = _run(repo, "diff", "--quiet", f"{main}...{name}",
+                            index=False)["code"] == 0
         wt = trees.get(ref, "")
         rows.append({"name": name, "remote": remote, "head": head.strip() == "*",
                      "short": short, "when": int(when or 0), "upstream": up,
@@ -559,7 +577,11 @@ def branches(repo):
                      "main_ahead": ma, "main_behind": mb,
                      # Nothing on it that main lacks: the row's one question
                      # is "is this work waiting, or done", and this is done.
-                     "merged": bool(main) and not remote and name != main and ma == 0,
+                     # True of a remote row as readily as a local one, which
+                     # is what lets the fold offer Delete on the safe ones.
+                     "merged": bool(main) and name != main and ref in merged_refs,
+                     # Commits main lacks that change nothing main lacks.
+                     "same": same,
                      "worktree": wt, "who": _who_of(wt, name)})
     return {"main": main, "branches": rows}
 
@@ -673,6 +695,9 @@ def payload(project, what, sha="", path="", n=None, branch=""):
 # a node. Refusals are sentences; nothing here guesses.
 
 BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
+# A remote's name: the first segment of a row like origin/claude/x, and
+# never a path of its own.
+REMOTE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 NET_TIMEOUT = 120
 
 
@@ -852,6 +877,9 @@ def act(repo, action, args, env=None, may_push=True):
                                  f"Switch to {into} to merge into it"}
             if not _has_branch(repo, into):
                 return {"error": "no such branch"}
+            behind = _behind_upstream(repo, into)
+            if behind:
+                return {"error": behind}
             return _merge_off_tree(repo, name, into, env)
         no = _no_drivers(repo, merging=True)
         if no:
@@ -859,6 +887,10 @@ def act(repo, action, args, env=None, may_push=True):
         if _dirty(repo):
             return {"error": "there are uncommitted changes: commit or discard them first, "
                              "so the merge is its own commit"}
+        if into == _main_branch(repo):
+            behind = _behind_upstream(repo, into)
+            if behind:
+                return {"error": behind}
         r = _run(repo, "merge", "--no-edit", name, env=env)
         if r["code"]:
             # LEFT IN CONFLICT on purpose, where revert aborts. A conflicted
@@ -928,10 +960,73 @@ def act(repo, action, args, env=None, may_push=True):
             return {"error": f"{name} is the main branch; it stays"}
         r = _run(repo, "branch", "-D" if args.get("force") else "-d", "--", name, env=env)
         if r["code"] and "not fully merged" in r["out"] and not args.get("force"):
-            return {"error": f"{name} has commits that are on no other branch: deleting it loses them",
-                    "unmerged": True}
+            # git's own answer is about COMMITS, and it is right about those.
+            # Whether anything would be LOST is a different question, and for
+            # work that shipped another way the answer is no: say which of
+            # the two this is, so the second press is a decision rather than
+            # a shrug (R69 step 3).
+            main = _main_branch(repo)
+            same = bool(main) and _run(repo, "diff", "--quiet", f"{main}...{name}",
+                                       index=False)["code"] == 0
+            return {"error": (f"{name} has commits that are on no other branch, but nothing in "
+                              f"them that {main} does not already have: deleting it loses the "
+                              "history and no work") if same else
+                             f"{name} has commits that are on no other branch: deleting it loses them",
+                    "unmerged": True, "same": same}
         return _done(r, f"{name} deleted")
+    if action == "delete-remote":
+        # The branch on the git host, which is a push that removes a ref
+        # rather than anything local (R69 step 1). Offered only where it
+        # cannot lose work: every commit on it is already on main, checked
+        # HERE and not only in the view, because what the row says and what
+        # the button does have to be the same fact.
+        if not may_push:
+            return {"error": "this project has no push rights: they are granted in the clone dialog, once"}
+        full = str(args.get("name") or "")
+        remote, _, branch = full.partition("/")
+        if not REMOTE_RE.fullmatch(remote) or not _ok_branch(branch):
+            return {"error": "not a remote branch"}
+        ref = f"refs/remotes/{remote}/{branch}"
+        if _git(repo, "show-ref", "--verify", "--quiet", ref) is None:
+            return {"error": f"there is no {full} here; Fetch first"}
+        main = _main_branch(repo)
+        if not main:
+            return {"error": "this project has no main or master branch to judge a delete against"}
+        if branch in ("main", "master", "HEAD"):
+            return {"error": f"{full} is the main branch on the host; it stays"}
+        if _run(repo, "merge-base", "--is-ancestor", ref, main, index=False)["code"]:
+            return {"error": f"{full} has commits {main} does not: merge it first, or remove it "
+                             "on the host, where the warning is the host's to give"}
+        r = _run(repo, "push", remote, "--delete", branch, env=env, timeout=NET_TIMEOUT)
+        if r["code"]:
+            return _done(r, "", repo)
+        # The remote-tracking ref goes with it, by the ordinary path rather
+        # than by hand, so the view redraws from what the remote now says.
+        _run(repo, "fetch", "--prune", env=env, timeout=NET_TIMEOUT)
+        return {"ok": True, "out": f"{full} deleted on {remote}"}
     return {"error": "unknown action"}
+
+
+def _behind_upstream(repo, branch):
+    """Why a merge into `branch` should wait, or "" when it should not.
+
+    A merge into a branch whose upstream has moved is how a copy of main on
+    the share ends up 294 commits behind the git host and one commit ahead of
+    it at the same time: the merge is fine, and then it cannot go anywhere
+    without a reconcile nobody asked for (R69 step 2). The network bar
+    already says pull first when both have moved; this is the same sentence
+    said before the thing that causes it, rather than after.
+    """
+    up = (_git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name",
+               f"{branch}@{{upstream}}") or "").strip()
+    if not up:
+        return ""
+    n = (_git(repo, "rev-list", "--count", f"{branch}..{up}") or "").strip()
+    if not n.isdigit() or not int(n):
+        return ""
+    return (f"{branch} here is {n} commit{'' if n == '1' else 's'} behind {up}: Pull first, so "
+            f"the merge lands on what the host already has rather than leaving {branch} "
+            "both ahead and behind")
 
 
 def _merge_off_tree(repo, name, into, env):

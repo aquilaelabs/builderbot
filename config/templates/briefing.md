@@ -39,8 +39,9 @@ operator installs the tool.
 Your commit identity arrives as git's environment, so a commit that cannot find
 an author is a fault to report, not one to fix with `user.name`. On a node,
 pushing is `bb git push` (also `fetch`, `pull`, `ls-remote`): the controller
-holds the keys, so no credential is ever here and a plain `git push` fails
-asking for a username. `bb git policy` prints what you may push.
+holds the keys, so no credential is ever here, and a plain `git push` says so
+and names these instead. `bb git policy` prints what you may push, which is
+your own branches and not a tag, a deletion or a branch only the host has.
 
 ## No sudo
 

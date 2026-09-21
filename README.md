@@ -1821,7 +1821,14 @@ elsewhere (in place, so refused while the owner's Claude session stands in
 the directory, and a conflict is left standing for the Changes section to
 hand to Claude), **Switch** (refused under a session likewise, or with
 uncommitted changes) and **Delete**, which refuses a branch holding commits
-no other branch has until you say so twice; **Revert** and **Branch here**
+no other branch has until you say so twice, and says which of the two kinds
+it is: a branch whose commits change nothing `main` lacks is history going,
+not work. Merge into main waits while the copy of `main` here is behind the
+host, and names the pull, because merging into it is how that copy ends up
+both ahead and behind. The **only on `<host>`** fold says of each branch
+whether `main` already has every commit on it, and offers **Delete on
+`<host>`** for the ones where it does, which is the only case where removing
+a branch there can lose nothing. **Revert** and **Branch here**
 on a picked commit. A session's token
 has none of these (it has `bb git`) and a locked project takes no action.
 Send to Claude and the per-project git policy are roadmap R36's last step.

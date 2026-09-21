@@ -671,8 +671,30 @@ need_author() {
         "open this again. Every project here is a repository, and a commit" \
         "needs an author."
 }
+# no_credential_here: what a session's own git says when it reaches the
+# network. There is no credential on a node, by design, and git's answer to
+# that is "could not read Username for https://...", which names neither the
+# reason nor the way out. This is the same wall with this project's words on
+# it, said before git says its own.
+#
+# Through the environment rather than any repository's config: nothing is
+# written into somebody's tree, it cannot outlive the session, and it reaches
+# a worktree and a fresh clone alike. GIT_TERMINAL_PROMPT is already how the
+# controller runs git; here it stops a terminal being asked for what nobody
+# can type.
+no_credential_here() {
+    [ -z "${GIT_CONFIG_COUNT:-}" ] || return 0      # somebody else owns these; leave them alone
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=credential.helper
+    export GIT_CONFIG_VALUE_0='!f() { echo "[builderbot] no git credential is on this machine, by design: the controller holds the keys. Use bb git push, fetch, pull or ls-remote, which relay through it" >&2; exit 1; }; f'
+}
+
 git_identity() {
     local s name email
+    # Beside the identity, because these are the two things a session's git
+    # needs from us and the same six places set them up.
+    no_credential_here
     s="$(BB_PROJECT="${1:-}" BB_ACCOUNT_UID="${BB_ACCOUNT_UID:-$account}" bb settings --json 2>/dev/null)" || return 0
     email="$(printf '%s' "$s" | jq -r '.git_email // empty' 2>/dev/null)"
     name="$(printf '%s' "$s" | jq -r '.git_name // empty' 2>/dev/null)"
@@ -720,7 +742,8 @@ start() {
     local -a envs=() v
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
-             GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME; do
+             GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME \
+             GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_TERMINAL_PROMPT; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
     # The server is started on its own first. When new-session is what

@@ -155,15 +155,19 @@ function nbGitView({$, nb, project}){
     const main = git.main || "main", host = git.host?.name || "the remote";
     const s_ = n => n === 1 ? "" : "s";
     const vsMain = b => b.name === main ? "the main branch"
+      : b.same ? `${b.main_ahead} commit${s_(b.main_ahead)} of its own, and no change ${main} lacks`
       : b.main_ahead ? `${b.main_ahead} commit${s_(b.main_ahead)} not yet in ${main}${b.main_behind ? `, ${b.main_behind} behind it` : ""}`
       : b.main_behind ? `merged into ${main}, ${b.main_behind} behind it` : `same as ${main}`;
+    const vsRemote = b => b.merged ? `every commit on it is in ${main}` : `holds work ${main} does not`;
     const vsHost = b => !b.upstream ? "" : (b.ahead || b.behind)
       ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} (${host})`
       : `in step with ${host}`;
     const pills = b => `${b.head ? ` <span class="pill ok">here</span>` : ""}${
             b.who ? ` <span class="pill">${esc(b.who)}'s session</span>` : ""}${
             b.remote ? ` <span class="pill">only on ${esc(host)}</span>` : ""}`;
-    const acts = b => b.remote || locked ? "" : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
+    const acts = b => locked ? "" : b.remote ? (b.merged ? `<span class="acts"><button type="button" class="danger"
+            data-gitdeleteremote="${esc(b.name)}" title="delete this branch on ${esc(host)}; every commit on it is in ${esc(main)} already">Delete on ${esc(host)}</button></span>` : "")
+      : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
             <option value="merge">merge into ${esc(main)}</option><option value="rebase">rebase onto ${esc(main)}</option>
             <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
             title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${
@@ -187,7 +191,7 @@ function nbGitView({$, nb, project}){
           ${acts(b)}</div>
       </details>` : `<div class="row gbranch">
         <div class="grow"><div class="name"><code>${esc(b.name)}</code>${pills(b)}</div>
-          <div class="sub">${[b.remote ? "" : vsMain(b), vsHost(b),
+          <div class="sub">${[b.remote ? vsRemote(b) : vsMain(b), vsHost(b),
             `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
         ${acts(b)}
       </div>`;
@@ -291,6 +295,12 @@ function nbGitView({$, nb, project}){
     // conflict, and the Changes section is already the place that says so.
     body.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = () =>
       gitAct("merge", {name: b.dataset.gitmerge, ...(b.dataset.gitinto ? {into: b.dataset.gitinto} : {})}, gitBusy(b), "Merging"));
+    body.querySelectorAll("[data-gitdeleteremote]").forEach(b => b.onclick = () => {
+      const name = b.dataset.gitdeleteremote;
+      if (!confirm(`Delete ${name} on ${git.host?.name || "the remote"}? Every commit on it is in ${
+          git.main || "main"} already, so nothing is lost; the branch stops being listed there.`)) return;
+      gitAct("delete-remote", {name}, gitBusy(b), "Deleting");
+    });
     body.querySelectorAll("[data-gitdeletemerged]").forEach(b => b.onclick = async () => {
       const names = b.dataset.gitdeletemerged.split(" ").filter(Boolean);
       if (!confirm(`Delete ${names.length === 1 ? names[0] : names.length + " branches"}? Everything on ${
