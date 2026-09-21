@@ -2015,6 +2015,17 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A container's log: monospace, its own scroller, and tall enough to be
    worth opening. The dialog's box is the one that scrolls nothing. */
 .dllog{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+/* A container row's detail is a fold on a phone, where a row carrying its
+   ports, its services, its route and three settings was most of a screen
+   each (R68 step 5). On a desktop it is open and its summary is not drawn,
+   so that surface is exactly what it was. */
+.dmdet>.dmsum{display:flex;gap:8px;align-items:baseline;cursor:pointer;
+  padding:4px 0;color:var(--dim);font:var(--f-note);list-style:none}
+.dmdet>.dmsum::-webkit-details-marker{display:none}
+.dmdet>.dmsum::before{content:"›";display:inline-block;transition:transform .12s ease}
+.dmdet[open]>.dmsum::before{transform:rotate(90deg)}
+.dmdet>.dmsum .t{color:var(--ink)}
+@media(min-width:901px){ .dmdet>.dmsum{display:none} }
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything

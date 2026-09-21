@@ -868,6 +868,11 @@ function dmRowsHtml(ins, job, blind){
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
+        <details class="dmdet"${isPhone() ? "" : " open"}>
+          <summary class="dmsum"><span class="t">Details</span><span class="sst">${
+            [d.ports.length ? `${d.ports.length} port${d.ports.length === 1 ? "" : "s"}` : "",
+             (d.services || []).length > 1 ? `${d.services.length} services` : ""]
+              .filter(Boolean).join(" · ") || "settings"}</span></summary>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
@@ -877,6 +882,7 @@ function dmRowsHtml(ins, job, blind){
         ${dmRouteLine(d)}
         <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
+        </details>
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
           // phase (building, starting) and this says what the phase is
