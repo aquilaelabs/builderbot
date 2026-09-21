@@ -443,6 +443,26 @@ await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 
 await nbGone(page);
 ok(true, '...and closing that tab puts it away');
 
+// B196: two memories added at once. Each create reads MEMORY.md, appends its
+// line and writes it back, and nothing held the read and the write together,
+// so one rename won and the other memory was left on disk with no index line:
+// invisible to every session, which is what create() promises cannot happen.
+{
+  const mk = name => ({ action: 'create', project: 'alpha', name, title: `T ${name}`,
+                        hook: `what ${name} is for`, type: 'user', body: `the body of ${name}` });
+  const made = await page.evaluate(bodies => Promise.all(bodies.map(b =>
+    fetch('/api/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(b) }).then(r => r.json()))),
+    [mk('race-one'), mk('race-two'), mk('race-three'), mk('race-four')]);
+  const got = await page.evaluate(() => fetch('/api/memory?project=alpha').then(r => r.json()));
+  const files = (got.memories || []).map(m => m.file);
+  const orphans = (got.issues || []).map(x => x.text).filter(t => /race-.*is not in the index/.test(t));
+  ok(made.every(m => !m.error) && ['race-one.md', 'race-two.md', 'race-three.md', 'race-four.md'].every(f => files.includes(f))
+     && orphans.length === 0,
+     `four memories created at the same moment all get their line in the index (${
+       orphans.length ? orphans.join(' | ') : files.filter(f => /^race-/.test(f)).length + ' of 4 listed, none orphaned'})`);
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

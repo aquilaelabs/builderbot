@@ -286,7 +286,21 @@ def conditional(r):
     return bool(r.get("paths") or r.get("words"))
 
 
-def replace(project, rules):
+def _rev_of(rows):
+    """One project's rules as a number that moves when any of them does. The
+    same sum revisions() publishes, so what the tab loaded, what the poll
+    watches and what a save is checked against are one value."""
+    raw = json.dumps(rows or [], sort_keys=True)
+    return sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
+
+
+def rev(project):
+    """The number a save of this project's rules is checked against."""
+    with _lock:
+        return _rev_of(((load().get("projects") or {}).get(project) or {}).get("rules") or [])
+
+
+def replace(project, rules, rev=None, force=False):
     """Write the whole list, which is what the tab's Save sends.
 
     Whole rather than per-rule because the tab is an editor: somebody rewords
@@ -328,6 +342,20 @@ def replace(project, rules):
         keep.append(c)
     with _lock:
         d = load()
+        # The tab writes the WHOLE list, so a list that moved since it was
+        # loaded is somebody else's work about to be overwritten: a rule a
+        # session added with `bb rules add`, one an administrator approved
+        # from the pending queue, another person's reword (B195). It used to
+        # go through, and the log then said "you removed" a rule the person
+        # saving had never seen. Checked inside the lock that guards the
+        # write, against the number the tab was handed when it loaded, and
+        # answered as a conflict rather than an error so the page can show
+        # both sides: nothing typed is thrown away by a refusal.
+        cur = _rev_of(_project(d, project).get("rules") or [])
+        if rev is not None and not force and int(rev) != cur:
+            return {"conflict": True, "rev": cur,
+                    "error": "these rules changed while you had them open: a session or "
+                             "another person wrote to them"}
         before = {x.get("name") for x in (_project(d, project).get("rules") or [])}
         now = {x["name"] for x in keep}
         for n in sorted(now - before):
@@ -668,6 +696,5 @@ def revisions():
         d = load()
     out = {}
     for p, v in (d.get("projects") or {}).items():
-        raw = json.dumps(v.get("rules") or [], sort_keys=True)
-        out[p] = sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
+        out[p] = _rev_of(v.get("rules") or [])
     return out

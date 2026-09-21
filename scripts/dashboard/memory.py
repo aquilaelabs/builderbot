@@ -24,12 +24,17 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+import functools
 import hashlib
+import inspect
 import json
+import os
 import re
+import tempfile
 import threading
 import time
 from pathlib import Path
+import statefile  # noqa: E402
 
 # The server's, injected rather than imported: importing the server from a
 # module the server imports is a circle. Same shape as toolchains.py.
@@ -444,10 +449,58 @@ def _write(p, text):
     Through a temporary file in the same directory: a half-written memory is
     still loaded at the next session start, and a truncated frontmatter block
     is worse than the text it replaced.
+
+    A name of its OWN per call. It was a fixed `<name>.tmp`, which is the
+    collision statefile.py's docstring records as fixed everywhere else: two
+    saves landing together opened the same temp file, the second truncating
+    what the first was writing, and whichever renamed first published a torn
+    file (B196).
     """
-    tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(text)
-    tmp.replace(p)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+_fallback_lock = threading.RLock()
+
+
+def _serialised(fn):
+    """One writer at a time per memory directory, across threads and processes.
+
+    save, save_index, create and delete each read MEMORY.md, change it and
+    write it back, and nothing held the read and the write together: two
+    notebook tabs adding a memory at once both appended to the index they had
+    read, one rename won, and the other memory was left on disk with no index
+    line, which is exactly what create() promises cannot happen (B196).
+
+    The lock file lives under the dashboard's state, keyed by the directory,
+    not beside MEMORY.md: that directory is Claude Code's, and a stray file of
+    ours in it is one more thing a session has to wonder about. Claude writes
+    its own memories with its own tools and takes no lock of ours, so this
+    serialises the dashboard against itself, which is the half that can be.
+    """
+    @functools.wraps(fn)
+    def held(project, *a, **kw):
+        home = inspect.signature(fn).bind(project, *a, **kw).arguments.get("home")
+        d = memory_dir(project, home)
+        state = globals().get("STATE")
+        if d is None or state is None:
+            with _fallback_lock:
+                return fn(project, *a, **kw)
+        lockdir = Path(state) / "memlocks"
+        lockdir.mkdir(parents=True, exist_ok=True)
+        key = hashlib.sha256(str(d).encode()).hexdigest()[:16]
+        with statefile.locked(lockdir / key):
+            return fn(project, *a, **kw)
+    return held
 
 
 def _conflict(p, rev, what):
@@ -474,6 +527,7 @@ def _conflict(p, rev, what):
             "conflict": {"rev": _rev(now), "current": now, "at": at}}
 
 
+@_serialised
 def save(project, file, text, rev=None, home=None):
     d = memory_dir(project, home)
     if d is None:
@@ -500,6 +554,7 @@ def save(project, file, text, rev=None, home=None):
     return {"ok": True, "when": int(time.time())}
 
 
+@_serialised
 def save_index(project, entries, rev=None, home=None):
     """Rewrite MEMORY.md from the one line each memory carries.
 
@@ -564,6 +619,7 @@ def save_index(project, entries, rev=None, home=None):
     return {"ok": True, "when": int(time.time())}
 
 
+@_serialised
 def create(project, name, title, hook, mtype, body, home=None):
     """Write a new memory, and give it its line in the index.
 
@@ -639,6 +695,7 @@ def _unindex(d, file):
             pass
 
 
+@_serialised
 def delete(project, file, home=None):
     d = memory_dir(project, home)
     if d is None:

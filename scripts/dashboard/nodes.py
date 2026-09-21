@@ -2129,8 +2129,37 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     # Taken back, not left in the queue: a probe nobody is waiting for any
     # more would otherwise run whenever the node's slot freed: an `adb
     # install` an hour after the operator read it as failed.
+    why = _no_answer(r["job"], node_id, timeout)
     job_cancel(principal, r["job"])
-    return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
+    return {"error": why}
+
+
+def _no_answer(job_id, node_id, timeout):
+    """Why a waited-on job did not come back, in the words that are true.
+
+    It used to say "the agent took the job but did not report back" whatever
+    had happened, and mostly that was false (B200): a node runs `concurrency`
+    jobs at once, usually one, so a one-second `uname` queued behind a
+    fifteen-minute build never STARTED, the agent was healthy and heartbeating
+    throughout, and the person reading it concluded the machine had hung.
+    Which of the two it was is on the job's own record.
+    """
+    j = job(job_id, with_log=False) or {}
+    n = node(node_id) or {}
+    name = n.get("name") or node_id
+    if j.get("state") == "running":
+        return (f"{name} started the job ({job_id}) and it did not finish within {timeout}s; "
+                "it has been cancelled")
+    busy = [x for x in jobs_for(node_id=node_id, active=True, n=5)
+            if x.get("id") != job_id and x.get("state") == "running"]
+    if busy:
+        b = busy[0]
+        what = " ".join(str(x) for x in [b.get("type"), b.get("project") or ""] if x)
+        return (f"{name} is busy with {what} ({b['id']}) and runs "
+                f"{n.get('concurrency') or 1} job at a time: this waited {timeout}s for a "
+                "slot and was taken back. The machine is fine; try again when that finishes")
+    return (f"{name} did not pick the job ({job_id}) up within {timeout}s: "
+            "its agent may not be dialing in")
 
 
 # The first agent build that runs a `tell` job. An older one would fall
@@ -2218,8 +2247,9 @@ def root_wait(principal, node_id, argv, why="", timeout=600):
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
                     "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
+    why = _no_answer(r["job"], node_id, timeout)
     job_cancel(principal, r["job"])
-    return {"error": f"the agent took the job ({r['job']}) but did not report back within {timeout}s"}
+    return {"error": why}
 
 
 def phone_nodes():
@@ -2325,6 +2355,34 @@ def node_sessions():
     return out
 
 
+# A read that takes a second does not queue behind a build that takes fifteen
+# minutes (B200). A node runs `concurrency` jobs at once, usually one, and the
+# probes the dashboard draws itself from (uname for Test, `docker ps` for the
+# manager, `adb devices` for the phone census, a log tail) waited for that one
+# slot like a build would, timed out, and were reported as an agent that "did
+# not report back", on a machine that was healthy and busy. They are exec jobs
+# with a short timeout of their own, which is what marks them: nothing that
+# builds, installs or deploys is asked to finish in half a minute. A couple may
+# run beside whatever holds the slot. The agent needs nothing new for this: it
+# polls for work whatever is running and leaves placement to these rows.
+LIGHT_S = 30
+LIGHT_SLOTS = 2
+
+
+def _light(j):
+    try:
+        t = int((j.get("spec") or {}).get("timeout") or 0)
+    except (TypeError, ValueError):
+        return False
+    return j.get("type") == "exec" and 0 < t <= LIGHT_S
+
+
+def _light_running(node_id):
+    return sum(1 for r in _rows("SELECT * FROM jobs WHERE node = ? AND "
+                                "state IN ('assigned', 'running')", (node_id,))
+               if _light(_job_out(r)))
+
+
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one, or for a cancel request, which comes back
@@ -2349,12 +2407,18 @@ def job_next(node_id, wait, runner="node", alive=None):
             if alive is not None and not alive():
                 return None
             n = node(node_id)
-            if n and n["state"] == "online" and job_running(node_id) < n["concurrency"]:
-                for j in _rows("SELECT * FROM jobs WHERE state = 'queued' AND "
-                               "(node = ? OR node = '') ORDER BY queued, id",
-                               (node_id,)):
+            if n and n["state"] == "online":
+                # A slot free, or not: with none, a LIGHT job may still go
+                # (see _light). Everything else waits for the slot as before.
+                free = job_running(node_id) < n["concurrency"]
+                lane = not free and _light_running(node_id) < LIGHT_SLOTS
+                for j in (_rows("SELECT * FROM jobs WHERE state = 'queued' AND "
+                                "(node = ? OR node = '') ORDER BY queued, id",
+                                (node_id,)) if (free or lane) else ()):
                     j = _job_out(j)
                     if runner_of(j["type"], n["kind"]) != runner or not fits(j, n):
+                        continue
+                    if not free and not _light(j):
                         continue
                     # An agent's job is `assigned` until its first log post
                     # says it started: the poll reply can be lost on the

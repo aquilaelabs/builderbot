@@ -11,6 +11,7 @@ function nbRulesView({$, nb, project}){
     }catch(e){ nb.ruleData = {error: String(e), rules: []}; }
     nb.rulesRev = revs[`rules:${project}`] ?? nb.rulesRev;
     nb.rulePending = null;
+    nb.ruleClash = null;
     drawRules();
   }
 
@@ -119,17 +120,29 @@ function nbRulesView({$, nb, project}){
                  d.loud ? "; that is a lot to pay on every conversation" : ""}`)
           : "Nothing set. A session can leave rules of its own with bb rules "
             + "add, marked as its; the ones you write here it cannot touch."}</div>`;
+    // The clash, where the rules are: their list as it stands now beside the
+    // choice, in the two words the roadmap's band uses, so the same decision
+    // reads the same way on both views.
+    const theirs = nb.ruleClash?.rules || [];
+    const clash = !nb.ruleClash ? "" : `<div class="field"><div class="hint bad">These rules changed while you had them open: a session or another person wrote to them. Theirs now holds ${
+        theirs.length} rule${theirs.length === 1 ? "" : "s"}${theirs.length ? ": " + theirs.map(r => esc(r.name)).join(", ") : ""}.</div>
+        <div class="actbar"><span class="state">nothing has been written</span>
+          <button type="button" id="rlKeepTheirs">Keep theirs</button>
+          <button type="button" class="primary" id="rlUseMine">Use mine</button></div></div>`;
     box.innerHTML = nb.codebaseSection()
       + docSection("briefing", "rules", "Your rules",
-      rows.length ? `${rows.length}` : "none", body,
+      rows.length ? `${rows.length}` : "none", clash + body,
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the
       // heading says there is something behind it.
-      {open: false, cls: d.loud && !ruleDirty() ? "warn" : ""})
+      {open: !!nb.ruleClash, cls: d.loud && !ruleDirty() ? "warn" : ""})
       // Last, because it CONTAINS the two above: the rules in full, then the
       // open roadmap and bugs. Reading it before them is reading the summary
       // before the thing.
       + nb.preambleSection();
+    const keep = box.querySelector("#rlKeepTheirs"), mine = box.querySelector("#rlUseMine");
+    if (keep) keep.onclick = () => loadRules();          // their list, my edits dropped
+    if (mine) mine.onclick = () => saveRules(true);
     wireSections(box);
     nb.ruleStagedCount = () => (ruleDirty() ? 1 : 0);
     nb.ruleClearStaged = () => { nb.rulePending = null; nb.ruleEditing.clear(); nb.ruleOpen.clear(); nb.ruleWas.clear(); drawRules(); };
@@ -214,13 +227,20 @@ function nbRulesView({$, nb, project}){
     nb.syncSave();
   }
 
-  async function saveRules(){
+  // `force` is the person's answer to the clash band, never a default.
+  async function saveRules(force){
     if (!ruleDirty()) return;
     const body = nb.rulePending;
     try{
-      const r = await postJSON("/api/rules", {project, action: "save", rules: body});
+      const r = await postJSON("/api/rules", {project, action: "save", rules: body,
+                                              rev: nb.ruleData?.rev, ...(force === true ? {force: true} : {})});
       const j = await r.json();
+      // Somebody else wrote these rules while they were open here (B195).
+      // Nothing is written and nothing typed is dropped: the staged copy
+      // stays, and the band puts the choice where the rules are.
+      if (j.conflict){ nb.ruleClash = j.current; drawRules(); return; }
       if (j.error){ notify(j.error, true); return; }
+      nb.ruleClash = null;
       nb.ruleData = j;
       nb.rulePending = null;
       nb.ruleEditing.clear();                   // written: back to reading them

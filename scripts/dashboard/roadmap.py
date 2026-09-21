@@ -294,6 +294,24 @@ def begin(project, by="claude"):
     return {"ok": True}
 
 
+# How long a batch may stay open before it stops holding the notebook. A
+# session's batch is minutes of work; one open for half an hour belongs to a
+# session that was killed mid-way or a container that restarted under it, and
+# it used to disable Save for every person on the project for good, with no
+# way out that did not need a shell, which a user account does not have
+# (B198). Lifting the HOLD is safe by the batch's own design: a person's
+# change made while one is open goes straight to the history, the session's
+# commit still folds its own events in, and its revert already refuses to
+# roll back over a person's edit.
+BATCH_STALE = 30 * 60
+
+
+def _batch_view(b):
+    at = int(b.get("at") or 0)
+    return {"at": at, "by": b.get("by", ""), "changes": len(b.get("events") or []),
+            "stale": bool(at and time.time() - at > BATCH_STALE)}
+
+
 def batches():
     """Every project with a batch open, for the status poll.
 
@@ -302,17 +320,14 @@ def batches():
     """
     with _lock:
         d = load().get("batch", {})
-    return {p: {"at": b.get("at", 0), "by": b.get("by", ""),
-                "changes": len(b.get("events") or [])}
-            for p, b in d.items() if b}
+    return {p: _batch_view(b) for p, b in d.items() if b}
 
 
 def batch(project):
     """The open batch here, or None. What the panel shows a marker for."""
     with _lock:
         b = load().get("batch", {}).get(project)
-    return None if not b else {"at": b.get("at", 0), "by": b.get("by", ""),
-                               "changes": len(b.get("events") or [])}
+    return None if not b else _batch_view(b)
 
 
 # Two events about the same line are one event about that line. Ordered by

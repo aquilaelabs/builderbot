@@ -1789,6 +1789,57 @@ await nbShown(page);
 ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb .nbtabs button').dataset.v),
    '...and a notebook closed and opened again starts on the strip\'s first view');
 
+// B198: a batch its session never closes. Killed mid-way, or the container
+// restarted under it, it used to disable Save for every person on the project
+// for good, with no way out that did not need a shell.
+{
+  const call = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b === null ? {} : { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  }, [path, body ?? null]);
+  const fs = await import('node:fs');
+  bbRoadmap('begin');
+  const d = read();
+  d.batch.alpha.at = Math.floor(Date.now() / 1000) - 31 * 60;
+  fs.writeFileSync(FILE, JSON.stringify(d));
+  const got = await call('/api/roadmap?project=alpha');
+  ok(got.batch?.stale === true, `a batch open past half an hour is reported as stale (${JSON.stringify(got.batch)})`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /never closed it/.test(
+    document.getElementById('roadmapBatch')?.textContent || ''), null, { timeout: 20000 });
+  ok(await page.evaluate(() => !document.querySelector('.nb')?.classList.contains('held')),
+     '...and holds nothing: the banner says so and the notebook is not held');
+  await page.click('#roadmapBatchClose');
+  await page.waitForFunction(() => document.getElementById('roadmapBatch')?.hidden, null, { timeout: 20000 });
+  ok(!read().batch?.alpha, 'an administrator closes it from the banner, which commits what the session wrote');
+}
+
+// B199: a panel holding unsaved work stops re-reading, which is right, and
+// used to say nothing while it did.
+{
+  // Onto the Roadmap first: by this point in the file the notebook has been
+  // closed and reopened, which lands it on the strip's first view, and the
+  // add box is in the DOM there and not on screen.
+  await nbTab(page, 'roadmap');
+  await page.waitForSelector('#roadmapText', { state: 'visible', timeout: 15000 });
+  await page.fill('#roadmapText', 'staged here and not saved');
+  await page.keyboard.press('Enter');
+  bbRoadmap('add', 'written underneath by somebody else');
+  let said = '';
+  for (let i = 0; i < 30 && !said; i++){
+    await page.evaluate(() => pollRevs());
+    await new Promise(r => setTimeout(r, 400));
+    said = await page.evaluate(() => { const m = document.getElementById('roadmapMoved');
+                                       return m && !m.hidden ? m.textContent : ''; });
+  }
+  ok(/changed since you loaded it/.test(said),
+     `a panel with unsaved work says when the list moved under it, where the Save is (${said || 'nothing said'})`);
+  await saveList();
+  ok(await page.evaluate(() => document.getElementById('roadmapMoved')?.hidden === true),
+     '...and stops saying it once there is nothing unsaved');
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

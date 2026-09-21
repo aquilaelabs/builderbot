@@ -4231,7 +4231,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json(rules.payload(name))
+        # With the number a Save is checked against (B195): read in the same
+        # answer as the rules, so the two cannot describe different moments.
+        return self._json(rules.payload(name) | {"rev": rules.rev(name)})
 
     def _get_global_rules(self):
         """GET /api/global-rules."""
@@ -5583,6 +5585,26 @@ class Handler(BaseHTTPRequestHandler):
         # credited.
         me = self._who() or {}
         who = me.get("uid", "") if me.get("session") else ""
+        if act == "batch-close":
+            # A batch its session will never close: killed mid-way, or the
+            # container restarted under it (B198). The only way out was a
+            # shell running `bb roadmap commit`, which a user account does
+            # not have. Committed rather than reverted: what the session
+            # wrote is already on the list in front of everybody, and folding
+            # its log in loses nothing, where a revert would take work away
+            # on the say-so of somebody who did not do it. An
+            # administrator's, like the other decisions about other
+            # people's work.
+            if self._refused("admin"):
+                return
+            closed = 0
+            for mod in (roadmap, bugs):
+                if mod.batch(name) is not None:
+                    r = mod.commit(name)
+                    if r.get("error"):
+                        return self._json(r, 400)
+                    closed += 1
+            return self._json({"ok": True, "closed": closed} | self._roadmap_state(name, live))
         if act == "save":
             # The panel's one Save: settle the marker, say nothing. There used
             # to be a second action here that typed the change into a running
@@ -6298,10 +6320,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(bad, 409)
         if field(req, "action") != "save":
             return self._json({"error": "unknown action"}, 400)
-        r = rules.replace(name, req.get("rules") or [])
+        r = rules.replace(name, req.get("rules") or [], rev=req.get("rev"),
+                          force=bool(req.get("force")))
+        if r.get("conflict"):
+            # 200, with what is there now: the roadmap's shape for the same
+            # moment, so the page can put both versions in front of the
+            # person instead of a toast over a form it then has to guess at.
+            return self._json({"conflict": True, "error": r["error"],
+                               "current": rules.payload(name) | {"rev": rules.rev(name)}})
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(rules.payload(name))
+        return self._json(rules.payload(name) | {"rev": rules.rev(name)})
 
     def _global_rules(self, req):
         """The rules that apply to EVERY project (R63). An administrator's.

@@ -186,6 +186,9 @@ def _log(d, project, by, ev):
     series of decisions the operator needs to read one at a time. The tracker
     still changes as it goes, visibly; only the record waits for commit.
     """
+    # Counted here because every write to the tracker comes through here,
+    # batched or not: see revisions() for why a length is not enough.
+    d.setdefault("revn", {})[project] = int(d.get("revn", {}).get(project) or 0) + 1
     ev = {"at": int(time.time()),
           "by": "claude" if by == "claude" else "you",
           **_by_whom(),
@@ -388,8 +391,15 @@ def revisions():
     count of open bugs would miss.
     """
     with _lock:
-        h = load().get("history", {})
-    return {p: len(rows) for p, rows in h.items()}
+        d = load()
+    h, n = d.get("history", {}), d.get("revn", {})
+    # The history's length PLUS a counter that never stops. The length alone
+    # was the token, and the history is capped at MAX_HISTORY: past 300
+    # events it sat at 300 for good, the watch on it never fired again, and
+    # an open Bugs tab showed a tracker frozen at whatever it held when it
+    # was opened (B197). The sum only ever grows, and a tracker written
+    # before the counter existed still answers with the length it always had.
+    return {p: len(h.get(p) or []) + int(n.get(p) or 0) for p in set(h) | set(n)}
 
 
 def add(project, title, by="you", severity="medium", **fields):

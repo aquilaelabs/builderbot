@@ -372,6 +372,36 @@ print(users.mint_session('alpha'))`], { encoding: 'utf8' }).trim();
   ok(asSession.status === 403, `...and a session's token is refused by the endpoint too (${asSession.status})`);
 }
 
+// B195: the tab writes the WHOLE list, so a list that moved since it was loaded
+// is somebody else's rule about to be overwritten: one a session added, one an
+// administrator approved from the queue, another person's reword. It used to
+// go through, and the log then blamed the person saving for removing a rule
+// they had never seen.
+{
+  const call = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b === null ? {} : { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  }, [path, body ?? null]);
+  const first = await call('/api/rules?project=alpha');
+  const mine = [...(first.rules || []), { name: 'from-tab-one', text: 'a rule written in one window' }];
+  const one = await call('/api/rules', { project: 'alpha', action: 'save', rules: mine, rev: first.rev });
+  ok(typeof first.rev === 'number' && one.rev !== first.rev
+     && (one.rules || []).some(r => r.name === 'from-tab-one'),
+     `a save carrying the revision it loaded at goes through, and the revision moves (${first.rev} to ${one.rev})`);
+  const theirs = [...(first.rules || []), { name: 'from-tab-two', text: 'written in the other window' }];
+  const stale = await call('/api/rules', { project: 'alpha', action: 'save', rules: theirs, rev: first.rev });
+  ok(stale.status === 200 && stale.conflict === true
+     && (stale.current?.rules || []).some(r => r.name === 'from-tab-one')
+     && read().some(r => r.name === 'from-tab-one') && !read().some(r => r.name === 'from-tab-two'),
+     'a second window that loaded before that save is told the rules changed, handed what is there now, and writes nothing');
+  const forced = await call('/api/rules', { project: 'alpha', action: 'save', rules: theirs,
+                                            rev: first.rev, force: true });
+  ok(!forced.conflict && read().some(r => r.name === 'from-tab-two') && !read().some(r => r.name === 'from-tab-one'),
+     '...and Use mine writes it, which is then a decision somebody made rather than an accident');
+  await call('/api/rules', { project: 'alpha', action: 'save', rules: first.rules || [], force: true });
+}
+
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);
