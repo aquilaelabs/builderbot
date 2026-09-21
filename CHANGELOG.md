@@ -2,83 +2,48 @@
 
 ## Unreleased
 
-- Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)
+### Added
+
+- A start-here page for somebody given an account rather than running the box, and the welcome panel now says the thing a new person hits first: sign in to Claude with your own account before a session will start. (5537a35)
+- A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
+- New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
+- The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
+- A session can ask for a container: bb container ask hands over a compose file and a reason, an administrator reads the file on the bell and allows or denies it, and Allow registers it like New container and starts the build. (9b9032b)
+
+### Changed
+
 - Android system images move to an Emulator tab of their own, with bb emu images, bb emu flavors and bb emu image add|remove: an image is not a toolchain, since one exists at every API level at once. The button is ghosted until a node has the command-line tools and the emulator. (4f964c1)
-- A stop is quick again: the shutdown no longer waits on an emulator the controller has not run since it moved to the nodes, and the tab-limit notice no longer points at a setting that does not exist. (8b227f6)
 - Every em dash is out of the code base: the refusals, the log lines and the app's own text read as something a person wrote, not something a machine generated. Only the glyphs stay, like the dash on a tab's minimize button and an empty cell. (ae54d3c)
 - A session's briefing is a quarter of the size: the roadmap names each item and its steps, and the long technical detail behind one is a bb roadmap show away instead of riding in every conversation on the project. (68cd4cb)
-- A start-here page for somebody given an account rather than running the box, and the welcome panel now says the thing a new person hits first: sign in to Claude with your own account before a session will start. (5537a35)
-- Fetch and Pull work again on a project linked over https: the Git view was running git without the token the project was linked with, and said so as git does, by asking for a username it had no way to read. (058999c)
 - Debug settings in the controller's settings opens a dialog, the way a node's row already did, instead of unfolding inside the group where the group's Apply would save it. (058999c)
+- The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
+- Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
+- A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
+
+### Fixed
+
+- Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)
+- A stop is quick again: the shutdown no longer waits on an emulator the controller has not run since it moved to the nodes, and the tab-limit notice no longer points at a setting that does not exist. (8b227f6)
+- Fetch and Pull work again on a project linked over https: the Git view was running git without the token the project was linked with, and said so as git does, by asking for a username it had no way to read. (058999c)
 - A Git view that cannot authenticate says which of the two things went wrong: no access token stored for the project, or one the host rejected, each naming where to put a new one. (f9e021a)
 - bb doctor on a node stops reporting a stray ssh key as a failure: a node holds no git credential by design, so a key there is not what its pushes use. (55cfbfa)
 - Every dialog keeps one rhythm now: the same gap between the things in a band and a tighter one under a label, instead of a form whose spacing changed halfway down it. (2dd7542)
-- A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
 - A dialog on a phone stops dragging the page around behind it, and stops drifting while the browser's toolbar slides. (331b871)
 - Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
-- Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
-- The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
-- Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
-- New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
-- The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
-- A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 - A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
 
-### Added
+### Security
 
-- A session can ask for a container: bb container ask hands over a compose file and a reason, an administrator reads the file on the bell and allows or denies it, and Allow registers it like New container and starts the build. (9b9032b)
+- Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
 
 ## 0.6.0: 2026-09-19
-
-- The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
-- The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
-- The buttons on the Tools card carry icons, and the tab each opens wears the same one (47c9aa3)
-- A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
-- Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
-- A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
-- The Toolchains tab says when a node lacks the system libraries a toolchain on the shared store needs, and one press installs them there without reinstalling the toolchain; the node's row says the same (bf01db5)
-- The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
-- The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
-- A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
-- Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
-- bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
-- A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
-- A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
-- Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
-- A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
-- Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
-- A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
-- A Claude session's token no longer dies under it while the session is idle: the machine it runs on is handed a fresh one on its heartbeat, so a token lives as long as its tmux session does and none is ever accepted past its expiry (dc01fb7)
-- provision-linux.sh --guest: enroll somebody's own machine as a node without touching it. One directory and one systemd user unit, no root, no accounts, no docker, no fstab, no netplan, no firewall; Storage and Network are refused for it, and --guest --remove takes exactly that away (e4f4fc1)
-- appdata is a node store like the other four: where a dev instance keeps its databases and uploads is reported by the node with its headroom and edited in its Storage section, rather than being BB_DEV_DATA_DIR on the controller with an optional mount beside it (5aa7810)
-- Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
-- The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
-- A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
-- A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
-- On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
-- A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
-- bb diag: the controller's diagnostics (its build, the doctor, each node, failed jobs, error lines, the audit trail) with credentials redacted, readable by an administrator's session once debug mode is on and its node is ticked for it on Debug settings (96899bb)
-- Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
-- A polish pass on phones, foldables and desktop: dialogs that drew flush or showed controls with nothing to act on, dropdown text running past the arrow, a cut-off bottom bar on narrow phones, and small touch targets across the tab strip, dialogs and notebook (9da871c)
-- Updating the controller now reloads an open dashboard with the new code, where it used to show the new version's changelog over the old page until a manual reload (c4b1e0c)
-- Each person picks the time zone the dashboard shows times in, per browser, on the Profile tab; the container's TZ is optional and only sets its own clock for logs and file names (f1d6384)
-- The install settings say what they do now: the unused Anthropic API key field is gone (each person signs in on a node), NPM_TOKEN is described as the controller shell's, and the stop timeout no longer needs raising (8a7a112)
-- Two people who open a Claude session on one project at the same moment each get a credential of their own, naming who they are (33ae896)
-- An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
-- Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
-- The Toolchains tab names the system packages each toolchain puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
-- System packages now install on Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9 and 10, Fedora, Arch and openSUSE: Playwright's list was apt-only and broke on Ubuntu 24.04, and a list can name a library that was renamed between releases (1912a29)
-- A mistyped controller address in BB_CONTROLLER is reported as what it is, not a crash, and two node reports that could crash the controller's handling of them are taken safely (b9f2cf5)
-- The flyouts the terminal's bottom bar opens (Keys, Commands, Sessions, Chat) are tinted, edged and shadowed, so where they end is plain on a phone and on a desktop (54afb55)
-- Renaming a node on the Nodes tab keeps the name you are typing when the tab refreshes (3a4dfe1)
-- The roadmap is called the roadmap everywhere, and what BuilderBot installs is a toolchain everywhere: the Tools card's button and tab are Toolchains, and the command is bb toolchains (d77dca7)
-- Nodes need Update agent after this update: a 0.5 agent reports its store and runs jobs under the old names, so a 0.6 controller holds its sessions until it is updated. Your roadmap, open tabs and each node's store come across by themselves (d77dca7)
-- The phone app needs the new APK: its API moved to 2 with the renamed paths (d77dca7)
 
 ### Upgrading
 
 - A minor version moves the compatibility window: a project bound to a node is held until that node's agent is updated, and the sessions running on it end when the bump lands (dbf8170)
 - This image is the controller and nothing else: it cannot be turned into a node by a setting, carries no emulator runtime, no X server and no GPU flags, and its Unraid template no longer ships a device or a runtime that fails the container outright on hardware that lacks them (652f8e4)
+- Nodes need Update agent after this update: a 0.5 agent reports its store and runs jobs under the old names, so a 0.6 controller holds its sessions until it is updated. Your roadmap, open tabs and each node's store come across by themselves (d77dca7)
+- The phone app needs the new APK: its API moved to 2 with the renamed paths (d77dca7)
 
 ### Added
 
@@ -102,6 +67,22 @@
 - Reset BuilderBot at the foot of Settings starts the controller over at Create the owner, moving its state aside and leaving project files alone (971e9db)
 - bb lint parses every JavaScript file and the page's inline scripts with node, beside the shell, Dockerfile, workflow and python checks (b7f29ff)
 - House rules can apply to every project: set them once under Global rules in Controller settings and every project's sessions are handed them, marked global, with nothing copied into a project. A session may suggest one but only you can add it (0b980c1)
+- The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
+- The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
+- A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
+- The Toolchains tab says when a node lacks the system libraries a toolchain on the shared store needs, and one press installs them there without reinstalling the toolchain; the node's row says the same (bf01db5)
+- A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
+- bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
+- A lab tier for the tests: BuilderBot's own compose file carries a real Gitea under a lab profile, brought up with a dev instance from the Docker tab, and bb tests lab proves linking, unlinking and repository creation against it (9098948, 115ef34)
+- A project's tests can run inside its dev instance: bb devapp test, and bb test takes that path on its own whenever the instance is up (a7701c3)
+- Every project's notebook has a Docker view listing its containers with the manager's own controls, and New container takes a project to show it under, so a helper container sits beside the project it serves (94fea1a)
+- provision-linux.sh --guest: enroll somebody's own machine as a node without touching it. One directory and one systemd user unit, no root, no accounts, no docker, no fstab, no netplan, no firewall; Storage and Network are refused for it, and --guest --remove takes exactly that away (e4f4fc1)
+- bb diag: the controller's diagnostics (its build, the doctor, each node, failed jobs, error lines, the audit trail) with credentials redacted, readable by an administrator's session once debug mode is on and its node is ticked for it on Debug settings (96899bb)
+- Each person picks the time zone the dashboard shows times in, per browser, on the Profile tab; the container's TZ is optional and only sets its own clock for logs and file names (f1d6384)
+- An administrator can limit how many Claude sessions work on a prompt at once on each node (Nodes tab, the node's Sessions section); a prompt past the limit waits its turn instead of being refused (7e3b194)
+- Your Profile lists the Claude Code plugins you installed with /plugin, per node, and the Tools tab offers the language servers the Python, TypeScript and Kotlin plugins need (c16ef73)
+- The Toolchains tab names the system packages each toolchain puts on the machine, a managed node installs the ones its store needs by itself, and a row says which open sessions to reopen to see a newly installed tool (1818be8)
+- System packages now install on Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9 and 10, Fedora, Arch and openSUSE: Playwright's list was apt-only and broke on Ubuntu 24.04, and a list can name a library that was renamed between releases (1912a29)
 
 ### Changed
 
@@ -130,6 +111,19 @@
 - The Docker row's three settings sit on one line; the row's padlock is a padlock at 16px; the settings dialog warns about what a rename moves only once the name is edited (bddf3bd)
 - Picking a commit in the Git view's history scrolls the page down to its changes (3fa7ede)
 - Claude can only build and test the dev instance on the node its project works on, so a container left behind on another node is not rebuilt or used from a session by mistake (aeb6d9b)
+- The buttons on the Tools card carry icons, and the tab each opens wears the same one (47c9aa3)
+- Controller settings: Debug mode is the one switch, and a Debug settings button beside it unrolls the developer settings, starting with letting two accounts share one Claude login (47c9aa3)
+- A project's settings dialog shows the model Claude actually runs on when none is set, and leaving it there changes nothing and restarts nothing (bf593da)
+- The link dialog accepts owner/repo alone once a self-hosted server's address is named (924ee49)
+- Every project row says which node its work runs on, (node: name) beside the project's name, and a project with none no longer carries a sentence about sessions under it (33d8a72)
+- A dev instance of BuilderBot itself builds the checkout it runs from, like any project's; an install still pulls the image (17a7a9f)
+- Delete project sits at the foot of every project's settings dialog, so the bin is reachable from the sidebar and on a phone (53707c1)
+- A dev instance's row lists each of its containers with its state and ports, and its link opens the project's own service rather than the lowest port (c7a722d)
+- appdata is a node store like the other four: where a dev instance keeps its databases and uploads is reported by the node with its headroom and edited in its Storage section, rather than being BB_DEV_DATA_DIR on the controller with an optional mount beside it (5aa7810)
+- The Docker manager and the Tools tab are their own files beside index.html, which loses 1,706 lines: the page is 11,395 now, and a surface is one file a reader can hold (5e161ed)
+- The install settings say what they do now: the unused Anthropic API key field is gone (each person signs in on a node), NPM_TOKEN is described as the controller shell's, and the stop timeout no longer needs raising (8a7a112)
+- The flyouts the terminal's bottom bar opens (Keys, Commands, Sessions, Chat) are tinted, edged and shadowed, so where they end is plain on a phone and on a desktop (54afb55)
+- The roadmap is called the roadmap everywhere, and what BuilderBot installs is a toolchain everywhere: the Tools card's button and tab are Toolchains, and the command is bb toolchains (d77dca7)
 
 ### Fixed
 
@@ -230,10 +224,26 @@
 - Moving a project to another node no longer hides the dev instance it leaves behind: the containers keep running and their row stays in the Docker manager on the node they are on, so you can still stop or remove them there (aeb6d9b)
 - The dashboard's test suite runs from a local copy instead of straight off the projects share, which is what made its own waits time out and report failures that were not real (8a1f322)
 - Opening a project's Git view no longer runs anything that project's own git configuration names, so a session cannot have code run on the controller by leaving a hook or a filter behind (b8fb095)
+- A Claude session's token no longer dies under it while the session is idle: the machine it runs on is handed a fresh one on its heartbeat, so a token lives as long as its tmux session does and none is ever accepted past its expiry (dc01fb7)
+- Job logs are swept: they were the only copy of what a node's job wrote, kept in the controller's store, and nothing ever deleted one. The newest per project are kept and the rest lose their chunks, while every job row stays, so the list still says what ran (2787f96)
+- A node that enrolled before a store role existed adopts it on its next start, beside the store it already keeps its data in, so appdata reaches the nodes already out there rather than only the next one enrolled (53cc902)
+- A polish pass on phones, foldables and desktop: dialogs that drew flush or showed controls with nothing to act on, dropdown text running past the arrow, a cut-off bottom bar on narrow phones, and small touch targets across the tab strip, dialogs and notebook (9da871c)
+- Updating the controller now reloads an open dashboard with the new code, where it used to show the new version's changelog over the old page until a manual reload (c4b1e0c)
+- Two people who open a Claude session on one project at the same moment each get a credential of their own, naming who they are (33ae896)
+- A mistyped controller address in BB_CONTROLLER is reported as what it is, not a crash, and two node reports that could crash the controller's handling of them are taken safely (b9f2cf5)
+- Renaming a node on the Nodes tab keeps the name you are typing when the tab refreshes (3a4dfe1)
 
 ### Removed
 
 - The Docker manager's Migrate button is gone: an instance made by this version is never under an older name (b36e689)
+- The Without-asking setting is gone from a project's settings: what a session may do without asking is chosen in Claude Code itself (924ee49)
+
+### Security
+
+- A terminal on a node now opens only for the account the controller vouches for, so a session can no longer reach the node's terminal server directly and open one as another account or on another project (B166) (77d2631)
+- On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
+- A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
+- Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
 
 ## 0.5.0: 2026-09-10
 

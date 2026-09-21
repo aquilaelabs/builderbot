@@ -336,8 +336,28 @@ const yb = (...a) => {
     return { out: execFileSync('bash', [BB, ...a], { cwd: Y, env }).toString(), code: 0 };
   } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
 };
-ok(yb('changelog', 'add', 'Worked before any version existed').code === 0,
+ok(yb('changelog', 'add', 'Worked before any version existed', '--cat', 'Added').code === 0,
    'a change can be logged before the project has a VERSION at all');
+// An entry goes under a category, and the tool is where a session learns
+// which there are: twenty-one of twenty-two unreleased entries in this
+// repository's own changelog had none, because nothing anywhere said what the
+// categories were or when each applied. Refused with the rules rather than
+// filed in a heap above the headings.
+{
+  const none = yb('changelog', 'add', 'filed nowhere');
+  ok(none.code !== 0 && /--cat NAME, one of/.test(none.out) && /Fixed\s+it was wrong, and now it is right/.test(none.out)
+     && /a house rule is where a project says so/.test(none.out),
+     'an entry with no category is refused, and the refusal is the six names with when each applies');
+  ok(!/filed nowhere/.test(yb('changelog', 'unreleased').out), '...and nothing was written');
+  ok(yb('changelog', 'add', 'A wrong thing put right', '--cat', 'bugfix').code === 0
+     && /### Fixed/.test(readFileSync(`${Y}/CHANGELOG.md`, 'utf8')),
+     'a name that means one of the six is spelled the one way: bugfix files under Fixed');
+  const own = yb('changelog', 'add', 'Move your config before updating', '--cat', 'Upgrading');
+  const body = readFileSync(`${Y}/CHANGELOG.md`, 'utf8');
+  ok(own.code === 0 && /### Upgrading/.test(body) && body.indexOf('### Added') < body.indexOf('### Fixed')
+     && body.indexOf('### Fixed') < body.indexOf('### Upgrading'),
+     "a project's own category is kept as typed and goes on the end, while the six keep their usual order among themselves");
+}
 setPolicyFor('young', 'open');
 yb('version', 'init', '0.1.0');
 const born = yb('changelog').out;
@@ -433,20 +453,20 @@ const cl = (...a) => {
 };
 ok(/no CHANGELOG\.md here yet/.test(cl().out),
    'a project with no changelog says so, and how to start one');
-ok(cl('add', 'Pairing works across screen switches').code === 0,
+ok(cl('add', 'Pairing works across screen switches', '--cat', 'Changed').code === 0,
    'a session can log a user-facing change');
-cl('add', 'The app no longer forgets its settings', '--for', 'extension');
+cl('add', 'The app no longer forgets its settings', '--cat', 'Changed', '--for', 'extension');
 ok(/Pairing works/.test(cl().out) && !/forgets its settings/.test(cl().out),
    "an entry lands in the changelog it was logged to, not the project's");
 ok(/forgets its settings \([0-9a-f]{7}\)/.test(cl('--for', 'extension').out),
    '...stamped with the commit it describes');
-ok(cl('add', '').code !== 0, 'an empty entry is refused');
+ok(cl('add', '', '--cat', 'Changed').code !== 0, 'an empty entry is refused');
 
 // A change that tweaks something already logged this cycle corrects the
 // line rather than adding a second one about the same thing: the reader
 // should meet each change once, and the honest record is one line that is
 // right. Positional numbers, because the section is short-lived by design.
-cl('add', 'Pairing shows the code larger');
+cl('add', 'Pairing shows the code larger', '--cat', 'Changed');
 // A second commit before the edit, so the line has two to name.
 execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'Another pass over pairing'], { env });
 const listed = cl('unreleased').out;
@@ -478,9 +498,9 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
   const before = rows().length;
 
   execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'half one'], { env });
-  cl('add', 'MERGEME the first half');
+  cl('add', 'MERGEME the first half', '--cat', 'Changed');
   execFileSync('git', ['-C', M, 'commit', '--allow-empty', '-q', '-m', 'half two'], { env });
-  cl('add', 'MERGEME the second half');
+  cl('add', 'MERGEME the second half', '--cat', 'Changed');
   let list = rows();
   const halves = list.filter(l => /MERGEME/.test(l));
   const want = new Set(halves.flatMap(shasOf));
@@ -557,13 +577,23 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
   ok(/### Fixed\n\n- CATME a fix \([0-9a-f]{7}\)/.test(file())
      && /### Added\n\n- CATME an addition \([0-9a-f]{7}\)/.test(file()),
      '...written as `### Name` subsections, the entry still stamped with its commit');
-  ok(file().indexOf('- Pairing works') < file().indexOf('### Fixed')
-     && file().indexOf('### Fixed') < file().indexOf('### Added'),
-     '...a new category on the end, and the uncategorised lines above every heading');
+  // Fixed was filed FIRST and Added still sits above it: the six keep their
+  // usual order among themselves, which is a convention and nobody's
+  // arrangement. (It used to be "a new category on the end", which filed a
+  // changelog in the order a session happened to work in.)
+  ok(file().indexOf('### Added') < file().indexOf('### Fixed'),
+     '...the six in their usual order, whichever was filed first');
+  // A line from before categories were asked for. A session can no longer
+  // make one, and files written before this still carry them, so the fixture
+  // writes one the way an old file has it: above every heading.
+  writeFileSync(`${M}/CHANGELOG.md`, file().replace('## Unreleased\n', '## Unreleased\n\n- LOOSE from before categories were asked for\n'));
   const listed = cl('unreleased').out;
+  const nums = rows().map(l => Number(l.trim().split(/\s/)[0]));
   ok(/^\s+\(no category\)$/m.test(listed) && /^\s+Fixed$/m.test(listed)
-     && Number(numOf('CATME an addition')) === rows().length,
-     'the numbered list names each category and counts straight through them');
+     && file().indexOf('- LOOSE') < file().indexOf('### ')
+     && nums.every((n, i) => n === i + 1),
+     'the numbered list names each category, an uncategorised line above them all, and counts straight through');
+  cl('rm', numOf('LOOSE'));
 
   ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
      'an entry moves between categories with --cat');
@@ -626,8 +656,8 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
 
   cl('rm', numOf('CATME an addition'));
   cl('rm', numOf('CATME a fix, moved'));
-  ok(rows().length === before && !/^### /m.test(file()),
-     `...and emptying the last category takes the heading with it (${before} left)`);
+  ok(rows().length === before && !/^### (Added|Fixed)$/m.test(file()),
+     `...and emptying a category takes its heading with it (${before} left)`);
 }
 
 // The bump dates the section, in the same commit that moves VERSION.
@@ -651,7 +681,7 @@ mb('bump', 'patch');
 ok(!/## 0\.4\.2/.test(cl().out),
    'a bump with nothing logged writes no empty section');
 // And the next entry reopens Unreleased above the dated history.
-cl('add', 'Something new after the release');
+cl('add', 'Something new after the release', '--cat', 'Changed');
 const reopened = cl().out;
 ok(reopened.indexOf('## Unreleased') !== -1
    && reopened.indexOf('## Unreleased') < reopened.indexOf('## 0.4.1'),
@@ -727,9 +757,9 @@ const ub = (...a) => {
   } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
 };
 ub('version', 'init', '0.2.0');
-ub('changelog', 'add', 'went into the bump');
+ub('changelog', 'add', 'went into the bump', '--cat', 'Changed');
 ub('version', 'bump', 'minor');
-ub('changelog', 'add', 'logged after the bump');
+ub('changelog', 'add', 'logged after the bump', '--cat', 'Changed');
 ok(/0\.3\.0 -> 0\.2\.0/.test(ub('version', 'unbump').out),
    'an unreleased bump can be taken back without touching the code');
 const merged = ub('changelog').out;

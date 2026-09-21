@@ -61,8 +61,10 @@ than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
 ## Versions
 
 `bb version` is this project's identity; `bb version policy` says what you may
-move, which is usually nothing. `bb changelog add` records what a change means
-for the person using the product.
+move, which is usually nothing. `bb changelog add "..." --cat NAME` records what
+a change means for the person using the product, under Added, Changed,
+Deprecated, Removed, Fixed or Security; run it with no category and it says
+when each applies.
 
 ## Which build is running
 

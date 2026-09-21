@@ -64,7 +64,7 @@ for (const [who, t] of sessions) {
   for (let i = 0; i < ROUNDS; i++)
     jobs.push(relay(t, ['bug', 'add', `cc ${who} bug ${i}`, '--sev', 'low']).then(r => ({ who, kind: 'bug', i, r })));
   for (let i = 0; i < CHANGES; i++)
-    jobs.push(relay(t, ['changelog', 'add', `cc ${who} change ${i}`]).then(r => ({ who, kind: 'changelog', i, r })));
+    jobs.push(relay(t, ['changelog', 'add', `cc ${who} change ${i}`, '--cat', 'Changed']).then(r => ({ who, kind: 'changelog', i, r })));
 }
 // ...and somebody at the Roadmap tab, adding through the panel meanwhile.
 for (let i = 0; i < ROADMAP; i++)

@@ -37,10 +37,11 @@ bb: BuilderBot helper
   bb version --for DIR   ask about one component instead of the project
   bb version policy      what a session may move here, and who decides
   bb changelog           this project's user-facing changelog (--for DIR)
-  bb changelog add "..." log what a change means for the person using it;
-                         the next version bump dates the accumulated lines.
-                         --cat NAME files it under a category, made at the
-                         end if it is new; the arrangement is the operator's
+  bb changelog add "..." --cat NAME   log what a change means for the person
+                         using it; the next version bump dates the lines.
+                         A category is required: Added, Changed, Deprecated,
+                         Removed, Fixed or Security (run it without one for
+                         when each applies), or a project's own, kept as typed
   bb changelog unreleased  the entries waiting for a bump, numbered by
                          category, in the order somebody arranged them
   bb changelog edit N "..."  reword one of them: a change that tweaks something
@@ -2934,6 +2935,17 @@ cmd_tests() {
             echo "nothing timed, so nothing recorded. \`bb tests run\` runs this" >&2
             echo "project's own test command with BB_TEST_TIMING=1 in front of it;" >&2
             echo "set that command in the project's settings dialog." >&2
+            # No timing prefix is ordinary: another project's runner prints
+            # none. No OUTPUT AT ALL with a zero exit is not: twice on 21 Sep
+            # a full run did nothing whatever, wrote an empty log, and was
+            # reported as a success (B202). A test command that says nothing
+            # and passes is possible, so there is a way to say yours is one.
+            if [ ! -s "$log" ] && [ "${rc:-0}" = 0 ] && [ -z "${BB_TESTS_SILENT_OK:-}" ]; then
+                echo "[builderbot] ERROR: the test command printed nothing at all and exited 0," >&2
+                echo "which is a run that did not happen rather than one that passed." >&2
+                echo "Run it again; if your tests really are silent, set BB_TESTS_SILENT_OK=1." >&2
+                rc=3
+            fi
         fi
         return "$rc"
     fi
@@ -6714,8 +6726,18 @@ if "--no-stamp" in argv:
 if argv and argv[0] == "add":
     if len(argv) < 2 or not argv[1].strip():
         print('bb changelog add "what changed, for the person using it" '
-              '[--cat NAME] [--for DIR]', file=sys.stderr)
+              '--cat NAME [--for DIR]\n' + changelog.rules(), file=sys.stderr)
         raise SystemExit(1)
+    # A category is asked for rather than assumed. Filed under none, an entry
+    # lands in a heap above the headings, and a changelog that is mostly heap
+    # is what this repository's own had become: the refusal is where a session
+    # learns which categories there are, since nothing else ever told it.
+    if not cat.strip():
+        print(changelog.rules(), file=sys.stderr)
+        raise SystemExit(1)
+    if not changelog.standard(changelog.canonical(cat)):
+        print(f"filed under {cat!r}, which is this project's own category rather than one "
+              "of the six; kept as typed", file=sys.stderr)
     # Stamped with HEAD: the instruction in the template is to log after
     # committing, so the sha names the commit the entry describes.
     sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
