@@ -97,5 +97,8 @@ Making a container, removing one, Up, Down and Env are the operator's. Rebuild
 can be handed to you per project: `bb devapp` says what it was built from and
 whether it is running; on `deny` the refusal names the dial, on `ask` your
 reason goes to a person. You have no Docker socket of your own, because the
-daemon is the node's and its group is root there.
+daemon is the node's and its group is root there. A container that does not
+exist yet is asked for: write its compose file, then `bb container ask --why
+"..." --name NAME --compose FILE`, and an administrator reads the file and
+allows or denies it; `--node` puts it on another machine.
 <!-- BUILDERBOT:END -->

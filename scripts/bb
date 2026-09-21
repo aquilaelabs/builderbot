@@ -149,6 +149,10 @@ bb: BuilderBot helper
                          project's node; an administrator allows or denies it
   bb phone run --why "..." -- adb args...    ask to reach it; the operator
                          allows it on the dashboard and this runs it there
+  bb container           what container asks are waiting on an administrator
+  bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                         ask for a container built from that compose file; an
+                         administrator reads it and allows or denies it
   bb catchup             what has happened here lately: commits and the first
                          line of their bodies, what moved in the notebook, the
                          builds, and which image this box is running
@@ -3725,6 +3729,87 @@ PY
     esac
 }
 
+# bb container: ask for a container (roadmap R71). The root shape applied to
+# docker: the session writes the compose file, hands it over with a reason,
+# and an administrator reads it on the bell and allows or denies. Allow gives
+# the file to the Docker tab's own New container path and starts the build;
+# nothing here runs docker, and nothing runs until somebody has read it.
+cmd_container() {
+    local sub="${1:-status}" why="" name="" compose="" envf="" node="" forp="" auth
+    auth="$(bb_auth_or_die)"
+    case "$sub" in
+        status)
+            BB_PHONE_AUTH="$auth" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
+asks = [a for a in d.get("asks") or [] if a.get("kind") == "container"]
+if not asks:
+    print("container: nothing is waiting")
+for a in asks:
+    print("waiting: #{} {} ({}): {}".format(a.get("id"), a.get("name") or "?",
+          a.get("node_name") or "the default node", a.get("why")))
+PY
+            ;;
+        ask)
+            shift
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why)     [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --name)    [ $# -ge 2 ] || die "--name needs the name after it"; name="$2"; shift 2 ;;
+                    --compose) [ $# -ge 2 ] || die "--compose needs the file after it"; compose="$2"; shift 2 ;;
+                    --env)     [ $# -ge 2 ] || die "--env needs the file after it"; envf="$2"; shift 2 ;;
+                    --node)    [ $# -ge 2 ] || die "--node needs the node after it"; node="$2"; shift 2 ;;
+                    --for)     [ $# -ge 2 ] || die "--for needs the project after it"; forp="$2"; shift 2 ;;
+                    *) die "usage: bb container ask --why \"what it is for\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]" ;;
+                esac
+            done
+            [ -n "$why" ] || die "bb container ask needs --why \"what it is for\""
+            [ -n "$name" ] || die "bb container ask needs --name"
+            [ -n "$compose" ] || die "bb container ask needs --compose FILE"
+            [ -f "$compose" ] || die "no such file: $compose"
+            [ -z "$envf" ] || [ -f "$envf" ] || die "no such file: $envf"
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" BB_C_NAME="$name" BB_C_COMPOSE="$compose" \
+            BB_C_ENV="$envf" BB_C_NODE="$node" BB_C_FOR="$forp" \
+            BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
+                python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
+compose = open(os.environ["BB_C_COMPOSE"], encoding="utf-8", errors="replace").read()
+env = open(os.environ["BB_C_ENV"], encoding="utf-8", errors="replace").read() if os.environ.get("BB_C_ENV") else ""
+r = post({"action": "ask", "kind": "container", "why": os.environ["BB_PHONE_WHY"],
+          "name": os.environ["BB_C_NAME"], "compose": compose, "env": env,
+          "node": os.environ.get("BB_C_NODE", ""), "for": os.environ.get("BB_C_FOR", ""),
+          "project": os.environ.get("BB_PHONE_PROJECT", "")})
+if r.get("error"):
+    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+rid = r["id"]
+print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
+      "bell, waiting up to 15 minutes for Allow", file=sys.stderr)
+for _ in range(900):
+    time.sleep(1)
+    o = post({"action": "outcome", "id": rid})
+    if o.get("error"):
+        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
+    if o["state"] == "denied":
+        print("[builderbot] the administrator said no", file=sys.stderr); sys.exit(1)
+    if o["state"] == "done":
+        if o.get("code"):
+            print(f"[builderbot] ERROR: {o.get('out') or 'refused'}", file=sys.stderr); sys.exit(1)
+        print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs tab)")
+        sys.exit(0)
+print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
+sys.exit(1)
+PY
+            ;;
+        *) die "usage: bb container [status|ask --why \"...\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]]" ;;
+    esac
+}
+
 # bb devapp: this project's dev instance, and the one action a session may
 # be given over it.
 #
@@ -6817,6 +6902,7 @@ case "${1:-help}" in
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;
     root)     shift; cmd_root "$@" ;;
+    container) shift; cmd_container "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;

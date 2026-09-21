@@ -2432,6 +2432,7 @@ if not NODES_OK:
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devapp.rebuild
+phone.container_maker = devapp.create_container
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -6210,7 +6211,32 @@ class Handler(BaseHTTPRequestHandler):
             acct = users.account_of(who) or {}
             asker_uid = str(acct.get("uid") or "")
             asker_name = str(acct.get("name") or "")
-            if field(req, "kind") == "root":
+            if field(req, "kind") == "container":
+                # A container asked for (roadmap R71): the compose file the
+                # session wrote, on the node it names or the project's own.
+                # Always the administrators', whoever asks. The node is
+                # resolved here so the row can say where, and so a name that
+                # is not a node is refused before anybody is asked.
+                cnode = field(req, "node")
+                target = None
+                if cnode and not NODES_OK:
+                    target = nodes.node(cnode) or next(
+                        (n for n in nodes.node_list() if n.get("name") == cnode), None)
+                    if not target:
+                        return self._json({"error": f"no node called {cnode}"}, 400)
+                elif pn:
+                    target = pn
+                # The same check the New container form gets: a project
+                # that exists and this account may see, or nothing.
+                under = field(req, "for")
+                if under and self._not_project(under):
+                    return
+                r = phone.ask_container(field(req, "why"), field(req, "name"),
+                                        req.get("compose"), req.get("env"),
+                                        target["id"] if target else "",
+                                        target["name"] if target else "", proj,
+                                        for_project=under, asker_name=asker_name)
+            elif field(req, "kind") == "root":
                 r = phone.ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
                                    pn["name"] if pn else "", proj,
                                    bool(((pn or {}).get("reported") or {}).get("sandbox")),

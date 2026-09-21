@@ -525,6 +525,15 @@ bb phone run --why "..." -- adb args...
                    ask to reach it: the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb container       what container asks are waiting on an administrator
+bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                   ask for a container built from a compose file the session
+                   wrote: an administrator reads the file on the bell and
+                   allows or denies it, and Allow registers it through the
+                   Docker tab's own New container path and starts its build.
+                   A published image is a compose naming it; a repository
+                   with a Dockerfile is a compose with a build context on
+                   the projects share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
 bb root run --why "..." -- CMD...
                    ask for ONE command as root on this project's node: an

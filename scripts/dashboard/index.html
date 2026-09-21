@@ -539,6 +539,8 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   text-decoration:none}
 .bnote.ask .acts a[data-ballow]{background:var(--warn);color:#1a1f26;
   border-color:var(--warn);font-weight:600}
+.bnote .bdetail summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:4px}
+.bnote .bdetail pre{font:12px/1.4 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:6px}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
 .bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
@@ -10505,9 +10507,17 @@ function drawBell(){
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
           : a.kind === "rebuild" ? `rebuild in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>
+        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
+        // A container is approved by reading its compose file, the way root
+        // is approved by reading its argv (R71): the file is the request, so
+        // it is here whole, folded, with the env file's keys and never its
+        // values, which is where a token would be.
+        a.kind === "container" ? `<details class="bdetail"><summary>the compose file${
+            a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
+            a.for ? `, shown under ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>

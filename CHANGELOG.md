@@ -24,6 +24,10 @@
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 - A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
 
+### Added
+
+- A session can ask for a container: bb container ask hands over a compose file and a reason, an administrator reads the file on the bell and allows or denies it, and Allow registers it like New container and starts the build. (9b9032b)
+
 ## 0.6.0: 2026-09-19
 
 - The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
