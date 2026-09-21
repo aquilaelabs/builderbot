@@ -226,13 +226,15 @@ ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Rebuild',
    '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
-// The classic builder, deliberately: compose's default boots a buildx helper
-// container and attaches to it, and attach is a hijacked connection a socket
-// proxy worth having refuses. Measured against a real proxy (buildx dies
-// with "unable to upgrade to tcp, received 403", classic succeeds), so the
-// build asks for exactly the POST /build permission the setup docs grant.
-ok(/BUILDKIT=0/.test(log),
-   '...and builds with the classic builder, which needs no helper container');
+// BuildKit, which is compose's own default and what carries the layer cache.
+// The classic builder was forced here for a year because buildx boots a
+// helper container and ATTACHES to it, and a socket proxy refused that
+// attach; there is no proxy now, and no controller-side docker either.
+// Measured before it was changed (R12, 21 Sep): on a node's own daemon, as
+// the agent's account, buildx builds and the second build of an unchanged
+// Dockerfile reports CACHED.
+ok(!/BUILDKIT=0/.test(log),
+   '...and builds with compose\'s own builder, so the layers cache');
 // The stamp: a compose whose build args want the commit and the time gets
 // them from the environment, the way BB_DEV_DATA arrives. Full sha, since
 // the header shortens it itself; the time in the form CI stamps.

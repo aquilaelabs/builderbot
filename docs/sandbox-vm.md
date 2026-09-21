@@ -45,11 +45,12 @@ gone from the code.
 
 Two things also get better on the way:
 
-- **The layer cache comes back.** BuilderBot forces the classic builder
+- **The layer cache comes back.** BuilderBot used to force the classic builder
   (`DOCKER_BUILDKIT=0`), because buildx boots a helper container and *attaches*
-  to it, which a filtered socket refuses. Nothing is in the way of the VM's
-  own daemon, so buildx and its inline cache work; see the roadmap item on
-  turning it back on.
+  to it, which a filtered socket refuses. Nothing is in the way of the VM's own
+  daemon, so it does not any more: measured on 21 September, a build as the
+  agent's account on a node reports `CACHED` for every unchanged layer of a
+  second build.
 - **The host-path problem disappears** rather than being mapped around. See
   *path parity* below.
 
@@ -681,12 +682,11 @@ half that is easy to miss while thinking about what it takes away. The
 dev-instance *controls* stay the operator's, and the dashboard's own compose
 project names stay the dashboard's.
 
-**What does not change:** the classic builder stays on. BuilderBot forces
-`DOCKER_BUILDKIT=0` because buildx attaches to a helper container and a socket
-proxy refuses that; against the VM's own daemon buildx would work, and with it
-the inline layer cache. That is worth doing and is not part of this switch;
-it needs its own verification, and the classic builder is correct against a
-real daemon, only slower to rebuild.
+**The builder changed with it.** BuilderBot forced `DOCKER_BUILDKIT=0` for as
+long as a socket proxy stood between it and a daemon, because buildx attaches
+to a helper container and the proxy refused that. Against a node's own daemon
+nothing refuses it, so compose's own builder is what runs, and the layer cache
+comes with it: a rebuild that changes nothing rebuilds nothing.
 
 ## What is deliberately not in it
 

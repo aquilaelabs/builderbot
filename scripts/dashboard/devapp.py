@@ -479,11 +479,9 @@ def _plan(project, instance, action, extra=None):
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
     env = _dev_data_env(project, instance) | _build_env(project, instance)
-    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800,
-          "env": env | _CLASSIC_BUILD}
+    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
-    build = {"name": "building", "argv": base + ["build"], "timeout": 3600,
-             "env": env | _CLASSIC_BUILD}
+    build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
     # settings stops after `down`, and the controller rewrites the env and
@@ -1270,17 +1268,6 @@ def forget_available():
     with _avail_lock:
         _avail["val"] = None
         _avail_hosts.clear()
-
-
-# The classic builder, not BuildKit. `compose build` defaults to buildx, which
-# boots a helper container and then ATTACHES to it; the classic builder runs
-# entirely daemon-side through POST /build and needs no attach at all.
-#
-# Against the VM nothing is refusing that attach, so this is now costing the
-# inline layer cache for no reason: every rebuild repeats every layer. Turning
-# it back on is roadmap #12, which wants measuring rather than assuming: keep
-# the flags until buildx is verified against the sandbox.
-_CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
 # Every docker call that CHANGES anything is a compose call naming its own
@@ -3700,13 +3687,11 @@ def _job_up(project, instance, run):
     ensure_dirs(project, instance, sink=run.line)
     # `compose up -d`, and nothing more clever: compose builds an image that
     # is missing, so Up on a never-built project does what the CLI does
-    # rather than refusing on a rule of this dashboard's invention. The
-    # classic builder rides along for exactly that case, for the same reason
-    # the explicit build uses it; see _CLASSIC_BUILD. Streamed, because that
-    # implicit build can pull for half an hour.
+    # rather than refusing on a rule of this dashboard's invention. Streamed,
+    # because that implicit build can pull for half an hour.
     r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
-             | _CLASSIC_BUILD, sink=run.line, hold=run.hold)
+             env_extra=_dev_data_env(project, instance) | _build_env(project, instance),
+             sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped"}
     if r["code"] != 0:
@@ -3881,8 +3866,7 @@ def _job_rebuild(project, instance, run):
     try:
         run.step("building")
         r = _run(_compose(project, instance, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
-                 | _CLASSIC_BUILD,
+                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance),
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",

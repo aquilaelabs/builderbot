@@ -22,6 +22,7 @@
 - New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
 - The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
+- A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
 
 ## 0.6.0: 2026-09-19
 
