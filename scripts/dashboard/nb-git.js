@@ -221,13 +221,13 @@ function nbGitView({$, nb, project}){
     const polDirty = Object.keys(gitPolDraft).length > 0;
     const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
         <div class="prefrow">
-          <label class="pick">Push its branch <select data-gitpol="push">${["allow", "deny"].map(o =>
+          <label class="pick">Push its branches <select data-gitpol="push">${["allow", "deny"].map(o =>
             `<option value="${o}"${(pol.push || "allow") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
           <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${["allow", "deny"].map(o =>
             `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
         </div>
         <div class="actbar">
-          <span class="state">what a session may send to the remote; a commit or a merge on its own branch is always its own</span>
+          <span class="state">the branches this tree has, one at a time; a tag, a deletion and a branch that is only on the remote stay yours. A commit or a merge here is always the session's</span>
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",

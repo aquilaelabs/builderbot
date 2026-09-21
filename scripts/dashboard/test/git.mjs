@@ -576,8 +576,35 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   ok(own.status === 200 && own.code === 0
      && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
      `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
+  // B191: the policy is about REFS, not about the word `main` appearing in
+  // the arguments. "Its branch" is the one the tree is on, so everything
+  // else on that remote is somebody's, and a setting naming one branch must
+  // not hand over all of them.
+  const other = await relay(['git', 'push', 'origin', 'HEAD:someone-else']);
+  ok(other.status === 403 && /no someone-else in this tree/.test(other.error || ''),
+     `writing a branch this tree does not have is refused, which is the one on the remote (${
+       (other.error || '').slice(0, 70)})`);
+  const gone = await relay(['git', 'push', 'origin', '--delete', 'topic']);
+  ok(gone.status === 403 && /does not take work away/.test(gone.error || '')
+     && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
+     'a session deleting a branch on the remote is refused, and the branch is still there');
+  const colon = await relay(['git', 'push', 'origin', ':topic']);
+  ok(colon.status === 403 && /does not take work away/.test(colon.error || ''),
+     '...by the colon spelling of a delete as well as by --delete');
+  const every = await relay(['git', 'push', '--all', 'origin']);
+  ok(every.status === 403 && /every branch/.test(every.error || ''),
+     '...and --all, which writes every branch at once');
+  const tags = await relay(['git', 'push', '--tags', 'origin']);
+  ok(tags.status === 403 && /^--tags sends tags/.test(tags.error || '')
+     && /a release's name/.test(tags.error || ''),
+     '...and --tags, named as itself since --follow-tags does a different thing');
   await post('/api/prefs', { project: 'beta', gitpol: { push: 'allow', main: 'allow' } });
   ok((await relay(['git', 'push', 'origin', main])).code === 0, `...and ${main} too once allowed`);
+  // Allowing main does not widen anything else: it names one more ref, not
+  // every ref.
+  const stillNot = await relay(['git', 'push', 'origin', 'HEAD:someone-else']);
+  ok(stillNot.status === 403 && /its own branches/.test(stillNot.error || ''),
+     '...while a branch that is only on the remote stays refused, since that dial names one ref');
   // Push rights hold on the relay itself: a read-only clone's refusing hook
   // is a file in the tree a session can remove (B149).
   writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({}));
