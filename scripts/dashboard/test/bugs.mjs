@@ -660,4 +660,22 @@ if (page.errors.length) console.log(page.errors);
      `a tracker whose history is at its cap still moves its token on a write (${before} to ${after}, history ${len})`);
 }
 
+// The cap is on OPEN bugs. It used to count every row, so a project that had
+// fixed 195 and had 5 open could file nothing more, under a message telling
+// it to close some, which changed nothing.
+{
+  const fs = await import('node:fs');
+  const d = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  const rows = d.projects.gamma = d.projects.gamma || [];
+  const top = rows.reduce((m, r) => Math.max(m, r.id), 0);
+  for (let n = 1; n <= 200; n++)
+    rows.push({ id: top + n, title: 'done ' + n, severity: 'low', status: 'fixed', rev: 1, by: 'you', at: 1 });
+  fs.writeFileSync(FILE, JSON.stringify(d));
+  const r = await page.evaluate(async () => (await fetch('/api/bugs', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'gamma', action: 'add', title: 'one more, with 200 fixed behind it',
+                           severity: 'low', area: '', repro: '', expected: '', actual: '', notes: '' }) })).json());
+  ok(!r.error, `200 fixed bugs do not stop the next one being filed (${r.error || 'filed'})`);
+}
+
 await done(browser);
