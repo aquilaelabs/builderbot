@@ -653,6 +653,19 @@ case "$1" in
     # listing exists to draw.
     printf '%s\n' '{"ID":"ccccccccccccdddd","Names":"someone-elses","Image":"redis:7","State":"exited","Status":"Exited (0) 2 hours ago","Ports":"","Labels":"com.docker.compose.project=other"}'
     exit 0 ;;
+  start|stop|restart)
+    # One container by name, which is all the guard lets through (R68). The
+    # stub records what it was asked so a test can see the verb reached the
+    # daemon, and answers the way docker does: the name back.
+    printf '%s\n' "$2" >> "$ST/ctl.log"
+    printf '%s\n' "$2"
+    exit 0 ;;
+  logs)
+    # --tail N --timestamps NAME, rebuilt by devapp; anything else never
+    # reaches here because the guard refuses it first.
+    printf '2026-09-21T00:00:01.000000000Z hello from %s\n' "${!#}"
+    printf '2026-09-21T00:00:02.000000000Z second line\n'
+    exit 0 ;;
   compose)
     proj=""
     args=("$@")

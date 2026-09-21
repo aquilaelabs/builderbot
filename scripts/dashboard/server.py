@@ -1308,6 +1308,11 @@ def project_list(who):
                     "git_ready": _row_git_ready(base_git, mine_prefs.get(d.name))
                                  if users.uid_of(who) else True,
                     "push_how": projects.push_how(d.name),
+                    # Whether this project has a compose file, which is the
+                    # same question as "could its tests run in a container of
+                    # its own": the settings dialog offers that choice only
+                    # where there is something to run in (R68 step 6).
+                    "has_compose": devapp.project_has_compose(d.name),
                     # The newest transcript, read through the home's link
                     # onto the projects share (lib/common.sh's
                     # claude_projects_link), so a conversation a node's
@@ -2992,6 +2997,7 @@ POST_ROUTES = (
     ("prefix", "/api/project-pin", "_project_pin"),
     ("prefix", "/api/project-auth", "_project_auth"),
     ("prefix", "/api/container", "_container"),
+    ("prefix", "/api/dockerctl", "_docker_ctl"),
     ("prefix", "/api/rename", "_rename"),
     # These two before the bare prefix, or startswith swallows them.
     ("prefix", "/api/trash-restore", "_trash_restore"),
@@ -5673,13 +5679,47 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         return out
 
+    def _docker_ctl(self, req):
+        """Start, stop, restart or read the log of ONE container on a node.
+
+        Any container on that daemon, which is the point: the operator asked
+        for a manager rather than a list of what BuilderBot made, and what
+        makes that acceptable is the same thing that makes the rest of this
+        acceptable, namely that the daemon belongs to a machine whose only job
+        is running containers (R68 steps 1 and 2).
+
+        An administrator's, like every other docker write here, and the log
+        with them: a container's log is whatever it decided to print, which
+        on somebody else's container is not a thing to hand out by role.
+        """
+        if self._refused("docker-write"):
+            return
+        nid, why = self._node_asked(field(req, "node"))
+        if why:
+            return self._json({"error": why}, 400)
+        act, name = field(req, "action"), field(req, "container")
+        # Every docker call in the block is addressed at that node's daemon,
+        # the way the manager's own listing is.
+        with devapp.on_node(nid or None):
+            if act == "logs":
+                return self._json(devapp.container_logs(name))
+            return self._result(devapp.container_ctl(name, act))
+
     def _container(self, req):
         """A container from a compose file written here, with no project.
 
         Its own endpoint rather than an action on _devapp, because _devapp
         starts by insisting the caller names a project and this one has none:
         that is the whole of what it is.
+
+        An administrator's, like every other write here that is configuration
+        rather than a run of the code. It was the page alone that knew that
+        (mayDocker hides the buttons), and a hidden button is not a refusal:
+        writing a compose file and building from it is root-shaped power on
+        the node, so the endpoint says no itself.
         """
+        if self._refused("docker-write"):
+            return
         act = field(req, "action")
         name = field(req, "name")
         if act == "read":
@@ -6764,12 +6804,19 @@ class Handler(BaseHTTPRequestHandler):
             # headroom before a byte is downloaded.
             if NODES_OK:
                 return self._json({"error": "the node store did not open"}, 500)
-            if action not in ("install", "remove", "sysdeps"):
-                return self._json({"error": "a node takes install, remove or sysdeps"}, 400)
+            if action not in ("install", "remove", "sysdeps", "check"):
+                return self._json({"error": "a node takes install, remove, sysdeps or check"}, 400)
             node = nodes.node(nid)
             if not node:
                 return self._json({"error": "no such node"}, 400)
             known = {p["name"] for p in toolchains.TOOLCHAINS}
+            if action == "check":
+                # Every row, or the ones named: the question a check answers
+                # is "is any of this out of date", and an uninstalled row's
+                # answer is what it would fetch, which is half the reason to
+                # press it (R67).
+                names = [n for n in (req.get("names") or []) if n in known]
+                return self._result(toolchains.node_job(self._principal(), nid, action, names))
             if action == "sysdeps":
                 # The system packages the held recipes need, installed
                 # without the recipes (roadmap R51): named ones, or every

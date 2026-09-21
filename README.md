@@ -483,14 +483,20 @@ bb tests last      that verdict again off the last run's log, running nothing
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
                    whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
-                   BuilderBot it runs on (roadmap R48). The row's second picker, "Claude tests",
-                   makes the container the only place: on `only`, a container that is down
-                   refuses rather than falling back to the node. The rebuild dial then governs
+                   BuilderBot it runs on (roadmap R48). "Tests run" in the project's settings
+                   dialog can make the container the only place: a container that is down then
+                   refuses rather than falling back to the node. The rebuild dial governs
                    testing too, since a stale container tests stale code
-bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
-                   BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
-                   from the Docker tab like any project's stack. Each skips in one line without one,
-                   and nothing records them: a lab run is a proof, not a timing
+bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
+                   Each names what it needs and skips in one line without it, so a missing service
+                   is never a failure, and nothing records them: a lab run is a proof, not a timing.
+                   Two services are known. A Gitea: the `gitea` service of BuilderBot's own dev
+                   stack, under its compose file's `lab` profile, brought up from the Docker tab
+                   like any project's stack (`BB_LAB_GITEA`, the local one by default). A real node,
+                   through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
+                   address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
+                   own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
+                   one you are willing to have that happen to
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours

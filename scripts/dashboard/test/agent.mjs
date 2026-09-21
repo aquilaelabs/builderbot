@@ -1796,6 +1796,33 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        '...and one that is not there reads as absent, not as unknown');
     ok(view && view.items.find(i => i.name === 'playwright')?.installed === false,
        '...and a playwright directory without its module reads as not installed, so Install is offered (the row said installed and offered nothing)');
+    // Check for updates, which is a job on the node rather than a question
+    // the controller answers about its own store (R67). Proven end to end
+    // because the controller reads the answer out of the job's LOG, which is
+    // the one part no unit test can stand in for: the agent runs
+    // `bb toolchains check`, bb prints a TSV line per recipe, and the rows
+    // on the tab are filled from it.
+    {
+      const cj = await api('/api/toolchains', { action: 'check', node: minted.id, names: ['zig'] });
+      ok(cj.ok && /^j_/.test(cj.job), `a check is queued as a job on the node (${cj.job || cj.error})`);
+      const cf = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${cj.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 90000);
+      ok(cf && /== bb toolchains check zig/.test(cf.log || ''),
+         `...and the agent runs it there (${cf?.state}: ${(cf?.log || '').slice(-160).replace(/\n/g, ' / ')})`);
+      const view = await until(async () => {
+        const v = await api(`/api/toolchains?node=${minted.id}`);
+        return v.checked ? v : null;
+      }, 30000);
+      ok(view && view.checked > 0,
+         `the tab says when this node was last checked (${view?.checked})`);
+      const zig = (view?.items || []).find(i => i.name === 'zig');
+      ok(zig && (zig.state === 'absent' || zig.state === 'current' || zig.state === 'update'),
+         `...and the row carries what the check said (${JSON.stringify(zig && {
+           state: zig.state, latest: zig.latest })})`);
+    }
+
     // An Android system image is its own job (the Emulator tab), run as
     // `bb emu image` from the same bundle. sdkmanager is a stub that says
     // what it was asked, so this proves the path and not a download.

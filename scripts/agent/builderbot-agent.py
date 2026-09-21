@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.91"
+AGENT_VERSION = "0.6.92"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2400,8 +2400,11 @@ class Job(threading.Thread):
                 # from the store's layout at ttyd's start, so a session
                 # opened after this would still not find the new tool on
                 # PATH (lint-tools on bb-sandbox, measured). The loop
-                # restarts the ttyds; tmux sessions survive it.
-                self.agent.session_renew()
+                # restarts the ttyds; tmux sessions survive it. A check
+                # writes nothing, so nothing has moved and restarting every
+                # ttyd on the node to report a version number would be rude.
+                if spec.get("action") != "check":
+                    self.agent.session_renew()
             elif self.job.get("type") == "image":
                 state, code = self.agent.image(self, spec)
             elif self.job.get("type") == "cache-clear":
@@ -4026,9 +4029,11 @@ class Agent:
             return "failed", 78
         action = spec.get("action")
         names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
-        if action not in ("install", "remove", "sysdeps") or (not names and action != "sysdeps"):
+        if action not in ("install", "remove", "sysdeps", "check") or (
+                not names and action not in ("sysdeps", "check")):
             job.say("refused: a toolchain job installs or removes named toolchains, "
-                    "or installs the system packages the held ones need\n")
+                    "installs the system packages the held ones need, or checks "
+                    "what is newer upstream\n")
             return "failed", 64
         who = self.drop_privileges({})
         into = self.bundle(job, who)
@@ -4036,6 +4041,20 @@ class Agent:
             return "failed", 69
         if action == "sysdeps":
             return self.sysdeps(job, names, into)
+        if action == "check":
+            # What is newer upstream, asked from HERE rather than from the
+            # controller, because the answer is about this store: the version
+            # a recipe would fetch is the same everywhere, but what is
+            # installed to compare it against is the node's. One command for
+            # every name, because `bb toolchains check` with no argument
+            # already means all of them, and the controller reads the TSV out
+            # of this job's log (R67).
+            job.step("checking")
+            job.say(f"== bb toolchains check {' '.join(names)}\n")
+            return job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                       "toolchains", "check", *names],
+                              "cwd": store, "timeout": spec.get("timeout") or 900,
+                              "env": sdk_env(self.state)})
         bad = 0
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose

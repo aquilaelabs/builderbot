@@ -479,11 +479,9 @@ def _plan(project, instance, action, extra=None):
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
     env = _dev_data_env(project, instance) | _build_env(project, instance)
-    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800,
-          "env": env | _CLASSIC_BUILD}
+    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
-    build = {"name": "building", "argv": base + ["build"], "timeout": 3600,
-             "env": env | _CLASSIC_BUILD}
+    build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
     # settings stops after `down`, and the controller rewrites the env and
@@ -1272,17 +1270,6 @@ def forget_available():
         _avail_hosts.clear()
 
 
-# The classic builder, not BuildKit. `compose build` defaults to buildx, which
-# boots a helper container and then ATTACHES to it; the classic builder runs
-# entirely daemon-side through POST /build and needs no attach at all.
-#
-# Against the VM nothing is refusing that attach, so this is now costing the
-# inline layer cache for no reason: every rebuild repeats every layer. Turning
-# it back on is roadmap #12, which wants measuring rather than assuming: keep
-# the flags until buildx is verified against the sandbox.
-_CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
-
-
 # Every docker call that CHANGES anything is a compose call naming its own
 # project. That keeps a bug in a caller to the containers that call is about,
 # and until this guard it was true only because every call site happened to go
@@ -1302,6 +1289,19 @@ _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 # and a label is how this container tells a VM the provisioner made from any
 # other machine that happens to answer Docker. Also a read.
 _BARE_OK = {"version", "ps", "info"}
+# Acting on a container by name: the three verbs a person reaches for on a
+# list, and the log they open it to read (R68 steps 1 and 2). Held apart from
+# compose because these address a CONTAINER rather than a project, which is
+# the whole point: a container this dashboard did not create has no compose
+# project here to name.
+_CTL_OK = {"start", "stop", "restart"}
+# What docker itself accepts as a name, and an id. The shape is the guard's
+# half; the caller's half is that the name came out of the daemon's own
+# listing a moment ago.
+_CTR_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+# How much of a log is worth carrying: enough to see what a container said on
+# its way down, not so much that a page is a download.
+LOG_LINES = 400
 
 
 def _guard(argv):
@@ -1342,9 +1342,24 @@ def _guard(argv):
                 for op in _DEVDATA_OPS):
             return ""
         return "a `docker run` this module did not build"
+    # Start, stop, restart and the log, each by SHAPE and one container at a
+    # time: the verb, its flags rebuilt here, and a name that looks like a
+    # name. Nothing else can ride along, because the argv is compared against
+    # what this module would have produced rather than scanned for something
+    # bad.
+    if verb in _CTL_OK:
+        if len(argv) == 3 and _CTR_NAME.match(argv[2]):
+            return ""
+        return f"a `docker {verb}` this module did not build"
+    if verb == "logs":
+        if (len(argv) == 6 and argv[2] == "--tail" and argv[3].isdigit()
+                and argv[4] == "--timestamps" and _CTR_NAME.match(argv[5])):
+            return ""
+        return "a `docker logs` this module did not build"
     if verb != "compose":
-        return (f"`docker {verb}` is not reachable here: only compose, and "
-                f"the reads in {'/'.join(sorted(_BARE_OK))}, are")
+        return (f"`docker {verb}` is not reachable here: only compose, the "
+                f"reads in {'/'.join(sorted(_BARE_OK))}, and "
+                f"{'/'.join(sorted(_CTL_OK))} or logs on one container, are")
     # Every compose call names its project explicitly, so none of them can
     # fall back to compose's default, the directory it happens to be run
     # from. The VALUE is checked, not just the flag: _slug() returns "" for a
@@ -1519,6 +1534,65 @@ COMPOSE_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
 
 
+def _known_container(name):
+    """The container the daemon just reported under this name, or None.
+
+    The rule every executing surface here follows: what reaches a command
+    line is a string this server handed out. A name typed by somebody, or
+    remembered by a page from a listing five minutes old, is not that, so it
+    is looked up again before it is used (R68 step 1).
+    """
+    for c in (containers().get("containers") or []):
+        if name and (c.get("name") == name or c.get("id") == name):
+            return c
+    return None
+
+
+def container_ctl(name, what):
+    """Start, stop or restart one container on the picked node.
+
+    Any container, not only ours. The operator asked for a manager rather
+    than a list of what BuilderBot happens to have made, and a machine whose
+    only job is running containers is the place that is safe: the daemon is
+    the sandbox VM's, and the guard above is why the reach is one verb and
+    one name rather than the docker CLI.
+    """
+    if what not in _CTL_OK:
+        return {"error": f"a container is started, stopped or restarted, not {what!r}"}
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now: the list is "
+                         "read again before anything is acted on, and it has moved"}
+    r = _run([DOCKER, what, c.get("name") or c.get("id")], timeout=60)
+    if r["code"] != 0:
+        return {"error": _why_not(r["out"]) or f"{what} failed"}
+    return {"ok": True, "out": f"{what}ped {c.get('name')}" if what == "stop"
+                               else f"{what}ed {c.get('name')}"}
+
+
+def container_logs(name, lines=None):
+    """The tail of one container's log, timestamped.
+
+    What a person opens a docker list to read. Timestamps because the
+    question is almost always "when did it do that", and a tail because a
+    page is not a download: LOG_LINES is what a restart loop needs to be
+    legible.
+    """
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now"}
+    n = str(int(lines or LOG_LINES))
+    r = _run([DOCKER, "logs", "--tail", n, "--timestamps",
+              c.get("name") or c.get("id")], timeout=30)
+    # A container that has said nothing is not an error, and neither is one
+    # whose log the daemon answered on stderr: docker writes a container's
+    # own stderr there, which for most images is most of the log.
+    if r["code"] != 0 and not (r["out"] or "").strip():
+        return {"error": _why_not(r["out"]) or "could not read the log"}
+    return {"ok": True, "name": c.get("name") or c.get("id"),
+            "text": (r["out"] or "")[-60000:]}
+
+
 def containers():
     """Everything on the daemon, and whose it is.
 
@@ -1613,6 +1687,19 @@ def _ports(raw):
 
 def containers_dir(name):
     return STATE / "containers" / name
+
+
+def project_has_compose(project):
+    """Whether the project's own checkout carries a compose file.
+
+    Stats only, and deliberately: compose_file() consults the instance record
+    first, which means reading the store, and this is asked for every project
+    on every status poll. The question here is not "which file would an
+    instance build from" but "is there anything to build at all", which is
+    what decides whether the settings dialog offers to run the tests in a
+    container (R68 step 6).
+    """
+    return any((WORKSPACE / project / n).is_file() for n in COMPOSE_NAMES)
 
 
 def compose_file(project, instance=MAIN):
@@ -3600,13 +3687,11 @@ def _job_up(project, instance, run):
     ensure_dirs(project, instance, sink=run.line)
     # `compose up -d`, and nothing more clever: compose builds an image that
     # is missing, so Up on a never-built project does what the CLI does
-    # rather than refusing on a rule of this dashboard's invention. The
-    # classic builder rides along for exactly that case, for the same reason
-    # the explicit build uses it; see _CLASSIC_BUILD. Streamed, because that
-    # implicit build can pull for half an hour.
+    # rather than refusing on a rule of this dashboard's invention. Streamed,
+    # because that implicit build can pull for half an hour.
     r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
-             | _CLASSIC_BUILD, sink=run.line, hold=run.hold)
+             env_extra=_dev_data_env(project, instance) | _build_env(project, instance),
+             sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped"}
     if r["code"] != 0:
@@ -3781,8 +3866,7 @@ def _job_rebuild(project, instance, run):
     try:
         run.step("building")
         r = _run(_compose(project, instance, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance)
-                 | _CLASSIC_BUILD,
+                 env_extra=_dev_data_env(project, instance) | _build_env(project, instance),
                  sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled",

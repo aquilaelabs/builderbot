@@ -1029,6 +1029,14 @@ const DIALOGS = {
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
+  // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
+  // from what is on screen, so it opens whether or not the Settings tab is
+  // the one showing, and debug mode decides the BUTTON rather than this.
+  setdebug: () => openDebugSettings(),
+  // One container's log. The stub daemon answers, so the dialog draws its
+  // real shape rather than an error band.
+  dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
+                           dmLogs('someone-elses'); },
   enroll: async () => { openNodesTab();
     for (let i = 0; i < 40 && !document.querySelector('.nodestab button'); i++) await new Promise(r => setTimeout(r, 250));
     [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },
@@ -1069,6 +1077,50 @@ for (const [name, open] of Object.entries(DIALOGS)) {
      `[dialog ${name}] its lines in .field bands, no h4, buttons in a .foot${
        d.err ? ` (${d.err})` : d.loose.length ? `: loose ${d.loose.join(', ')}` : d.h4 ? `: ${d.h4} h4` : !d.foot ? ': no foot' : ''}`);
   ok(!d.nested, `[dialog ${name}] scrolls in one place${d.nested ? `: ${d.nested}` : ''}`);
+  // One rhythm down a form. The sandbox VM dialog measured 0, 0, 10, 10, 0
+  // between its fields, because a .prefrow carried a gap and the band's own
+  // stacked children carried none, so one form read as three depending on
+  // which container a field landed in. The token is --field-gap.
+  const rhythm = await page.evaluate(() => {
+    const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
+    const box = m?.querySelector('.box');
+    if (!box) return { err: 'no dialog' };
+    const css = getComputedStyle(document.documentElement);
+    const want = Math.round(parseFloat(css.getPropertyValue('--field-gap')) || 10);
+    // A label and the control under it are one thing, so they sit closer.
+    const tight = Math.round(parseFloat(css.getPropertyValue('--label-gap')) || 5);
+    // Within ONE band, never across two: the gap between bands is their
+    // padding twice over and is the band's business, not the form's.
+    const odd = [];
+    for (const parent of box.querySelectorAll('.field, .field .prefrow')) {
+      const rows = [...parent.children].filter(e => e.offsetHeight);
+      for (let i = 1; i < rows.length; i++) {
+        const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect();
+        if (b.top < a.bottom - 1) continue;            // side by side, not stacked
+        const gap = Math.round(b.top - a.bottom);
+        const expect = rows[i - 1].tagName === 'LABEL' ? tight : want;
+        if (Math.abs(gap - expect) > 1)
+          odd.push(`${gap}px (wanted ${expect}) before ${
+            rows[i].className || rows[i].tagName.toLowerCase()}`);
+      }
+    }
+    return { want, tight, odd };
+  });
+  // A dialog holds the page still. Its overlay is the scroller when the box
+  // is taller than the screen, and without these two the flick that reaches
+  // the end of a dialog carries on into the page behind it, which is what
+  // the operator saw on a phone: the whole page moving under the box.
+  const still = await page.evaluate(() => {
+    const m = [...document.querySelectorAll('.modal')].find(x => !x.hidden);
+    if (!m) return { err: 'no dialog' };
+    return { chain: getComputedStyle(m).overscrollBehaviorY,
+             locked: getComputedStyle(document.documentElement).overflow };
+  });
+  ok(!still.err && still.chain === 'contain' && still.locked === 'hidden',
+     `[dialog ${name}] holds the page still behind it (overscroll ${still.chain}, page ${still.locked})`);
+  ok(!rhythm.err && rhythm.odd.length === 0,
+     `[dialog ${name}] one rhythm down the band (${rhythm.want}px, ${rhythm.tight}px under a label)${
+       rhythm.err ? ` (${rhythm.err})` : rhythm.odd.length ? `: ${rhythm.odd.join('; ')}` : ''}`);
   await page.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));
 }
 // ...and again on a small phone, where the room runs out first: every dialog

@@ -226,13 +226,15 @@ ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Rebuild',
    '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
-// The classic builder, deliberately: compose's default boots a buildx helper
-// container and attaches to it, and attach is a hijacked connection a socket
-// proxy worth having refuses. Measured against a real proxy (buildx dies
-// with "unable to upgrade to tcp, received 403", classic succeeds), so the
-// build asks for exactly the POST /build permission the setup docs grant.
-ok(/BUILDKIT=0/.test(log),
-   '...and builds with the classic builder, which needs no helper container');
+// BuildKit, which is compose's own default and what carries the layer cache.
+// The classic builder was forced here for a year because buildx boots a
+// helper container and ATTACHES to it, and a socket proxy refused that
+// attach; there is no proxy now, and no controller-side docker either.
+// Measured before it was changed (R12, 21 Sep): on a node's own daemon, as
+// the agent's account, buildx builds and the second build of an unchanged
+// Dockerfile reports CACHED.
+ok(!/BUILDKIT=0/.test(log),
+   '...and builds with compose\'s own builder, so the layers cache');
 // The stamp: a compose whose build args want the commit and the time gets
 // them from the environment, the way BB_DEV_DATA arrives. Full sha, since
 // the header shortens it itself; the time in the form CI stamps.
@@ -2109,9 +2111,9 @@ ok(await page.$eval('#cYml', e => e.value) === ''
 ok(/services:/.test(await page.$eval('#cYml', e => e.placeholder))
    && /PUID=/.test(await page.$eval('#cEnv', e => e.placeholder)),
    '...and the shape each wants shown on the field, where it costs nothing to ignore');
-ok(await page.$eval('#cEnvField', e => e.hidden)
-   && !await page.$eval('#cYmlField', e => e.hidden),
-   '...showing one of the two definitions at a time');
+ok(await page.$eval('#cEnvField', e => e.hidden) && await page.$eval('#cYmlField', e => e.hidden)
+   && !await page.$eval('#cFormField', e => e.hidden),
+   '...showing one pane at a time, the form first (R68 step 3)');
 // The incoming pane slides in from its own tab's side, the way the New project
 // dialog's source picker does. Caught while it runs rather than after: the
 // pane is visible either way, and the only thing being claimed here is that it
@@ -2149,9 +2151,106 @@ await page.click('#cGo');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
-ok(/compose written here/.test(await page.$eval(
-     '.dmtab .row[data-inst="radarr|main"]', r => r.textContent)),
-   '...and the manager says which kind it is');
+// ---- a row on a phone (R68 step 5) ---------------------------------------
+// A project's row carries its ports, its services, its route and three
+// settings, which at 390px was most of a screen each: the list stopped being
+// a list. The detail is a fold there and open on a desktop, where its
+// summary is not drawn at all, so that surface is what it always was.
+{
+  await openManager();
+  const wide = await page.evaluate(() => {
+    const d = document.querySelector('.dmtab .dmdet');
+    return d ? { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display } : null;
+  });
+  ok(wide && wide.open && wide.sum === 'none',
+     `on a desktop the detail is open with no summary drawn (${JSON.stringify(wide)})`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  // A phone shows one thing at a time, and the manager is in the pane behind
+  // the sidebar: without this the row measures zero and says nothing.
+  await page.evaluate(() => { setView('terminal'); dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === false,
+                             null, { timeout: 15000 });
+  const narrow = await page.evaluate(() => {
+    const t = document.querySelector('.dmtab');
+    const d = document.querySelector('.dmtab .dmdet');
+    const acts = document.querySelector('.dmtab .dmacts');
+    return { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display,
+             sideways: t.scrollWidth > t.clientWidth + 2,
+             actsVisible: !!acts && acts.getBoundingClientRect().height > 0 };
+  });
+  ok(!narrow.open && narrow.sum !== 'none',
+     `on a phone it is shut, behind a summary that can be pressed (${JSON.stringify(narrow)})`);
+  ok(!narrow.sideways && narrow.actsVisible,
+     '...nothing scrolls sideways, and the row keeps its buttons whether it is open or shut');
+  await page.click('.dmtab .dmsum');
+  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and it opens on a press');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === true,
+                             null, { timeout: 15000 });
+}
+
+// ---- a manager, not a list (R68 steps 1 and 2) ---------------------------
+// Start, stop, restart and the log work on ANY container the daemon
+// reported, including the ones BuilderBot did not create. What makes that
+// acceptable is the machine: the daemon belongs to a VM whose only job is
+// running containers. What keeps it honest is the guard, which lets through
+// one verb and one name rebuilt here, and the lookup, which asks the daemon
+// again before acting on a name a page remembered.
+{
+  const ctl = (body) => page.evaluate(async b => {
+    const r = await fetch('/api/dockerctl', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json()) };
+  }, body);
+  const started = await ctl({ action: 'start', container: 'someone-elses' });
+  ok(started.ok && /someone-elses/.test(started.out || ''),
+     `a container this dashboard did not create can be started (${JSON.stringify(started).slice(0, 90)})`);
+  ok(readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').includes('someone-elses'),
+     '...and the verb reached the daemon with that name');
+  const bad = await ctl({ action: 'start', container: 'no-such-container' });
+  ok(/no container called/.test(bad.error || ''),
+     `a name the daemon does not report is refused, not passed to docker (${bad.error})`);
+  const nonsense = await ctl({ action: 'destroy', container: 'someone-elses' });
+  ok(/started, stopped or restarted/.test(nonsense.error || ''),
+     `and a verb that is not one of the three is refused (${nonsense.error})`);
+  const log = await ctl({ action: 'logs', container: 'someone-elses' });
+  ok(log.ok && /hello from someone-elses/.test(log.text || ''),
+     `its log comes back, timestamped (${(log.text || '').slice(0, 50).replace(/\n/g, ' / ')})`);
+}
+
+// The form that writes the compose file for you (R68 step 3): an image, its
+// ports and volumes, and what it produces is the Compose tab beside it, so
+// nothing about the container is hidden from the person making it.
+{
+  await page.evaluate(() => openNewContainer());
+  await page.waitForSelector('#cmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#cFormField', e => !e.hidden) && await page.$eval('#cYmlField', e => e.hidden),
+     'New container opens on the form, with the compose file a tab away');
+  await page.fill('#cName', 'grafanish');
+  await page.fill('#cImage', 'grafana/grafana:11.0.0');
+  await page.fill('#cPorts', '3001:3000');
+  await page.fill('#cVols', './data:/var/lib/grafana');
+  await page.fill('#cEnvLines', 'GF_SECURITY_ADMIN_USER=admin');
+  await page.selectOption('#cRestart', 'always');
+  const yml = await page.$eval('#cYml', e => e.value);
+  ok(/image: "grafana\/grafana:11\.0\.0"/.test(yml) && /restart: always/.test(yml)
+     && /- "3001:3000"/.test(yml) && /- "\.\/data:\/var\/lib\/grafana"/.test(yml)
+     && /- "GF_SECURITY_ADMIN_USER=admin"/.test(yml),
+     'the form writes the compose file as it is filled in, every value quoted');
+  await page.click('#cGo');
+  await page.waitForSelector('.dmtab .row[data-inst="grafanish|main"]', { timeout: 20000 });
+  const onDisk = readFileSync(`${DIR}/state/containers/grafanish/docker-compose.yml`, 'utf8');
+  ok(onDisk === yml, '...and what was shown is byte for byte what was written');
+  // A port is a base-60 number to a YAML 1.1 parser unless it is quoted, which
+  // is why every value the form writes is: 3001:3000 unquoted parses as 10803000.
+  ok(/"3001:3000"/.test(onDisk), '...with the ports quoted, since YAML would read one as a number');
+}
+
+ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
+     '.dmtab .row[data-inst="radarr|main"]', r => r.textContent))
+   && /Written here/.test(await page.$eval('.dmtab', t => t.textContent)),
+   '...and the manager says which kind it is, on the row and over the group');
 // Editing one: what it is changes far more often than it is created, and
 // without this the only way to move a port was to remove it and retype it.
 await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
@@ -2540,24 +2639,52 @@ ok(await page.$('#devSend'),
     { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
-  // ---- where the tests run (roadmap R48, step 3) -------------------------
-  // Beside the dial, the same draft-then-Apply shape: `either` by default,
-  // `only` makes the container the one place bb test runs. Stored as a
-  // boolean, and absent when off, so a project left alone leaves no trace.
-  const TW = '.dmtab [data-dmtest="ep.silon"]';
-  ok(await page.$eval(TW, e => e.value === 'either' && !e.disabled
-                              && [...e.options].map(o => o.value).join() === 'either,only'),
-     'the row carries where the tests run, on either by default, with both settings');
-  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => b.disabled),
-     '...with its Apply asleep until something is picked');
-  await page.selectOption(TW, 'only');
-  ok(await page.$eval('.dmtab [data-dmtestapply="ep.silon"]', b => !b.disabled),
-     '...which wakes on a pick that differs from what is saved');
-  await page.click('.dmtab [data-dmtestapply="ep.silon"]');
+  // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
+  // The setting lives with the project's node and test command now, in its
+  // settings dialog: it is the project's, and having it here meant somebody
+  // setting a project up had to finish on a machine tab. The row still says
+  // what it is set to, because this is where a person wonders, and the words
+  // link to where it is changed.
+  ok(/Tests run in this container when it is up, else on the node/.test(
+       await page.$eval('.dmtab .row[data-inst^="ep.silon|"]', r => r.textContent.replace(/\s+/g, ' '))),
+     'the row says where this project\'s tests run, in words');
+  ok(await page.$('.dmtab [data-dmtestgo="ep.silon"]') !== null
+     && await page.$('.dmtab [data-dmtest="ep.silon"]') === null,
+     '...and links to the project settings rather than carrying the control');
+  // ...and the control is there, offered only where there is a container to
+  // run in: a project with no compose file is not asked the question.
+  await page.evaluate(() => { openProjectsTab(); });
+  await page.waitForSelector('.doc .projtab [data-rn="ep.silon"]', { timeout: 15000 });
+  await page.click('.doc .projtab [data-rn="ep.silon"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#rnTestWhere', e => !e.hidden)
+     && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'either,only'),
+     'the project settings dialog carries where its tests run, beside its node and command');
+  await page.selectOption('#rnDevTest', 'only');
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
-     'Apply stores it on the project, as the one boolean it is');
+     '...and saving it there is what writes the setting');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#rnTestWhere', e => e.hidden),
+     '...while a project with no compose file is not asked the question at all');
+  await page.evaluate(() => { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); openDocker(); });
+  await page.waitForSelector('.dmtab', { timeout: 15000 });
+  await page.evaluate(async () => {
+    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ project: 'ep.silon', devtest: true }) });
+  });
+  await refreshUntil(page, () => ((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+     'it is stored on the project, as the one boolean it is');
+  await page.evaluate(() => { dockerList = null; loadDocker(); });
+  await page.waitForFunction(() => /only in this container/.test(
+    document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
+  ok(true, '...and the row says the other thing once it is set');
   await page.evaluate(async () => {
     await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ project: 'ep.silon', devtest: false }) });

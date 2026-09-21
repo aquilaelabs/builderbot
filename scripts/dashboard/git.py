@@ -676,6 +676,30 @@ BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
 NET_TIMEOUT = 120
 
 
+def _creds(repo):
+    """The credential helper for this project, out of the CONTROLLER's own
+    record rather than out of the tree's config.
+
+    B153 is why this is needed at all: the mirror copies `remote.*` and
+    `branch.*` from the tree and nothing else, because a credential helper is
+    a command the tree names and this process is not going to run what a
+    checkout asks it to. The consequence was a Git view that could read
+    everything and reach nothing: Fetch and Pull on an https remote died on
+    "could not read Username for https://...: terminal prompts disabled",
+    which is git saying it had no credential and no terminal to ask at.
+
+    There is one, and it is ours: linking the project wrote it to
+    /config/gitcreds/<project> (projects.write_token), so naming it here
+    trusts the tree with nothing. Added rather than substituted, so a
+    controller that authenticates through gh for everything keeps doing so.
+    """
+    try:
+        import projects                                     # noqa: PLC0415
+        return projects.token_helper(Path(repo).name)
+    except Exception:                                       # noqa: BLE001
+        return ""                       # no record, or projects not configured
+
+
 def _run(repo, *args, env=None, timeout=30, index=True):
     """{code, out} of one git command, stderr folded into out.
 
@@ -693,6 +717,10 @@ def _run(repo, *args, env=None, timeout=30, index=True):
         argv = ["git", f"--git-dir={own}", f"--work-tree={repo}", *args]
     else:
         argv = ["git", "-C", str(repo), *args]
+    # ...and the credential, which the mirror deliberately does not carry.
+    cred = _creds(repo)
+    if cred:
+        argv[1:1] = ["-c", f"credential.helper={cred}"]
     e = {**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
     if own:
         # The tree's object store, so a commit's objects land where the
@@ -746,14 +774,14 @@ def act(repo, action, args, env=None, may_push=True):
             return no
     if action == "fetch":
         r = _run(repo, "fetch", "--prune", env=env, timeout=NET_TIMEOUT)
-        return _done(r, "fetched")
+        return _done(r, "fetched", repo)
     if action == "pull":
         if _dirty(repo):
             return {"error": "there are uncommitted changes: commit or discard them first, so a pull cannot land on top of them"}
         r = _run(repo, "pull", "--ff-only", env=env, timeout=NET_TIMEOUT)
         if r["code"] and "diverged" in r["out"] or r["code"] and "Not possible to fast-forward" in r["out"]:
             return {"error": "the branch and its upstream have both moved: this only fast-forwards; merge or rebase from a shell, or ask Claude"}
-        return _done(r, "pulled")
+        return _done(r, "pulled", repo)
     if action == "push":
         if not may_push:
             return {"error": "this project has no push rights: they are granted in the clone dialog, once"}
@@ -763,7 +791,7 @@ def act(repo, action, args, env=None, may_push=True):
             return {"error": "not on a branch"}
         r = (_run(repo, "push", env=env, timeout=NET_TIMEOUT) if st.get("upstream")
              else _run(repo, "push", "-u", "origin", branch, env=env, timeout=NET_TIMEOUT))
-        return _done(r, "pushed")
+        return _done(r, "pushed", repo)
     if action == "branch":
         name = _ok_branch(args.get("name"))
         if not name:
@@ -947,10 +975,41 @@ def _merge_off_tree(repo, name, into, env):
     return {"ok": True, "out": f"merged {name} into {into}"}
 
 
-def _done(r, said):
+# What git says when it wanted a credential and had neither one nor a
+# terminal to ask at. It is the truth and it names nothing a person can do,
+# which is the half this replaces.
+NO_CRED = re.compile(r"could not read Username|could not read Password|Authentication failed", re.I)
+
+
+def _done(r, said, repo=None):
     if r["code"]:
-        return {"error": r["out"] or f"git failed ({r['code']})"}
+        out = r["out"] or f"git failed ({r['code']})"
+        if repo is not None and NO_CRED.search(out):
+            return {"error": _no_cred_why(repo, out)}
+        return {"error": out}
     return {"ok": True, "out": r["out"] or said}
+
+
+def _no_cred_why(repo, out):
+    """The refusal for a network action the host would not let through.
+
+    Two different situations wear one message from git, so they are told
+    apart here: a project with no stored token has nothing to authenticate
+    with, and one with a token that the host rejected has the wrong token.
+    Both name what to do; git's own line names only what happened.
+    """
+    host = ""
+    m = re.search(r"https?://([^/'\"\s]+)", out)
+    if m:
+        host = m.group(1)
+    where = f"{host} " if host else ""
+    if _creds(repo):
+        return (f"{where}rejected the token stored for this project: it is expired, revoked "
+                "or made for another scope. The project's settings dialog takes a new one "
+                "under Access token.")
+    return (f"this project has no access token stored, and {where}asks for one: put it in the "
+            "project's settings dialog under Access token, or point the remote at ssh. "
+            "Git said it had no credential and no terminal to ask at.")
 
 
 # ---- Send to Claude (R36 step 3) --------------------------------------------

@@ -316,13 +316,6 @@ const dmRouteDraft = {};
 // pick when it was a switch, which is a control that cannot be reconsidered
 // and reads differently from every other setting on the page.
 const dmGrantDraft = {};
-// Where a session's tests run, per project (roadmap R48, step 3): the same
-// draft-then-Apply shape as the dial above it. `either` is the default; on
-// `only`, bb test refuses when the container is down rather than running on
-// the node, which is the whole point for a project that IS the container.
-const DEVTEST_MODES = [["either", "in it when it is up, else on the node"],
-                       ["only", "only in it, never on the node"]];
-const dmTestDraft = {};
 const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
                              ? "only" : "either");
 
@@ -415,25 +408,20 @@ function dmGrantLine(d){
 }
 
 function dmTestLine(d){
-  if (d.source === "file" || !mayDocker()) return "";
-  const saved = devTestMode(d.project);
-  const pick = dmTestDraft[d.project] ?? saved;
-  return `<div class="sub dmgrant"><label for="${
-      esc(`dmt-${d.project}`)}">Claude tests${
-    helpIcon(`Where bb test runs for ${d.project}. Inside this container `
-      + `whenever it is up either way; on "only" a container that is down is `
-      + `a refusal naming it, and nothing runs on the node, so a suite that `
-      + `tests ${d.project} cannot disturb the ${d.project} it runs beside. `
-      + `A stale container then tests stale code: the rebuild dial governs `
-      + `testing too.`)}</label>
-    <select id="${esc(`dmt-${d.project}`)}" data-dmtest="${esc(d.project)}"
-            data-was="${esc(saved)}"
-            aria-label="where a session runs ${esc(d.project)}'s tests">${
-      DEVTEST_MODES.map(([v, l]) => `<option value="${v}"${
-        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-    <button type="button" data-dmtestapply="${esc(d.project)}"${
-      pick === saved ? " disabled" : ""} title="save where ${
-      esc(d.project)}'s tests run">Apply</button></div>`;
+  // Where a project's tests run is the PROJECT's setting, and it now lives
+  // with its node, its build command and its test command, in the settings
+  // dialog (R68 step 6). It was here because it is about this container,
+  // which is a weak reason to put a project setting on a machine surface:
+  // somebody setting up a project had to visit the Docker tab to finish.
+  // The row still says what it is set to, because this is where a person
+  // wonders about it, and the words are a link to where it is changed.
+  if (d.source === "file") return "";
+  const only = devTestMode(d.project) === "only";
+  return `<div class="sub dmgrant dmtestsays">Tests run ${
+    only ? "only in this container, never on the node"
+         : "in this container when it is up, else on the node"}${
+    ` · <a href="#" data-dmtestgo="${esc(d.project)}"
+      title="the project's settings, where its node and its test command are">change</a>`}</div>`;
 }
 
 function dockerJob(){
@@ -453,6 +441,7 @@ function dockerJob(){
 // is not a reason to stop asking.
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
+
   if (act === "edit"){ openEditContainer(project); return; }
   // Abort asks nothing: the confirmation for a destructive verb is worth its
   // interruption, and stopping a build you are watching is not destructive:
@@ -644,7 +633,12 @@ function openNewContainer(){
   fillNodeSelect($("cNode"), $("cNodeField"), dockerNode);
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
-  cSeg("yml");
+  for (const id of ["cImage", "cPorts", "cVols", "cEnvLines"]) $(id).value = "";
+  $("cRestart").value = "unless-stopped";
+  cYmlTouched = false;
+  // The form first: an image and a port is what most of these are, and the
+  // compose file it writes is one tab away for everything else.
+  cSeg("form");
   $("cNameHint").textContent =
     "Its own name, not a project's. It becomes the compose project on the "
     + "sandbox VM, which is what the manager lists it by.";
@@ -655,10 +649,43 @@ let cTab = "yml";                 // which pane the segment is showing
 
 function cSeg(which){
   cTab = which;
+  $("cTabForm").classList.toggle("on", which === "form");
   $("cTabYml").classList.toggle("on", which === "yml");
   $("cTabEnv").classList.toggle("on", which === "env");
+  $("cFormField").hidden = which !== "form";
   $("cYmlField").hidden = which !== "yml";
-  $("cEnvField").hidden = which === "yml";
+  $("cEnvField").hidden = which !== "env";
+}
+
+// Once the compose file has been edited by hand the form stops writing it:
+// a generator that overwrites what somebody typed is a generator that eats
+// work. Reset on every open.
+let cYmlTouched = false;
+
+// The form's answer, as the compose file it stands for. Written here rather
+// than on the server because what is about to be created should be readable
+// before it is: the Compose tab shows exactly the text that will be saved,
+// and the server still checks it with compose itself before writing it.
+function cFormYaml(){
+  const lines = l => l.split("\n").map(x => x.trim()).filter(Boolean);
+  const image = $("cImage").value.trim();
+  const ports = lines($("cPorts").value), vols = lines($("cVols").value);
+  const env = lines($("cEnvLines").value), restart = $("cRestart").value;
+  if (!image) return "";
+  // Quoted, every one of them: a port reads as a base-60 number in YAML
+  // ("7878:7878" is a sexagesimal literal to a YAML 1.1 parser), and a value
+  // with a colon or a space in it needs quoting anyway. Double quotes with
+  // the two escapes that matter inside them.
+  const q = v => `"${String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  const block = (key, xs) => xs.length
+    ? `\n    ${key}:\n` + xs.map(x => `      - ${q(x)}`).join("\n") : "";
+  return `services:\n  app:\n    image: ${q(image)}\n    restart: ${restart}`
+    + block("ports", ports) + block("volumes", vols) + block("environment", env) + "\n";
+}
+
+function cFormWrote(){
+  if (cYmlTouched) return;
+  $("cYml").value = cFormYaml();
 }
 
 // Switching between them moves the way the New project dialog's source picker
@@ -670,8 +697,9 @@ function cSeg(which){
 // that is already animating itself in.
 function cSlide(which){
   if (noMotion()) return;
-  $(which === "yml" ? "cYmlField" : "cEnvField").animate(
-    [{transform: `translateX(${which === "env" ? "18px" : "-18px"})`, opacity: 0},
+  $({form: "cFormField", yml: "cYmlField", env: "cEnvField"}[which]).animate(
+    [{transform: `translateX(${
+        {form: -18, yml: 0, env: 18}[which] >= 0 ? "18px" : "-18px"})`, opacity: 0},
      {transform: "none", opacity: 1}],
     {duration: 220, easing: "ease"});
 }
@@ -780,6 +808,36 @@ function dmState(d, job, mine, busy, blind){
 // One instance row: the same markup wherever the row is drawn, the Docker
 // tab and a project's notebook (its Docker view). `job` is the compose job
 // the answer carried and `blind` whether the daemon answered at all.
+async function dmLogs(name){
+  const modal = $("dlmodal"), body = $("dlBody");
+  if (!modal || !body) return;
+  $("dlTitle").textContent = `Log: ${name}`;
+  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>`;
+  modal.hidden = false;
+  try{
+    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node: dockerNode});
+    const j = await r.json();
+    body.innerHTML = `<div class="field">${j.error
+      ? `<div class="hint bad">${esc(j.error)}</div>`
+      : j.text && j.text.trim()
+        ? `<pre class="dmlog dllog">${esc(j.text)}</pre>`
+        : `<div class="hint">It has printed nothing.</div>`}</div>
+      <div class="foot"><span class="sp"></span>
+        <button type="button" id="dlAgain">Read again</button>
+        <button type="button" id="dlClose">Close</button></div>`;
+    // At the end, which is where a log's reason is: the top of a tail is the
+    // middle of whatever happened before it.
+    const pre = body.querySelector("pre");
+    if (pre) pre.scrollTop = pre.scrollHeight;
+    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
+    body.querySelector("#dlAgain").onclick = () => dmLogs(name);
+  }catch(e){
+    body.innerHTML = `<div class="field"><div class="hint bad">${esc(String(e))}</div></div>
+      <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
+    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
+  }
+}
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -805,10 +863,16 @@ function dmRowsHtml(ins, job, blind){
               ? `partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
-          ? `compose written here`
-          : `${esc(d.project)} · ${esc(d.instance)}`}${
+          ? `written here: this dashboard holds its compose file`
+          : `from ${esc(d.project)}'s compose file${
+              d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
+        <details class="dmdet"${isPhone() ? "" : " open"}>
+          <summary class="dmsum"><span class="t">Details</span><span class="sst">${
+            [d.ports.length ? `${d.ports.length} port${d.ports.length === 1 ? "" : "s"}` : "",
+             (d.services || []).length > 1 ? `${d.services.length} services` : ""]
+              .filter(Boolean).join(" · ") || "settings"}</span></summary>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
@@ -818,6 +882,7 @@ function dmRowsHtml(ins, job, blind){
         ${dmRouteLine(d)}
         <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
+        </details>
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
           // phase (building, starting) and this says what the phase is
@@ -936,29 +1001,29 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify("the branch: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
-  el.querySelectorAll("[data-dmtest]").forEach(sel => sel.onchange = () => {
-    const project = sel.dataset.dmtest;
-    if (sel.value === sel.dataset.was) delete dmTestDraft[project];
-    else dmTestDraft[project] = sel.value;
-    const b = el.querySelector(`[data-dmtestapply="${CSS.escape(project)}"]`);
-    if (b) b.disabled = sel.value === sel.dataset.was;
-  });
-  el.querySelectorAll("[data-dmtestapply]").forEach(btn => btn.onclick = async () => {
-    const project = btn.dataset.dmtestapply;
-    const mode = dmTestDraft[project];
-    if (!mode) return;
-    busy(btn, "Applying");
+  // Start, stop, restart and the log, on any container the daemon reported,
+  // including the ones BuilderBot did not create (R68 steps 1 and 2). The
+  // name goes back to the server, which looks it up in a fresh listing
+  // before it acts: the rule every executing surface here follows.
+  el.querySelectorAll("[data-ctl]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.ctl, ctr = b.dataset.ctr;
+    if (what === "stop" && !confirm(`Stop ${ctr}?`)) return;
+    busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting"}[what]);
     try{
-      const r = await postJSON("/api/prefs", {project, devtest: mode === "only"});
+      const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node: dockerNode});
       const j = await r.json();
-      if (j.error){ notify(j.error, true); return; }
-      delete dmTestDraft[project];
-      notify(mode === "only" ? `${project}'s tests run only inside its container now`
-             : `${project}'s tests run on the node again when its container is down`);
-      refresh();
-      dockerRev++; drawPanes();
-    }catch(e){ notify("where the tests run: " + e, true); }
-    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+      if (j.error) notify(j.error, true); else notify(j.out || `${what} sent`);
+    }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
+    dockerList = null; loadDocker();
+  });
+  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs));
+
+  // The words on the row are a way in to where the setting lives now.
+  el.querySelectorAll("[data-dmtestgo]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const row = document.querySelector(`[data-rn="${CSS.escape(a.dataset.dmtestgo)}"]`);
+    if (row) row.click();
+    else notify("open the project's settings from its row on the Projects card", true);
   });
   el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
     const project = sel.dataset.dmclaude;
@@ -1049,18 +1114,43 @@ function renderDockerInto(i){
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
-  // The dashboard's own first, each with the controls that used to live on the
-  // artifact row; this is where they went, and the row now only sends you
-  // here. Grouped by nothing: the project is on every line, and a heading per
-  // project would put a lot of chrome around lists that are usually one long.
-  const rows = dmRowsHtml(ins, job, blind) + cs.map(c => `
+  // Grouped by WHERE A ROW CAME FROM, which is the one thing the tab never
+  // said and the thing that decides what can be done to it: the operator
+  // could see several containers and edit one, and nothing explained that
+  // the difference was provenance rather than favouritism (R68 step 4).
+  // Not grouped by project: the project is on every line, and a heading per
+  // project is a lot of chrome around lists that are usually one long.
+  const head = (t, sub) => `<div class="field dmgroup"><b>${esc(t)}</b>${
+    sub ? ` <span class="dim">${esc(sub)}</span>` : ""}</div>`;
+  const fromProject = ins.filter(d => d.source !== "file");
+  const writtenHere = ins.filter(d => d.source === "file");
+  const rows = (fromProject.length
+      ? head("From a project", "built from its compose file, and rebuilt when the code moves")
+        + dmRowsHtml(fromProject, job, blind) : "")
+    + (writtenHere.length
+      ? head("Written here", "this dashboard holds the compose file; Edit is where it lives")
+        + dmRowsHtml(writtenHere, job, blind) : "")
+    + (cs.length
+      ? head("Already on this machine", "somebody else started these; BuilderBot only lists them")
+        : "") + cs.map(c => `
     <div class="row stack2 off">
       <div class="grow">
-        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
+        <div class="name">${esc(c.name || c.id)} <span class="pill" title="BuilderBot did not start this one, so it lists it and leaves it alone">not ours</span></div>
         <div class="sub">${esc(c.image)}</div>
         <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
         ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+      </div>
+      <div class="actbar dmacts">
+        ${!mayDocker() ? "" : `<button type="button" data-ctl="${
+          c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
+          title="docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
+          c.state === "running" ? "Stop" : "Start"}</button>
+        <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
+          c.state === "running" ? "" : " disabled"}
+          title="docker restart ${esc(c.name || c.id)}">Restart</button>`}
+        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
+          title="the last ${esc(String(400))} lines it printed">Log</button>`}
       </div>
     </div>`).join("");
   // Its own class rather than the projects tab's: the two look alike and a

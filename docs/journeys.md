@@ -289,3 +289,52 @@ at all, and macOS, which is R23 step 3 and wants a Mac.
   does not have, and removed itself completely, on a machine that was already
   a managed node.
 - Still dev: the macOS half, which has never been run on a Mac.
+
+## 20 September: the Git view on a project linked over http, and two people
+
+Walked on the dev pair after `bb devapp rebuild`, so the instance was serving
+the branch tip (f9e021a) rather than whatever it was last built from, which is
+the discipline the 17 September walk cost us.
+
+**Why this one.** The operator pressed **Pull** on the production Git view and
+got git's own words back: `fatal: could not read Username for
+'https://github.com': terminal prompts disabled`. That is a dead end for
+whoever reads it, and the two things behind it were not the same thing.
+
+1. **As `dev2`, a user with one project.** Signed in, met the welcome panel,
+   closed it. Sees `hello` and nothing else; no Administration card, and
+   `state.can` agrees field by field (terminal, docker-write,
+   toolchains-write, git-auth, admin all false). Nothing here needed a
+   refusal, because nothing was offered.
+2. **As the owner, Fetch and Pull on `hello`** (linked to the lab Gitea over
+   plain http). They failed with git's prompt error, and the reason was NOT
+   the one the production failure had: this project's stored token had been
+   taken away by an earlier Reset, so `has_token` was false and there was
+   nothing anywhere to authenticate with. The API says so on the projects
+   payload, which is how it was told apart from the other cause in a minute
+   rather than an afternoon.
+3. **With a token stored** (minted on the lab Gitea, put in through the
+   project's settings dialog), Fetch answered `fetched` and Pull `Already up
+   to date`. That is B184 proven on an instance: the controller names its own
+   credential record on the command line, and the mirror git dir that
+   deliberately drops the tree's helper no longer costs the view its reach.
+4. **With the token cleared again**, the refusal now reads: *this project has
+   no access token stored, and 192.168.1.16:3000 asks for one: put it in the
+   project's settings dialog under Access token, or point the remote at ssh.*
+   A token that is present and rejected says the other thing instead. Both
+   are sentences that name the control; git's line named only what happened.
+5. **The Emulator tab** drew for the picked node, and its button on the Tools
+   card was ghosted with its reason, since no node there has the Android
+   tools. The tab also surfaced, unprompted, that the dev VM's agent is 0.5.80
+   against a 0.6 controller: a different compatibility window, said on the tab
+   rather than discovered by a job that fails.
+6. **Debug settings** in the controller's settings opened as a dialog with its
+   own Save and Cancel, and its switch is no longer in the group where the
+   group's Apply would have saved it.
+
+- Alpha, new evidence: the Git view authenticates on an http remote through
+  the controller's own credential record; the two credential failures are told
+  apart and both name the control; a user with one project sees one project.
+- Still dev: a real Claude session on the dev pair, which has no Claude login,
+  so the tester's first hour is still unwalked past the point where a session
+  would start.

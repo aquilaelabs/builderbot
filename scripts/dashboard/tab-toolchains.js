@@ -345,9 +345,9 @@ function renderToolchainsInto(i){
       ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
       ${busy ? tcWorking(job) : ""}
-      <button data-tc="check"${busy || onNode || !mayToolchains() ? " disabled" : ""}
-        ${onNode ? `title="a node says what it has installed; asking upstream what is newer
-          is a round trip per toolchain and is not something a node does yet"` : ""}>${
+      <button data-tc="check"${busy || pstale || !mayToolchains() ? " disabled" : ""}
+        title="ask each upstream what it has now: a job on this node, one round trip
+          per recipe, and the answer lands on the rows">${
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
@@ -416,10 +416,7 @@ async function tcAct(action, only){
       await postJSON("/api/toolchains", {action});
     return loadToolchains();
   }
-  if (tcNode !== "local" && !["install", "remove", "sysdeps"].includes(action))
-    return notify("a node reports what it has installed, but checking upstream for newer "
-                  + "versions is not something it does yet; that is a network round trip "
-                  + "per toolchain and would have to be a job", true);
+
   // "Check for updates" asks about every row, ticked or not: the question is
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for
@@ -441,7 +438,9 @@ async function tcAct(action, only){
       notify(`also installing ${j.added.join(", ")}: needed by what you picked`);
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
-      ? "checking versions: each one asks its own upstream"
+      ? (tcNode === "local" ? "checking versions: each one asks its own upstream"
+         : "checking versions on " + ((nodesList || []).find(n => n.id === tcNode)?.name
+                                      || "the node") + ": each one asks its own upstream")
       : action === "sysdeps"
       ? "installing the system packages the held recipes need; the toolchains themselves are left alone"
       : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${

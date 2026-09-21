@@ -103,6 +103,14 @@
      four different left edges. The sidebar keeps its own, tighter, values;
      this is the roomy one every document surface uses. */
   --row-y:11px; --row-x:14px;
+  /* The gap between the stacked things inside one band: a label-and-field
+     pair, a hint, a row of them. One value, so a dialog cannot invent its
+     own rhythm (the sandbox VM dialog had 0, 0, 10, 10, 0 down one form). */
+  --field-gap:10px;
+  /* ...and between a label and the control it heads, which is a tighter
+     gap because they are one thing. Two values existed for this, 5px on a
+     dialog's label and 4px inside .setrow.col. */
+  --label-gap:5px;
   /* The page's three secondary voices, named once. Before this they were
      retyped at every use: 11px/1.4, /1.45, /1.5 and /1.6 all coexisted for
      the same "quiet explainer under a control", which is the kind of drift
@@ -443,7 +451,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* A field with its label above it, and the ? that carries the explanation.
    .col stacks the row; the field takes the row's width, which the cap on
    .setrow already limits. */
-.setrow.col{flex-direction:column;align-items:stretch;gap:4px}
+.setrow.col{flex-direction:column;align-items:stretch;gap:var(--label-gap)}
 /* Outranks the row rule's flex-basis, which is a WIDTH in a row and would
    be a height here: a stacked field is as wide as its row and as tall as a
    field. */
@@ -941,7 +949,22 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    when it is done. */
 .modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.68);
   display:flex;align-items:safe center;justify-content:center;padding:16px;
-  overflow:auto}   /* a soft keyboard can leave less height than the box */
+  overflow:auto;   /* a soft keyboard can leave less height than the box */
+  /* The DYNAMIC viewport, not the large one. A fixed overlay is laid out
+     against the large viewport on a phone, so while the browser's toolbar
+     slides in and out the box is centred in a taller box than the one being
+     looked at, and it bobs: a few pixels, every frame, for as long as the
+     toolbar is moving. The header does not move with it, because the header
+     is anchored to the top and only a centred thing feels a height change. */
+  height:100dvh;
+  /* ...and when the box is taller than the viewport, THIS is the scroller.
+     Without this, reaching its end hands the scroll on to the page behind,
+     which is why a dialog on a phone drags the whole page around under it. */
+  overscroll-behavior:contain}
+/* The page behind a dialog holds still. Scrolling it while a detour is open
+   loses your place for no reason you asked for, and on a touch screen it is
+   what a flick past the end of the dialog does. */
+html:has(.modal:not([hidden])){overflow:hidden}
 /* Every modal arrives rather than appearing: the room dims, and the box rises
    into it. As an animation and not a transition, because these are toggled by
    `hidden`; there is no frame in which a transition could start. One rule
@@ -989,10 +1012,28 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    below. The guard is the other half: a field inside a field is a row of the
    outer one, and insetting twice is what put that same bar 28px in when the
    rows beside it were at 14. */
+/* The rhythm inside a band, owned by the band. It was margin arithmetic
+   between bare siblings, which COLLAPSES between two blocks and ADDS around
+   a replaced element, so one form measured 0, 10, 15, 16, 22 down its length
+   and read as several forms. A flex column with one gap cannot do that, and
+   the stray margins on the children go with it: uniform.mjs measures every
+   dialog for the two numbers below and nothing else. */
 .field{padding:var(--row-y) var(--row-x)}
+/* A dialog's band, which is a stack of things to fill in. Not the bars that
+   also wear .field (a tab's filter row, an action bar): those are rows, and
+   they say so with a class of their own. */
+.modal .field:not(.histbar):not(.actbar):not(.macros){display:flex;
+  flex-direction:column;gap:var(--field-gap);align-items:stretch}
+.modal .field>*,.modal .prefrow>*{margin-top:0;margin-bottom:0}
+/* A label and the control under it are one thing, so they sit closer: the
+   band's gap, pulled back to the label gap. A .prefrow wraps to a column on
+   a phone and carries the same gap, so its labels need it too. */
+.modal .field>label,.modal .prefrow>label{
+  margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 .field .field{padding:0}
+.prefrow{gap:var(--field-gap)}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
-  margin-bottom:5px}
+  margin-bottom:var(--label-gap)}
 /* The field skin, once, for EVERY control. This was an allowlist of container
    classes, which meant each new surface had to remember to join it, and the
    Analysis tab did not, so the same filter bar rendered house-styled inside a
@@ -1078,7 +1119,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
-.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}
+.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
@@ -1845,8 +1886,7 @@ pre.diff .d-ctx{color:var(--dim)}
    shape for a row you open, not two that drift. */
 #rlList{padding-top:0}
 .rulerow .rlName{width:100%;margin-bottom:6px}
-#grBody .field>label{margin-bottom:6px}
-#grBody .rulerow+.rulerow{margin-top:12px}
+#grBody .field>label{margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 #grBody .rulerow .hint{margin-top:2px}
 .rulerow .two{display:flex;gap:6px;align-items:center}
 .rulerow .two>*{flex:1;min-width:0}
@@ -1964,6 +2004,28 @@ pre.diff .d-ctx{color:var(--dim)}
 .projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
+/* The heading over each group of rows: where these came from, which is what
+   decides what can be done to them (R68). Quiet, because it is a label on a
+   list and not a section of its own. */
+.dmtab .dmgroup{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
+.dmtab .dmgroup b{color:var(--ink);font-weight:600}
+/* The small text areas in the container form: a few lines each, not the
+   full-height editor the compose file gets. */
+#cmodal textarea.csmall{min-height:64px}
+/* A container's log: monospace, its own scroller, and tall enough to be
+   worth opening. The dialog's box is the one that scrolls nothing. */
+.dllog{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+/* A container row's detail is a fold on a phone, where a row carrying its
+   ports, its services, its route and three settings was most of a screen
+   each (R68 step 5). On a desktop it is open and its summary is not drawn,
+   so that surface is exactly what it was. */
+.dmdet>.dmsum{display:flex;gap:8px;align-items:baseline;cursor:pointer;
+  padding:4px 0;color:var(--dim);font:var(--f-note);list-style:none}
+.dmdet>.dmsum::-webkit-details-marker{display:none}
+.dmdet>.dmsum::before{content:"›";display:inline-block;transition:transform .12s ease}
+.dmdet[open]>.dmsum::before{transform:rotate(90deg)}
+.dmdet>.dmsum .t{color:var(--ink)}
+@media(min-width:901px){ .dmdet>.dmsum{display:none} }
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything
@@ -2434,7 +2496,6 @@ button[aria-busy="true"]{opacity:.75}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
-#rnBuildCmd,#rnTestCmd{margin-bottom:6px}
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
@@ -3411,6 +3472,17 @@ body.booting .pane>.loading{margin:auto}
              placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
       <div class="hint">Run with sh -c in the snapshot's root on the node. Files
         matching the outputs come back into dist/ with a note of what built them.</div>
+      <!-- Where the tests run, which is this project's business and used to
+           be set on the Docker tab, a machine surface it has no other reason
+           to visit (R68 step 6). Only for a project that HAS a container to
+           run in: rnFill hides it otherwise. -->
+      <div id="rnTestWhere" hidden>
+        <label for="rnDevTest">Tests run<span class="help" data-tip="a project with a dev instance can run its tests inside it, which is the only honest place for a project that IS the container" tabindex="0">?</span></label>
+        <select id="rnDevTest">
+          <option value="either">in its dev instance when it is up, else on the node</option>
+          <option value="only">only in its dev instance, never on the node</option>
+        </select>
+      </div>
     </div>
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
@@ -3503,9 +3575,35 @@ body.booting .pane>.loading{margin:auto}
     <div class="field">
       <label id="cSegLabel">Definition</label>
       <div class="pseg" role="group" aria-labelledby="cSegLabel">
-        <button id="cTabYml" class="on" type="button">Compose</button>
+        <button id="cTabForm" class="on" type="button">From an image</button>
+        <button id="cTabYml" type="button">Compose</button>
         <button id="cTabEnv" type="button">Environment</button>
       </div>
+    </div>
+    <!-- The form that writes the compose file for you, for the ordinary case:
+         an image, some ports, some volumes. What it produces is the Compose
+         tab beside it, so nothing is hidden and anything the form cannot say
+         is said by editing that (R68 step 3). -->
+    <div class="field" id="cFormField">
+      <label for="cImage">Image</label>
+      <input id="cImage" autocomplete="off" spellcheck="false"
+             placeholder="lscr.io/linuxserver/radarr:latest">
+      <label for="cPorts">Ports<span class="help" data-tip="host:container, one per line. The host port is the node's, and two containers cannot hold the same one" tabindex="0">?</span></label>
+      <textarea id="cPorts" class="csmall" spellcheck="false" placeholder="7878:7878"></textarea>
+      <label for="cVols">Volumes<span class="help" data-tip="host:container, one per line. A relative host path is inside this container's own data directory on the node" tabindex="0">?</span></label>
+      <textarea id="cVols" class="csmall" spellcheck="false" placeholder="./config:/config&#10;/mnt/user/media:/media"></textarea>
+      <label for="cEnvLines">Environment<span class="help" data-tip="KEY=VALUE, one per line. These go in the compose file; the Environment tab is the .env file it can read with ${VAR}" tabindex="0">?</span></label>
+      <textarea id="cEnvLines" class="csmall" spellcheck="false" placeholder="PUID=99&#10;PGID=100&#10;TZ=Etc/UTC"></textarea>
+      <label for="cRestart">Restart</label>
+      <select id="cRestart">
+        <option value="unless-stopped">unless stopped: back after a reboot, unless you stopped it</option>
+        <option value="always">always: back even if you stopped it</option>
+        <option value="on-failure">on failure: only when it exits badly</option>
+        <option value="no">no: never on its own</option>
+      </select>
+      <div class="hint">This writes the Compose tab as you type. Edit that
+        directly for anything this form does not cover, and it stops being
+        rewritten.</div>
     </div>
     <div class="field" id="cYmlField">
       <label for="cYml">docker-compose.yml</label>
@@ -3633,6 +3731,26 @@ body.booting .pane>.loading{margin:auto}
   <div class="box wide">
     <h3 id="ndTitle">Enroll a node</h3>
     <div id="ndBody"></div>
+  </div>
+</div>
+<!-- The Debugging group's other half. A dialog rather than a fold inside the
+     group, because the node row's Debug settings is a dialog and these two
+     are one idea in two places: the fold answered differently for no reason
+     anybody chose, and its fields shared the group's Apply, so ticking one
+     saved the group. -->
+<!-- One container's log, read on demand: the thing a person opens a docker
+     list to do (R68 step 2). A dialog because it is a detour you read and
+     dismiss, and because a tail belongs nowhere near a row that repaints. -->
+<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+  <div class="box wide">
+    <h3 id="dlTitle">Log</h3>
+    <div id="dlBody"></div>
+  </div>
+</div>
+<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
+  <div class="box">
+    <h3 id="setdbgTitle">Debug settings</h3>
+    <div id="setdbgBody"></div>
   </div>
 </div>
 <div id="grmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="grTitle">
@@ -5732,6 +5850,7 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
+               devtest: !!p?.prefs?.devtest,
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -5779,6 +5898,12 @@ function rnFillNode(){
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
+  // Offered only where there is a container to run in: the Docker tab knows
+  // which projects have one, and `has_compose` on the project row is the
+  // same answer without asking it.
+  const canDevTest = !!(p?.has_compose || p?.prefs?.devtest);
+  $("rnTestWhere").hidden = !canDevTest;
+  $("rnDevTest").value = p?.prefs?.devtest ? "only" : "either";
   // What an empty box means here. A project of a shape anybody would
   // recognise (this repo's harness, a gradlew, a go.mod) has one obvious
   // way to run its tests, and `bb test` uses it when nothing is set; the
@@ -9305,7 +9430,13 @@ $("pUrl").oninput = () => {
 $("pUrl").addEventListener("input", pNameShow);
 $("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
 
+$("cTabForm").onclick = () => cSwitch("form");
 $("cTabYml").onclick = () => cSwitch("yml");
+// The form writes the compose file as it is filled in, and stops the moment
+// somebody edits that file by hand.
+for (const id of ["cImage", "cPorts", "cVols", "cEnvLines", "cRestart"])
+  $(id).oninput = $(id).onchange = () => cFormWrote();
+$("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
@@ -9921,9 +10052,11 @@ async function rnSubmit(){
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
+  const devtest = $("rnDevTest").value === "only";
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
-    || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color;
+    || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
+    || devtest !== rnPrefWas.devtest;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -9974,6 +10107,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, build, test, gate, color,
+                              devtest,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

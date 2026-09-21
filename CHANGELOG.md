@@ -8,6 +8,21 @@
 - Every em dash is out of the code base: the refusals, the log lines and the app's own text read as something a person wrote, not something a machine generated. Only the glyphs stay, like the dash on a tab's minimize button and an empty cell. (ae54d3c)
 - A session's briefing is a quarter of the size: the roadmap names each item and its steps, and the long technical detail behind one is a bb roadmap show away instead of riding in every conversation on the project. (68cd4cb)
 - A start-here page for somebody given an account rather than running the box, and the welcome panel now says the thing a new person hits first: sign in to Claude with your own account before a session will start. (5537a35)
+- Fetch and Pull work again on a project linked over https: the Git view was running git without the token the project was linked with, and said so as git does, by asking for a username it had no way to read. (058999c)
+- Debug settings in the controller's settings opens a dialog, the way a node's row already did, instead of unfolding inside the group where the group's Apply would save it. (058999c)
+- A Git view that cannot authenticate says which of the two things went wrong: no access token stored for the project, or one the host rejected, each naming where to put a new one. (f9e021a)
+- bb doctor on a node stops reporting a stray ssh key as a failure: a node holds no git credential by design, so a key there is not what its pushes use. (55cfbfa)
+- Every dialog keeps one rhythm now: the same gap between the things in a band and a tighter one under a label, instead of a form whose spacing changed halfway down it. (2dd7542)
+- A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
+- A dialog on a phone stops dragging the page around behind it, and stops drifting while the browser's toolbar slides. (331b871)
+- Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
+- Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
+- The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
+- Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
+- New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
+- The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
+- A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
+- A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
 
 ## 0.6.0: 2026-09-19
 

@@ -50,6 +50,16 @@ A field inside a field does not inset again. The sidebar is denser on
 purpose (rows 7px 10px, quiet states 9px 11px); nothing else is. Four
 different left edges in one tab is what retyped padding produces.
 
+**Down a dialog there are two gaps and no others**: `var(--field-gap)` (10px)
+between the things in a band, and `var(--label-gap)` (5px) between a label
+and the control it heads, because those two are one thing. The band owns
+both: it is a flex column, and its children carry no margins of their own.
+This is not a style preference. It was margin arithmetic between bare
+siblings, which collapses between two blocks and adds around an input, so one
+form measured 0, 10, 15, 16 and 22 down its length and read as several forms
+stacked together. `uniform.mjs` measures every gap in every dialog against
+the two tokens, so a dialog that invents a third fails rather than shipping.
+
 ## Controls
 
 The field skin (ground, edge, radius) is applied to the elements globally,

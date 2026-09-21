@@ -14,7 +14,9 @@ Uncommitted work is on the share, so a restart cannot eat it.
 Headless: no window manager, no monitor. Run every tool in its headless mode and
 show a person pixels by saving a file and naming the path. `bb shot URL... FILE`
 screenshots a page. Playwright's browsers are on the store, at
-$PLAYWRIGHT_BROWSERS_PATH.
+$PLAYWRIGHT_BROWSERS_PATH. A video is not something you can watch either: turn
+it into frames and read those (`ffmpeg -i clip.mp4 -vf fps=1 dist/frames/%03d.png`),
+which needs the ffmpeg recipe on this node's store.
 
 ## The toolchain is the store, not the machine
 
