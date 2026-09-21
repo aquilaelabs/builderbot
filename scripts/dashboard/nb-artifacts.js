@@ -692,7 +692,7 @@ project can have several"
   function verAddFold(v){
     if (v.component || !(v.candidates || []).length) return "";
     return `
-      <details class="veradd"><summary>ships something else from here?</summary>
+      <details class="veradd"${sectAttr("artifacts:veradd:" + project)}><summary>ships something else from here?</summary>
         <p class="verwhy">A directory with its own <code>VERSION</code> is a
           component and versions itself, for an extension beside an app,
           which do not share a maturity. Its ordinal counts only the commits

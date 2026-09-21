@@ -29,7 +29,7 @@ function nbRulesView({$, nb, project}){
     const cond = r => (r.paths || []).length || (r.words || []).length;
     return `<div class="sub dim ggroup">also in force here, set for every project in Controller settings</div>
       <div class="field" id="rlGlobal">${gs.map(g => `
-        <details class="bug grule">
+        <details class="bug grule"${sectAttr(`rules:global:${project}|${g.name}`)}>
           <summary><span class="btitle">${esc(g.name || "")}</span>
             <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
             <span class="pill">global</span></summary>

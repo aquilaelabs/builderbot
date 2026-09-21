@@ -33,6 +33,7 @@
 - Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
 - A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
 - bb test no longer reports a timed-out start as nothing having run while the suite runs on unattended inside the dev instance: the start is quick now, the wait is two minutes, and a timeout says the run may have started and how to find it. (5820f36)
+- A refresh no longer shuts what you have open: a pull-down list that is showing holds the redraw until you pick or dismiss it, and a fold you opened stays open when the page repaints. This holds on every tab and notebook view, not the Docker tab alone. (a22e5f9)
 
 ### Security
 

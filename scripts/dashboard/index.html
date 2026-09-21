@@ -4710,12 +4710,67 @@ addEventListener("click", e => {
   requestAnimationFrame(place);
 });
 
+// ---- a menu somebody has open ---------------------------------------------
+// A redraw replaces the markup, and a <select> replaced while its list is
+// showing takes the list with it. The Docker manager repaints on every step
+// of a job, so picking a branch during a build was a race against the next
+// step, and every other tab had the same race at a slower beat. Held at the
+// three places a redraw nobody asked for starts from: the revisions poll
+// (skipped whole, with the tokens not advanced, so the news is still news on
+// the tick after), a document tab's draw, and paint(). A draw that came from
+// a press is never held, because the press is what closed the menu.
+//
+// Nothing listens for the menu closing: there is no event for every way it
+// can (a second click on it fires none). A short timer asks instead, and only
+// while a redraw is owed.
+const OPEN_KNOWN = (() => {
+  try { document.documentElement.matches(":open"); return true; }
+  catch(e){ return false; }
+})();
+// A browser without :open: the last <select> pressed, until it changes,
+// loses focus or Escape, and never for longer than half a minute.
+let selPressed = null, selPressedAt = 0;
+if (!OPEN_KNOWN){
+  addEventListener("pointerdown", e => {
+    selPressed = e.target.closest ? e.target.closest("select") : null;
+    selPressedAt = Date.now();
+  }, true);
+  addEventListener("change", () => { selPressed = null; }, true);
+  addEventListener("blur", e => { if (e.target === selPressed) selPressed = null; }, true);
+  addEventListener("keydown", e => { if (e.key === "Escape") selPressed = null; }, true);
+}
+function openMenu(){
+  // closest(), because focus is not always on the <select> itself: Chromium
+  // moves it onto the <option> under the pointer while the list is showing.
+  const a = document.activeElement?.closest?.("select");
+  if (!a || !a.isConnected) return null;
+  if (OPEN_KNOWN) return a.matches(":open") ? a : null;
+  return selPressed === a && Date.now() - selPressedAt < 30000 ? a : null;
+}
+let menuTimer = null;
+// Whether `root` must be left alone for now; with no root, whether anything
+// must. Saying yes is also a promise to come back, which is the timer.
+function menuHolds(root){
+  const m = openMenu();
+  if (!m || (root && !root.contains(m))) return false;
+  if (!menuTimer) menuTimer = setInterval(() => {
+    if (openMenu()) return;
+    clearInterval(menuTimer); menuTimer = null;
+    // Everything that was skipped, from its own source: the status poll
+    // repaints the cards and the panes, the revisions poll fires the watches.
+    refresh(); drawPanes(); pollRevs();
+  }, 250);
+  return true;
+}
+
 // Draw one document tab into its pane, if it is due a redraw. The one place
 // that decides, so the two call sites: a pane that just changed tab and a
 // pane that did not: cannot disagree about it.
 function renderDoc(i, t, pane){
   const spec = TABKINDS[t.kind];
   if (!spec || !spec.render) return;
+  // Before the stamp, so the draw is still owed when the menu shuts.
+  if (menuHolds(pane)) return;
   if (spec.live === "always"){ renderGuarded(spec, i, t); return; }
   // Stamped with the kind as well as the number: one pane holds one tab, but
   // it can be handed a different KIND of tab, and two counters that happened
@@ -5155,6 +5210,8 @@ const WAITING = /class="(loading|empty)[ "]|loading…/;
 function paint(el, html){
   const was = painted.get(el);
   if (was === html) return false;
+  // Not recorded, so the same markup is still a change on the next poll.
+  if (menuHolds(el)) return false;
   const arriving = was === undefined || WAITING.test(was);
   painted.set(el, html);
   el.innerHTML = html;
@@ -8631,7 +8688,7 @@ function drawPendingModal(j){
       <input type="checkbox" checked data-pend="${r.id}" data-after="${r.after ?? ""}">
       <span><span class="psum">${tag(r) ? `<b>${esc(tag(r))}</b> · ` : ""}${esc(r.summary || "")}</span>
         <div class="pwhen">${esc(when(r.at))}${r.after != null ? " · rides behind the change above" : ""}</div>
-        ${d && d !== r.summary ? `<details><summary>full text</summary><pre>${esc(d)}</pre></details>` : ""}
+        ${d && d !== r.summary ? `<details${sectAttr("pending:full:" + r.id)}><summary>full text</summary><pre>${esc(d)}</pre></details>` : ""}
       </span></label>`;
   }
   $("pendList").innerHTML = html;
@@ -10563,7 +10620,7 @@ function drawBell(){
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its
         // values, which is where a token would be.
-        a.kind === "container" ? `<details class="bdetail"><summary>the compose file${
+        a.kind === "container" ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the compose file${
             a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
             a.for ? `, shown under ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
@@ -11170,6 +11227,9 @@ onRev("devapp", () => {
 });
 
 async function pollRevs(){
+  // A notebook view draws from its own fetch, straight into its own element,
+  // so the only place to hold one is here, before the watch that starts it.
+  if (menuHolds(null)) return;
   let now;
   try{
     // Which projects this page has a notebook open on. The per-project
@@ -11482,6 +11542,26 @@ function docSurface(i, kind){
 // you arranged it. Pass `open` to override, which is for a section that IS
 // the answer rather than a place to go and look for it.
 const sectOpen = {};
+// The attributes of a fold that remembers: its key, and `open` when it was
+// left open (or, never touched, when `dflt` says so). docSection writes its
+// own; this is for a fold that is not a section, a row's Details or a diff's
+// file, which a redraw otherwise puts back the way it was first drawn.
+function sectAttr(key, dflt = false){
+  return ` data-sect="${esc(key)}"${(key in sectOpen ? sectOpen[key] : dflt) ? " open" : ""}`;
+}
+// Recorded for every keyed fold from one place. `toggle` does not bubble, but
+// it is captured, so a fold needs a key and nothing else to be remembered.
+// Only a fold somebody pressed: markup arriving with `open` on it fires the
+// same event, and recording that would turn a default into a choice, which
+// is how a desktop's open-by-default followed the page down to phone width.
+document.addEventListener("click", e => {
+  const d = e.target.closest?.("summary")?.parentElement;
+  if (d?.dataset?.sect) d.dataset.pressed = "1";
+}, true);
+document.addEventListener("toggle", e => {
+  const d = e.target;
+  if (d?.dataset?.sect && d.dataset.pressed) sectOpen[d.dataset.sect] = d.open;
+}, true);
 // Lanes for a commit graph: commits newest first, each with its parents.
 // The classic walk: a commit takes the lane that was waiting for it (the
 // leftmost, when several were), its first parent inherits that lane, and
@@ -11532,7 +11612,7 @@ function renderDiff(text){
   // A diff with no file header (a single file's, asked by path) is the
   // text alone; a fold with nothing to name would wear the browser's word.
   return files.map(f => f.name
-    ? `<details class="dfile" open><summary><code>${esc(f.name)}</code></summary>${pre(f)}</details>`
+    ? `<details class="dfile"${sectAttr("diff:" + f.name, true)}><summary><code>${esc(f.name)}</code></summary>${pre(f)}</details>`
     : pre(f)).join("");
 }
 
@@ -11547,10 +11627,9 @@ function docSection(kind, id, title, status, body, {cls = "", open} = {}){
 }
 function wireSections(root){
   root.querySelectorAll("details.sect").forEach(d => {
-    // Only a fold that HAS a key: one without keeps its own state (the Git
-    // view's file and branch folds do, by path and by name), and recording
-    // it here wrote every one of them into a single bucket called undefined.
-    d.ontoggle = () => { if (d.dataset.sect) sectOpen[d.dataset.sect] = d.open; };
+    // Its state is recorded by the page's one toggle listener, beside
+    // sectAttr, and only for a fold that has a key: one without keeps its
+    // own (the Git view's file and branch folds do, by path and by name).
     // Driven, not the browser's instant snap: the same helper the memories,
     // the bug reports, the version tab's fold and the Docker manager's wiring
     // fold already use. A <details> opens at full height by construction, so

@@ -494,6 +494,34 @@ for (const kind of kinds){
        L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
 }
 
+// ---- a fold stays the way it was left ---------------------------------------
+// A redraw rebuilds the markup, so a <details> with nothing behind it goes
+// back to however it was first drawn: the Docker manager's Details fold shut
+// itself on a phone every time a job took a step. A fold is remembered one of
+// two ways: a data-sect key, which the page's one toggle listener records
+// (sectAttr and docSection both write it), or a list row that carries its own
+// identity and whose view keeps the open set itself.
+async function forgetfulFolds(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    if (!host) return { err: 'no document box found' };
+    const own = 'details[data-file], details[data-key], details[data-id], details[data-i], details[data-path], details[data-branch]';
+    return { bare: [...host.querySelectorAll('details')]
+      .filter(d => !d.dataset.sect && !d.matches(own))
+      .map(d => `details.${d.className || '(no class)'} "${
+        (d.querySelector('summary')?.textContent || '').trim().slice(0, 30)}"`) };
+  });
+}
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await bring(kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  const F = await forgetfulFolds();
+  ok(!F.err && F.bare.length === 0,
+     `[${kind}] every fold is remembered across a redraw${
+       F.err ? ` (${F.err})` : F.bare.length ? `: ${[...new Set(F.bare)].join('; ')}` : ''}`);
+}
+
 // ---- a setting is written by Save, never by the pick -----------------------
 // docs/design-language.md, Settings: nothing on a tab takes effect until Save
 // or Apply is pressed, because a select that writes on the change is a control
@@ -805,10 +833,21 @@ await page.evaluate(() => setView('terminal'));
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,
 // 88%), and 88% is what bites here.
+//
+// A phone starts every fold shut, and a control inside a shut fold has no
+// line to be measured on. Opened the way a person's press leaves them, which
+// is recorded as well as open, so a redraw between here and the measuring
+// does not shut them again. (These used to arrive open by accident: the page
+// recorded the desktop's default as a choice, and carried it down here.)
+const unfold = () => page.evaluate(() => {
+  document.querySelectorAll('.doc.on details[data-sect]').forEach(d => {
+    sectOpen[d.dataset.sect] = true; d.open = true; });
+});
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  await unfold();
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab at phone width${
@@ -1033,7 +1072,9 @@ for (const kind of kinds){
   };
   await focus();
   ok(await page.$eval(sel, d => d.open), `[${kind}] a section opens by default on a desktop (${key})`);
-  await page.evaluate(s => { document.querySelector(s).open = false; }, sel);
+  // A press on the summary, not `open = false`: only a fold somebody pressed
+  // is recorded, so that markup arriving open is never mistaken for a choice.
+  await page.click(sel + ' > summary');
   await page.waitForFunction(k => sectOpen[k] === false, key, { timeout: 5000 });
   ok(true, `[${kind}] a fold closed by hand stays closed for the page (${key})`);
   await page.reload(); await ready(page);

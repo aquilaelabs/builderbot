@@ -876,7 +876,11 @@ function dmRowsHtml(ins, job, blind){
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
-        <details class="dmdet"${isPhone() ? "" : " open"}>
+        <details class="dmdet"${
+          // Remembered on a phone, where it is a fold. On a desktop its summary
+          // is not drawn, so a shut one could never be opened again: always open.
+          isPhone() ? sectAttr(`docker:det:${d.project}|${d.instance}`)
+                    : ` data-sect="${esc(`docker:det:${d.project}|${d.instance}`)}" open`}>
           <summary class="dmsum"><span class="t">Details</span><span class="sst">${
             [d.ports.length ? `${d.ports.length} port${d.ports.length === 1 ? "" : "s"}` : "",
              (d.services || []).length > 1 ? `${d.services.length} services` : ""]

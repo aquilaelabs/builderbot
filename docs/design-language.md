@@ -400,6 +400,26 @@ stops when the job does. Anything else with a clock of its own is a tab that
 notices things sooner than the tab beside it for no reason anybody chose,
 which is what this whole section is against.
 
+**A redraw nobody asked for never takes what a person has open.** Two things
+on a surface are open rather than typed: a menu and a fold. Neither is a
+tab's to look after, because a rule one tab keeps is a rule the next forgets.
+
+A `<select>` whose list is showing holds the redraw. `menuHolds(root)` is
+asked at the three places a redraw that did not come from a press starts: the
+revisions poll, which is skipped whole so the news is still news on the next
+tick; `renderDoc`, which draws every document tab; and `paint()`, which draws
+every card. The draw that was skipped happens when the list shuts. A draw
+that came from a press is not held, since the press is what shut the list.
+
+A fold stays the way it was left. One with a `data-sect` key is recorded by
+the page's one `toggle` listener, and only when somebody pressed it, so a
+default never turns into a choice. `docSection` writes the key for a
+section; `sectAttr(key, dflt)` writes it for a fold that is not one, such as
+a row's Details or one file of a diff. A list row that carries its own
+identity (a memory, a bug, a test, a rule) keeps its open set in its view
+instead. `uniform.mjs` fails any `<details>` on any tab or notebook view that
+has neither.
+
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their

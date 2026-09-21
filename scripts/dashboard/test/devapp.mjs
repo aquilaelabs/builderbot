@@ -133,6 +133,40 @@ const pillIs = async (want) => { await openManager(); return page.waitForFunctio
   ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
   [want, DM], { timeout: 20000 }); };
 
+// A redraw must not take an open menu with it. The manager repaints on every
+// step of a job, which made picking from one of its lists during a build a
+// race against the next step. The hold is the page's, not this tab's, so this
+// is also the test for every other tab: renderDoc is the one place any of
+// them is drawn.
+{
+  await dmRefresh();
+  const sel = await page.$('.dmtab select:not([disabled])');
+  ok(!!sel, 'the manager has a menu to open');
+  if (sel){
+    await page.evaluate(() => { window.__heldSel = document.querySelector('.dmtab select:not([disabled])');
+                                window.__heldTab = document.querySelector('.dmtab'); });
+    await sel.click();
+    const open = await page.evaluate(() => window.__heldSel.matches(':open'));
+    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    const kept = await page.evaluate(() => ({
+      same: window.__heldSel.isConnected && document.querySelector('.dmtab') === window.__heldTab,
+      open: window.__heldSel.matches(':open') }));
+    ok(open && kept.same && kept.open,
+       `a redraw that lands while a menu is open leaves the menu alone (opened ${open}, same element ${kept.same}, still open ${kept.open})`);
+    // ...and the revisions poll does not start one either.
+    const polled = await page.evaluate(async () => {
+      let asked = 0; const f = window.fetch;
+      window.fetch = (...a) => { if (String(a[0]).startsWith('/api/revs')) asked++; return f(...a); };
+      await pollRevs(); window.fetch = f; return asked; });
+    ok(polled === 0, `...and the revisions poll waits rather than firing a watch under it (${polled} asked)`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.dmtab') !== window.__heldTab,
+                               null, { timeout: 5000 }).catch(() => {});
+    const after = await page.evaluate(() => document.querySelector('.dmtab') !== window.__heldTab);
+    ok(after, '...and the redraw it was owed happens once the menu shuts');
+  }
+}
+
 let r = await row();
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
    && await page.$eval('#devRow .top b', e => e.textContent.trim()) === 'ep-silon',
@@ -2225,6 +2259,11 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
      '...nothing scrolls sideways, and the row keeps its buttons whether it is open or shut');
   await page.click('.dmtab .dmsum');
   ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and it opens on a press');
+  // ...and stays open. The manager repaints on every step of a job, and a
+  // fold that went back to its default each time could not be read during one.
+  await sleep(300);              // the slide, and the toggle it ends in
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and a redraw leaves it open, rather than putting it back');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
   await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === true,
