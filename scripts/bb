@@ -4001,9 +4001,22 @@ import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
 auth = os.environ["BB_DEV_AUTH"]
+# Two minutes, not the client's default thirty seconds. The controller checks
+# the instance before it answers, and each check is a round trip through the
+# agent to the node; on an unlucky poll cycle that ran past thirty seconds,
+# this gave up saying "timed out", and the controller started the run anyway.
+# So a fifteen-minute suite ran unattended inside the container, its output
+# going to a job nobody was reading, holding the node's one slot, while the
+# caller was told nothing had been timed (B202, four sightings on 21 Sep).
+START_WAIT = 120
 r = bbapi.call("/api/devapp", {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),
-                               "action": "test", "args": sys.argv[1:]}, auth=auth)
+                               "action": "test", "args": sys.argv[1:]}, auth=auth, timeout=START_WAIT)
 if r.get("error"):
+    # The one refusal that does not mean nothing happened.
+    if "timed out" in str(r["error"]).lower():
+        sys.exit(f"[builderbot] ERROR: the controller did not answer within {START_WAIT}s. The run MAY "
+                 "HAVE STARTED anyway: `bb jobs` lists a `test` job on this project if it did, "
+                 "`bb jobs ID` is its log, and starting another run on top of it breaks both")
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 jid = r.get("job") or ""
 print(f"[builderbot] testing {proj} inside its dev instance ({jid})", file=sys.stderr)

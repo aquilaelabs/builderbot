@@ -3803,10 +3803,19 @@ def test(project, instance=MAIN, cmd="", args=()):
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
-    st = state(project, instance)
-    if not st.get("available"):
-        return {"error": st.get("why") or "the instance's daemon is not reachable"}
-    if not st.get("running"):
+    # The two facts starting a run depends on, and only those. This asked for
+    # the whole state() before it answered: a compose config parse, the risks,
+    # the problems, the host mapping, a docker ps for port clashes, running,
+    # exists and the git head, each a round trip through the agent to the node
+    # and one after another. On an unlucky poll cycle that passed the caller's
+    # thirty seconds, the caller gave up saying "timed out", and the run this
+    # then started went on unattended inside the container for fifteen
+    # minutes, holding the node's one slot (B202). Everything state() works
+    # out is for a row somebody is looking at; nobody is looking here.
+    a = available()
+    if not a["on"]:
+        return {"error": a["why"] or "the instance's daemon is not reachable"}
+    if not _running(project, instance):
         return {"error": f"{_pname(project, instance)} is not running: Up on the Docker tab "
                          "(or a rebuild) starts it, and the tests run inside it"}
     cfg = _config(project, instance)
