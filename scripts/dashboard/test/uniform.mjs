@@ -94,9 +94,27 @@ const DRIVERS = {
 // Every kind that renders a document, from the page's own registry, never a
 // hand-kept list here, because a hand-kept list is how a new kind ships
 // unmeasured.
-const kinds = await page.evaluate(() =>
+const tabKinds = await page.evaluate(() =>
   Object.entries(TABKINDS).filter(([, v]) => v.render).map(([k]) => k));
-const undriven = kinds.filter(k => !DRIVERS[k]);
+const undriven = tabKinds.filter(k => !DRIVERS[k]);
+// The notebook is one tab kind and EIGHT surfaces, and every loop below
+// measured whichever one it happened to be on, which was the Roadmap: the
+// driver opens there and bring() focuses a tab it already has. So nine of
+// the notebook's views had never been measured for the action-bar language,
+// the loose-button rule, destructive-last or the control widths, and six
+// words for "delete this row" and 42-word paragraphs grew under a check that
+// looked like it covered them (roadmap R70). Each view is a kind of its own
+// here, read off the strip the page draws rather than kept as a list, for
+// the same reason the tab kinds are.
+const NB_VIEWS = await page.evaluate(() =>
+  [...document.getElementById('nbTpl').content.querySelectorAll('.nbtabs button[data-v]')]
+    .map(b => b.dataset.v));
+for (const v of NB_VIEWS)
+  DRIVERS[`notebook:${v}`] = {
+    open: () => page.evaluate(w => openNotebook('alpha', w), v),
+    readyWhen: `.pane .nb .nbview[data-view="${v}"]:not([hidden])`,
+  };
+const kinds = tabKinds.flatMap(k => k === 'notebook' ? NB_VIEWS.map(v => `notebook:${v}`) : [k]);
 ok(undriven.length === 0,
    `every document tab kind has a conformance driver${
      undriven.length ? `; missing: ${undriven.join(', ')} (add it to
@@ -123,8 +141,17 @@ async function measure(kind){
       .filter(e => !INDENTED.some(c => e.classList.contains(c)))
       // Nested band-in-band measures the outer one; the inner is content.
       .filter(e => !e.parentElement.closest(BANDS));
-    const lefts = [...new Set(bands.map(e => Math.round(
-      e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft))))];
+    const leftOf = e => Math.round(
+      e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft));
+    const lefts = [...new Set(bands.map(leftOf))];
+    // Which band sits at each x, for the failure: three numbers say a view is
+    // ragged and nothing about where, and the fix is in one band's CSS.
+    const who = {};
+    for (const e of bands){
+      const x = leftOf(e);
+      who[x] = who[x] || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}${
+        e.id ? '#' + e.id : ''} in ${e.parentElement?.className || e.parentElement?.tagName}`;
+    }
     const ref = document.getElementById('mName');
     const skin = el => { const c = getComputedStyle(el);
       return [c.backgroundColor, c.borderTopLeftRadius, c.borderTopColor,
@@ -153,7 +180,7 @@ async function measure(kind){
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
       maxw: cs.maxWidth,
-      bands: bands.length, lefts,
+      bands: bands.length, lefts, who,
       controls: controls.length, offskin,
     };
   }, { BANDS, INDENTED });
@@ -164,6 +191,8 @@ async function measure(kind){
 // when one is open, and otherwise opened, after closing the oldest other
 // document when the strip is full.
 async function bring(kind){
+  // `notebook:<view>` is the notebook's tab with that view showing.
+  const view = kind.startsWith('notebook:') ? kind.slice('notebook:'.length) : '';
   const had = await page.evaluate(k => {
     const t = tabs.find(x => x.kind === k);
     if (t){ focusTab(t.id); return true; }
@@ -172,8 +201,15 @@ async function bring(kind){
       if (old) dropTab(old.id);
     }
     return false;
-  }, kind);
-  if (had) return;
+  }, view ? 'notebook' : kind);
+  if (had){
+    if (view){
+      await page.evaluate(w => getNotebook('alpha').view(w), view);
+      await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+      await sleep(400);                   // the view's own fetch lands
+    }
+    return;
+  }
   // A fresh open settles before it is measured: a proseline sizes itself to
   // its text once the view's data has landed, a beat after the band shows.
   await DRIVERS[kind].open();
@@ -197,7 +233,7 @@ for (const kind of kinds){
      `[${kind}] caps at the document width (got ${m.maxw})`);
   ok(m.bands > 0 && m.lefts.length === 1,
      `[${kind}] every band starts at one x (${m.bands} bands at ${
-       JSON.stringify(m.lefts)})`);
+       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
   ok(m.offskin.length === 0,
      `[${kind}] every control wears the field skin${
        m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
@@ -930,8 +966,8 @@ for (const kind of kinds){
   // The notebook is six views behind one tab, and each has its own layout;
   // the Tests view is the one that scrolled sideways while the Roadmap, the
   // one this check used to look at, did not.
-  const views = kind === 'notebook'
-    ? await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view)) : [''];
+  // (Every view is a kind of its own now, so this loop meets each once.)
+  const views = [''];
   for (const v of views){
     if (v){
       await page.evaluate(w => getNotebook('alpha').view(w), v);

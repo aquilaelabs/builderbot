@@ -2352,6 +2352,15 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A band inside a section's body does not inset again: the body already did.
+   The design language says it of a field inside a field, and it was never
+   applied here because nothing measured a notebook view other than the
+   Roadmap, which has no sections (R70). So Briefing and Git each drew three
+   and four left edges: a list, a footnote, a nested fold and its loading line
+   each adding their own inset to the body's. */
+.nb .sect>.body>.field,.nb .sect>.body>.fnote,.nb .sect>.body>.row,
+.nb .sect>.body .sect>summary,.nb .sect>.body .sect>.body,
+.nb .sect>.body .loading{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
    is one (an action bar, a filter bar, a picker row, an add form), so the
    controls in it stop short together and are not capped a second time
