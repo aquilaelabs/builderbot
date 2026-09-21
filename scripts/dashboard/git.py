@@ -26,6 +26,7 @@ import secrets
 import shutil
 import hashlib
 import subprocess
+import threading
 from pathlib import Path
 
 WORKSPACE = None
@@ -567,9 +568,16 @@ def branches(repo):
             # find out that merging it would move no file. Three dots, so the
             # question is what the branch ADDS since they parted, which does
             # not stop being true the next time main moves.
+            #
+            # A READ, through _git. It went through _run once, and _run
+            # rebuilds the write directory before it starts: this is on the
+            # Git view's poll path, so every poll tore the refs and the merge
+            # state out from under whatever write was in flight (B203).
+            # --quiet answers 0 for no difference, and _git answers None for
+            # anything else, a failure included, which reads as "not the
+            # same" and is the safe way to be wrong.
             if ma:
-                same = _run(repo, "diff", "--quiet", f"{main}...{name}",
-                            index=False)["code"] == 0
+                same = _git(repo, "diff", "--quiet", f"{main}...{name}") is not None
         wt = trees.get(ref, "")
         rows.append({"name": name, "remote": remote, "head": head.strip() == "*",
                      "short": short, "when": int(when or 0), "upstream": up,
@@ -734,6 +742,27 @@ def _run(repo, *args, env=None, timeout=30, index=True):
     objects and writes objects, where handing it the tree's index would let it
     stage things under somebody who is working in that checkout.
     """
+    with _writing(repo):
+        return _run_locked(repo, *args, env=env, timeout=timeout, index=index)
+
+
+# One write at a time per repository. The write directory is ONE directory per
+# tree, emptied and mirrored afresh at the start of every write and carried
+# back at the end, so two writes overlapping is the second deleting the refs
+# the first is standing on. The server answers each request on its own
+# thread, so that takes two people, or one person and a session, and nothing
+# rarer than that.
+_write_locks = {}
+_write_locks_guard = threading.Lock()
+
+
+def _writing(repo):
+    key = str(Path(repo).resolve())
+    with _write_locks_guard:
+        return _write_locks.setdefault(key, threading.RLock())
+
+
+def _run_locked(repo, *args, env=None, timeout=30, index=True):
     own = _own(repo, write=True)
     before, head_before, ups_before = {}, "", {}
     if own:
