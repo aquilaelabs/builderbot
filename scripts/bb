@@ -94,7 +94,7 @@ bb: BuilderBot helper
                          ARGS go to the command, so a suite that takes file
                          names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
-  bb tests lab           the lab suites, against the Gitea of BuilderBot's dev stack (lab profile)
+  bb tests lab           the lab suites, against real services: the dev stack's Gitea, a real node
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
   bb rules               the house rules for this project: the operator's and yours
@@ -2813,10 +2813,31 @@ cmd_tests() {
     # BuilderBot takes the paths every project takes. Reached on the node
     # the stack runs on, which is where a suite runs too.
     if [ "${1:-}" = lab ]; then
-        export BB_LAB_GITEA="${BB_LAB_GITEA:-http://127.0.0.1:3000}"
-        curl -fs "$BB_LAB_GITEA/api/healthz" >/dev/null 2>&1 \
-            || die "no Gitea answers at $BB_LAB_GITEA: bring BuilderBot's dev stack up with COMPOSE_PROFILES=lab in its env file (the Docker tab), or set BB_LAB_GITEA to where one is"
-        echo "lab: $BB_LAB_GITEA"
+        # Each lab suite says what it needs and skips itself in one line
+        # without it (R54 step 4). This used to die unless a Gitea answered,
+        # which meant a suite needing only a node could never run: the tier
+        # was one service wide by accident.
+        local ok_gitea="" ok_ctl=""
+        BB_LAB_GITEA="${BB_LAB_GITEA:-http://127.0.0.1:3000}"
+        if curl -fs "$BB_LAB_GITEA/api/healthz" >/dev/null 2>&1; then
+            export BB_LAB_GITEA; ok_gitea="$BB_LAB_GITEA"
+        else
+            unset BB_LAB_GITEA          # absent, so the forge suites skip
+        fi
+        if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_NODE:-}" ] \
+           && [ -n "${BB_LAB_TOKEN:-}" ]; then
+            export BB_LAB_CONTROLLER BB_LAB_NODE BB_LAB_TOKEN
+            ok_ctl="$BB_LAB_CONTROLLER ($BB_LAB_NODE)"
+        fi
+        echo "lab services: gitea=${ok_gitea:-none} controller=${ok_ctl:-none}"
+        if [ -z "$ok_gitea" ] && [ -z "$ok_ctl" ]; then
+            echo "lab: nothing answers, so every suite will skip and that is not a failure."
+            echo "     A Gitea comes from the dev stack with COMPOSE_PROFILES=lab in its env"
+            echo "     file, brought up from the Docker tab. A node comes from the three"
+            echo "     variables BB_LAB_CONTROLLER, BB_LAB_TOKEN and BB_LAB_NODE, naming one"
+            echo "     you are willing to have a job run on."
+        fi
+
         local tdir; tdir="$(dirname "$(readlink -f "$0")")/dashboard/test"
         local -a labs=()
         local f

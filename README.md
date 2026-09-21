@@ -487,10 +487,16 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    dialog can make the container the only place: a container that is down then
                    refuses rather than falling back to the node. The rebuild dial governs
                    testing too, since a stale container tests stale code
-bb tests lab       the lab suites (test/lab-*.mjs) against a real Gitea: the `gitea` service of
-                   BuilderBot's own dev stack, under its compose file's `lab` profile, brought up
-                   from the Docker tab like any project's stack. Each skips in one line without one,
-                   and nothing records them: a lab run is a proof, not a timing
+bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
+                   Each names what it needs and skips in one line without it, so a missing service
+                   is never a failure, and nothing records them: a lab run is a proof, not a timing.
+                   Two services are known. A Gitea: the `gitea` service of BuilderBot's own dev
+                   stack, under its compose file's `lab` profile, brought up from the Docker tab
+                   like any project's stack (`BB_LAB_GITEA`, the local one by default). A real node,
+                   through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
+                   address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
+                   own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
+                   one you are willing to have that happen to
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
