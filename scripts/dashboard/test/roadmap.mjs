@@ -983,6 +983,45 @@ ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .txt`,
      el => getComputedStyle(el).whiteSpace.startsWith('pre')),
    '...and the panel shows them rather than running the lines together');
+
+// ...and a box open in the list is not taken apart by somebody else's write.
+// The reword box, the drop box, the send note and the + step field are DOM
+// put under a row after the render, so a redraw takes them and every word
+// typed into them. The poll's guard upstream watches for STAGED changes, and
+// typing is not staged until Save, so a session running `bb roadmap add` in
+// the background deleted a half-written rewording under the finger holding
+// it. Bugs has skipped its redraw while a form is open since it was built.
+{
+  await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
+  await page.waitForSelector('.editbox textarea', { timeout: 10000 });
+  await page.fill('.editbox textarea', 'half a thought, still typing');
+  // Somebody else writes the same project, as a session does: another
+  // process entirely, through bb, which is the case the file lock exists for.
+  bbRoadmap('add', 'from somebody else');
+  // The re-read the revisions poll makes, driven rather than waited on: the
+  // poll's own timer is 30s while the page is hidden, which headless is, so
+  // waiting on a clock here would pass whatever the code did. The live
+  // notebook, off the map: getNotebook() MAKES one when the key misses, and a
+  // fresh notebook answers every question with "nothing is open here".
+  const tick = async () => {
+    await page.evaluate(() => getNotebook('alpha').reload());
+    await new Promise(r => setTimeout(r, 300));
+  };
+  await tick(); await tick();
+  ok(await page.$eval('.editbox textarea', t => t.value) === 'half a thought, still typing',
+     'a redraw from elsewhere leaves a half-typed rewording alone, box and words');
+  // And the arrival is not lost: the panel has not recorded the revision it
+  // skipped, so the next poll after the box shuts draws what came in.
+  await page.click('.editbox .stop');
+  await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: 10000 });
+  let landed = false;
+  for (let i = 0; i < 20 && !landed; i++){
+    await tick();
+    landed = await page.evaluate(() => /from somebody else/.test(
+      document.getElementById('roadmapList')?.textContent || ''));
+  }
+  ok(landed, '...and what arrived while it was open is drawn once the box is shut');
+}
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'first, widen it a lot');

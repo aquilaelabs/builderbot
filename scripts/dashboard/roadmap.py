@@ -1082,7 +1082,7 @@ def restore(project, item_id, at=None, by="you", who=""):
     return {"ok": True, "item": row}
 
 
-def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
+def send(project, item_id, step=None, sessions=(), also_told=False, note="", prefix=""):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -1153,7 +1153,13 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
     # that is up is already on them, and a step is just the step. What used to
     # sit here typed /model ahead of it, which stopped working the day claude
     # put a confirmation behind that command: the step went into the dialog.
-    session = claude_session(project)
+    # The CALLER's session, not the project's bare one. Every session a node
+    # starts is named with the account's prefix (bb-tty's sess()), and the
+    # owner's prefix is the empty string, so the bare name is the owner's
+    # conversation and nobody else's. Sent without this, a second person's
+    # step was typed into the owner's window, or refused as "no session is
+    # running here" while their own sat there running (B194).
+    session = prefix + claude_session(project)
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r

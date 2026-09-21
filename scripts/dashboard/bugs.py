@@ -574,7 +574,7 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     return _edit(project, bug_id, change, by, rev)
 
 
-def send(project, bug_id, sessions=(), note=""):
+def send(project, bug_id, sessions=(), note="", prefix=""):
     """Point a running session at one bug, by number rather than by contents.
 
     The message deliberately does NOT carry the report. It says which bug and
@@ -606,7 +606,9 @@ def send(project, bug_id, sessions=(), note=""):
                          "; reopen it first if it needs work again"}
     # No /model or /effort ahead of it: a project's pair are launch flags now,
     # so the session this reaches is already running on them.
-    session = claude_session(project)
+    # The caller's own session, not the project's bare one: see roadmap.send
+    # for why the bare name is the owner's conversation (B194).
+    session = prefix + claude_session(project)
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report: the area, how to "

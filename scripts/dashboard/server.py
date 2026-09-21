@@ -5598,7 +5598,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "send":
             r = roadmap.send(name, req.get("id"), req.get("step"), live,
                           also_told=roadmap.unsaved(name) if req.get("tell") else False,
-                          note=field(req, "note"))
+                          note=field(req, "note"),
+                          prefix=users.tmux_prefix(self._who()))
             if r.get("sent") and req.get("tell"):
                 roadmap.mark_told(name)
         elif act == "edit":
@@ -5662,7 +5663,12 @@ class Handler(BaseHTTPRequestHandler):
     def _roadmap_state(self, name, live):
         """What the panel needs after any change: the list, whether there is
         anywhere to send, and whether a session has been told about it yet."""
-        session = roadmap.claude_session(name)
+        # The session THIS ACCOUNT would be sending into, which is the one the
+        # arrows have to answer for: every session a node starts wears the
+        # account's prefix, and the owner's prefix is empty (B194). Read with
+        # the bare name, a second person's arrows said "no Claude session is
+        # running here" with their own session open in the next tab.
+        session = users.tmux_prefix(self._who()) + roadmap.claude_session(name)
         return {"items": roadmap.items(name),
                 # What the poll compares against, handed back with every read
                 # AND every write, so this panel's own change never reads as
@@ -6427,6 +6433,7 @@ class Handler(BaseHTTPRequestHandler):
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "send":
             r = bugs.send(name, req.get("id"), sessions_anywhere(),
+                          prefix=users.tmux_prefix(self._who()),
                           note=field(req, "note"))
             if r.get("error"):
                 return self._json(r, 400)
