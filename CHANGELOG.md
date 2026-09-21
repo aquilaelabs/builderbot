@@ -9,6 +9,7 @@
 - New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
 - The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
 - A session can ask for a container: bb container ask hands over a compose file and a reason, an administrator reads the file on the bell and allows or denies it, and Allow registers it like New container and starts the build. (9b9032b)
+- A project's Rules list the global rules too, read-only, and a rule that shares a trigger with a global one says so; a session is told the project's rule wins where the two disagree. (ba22503)
 
 ### Changed
 
