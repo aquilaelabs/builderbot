@@ -346,7 +346,20 @@ ok(await page.$eval(`${box} .tstP`, e => e.value)
   // leaves the rev behind, and the next poll redraws the list a second
   // time, in the middle of the ticking below (B79).
   await page.evaluate(() => refresh());
-  await page.waitForSelector(row, { timeout: 10000 });
+  try { await page.waitForSelector(row, { timeout: 10000 }); }
+  catch (e) {
+    // B201: what the page held when the row did not show. Whether it is in
+    // the DOM and not visible, or not there at all, is the one fact that
+    // separates every theory tried so far, and nothing recorded it.
+    console.log('B201 probe: ' + JSON.stringify(await page.evaluate(sel => ({
+      hidden: document.hidden, inDom: !!document.querySelector(sel),
+      token: revs['tests:alpha'], alphaKeys: Object.keys(revs).filter(k => /alpha/.test(k)),
+      view: document.querySelector('.pane .nb .nbview:not([hidden])')?.dataset.view || null,
+      nbInPane: !!document.querySelector('.pane .nb'), nbAnywhere: document.querySelectorAll('.nb').length,
+      rows: document.querySelectorAll('#tstList .tst').length,
+      keys: [...document.querySelectorAll('#tstList .tst')].slice(0, 4).map(x => x.dataset.key) }), row)));
+    throw e;
+  }
   ok(await page.$eval(row, e => /wait\?/.test(e.querySelector('.pill.warn')?.textContent || '')),
      'a flagged row wears the warning pill');
   await page.click(`${row} > summary`);
