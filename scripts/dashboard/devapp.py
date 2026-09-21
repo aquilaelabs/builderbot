@@ -1302,6 +1302,19 @@ _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 # and a label is how this container tells a VM the provisioner made from any
 # other machine that happens to answer Docker. Also a read.
 _BARE_OK = {"version", "ps", "info"}
+# Acting on a container by name: the three verbs a person reaches for on a
+# list, and the log they open it to read (R68 steps 1 and 2). Held apart from
+# compose because these address a CONTAINER rather than a project, which is
+# the whole point: a container this dashboard did not create has no compose
+# project here to name.
+_CTL_OK = {"start", "stop", "restart"}
+# What docker itself accepts as a name, and an id. The shape is the guard's
+# half; the caller's half is that the name came out of the daemon's own
+# listing a moment ago.
+_CTR_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+# How much of a log is worth carrying: enough to see what a container said on
+# its way down, not so much that a page is a download.
+LOG_LINES = 400
 
 
 def _guard(argv):
@@ -1342,9 +1355,24 @@ def _guard(argv):
                 for op in _DEVDATA_OPS):
             return ""
         return "a `docker run` this module did not build"
+    # Start, stop, restart and the log, each by SHAPE and one container at a
+    # time: the verb, its flags rebuilt here, and a name that looks like a
+    # name. Nothing else can ride along, because the argv is compared against
+    # what this module would have produced rather than scanned for something
+    # bad.
+    if verb in _CTL_OK:
+        if len(argv) == 3 and _CTR_NAME.match(argv[2]):
+            return ""
+        return f"a `docker {verb}` this module did not build"
+    if verb == "logs":
+        if (len(argv) == 6 and argv[2] == "--tail" and argv[3].isdigit()
+                and argv[4] == "--timestamps" and _CTR_NAME.match(argv[5])):
+            return ""
+        return "a `docker logs` this module did not build"
     if verb != "compose":
-        return (f"`docker {verb}` is not reachable here: only compose, and "
-                f"the reads in {'/'.join(sorted(_BARE_OK))}, are")
+        return (f"`docker {verb}` is not reachable here: only compose, the "
+                f"reads in {'/'.join(sorted(_BARE_OK))}, and "
+                f"{'/'.join(sorted(_CTL_OK))} or logs on one container, are")
     # Every compose call names its project explicitly, so none of them can
     # fall back to compose's default, the directory it happens to be run
     # from. The VALUE is checked, not just the flag: _slug() returns "" for a
@@ -1517,6 +1545,65 @@ def _kill_group(p):
 # anything, so a container's name need not resemble its project's.
 COMPOSE_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
+
+
+def _known_container(name):
+    """The container the daemon just reported under this name, or None.
+
+    The rule every executing surface here follows: what reaches a command
+    line is a string this server handed out. A name typed by somebody, or
+    remembered by a page from a listing five minutes old, is not that, so it
+    is looked up again before it is used (R68 step 1).
+    """
+    for c in (containers().get("containers") or []):
+        if name and (c.get("name") == name or c.get("id") == name):
+            return c
+    return None
+
+
+def container_ctl(name, what):
+    """Start, stop or restart one container on the picked node.
+
+    Any container, not only ours. The operator asked for a manager rather
+    than a list of what BuilderBot happens to have made, and a machine whose
+    only job is running containers is the place that is safe: the daemon is
+    the sandbox VM's, and the guard above is why the reach is one verb and
+    one name rather than the docker CLI.
+    """
+    if what not in _CTL_OK:
+        return {"error": f"a container is started, stopped or restarted, not {what!r}"}
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now: the list is "
+                         "read again before anything is acted on, and it has moved"}
+    r = _run([DOCKER, what, c.get("name") or c.get("id")], timeout=60)
+    if r["code"] != 0:
+        return {"error": _why_not(r["out"]) or f"{what} failed"}
+    return {"ok": True, "out": f"{what}ped {c.get('name')}" if what == "stop"
+                               else f"{what}ed {c.get('name')}"}
+
+
+def container_logs(name, lines=None):
+    """The tail of one container's log, timestamped.
+
+    What a person opens a docker list to read. Timestamps because the
+    question is almost always "when did it do that", and a tail because a
+    page is not a download: LOG_LINES is what a restart loop needs to be
+    legible.
+    """
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now"}
+    n = str(int(lines or LOG_LINES))
+    r = _run([DOCKER, "logs", "--tail", n, "--timestamps",
+              c.get("name") or c.get("id")], timeout=30)
+    # A container that has said nothing is not an error, and neither is one
+    # whose log the daemon answered on stderr: docker writes a container's
+    # own stderr there, which for most images is most of the log.
+    if r["code"] != 0 and not (r["out"] or "").strip():
+        return {"error": _why_not(r["out"]) or "could not read the log"}
+    return {"ok": True, "name": c.get("name") or c.get("id"),
+            "text": (r["out"] or "")[-60000:]}
 
 
 def containers():

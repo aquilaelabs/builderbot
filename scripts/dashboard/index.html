@@ -2012,6 +2012,9 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The small text areas in the container form: a few lines each, not the
    full-height editor the compose file gets. */
 #cmodal textarea.csmall{min-height:64px}
+/* A container's log: monospace, its own scroller, and tall enough to be
+   worth opening. The dialog's box is the one that scrolls nothing. */
+.dllog{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything
@@ -3724,6 +3727,15 @@ body.booting .pane>.loading{margin:auto}
      are one idea in two places: the fold answered differently for no reason
      anybody chose, and its fields shared the group's Apply, so ticking one
      saved the group. -->
+<!-- One container's log, read on demand: the thing a person opens a docker
+     list to do (R68 step 2). A dialog because it is a detour you read and
+     dismiss, and because a tail belongs nowhere near a row that repaints. -->
+<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+  <div class="box wide">
+    <h3 id="dlTitle">Log</h3>
+    <div id="dlBody"></div>
+  </div>
+</div>
 <div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
   <div class="box">
     <h3 id="setdbgTitle">Debug settings</h3>

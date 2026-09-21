@@ -2997,6 +2997,7 @@ POST_ROUTES = (
     ("prefix", "/api/project-pin", "_project_pin"),
     ("prefix", "/api/project-auth", "_project_auth"),
     ("prefix", "/api/container", "_container"),
+    ("prefix", "/api/dockerctl", "_docker_ctl"),
     ("prefix", "/api/rename", "_rename"),
     # These two before the bare prefix, or startswith swallows them.
     ("prefix", "/api/trash-restore", "_trash_restore"),
@@ -5677,6 +5678,32 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 pass
         return out
+
+    def _docker_ctl(self, req):
+        """Start, stop, restart or read the log of ONE container on a node.
+
+        Any container on that daemon, which is the point: the operator asked
+        for a manager rather than a list of what BuilderBot made, and what
+        makes that acceptable is the same thing that makes the rest of this
+        acceptable, namely that the daemon belongs to a machine whose only job
+        is running containers (R68 steps 1 and 2).
+
+        An administrator's, like every other docker write here, and the log
+        with them: a container's log is whatever it decided to print, which
+        on somebody else's container is not a thing to hand out by role.
+        """
+        if self._refused("docker-write"):
+            return
+        nid, why = self._node_asked(field(req, "node"))
+        if why:
+            return self._json({"error": why}, 400)
+        act, name = field(req, "action"), field(req, "container")
+        # Every docker call in the block is addressed at that node's daemon,
+        # the way the manager's own listing is.
+        with devapp.on_node(nid or None):
+            if act == "logs":
+                return self._json(devapp.container_logs(name))
+            return self._result(devapp.container_ctl(name, act))
 
     def _container(self, req):
         """A container from a compose file written here, with no project.

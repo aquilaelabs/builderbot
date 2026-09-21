@@ -1033,6 +1033,10 @@ const DIALOGS = {
   // from what is on screen, so it opens whether or not the Settings tab is
   // the one showing, and debug mode decides the BUTTON rather than this.
   setdebug: () => openDebugSettings(),
+  // One container's log. The stub daemon answers, so the dialog draws its
+  // real shape rather than an error band.
+  dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
+                           dmLogs('someone-elses'); },
   enroll: async () => { openNodesTab();
     for (let i = 0; i < 40 && !document.querySelector('.nodestab button'); i++) await new Promise(r => setTimeout(r, 250));
     [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },

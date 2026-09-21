@@ -133,7 +133,11 @@ for (const who of CAST) {
                                 // buttons and the endpoint let anybody through.
                                 ['/api/container', { action: 'create', name: 'x.nope',
                                                      compose: 'services:\n  a:\n    image: alpine\n' }],
-                                ['/api/container', { action: 'save', name: 'x.nope', compose: '', env: '' }]]) {
+                                ['/api/container', { action: 'save', name: 'x.nope', compose: '', env: '' }],
+                                // Starting somebody else's container, and reading
+                                // what it printed, are both an administrator's.
+                                ['/api/dockerctl', { action: 'stop', container: 'someone-elses' }],
+                                ['/api/dockerctl', { action: 'logs', container: 'someone-elses' }]]) {
       const r = await api(page, path, body);
       ok(r.status === 403 || r.status === 400, `${tag} is refused ${path} (${r.status}: ${(r.error || '').slice(0, 50)})`);
     }

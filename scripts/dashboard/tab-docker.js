@@ -808,6 +808,36 @@ function dmState(d, job, mine, busy, blind){
 // One instance row: the same markup wherever the row is drawn, the Docker
 // tab and a project's notebook (its Docker view). `job` is the compose job
 // the answer carried and `blind` whether the daemon answered at all.
+async function dmLogs(name){
+  const modal = $("dlmodal"), body = $("dlBody");
+  if (!modal || !body) return;
+  $("dlTitle").textContent = `Log: ${name}`;
+  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>`;
+  modal.hidden = false;
+  try{
+    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node: dockerNode});
+    const j = await r.json();
+    body.innerHTML = `<div class="field">${j.error
+      ? `<div class="hint bad">${esc(j.error)}</div>`
+      : j.text && j.text.trim()
+        ? `<pre class="dmlog dllog">${esc(j.text)}</pre>`
+        : `<div class="hint">It has printed nothing.</div>`}</div>
+      <div class="foot"><span class="sp"></span>
+        <button type="button" id="dlAgain">Read again</button>
+        <button type="button" id="dlClose">Close</button></div>`;
+    // At the end, which is where a log's reason is: the top of a tail is the
+    // middle of whatever happened before it.
+    const pre = body.querySelector("pre");
+    if (pre) pre.scrollTop = pre.scrollHeight;
+    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
+    body.querySelector("#dlAgain").onclick = () => dmLogs(name);
+  }catch(e){
+    body.innerHTML = `<div class="field"><div class="hint bad">${esc(String(e))}</div></div>
+      <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
+    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
+  }
+}
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -965,6 +995,23 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify("the branch: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
+  // Start, stop, restart and the log, on any container the daemon reported,
+  // including the ones BuilderBot did not create (R68 steps 1 and 2). The
+  // name goes back to the server, which looks it up in a fresh listing
+  // before it acts: the rule every executing surface here follows.
+  el.querySelectorAll("[data-ctl]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.ctl, ctr = b.dataset.ctr;
+    if (what === "stop" && !confirm(`Stop ${ctr}?`)) return;
+    busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting"}[what]);
+    try{
+      const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node: dockerNode});
+      const j = await r.json();
+      if (j.error) notify(j.error, true); else notify(j.out || `${what} sent`);
+    }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
+    dockerList = null; loadDocker();
+  });
+  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs));
+
   // The words on the row are a way in to where the setting lives now.
   el.querySelectorAll("[data-dmtestgo]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -1087,6 +1134,17 @@ function renderDockerInto(i){
         <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
         ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+      </div>
+      <div class="actbar dmacts">
+        ${!mayDocker() ? "" : `<button type="button" data-ctl="${
+          c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
+          title="docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
+          c.state === "running" ? "Stop" : "Start"}</button>
+        <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
+          c.state === "running" ? "" : " disabled"}
+          title="docker restart ${esc(c.name || c.id)}">Restart</button>`}
+        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
+          title="the last ${esc(String(400))} lines it printed">Log</button>`}
       </div>
     </div>`).join("");
   // Its own class rather than the projects tab's: the two look alike and a

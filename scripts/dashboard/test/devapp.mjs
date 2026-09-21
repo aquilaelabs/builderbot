@@ -2149,6 +2149,35 @@ await page.click('#cGo');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
+// ---- a manager, not a list (R68 steps 1 and 2) ---------------------------
+// Start, stop, restart and the log work on ANY container the daemon
+// reported, including the ones BuilderBot did not create. What makes that
+// acceptable is the machine: the daemon belongs to a VM whose only job is
+// running containers. What keeps it honest is the guard, which lets through
+// one verb and one name rebuilt here, and the lookup, which asks the daemon
+// again before acting on a name a page remembered.
+{
+  const ctl = (body) => page.evaluate(async b => {
+    const r = await fetch('/api/dockerctl', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    return { status: r.status, ...(await r.json()) };
+  }, body);
+  const started = await ctl({ action: 'start', container: 'someone-elses' });
+  ok(started.ok && /someone-elses/.test(started.out || ''),
+     `a container this dashboard did not create can be started (${JSON.stringify(started).slice(0, 90)})`);
+  ok(readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').includes('someone-elses'),
+     '...and the verb reached the daemon with that name');
+  const bad = await ctl({ action: 'start', container: 'no-such-container' });
+  ok(/no container called/.test(bad.error || ''),
+     `a name the daemon does not report is refused, not passed to docker (${bad.error})`);
+  const nonsense = await ctl({ action: 'destroy', container: 'someone-elses' });
+  ok(/started, stopped or restarted/.test(nonsense.error || ''),
+     `and a verb that is not one of the three is refused (${nonsense.error})`);
+  const log = await ctl({ action: 'logs', container: 'someone-elses' });
+  ok(log.ok && /hello from someone-elses/.test(log.text || ''),
+     `its log comes back, timestamped (${(log.text || '').slice(0, 50).replace(/\n/g, ' / ')})`);
+}
+
 // The form that writes the compose file for you (R68 step 3): an image, its
 // ports and volumes, and what it produces is the Compose tab beside it, so
 // nothing about the container is hidden from the person making it.
