@@ -888,6 +888,19 @@ out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': [
 # resolves /workspace on the host, where Unraid does not have one.
 sethost('tcp://proxy:2375')
 out['falseparity'] = m.host_map()
+# ...and the same pair against an agent node that really does have the path,
+# which is every node the storage plane mounts the share on (B193). Its own
+# census is the evidence: a warning on every start, on a mapping that is
+# correct by construction, is how starts stop being read.
+class _Q:
+    def __init__(self, mounts): self.mounts = mounts
+    def node(self, nid): return {'reported': {'mounts': self.mounts}}
+m._default_node = lambda: 'n1'
+m.queue = _Q([{'path': '/workspace', 'mounted': True}])
+out['agentparity'] = m.host_map()
+m.queue = _Q([{'path': '/somewhere-else', 'mounted': True}])
+out['nomount'] = m.host_map()
+m.queue = None
 sethost('ssh://bb@vm')
 # A bind under a path this container has that the mapping is silent about:
 # here the projects share itself, with nothing declared at all. The complaint
@@ -932,8 +945,12 @@ ok(hp.unmapped.length === 1 && !/does not have it/.test(hp.unmapped[0])
    'an unmapped path says the mapping is silent, not that the daemon lacks it, '
    + 'and names the pair to add');
 ok(hp.falseparity[0]['/workspace'] === '/workspace'
-   && /sandbox-VM mapping/.test(hp.falseparity[1][0] || ''),
+   && /census reports no mount/.test(hp.falseparity[1][0] || ''),
    '...but says so when that mapping is pointed at a daemon on this box');
+ok(!hp.agentparity[1].length && hp.agentparity[0]['/workspace'] === '/workspace'
+   && /census reports no mount/.test(hp.nomount[1][0] || ''),
+   `...and takes the identity from the node's own census rather than from its address, so a node that mounts the share at that path is not warned about and one that does not still is (${
+     JSON.stringify(hp.agentparity[1])} / ${(hp.nomount[1][0] || '').slice(0, 40)})`);
 
 // Who makes the dev-data directory. It has to exist before a bind can use it,
 // docker's own attempt fails on a root-squashing share (it makes it, fails the

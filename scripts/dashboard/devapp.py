@@ -1965,14 +1965,22 @@ def host_map():
             # the scheme left off as with it, and reading it directly reported
             # the shipped default as misconfigured.
             #
+            # An agent node is the other machine that really does have this
+            # path: the storage plane mounts the projects share at /workspace
+            # on every node it manages, so the identity is correct there for
+            # the same reason it is correct on the sandbox VM, and saying
+            # otherwise put a warning on every start once a second node was
+            # enrolled (B193). Its own census is the evidence, rather than the
+            # address or an assumption about what a node must look like: it
+            # lists what is mounted where on that machine.
+            #
             # Left in place while the daemon is not the sandbox, the pair
             # claims that machine calls this path what we call it, and a
             # compose that believes it comes up on an empty directory.
-            if not sandbox_daemon():
-                bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
-                           f"this node's daemon is not a sandbox VM. Unless "
-                           f"that daemon really has {here}, name its path "
-                           f"instead")
+            if not (sandbox_daemon() or _daemon_mounts(here)):
+                bad.append(f"{here}:{there} says that machine calls this path "
+                           f"what we call it, and its census reports no mount "
+                           f"at {here}. Name the path its daemon really has")
         elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
         elif root != "/" and not there.endswith(root):
@@ -2156,6 +2164,24 @@ def appdata_root(node_id=None):
     rec = st.get("appdata") if isinstance(st, dict) else None
     path = str((rec or {}).get("path") or "") if isinstance(rec, dict) else ""
     return path or DEVDATA
+
+
+def _daemon_mounts(path):
+    """Does the node being addressed report a mount at this path?
+
+    The census lists what is mounted where on that machine, so this is the
+    one question in here that is answered with evidence from the other end
+    rather than inferred from an address (B193). False for a node that has
+    not reported, which fails the way the check always did: it says so.
+    """
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    ms = ((n or {}).get("reported") or {}).get("mounts")
+    if not isinstance(ms, list):
+        return False
+    want = path.rstrip("/") or "/"
+    return any(isinstance(m, dict) and m.get("mounted")
+               and str(m.get("path") or "").rstrip("/") == want for m in ms)
 
 
 def _agent_docker():
