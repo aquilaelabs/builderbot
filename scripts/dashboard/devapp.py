@@ -1304,6 +1304,39 @@ _CTR_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 LOG_LINES = 400
 
 
+def _mount_ok(root):
+    """Whether a devdata `docker run` may bind this path as /d.
+
+    Two shapes, and the second is why this is a function (B192). A SHARE ROOT
+    (/auxiliary for /auxiliary/plex-library), which is what a compose naming a
+    path on the VM needs: the mount is the share and the names under it are
+    made by the run. And THIS NODE'S APPDATA STORE, whatever depth the node
+    reports it at, which is where a dev instance's own data goes.
+
+    The second used to be covered by the first by accident, because the store
+    was /devdata and a one-component path is a share root. A node that reports
+    /var/lib/builderbot/appdata got its own module refused by its own guard,
+    on every poll, and the refusal said so: BuilderBot asking BuilderBot for
+    something and being told no is a bug in it, which is how this was found.
+
+    Worth saying plainly, because the fix looks like a loosening and is not:
+    the share-root rule ALREADY allows mounting /var to make a directory three
+    levels under it, so naming the deep path instead is the narrower of the
+    two, not the wider. What the rule is really for is stopping a mount of /
+    or of a path with `..` in it, and both stay refused.
+
+    The appdata root is read from this controller's own record of the node,
+    never from the argv, so there is nothing here an argv can talk into
+    matching that it could not already reach through the share root above.
+    """
+    root = (root or "").rstrip("/")
+    if not root.startswith("/") or not _DEV_NAME.match(root[1:]):
+        return False                              # "/", "", or a name with .. in it
+    if "/" not in root[1:]:
+        return True                               # a share root
+    return root == appdata_root().rstrip("/")
+
+
 def _guard(argv):
     """The reason to refuse this argv, or "" to let it run."""
     if not argv or argv[0] != DOCKER:
@@ -1334,9 +1367,9 @@ def _guard(argv):
         # daemon, which is the sandbox premise doing its job.
         mount = next((a for a in argv if a.endswith(":/d")), "")
         root = mount[:-3]
-        if not (root.startswith("/") and _DEV_NAME.match(root[1:])
-                and "/" not in root[1:]):
-            return f"a `docker run` mounting {root or '?'}, which is not a share root"
+        if not _mount_ok(root):
+            return (f"a `docker run` mounting {root or '?'}, which is neither a share "
+                    "root nor this node's appdata store")
         if names and all(_DEV_NAME.match(n) for n in names) and any(
                 argv == _devdata_argv(op, *names, root=root)
                 for op in _DEVDATA_OPS):

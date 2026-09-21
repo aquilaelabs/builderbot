@@ -791,6 +791,12 @@ spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.DOCKER = 'docker'
+# The two things a devdata run depends on, answered here rather than by a
+# daemon: this node reports its appdata store three components deep, which is
+# what B192 was about, and the guard's first question about a run is whether
+# the daemon is a sandbox VM, which has no meaning in a test.
+m.appdata_root = lambda *a, **k: '/var/lib/builderbot/appdata'
+m.verified_sandbox = lambda: True
 print(json.dumps({
   'git': m._guard(['git', '-C', '/x', 'status']),
   'version': m._guard(['docker', 'version']),
@@ -798,6 +804,13 @@ print(json.dumps({
   'unnamed': m._guard(['docker', 'compose', '-f', 'x', 'down']),
   'trailing': m._guard(['docker', 'compose', 'down', '--project-name']),
   'bare': m._guard(['docker', 'rm', '-f', 'someone-elses-container']),
+  'own': m._guard(m._devdata_argv('mkdir', 'builderbot-dev')),
+  'share': m._guard(m._devdata_argv('mkdir', 'thing', root='/auxiliary')),
+  'elsewhere': m._guard(m._devdata_argv('mkdir', 'x', root='/var/lib/somewhere-else')),
+  'slash': m._guard(m._devdata_argv('mkdir', 'x', root='/')),
+  'climb': m._guard(m._devdata_argv('mkdir', 'x', root='/var/lib/../etc')),
+  'invented': m._guard([m.DOCKER, 'run', '--rm', '-v', '/var/lib/builderbot/appdata:/d',
+                        'alpine', 'sh', '-c', 'whoami']),
 }))
 `], { encoding: 'utf8' });
 const g = JSON.parse(guard.trim().split('\n').pop());
@@ -806,6 +819,16 @@ ok(!g.git && !g.version && !g.ours,
 ok(g.unnamed && g.trailing && g.bare,
    '...and a compose call naming no project, or naming it nowhere, or any other '
    + 'docker verb, are not');
+// B192: the module built a run its own guard refused, on every poll, because
+// the mount rule wanted one component and this node reports its appdata store
+// three deep. A guard that refuses its own module is a bug in the module,
+// which is what the log said, so the invariant is asserted as itself.
+ok(!g.own && !g.share,
+   `what this module itself builds passes its own guard, at the node's appdata store and at a share root (${
+     g.own || 'ok'} / ${g.share || 'ok'})`);
+ok(g.elsewhere && g.slash && g.climb && g.invented,
+   '...while another deep path, the root of the filesystem, one climbing out with .. '
+   + 'and a run this module did not build are all still refused');
 await dmClick('down');
 await pillIs('down');
 rmSync(stubCfg, { force: true });
@@ -1115,10 +1138,11 @@ ok(DDD.made[0].length === 3 && !DDD.made[1].length
         ['/bbfix-aux:/d', '/d/plex-library'],
         ['/bbfix-devdata:/d', '/d/sonarr/config', '/d/sonarr/data']]),
    '...made by one container per share rather than one per directory');
-ok(/not a share root/.test(DDD.slash) && /not a share root/.test(DDD.nested)
+ok(/appdata store/.test(DDD.slash) && /appdata store/.test(DDD.nested)
    && !DDD.anyshare && DDD.climb && !DDD.deep,
-   'the guard takes the mount out of the argv and checks its shape: / and a '
-   + 'nested path are refused, any single share is not, a climbing name still is');
+   'the guard takes the mount out of the argv and checks its shape: / is refused, '
+   + 'so is a nested path that is not this node\'s appdata store (B192), any single '
+   + 'share is not, a climbing name still is');
 
 // One thing at a time on an instance, and it covers every verb that runs a
 // compose call. A compose action is a job on the queue now (phase 4): `up`,
