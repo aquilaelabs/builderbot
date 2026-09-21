@@ -3088,7 +3088,7 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="hint" id="roadmapHint"></span>
+    <div class="field nbhead vbar"><span class="hint" id="roadmapHint">loading…</span>
       <span class="sp"></span>
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
@@ -3266,7 +3266,7 @@ body.booting .pane>.loading{margin:auto}
          so nobody has to find them among every project's on the Docker
          tab. Read from the project's node, which is where its work runs. -->
     <div class="nbview" data-view="docker" hidden>
-      <div class="field nbhead vbar"><span id="dkHint">reading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="dkHint">loading…</span><span class="sp"></span>
         <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
       <div class="dkrows" id="dkList"></div>
     </div>
@@ -11547,7 +11547,10 @@ function docSection(kind, id, title, status, body, {cls = "", open} = {}){
 }
 function wireSections(root){
   root.querySelectorAll("details.sect").forEach(d => {
-    d.ontoggle = () => { sectOpen[d.dataset.sect] = d.open; };
+    // Only a fold that HAS a key: one without keeps its own state (the Git
+    // view's file and branch folds do, by path and by name), and recording
+    // it here wrote every one of them into a single bucket called undefined.
+    d.ontoggle = () => { if (d.dataset.sect) sectOpen[d.dataset.sect] = d.open; };
     // Driven, not the browser's instant snap: the same helper the memories,
     // the bug reports, the version tab's fold and the Docker manager's wiring
     // fold already use. A <details> opens at full height by construction, so

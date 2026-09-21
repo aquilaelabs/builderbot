@@ -58,7 +58,8 @@ function nbMemoryView({$, nb}){
     wireSections($("memDrift"));
     // The note is offered only when there is a session to put it in, and says
     // what it will do: the text is typed, not sent. See memory.py's notify().
-    $("memCount").textContent = n ? "Memories: newest first" : "Memories";
+    $("memCount").textContent = n ? "Memories: newest first"
+      : "Memories: none yet. A session writes them as it learns the project, and Add writes one by hand.";
     $("memListField").hidden = !n;
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
@@ -94,7 +95,7 @@ function nbMemoryView({$, nb}){
           ${m.big ? "" : `<button type="button" class="mEdit">Edit</button>`}
           <button type="button" class="danger" data-del="${esc(m.file)}"
             title="delete this memory and take its line out of the index"
-            >Forget this</button>
+            >Remove</button>
         </div>` : `
         <div class="ix" data-file="${esc(m.file)}">
           ${lbl("", "Title")}
@@ -123,7 +124,7 @@ function nbMemoryView({$, nb}){
                  title="put the fields away: what was typed here is dropped">Cancel</button>
                <button type="button" class="danger" data-del="${esc(m.file)}"
                  title="delete this memory and take its line out of the index"
-                 >Forget this</button>
+                 >Remove</button>
              </div>`}`}
       </div>
     </details>`).join("");
@@ -197,8 +198,8 @@ function nbMemoryView({$, nb}){
     <div class="clashwho">What is on disk now</div>
     <div class="clashtext big">${esc(c.current) || "<em>empty</em>"}</div>
     <div class="actbar">
-      <button type="button" id="memClashDrop">Reload, losing your edits</button>
-      <button type="button" id="memClashMine" class="primary">Write mine over it</button>
+      <button type="button" id="memClashDrop" title="reload what is on disk now; what you typed here is dropped">Keep theirs</button>
+      <button type="button" id="memClashMine" class="primary" title="write your version over what is on disk now">Use mine</button>
     </div>`;
     $("memClashDrop").onclick = () => { nb.memClash = null; drawMemClash();
                                         nb.memEditing.clear(); loadMemory(nb.memGen); };
@@ -362,12 +363,12 @@ function nbMemoryView({$, nb}){
       $("naHook").focus();
       return;
     }
-    b.disabled = true; b.textContent = "Writing…";
+    busy(b, "Writing");
     const j = await postMemory({action: "create",
       name: $("naName").value.trim(), title: $("naTitle").value.trim(),
       hook: $("naHook").value.trim(), type: $("naType").value,
       body: $("naBody").value});
-    b.disabled = false; b.textContent = was;
+    unbusy(b, was);
     // Left as it was typed on a refusal: postMemory has already said why, and
     // the fix is a word in one of these fields, not typing all five again.
     if (!j) return;

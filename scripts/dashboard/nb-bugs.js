@@ -232,7 +232,7 @@ function nbBugsView({$, nb, project}){
             <button type="button" class="danger bRm"
               title="for a report that should not exist: mis-filed, a duplicate,
                      the wrong project. A real one that is dealt with gets
-                     closed instead.">Delete</button>
+                     closed instead.">Remove</button>
           </div>
         </div>
       </details>`).join("");
@@ -315,7 +315,7 @@ function nbBugsView({$, nb, project}){
             placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
           <div class="actbar">
             <button type="button" class="stop">Cancel</button>
-            <button type="button" class="danger">Delete it</button></div>`;
+            <button type="button" class="danger">Remove it</button></div>`;
         body.appendChild(box);
         arriveBox(box);
         // Removed first, then redrawn: the box is what defers the redraw,

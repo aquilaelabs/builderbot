@@ -248,13 +248,13 @@ project can have several"
                      : (da.why || "docker is not reachable"));
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
-      b.disabled = true;
+      busy(b, "Pushing");
       await postArtifacts({action: "push", path: a.path,
                            apk: (art.apks || [])[0] || ""});
     });
     list.querySelectorAll("[data-artinstall]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artinstall)];
-      b.disabled = true;
+      busy(b, "Installing");
       await postArtifacts({action: "install", path: a.path});
     });
     // A shipped script is a thing people read before they run it, and on a
@@ -630,7 +630,7 @@ project can have several"
     box.querySelectorAll("[data-verinit]").forEach(b => b.onclick = async () => {
       const val = start(b);
       if (val === null) return;
-      b.disabled = true;
+      busy(b, "Setting");
       await postVersion({action: "init", value: val,
                          component: b.dataset.verinit || ""});
     });
@@ -639,7 +639,7 @@ project can have several"
       const val = start(add);
       if (val === null) return;
       const dir = add.closest(".verinit").querySelector(".vdir").value;
-      add.disabled = true;
+      busy(add, "Adding");
       await postVersion({action: "init", value: val, component: dir});
     };
     // Asked of the session rather than answered here, and then the tab gets
@@ -658,7 +658,7 @@ project can have several"
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
         : (b.dataset.verask || "");
-      b.disabled = true;
+      busy(b, "Sending");
       try{
         const r = await postJSON("/api/version", {project, action: "ask", component: comp});
         const j = await r.json();
@@ -706,7 +706,7 @@ project can have several"
           <button type="button" data-veradd>Give it its own version</button>
           <button type="button" data-verask="@fold"
             title="put the question to this project's Claude session, for
-this directory">Ask Claude</button>
+this directory">Send to Claude</button>
         </div>
       </details>`;
   }
@@ -796,7 +796,7 @@ this directory">Ask Claude</button>
           <button type="button" data-verask="${esc(v.component || "")}"
             title="ask this project's Claude session whether ${esc(v.target)} is
 still where this should be; it reads the code, the changelog and the roadmap,
-proposes, and asks before touching anything">Ask Claude</button>
+proposes, and asks before touching anything">Send to Claude</button>
           ${v.prev && !v.sealed ? `
           <button type="button" data-verunbump="${esc(v.component || "")}"
             title="the code stays: the number returns to ${esc(v.prev)} and this
@@ -820,15 +820,11 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
         <p class="verwhy">${v.released
           ? `Released: <code>${esc(v.tag)}</code> is on this commit, so a build of it
              is <code>${esc(v.target)}</code> exactly. Bump to start the next one.`
-          : `Two steps, and this is the first: <b>bump</b> decides the number and closes
-             the changelog under it, in one commit. <b>Release</b> says it happened:
-             an annotated tag on the commit, pushed, and only then does a build read
-             <code>${esc(v.target)}</code> instead of <code>${esc(v.target)}-dev.${
-             v.ordinal ?? "n"}</code>.`}</p>
-        ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
-          which writes VERSION and commits that one path; it is never pushed. The policy stops
-          <code>bb version bump</code> and a session's file tools; it does not
-          stop Bash. It covers this project and its components alike.</p>
+          : `<b>Bump</b> decides the number and closes the changelog under it;
+             <b>Release</b> tags and pushes it. ${helpIcon(`Two steps. Until the release, a build reads ${
+               v.target}-dev.${v.ordinal ?? "n"} rather than ${v.target}: the tag on the commit, pushed, is what says it happened.`)}`}</p>
+        ${v.component ? "" : `<p class="verwhy">A bump is staged until Save, and is never pushed. ${
+          helpIcon("Save writes VERSION and commits that one path. The policy stops bb version bump and a session's file tools; it does not stop Bash. It covers this project and its components alike.")}</p>
         ${verAddFold(v)}`}` : `
         ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
@@ -843,7 +839,7 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           <button type="button" data-verask="${esc(v.component || "")}"
             title="put the question to this project's Claude session; it can read
 the code, the roadmap and the changelog, and you can argue with the answer.
-It proposes and asks before doing anything.">Ask Claude</button>
+It proposes and asks before doing anything.">Send to Claude</button>
           <button type="button" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here, and
 become that version's section when it is created">Changelog${
