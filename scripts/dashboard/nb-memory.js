@@ -58,9 +58,7 @@ function nbMemoryView({$, nb}){
     wireSections($("memDrift"));
     // The note is offered only when there is a session to put it in, and says
     // what it will do: the text is typed, not sent. See memory.py's notify().
-    $("memCount").textContent = n ? "Memories: newest first"
-      : "Memories: none yet. A session writes them as it learns the project, and Add writes one by hand.";
-    $("memListField").hidden = !n;
+    $("memCount").textContent = n ? "Memories: newest first" : "Memories";
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
     // work?": the whole point is to look at it again.
@@ -127,7 +125,10 @@ function nbMemoryView({$, nb}){
                  >Remove</button>
              </div>`}`}
       </div>
-    </details>`).join("");
+    </details>`).join("")
+      // Said in the list, where every other view says it, rather than by
+      // hiding the list and leaving a heading over nothing.
+      || `<div class="empty">none yet: a session writes them as it learns the project, and Add writes one by hand</div>`;
     paginate($("memList"), ":scope > .mem", {noun: "memories"});
     // The fold, driven rather than left to the browser's instant one: the same
     // height tween the sidebar cards use, so a memory opens the way a card does.

@@ -145,7 +145,7 @@ function nbGitView({$, nb, project}){
           <span class="gsub">${c.refs.map(r => `<span class="pill${r.startsWith("HEAD") ? " ok" : ""}">${esc(r.replace(/^HEAD -> /, ""))}</span>`).join("")} ${esc(c.subject)}</span>
           <span class="gmeta">${esc(c.author)} · ${esc(ago_(c.when))} · <code>${esc(c.short)}</code></span>
         </div>`).join("")}</div>
-    </div>` : `<div class="sub dim">no commits yet</div>`;
+    </div>` : `<div class="empty">no commits yet</div>`;
     // Branches by what there is to do with them, not by date: the one the
     // tree is on; main; work not yet in main, which is what Merge into main
     // is for; branches already in main, which are only there to delete; and,
@@ -235,10 +235,10 @@ function nbGitView({$, nb, project}){
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
-        conflictBar + commitBar + (files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`))
+        conflictBar + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="sub dim">no branches</div>`))
+      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
       + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
     wireSections(body);
     body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {

@@ -1360,7 +1360,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .clog .clmeta .sp{flex:1 1 auto}
 .clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
-.clog .none{color:var(--dim);font:var(--f-note)}
 @media(max-width:900px){
   .clog .clrow textarea.cltext{font-size:16px}
   /* The commit is a lookup, not a label: on a phone it is on the row's own
@@ -2360,7 +2359,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    each adding their own inset to the body's. */
 .nb .sect>.body>.field,.nb .sect>.body>.fnote,.nb .sect>.body>.row,
 .nb .sect>.body .sect>summary,.nb .sect>.body .sect>.body,
-.nb .sect>.body .loading{padding-left:0;padding-right:0}
+.nb .sect>.body .loading,.nb .sect>.body .empty{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
    is one (an action bar, a filter bar, a picker row, an add form), so the
    controls in it stop short together and are not capped a second time
@@ -11594,7 +11593,7 @@ function gitLanes(commits){
 // A unified diff as markup: one fold per file, each line marked as added,
 // removed, context or hunk head. Text only ever lands through esc().
 function renderDiff(text){
-  if (!text || !text.trim()) return `<div class="sub dim">no textual change</div>`;
+  if (!text || !text.trim()) return `<div class="empty">no textual change</div>`;
   const files = [];
   let cur = null;
   for (const line of text.split("\n")){

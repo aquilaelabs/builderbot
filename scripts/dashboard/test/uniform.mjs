@@ -494,6 +494,29 @@ for (const kind of kinds){
        L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
 }
 
+// ---- one loading line and one empty state -----------------------------------
+// docs/design-language.md, Document tabs: `.loading` while it waits and
+// `.empty` when there is nothing, inside the list. Read off the SOURCE, since
+// an empty state is only on screen when the data happens to be empty, and the
+// fixtures are not. Five classes were doing these two jobs (R70 step 3).
+{
+  const { readdirSync, readFileSync } = await import('node:fs');
+  // Not `new URL`: URL in this file is the dashboard's address, from lib.mjs.
+  const here = (await import('node:path')).resolve(import.meta.dirname, '..') + '/';
+  const off = [];
+  for (const f of readdirSync(here).filter(n => /^(nb-|tab-).*\.js$|^index\.html$/.test(n))){
+    readFileSync(here + f, 'utf8').split('\n').forEach((line, i) => {
+      if (/<[a-z]+ class="(?!loading)[^"]*">loading…/.test(line)) off.push(`${f}:${i + 1} a loading line not in .loading`);
+      if (/class="none"/.test(line)) off.push(`${f}:${i + 1} an empty state in .none`);
+      // A <div>: a line of its own. A <span> saying "no AVD uses it" inside a
+      // row is a fact about that row, not a list with nothing in it.
+      if (/<div class="sub dim">(no |nothing |none )/.test(line)) off.push(`${f}:${i + 1} an empty state in .sub dim`);
+    });
+  }
+  ok(off.length === 0, `a loading line is .loading and an empty state is .empty, in every script${
+    off.length ? ': ' + off.join('; ') : ''}`);
+}
+
 // ---- a fold stays the way it was left ---------------------------------------
 // A redraw rebuilds the markup, so a <details> with nothing behind it goes
 // back to however it was first drawn: the Docker manager's Details fold shut

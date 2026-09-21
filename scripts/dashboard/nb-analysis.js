@@ -80,7 +80,7 @@ function nbAnalysisView({$, nb, project}){
   const nfmt = n => Number(n || 0).toLocaleString();
   function codebaseSection(){
     const d = codeData;
-    let status = "counting", body = `<div class="hint">loading…</div>`;
+    let status = "counting", body = `<div class="loading">loading…</div>`;
     if (d && d.error){ status = "no count"; body = `<div class="hint">${esc(d.error)}</div>`; }
     else if (d){
       const code = (d.languages || []).filter(l => l.kind === "code");
@@ -125,7 +125,7 @@ function nbAnalysisView({$, nb, project}){
     const d = nb.preData;
     let body, status = "", cls = "";
     if (!d){
-      body = `<div class="field"><div class="sub dim">loading…</div></div>`;
+      body = `<div class="field"><div class="loading">loading…</div></div>`;
     } else if (d.error){
       body = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`;
       status = "unavailable"; cls = "bad";

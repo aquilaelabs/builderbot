@@ -442,7 +442,7 @@ async function openGlobalRules(){
   // The backdrop closes it, like every other dialog on the page.
   modal.onclick = e => { if (e.target === modal) modal.hidden = true; };
   const body = document.getElementById("grBody");
-  if (body) body.innerHTML = `<div class="sub">loading…</div>`;
+  if (body) body.innerHTML = `<div class="loading">loading…</div>`;
   await loadGlobalRules();
   drawGlobalRules();
 }

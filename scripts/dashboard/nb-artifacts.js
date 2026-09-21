@@ -265,7 +265,7 @@ project can have several"
       const pane = document.createElement("div");
       pane.className = "verlogpane";
       nb.openSheet(a.name, [pane]);
-      pane.textContent = "loading…";
+      pane.innerHTML = `<div class="loading">loading…</div>`;
       try{
         const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
                               }&path=${encodeURIComponent(a.path)}`);
@@ -467,7 +467,7 @@ project can have several"
                      </div>
                    </div>`).join("")}
                </div>`).join("")
-             : `<div class="none">Nothing unreleased here yet.</div>`}
+             : `<div class="empty">nothing unreleased here yet</div>`}
              <div class="actbar"><span class="state" id="clState"></span>
                <button type="button" class="primary" id="clSave">Save</button></div>
            </div>
@@ -571,7 +571,7 @@ project can have several"
       b.classList.add("on");
       nb.openSheet(`Changelog${comp ? ": " + comp : ""}`, [pane],
                 () => b.classList.remove("on"));
-      pane.textContent = "loading…";
+      pane.innerHTML = `<div class="loading">loading…</div>`;
       try{
         const r = await fetch(`/api/changelog?project=${encodeURIComponent(project)}`
                               + `&component=${encodeURIComponent(comp)}`);
