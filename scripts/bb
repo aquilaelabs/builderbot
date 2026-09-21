@@ -4369,6 +4369,9 @@ import json, sys
 p = json.load(sys.stdin).get("gitpol") or {}
 print("push its branch:", p.get("push", "allow"))
 print("push to main:   ", p.get("main", "deny"))
+print("Its branches are the ones this tree has, one at a time: a name that is only on the")
+print("remote, a tag, --all, and deleting a branch there stay with the operator whatever")
+print("these say.")
 print("A local commit or merge is yours; what reaches the remote is what this governs.")'
             return 0 ;;
         *) die "bb git takes push, fetch, pull, ls-remote or policy; plain git does everything else" ;;

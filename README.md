@@ -394,8 +394,11 @@ bb login --check   what THIS machine is signed in as, told to the controller,
                    `claude auth logout` here. Run on every connection and
                    every prompt
 bb git push|fetch|pull|ls-remote [ARGS]
-bb git policy      what a session may push here (its branch, main) from the
-                   project's Git view; the controller enforces it on the relay
+bb git policy      what a session may push here (its own branches, main) from
+                   the project's Git view; the controller enforces it on the
+                   relay, against the refs the push would write: a name that is
+                   only on the remote, a tag, --all and deleting a branch there
+                   are the operator's whatever the two settings say
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]

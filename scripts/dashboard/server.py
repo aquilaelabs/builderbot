@@ -4932,33 +4932,6 @@ class Handler(BaseHTTPRequestHandler):
         if argv[:2] == ["git", "push"] and not projects.may_push(project):
             return self._json({"error": "this project has no push rights: they are granted "
                                         "in the clone dialog, once"}, 403)
-        # ...and under the project's git policy (the Git view, roadmap R36):
-        # a session may push its own branch unless told not to, and may not
-        # push to main unless told it may. Judged here because here is
-        # where the push runs; a local commit or merge is not this door's.
-        if argv and argv[0] == "git" and argv[1:2] == ["push"] and me.get("session"):
-            pol = prefs.get(project)["gitpol"]
-            if pol.get("push") == "deny":
-                return self._json({"error": "this project's git policy does not let a session "
-                                            "push; the operator pushes from the Git view"}, 403)
-            if pol.get("main") == "deny":
-                # Read out of the tree's files, never by running git in it
-                # (B148): the branch HEAD names and which of main or master
-                # exists.
-                repo = WORKSPACE / project
-                try:
-                    head = gitrelay.head(repo / ".git").removeprefix("refs/heads/")
-                    have = gitrelay.refs(repo / ".git")
-                except gitrelay.Refused as e:
-                    return self._json({"error": str(e)}, 400)
-                main = next((b for b in ("main", "master") if f"refs/heads/{b}" in have), "main")
-                spec = [a for a in argv[2:] if not a.startswith("-")]
-                to_main = any(a == main or a.endswith(":" + main) or a.startswith(main + ":") for a in spec) \
-                    or (not spec and head == main) or (len(spec) == 1 and head == main)
-                if to_main:
-                    return self._json({"error": f"this project's git policy does not let a session "
-                                                f"push to {main}; push your branch and say so, "
-                                                "and the operator merges from the Git view"}, 403)
         # The tree the session is in: the project directory, or one of its
         # worktrees. Anything else (a path outside the share, a sibling
         # project) runs in the project directory instead of being trusted.
@@ -4971,6 +4944,60 @@ class Handler(BaseHTTPRequestHandler):
             if real.is_dir() and (real == mine or mine in real.parents
                                   or trees in real.parents):
                 cwd = real
+        # ...and under the project's git policy (the Git view, roadmap R36):
+        # a session may push its own branch unless told not to, and may not
+        # push to main unless told it may. Judged here because here is
+        # where the push runs; a local commit or merge is not this door's.
+        if argv and argv[0] == "git" and argv[1:2] == ["push"] and me.get("session"):
+            pol = prefs.get(project)["gitpol"]
+            if pol.get("push") == "deny":
+                return self._json({"error": "this project's git policy does not let a session "
+                                            "push; the operator pushes from the Git view"}, 403)
+            # Read out of the tree's files, never by running git in it (B148),
+            # and out of the tree the push would RUN in, which is a worktree
+            # as readily as the project directory.
+            try:
+                head, main, local = gitrelay.tree_refs(project, cwd)
+            except gitrelay.Refused as e:
+                return self._json({"error": str(e)}, 400)
+            # Judged against what the push would WRITE, rather than against
+            # whether the word `main` appears somewhere in the arguments
+            # (B191). Under the old reading everything that was not spelled
+            # `main` went through, so "its own branch" also bought a session
+            # every other branch on that remote and the right to delete them.
+            #
+            # A branch THIS TREE HAS is the line, rather than the one branch
+            # HEAD is on: a session pushes a branch it is not standing on
+            # often enough (after a merge, from a worktree, tidying up) that
+            # the stricter reading refuses ordinary work, and it buys little,
+            # since a name that is only on the remote is the one a session has
+            # no business writing.
+            plan = gitrelay.push_plan(argv[2:], head)
+            if plan["deletes"]:
+                return self._json({"error": "a session pushes work; it does not take work away. "
+                                            f"Removing {', '.join(plan['deletes'])} from the remote "
+                                            "is the operator's, from the Git view or the git host"}, 403)
+            if plan["every"] or plan["tags"]:
+                # Named rather than described: --follow-tags sends the
+                # annotated tags a push reaches, not every tag, and a refusal
+                # that says otherwise is a refusal somebody has to check.
+                flag = next((f for f in ("--all", "--tags", "--follow-tags") if f in argv[2:]), "that")
+                what = ("writes every branch at once" if plan["every"]
+                        else "sends tags, and a tag is a release's name here")
+                return self._json({"error": f"{flag} {what}; a session pushes the branches it has, "
+                                            f"one at a time. Name {head} instead"}, 403)
+            for dest in plan["dests"]:
+                if dest == main:
+                    if pol.get("main") != "allow":
+                        return self._json({"error": f"this project's git policy does not let a session "
+                                                    f"push to {main}; push your branch and say so, "
+                                                    "and the operator merges from the Git view"}, 403)
+                elif dest not in local:
+                    return self._json({"error": f"this project's git policy lets a session push its own "
+                                                f"branches, and there is no {dest} in this tree: that "
+                                                "name is on the remote or nowhere, and either way it is "
+                                                f"not this session's to write. Push {head} and say what "
+                                                "you want done with it"}, 403)
         env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
         env.update({"BB_PROJECT": project, "BB_ROADMAP_PROJECT": project,
                     "BB_BUG_PROJECT": project, "BB_VERSION_PROJECT": project,

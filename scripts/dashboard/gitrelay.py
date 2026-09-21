@@ -406,6 +406,70 @@ def run(project, cwd, verb, args):
         return {"error": str(e)}
 
 
+def tree_refs(project, cwd):
+    """(head, main, branches) for the working tree a relayed verb would run
+    in: the branch it is on, which of main or master this repository has, and
+    the branches it holds.
+
+    The tree matters, not the project: a session works in a worktree as
+    readily as in the project directory, and its HEAD lives in that
+    worktree's own directory. Reading the project's HEAD instead would judge
+    a push against a branch nobody was standing on.
+    """
+    common, gitdir = _tree(project, cwd)
+    have = refs(common)
+    local = {r[len("refs/heads/"):] for r in have if r.startswith("refs/heads/")}
+    here = head(gitdir).removeprefix("refs/heads/")
+    return here, next((b for b in ("main", "master") if b in local), "main"), local
+
+
+def push_plan(args, head):
+    """What a push would WRITE on the remote, read off its arguments.
+
+        {"dests": [branch, ...], "deletes": [branch, ...],
+         "every": bool, "tags": bool}
+
+    The policy is about refs, not about verbs (B191): "a session may push its
+    branch" has to be judged against the ref the push would land on, and until
+    this existed the only thing looked at was whether the word `main` appeared
+    anywhere in the arguments. Everything else went through, so a session could
+    write another branch or delete one while the setting said its own branch.
+
+    git's own reading, kept deliberately narrow: the first positional is the
+    remote and the rest are refspecs, a refspec's destination is the half after
+    the colon, ":name" and --delete both remove, and no refspec at all means
+    the branch HEAD is on, which is what push.default gives for `simple` and
+    `current` alike. A leading + forces and is stripped for the comparison,
+    since forcing your own branch is a push and forcing somebody else's is the
+    thing being refused either way.
+    """
+    flags = [a for a in args if a in FLAGS]
+    pos = [a for a in args if a not in FLAGS]
+    specs = pos[1:]                      # pos[0] is the remote
+    plan = {"dests": [], "deletes": [], "every": "--all" in flags,
+            "tags": bool({"--tags", "--follow-tags"} & set(flags))}
+    dashd = bool({"--delete", "-d"} & set(flags))
+
+    def short(r):
+        return r.removeprefix("refs/heads/")
+
+    for s in specs:
+        s = s[1:] if s.startswith("+") else s
+        src, sep, dst = s.partition(":")
+        if dashd:
+            # `--delete X` takes the ref plainly, and `--delete a:b` is not a
+            # thing git accepts, so the source half is the name either way.
+            plan["deletes"].append(short(src or dst))
+        elif sep and not src:
+            plan["deletes"].append(short(dst))               # ":name" removes it
+        else:
+            d = short(dst if sep else src)
+            plan["dests"].append(head if d in ("", "HEAD") else d)
+    if not specs and not plan["every"] and not plan["tags"]:
+        plan["dests"].append(head)
+    return plan
+
+
 def bad_args(args):
     """Why these arguments are refused, or "" when they are not: remote names
     and refspecs by shape, and a short list of plain flags by name. git takes
