@@ -5029,7 +5029,18 @@ for g in rec.get("outputs") or []:
     # from running on the BuilderBot it is running on.
     if [ "$role" = test ]; then
         local inst
-        inst="$(BB_PROJECT="$proj" "$0" devapp status 2>/dev/null)"
+        # The refusal kept rather than thrown away. This was `2>/dev/null`,
+        # and when the controller did not answer (a relay call that timed out,
+        # a dashboard mid-restart) the tests quietly ran somewhere else, or
+        # nowhere, with the reason discarded: three runs on 21 Sep did nothing
+        # at all and said nothing (B202). Whatever the cause turns out to be,
+        # a test run that changes where it runs says so.
+        local inst_err; inst_err="$(mktemp)"
+        inst="$(BB_PROJECT="$proj" "$0" devapp status 2>"$inst_err")" || true
+        if [ -z "$inst" ]; then
+            warn "could not ask whether $proj's dev instance is up ($(head -c 240 "$inst_err" | tr '\n' ' ')): the tests run on this machine instead of inside it"
+        fi
+        rm -f "$inst_err"
         if [ "$(printf '%s\n' "$inst" | awk '$1 == "running" {print $2}')" = yes ]; then
             echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
             BB_PROJECT="$proj" exec "$0" devapp test "$@"

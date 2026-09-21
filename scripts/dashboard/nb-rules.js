@@ -15,6 +15,33 @@ function nbRulesView({$, nb, project}){
     drawRules();
   }
 
+  // The global rules, read-only, under the project's own. The server has always
+  // sent them and the page never drew them, so somebody writing a project rule
+  // could not see what was already in force: the conflict worth preventing
+  // starts with not knowing. Under the project's list rather than above it, so
+  // Add stays the first band and what is this project's own comes first. A
+  // class of their own, NOT .rulerow: every handler and every selector in
+  // here means "one of this project's rules" by that class, and a read-only
+  // row wearing it was wired for an Edit button it does not have.
+  function globalRules(gs){
+    gs = gs.filter(g => !g.disabled);
+    if (!gs.length) return "";
+    const cond = r => (r.paths || []).length || (r.words || []).length;
+    return `<div class="sub dim ggroup">also in force here, set for every project in Controller settings</div>
+      <div class="field" id="rlGlobal">${gs.map(g => `
+        <details class="bug grule">
+          <summary><span class="btitle">${esc(g.name || "")}</span>
+            <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
+            <span class="pill">global</span></summary>
+          <div class="body"><div class="bfield"><label>rule</label><div class="bval">${esc(g.text || "")}</div></div>${
+            (g.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc(g.paths.join(", "))}</div></div>` : ""}${
+            (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}</div>
+        </details>`).join("")}</div>`;
+  }
+  // What a project rule shares with a global one, in a sentence for its row.
+  const overlapLine = r => (r.overlaps || []).map(o =>
+    `the global rule ${o.name} also fires on ${[...(o.words || []), ...(o.paths || [])].join(", ")}`).join("; ");
+
   // What is on screen: the staged copy if anything has been typed, otherwise
   // what the server last said.
   const ruleRows = () => nb.rulePending || (nb.ruleData?.rules || []);
@@ -66,7 +93,8 @@ function nbRulesView({$, nb, project}){
             <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>
             <span class="rlkind ${cond(r) ? "cond" : ""}">${
               cond(r) ? "on its triggers" : "every session"}</span>${
-              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
+              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}${
+              (r.overlaps || []).length ? `<span class="pill warn">shares ground with a global rule</span>` : ""}
           </summary>
           <div class="body">${nb.ruleEditing.has(i) ? `
             ${lbl("", "Name", "a short name; the listing and bb rules show NAME use it")}
@@ -103,6 +131,7 @@ function nbRulesView({$, nb, project}){
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
             ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
             ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
+            ${(r.overlaps || []).length ? `<div class="bfield rlover"><label>shares ground</label><div class="bval">${esc(overlapLine(r))}. Both reach a session; where they disagree it follows this one and says so.</div></div>` : ""}
             ${r.doc ? `<div class="bfield rlframe"><label>defined in</label><div class="bval">${esc(r.doc)}</div></div>` : ""}
             ${r.check ? `<div class="bfield rlframe"><label>checked by</label><div class="bval">${esc(r.check)} <span class="dim">· bb rules check ${esc(r.name || "")}</span></div></div>` : ""}
             <div class="actbar macts">
@@ -112,6 +141,7 @@ function nbRulesView({$, nb, project}){
             </div>`}
           </div>
         </details>`).join("")}</div>
+      ${globalRules(d.global || [])}
       <div class="fnote">${rows.length
           ? (chars === null
              ? "unsaved: the size is measured on what is written"

@@ -1896,8 +1896,8 @@ pre.diff .d-ctx{color:var(--dim)}
 /* Which kind it is, said rather than chosen: a rule is conditional exactly
    when it has a trigger, so this follows the fields instead of being a third
    thing to keep in step with them. */
-.rulerow .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
-.rulerow .rlkind.cond{color:var(--accent)}
+.rulerow .rlkind,.grule .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
+.rulerow .rlkind.cond,.grule .rlkind.cond{color:var(--accent)}
 @media(max-width:600px){
   .rulerow .two{display:block}
   .rulerow .two>*+*{margin-top:6px}
