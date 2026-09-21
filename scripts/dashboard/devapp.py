@@ -3671,14 +3671,15 @@ def state(project, instance=MAIN):
         out["problems"] = problems(project, cfg) + host_map()[1]
         out.update(wiring(cfg))
         # ...and the ports somebody else is already on. After wiring(), which
-        # is what says which ports this instance wants, and phrased as a
-        # problem because that is exactly what it is: a compose that cannot
-        # start as written, on this daemon, right now.
-        clash = taken_ports(project, instance, out.get("ports"))
-        if clash:
-            out["problems"] = out["problems"] + [
-                "port " + ", ".join(clash) + ": two instances of one project "
-                "publish the same ports, so the second needs its own in its env"]
+        # is what says which ports this instance wants. Its own field rather
+        # than a line in `problems`, because the two views that read this
+        # disagree about what it means: on the Docker manager, where Up is,
+        # it is a compose that cannot start as written, right now; on the
+        # Artifacts view, whose one button is Send, it is a note that the
+        # instance being sent will set its own port in its env, which is the
+        # form Send opens. Folded into `problems` it read there as "will not
+        # work", in red, over the button that makes it work.
+        out["port_clash"] = taken_ports(project, instance, out.get("ports"))
         out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way: either the file asks for

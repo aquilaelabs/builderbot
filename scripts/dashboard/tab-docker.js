@@ -486,6 +486,14 @@ async function dmAction(project, instance, act, btn){
              + st.problems.join("; "), true);
       return;
     }
+    // A port something else holds: here, where Up is, that is a start that
+    // would fail, and the way out is this instance's own env. (The Artifacts
+    // view says the same fact as a note, since its Send opens that env.)
+    if (act === "up" && (st.port_clash || []).length){
+      notify(`port ${st.port_clash.join(", ")} ${st.port_clash.length === 1 ? "is" : "are"} `
+             + `published already on this node: set another in this instance's env (Env), then Up`, true);
+      return;
+    }
     if ((st.missing_env || []).length && act === "up"){
       notify(`the env is missing ${st.missing_env.join(", ")}: press Env`, true);
       return;

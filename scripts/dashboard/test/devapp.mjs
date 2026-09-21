@@ -2464,10 +2464,13 @@ ok(await page.$('#devSend'),
     const st2 = await api({ project: 'ep.silon', instance: 'onbranch', action: 'state' });
     ok((st2.state || {}).ref === 'sidebranch',
        '...pinned from the moment it exists, so its first build is that branch');
-    const clash = ((st2.state || {}).problems || []).join(' ');
-    ok(!(st2.state || {}).ports?.length || /port .* publish the same ports/.test(clash)
-       || clash === '',
-       `...and a port another container already has is named on the row (${
+    // In a field of its own, not in `problems`: the manager says it as a
+    // fault (Up would fail), the Artifacts view as a note (Send opens the env
+    // the port goes in), and one line could not read right on both.
+    const clash = ((st2.state || {}).port_clash || []).join(' ');
+    ok(!((st2.state || {}).problems || []).some(x => /publish the same ports/.test(x))
+       && (!(st2.state || {}).ports?.length || /\d+ \(/.test(clash) || clash === ''),
+       `...and a port another container already has is named in its own field, not as a problem (${
           clash.slice(0, 70) || 'nothing published'})`);
     await api({ project: 'ep.silon', instance: 'onbranch', action: 'remove' });
     await idle();

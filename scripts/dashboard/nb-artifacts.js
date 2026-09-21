@@ -145,7 +145,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             // facts about THIS project's build, which is what this tab is for.
             : ""}</div>
           ${devLines("will not work as written", da.problems, "bad")}
-          ${devLines("asks for more than its own directory", da.risks, "risk")}
+          ${devLines("asks for more than its own directory", da.risks, "risk")}${
+          // A port another container holds is not a fault in the file: the
+          // instance Send makes gets an env of its own, and the port goes in
+          // it. So a note, in the quiet voice, not a verdict in red.
+          da.port_clash?.length ? `<div class="dim li">port ${esc(da.port_clash.join(", "))} ${
+            da.port_clash.length === 1 ? "is" : "are"} published already on this node: the instance Send makes sets its own in its env</div>` : ""}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
