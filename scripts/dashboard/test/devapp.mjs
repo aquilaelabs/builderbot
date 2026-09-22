@@ -100,12 +100,11 @@ async function showRow(){
   await page.waitForSelector('#devRow', { timeout: 20000 });
 }
 async function dmRefresh(){
-  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  // Awaited: loadDocker returns when its answer has been drawn. The rows come
+  // back at once from the last answer meanwhile (B125), and the stale mark
+  // is no longer a tell, since it is only worn once a fetch has been slow.
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await openManager();
-  // The rows come back at once from the last answer, marked stale while the
-  // new one is on its way (B125); a refresh is done when the mark is gone.
-  await page.waitForFunction(() => document.querySelector('.dmtab') && !document.querySelector('.dmtab.dmstale'),
-                             null, { timeout: 30000 });
 }
 // The manager lists what has been SENT to it (a project with a compose file
 // no longer gets a phantom row there), so the fixture's instance has to exist
@@ -132,6 +131,34 @@ const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/
 const pillIs = async (want) => { await openManager(); return page.waitForFunction(
   ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
   [want, DM], { timeout: 20000 }); };
+
+// The word at the foot is for a fetch that has been slow, not for every
+// fetch: a listing reloads once per revision while a job runs, and a word
+// that came and went with each one blinked through every build.
+{
+  await dmRefresh();
+  const seen = await page.evaluate(async () => {
+    let said = 0;
+    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said++; });
+    mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
+    for (let i = 0; i < 4; i++){ dockerList = null; dockerRev++; await loadDocker(); }
+    mo.disconnect();
+    return said;
+  });
+  ok(seen === 0, `four quick reloads in a row never show "refreshing" (shown ${seen} times)`);
+  const slow = await page.evaluate(async () => {
+    const f = window.fetch;
+    window.fetch = (...a) => String(a[0]).startsWith('/api/docker')
+      ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
+    const p = loadDocker();
+    await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
+    const during = { word: !!document.querySelector('.dmfresh'), dim: !!document.querySelector('.dmtab.dmstale') };
+    await p; window.fetch = f;
+    return { ...during, after: !!document.querySelector('.dmfresh') };
+  });
+  ok(slow.word && slow.dim && !slow.after,
+     `...and one that is slow says so, with the rows dimmed, until it lands (${JSON.stringify(slow)})`);
+}
 
 // A redraw must not take an open menu with it. The manager repaints on every
 // step of a job, which made picking from one of its lists during a build a

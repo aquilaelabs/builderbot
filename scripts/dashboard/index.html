@@ -2005,6 +2005,10 @@ pre.diff .d-ctx{color:var(--dim)}
 .projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
+/* The last answer while a new one is on its way, or one the server kept
+   from before the node's job: dimmed as a whole, still readable, with no
+   motion. The word at the foot says which, and only when it has been slow. */
+.dmtab.dmstale .row{opacity:.6}
 /* The heading over each group of rows: where these came from, which is what
    decides what can be done to them (R68). Quiet, because it is a label on a
    list and not a section of its own. */
