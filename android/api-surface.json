@@ -9,13 +9,13 @@
     "the app draws or acts on; the app tolerates an extra one and blanks a",
     "missing one, so this is the contract, not the whole answer."
   ],
-  "api": 2,
+  "api": 3,
   "endpoints": [
     {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk"]},
     {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "projects", "attention", "phone_asks", "welcome"],
      "projects": ["name", "git", "locked", "pending", "roadmap", "bugs", "session_at"]},
     {"method": "GET", "path": "/api/phone", "fields": ["nodes", "asks"],
-     "asks": ["id", "kind", "why", "cmd", "project", "node", "node_name", "asker", "left"]},
+     "asks": ["id", "kind", "why", "cmd", "project", "node", "node_name", "asker", "left", "detail", "env_keys", "name", "for"]},
     {"method": "POST", "path": "/api/phone", "actions": ["allow", "deny"]},
     {"method": "GET", "path": "/api/pending?project=", "fields": ["pending", "counts", "gate"],
      "pending": ["id", "kind", "verb", "summary", "by", "settled"]},

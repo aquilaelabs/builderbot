@@ -64,6 +64,12 @@ class WatchService : Service() {
             try {
                 tick(api, store)
                 failures = 0
+            } catch (e: ApiError) {
+                // The password changed, or the account went: polling on would
+                // be a refused request every twenty seconds for good, and the
+                // person would never learn why the questions stopped arriving.
+                if (e.status == 401 || e.status == 403) { signedOut(); stopSelf(); return }
+                failures++
             } catch (e: Exception) {
                 failures++
             }
@@ -72,6 +78,17 @@ class WatchService : Service() {
             val wait = store.pollSeconds.toLong() * (if (failures > 3) 4 else 1)
             delay(wait * 1000)
         }
+    }
+
+    private fun signedOut() {
+        getSystemService(NotificationManager::class.java).notify(ID_ATTENTION,
+            NotificationCompat.Builder(this, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle("BuilderBot no longer accepts this sign-in")
+                .setContentText("Open the app and sign in again; the watch has stopped until you do")
+                .setContentIntent(openApp(this, "more"))
+                .setAutoCancel(true)
+                .build())
     }
 
     private suspend fun tick(api: Api, store: Store) {
@@ -129,19 +146,17 @@ class WatchService : Service() {
 
     private fun askNotification(a: JSONObject): Notification {
         val id = a.int("id")
-        val root = a.str("kind") == "root"
-        val cmd = (if (root) "# " else "adb ") + a.strs("cmd").joinToString(" ")
+        val kind = a.str("kind")
         val who = a.str("asker").ifBlank { a.str("project").ifBlank { "a session" } }
-        val title = if (root) "Root on ${a.str("node_name")}: needs your answer" else "The phone: needs your answer"
-        val text = "${a.str("why")}\n$cmd\n$who's session in ${a.str("project")}"
+        val text = "${a.str("why")}\n${askCommand(a)}\n$who's session in ${a.str("project")}"
         return NotificationCompat.Builder(this, App.CH_ASK)
             .setSmallIcon(R.drawable.ic_stat_bb)
-            .setContentTitle(title)
+            .setContentTitle(askTitle(a) + ": needs your answer")
             .setContentText(a.str("why"))
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setColor(if (root) 0xFFE5534B.toInt() else 0xFFD29922.toInt())
+            .setColor(if (kind == "root") 0xFFE5534B.toInt() else 0xFFD29922.toInt())
             .setContentIntent(openApp(this, "approvals"))
             .addAction(0, "Deny", DecideReceiver.intent(this, id, false))
             .addAction(0, "Approve", DecideReceiver.intent(this, id, true))
@@ -175,11 +190,28 @@ class WatchService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
-        fun attentionLine(a: JSONObject): String = when (a.str("kind")) {
-            "md" -> "${a.str("project")}'s CLAUDE.md block is from ${a.str("from")}; this BuilderBot is ${a.str("to")}"
-            else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
+        // The one kind the server sends today: a node whose agent is behind.
+        // (A CLAUDE.md block out of window was a kind once; R63 retired the
+        // block, and a line for it here would name something that is gone.)
+        fun attentionLine(a: JSONObject): String =
+            "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
                 (if (a.bool("window")) " (out of window, work there is stopped)" else "")
+
+        // What an ask is, in the words the dashboard's bell uses for the same
+        // four kinds: the phone, root on a node, a rebuild of a dev instance,
+        // and a container to be made. Shared with the Approvals screen so the
+        // notification and the row agree.
+        fun askTitle(a: JSONObject): String = when (a.str("kind")) {
+            "root" -> "Root on ${a.str("node_name")}"
+            "rebuild" -> "Rebuild in ${a.str("project").ifBlank { "a project" }}"
+            "container" -> "Container ${a.str("name")} on ${a.str("node_name").ifBlank { "the default node" }}"
+            else -> "The phone on ${a.str("node_name")}"
         }
+        fun askCommand(a: JSONObject): String = when (a.str("kind")) {
+            "root" -> "# "
+            "rebuild", "container" -> "bb "
+            else -> "adb "
+        } + a.strs("cmd").joinToString(" ")
     }
 }
 

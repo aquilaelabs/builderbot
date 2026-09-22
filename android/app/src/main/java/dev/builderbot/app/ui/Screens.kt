@@ -109,6 +109,22 @@ fun <T> load(key: Any?, fetch: suspend () -> T): Pair<Loaded<T>, () -> Unit> {
     return state to { tick++ }
 }
 
+// Pull down to re-read, on every list: the gesture a phone expects, beside
+// the Refresh button each screen keeps for a thumb that is already at the
+// top. `reload` is a load()'s second half; the indicator shows while the
+// pull is held and goes when the fetch it started has landed.
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun Pull(loading: Boolean, reload: () -> Unit, content: @Composable () -> Unit) {
+    var pulled by remember { mutableStateOf(false) }
+    if (pulled && !loading) pulled = false
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = pulled && loading,
+        onRefresh = { pulled = true; reload() },
+        modifier = Modifier.fillMaxSize(),
+        content = { content() })
+}
+
 // ---- sign in -----------------------------------------------------------------
 
 @Composable
@@ -157,6 +173,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
     val (st, reload) = load("status") { api.status() }
     val s = st.value
     if (s != null) onAdmin(s.obj("can").optBoolean("admin", true))
+    Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -198,6 +215,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
             }
         }
     }
+    }
 }
 
 // ---- approvals: the phone and root asks, and what sessions have waiting -----------
@@ -209,6 +227,7 @@ fun ApprovalsScreen(store: Store) {
     val (ph, reloadPh) = load("phone") { api.phone() }
     val (st, reloadSt) = load("status-appr") { api.status() }
     var said by remember { mutableStateOf("") }
+    Pull(ph.value == null && ph.error == null, { reloadPh(); reloadSt() }) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -219,15 +238,25 @@ fun ApprovalsScreen(store: Store) {
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, or for root on a node, appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild or for a container appears here") } }
         items(asks) { a ->
-            val root = a.str("kind") == "root"
+            val kind = a.str("kind")
             Card(Modifier.fillMaxWidth().padding(16.dp, 4.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(if (root) "Root on ${a.str("node_name")}" else "The phone on ${a.str("node_name")}",
-                        color = if (root) Bad else Warn, fontWeight = FontWeight.SemiBold)
+                    Text(WatchService.askTitle(a), color = if (kind == "root") Bad else Warn, fontWeight = FontWeight.SemiBold)
                     Text(a.str("why"), style = MaterialTheme.typography.bodyLarge)
-                    Mono((if (root) "# " else "adb ") + a.strs("cmd").joinToString(" "))
+                    Mono(WatchService.askCommand(a))
+                    // A container is approved by reading its compose file: that
+                    // is the request. The env file is never shown, since that
+                    // is where a token would be; its keys are, so the reader
+                    // knows what it sets.
+                    if (kind == "container") {
+                        var open by remember(a.int("id")) { mutableStateOf(false) }
+                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide the compose file" else "Read the compose file") }
+                        if (open) Mono(a.str("detail"))
+                        if (a.strs("env_keys").isNotEmpty()) Dim("and an env file setting " + a.strs("env_keys").joinToString(", "))
+                        if (a.str("for").isNotBlank()) Dim("shown under ${a.str("for")}")
+                    }
                     Dim("${a.str("asker").ifBlank { "a session" }} in ${a.str("project")} · ${a.int("left") / 60} min left to answer")
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Spacer(Modifier.weight(1f))
@@ -241,6 +270,7 @@ fun ApprovalsScreen(store: Store) {
         val waiting = st.value?.arr("projects")?.filter { it.int("pending") > 0 } ?: emptyList()
         item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs and rules a session added under an ask gate are listed here") } }
         items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt) }
+    }
     }
 }
 
@@ -275,6 +305,7 @@ fun NodesScreen(store: Store) {
     val (nd, reload) = load("nodes") { api.nodes() }
     var said by remember { mutableStateOf("") }
     val rows = nd.value?.arr("nodes")?.filter { it.str("kind") != "local" && it.str("state") != "retired" } ?: emptyList()
+    Pull(nd.value == null && nd.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -313,6 +344,7 @@ fun NodesScreen(store: Store) {
             }
         }
     }
+    }
 }
 
 suspend fun act(api: Api, id: String, action: String): String = try {
@@ -350,6 +382,7 @@ fun UsersScreen(store: Store) {
         }) { Text("Remove") } },
         dismissButton = { TextButton(onClick = { ask = "" }) { Text("Cancel") } })
 
+    Pull(us.value == null && us.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -385,6 +418,7 @@ fun UsersScreen(store: Store) {
             HorizontalDivider()
         }
         item { Dim("A user sees only the projects listed for them. Everything here is an administrator's, and the owner cannot be removed or demoted.") }
+    }
     }
 }
 
@@ -676,6 +710,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } })
     }
 
+    Pull(pk.value == null && pk.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -748,5 +783,6 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             HorizontalDivider()
         }
         item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
+    }
     }
 }

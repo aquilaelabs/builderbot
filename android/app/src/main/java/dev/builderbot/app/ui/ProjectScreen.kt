@@ -104,6 +104,7 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
     // Whether there is anything to send TO. The panel's rule, and the
     // server's: no session, no send.
     val live = td.value?.str("session")?.isNotBlank() == true
+    Pull(td.value == null && td.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
@@ -140,6 +141,7 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
             HorizontalDivider()
         }
     }
+    }
 }
 
 @Composable
@@ -152,6 +154,7 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
     var sev by remember { mutableStateOf("medium") }
     var said by remember { mutableStateOf("") }
     val rows = bg.value?.arr("bugs") ?: emptyList()
+    Pull(bg.value == null && bg.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
@@ -195,18 +198,20 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
             HorizontalDivider()
         }
     }
+    }
 }
 
 @Composable
 private fun Briefing(api: dev.builderbot.app.Api, project: String) {
-    val (rl, _) = load("rules-$project") { api.rules(project) }
+    val (rl, reloadRules) = load("rules-$project") { api.rules(project) }
     // The two halves of the dashboard's Briefing tab, in the same order: what
     // the operator holds a session to, then what a session noticed. Both are
     // read here: a rule is the operator's to write and a memory is the
     // session's, so neither is a thing to type on a phone.
-    val (mm, _r2) = load("mem-$project") { api.memory(project) }
+    val (mm, reloadMem) = load("mem-$project") { api.memory(project) }
     val rules = rl.value?.arr("rules") ?: emptyList()
     val mems = mm.value?.arr("memories") ?: emptyList()
+    Pull(mm.value == null && mm.error == null, { reloadRules(); reloadMem() }) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
@@ -241,13 +246,15 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
             HorizontalDivider()
         }
     }
+    }
 }
 
 @Composable
 private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
-    val (ar, _) = load("art-$project") { api.artifacts(project) }
+    val (ar, reload) = load("art-$project") { api.artifacts(project) }
     val rows = ar.value?.arr("artifacts") ?: emptyList()
     val b = ar.value?.obj("build")
+    Pull(ar.value == null && ar.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
@@ -263,6 +270,7 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
             }
             HorizontalDivider()
         }
+    }
     }
 }
 

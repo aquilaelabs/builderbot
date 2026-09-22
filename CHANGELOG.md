@@ -21,6 +21,7 @@
 - Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 - Nostromo has square corners: a project's colour bar on its tab ends in a hard edge, the title wears the stencil face and the tab in front glows. On every scheme, a notebook tab that is not in front now carries a hint of its project's colour. (f17026a)
+- The companion app knows all four things a session can ask for (the phone, root, a rebuild, a container), shows a container's compose file in the approval, pulls down to refresh on every list, and stops its watch with a notice when the sign-in no longer works. (8eacfed)
 
 ### Removed
 
