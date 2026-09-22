@@ -431,23 +431,28 @@ const post = body => page.evaluate(async b => {
   await page.waitForSelector('#bugList .bug', { timeout: 15000 });
   const one = await page.$eval('#bugList .bug', d => d.dataset.id);
   const sel = `#bugList .bug[data-id="${one}"]`;
-  const shut = await page.$eval(sel, d => d.offsetHeight);
-  // The keyframes, read in the SAME task as the click. slideDetails animates
-  // synchronously inside the handler, so this cannot miss the tween the way
-  // asking "is it animating?" in a later round trip can. That is the bug
-  // this whole pass is about, and it would be poor to reintroduce it here.
+  // The shut height, the click and the keyframes, all in ONE task.
+  // slideDetails animates synchronously inside the handler, so this cannot
+  // miss the tween the way asking "is it animating?" in a later round trip
+  // can. The shut height is read here too: measured a round trip earlier it
+  // was sometimes an OPEN row's, because a revision poll landing between the
+  // two calls redrew the list with the row a prior check had left open
+  // (B204), which read as the slide starting from the wrong height.
   const kf = await page.evaluate(s => {
     const el = document.querySelector(s);
+    if (el.open) el.open = false;             // a shut row is what is measured
+    const shut = el.offsetHeight;
     el.querySelector("summary").click();
     const a = el.getAnimations()[0];
-    return a ? a.effect.getKeyframes().map(k => parseFloat(k.height)) : null;
+    return { shut, kf: a ? a.effect.getKeyframes().map(k => parseFloat(k.height)) : null };
   }, sel);
-  ok(kf && kf[0] === shut && kf[1] > shut,
-     `a bug report opens with a slide, from its shut height (${kf?.join(' → ')}px)`);
+  const shut = kf.shut;
+  ok(kf.kf && kf.kf[0] === shut && kf.kf[1] > shut,
+     `a bug report opens with a slide, from its shut height (${kf.kf?.join(' → ')}px)`);
   await page.waitForFunction(s => !document.querySelector(s).getAnimations().length,
                              sel, { timeout: 5000 });
   const full = await page.$eval(sel, d => d.offsetHeight);
-  ok(full > shut && kf[1] === full,
+  ok(full > shut && kf.kf[1] === full,
      `...landing at the height it aimed for (${shut} → ${full}px)`);
   await closeFold(page, sel);
   // Against the row as it is NOW, not against `shut`. The click on the project
