@@ -1928,6 +1928,24 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
     // agent is not root, so the controller queues the job and the agent is
     // the one to refuse: exit 77, naming the owner and the packages.
+    // ...and on the Tools tab's own payload, per row: what the row's repair
+    // is drawn from. The packages the census says are missing sit on the
+    // recipe's row with the node's sandbox flag beside them, and a row whose
+    // needed toolchain is not on this node says which, so the link on the
+    // row installs exactly that and nothing else.
+    const tcp = await api(`/api/toolchains?node=${minted.id}`);
+    const pwRow = (tcp.items || []).find(i => i.name === 'playwright');
+    // The stubbed npm stops the fixture's install short, so the controller
+    // counts the row as not installed and its own missing list stays empty;
+    // the census's answer rides the payload whole, which is what the tab's
+    // banner draws from, and a row that IS installed carries its share.
+    ok((tcp.sysdeps?.unmet?.playwright || []).includes('libnss3') && tcp.sandbox === true
+       && (!pwRow?.installed || (pwRow.system?.missing || []).includes('libnss3')),
+       `the Tools payload carries the missing packages and the node's sandbox flag (${JSON.stringify(tcp.sysdeps?.unmet?.playwright || []).slice(0, 60)}, sandbox ${tcp.sandbox}, row installed ${!!pwRow?.installed})`);
+    const here = new Set((tcp.items || []).filter(i => i.installed).map(i => i.name));
+    const wrong = (tcp.items || []).filter(i => i.installed).filter(i =>
+      JSON.stringify(i.needs_missing || []) !== JSON.stringify((i.needs || []).filter(n => !here.has(n))));
+    ok(wrong.length === 0, `every installed row names the toolchains it needs that this node lacks (${wrong.map(i => i.name).join(', ') || 'all agree'})`);
     const dj = await api('/api/toolchains', { action: 'sysdeps', names: ['playwright'], node: minted.id });
     ok(dj.ok && /^j_/.test(dj.job), `a sysdeps job is queued for the held recipe (${dj.job || dj.error})`);
     const dfin = await until(async () => {

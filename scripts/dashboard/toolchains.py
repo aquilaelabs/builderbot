@@ -772,6 +772,14 @@ def payload_for_node(nid):
         if names:
             i["system"] = {"manager": fam, "names": names,
                            "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
+    # A toolchain another one needs, missing on this node: the store is
+    # shared, so diagrams can be installed from one node and be on every
+    # node, while the jdk it runs on was removed from this one, or never
+    # arrived. The row says which, and offers that row's own install.
+    here = {i["name"] for i in items if i["installed"]}
+    for i in items:
+        if i["installed"]:
+            i["needs_missing"] = [r for r in (i.get("needs") or []) if r not in here]
     landed = _landed_at(nid)
     started = [int(x.get("created") or 0) for x in rep.get("sessions") or [] if isinstance(x, dict)]
     shapes = {p["name"]: p.get("layout") or {} for p in TOOLCHAINS}

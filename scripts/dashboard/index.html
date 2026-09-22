@@ -2584,6 +2584,11 @@ button[aria-busy="true"]{opacity:.75}
   color:var(--dim);font:11px/1.5 var(--mono);white-space:pre-wrap;
   overflow-wrap:anywhere}
 .dmtab .sect .li{overflow-wrap:anywhere}
+/* A repair on a toolchain row, in the words of the line it follows: a link
+   rather than a button, since the line is the control's whole context. */
+.tcs .link{background:none;border:0;color:var(--note);padding:0;font:inherit;
+  cursor:pointer;text-decoration:underline;min-height:0}
+.tcs .link:hover{color:var(--ink)}
 /* Every icon button draws the same way, whichever class it wears. Keyed to
    .eye alone, the Projects card's trash button (an .ic) got the browser's
    default fill:black/stroke:none, and these paths are open strokes, so it

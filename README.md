@@ -1344,8 +1344,13 @@ lives in its body. The cards:
   reports in, once per missing set, and never while its system changes are
   locked to its console. Anywhere it cannot (a guest node, a locked one, an
   install that failed) the tab says which and **Install system packages**
-  puts them on that node without reinstalling the toolchain; the node's row
-  says the same, before a build fails on it. A toolchain that puts something on
+  puts them on that node without reinstalling the toolchain, and the row
+  that lacks them carries **Install them now**, which does it for that row
+  alone; the node's row says the same, before a build fails on it. A
+  toolchain another one needs (the JDK that PlantUML runs on, the Node that
+  Playwright's module needs) is installed with it, and a row whose needed
+  toolchain is not on the picked node says which and offers that row's own
+  install. A toolchain that puts something on
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
   them. Beside it, **Docker manager…**, **Emulator** (a node's Android

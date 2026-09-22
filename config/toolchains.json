@@ -894,6 +894,29 @@
           "{dir}/bin/magick",
           "-version"
         ]
+      },
+      "system": {
+        "apt": [
+          "fonts-dejavu-core"
+        ],
+        "dnf": [
+          "dejavu-sans-fonts"
+        ],
+        "pacman": [
+          "ttf-dejavu"
+        ],
+        "zypper": [
+          "dejavu-fonts"
+        ],
+        "apk": [
+          "font-dejavu"
+        ],
+        "xbps": [
+          "dejavu-fonts-ttf"
+        ],
+        "emerge": [
+          "media-fonts/dejavu"
+        ]
       }
     },
     {
@@ -934,7 +957,12 @@
           "-s",
           "{dir}/lib/plantuml.jar"
         ]
-      }
+      },
+      "requires": [
+        "jdk",
+        "node",
+        "playwright"
+      ]
     },
     {
       "name": "language-servers",

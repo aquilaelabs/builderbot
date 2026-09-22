@@ -107,6 +107,10 @@ function tcTickDots(){
 // What a row pulls onto the picked machine from its own package manager,
 // named, so which tool needed which library is on the row before Install
 // rather than in a job log after it. Held ones say which are missing here.
+// Whether the picked node was provisioned as a sandbox, which is the one
+// condition the server takes a sysdeps action under (toolchains.py); read
+// off the payload each draw so the row's repair and the tab's banner agree.
+let tcSandboxNow = false;
 function tcSystemLine(p, managed){
   const sys = p.system;
   if (!sys?.names?.length) return "";
@@ -120,9 +124,24 @@ function tcSystemLine(p, managed){
         esc(show.slice(4).join(", "))}</details>`;
   const head = !p.installed ? `Installs ${n} system package${plural} with it here (${esc(sys.manager)})`
     : miss.length ? `${miss.length} of its ${n} system package${plural} missing here (${esc(sys.manager)})${
-        managed ? ", installed by itself" : ", for this machine's owner to install"}`
+        managed ? "" : ", for this machine's owner to install"}`
     : `Uses ${n} system package${plural} here (${esc(sys.manager)}), all installed`;
-  return `<span class="sub tcsysd${miss.length ? " warn" : ""}">${head}: ${list}</span>`;
+  // The repair, on the row that needs it: one press puts this row's missing
+  // packages on the node and leaves the toolchain alone. Only where the
+  // agent administers the machine; a guest node's owner installs them.
+  const fix = p.installed && miss.length && tcSandboxNow && mayToolchains()
+    ? ` <button type="button" class="link" data-tcsys="${esc(p.name)}">Install them now</button>` : "";
+  return `<span class="sub tcsysd${miss.length ? " warn" : ""}">${head}: ${list}.${fix}</span>`;
+}
+
+// A toolchain this one needs that is not on this node: the store is shared,
+// so a recipe can be here while what it runs on is not. Said on the row,
+// with that row's own install one press away.
+function tcNeedsLine(p){
+  const gone = p.needs_missing || [];
+  if (!gone.length) return "";
+  return `<span class="sub warn tcneed">Needs ${esc(gone.join(", "))}, which ${gone.length === 1 ? "is" : "are"} not installed here.${
+    mayToolchains() ? gone.map(n => ` <button type="button" class="link" data-tcneed="${esc(n)}">Install ${esc(n)}</button>`).join("") : ""}</span>`;
 }
 
 function tcRow(p, busy, job, managed){
@@ -196,6 +215,7 @@ function tcRow(p, busy, job, managed){
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
         p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
       ${tcSystemLine(p, managed)}
+      ${tcNeedsLine(p)}
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
         // The path is the store's, and the head of the tab already says where
         // that is, so naming it per row was a repetition, and on a node,
@@ -310,6 +330,7 @@ function renderToolchainsInto(i){
       // R51): the store is shared, so a toolchain installed from one node is
       // on every node, while the libraries it needs are each machine's own.
       // One press installs the libraries and leaves the recipes alone.
+      tcSandboxNow = !!(onNode && d.sandbox);
       const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
       if (!unmet.length) return "";
       const what = unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ");
@@ -365,6 +386,8 @@ function renderToolchainsInto(i){
   if (pre) pre.onclick = () => loadToolchains();
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
+  el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
+  el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
