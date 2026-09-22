@@ -675,6 +675,55 @@ def abort_job():
 _node_checks = {}
 
 
+_node_errors_seen = {}
+
+
+def _node_errors(job_id, failed, verb):
+    """{name: why} for the toolchains a node job did not land, in the words
+    the controller's own path puts on a row: the end of what that
+    toolchain's section of the log said, minus the progress frames, and
+    the verb. The section is what `bb toolchains install` prints between
+    its own `== bb toolchains install NAME` line and the next `==` line.
+    Without this a failed install on a node ended with the row simply
+    unticked: the reason was in the job's log and nowhere the tab draws
+    (the graphics recipe's 404 was found with bb jobs, not on the tab)."""
+    if not failed:
+        return {}
+    key = (job_id, tuple(failed))
+    if key in _node_errors_seen:
+        return _node_errors_seen[key]
+    parts, cur = {}, None
+    for line in (nodes.job_tail(job_id, 20000) or "").splitlines():
+        m = re.match(r"== bb toolchains \S+ (\S+)", line)
+        if m:
+            cur = m.group(1)
+            parts[cur] = []
+            continue
+        if line.startswith("== "):
+            cur = None
+            continue
+        if cur is not None:
+            parts[cur].append(line)
+    out = {}
+    for name in failed:
+        lines = []
+        for ln in parts.get(name) or []:
+            # The run's own footer, not this toolchain's; and curl's meter
+            # shares its last line with the error it ends on.
+            if re.match(r"^\d+ of \d+ did not install$", ln.strip()):
+                continue
+            if "curl: (" in ln:
+                ln = ln[ln.index("curl: ("):]
+            # ...and the meter's own frames, which are made of these alone.
+            if ln.strip() and not ln.strip().strip("#=O- "):
+                continue
+            lines.append(ln)
+        said = _job_tail("\n".join(lines), keep=4)
+        out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
+    _node_errors_seen[key] = out
+    return out
+
+
 def _check_rows(job_id):
     """{name: {installed, latest, status}} from a finished check job's log.
 
@@ -828,8 +877,10 @@ def payload_for_node(nid):
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
                 done = [x for x in names if (x in here) == (act == "install")]
+                failed = [x for x in names if x not in done]
                 job = {"running": False, "action": act, "queue": [], "current": "",
-                       "done": done, "failed": [x for x in names if x not in done],
+                       "done": done, "failed": failed,
+                       "errors": _node_errors(j["id"], failed, act),
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
     # What the last check on this node said, if there has been one. Read from

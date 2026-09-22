@@ -55,6 +55,8 @@
 - The phone's device listing is a probe: no 'exec adb devices -l' row on the Jobs tab per node per minute, and the Docker tab stops refetching its listing for each one (65b863b)
 - Open the run's output on the Tests view sends into the shell until it answers, instead of saying the shell did not come up while a node shell was still being reported (65b863b)
 - Opening the Docker tab asks for its listing once instead of three times, and every tab's open hook runs once; a node heartbeat no longer repaints the Docker tab (3dce874)
+- Graphics tools install again: the recipe fetched ImageMagick from an address that never existed, since its release asset carries the version in its name (de029de)
+- A toolchain install that fails on a node says why under its row, as one on the controller does, instead of going back to unticked in silence (de029de)
 
 ### Security
 

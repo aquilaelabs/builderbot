@@ -1810,6 +1810,46 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       return now > ttydsBefore && n?.reported?.session?.up ? now : null;
     }, 30000, 500);
     ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
+    // An install that fails on the node says why on its row, as one on the
+    // controller does (B211). The reason was only in the job's log before:
+    // the row went back to unticked and said nothing, and the graphics
+    // recipe's 404 was found with bb jobs rather than on the tab. The
+    // fixture node installs everything it is asked for, so the words are
+    // proved on the log that install actually left, through the parser the
+    // payload uses, and the payload is proved to carry the field.
+    {
+      const fj = await api('/api/toolchains', { action: 'install', names: ['rust'], node: minted.id });
+      ok(fj.ok && /^j_/.test(fj.job), `a toolchain install is queued on the node (${fj.job || fj.error})`);
+      await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${fj.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 60000);
+      const tcv = await api(`/api/toolchains?node=${minted.id}`);
+      ok(tcv.job && !tcv.job.running && typeof tcv.job.errors === 'object',
+         `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv.job?.errors)})`);
+      const log = [
+        'toolchain', '== system packages for graphics: fonts-dejavu-core',
+        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/linux-x86_64/diagrams',
+        '######################################################################## 100.0%',
+        '[builderbot] diagrams ready: new shells pick it up',
+        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/linux-x86_64/graphics',
+        '#=#=#', '##O#-#',
+        '##O=#  #                                                   curl: (22) The requested URL returned error: 404',
+        '[builderbot] ERROR: could not download https://example.invalid/ImageMagick-gcc-x86_64.AppImage',
+        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/linux-x86_64/graphics',
+        '1 of 2 did not install', ''].join('\n');
+      const parsed = JSON.parse(execFileSync('python3', ['-c', `
+import json, sys, types
+sys.path.insert(0, ${JSON.stringify(REPO + 'scripts/dashboard')})
+import toolchains as tc
+tc.nodes = types.SimpleNamespace(job_tail=lambda jid, n=4000: sys.stdin.read())
+print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: log, encoding: 'utf8' }));
+      const why = parsed.graphics || '';
+      ok(/(^| )curl: \(22\)/.test(why) && /could not download/.test(why) && /exit 1/.test(why)
+         && /install failed on the node$/.test(why) && !/diagrams/.test(why) && !/did not install/.test(why)
+         && !/#=#|##O/.test(why),
+         `...and the reason is that toolchain's own section of the log, with the exit and without the frames (${why.slice(0, 120)})`);
+    }
     // The store's own directories decide what is installed there, not the
     // census's placement summary, which named six toolchains and called four
     // installed toolchains missing on the operator's shared toolchain store.
