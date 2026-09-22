@@ -188,6 +188,11 @@ bb: BuilderBot helper
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
+  bb img VERB ...        pictures a session can make and read back (the graphics toolchain):
+                         info F | resize F WxH [OUT] | crop F WxH+X+Y [OUT] | compose BASE OVER [+X+Y] [OUT]
+                         annotate F TEXT [OUT] [--at +X+Y] [--size N] [--color C] | diff A B [OUT]
+                         svg2png F [WIDTH] [OUT] | optimize F... [--lossy] [--webp]; into dist/img/
+  bb diagram FILE...     PlantUML (.puml) and Mermaid (.mmd) to PNG and SVG in dist/diagrams/
   bb toolchains            the toolchains kept outside the image: status, install X, remove X
 EOF
 }
@@ -6133,6 +6138,189 @@ EOF
 # project would otherwise re-learn. (Generalized from the private tool
 # MediaReducer grew for this, minus its PIL dependency, which the container
 # python does not carry.)
+# ---- graphics: bb img and bb diagram --------------------------------------------
+# A session cannot see a picture it has not rendered, and these are how it
+# renders one it can then read back. Every verb is an argv built here from
+# checked arguments and handed to a tool on the store: the graphics toolchain
+# (ImageMagick's magick, resvg, oxipng, pngquant, cwebp) and the diagrams one
+# (PlantUML on the store's JDK, Mermaid through the store's Chromium).
+# Results go under dist/, where the Artifacts tab lists them.
+
+# gfx_tool RECIPE NAME: the store's copy of a tool, else the one on PATH,
+# else a refusal that names the recipe to install.
+gfx_tool() {
+    local recipe="$1" name="$2" d=""
+    d="$(sdk_find "$recipe" 2>/dev/null)" || d=""
+    if [ -n "$d" ] && [ -x "$d/bin/$name" ]; then printf '%s' "$d/bin/$name"; return 0; fi
+    if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+    die "no ${name} here: install the ${recipe} toolchain on the Toolchains tab with this node picked"
+}
+
+# img_out IN VERB [OUT] [EXT]: where a result goes. Named, or dist/img/ by
+# the input's name and the verb, so two runs do not overwrite each other's
+# and the tab can tell them apart.
+img_out() {
+    local in="$1" verb="$2" out="${3:-}" ext="${4:-}"
+    if [ -n "$out" ]; then printf '%s' "$out"; return; fi
+    mkdir -p dist/img
+    printf 'dist/img/%s-%s.%s' "$(basename "${in%.*}")" "$verb" "${ext:-${in##*.}}"
+}
+
+img_file() { [ -f "$1" ] || die "no such file: $1"; }
+
+# A font file for magick to draw text with. The unpacked ImageMagick carries
+# no fonts and, given none, draws NOTHING and says nothing: an annotate that
+# succeeded with an image identical to its input, measured on bb-sandbox. So
+# the file is named on every call: fontconfig's sans, then the usual files
+# under the system fonts, then the one the caller passed.
+img_font() {
+    local f="${1:-}"
+    if [ -n "$f" ]; then [ -f "$f" ] || die "no such font file: $f"; printf '%s' "$f"; return; fi
+    f="$(fc-match -f '%{file}' sans 2>/dev/null || true)"
+    [ -f "$f" ] || f="$(find /usr/share/fonts /usr/local/share/fonts -type f \( -iname 'DejaVuSans.ttf' -o -iname 'LiberationSans-Regular.ttf' -o -iname 'NotoSans-Regular.ttf' -o -iname 'FreeSans.ttf' \) 2>/dev/null | head -1)"
+    [ -f "$f" ] || die "no font found on this machine to draw text with: pass --font FILE.ttf, or ask the operator for a fonts package on this node"
+    printf '%s' "$f"
+}
+
+cmd_img() {
+    local verb="${1:-}"; [ $# -gt 0 ] && shift
+    local magick f out
+    case "$verb" in
+        info)
+            img_file "${1:-}"; magick="$(gfx_tool graphics magick)"
+            "$magick" identify -format '%f: %m %wx%h, %[colorspace], %b\n' "$1"
+            ;;
+        resize)
+            f="${1:-}"; img_file "$f"; local geom="${2:-}"
+            case "$geom" in ''|*[!0-9x%]*) die "bb img resize FILE WxH|W|N% [OUT]" ;; esac
+            out="$(img_out "$f" resize "${3:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$f" -resize "$geom" "$out" || die "resize failed"
+            log "wrote ${out}"
+            ;;
+        crop)
+            f="${1:-}"; img_file "$f"; local geom="${2:-}"
+            case "$geom" in ''|*[!0-9x+-]*) die "bb img crop FILE WxH+X+Y [OUT]" ;; esac
+            out="$(img_out "$f" crop "${3:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$f" -crop "$geom" +repage "$out" || die "crop failed"
+            log "wrote ${out}"
+            ;;
+        compose)
+            # OVER laid on BASE at an offset, +0+0 by default: an icon on a
+            # ground, a badge on a screenshot.
+            local base="${1:-}" over="${2:-}" off="+0+0"; img_file "$base"; img_file "$over"; shift 2
+            case "${1:-}" in +*|-*) off="$1"; shift ;; esac
+            case "$off" in *[!0-9+-]*) die "the offset is +X+Y" ;; esac
+            out="$(img_out "$base" compose "${1:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$base" "$over" -geometry "$off" -composite "$out" || die "compose failed"
+            log "wrote ${out}"
+            ;;
+        annotate)
+            f="${1:-}"; img_file "$f"; local text="${2:-}" at="+12+28" size=22 color="white" font=""
+            [ -n "$text" ] || die "bb img annotate FILE TEXT [OUT] [--at +X+Y] [--size N] [--color C] [--font FILE]"
+            shift 2; out=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --at) at="$2"; shift 2 ;;
+                    --size) size="$2"; shift 2 ;;
+                    --color) color="$2"; shift 2 ;;
+                    --font) font="$2"; shift 2 ;;
+                    -*) die "unknown option: $1" ;;
+                    *) out="$1"; shift ;;
+                esac
+            done
+            case "$at" in *[!0-9+-]*) die "--at takes +X+Y" ;; esac
+            case "$size" in ''|*[!0-9]*) die "--size takes a number" ;; esac
+            case "$color" in *[!#A-Za-z0-9]*) die "--color takes a CSS color name or #hex" ;; esac
+            out="$(img_out "$f" annotate "$out")"; magick="$(gfx_tool graphics magick)"; font="$(img_font "$font")"
+            "$magick" "$f" -font "$font" -fill "$color" -pointsize "$size" -annotate "$at" "$text" "$out" || die "annotate failed"
+            log "wrote ${out}"
+            ;;
+        diff)
+            # How many pixels differ, and a picture of where: the before and
+            # after of a screen, checked by a number rather than by eye.
+            local a="${1:-}" b="${2:-}" n; img_file "$a"; img_file "$b"
+            out="$(img_out "$a" diff "${3:-}" png)"; magick="$(gfx_tool graphics magick)"
+            # The count, then the same normalised in brackets: "1335.63 (0.0005)".
+            # The first word is the answer; compare exits non-zero whenever
+            # the images differ, which is not a failure here.
+            n="$("$magick" compare -metric AE "$a" "$b" "$out" 2>&1 >/dev/null || true)"; n="${n%% *}"
+            case "$n" in ''|*[!0-9.e+]*) die "compare failed: ${n}" ;; esac
+            printf '%s pixels differ; the difference is drawn in %s\n' "${n%%.*}" "$out"
+            ;;
+        svg2png)
+            # A width is digits; anything else in that place is the output.
+            f="${1:-}"; img_file "$f"; local w="" resvg; out=""
+            case "${2:-}" in '') ;; *[!0-9]*) out="$2" ;; *) w="$2"; out="${3:-}" ;; esac
+            out="$(img_out "$f" png "$out" png)"; resvg="$(gfx_tool graphics resvg)"
+            if [ -n "$w" ]; then "$resvg" -w "$w" "$f" "$out"; else "$resvg" "$f" "$out"; fi || die "resvg failed"
+            log "wrote ${out}"
+            ;;
+        optimize)
+            # In place, losslessly, unless --lossy is asked for: a PNG through
+            # oxipng, a JPEG stripped and requantised, and --webp makes a
+            # .webp beside each. What an app ships, made smaller before it
+            # does.
+            local lossy=0 webp=0 files=() t
+            while [ $# -gt 0 ]; do
+                case "$1" in --lossy) lossy=1 ;; --webp) webp=1 ;; -*) die "unknown option: $1" ;; *) img_file "$1"; files+=("$1") ;; esac; shift
+            done
+            [ "${#files[@]}" -gt 0 ] || die "bb img optimize FILE... [--lossy] [--webp]"
+            for f in "${files[@]}"; do
+                case "$f" in
+                    *.png|*.PNG)
+                        if [ "$lossy" = 1 ]; then t="$(gfx_tool graphics pngquant)"; "$t" --force --skip-if-larger --ext .png -- "$f" || true; fi
+                        t="$(gfx_tool graphics oxipng)"; "$t" -o 4 --strip safe -q "$f" || die "oxipng failed on ${f}" ;;
+                    *.jpg|*.jpeg|*.JPG|*.JPEG)
+                        magick="$(gfx_tool graphics magick)"; "$magick" "$f" -strip -quality 85 "$f" || die "magick failed on ${f}" ;;
+                    *) log "skipping ${f}: not a PNG or JPEG" ;;
+                esac
+                if [ "$webp" = 1 ]; then t="$(gfx_tool graphics cwebp)"; "$t" -quiet -q 85 "$f" -o "${f%.*}.webp" || die "cwebp failed on ${f}"; fi
+                log "optimized ${f} ($(du -h "$f" | cut -f1))"
+            done
+            ;;
+        *) die "bb img info|resize|crop|compose|annotate|diff|svg2png|optimize ...; bb help has the shapes" ;;
+    esac
+}
+
+cmd_diagram() {
+    local out="dist/diagrams" files=() f name plantuml mmdc java
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --out) out="$2"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) img_file "$1"; files+=("$1"); shift ;;
+        esac
+    done
+    [ "${#files[@]}" -gt 0 ] || die "bb diagram FILE... [--out DIR]: .puml or .plantuml (PlantUML), .mmd or .mermaid (Mermaid)"
+    mkdir -p "$out"; out="$(cd "$out" && pwd)"
+    for f in "${files[@]}"; do
+        name="$(basename "${f%.*}")"
+        case "$f" in
+            *.puml|*.plantuml)
+                plantuml="$(gfx_tool diagrams plantuml)"
+                # The store's JDK when it is here; the wrapper falls back to
+                # whatever java is on PATH.
+                java="$(sdk_find jdk 2>/dev/null)/bin/java"; [ -x "$java" ] || java=""
+                JAVA="${java:-java}" "$plantuml" -tpng -o "$out" "$f" || die "plantuml failed on ${f}"
+                JAVA="${java:-java}" "$plantuml" -tsvg -o "$out" "$f" || die "plantuml failed on ${f}"
+                ;;
+            *.mmd|*.mermaid)
+                mmdc="$(gfx_tool diagrams mmdc)"
+                # Mermaid renders in a browser: the store's Chromium, told
+                # where it is and to run without a sandbox, since a node has
+                # no user namespaces for one.
+                local cfg; cfg="$(mktemp)"
+                printf '{"executablePath":"%s","args":["--no-sandbox","--disable-gpu"]}\n' "$(find_chromium)" > "$cfg"
+                "$mmdc" -q -p "$cfg" -i "$f" -o "$out/$name.png" || { rm -f "$cfg"; die "mmdc failed on ${f}"; }
+                "$mmdc" -q -p "$cfg" -i "$f" -o "$out/$name.svg" || { rm -f "$cfg"; die "mmdc failed on ${f}"; }
+                rm -f "$cfg"
+                ;;
+            *) die "${f}: not a .puml, .plantuml, .mmd or .mermaid file" ;;
+        esac
+        log "wrote ${out}/${name}.png and ${out}/${name}.svg"
+    done
+}
+
 cmd_favicon() {
     local svg="" out="" bg=""
     while [ $# -gt 0 ]; do
@@ -6149,8 +6337,7 @@ cmd_favicon() {
     case "$bg" in *[!#A-Za-z0-9]*) die "--bg takes a CSS color name or #hex" ;; esac
     out="${out:-.}"
     mkdir -p "$out"
-    command -v convert >/dev/null 2>&1 || die "imagemagick's convert is required"
-    local chrome; chrome="$(find_chromium)"
+    local magick chrome; magick="$(gfx_tool graphics magick)"; chrome="$(find_chromium)"
 
     local tmp
     tmp="$(mktemp -d)"
@@ -6176,12 +6363,12 @@ const [exe, tmp] = process.argv.slice(2);
   await b.close();
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
-    convert "$tmp/16.png" "$tmp/32.png" "$tmp/48.png" "$tmp/64.png" \
+    "$magick" "$tmp/16.png" "$tmp/32.png" "$tmp/48.png" "$tmp/64.png" \
             "$tmp/128.png" "$tmp/256.png" "$out/favicon.ico"
     if [ -n "$bg" ]; then
         # iOS composites the touch icon onto black when it is transparent;
         # --bg flattens it onto the color the caller actually wants.
-        convert "$tmp/180.png" -background "$bg" -flatten "$out/apple-touch-icon.png"
+        "$magick" "$tmp/180.png" -background "$bg" -flatten "$out/apple-touch-icon.png"
     else
         cp "$tmp/180.png" "$out/apple-touch-icon.png"
     fi
@@ -7017,6 +7204,8 @@ case "${1:-help}" in
     drift)    shift; cmd_drift "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
     favicon)  shift; cmd_favicon "$@" ;;
+    img)      shift; cmd_img "$@" ;;
+    diagram)  shift; cmd_diagram "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;

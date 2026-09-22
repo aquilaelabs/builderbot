@@ -594,6 +594,11 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
+bb img VERB ...    pictures a session can make and then read back, with the
+                   graphics toolchain on its node: info, resize, crop, compose,
+                   annotate, diff, svg2png and optimize, into dist/img/
+bb diagram FILE... PlantUML (.puml) and Mermaid (.mmd) rendered to PNG and SVG
+                   in dist/diagrams/, with the diagrams toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
