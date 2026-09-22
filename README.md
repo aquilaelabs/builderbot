@@ -3789,6 +3789,17 @@ sessions when a copy fell behind. The copy was the problem: nothing kept it
 current, and the machinery that policed it was larger than the thing it
 policed.
 
+A project set up before that may still carry one. Earlier still the block was
+written into `CLAUDE.md` itself, between `<!-- BUILDERBOT:ENV:BEGIN -->` and
+`<!-- BUILDERBOT:ENV:END -->`, and a project that committed it then has it in
+its history and its working copy now: prose about machinery that is gone,
+which nothing here reads and nothing here will ever update. It does no harm
+beyond being wrong. Removing it is an ordinary edit to the project's own
+`CLAUDE.md`, made and committed by whoever owns the project; BuilderBot does
+not offer to do it, because that was always a commit to somebody else's
+repository. A leftover `CLAUDE.local.md` is the same text outside git and can
+simply be deleted.
+
 ## Playwright, Android, plugins, publishing
 
 - **Playwright**: the browsers are a toolchain on the store (the Toolchains
