@@ -16,14 +16,26 @@ function nbTestsView({$, nb, project}){
   let tstEditing = new Set();   // the rows whose two fields are out
   nb.tstSuite = ""; nb.tstFlagged = false, nb.tstUndoc = false;
 
-  async function loadTests(){
+  async function loadTests(again = false){
     try{
       const r = await fetch("/api/tests?project=" + encodeURIComponent(project));
       const j = await r.json();
       nb.tests = j.error ? {tests: [], suites: [], error: j.error} : j;
     }catch(e){ nb.tests = {tests: [], suites: [], error: String(e)}; }
-    nb.testsRev = revs[`tests:${project}`] ?? nb.testsRev;
+    // The revision the ANSWER carried, never the page's token as of now: a
+    // write landing between the read and this line moved the token, and
+    // recording that marked the write as seen, so the row it made never
+    // showed (B201). The same rule the roadmap and memory halves keep.
+    // An answer that failed carries none, and the token stands in so the
+    // watch keeps asking rather than waiting on a number that never comes.
+    nb.testsRev = nb.tests.rev ?? revs[`tests:${project}`] ?? nb.testsRev;
     drawTests();
+    // Already behind: a write landed while this answer was on its way, and
+    // the poll fired for it BEFORE this landed, so it will not fire again.
+    // Read once more now rather than wait for the next write. Once: an
+    // answer and a token that disagree for good must not become a loop.
+    if (!again && nb.tests.rev !== undefined && revs[`tests:${project}`] !== undefined
+        && revs[`tests:${project}`] !== nb.tests.rev) return loadTests(true);
   }
 
   // Wrapped so the poll can tell this panel's own write from somebody

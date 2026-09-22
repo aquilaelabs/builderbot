@@ -431,6 +431,11 @@ def payload(project):
     with _lock:
         d = load()
         p = (d.get("projects") or {}).get(project) or {}
+    # The revision of THIS answer, for the panel to record as what it read.
+    # The panel used to record the page's token as of when the answer landed,
+    # which is a different moment: a write between the read here and that
+    # record was marked seen and never re-read (B201).
+    rev = int(p.get("rev") or 0)
     tests = []
     for key, t in (p.get("tests") or {}).items():
         ms = _latest(t)
@@ -484,6 +489,7 @@ def payload(project):
     return {
         "drift": drift,
         "project": project,
+        "rev": rev,
         "tests": sorted(tests, key=lambda t: (-(t["ms"] or 0), t["suite"], t["ord"])),
         "suites": sorted(suites.values(), key=lambda s: -s["ms"]),
         "runs": runs[-KEEP_RUNS:],

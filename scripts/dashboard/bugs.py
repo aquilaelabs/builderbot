@@ -368,9 +368,14 @@ def payload(project):
     rewrite the file's shape.
     """
     with _lock:
-        rows = list(load()["projects"].get(project) or [])
+        d = load()
+        rows = list(d["projects"].get(project) or [])
+        # The revision of this answer, the number revisions() gives for the
+        # same state, so the panel records what it read and not the page's
+        # later token (B201).
+        rev = len((d.get("history") or {}).get(project) or []) + int((d.get("revn") or {}).get(project) or 0)
     rows.sort(key=lambda b: (b.get("status") != "open", -b.get("at", 0)))
-    return {"project": project, "bugs": rows}
+    return {"project": project, "bugs": rows, "rev": rev}
 
 
 def counts():

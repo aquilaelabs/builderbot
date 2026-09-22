@@ -372,5 +372,11 @@ def payload(project):
         gate = {}
     rs = listing(project)
     by_kind = {k: sum(1 for r in rs if r.get("kind") == k) for k in KINDS}
-    return {"project": project, "pending": rs, "counts": by_kind,
+    # The revision of this answer, as revisions() counts it, so the band
+    # records what it read and not the page's later token (B201).
+    with _lock:
+        d = load()
+    rev = (sum(r.get("id", 0) for r in d["projects"].get(project) or []) * 1000
+           + len(d["settled"].get(project) or []))
+    return {"project": project, "pending": rs, "counts": by_kind, "rev": rev,
             "gate": {k: gate.get(k) or "auto" for k in KINDS}}

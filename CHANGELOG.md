@@ -41,6 +41,7 @@
 - A Git action (merge, switch, pull, commit) no longer fails at random while the Git view is open beside it, or when two people press one at the same moment: reading the branch list used to disturb a write in flight. (9b45f35)
 - The Docker tab no longer takes seconds to draw while its node is on a job: the listing kept from before the job is shown at once, ghosted, and a fresh one is read the moment the job ends. (c8b9f30)
 - The Docker tab's "refreshing" no longer blinks through a build: it appears only when a listing has been slow to arrive, and the rows dim quietly while the last answer stands in. (c15e2b8)
+- A notebook view no longer misses a write that landed while it was reading: the Tests, Bugs, Rules and Pending views record the revision their answer carried and read again at once when it is already behind. (073a02b)
 
 ### Security
 

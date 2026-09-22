@@ -436,6 +436,42 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
   ok(read().rev > before, 'a bulk fill moves it too, having changed what the tab draws');
 }
 
+// B201: a write that lands WHILE the panel's read is out is not marked as
+// seen. The panel used to record the page's token as of when its answer
+// arrived; a poll in between had already moved that token for the write, so
+// the panel recorded "seen" against an answer from before it, and the row
+// the write made never showed until something else moved the token. Forced
+// here: the answer is fetched BEFORE the ingest and handed to the panel after
+// the token has moved, which is what a slow answer under a fast poll is.
+{
+  const staged = await page.evaluate(async () => {
+    const f = window.fetch;
+    const early = await f('/api/tests?project=alpha');
+    const body = await early.text();
+    window.__restore = () => { window.fetch = f; };
+    // Served ONCE: the read after it is the panel noticing it was behind,
+    // and that one has to reach the real server.
+    let served = false;
+    window.fetch = (...a) => String(a[0]).startsWith('/api/tests?') && !served
+      ? (served = true, Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })))
+      : f(...a);
+    return body.length > 0;
+  });
+  ok(staged, 'an answer of the Tests view is read before a write');
+  writeFileSync(LOG, runlog([['race.mjs', 'a row written under an open read', 1.0]]));
+  bb('ingest', LOG);
+  await page.evaluate(() => pollRevs());              // the token moves
+  await page.evaluate(() => notebooks.get('alpha').reloadTests());   // ...and the old answer lands
+  await page.evaluate(() => window.__restore());
+  // The page's ordinary poll: the panel must notice its answer predates
+  // the write and read again, from the real server now.
+  await page.evaluate(() => pollRevs());
+  let shown = false;
+  try { await page.waitForSelector('#tstList .tst[data-key="race.mjs#1"]', { timeout: 10000 }); shown = true; }
+  catch (e) {}
+  ok(shown, 'a run ingested while the panel was reading shows on the next poll, not never');
+}
+
 // `bb tests run` is the loop this file's subject was missing: run the
 // project's own test command, time it, record it, so the registry stops
 // going stale because somebody forgot the second step.
