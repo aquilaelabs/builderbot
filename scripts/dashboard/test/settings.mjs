@@ -29,11 +29,15 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
 // One tree, two products (roadmap R54, step 6): the switch that offers the
-// unvetted git hosts, hypervisors and OS families sits in its own group,
-// off by default, and the header carries the word while it is on.
-ok(await page.$eval('.settingstab [data-set="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked
-     && e.closest('[data-group]')?.dataset.group === 'What is offered'),
-   'the "offer dev features" switch has a group of its own and starts off');
+// unvetted git hosts, hypervisors and OS families is a developer's, so it
+// lives in the Debugging dialog and not on the tab, off by default, and the
+// header carries the word while it is on.
+ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null,
+   'the "offer dev features" switch is not on the tab');
+await page.evaluate(() => openDebugSettings());
+ok(await page.$eval('#setdbgBody [data-dbgset="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked),
+   '...it is in the Debugging dialog, and starts off');
+await page.click('#setdbgCancel');
 ok(await page.$eval('#devtag', e => e.hidden), '...and the header says nothing while it is off');
 await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
@@ -79,8 +83,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'What is offered|Debugging|Reset',
-   `the tab's stored settings are the two groups that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Debugging|Reset',
+   `the tab's stored settings are the one group that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),

@@ -124,7 +124,7 @@ function tcSystemLine(p, managed){
         esc(show.slice(4).join(", "))}</details>`;
   const head = !p.installed ? `Installs ${n} system package${plural} with it here (${esc(sys.manager)})`
     : miss.length ? `${miss.length} of its ${n} system package${plural} missing here (${esc(sys.manager)})${
-        managed ? "" : ", for this machine's owner to install"}`
+        managed ? ", installed by itself" : ", for this machine's owner to install"}`
     : `Uses ${n} system package${plural} here (${esc(sys.manager)}), all installed`;
   // The repair, on the row that needs it: one press puts this row's missing
   // packages on the node and leaves the toolchain alone. Only where the

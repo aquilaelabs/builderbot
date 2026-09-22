@@ -86,14 +86,6 @@ function renderSettingsInto(i){
 // says so beside it, and the bar says whether a change takes now or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
-  // One tree behaves as two products (roadmap R54, step 6): production
-  // leaves this off and sees only what has been proven (alpha); a dev
-  // instance turns it on and sees everything, the unproven tagged dev.
-  {title: "What is offered", fields: [
-    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Alpha is what has been run for real; dev is the rest: git hosts, hypervisors "
-         + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
-         + "dev appears in the pickers tagged dev, and the header says dev."}]},
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the controls kept out of the way otherwise: Debug settings "
@@ -104,6 +96,16 @@ const SETTING_GROUPS = [
    // meet: behind a Debug settings button that opens a dialog while debug
    // mode is on, the same way the node row's Debug settings does.
    debug: [
+    // One tree behaves as two products (roadmap R54, step 6): production
+    // leaves this off and sees only what has been proven (alpha); a dev
+    // instance turns it on and sees everything, the unproven tagged dev.
+    // In the debug dialog rather than a group of its own: it is a switch a
+    // developer of BuilderBot reaches for, and a group headed by one switch
+    // read as a feature of the product rather than of its testing.
+    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
+     hint: "Alpha is what has been run for real; dev is the rest: git hosts, hypervisors "
+         + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
+         + "dev appears in the pickers tagged dev, and the header says dev."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
      hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
 ];
