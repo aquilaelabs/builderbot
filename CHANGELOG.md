@@ -46,6 +46,7 @@
 - The Docker tab no longer takes seconds to draw while its node is on a job: the listing kept from before the job is shown at once, ghosted, and a fresh one is read the moment the job ends. (c8b9f30)
 - The Docker tab's "refreshing" no longer blinks through a build: it appears only when a listing has been slow to arrive, and the rows dim quietly while the last answer stands in. (c15e2b8)
 - A notebook view no longer misses a write that landed while it was reading: the Tests, Bugs, Rules and Pending views record the revision their answer carried and read again at once when it is already behind. (073a02b)
+- bb emu create makes an AVD the emulator can start, bb emu start finds the AVD you made without being told its level and returns only once the system has booted, and bb emu install refuses while it is still booting instead of failing silently. (89d73cd)
 
 ### Security
 

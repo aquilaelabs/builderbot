@@ -649,9 +649,19 @@ emu_avd() {
         printf '%s' "$ANDROID_AVD_NAME"
         return
     fi
-    # The newest API level the store holds an image for: what the machine
-    # actually has, rather than a variable naming what somebody once meant to
-    # install (ANDROID_SYSTEM_IMAGES, which went with the baseline hook).
+    # An AVD that EXISTS, the newest of this prefix, before any guess from
+    # the images: the store held a 37.0 image nobody had made an AVD for, so
+    # the guess named builderbot-37.0, found nothing, fell back to the bare
+    # name and `bb emu start` said "AVD 'builderbot' not found" one minute
+    # after `bb emu create 36` said its AVD was ready (B209).
+    local have
+    have="$(avdmanager list avd 2>/dev/null | sed -n "s/^ *Name: \(${prefix}-[0-9][0-9.]*\)$/\1/p" | sort -V | tail -1)"
+    if [ -n "$have" ]; then
+        printf '%s' "$have"
+        return
+    fi
+    # Nothing made yet: the newest API level the store holds an image for,
+    # which is what `bb emu create` would name, so the refusal names it.
     first="$(emu_apis | tail -1)"
     [ -n "$first" ] || first=36
     if avd_exists "${prefix}-${first}"; then
@@ -659,6 +669,13 @@ emu_avd() {
     else
         printf '%s' "$prefix"
     fi
+}
+
+# Whether the running emulator has finished booting: adb lists it as a
+# device well before that, and an install or a launch aimed at it in between
+# fails with nothing said. SERIAL is emu_serial's.
+emu_booted() {
+    [ "$(adb -s "$1" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]
 }
 
 # Does hardware GLES actually work here? Not "is there a GPU": the card can be
@@ -824,13 +841,27 @@ cmd_emu() {
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 || die "AVD creation failed for ${name}"
-            log "AVD '${name}' ready; bb emu start ${api}"
+            # The image path, written by hand. avdmanager is the android-tools
+            # entry on the store, a different directory from the SDK, and it
+            # writes image.sysdir.1 relative to the root it works out from its
+            # own location; the emulator resolves that line against
+            # ANDROID_HOME, and the two disagreed by one directory, so every
+            # start died with "Broken AVD system path" (B209). This line is
+            # what the emulator wants whatever avdmanager decided.
+            local ini="${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd/config.ini"
+            if [ -f "$ini" ]; then
+                sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
+            else
+                warn "no config.ini at ${ini}; if the emulator says Broken AVD system path, that file's image.sysdir.1 is the line"
+            fi
+            log "AVD '${name}' ready; bb emu start"
             ;;
         install)
             local apk="${2:-}" serial
             [ -f "$apk" ] || die "bb emu install <apk>: ${apk:-?} is not a file"
             serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
-            adb -s "$serial" install -r "$apk"
+            emu_booted "$serial" || die "the emulator is still booting; bb emu start waits for it, or try again in a moment"
+            adb -s "$serial" install -r "$apk" || die "adb install failed"
             ;;
         shot)
             # A screenshot of the emulator's screen, into dist/ so the
@@ -930,8 +961,16 @@ cmd_emu() {
                 sleep 1; waited=$((waited + 1))
             done
             [ -n "$serial" ] \
-                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; see ~/.android/emulator.log"
-            log "emulator is up as ${serial}"
+                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            # ...and BOOTED, on the same clock. adb lists the device the
+            # moment the emulator's adbd answers, minutes before the system
+            # is up; an install or a launch in that gap fails saying nothing.
+            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ] && ! emu_booted "$serial"; do
+                sleep 2; waited=$((waited + 2))
+            done
+            emu_booted "$serial" \
+                || die "the emulator appeared as ${serial} but had not booted within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            log "emulator is up as ${serial}, booted"
             adb devices
             ;;
         stop)
@@ -951,6 +990,7 @@ cmd_emu() {
             # when a command aimed at "the device" could mean either. The
             # emulator is the one named emulator-NNNN.
             adb devices -l
+            [ -n "$(emu_serial)" ] || printf 'no emulator is running; bb emu start\n'
             ;;
         gpu)
             # "Which renderer would a start use, and why", in one command,
