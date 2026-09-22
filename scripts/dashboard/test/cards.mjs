@@ -83,11 +83,15 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   }, null, { timeout: 8000 });
   radii.shut = await page.$eval('.card[data-card="doctor"] h2',
                                 h => getComputedStyle(h).borderBottomLeftRadius);
-  ok(parseFloat(radii.open) > 0 && parseFloat(radii.open) < parseFloat(radii.card),
-     'the card header rounds its own corner to sit inside the card\'s, so the '
-     + 'stencil tick cannot poke out past it');
-  ok(parseFloat(radii.shut) > 0,
-     '...and rounds the bottom too once the header IS the card, which is what closed means');
+  // Nostromo's corners are square (its --r-surface is 0), so the header's
+  // corner is the card's less one pixel, floored at 0: the relation is what
+  // matters, never the number, and a square card has a square header.
+  const inside = (h, c) => parseFloat(c) === 0 ? parseFloat(h) === 0 : parseFloat(h) > 0 && parseFloat(h) < parseFloat(c);
+  ok(inside(radii.open, radii.card),
+     `the card header's corner sits inside the card's, so the stencil tick cannot poke out past it (${
+       radii.open} in ${radii.card})`);
+  ok(inside(radii.shut, radii.card),
+     `...and the bottom too once the header IS the card, which is what closed means (${radii.shut})`);
   await page.evaluate(() => {
     document.querySelector('.card[data-card="doctor"] h2').click();
     delete document.documentElement.dataset.theme;
