@@ -30,9 +30,17 @@ email" above a text box, on an accent fill, at 2.51:1.
 
 ## Shape
 
-8px radius for boxes (cards, panes, modals), 6px for controls (buttons,
-fields), 4px for tags, 99px for pills, 50% for dots. Hairlines are
-`1px solid var(--line)`.
+Three corners, as tokens: `--r-surface` (8px) for boxes (cards, panes,
+modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
+(4px) for tags. Never the number: a scheme may square all three, and nostromo
+does. 99px for pills and 50% for dots are not corners and stay round
+everywhere. Hairlines are `1px solid var(--line)`.
+
+A colour is a token too, including the ones that look like a one-off: a
+danger edge is `--red2-edge`, a warn edge `--gold-edge`, text on a filled
+accent is `--bg`, and a hover shade is `color-mix()` of the scheme's own.
+A hex outside the scheme blocks is the default scheme leaking into the
+other eleven, and the check counts them.
 
 ## Type
 

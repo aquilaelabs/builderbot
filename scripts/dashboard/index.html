@@ -92,6 +92,13 @@
   color-scheme:dark;
   --tap:38px;
   --doc-w:1080px;
+  /* The three corners on the page: a surface (card, panel, dialog), a
+     control (tab, button, field) and a small thing (a pill's box, a bar's
+     cap). Named so a scheme can square them all at once: nostromo does,
+     because a machined edge is part of that look and a rounded corner on it
+     read as a soft highlight bending round a hard tab. Circles and full
+     pills are not these and stay round everywhere. */
+  --r-surface:8px; --r-control:6px; --r-small:4px;
   /* The widest a control, or a row of them, may be on a document surface or
      a sidebar card: a field that runs the whole width of a tab reads as a
      form pretending to be a page (docs/design-language.md, Controls). */
@@ -167,7 +174,8 @@
    invite them apart. */
 html[data-theme="nostromo"],.sw[data-theme="nostromo"]{
   --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
-  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
+  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a;
+  --r-surface:0; --r-control:0; --r-small:0}
 html[data-theme="slate"],.sw[data-theme="slate"]{
   --bg:#181c23; --panel:#1f242d; --line:#4f5a68; --ink:#dfe5ec;
   --dim:#9fa6ae; --accent:#6ea8fe; --warn:#d9a441; --bad:#ef6f6c; --note:#7fb8ff}
@@ -241,8 +249,8 @@ html[data-theme="nostromo"] header::after{
    which is what closed means. */
 html[data-theme="nostromo"] .card h2{
   box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5);
-  border-radius:7px 0 0 0}
-html[data-theme="nostromo"] .card.closed h2{border-radius:7px 0 0 7px}
+  border-radius:calc(var(--r-surface) - 1px) 0 0 0}
+html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) - 1px) 0 0 calc(var(--r-surface) - 1px)}
 
 /* CRT scanlines, on the panels only: never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
@@ -279,6 +287,20 @@ html[data-theme="nostromo"] body::before{
    the top edge, which is what makes a flat rectangle look like a keycap. */
 html[data-theme="nostromo"] button:not(.link){
   box-shadow:inset 0 1px 0 0 rgba(255,176,0,.12)}
+
+/* Square, not rounded: the three corner tokens are 0 in this scheme's block,
+   which is what makes a tab's coloured bar end in a hard edge instead of
+   bending round a radius. The rest of the ship's look on top of that:
+   the title in the stencil face the card headers already wear, and the tab
+   in front glowing the way phosphor does, a soft bloom of its own colour
+   rather than a fill. Under 0.35 alpha and one element: the restraint rule
+   at the top of this block still holds. */
+html[data-theme="nostromo"] header h1{
+  text-transform:uppercase;letter-spacing:2px;font-size:13px;color:var(--accent)}
+html[data-theme="nostromo"] .tab.on{
+  box-shadow:0 0 10px 0 color-mix(in srgb, var(--accent) 35%, transparent)}
+html[data-theme="nostromo"] .tab.pc.on{
+  box-shadow:0 0 10px 0 color-mix(in srgb, var(--pc) 45%, transparent)}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);display:flex;
@@ -388,7 +410,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    of it, rather than the bell itself brightening. A stroked icon breathing in
    a header of other stroked icons is easy to miss; a filled block appearing
    where there was none is not. */
-#bBell.waiting{color:#1a1f26;border-radius:6px;padding:0 7px;
+#bBell.waiting{color:var(--bg);border-radius:var(--r-control);padding:0 7px;
   animation:bellwait 1.5s ease-in-out infinite}
 #bBell.waiting svg{stroke-width:1.8}
 /* The fill IS the badge: a dot on top of it is amber on amber. */
@@ -405,7 +427,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:1px solid var(--line);border-top:0;
-  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);
+  border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 /* The header's own menu, under the gear. Same shape and the
    same manners as the bell panel beside it: anchored to the header's bottom
@@ -413,7 +435,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .uimenu{position:absolute;right:8px;top:100%;z-index:40;
   width:min(300px,calc(100vw - 16px));
   background:var(--panel);border:1px solid var(--line);border-top:0;
-  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
+  border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
   text-transform:uppercase;color:var(--dim)}
@@ -476,7 +498,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   content:attr(data-tip);position:fixed;left:var(--tipx,0);top:var(--tipy,0);
   bottom:auto;transform:none;max-width:min(280px,calc(100vw - 16px));width:max-content;
   background:color-mix(in srgb, var(--bg), #000000 22%);color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+  border:1px solid var(--line);border-radius:var(--r-control);padding:6px 8px;
   font:12px/1.45 system-ui,sans-serif;text-align:left;white-space:normal;
   overflow-wrap:anywhere;box-shadow:0 6px 18px rgba(0,0,0,.5);
   display:block;opacity:1;pointer-events:none;z-index:90}
@@ -489,7 +511,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
-  flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
+  flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:var(--r-surface);
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-body);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
@@ -498,7 +520,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    .sw[data-theme=...] as well as for the page, so this is the palette itself
    at 1cm rather than a hand-kept copy of it. */
 .sw{position:relative;display:block;padding:0;overflow:hidden;
-  height:44px;border-radius:6px;cursor:pointer;
+  height:44px;border-radius:var(--r-control);cursor:pointer;
   background:var(--bg);border:1px solid var(--line)}
 .sw .swp{position:absolute;left:0;right:0;bottom:0;height:16px;
   background:var(--panel);border-top:1px solid var(--line)}
@@ -527,20 +549,20 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* Not a notification with a different border: a different thing. It is the
    only row here that is a question, it is pinned above every answer, and it
    is the one the Clear button cannot touch. */
-.bnote.ask{border-left:3px solid var(--warn);background:#2a2617;
+.bnote.ask{border-left:3px solid var(--warn);background:color-mix(in srgb, var(--warn) 12%, var(--panel));
   background:color-mix(in srgb, var(--warn) 13%, var(--panel));
   border-bottom:1px solid var(--warn)}
 .bnote.ask .bwhy{color:var(--warn)}
 .bnote.ask .btag{display:inline-block;margin-bottom:5px;padding:1px 6px;
-  border-radius:4px;font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;
-  background:var(--warn);color:#1a1f26;font-weight:700}
+  border-radius:var(--r-small);font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;
+  background:var(--warn);color:var(--bg);font-weight:700}
 /* The two answers read as controls, not as links in a sentence. */
-.bnote.ask .acts a{padding:3px 10px;border-radius:6px;border:1px solid var(--line);
+.bnote.ask .acts a{padding:3px 10px;border-radius:var(--r-control);border:1px solid var(--line);
   text-decoration:none}
-.bnote.ask .acts a[data-ballow]{background:var(--warn);color:#1a1f26;
+.bnote.ask .acts a[data-ballow]{background:var(--warn);color:var(--bg);
   border-color:var(--warn);font-weight:600}
 .bnote .bdetail summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:4px}
-.bnote .bdetail pre{font:12px/1.4 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:6px}
+.bnote .bdetail pre{font:12px/1.4 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:var(--r-control)}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
 .bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
@@ -610,7 +632,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 
 /* position:relative so the resume chooser, which is absolutely positioned and
    measured against this box, actually lands inside it. */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
   flex:0 0 auto;position:relative}
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
   letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
@@ -669,7 +691,7 @@ body.dragging .side .card h2{cursor:grabbing}
 .grow{flex:1;min-width:120px}
 
 button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
-  border-radius:6px;padding:6px 10px;font:12px/1 inherit;cursor:pointer;
+  border-radius:var(--r-control);padding:6px 10px;font:12px/1 inherit;cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 /* Hover, only where there is a pointer that hovers. On a touch screen a tap
@@ -694,8 +716,8 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
      hover leaking in here painted the active tab as a filled pill the moment
      the pointer crossed it. */
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
-  .modal .danger:hover{background:#6a3532}
-  .nb .caution:hover{background:#534318}
+  .modal .danger:hover{background:color-mix(in srgb, var(--bad) 35%, var(--panel))}
+  .nb .caution:hover{background:color-mix(in srgb, var(--warn) 30%, var(--panel))}
   button:disabled:hover{background:var(--btn)}
   .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
@@ -704,7 +726,7 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
   .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
   .fx .grp>summary:hover{background:var(--btn)}
-  .fx .cve:hover{background:#5f3b3b}
+  .fx .cve:hover{background:color-mix(in srgb, var(--bad) 30%, var(--panel))}
   .tscroll:disabled:hover{background:transparent}
 }
 
@@ -797,7 +819,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
     padding-inline:6px 9px;color:var(--dim);transition:transform .14s}
   select:open::picker-icon{transform:rotate(180deg)}
   select::picker(select){appearance:base-select;background:var(--panel);
-    border:1px solid var(--line);border-radius:8px;padding:5px;margin-top:4px;
+    border:1px solid var(--line);border-radius:var(--r-surface);padding:5px;margin-top:4px;
     box-shadow:0 6px 18px rgba(0,0,0,.5);
     /* The cap is what stops a forty-level API list running off the screen;
        the rest of it scrolls. */
@@ -806,7 +828,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
   /* border-box, or --tap is the height of the TEXT and every row comes out at
      50px: an option's box is content-box by default. */
   select option{display:flex;align-items:center;gap:8px;box-sizing:border-box;
-    min-height:var(--tap);padding:6px 9px;border-radius:6px;
+    min-height:var(--tap);padding:6px 9px;border-radius:var(--r-control);
     background:none;color:var(--ink)}
   select option:hover,select option:focus{background:var(--sunk)}
   select option:checked{background:var(--accent-deep);color:var(--ink)}
@@ -933,9 +955,9 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
-  border-radius:6px;overflow:hidden;background:var(--btn)}
+  border-radius:var(--r-control);overflow:hidden;background:var(--btn)}
 .cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
-.cmd .tack{padding:4px 6px;color:#4b5563;border-left:1px solid var(--line);
+.cmd .tack{padding:4px 6px;color:color-mix(in srgb, var(--dim) 55%, var(--panel));border-left:1px solid var(--line);
   display:inline-flex;align-items:center}
 .cmd .tack.on{color:var(--accent)}
 .cmd .tack svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;
@@ -981,7 +1003,7 @@ html:has(.modal:not([hidden])){overflow:hidden}
    a tap meant for the page behind. */
 .modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
 .modal[hidden]{display:none}
-.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
 /* The memory book holds prose, not form fields: 520px wraps a description
@@ -1047,7 +1069,7 @@ html:has(.modal:not([hidden])){overflow:hidden}
 input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"])),
 textarea,select{
   background:var(--sunk);color:var(--ink);border:1px solid var(--line);
-  border-radius:6px}
+  border-radius:var(--r-control)}
 /* A file field is a button of ours and the picked name; the browser's
    chooser stays hidden (docs/design-language.md, Controls). */
 .filepick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -1120,7 +1142,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
-  outline:2px solid #2f4d6d;outline-offset:-1px}
+  outline:2px solid color-mix(in srgb, var(--note) 45%, var(--panel));outline-offset:-1px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
@@ -1134,12 +1156,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    and nothing about a button said which kind it was. One class, so there is
    one answer: `.rm` used to be a second word for it and is now only what it
    also was, the dim icon that drops a row from a list. */
-.danger{color:var(--bad);border-color:#94423d}
+.danger{color:var(--bad);border-color:var(--red2-edge)}
 /* Revert is amber rather than red. It throws away what has not been saved
    yet: a decision you might want back, and the colour this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy
    something already on disk, which is the other two on this panel. */
-.nb .caution{color:var(--warn);border-color:#705820}
+.nb .caution{color:var(--warn);border-color:var(--gold-edge)}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
 /* Underlined and in the warm colour, the way the CLAUDE.md fix link on a
@@ -1177,7 +1199,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
     transform:translateX(-50%);
     max-width:min(280px,60vw);width:max-content;
     background:color-mix(in srgb, var(--bg), #000000 22%);color:var(--ink);
-    border:1px solid var(--line);border-radius:6px;
+    border:1px solid var(--line);border-radius:var(--r-control);
     padding:6px 8px;font:12px/1.45 system-ui,sans-serif;text-align:left;
     white-space:normal;overflow-wrap:anywhere;
     box-shadow:0 6px 18px rgba(0,0,0,.5);
@@ -1406,10 +1428,16 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
      History measured 30px. */
   .modal button,.nb button{min-height:var(--tap)}
 }
-.tab.pc{border-left:3px solid var(--pc)}
+.tab.pc{border-left:3px solid var(--pc);
+  /* A hint of it while the tab rests too: with only the bar, a notebook
+     that was not in front read as a plain tab wearing a stripe, and the
+     colour it was given was gone until it was clicked on. Ten percent:
+     enough to say whose, under --ink at 9:1 or better on every scheme. */
+  background:color-mix(in srgb, var(--pc) 10%, var(--btn))}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
-.row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
+.row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc);
+  background-color:color-mix(in srgb, var(--pc) 6%, transparent)}
 /* The containers under a dev instance's row: one line each, the running
    ones in the ok colour, the rest dim. */
 .dmsvcs{line-height:1.5}
@@ -1505,7 +1533,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .dfile>summary::before{content:"\25B8";font-size:11px;margin-right:6px}
 .dfile[open]>summary::before{content:"\25BE"}
 pre.diff{margin:0;overflow-x:auto;font:12px/1.5 var(--mono);white-space:pre;
-  background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+  background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);padding:6px 8px}
 pre.diff span{display:block;min-width:max-content;padding:0 4px}
 pre.diff .d-add{background:color-mix(in srgb, var(--accent), transparent 82%)}
 pre.diff .d-del{background:color-mix(in srgb, var(--bad), transparent 82%)}
@@ -1537,8 +1565,8 @@ pre.diff .d-ctx{color:var(--dim)}
    navigate to it: fetch would buffer the file into JS for nothing. */
 .artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
   padding:6px 12px;background:var(--btn);color:var(--ink);border:1px solid var(--line);
-  border-radius:6px;font:600 12px/1 system-ui,sans-serif;text-decoration:none}
-@media(hover:hover){ .artrow a.btn:hover{border-color:#8b949e} }
+  border-radius:var(--r-control);font:600 12px/1 system-ui,sans-serif;text-decoration:none}
+@media(hover:hover){ .artrow a.btn:hover{border-color:var(--dim)} }
 .artrow.job .grow{font:var(--f-ui);color:var(--dim)}
 
 /* The Phone tab's rows. Almost nothing of their own: .row like Projects, and
@@ -1557,7 +1585,7 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The code base's language bar: one strip, a segment per language, and a
    legend that wraps. Widths are percentages of the code, so the strip is
    always full when there is any code at all. */
-.cbbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line);margin:8px 0 10px}
+.cbbar{display:flex;height:8px;border-radius:var(--r-small);overflow:hidden;background:var(--line);margin:8px 0 10px}
 .cbbar span{display:block;height:100%}
 .cblegend{display:flex;flex-wrap:wrap;gap:4px 16px;font:var(--f-ui)}
 .cblegend .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
@@ -1621,7 +1649,7 @@ pre.diff .d-ctx{color:var(--dim)}
    design language" quietly stops being the same. */
 .hist .act,.roadmap .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
   font:var(--f-tag);text-transform:uppercase;letter-spacing:.4px;
-  padding:3px 5px;border-radius:4px;border:1px solid var(--line);
+  padding:3px 5px;border-radius:var(--r-small);border:1px solid var(--line);
   color:var(--dim);white-space:nowrap}
 .hist .act.gone{color:var(--red2);border-color:var(--red2-edge)}
 .hist .act.new{color:var(--green2);border-color:var(--green2-edge)}
@@ -1700,7 +1728,7 @@ pre.diff .d-ctx{color:var(--dim)}
    them rather than by them: the reason the list exists at all. */
 .roadmap .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
 .roadmap .rm{color:var(--dim)}
-@media(hover:hover){ .roadmap .rm:hover{color:var(--bad);border-color:#94423d} }
+@media(hover:hover){ .roadmap .rm:hover{color:var(--bad);border-color:var(--red2-edge)} }
 /* Four controls and a number on one line is tight on a phone; the buttons
    lose their padding before the words lose their width. */
 @media(max-width:620px){ .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{padding:5px 4px}
@@ -1787,8 +1815,8 @@ pre.diff .d-ctx{color:var(--dim)}
    the top of its view. */
 /* Confirming a drop, with the reason it is going. Red-edged rather than a
    browser dialog: it has to hold a field, and a phone's confirm() cannot. */
-.dropbox{border:1px solid #94423d;border-radius:8px;padding:9px 10px;
-  margin:0 0 9px 26px;background:#1a1113}
+.dropbox{border:1px solid var(--red2-edge);border-radius:var(--r-surface);padding:9px 10px;
+  margin:0 0 9px 26px;background:color-mix(in srgb, var(--bad) 8%, var(--bg))}
 .dropbox .q{font:12px/1.5 system-ui,sans-serif;color:var(--ink);margin-bottom:7px}
 .dropbox .q span{color:var(--dim)}
 .dropbox input{width:100%;box-sizing:border-box;padding:6px 8px;
@@ -1822,7 +1850,7 @@ pre.diff .d-ctx{color:var(--dim)}
    about the same row. It used to be a bar pinned at the foot of the panel: on
    a phone that put the confirmation for "hand this line over" a screen away
    from the line, with nothing on it naming which one. */
-.sendbox{background:var(--sunk);border:1px solid var(--line);border-radius:8px;
+.sendbox{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-surface);
   margin:6px 0 2px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
 .sendbox .q{color:var(--ink);font:600 12px/1.4 system-ui,sans-serif}
 .sendbox .q span{font-weight:400;color:var(--dim)}
@@ -1901,7 +1929,7 @@ pre.diff .d-ctx{color:var(--dim)}
   .rulerow .two{display:block}
   .rulerow .two>*+*{margin-top:6px}
 }
-.memadd{border:1px dashed var(--line);border-radius:8px;padding:10px}
+.memadd{border:1px dashed var(--line);border-radius:var(--r-surface);padding:10px}
 .memadd .two{display:flex;gap:6px}
 .memadd .two>*{flex:1;min-width:0}
 /* Stacked on a phone, like the bug form's pairs: half of 393px shows a
@@ -1934,7 +1962,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .bug .sev.medium{color:var(--gold);border-color:var(--gold-edge)}
 .bug .sev.high{color:var(--red2);border-color:var(--red2-edge)}
 .bug .sev.critical{background:var(--red2);border-color:var(--red2);
-  color:#1a1f26;font-weight:700}
+  color:var(--bg);font-weight:700}
 .bug .bstat.open{color:var(--blue2);border-color:var(--blue2-edge)}
 .bug .bstat.fixed{color:var(--green2);border-color:var(--green2-edge)}
 /* Neither green nor red: it was real and it stopped applying, which is not a
@@ -2054,10 +2082,10 @@ pre.diff .d-ctx{color:var(--dim)}
 #nbPending div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #nbPending div span{flex:1 1 200px}
 .nbtabs .pcount{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;
-  background:var(--warn);color:#1a1706;font:var(--f-mono);font-size:11px;line-height:16px}
+  background:var(--warn);color:var(--bg);font:var(--f-mono);font-size:11px;line-height:16px}
 /* The review modal: one row per held change, its checkbox first, the full
    text under a fold, and the two verbs at the foot with Approve first. */
-#pendList{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+#pendList{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-surface)}
 #pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);font-size:12px;
   text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);
   background:var(--panel2,transparent)}
@@ -2131,7 +2159,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .clashwho{font:var(--f-tag);letter-spacing:.04em;text-transform:uppercase;
   color:var(--dim);margin:8px 0 4px}
 .clashtext{background:var(--sunk);border:1px solid var(--line);
-  border-radius:6px;padding:8px 10px;font:var(--f-ui);color:var(--ink);
+  border-radius:var(--r-control);padding:8px 10px;font:var(--f-ui);color:var(--ink);
   white-space:pre-wrap;overflow-wrap:anywhere;max-height:9em;overflow:auto}
 /* The memory's side is a whole document, not a line: taller, and the only
    copy of what is on disk the operator can read without losing their own. */
@@ -2273,7 +2301,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs, with the page's pre skin, inset like a field. */
-.ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
+.ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:var(--r-control);
   background:var(--sunk);user-select:all}
 /* The generated domain XML. `pre` wraps by default, which is right for a
    shell line and wrong for a file somebody is about to paste into a
@@ -2552,7 +2580,7 @@ button[aria-busy="true"]{opacity:.75}
    pull that writes a line per layer per tick does not push the row off the
    screen; it is a window on what is happening, not a log file. */
 .dmlog{margin:6px 0 0;padding:7px 9px;max-height:150px;overflow:auto;
-  background:var(--sunk);border:1px solid var(--line);border-radius:6px;
+  background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);
   color:var(--dim);font:11px/1.5 var(--mono);white-space:pre-wrap;
   overflow-wrap:anywhere}
 .dmtab .sect .li{overflow-wrap:anywhere}
@@ -2638,16 +2666,16 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
-.pill.ok{color:var(--accent);border-color:#326641}
-.pill.bad{color:var(--bad);border-color:#94423d}
-.pill.warn{color:var(--warn);border-color:#705820}
-.pill.note{color:var(--note);border-color:#305d8f}
+.pill.ok{color:var(--accent);border-color:var(--green2-edge)}
+.pill.bad{color:var(--bad);border-color:var(--red2-edge)}
+.pill.warn{color:var(--warn);border-color:var(--gold-edge)}
+.pill.note{color:var(--note);border-color:var(--blue2-edge)}
 .row code{font:11px/1.5 var(--mono);background:var(--btn);padding:1px 5px;
-  border-radius:4px;white-space:nowrap}
+  border-radius:var(--r-small);white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
-  word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
+  word-break:break-word;max-height:300px;overflow:auto;color:color-mix(in srgb, var(--ink) 80%, var(--dim))}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
 /* ...and a placeholder that has become a failure notice: the poll's words
    for a card that could not draw, in the warning colour and no longer
@@ -2675,17 +2703,17 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast{position:fixed;left:50%;transform:translateX(-50%) translateY(-140%);
   top:calc(10px + env(safe-area-inset-top));z-index:80;   /* over the editor: its
                             save errors are shown here */
-  max-width:min(560px,92vw);padding:9px 14px;border-radius:8px;overflow-wrap:anywhere;
+  max-width:min(560px,92vw);padding:9px 14px;border-radius:var(--r-surface);overflow-wrap:anywhere;
   background:var(--btn);border:1px solid var(--line);color:var(--ink);
   font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
   transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-#toast.bad{border-color:#94423d;color:var(--bad)}
+#toast.bad{border-color:var(--red2-edge);color:var(--bad)}
 #toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
 @media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
 
-.tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
+.tabbar .newtab{border:1px solid var(--line);border-radius:var(--r-control);font-size:15px;
   line-height:1;padding:5px 9px;color:var(--dim)}
 
 /* Tabs --------------------------------------------------------------- */
@@ -2698,10 +2726,10 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    apart into three separate boxes with the seams showing. */
 .col.term{min-height:0;min-width:0;gap:0}
 .tabbar{display:flex;gap:5px;flex-wrap:wrap;padding:6px 7px;background:var(--panel);
-  border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
+  border:1px solid var(--line);border-radius:var(--r-surface) var(--r-surface) 0 0;flex:0 0 auto;
   align-items:center;position:relative}
 .tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
-  border-radius:6px;overflow:hidden;background:var(--btn);
+  border-radius:var(--r-control);overflow:hidden;background:var(--btn);
   transition:background-color .15s ease,border-color .15s ease}
 .tab.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
@@ -2743,7 +2771,7 @@ body.dragging .tab .lbl{cursor:grabbing}
      outline as it reached each arrow. Drawn by an ancestor that is not masked,
      the line runs the full width and only what scrolls fades. */
   .tabstrip{background:var(--panel);border:1px solid var(--line);
-    border-radius:8px 8px 0 0;overflow:hidden}
+    border-radius:var(--r-surface) var(--r-surface) 0 0;overflow:hidden}
   .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
     background:transparent;border:0;border-radius:0}
   .tabbar::-webkit-scrollbar{display:none}
@@ -2788,7 +2816,7 @@ body.dragging .tab .lbl{cursor:grabbing}
    pane chooser under a tab, both of which used to snap into place. */
 @keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
-  border:1px solid var(--line);border-radius:8px;padding:5px;display:flex;
+  border:1px solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .pinmenu button{min-height:var(--tap)}
@@ -2800,7 +2828,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* Panes -------------------------------------------------------------- */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
   background:var(--line);border:1px solid var(--line);border-top:0;
-  border-radius:0 0 8px 8px;overflow:hidden}
+  border-radius:0 0 var(--r-surface) var(--r-surface);overflow:hidden}
 .panes.split{grid-template-columns:1fr 1fr}
 /* A phone has no room for a split: a split layout shows only its active pane
    (every tab is still on the strip), and the pin controls that build splits
@@ -2828,7 +2856,7 @@ body.booting .pane>.loading{margin:auto}
   background:color-mix(in srgb, var(--bg) 92%, transparent);
   border-bottom:1px solid var(--line);
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
-.pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:4px}
+.pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:var(--r-small)}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
 /* The terminal's own background colour, on the frame itself.
    A terminal's document is transparent until xterm paints into it, so what
@@ -2919,7 +2947,7 @@ body.booting .pane>.loading{margin:auto}
 
 /* Keys --------------------------------------------------------------- */
 .keys{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);
-  border-top:0;border-radius:0 0 8px 8px;padding:6px;display:none;gap:5px;flex-wrap:wrap}
+  border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface);padding:6px;display:none;gap:5px;flex-wrap:wrap}
 .keys.show{display:flex}
 .keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
 .keys .gap{flex-basis:100%;height:0}
@@ -2935,7 +2963,7 @@ body.booting .pane>.loading{margin:auto}
    it and a panel at once. */
 .mpanel{display:none}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
-  border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
+  border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
 .mobar button{min-height:var(--tap)}
 .mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
@@ -2999,20 +3027,20 @@ body.booting .pane>.loading{margin:auto}
    landed on every row of the to-do list and made it read as a wall of
    bubbles. Inside a tab the divider is the language; the card is for a report
    whose groups really are separate documents. */
-.fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:8px;
+.fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:var(--r-surface);
   margin-bottom:10px;background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:var(--row-y) var(--row-x);font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
 .fx .rule{border-top:1px solid var(--line);padding:var(--row-y) var(--row-x)}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
-.fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1;overflow-wrap:anywhere}
+.fx .loc{font:12px/1.7 var(--mono);color:color-mix(in srgb, var(--ink) 80%, var(--dim));overflow-wrap:anywhere}
 .fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;
   margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
   overflow-wrap:anywhere}
 .fx a{color:var(--note)}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
-  border-radius:99px;border:1px solid #94423d;color:var(--bad);
+  border-radius:99px;border:1px solid var(--red2-edge);color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
 </style>
 </head>

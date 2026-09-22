@@ -517,6 +517,31 @@ for (const kind of kinds){
     off.length ? ': ' + off.join('; ') : ''}`);
 }
 
+// ---- colours and corners are tokens -------------------------------------------
+// docs/design-language.md, Shape and Colour: a hex outside the scheme blocks
+// is the default scheme leaking into the other eleven (a danger edge typed
+// six times, text on a filled accent in the default's --bg), and a radius
+// typed as a number is one a scheme cannot square. Read off the stylesheet.
+{
+  const { readFileSync } = await import('node:fs');
+  const path = await import('node:path');
+  const html = readFileSync(path.resolve(import.meta.dirname, '..', 'index.html'), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const lines = css.split('\n');
+  const schemes = lines.findIndex(l => /^\*\{box-sizing:border-box\}/.test(l));
+  const off = [];
+  lines.forEach((l, i) => {
+    if (i <= schemes) return;                      // the tokens and the schemes define hex
+    const t = l.replace(/\/\*.*?\*\//g, '');
+    // Black and white inside a color-mix() are not colours of a scheme, and
+    // #2b2b2b is the terminal's own ground (see .pane iframe), never a page colour.
+    const hex = t.replace(/#000000|#ffffff|#2b2b2b/g, '');
+    if (/#[0-9a-fA-F]{6}\b/.test(hex)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
+    if (/border-radius:(8|6|4|10)px/.test(t)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
+  });
+  ok(off.length === 0, `no hex colour and no numbered corner outside the scheme blocks (${off.length ? off.slice(0, 4).join('; ') : 'none'})`);
+}
+
 // ---- a fold stays the way it was left ---------------------------------------
 // A redraw rebuilds the markup, so a <details> with nothing behind it goes
 // back to however it was first drawn: the Docker manager's Details fold shut
