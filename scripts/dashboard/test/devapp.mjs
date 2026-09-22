@@ -154,6 +154,10 @@ const pillIs = async (want) => { await openManager(); return page.waitForFunctio
     await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
     const during = { word: !!document.querySelector('.dmfresh'), dim: !!document.querySelector('.dmtab.dmstale') };
     await p; window.fetch = f;
+    // A revision reload that started under the slowed fetch is itself still
+    // slowed and still in flight; the word it is entitled to is not this
+    // test's. Wait for the tab to have nothing on its way.
+    for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
     return { ...during, after: !!document.querySelector('.dmfresh') };
   });
   ok(slow.word && slow.dim && !slow.after,
@@ -2074,14 +2078,17 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 {
   const store = () => JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'));
   // Build something, so there is a record to be about a daemon at all.
-  await page.evaluate(() => dmAction('ep.silon', 'main', 'rebuild'));
-  await page.waitForFunction(() => {
-    const d = (dockerList?.instances || []).find(x => x.instance === 'main');
-    return d && d.built_rev;
-  }, null, { timeout: 60000 }).catch(() => {});
+  // Waited on the RECORD, not on the row: the row carried built_rev from an
+  // earlier build in this file, so a wait on it returned at once, before this
+  // build had written its daemon's id (the flake noted on B204).
   const rec = () => (store()['ep.silon'] || {}).main || {};
-  ok(!!rec().rev && !!rec().daemon_uid,
-     'a build records which daemon it landed on, by that daemon\'s own id');
+  const at0 = rec().at || 0;
+  await page.evaluate(() => dmAction('ep.silon', 'main', 'rebuild'));
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60000 && !((rec().at || 0) > at0 && rec().daemon_uid)) await sleep(250);
+  ok(!!rec().rev && !!rec().daemon_uid && (rec().at || 0) > at0,
+     `a build records which daemon it landed on, by that daemon's own id (${
+       rec().daemon_uid ? 'uid recorded' : 'no uid'} after ${Date.now() - t0}ms)`);
   // Through the CENSUS, for the same reason as the stamp above: the daemon's
   // own id is what the node reports about itself now, not something the
   // controller reads over an ssh the work does not use (B111).
@@ -2453,11 +2460,20 @@ ok(await page.$('#devSend'),
 // project and carrying a .bbignore, and the project's checkout is untouched.
 {
   const G = (...a) => execFileSync('git', ['-C', D, ...a], { env, encoding: 'utf8' });
+  // The branch list is memoised on .git's mtimes (B205), so the listing read
+  // BEFORE the branch exists is what proves the memo lets go: the same
+  // question after the commit has to see the new branch, from git, not the
+  // kept answer.
+  const listing = () => page.evaluate(async () => (await (await fetch('/api/docker')).json()).refs?.['ep.silon'] || []);
+  const refsBefore = await listing();
   G('checkout', '-q', '-b', 'sidebranch');
   writeFileSync(`${D}/ONLY-ON-SIDE.txt`, 'x\n');
   G('add', '-A'); G('commit', '-qm', 'side work');
   const sideSha = G('rev-parse', '--short=7', 'HEAD').trim();
   G('checkout', '-q', '-');
+  const refsAfter = await listing();
+  ok(!refsBefore.includes('sidebranch') && refsAfter.includes('sidebranch'),
+     `the branch picker's memo lets go when the repository moves (before: ${refsBefore.join(',')}; after: ${refsAfter.join(',')})`);
   const api = (body) => page.evaluate(async b => {
     const r = await fetch('/api/devapp', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });

@@ -2933,10 +2933,12 @@ def refs_of(project):
     """The branches this project could be built from, newest commit first,
     for the picker on the row. Local branches only: a remote-tracking one
     would be a build of something nobody here has fetched."""
-    r = _run(["git", "-C", str(WORKSPACE / project), "for-each-ref",
-              "--sort=-committerdate", "--format=%(refname:short)",
-              "refs/heads/"], timeout=15)
-    return [b.strip() for b in (r["out"] or "").splitlines() if b.strip()][:60]
+    def run():
+        r = _run(["git", "-C", str(WORKSPACE / project), "for-each-ref",
+                  "--sort=-committerdate", "--format=%(refname:short)",
+                  "refs/heads/"], timeout=15)
+        return [b.strip() for b in (r["out"] or "").splitlines() if b.strip()][:60]
+    return list(_git_memoed(project, "refs", run))
 
 
 @_on_instance
@@ -3580,6 +3582,36 @@ def _container_text(name):
         return ""
 
 
+# What git said about a project, kept until the repository moves. The
+# manager's listing asks HEAD, the branches and the pinned refs of every
+# project it lists on every draw, and a draw is one per revision while a job
+# runs; each ask is a subprocess reading a tree on the share (B205). A commit,
+# a checkout or a fetch changes one of .git's few top-level files, so their
+# mtimes are the key: the same key, the same answer, and no git run. `status`
+# is not here, because a working tree can move without .git moving.
+_git_memo = {}
+_git_memo_lock = threading.Lock()
+_GIT_STAMPS = ("HEAD", "index", "packed-refs", "refs", "logs/HEAD")
+
+
+def _git_key(project):
+    g = WORKSPACE / project / ".git"
+    return tuple(_mtime(g / n) for n in _GIT_STAMPS)
+
+
+def _git_memoed(project, what, run):
+    key = (project, what)
+    stamp = _git_key(project)
+    with _git_memo_lock:
+        hit = _git_memo.get(key)
+        if hit and hit[0] == stamp:
+            return hit[1]
+    val = run()
+    with _git_memo_lock:
+        _git_memo[key] = (stamp, val)
+    return val
+
+
 def _head(project, instance=None):
     """The commit an instance is built FROM: the project tree's HEAD, or the
     ref's own tip when the instance is pinned to one. Both answers come from
@@ -3587,9 +3619,12 @@ def _head(project, instance=None):
     still a commit this can name."""
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
-    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
-              ref or "HEAD"], timeout=10)
-    return r["out"].strip() if r["code"] == 0 else ""
+
+    def run():
+        r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
+                  ref or "HEAD"], timeout=10)
+        return r["out"].strip() if r["code"] == 0 else ""
+    return _git_memoed(project, "head:" + ref, run)
 
 
 def _dirty(project):
