@@ -52,6 +52,8 @@
 - The Docker tab's "refreshing" no longer blinks through a build: it appears only when a listing has been slow to arrive, and the rows dim quietly while the last answer stands in. (c15e2b8)
 - A notebook view no longer misses a write that landed while it was reading: the Tests, Bugs, Rules and Pending views record the revision their answer carried and read again at once when it is already behind. (073a02b)
 - bb emu create makes an AVD the emulator can start, bb emu start finds the AVD you made without being told its level and returns only once the system has booted, and bb emu install refuses while it is still booting instead of failing silently. (89d73cd)
+- The phone's device listing is a probe: no 'exec adb devices -l' row on the Jobs tab per node per minute, and the Docker tab stops refetching its listing for each one (65b863b)
+- Open the run's output on the Tests view sends into the shell until it answers, instead of saying the shell did not come up while a node shell was still being reported (65b863b)
 
 ### Security
 
