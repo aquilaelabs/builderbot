@@ -61,7 +61,7 @@ def path(d):
 def _lock_key(d):
     real = os.path.realpath(path(d))
     return os.path.join(tempfile.gettempdir(),
-                        "bb-changelog-" + hashlib.sha1(real.encode()).hexdigest()[:16])
+                        "bb-changelog-" + hashlib.sha256(real.encode()).hexdigest()[:16])
 
 
 def _held(fn):

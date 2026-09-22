@@ -31,7 +31,12 @@ import sys
 import tarfile
 import time
 import urllib.request
-import xml.etree.ElementTree as ET
+# The only XML parsed here is a distribution's package index, fetched over
+# TLS from that distribution's own mirror. ElementTree resolves no external
+# entities, so XXE is not reachable; the remaining risk needs the mirror
+# itself to serve a hostile index, and a dependency to defend against that
+# is not worth it in a stdlib-only tool.
+import xml.etree.ElementTree as ET  # nosemgrep: use-defused-xml
 from pathlib import Path
 
 try:
@@ -79,6 +84,8 @@ def fetch(url, fresh):
     CACHE.mkdir(parents=True, exist_ok=True)
     f = CACHE / re.sub(r"[^A-Za-z0-9._-]", "_", url)
     if fresh or not f.exists() or time.time() - f.stat().st_mtime > MAX_AGE:
+        if not url.startswith(("https://", "http://")):    # the mirrors above, only
+            raise ValueError(f"not a web address: {url[:60]}")
         req = urllib.request.Request(url, headers={"User-Agent": "builderbot-check-sysdeps"})
         with urllib.request.urlopen(req, timeout=120) as r:
             f.write_bytes(r.read())

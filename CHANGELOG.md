@@ -46,6 +46,7 @@
 ### Security
 
 - Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
+- The companion app's main screen can no longer be hijacked into another app's task (taskAffinity is empty), and every download the node or the controller makes refuses anything but a web address. (2bb68e0)
 
 ## 0.6.0: 2026-09-19
 

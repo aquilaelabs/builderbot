@@ -43,7 +43,7 @@ import urllib.request
 # Google's own CDN to serve a hostile index. Adding defusedxml would put a
 # dependency in an otherwise stdlib-only tree to defend against that. If this
 # ever parses XML from a source the catalog does not control, revisit it.
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosemgrep: use-defused-xml (the index comes from Google's CDN over TLS; ElementTree resolves no external entities; see above)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # BB_TOOLCHAINS_JSON points this at another catalog. It exists so the install
@@ -179,9 +179,20 @@ def _cached(key, produce):
     return body
 
 
+def _web(url):
+    """`url`, or a ValueError for any scheme but http(s). Every URL here
+    comes from the shipped catalogue or from a release API answering for one,
+    so this never fires in practice; it is what makes that a fact urlopen can
+    rely on rather than one a reader has to trace, since urlopen would as
+    happily open file:// and hand back a file on this machine."""
+    if not str(url).lower().startswith(("https://", "http://")):
+        raise ValueError(f"not a web address: {str(url)[:60]}")
+    return url
+
+
 def get(url, decode=True):
     def fetch():
-        req = urllib.request.Request(url, headers=UA)
+        req = urllib.request.Request(_web(url), headers=UA)
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return r.read()
 
@@ -195,7 +206,7 @@ def final_url(url):
     Used for the /releases/latest trick: the tag is in the URL, and asking the
     API for it instead would be rate-limited by IP for anonymous callers.
     """
-    req = urllib.request.Request(url, headers=UA, method="HEAD")
+    req = urllib.request.Request(_web(url), headers=UA, method="HEAD")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return r.url
 
@@ -262,7 +273,7 @@ def resolve(tc):
 
 
 def content_length(url):
-    req = urllib.request.Request(url, headers=UA, method="HEAD")
+    req = urllib.request.Request(_web(url), headers=UA, method="HEAD")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         n = r.headers.get("Content-Length")
     return int(n) if n and n.isdigit() else 0

@@ -20,11 +20,20 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.BuilderBot">
+        <!-- usesCleartextTraffic is on purpose: the dashboard is served over
+             plain http on a home LAN unless the operator puts TLS in front of
+             it (README, Nodes), and the app has to reach it either way. The
+             scanner (mobsfscan) flags this; it is the product, not an
+             oversight. -->
 
+        <!-- taskAffinity="" keeps another app from putting its own activity
+             into this app's task (StrandHogg): the screen that asks for a
+             token is the one worth spoofing. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:taskAffinity=""
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
