@@ -1027,23 +1027,18 @@ def _agent_read(n, argv, timeout):
     if memo is not None and key in memo:
         return dict(memo[key])
     if queue.job_running(n["id"]) > 0:
+        # The node is busy, and a listing kept from before its job began is
+        # handed back at once, marked as such: the manager draws it in the
+        # ghosted state and asks again on the next revision. This used to
+        # sleep up to four seconds first, hoping the job would end, from a
+        # time when a busy node could not take a read at all. It can now: a
+        # short exec goes on the light lane whatever else is running (see
+        # nodes.job_next), so the wait bought nothing and cost every draw
+        # during a build four seconds. With nothing kept, the read runs.
         with _reads_lock:
             hit = _last_reads.get(key)
-        if hit is None:
-            # Nothing to stand in. Most jobs between two draws are short
-            # (another probe, a down), so a moment's wait is a listing
-            # where an answer of "on a job" was a blind page (B143's
-            # cousin, seen as cards.mjs flaking on the manager's rows).
-            for _ in range(16):
-                time.sleep(0.25)
-                if queue.job_running(n["id"]) == 0:
-                    break
-            with _reads_lock:
-                hit = _last_reads.get(key)
-        if hit is not None or queue.job_running(n["id"]) > 0:
-            out = dict(hit) if hit else {
-                "code": 1, "out": f"{n['name']} is on a job; what is running "
-                                  "there is read again when it ends"}
+        if hit is not None:
+            out = dict(hit) | {"stale": True}
             if memo is not None:
                 memo[key] = out
             return out
@@ -1680,7 +1675,7 @@ def containers():
             "ours": proj in mine,
         })
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
-    return {"error": "", "containers": out}
+    return {"error": "", "containers": out, "stale": bool(r.get("stale"))}
 
 
 def _labels(raw):
@@ -2667,7 +2662,11 @@ def _overview_here(picked):
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
                                 else ""),
             })
-    return {"error": cs["error"], "blind": blind, "node": picked,
+    # `stale`: the daemon's half is a listing kept from before the node's
+    # current job began. Rows are drawn ghosted, as for a daemon that did not
+    # answer, and the revision the job moves brings the next ask.
+    return {"error": cs["error"], "blind": blind, "stale": bool(cs.get("stale")),
+            "node": picked,
             # TWO QUESTIONS, kept apart, which is the whole of B111. "Can we
             # ACT" is availability: on an agent node compose runs on the
             # agent, against that machine's own socket, so a controller that

@@ -39,6 +39,7 @@
 - bb test no longer reports a timed-out start as nothing having run while the suite runs on unattended inside the dev instance: the start is quick now, the wait is two minutes, and a timeout says the run may have started and how to find it. (5820f36)
 - A refresh no longer shuts what you have open: a pull-down list that is showing holds the redraw until you pick or dismiss it, and a fold you opened stays open when the page repaints. This holds on every tab and notebook view, not the Docker tab alone. (a22e5f9)
 - A Git action (merge, switch, pull, commit) no longer fails at random while the Git view is open beside it, or when two people press one at the same moment: reading the branch list used to disturb a write in flight. (9b45f35)
+- The Docker tab no longer takes seconds to draw while its node is on a job: the listing kept from before the job is shown at once, ghosted, and a fresh one is read the moment the job ends. (c8b9f30)
 
 ### Security
 

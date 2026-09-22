@@ -1501,6 +1501,30 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       await until(async () => ['succeeded', 'failed', 'canceled'].includes(
         (await api(`/api/v1/jobs?id=${long.job}`)).state) ? true : null, 20000);
     }
+    // The Docker manager's listing, the same way. Its `docker ps` is a read
+    // on the node; while the node was on a job it slept up to four seconds
+    // hoping the job would end, then gave back whatever it had. The light
+    // lane takes a short read beside a build now, so a first look runs at
+    // once, and a later look during the same job is the kept listing, marked
+    // stale, in no time at all.
+    {
+      await api('/api/prefs', { project: 'ep.silon', node: minted.id });
+      const first = await api(`/api/docker?node=${minted.id}`);
+      const long = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['sh', '-c', 'sleep 14'] });
+      await until(async () => (await api(`/api/v1/jobs?id=${long.job}`)).state === 'running' ? true : null, 20000);
+      const t0 = Date.now();
+      const again = await api(`/api/docker?node=${minted.id}`);
+      const took = Date.now() - t0;
+      const still = (await api(`/api/v1/jobs?id=${long.job}`)).state;
+      ok(!first.error && !again.error && again.stale === true && took < 2000 && still === 'running',
+         `the Docker manager's listing during a job is the kept one, at once and marked stale (${took}ms, stale ${
+           again.stale}, first ${first.error || 'ok'}, the job ${still})`);
+      await api('/api/v1/jobs', { action: 'cancel', id: long.job });
+      await until(async () => ['succeeded', 'failed', 'canceled'].includes(
+        (await api(`/api/v1/jobs?id=${long.job}`)).state) ? true : null, 20000);
+      const fresh = await api(`/api/docker?node=${minted.id}`);
+      ok(!fresh.error && !fresh.stale, `...and the look after the job ends is a fresh read (stale ${fresh.stale})`);
+    }
     // Bug #45: a plain exec, which is what bb build, bb test and bb run
     // submit, got a bare PATH, because the node's SDK environment was only
     // applied in the bb-verb branch. Measured on a real node: java and go

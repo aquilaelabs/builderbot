@@ -584,7 +584,11 @@ chmod +x "$S/bin/adb"
 mkdir -p "$S/dockerstate"
 cat > "$S/bin/docker" <<'DOCKEREOF'
 #!/usr/bin/env bash
-ST="${DOCKER_STUB_STATE:?}"
+# The state is named in the environment by the harness and the fixture
+# agent; a JOB on the fixture node runs with the clean environment the agent
+# hands every exec (bug #45), so a `docker ps` read there finds it beside
+# this binary instead, the way the harness lays the two out.
+ST="${DOCKER_STUB_STATE:-$(dirname "$(dirname "$(readlink -f "$0")")")/dockerstate}"
 echo "$*" >> "$ST/docker.log"
 # A host that is not there. The real CLI carries the address in DOCKER_HOST;
 # listing one in deadhosts makes every call against it fail the way a powered

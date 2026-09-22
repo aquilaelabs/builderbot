@@ -43,8 +43,10 @@ const dmPollSays = () => {
 // Whether this list knows what is actually running. One function because the
 // rows' ghosting and Remove's confirmation are the same question asked twice,
 // and two copies of it would drift.
+// `stale` counts: a listing kept from before the node's current job is not
+// a claim about now, and the job is the thing most likely to have changed it.
 const dmBlind = () =>
-  !!(dockerList?.blind || dockerList?.error || dmPollSays());
+  !!(dockerList?.blind || dockerList?.stale || dockerList?.error || dmPollSays());
 
 // Applied to the DOM after a list draws rather than woven into each renderer,
 // four places render one of these controls, and one function that switches
