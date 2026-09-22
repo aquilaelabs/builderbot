@@ -21,6 +21,10 @@
 - Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 
+### Removed
+
+- The projects list, the startup log and the container's welcome text no longer skip a directory called _work by name: the retired runner's tree is gone from the share, so there is nothing to skip. (d8c1e87)
+
 ### Fixed
 
 - Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)
@@ -32,10 +36,17 @@
 - A dialog on a phone stops dragging the page around behind it, and stops drifting while the browser's toolbar slides. (331b871)
 - Check for updates works on a node: it asks each upstream from the machine the toolchains are on, and the answers land on the rows. It has been a dead button since installs moved to nodes. (2a767f5)
 - A dev instance rebuild uses the layer cache again: a rebuild that changes nothing now rebuilds nothing, instead of repeating every layer of the image. (1240699)
+- bb test no longer reports a timed-out start as nothing having run while the suite runs on unattended inside the dev instance: the start is quick now, the wait is two minutes, and a timeout says the run may have started and how to find it. (5820f36)
+- A refresh no longer shuts what you have open: a pull-down list that is showing holds the redraw until you pick or dismiss it, and a fold you opened stays open when the page repaints. This holds on every tab and notebook view, not the Docker tab alone. (a22e5f9)
+- A Git action (merge, switch, pull, commit) no longer fails at random while the Git view is open beside it, or when two people press one at the same moment: reading the branch list used to disturb a write in flight. (9b45f35)
+- The Docker tab no longer takes seconds to draw while its node is on a job: the listing kept from before the job is shown at once, ghosted, and a fresh one is read the moment the job ends. (c8b9f30)
+- The Docker tab's "refreshing" no longer blinks through a build: it appears only when a listing has been slow to arrive, and the rows dim quietly while the last answer stands in. (c15e2b8)
+- A notebook view no longer misses a write that landed while it was reading: the Tests, Bugs, Rules and Pending views record the revision their answer carried and read again at once when it is already behind. (073a02b)
 
 ### Security
 
 - Making or editing a container is an administrator's on the server too, not only in the page: the endpoint behind New container took any signed-in account. (a933215)
+- The companion app's main screen can no longer be hijacked into another app's task (taskAffinity is empty), and every download the node or the controller makes refuses anything but a web address. (2bb68e0)
 
 ## 0.6.0: 2026-09-19
 

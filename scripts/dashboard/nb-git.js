@@ -145,7 +145,7 @@ function nbGitView({$, nb, project}){
           <span class="gsub">${c.refs.map(r => `<span class="pill${r.startsWith("HEAD") ? " ok" : ""}">${esc(r.replace(/^HEAD -> /, ""))}</span>`).join("")} ${esc(c.subject)}</span>
           <span class="gmeta">${esc(c.author)} · ${esc(ago_(c.when))} · <code>${esc(c.short)}</code></span>
         </div>`).join("")}</div>
-    </div>` : `<div class="sub dim">no commits yet</div>`;
+    </div>` : `<div class="empty">no commits yet</div>`;
     // Branches by what there is to do with them, not by date: the one the
     // tree is on; main; work not yet in main, which is what Merge into main
     // is for; branches already in main, which are only there to delete; and,
@@ -208,7 +208,7 @@ function nbGitView({$, nb, project}){
           <button type="button" class="danger" data-gitdeletemerged="${esc(finished.map(b => b.name).join(" "))}"
             title="delete every branch already in ${esc(main)}">Delete ${finished.length === 1 ? "it" : `all ${finished.length}`}</button>
         </div>`) : "")
-      + (remoteOnly.length ? `<details class="sect gremote"><summary><span class="t">only on ${esc(host)}</span>
+      + (remoteOnly.length ? `<details class="sect gremote" data-sect="git:remote"${sectOpen["git:remote"] ? " open" : ""}><summary><span class="t">only on ${esc(host)}</span>
           <span class="sst">${remoteOnly.length}</span></summary><div class="body">${remoteOnly.map(branchRow).join("")}</div></details>` : "");
     // Conflicts stop everything else, so they are said first, with the one
     // button that helps: the merge in progress handed to the session.
@@ -231,14 +231,14 @@ function nbGitView({$, nb, project}){
             `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
         </div>
         <div class="actbar">
-          <span class="state">the branches this tree has, one at a time; a tag, a deletion and a branch that is only on the remote stay yours. A commit or a merge here is always the session's</span>
+          <span class="state">its own branches, one at a time ${helpIcon("The branches this tree has. A tag, a deletion and a branch that is only on the remote stay yours, whatever these say. A commit or a merge here is always the session's.")}</span>
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
-        conflictBar + commitBar + (files.length ? fileRows : `<div class="sub dim">nothing changed since the last commit</div>`))
+        conflictBar + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="sub dim">no branches</div>`))
+      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
       + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
     wireSections(body);
     body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {

@@ -100,12 +100,11 @@ async function showRow(){
   await page.waitForSelector('#devRow', { timeout: 20000 });
 }
 async function dmRefresh(){
-  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  // Awaited: loadDocker returns when its answer has been drawn. The rows come
+  // back at once from the last answer meanwhile (B125), and the stale mark
+  // is no longer a tell, since it is only worn once a fetch has been slow.
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await openManager();
-  // The rows come back at once from the last answer, marked stale while the
-  // new one is on its way (B125); a refresh is done when the mark is gone.
-  await page.waitForFunction(() => document.querySelector('.dmtab') && !document.querySelector('.dmtab.dmstale'),
-                             null, { timeout: 30000 });
 }
 // The manager lists what has been SENT to it (a project with a compose file
 // no longer gets a phantom row there), so the fixture's instance has to exist
@@ -132,6 +131,72 @@ const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/
 const pillIs = async (want) => { await openManager(); return page.waitForFunction(
   ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
   [want, DM], { timeout: 20000 }); };
+
+// The word at the foot is for a fetch that has been slow, not for every
+// fetch: a listing reloads once per revision while a job runs, and a word
+// that came and went with each one blinked through every build.
+{
+  await dmRefresh();
+  const seen = await page.evaluate(async () => {
+    let said = 0;
+    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said++; });
+    mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
+    for (let i = 0; i < 4; i++){ dockerList = null; dockerRev++; await loadDocker(); }
+    mo.disconnect();
+    return said;
+  });
+  ok(seen === 0, `four quick reloads in a row never show "refreshing" (shown ${seen} times)`);
+  const slow = await page.evaluate(async () => {
+    const f = window.fetch;
+    window.fetch = (...a) => String(a[0]).startsWith('/api/docker')
+      ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
+    const p = loadDocker();
+    await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
+    const during = { word: !!document.querySelector('.dmfresh'), dim: !!document.querySelector('.dmtab.dmstale') };
+    await p; window.fetch = f;
+    // A revision reload that started under the slowed fetch is itself still
+    // slowed and still in flight; the word it is entitled to is not this
+    // test's. Wait for the tab to have nothing on its way.
+    for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
+    return { ...during, after: !!document.querySelector('.dmfresh') };
+  });
+  ok(slow.word && slow.dim && !slow.after,
+     `...and one that is slow says so, with the rows dimmed, until it lands (${JSON.stringify(slow)})`);
+}
+
+// A redraw must not take an open menu with it. The manager repaints on every
+// step of a job, which made picking from one of its lists during a build a
+// race against the next step. The hold is the page's, not this tab's, so this
+// is also the test for every other tab: renderDoc is the one place any of
+// them is drawn.
+{
+  await dmRefresh();
+  const sel = await page.$('.dmtab select:not([disabled])');
+  ok(!!sel, 'the manager has a menu to open');
+  if (sel){
+    await page.evaluate(() => { window.__heldSel = document.querySelector('.dmtab select:not([disabled])');
+                                window.__heldTab = document.querySelector('.dmtab'); });
+    await sel.click();
+    const open = await page.evaluate(() => window.__heldSel.matches(':open'));
+    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    const kept = await page.evaluate(() => ({
+      same: window.__heldSel.isConnected && document.querySelector('.dmtab') === window.__heldTab,
+      open: window.__heldSel.matches(':open') }));
+    ok(open && kept.same && kept.open,
+       `a redraw that lands while a menu is open leaves the menu alone (opened ${open}, same element ${kept.same}, still open ${kept.open})`);
+    // ...and the revisions poll does not start one either.
+    const polled = await page.evaluate(async () => {
+      let asked = 0; const f = window.fetch;
+      window.fetch = (...a) => { if (String(a[0]).startsWith('/api/revs')) asked++; return f(...a); };
+      await pollRevs(); window.fetch = f; return asked; });
+    ok(polled === 0, `...and the revisions poll waits rather than firing a watch under it (${polled} asked)`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.dmtab') !== window.__heldTab,
+                               null, { timeout: 5000 }).catch(() => {});
+    const after = await page.evaluate(() => document.querySelector('.dmtab') !== window.__heldTab);
+    ok(after, '...and the redraw it was owed happens once the menu shuts');
+  }
+}
 
 let r = await row();
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
@@ -2013,14 +2078,17 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 {
   const store = () => JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'));
   // Build something, so there is a record to be about a daemon at all.
-  await page.evaluate(() => dmAction('ep.silon', 'main', 'rebuild'));
-  await page.waitForFunction(() => {
-    const d = (dockerList?.instances || []).find(x => x.instance === 'main');
-    return d && d.built_rev;
-  }, null, { timeout: 60000 }).catch(() => {});
+  // Waited on the RECORD, not on the row: the row carried built_rev from an
+  // earlier build in this file, so a wait on it returned at once, before this
+  // build had written its daemon's id (the flake noted on B204).
   const rec = () => (store()['ep.silon'] || {}).main || {};
-  ok(!!rec().rev && !!rec().daemon_uid,
-     'a build records which daemon it landed on, by that daemon\'s own id');
+  const at0 = rec().at || 0;
+  await page.evaluate(() => dmAction('ep.silon', 'main', 'rebuild'));
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60000 && !((rec().at || 0) > at0 && rec().daemon_uid)) await sleep(250);
+  ok(!!rec().rev && !!rec().daemon_uid && (rec().at || 0) > at0,
+     `a build records which daemon it landed on, by that daemon's own id (${
+       rec().daemon_uid ? 'uid recorded' : 'no uid'} after ${Date.now() - t0}ms)`);
   // Through the CENSUS, for the same reason as the stamp above: the daemon's
   // own id is what the node reports about itself now, not something the
   // controller reads over an ssh the work does not use (B111).
@@ -2225,6 +2293,11 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
      '...nothing scrolls sideways, and the row keeps its buttons whether it is open or shut');
   await page.click('.dmtab .dmsum');
   ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and it opens on a press');
+  // ...and stays open. The manager repaints on every step of a job, and a
+  // fold that went back to its default each time could not be read during one.
+  await sleep(300);              // the slide, and the toggle it ends in
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and a redraw leaves it open, rather than putting it back');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
   await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === true,
@@ -2387,11 +2460,20 @@ ok(await page.$('#devSend'),
 // project and carrying a .bbignore, and the project's checkout is untouched.
 {
   const G = (...a) => execFileSync('git', ['-C', D, ...a], { env, encoding: 'utf8' });
+  // The branch list is memoised on .git's mtimes (B205), so the listing read
+  // BEFORE the branch exists is what proves the memo lets go: the same
+  // question after the commit has to see the new branch, from git, not the
+  // kept answer.
+  const listing = () => page.evaluate(async () => (await (await fetch('/api/docker')).json()).refs?.['ep.silon'] || []);
+  const refsBefore = await listing();
   G('checkout', '-q', '-b', 'sidebranch');
   writeFileSync(`${D}/ONLY-ON-SIDE.txt`, 'x\n');
   G('add', '-A'); G('commit', '-qm', 'side work');
   const sideSha = G('rev-parse', '--short=7', 'HEAD').trim();
   G('checkout', '-q', '-');
+  const refsAfter = await listing();
+  ok(!refsBefore.includes('sidebranch') && refsAfter.includes('sidebranch'),
+     `the branch picker's memo lets go when the repository moves (before: ${refsBefore.join(',')}; after: ${refsAfter.join(',')})`);
   const api = (body) => page.evaluate(async b => {
     const r = await fetch('/api/devapp', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });

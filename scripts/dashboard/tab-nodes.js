@@ -874,7 +874,7 @@ function renderNodesInto(i){
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", "Health",
       n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
-        ${nodeMeters(n) || `<div class="sub dim">nothing measured yet</div>`}
+        ${nodeMeters(n) || `<div class="empty">nothing measured yet</div>`}
         ${nodeTools(n)}
         ${nodeGit(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,

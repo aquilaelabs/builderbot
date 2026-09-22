@@ -51,5 +51,3 @@ EOF
 # projects share when the operator put them there, which the mark() guard
 # checks rather than assumes.
 mark "$(sdk_store_root)" "the toolchain store"
-# An old runner's tree, if an install from before CI moved to nodes left one.
-[ -d "$WORKSPACE/_work" ] && mark "$WORKSPACE/_work" "a retired Actions runner's work directory"

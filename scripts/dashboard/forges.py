@@ -376,6 +376,11 @@ def _ask(url, kind, token, data=None):
     headers = {"User-Agent": "BuilderBot", **_auth(kind, token)}
     if data is not None:
         headers["Content-Type"] = "application/json"
+    # api_base() built `url` from a host that matched URL and a scheme this
+    # module chose, so nothing but http(s) reaches here; checked anyway,
+    # since urlopen would open file:// as readily.
+    if not url.lower().startswith(("https://", "http://")):
+        return {}, f"not a web address: {url[:60]}"
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if data is not None else "GET")
     try:

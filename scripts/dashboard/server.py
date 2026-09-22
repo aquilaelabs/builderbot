@@ -933,8 +933,8 @@ def _compat_loop():
 
 # What a new project may be called. It becomes a directory under /workspace and
 # part of a tmux session name, so it gets the strictest charset here: one path
-# segment, starting with a letter or digit, which also rules out `_work`,
-# dotfiles and `..`. Where a clone may come from is forges.URL, next door: the
+# segment, starting with a letter or digit, which also rules out dotfiles
+# and `..`. Where a clone may come from is forges.URL, next door: the
 # same allowlist reasoning (`git clone` accepts transports a browser form must
 # never reach, like `ext::`, which runs commands) applied to more than one host.
 
@@ -1180,8 +1180,7 @@ def project_list(who):
         # already saying what it really is.
         if d.name == cloning:
             continue
-        # `_work` is the runner's checkout area, not a project. Hidden
-        # directories are not projects either: the whole projects folder is
+        # Hidden directories are not projects: the whole projects folder is
         # mounted now, so this list would otherwise open with the share's own
         # furniture (.Recycle.Bin and friends) presented as things to fix.
         #
@@ -1193,7 +1192,7 @@ def project_list(who):
         # and anyone can create one by hand for a directory they would rather
         # not see. It hides; locking a project is the thing that *blocks*, and
         # that is a different control with a different guarantee.
-        if (not d.is_dir() or d.name == "_work" or d.name.startswith(".")
+        if (not d.is_dir() or d.name.startswith(".")
                 or (d / IGNORE_MARKER).exists()):
             continue
         issues = []
@@ -7282,8 +7281,7 @@ class Handler(BaseHTTPRequestHandler):
         name, on = req.get("name", ""), bool(req.get("pinned"))
         try:
             here = {d.name for d in WORKSPACE.iterdir()
-                    if d.is_dir() and d.name != "_work"
-                    and not d.name.startswith(".")}
+                    if d.is_dir() and not d.name.startswith(".")}
         except OSError:
             here = set()
         if name not in here:

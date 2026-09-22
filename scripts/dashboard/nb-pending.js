@@ -4,17 +4,20 @@
 // makeNotebook calls per notebook.
 function nbPendingView({$, nb, project, root}){
   // ---- what a session has waiting for approval (roadmap #27) --------------
-  async function loadPending(){
+  async function loadPending(again = false){
     try{
       const r = await fetch(`/api/pending?project=${encodeURIComponent(project)}`);
       const j = await r.json();
       if (j.error) return;
       nb.pendData = j;
     }catch(e){ return; }
-    // ...and the same for the queue: what the poll last said is what this
-    // copy now reflects, so the nb.watch above can tell a later move from it.
-    nb.pendRev = revs[`pending:${project}`] ?? nb.pendRev ?? 0;
+    // The answer's own revision, not the page's token as of now (B201), so
+    // the nb.watch above can tell a later move from what this copy holds.
+    nb.pendRev = nb.pendData.rev ?? revs[`pending:${project}`] ?? nb.pendRev ?? 0;
     drawPending();
+    // Already behind (see nb-tests.js): read once more now.
+    if (!again && nb.pendData.rev !== undefined && revs[`pending:${project}`] !== undefined
+        && revs[`pending:${project}`] !== nb.pendData.rev) return loadPending(true);
   }
   function drawPending(){
     const el = $("nbPending");

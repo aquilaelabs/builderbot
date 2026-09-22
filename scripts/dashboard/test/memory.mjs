@@ -383,9 +383,13 @@ ok((await page.$eval('#memList .mem[open] textarea[data-file]', t => t.value))
      .includes('what the operator typed'),
    '...and the typing still in the editor, which is why there is no Keep theirs');
 await page.click('#memClashMine');
-await page.waitForFunction(() => document.getElementById('memClash').hidden,
+// Waited on the WRITE, not on the band: Use mine hides the band before it
+// posts, so a wait on the band returned while the save was still on its
+// way, and the file was read before it landed (B207). The editor closes
+// only after the post succeeded and the list has been re-read.
+await page.waitForFunction(() => document.getElementById('memClash').hidden
+                                 && !document.querySelector('#memList .mem[open] textarea[data-file]'),
                            { timeout: 15000 });
-await page.waitForFunction(() => true);
 ok(read('clash.md').includes('what the operator typed'),
    'Write mine over it does exactly that, against what is there now');
 

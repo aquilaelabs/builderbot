@@ -368,9 +368,14 @@ def payload(project):
     rewrite the file's shape.
     """
     with _lock:
-        rows = list(load()["projects"].get(project) or [])
+        d = load()
+        rows = list(d["projects"].get(project) or [])
+        # The revision of this answer, the number revisions() gives for the
+        # same state, so the panel records what it read and not the page's
+        # later token (B201).
+        rev = len((d.get("history") or {}).get(project) or []) + int((d.get("revn") or {}).get(project) or 0)
     rows.sort(key=lambda b: (b.get("status") != "open", -b.get("at", 0)))
-    return {"project": project, "bugs": rows}
+    return {"project": project, "bugs": rows, "rev": rev}
 
 
 def counts():
@@ -435,8 +440,11 @@ def add(project, title, by="you", severity="medium", **fields):
     with _lock:
         d = load()
         rows = d["projects"].setdefault(project, [])
-        if len(rows) >= MAX_BUGS:
-            return {"error": f"{MAX_BUGS} bugs is the limit; close some, or "
+        # Open ones, the way the roadmap counts its items. Counting every row
+        # made the message a lie on the day it mattered: with 195 fixed and 5
+        # open, closing some changed nothing and the tracker took no more.
+        if sum(1 for r in rows if r.get("status") == "open") >= MAX_BUGS:
+            return {"error": f"{MAX_BUGS} open bugs is the limit; close some, or "
                              "this stops being a tracker and starts being a log"}
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,

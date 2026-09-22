@@ -346,7 +346,20 @@ ok(await page.$eval(`${box} .tstP`, e => e.value)
   // leaves the rev behind, and the next poll redraws the list a second
   // time, in the middle of the ticking below (B79).
   await page.evaluate(() => refresh());
-  await page.waitForSelector(row, { timeout: 10000 });
+  try { await page.waitForSelector(row, { timeout: 10000 }); }
+  catch (e) {
+    // B201: what the page held when the row did not show. Whether it is in
+    // the DOM and not visible, or not there at all, is the one fact that
+    // separates every theory tried so far, and nothing recorded it.
+    console.log('B201 probe: ' + JSON.stringify(await page.evaluate(sel => ({
+      hidden: document.hidden, inDom: !!document.querySelector(sel),
+      token: revs['tests:alpha'], alphaKeys: Object.keys(revs).filter(k => /alpha/.test(k)),
+      view: document.querySelector('.pane .nb .nbview:not([hidden])')?.dataset.view || null,
+      nbInPane: !!document.querySelector('.pane .nb'), nbAnywhere: document.querySelectorAll('.nb').length,
+      rows: document.querySelectorAll('#tstList .tst').length,
+      keys: [...document.querySelectorAll('#tstList .tst')].slice(0, 4).map(x => x.dataset.key) }), row)));
+    throw e;
+  }
   ok(await page.$eval(row, e => /wait\?/.test(e.querySelector('.pill.warn')?.textContent || '')),
      'a flagged row wears the warning pill');
   await page.click(`${row} > summary`);
@@ -421,6 +434,42 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
     'fast.mjs#1': { protects: 'the picker opens on the first paint' } }));
   bb('describe', '--from', `${DIR}/desc2.json`);
   ok(read().rev > before, 'a bulk fill moves it too, having changed what the tab draws');
+}
+
+// B201: a write that lands WHILE the panel's read is out is not marked as
+// seen. The panel used to record the page's token as of when its answer
+// arrived; a poll in between had already moved that token for the write, so
+// the panel recorded "seen" against an answer from before it, and the row
+// the write made never showed until something else moved the token. Forced
+// here: the answer is fetched BEFORE the ingest and handed to the panel after
+// the token has moved, which is what a slow answer under a fast poll is.
+{
+  const staged = await page.evaluate(async () => {
+    const f = window.fetch;
+    const early = await f('/api/tests?project=alpha');
+    const body = await early.text();
+    window.__restore = () => { window.fetch = f; };
+    // Served ONCE: the read after it is the panel noticing it was behind,
+    // and that one has to reach the real server.
+    let served = false;
+    window.fetch = (...a) => String(a[0]).startsWith('/api/tests?') && !served
+      ? (served = true, Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })))
+      : f(...a);
+    return body.length > 0;
+  });
+  ok(staged, 'an answer of the Tests view is read before a write');
+  writeFileSync(LOG, runlog([['race.mjs', 'a row written under an open read', 1.0]]));
+  bb('ingest', LOG);
+  await page.evaluate(() => pollRevs());              // the token moves
+  await page.evaluate(() => notebooks.get('alpha').reloadTests());   // ...and the old answer lands
+  await page.evaluate(() => window.__restore());
+  // The page's ordinary poll: the panel must notice its answer predates
+  // the write and read again, from the real server now.
+  await page.evaluate(() => pollRevs());
+  let shown = false;
+  try { await page.waitForSelector('#tstList .tst[data-key="race.mjs#1"]', { timeout: 10000 }); shown = true; }
+  catch (e) {}
+  ok(shown, 'a run ingested while the panel was reading shows on the next poll, not never');
 }
 
 // `bb tests run` is the loop this file's subject was missing: run the

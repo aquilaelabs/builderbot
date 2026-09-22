@@ -115,8 +115,8 @@ PORT="${DASHBOARD_TEST_PORT:-$(free_port)}"
 # that cost an hour once, and the tell was obscure enough to be worth this check.
 #
 # Only reachable now when the port was pinned by hand, which is exactly when
-# the holder is worth identifying: a copy running out of /workspace/_work is
-# the CI runner's, mid-job, and killing it ends a build.
+# the holder is worth identifying: a copy running out of a runner's _work
+# directory is a CI job on this node, mid-run, and killing it ends a build.
 if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$holder" ]; then
     where="$(tr '\0' ' ' < "/proc/$holder/cmdline" 2>/dev/null || true)"
     case "$where" in
@@ -584,7 +584,11 @@ chmod +x "$S/bin/adb"
 mkdir -p "$S/dockerstate"
 cat > "$S/bin/docker" <<'DOCKEREOF'
 #!/usr/bin/env bash
-ST="${DOCKER_STUB_STATE:?}"
+# The state is named in the environment by the harness and the fixture
+# agent; a JOB on the fixture node runs with the clean environment the agent
+# hands every exec (bug #45), so a `docker ps` read there finds it beside
+# this binary instead, the way the harness lays the two out.
+ST="${DOCKER_STUB_STATE:-$(dirname "$(dirname "$(readlink -f "$0")")")/dockerstate}"
 echo "$*" >> "$ST/docker.log"
 # A host that is not there. The real CLI carries the address in DOCKER_HOST;
 # listing one in deadhosts makes every call against it fail the way a powered

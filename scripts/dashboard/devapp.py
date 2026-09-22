@@ -1027,23 +1027,18 @@ def _agent_read(n, argv, timeout):
     if memo is not None and key in memo:
         return dict(memo[key])
     if queue.job_running(n["id"]) > 0:
+        # The node is busy, and a listing kept from before its job began is
+        # handed back at once, marked as such: the manager draws it in the
+        # ghosted state and asks again on the next revision. This used to
+        # sleep up to four seconds first, hoping the job would end, from a
+        # time when a busy node could not take a read at all. It can now: a
+        # short exec goes on the light lane whatever else is running (see
+        # nodes.job_next), so the wait bought nothing and cost every draw
+        # during a build four seconds. With nothing kept, the read runs.
         with _reads_lock:
             hit = _last_reads.get(key)
-        if hit is None:
-            # Nothing to stand in. Most jobs between two draws are short
-            # (another probe, a down), so a moment's wait is a listing
-            # where an answer of "on a job" was a blind page (B143's
-            # cousin, seen as cards.mjs flaking on the manager's rows).
-            for _ in range(16):
-                time.sleep(0.25)
-                if queue.job_running(n["id"]) == 0:
-                    break
-            with _reads_lock:
-                hit = _last_reads.get(key)
-        if hit is not None or queue.job_running(n["id"]) > 0:
-            out = dict(hit) if hit else {
-                "code": 1, "out": f"{n['name']} is on a job; what is running "
-                                  "there is read again when it ends"}
+        if hit is not None:
+            out = dict(hit) | {"stale": True}
             if memo is not None:
                 memo[key] = out
             return out
@@ -1680,7 +1675,7 @@ def containers():
             "ours": proj in mine,
         })
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
-    return {"error": "", "containers": out}
+    return {"error": "", "containers": out, "stale": bool(r.get("stale"))}
 
 
 def _labels(raw):
@@ -2667,7 +2662,11 @@ def _overview_here(picked):
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
                                 else ""),
             })
-    return {"error": cs["error"], "blind": blind, "node": picked,
+    # `stale`: the daemon's half is a listing kept from before the node's
+    # current job began. Rows are drawn ghosted, as for a daemon that did not
+    # answer, and the revision the job moves brings the next ask.
+    return {"error": cs["error"], "blind": blind, "stale": bool(cs.get("stale")),
+            "node": picked,
             # TWO QUESTIONS, kept apart, which is the whole of B111. "Can we
             # ACT" is availability: on an agent node compose runs on the
             # agent, against that machine's own socket, so a controller that
@@ -2934,10 +2933,12 @@ def refs_of(project):
     """The branches this project could be built from, newest commit first,
     for the picker on the row. Local branches only: a remote-tracking one
     would be a build of something nobody here has fetched."""
-    r = _run(["git", "-C", str(WORKSPACE / project), "for-each-ref",
-              "--sort=-committerdate", "--format=%(refname:short)",
-              "refs/heads/"], timeout=15)
-    return [b.strip() for b in (r["out"] or "").splitlines() if b.strip()][:60]
+    def run():
+        r = _run(["git", "-C", str(WORKSPACE / project), "for-each-ref",
+                  "--sort=-committerdate", "--format=%(refname:short)",
+                  "refs/heads/"], timeout=15)
+        return [b.strip() for b in (r["out"] or "").splitlines() if b.strip()][:60]
+    return list(_git_memoed(project, "refs", run))
 
 
 @_on_instance
@@ -3581,6 +3582,36 @@ def _container_text(name):
         return ""
 
 
+# What git said about a project, kept until the repository moves. The
+# manager's listing asks HEAD, the branches and the pinned refs of every
+# project it lists on every draw, and a draw is one per revision while a job
+# runs; each ask is a subprocess reading a tree on the share (B205). A commit,
+# a checkout or a fetch changes one of .git's few top-level files, so their
+# mtimes are the key: the same key, the same answer, and no git run. `status`
+# is not here, because a working tree can move without .git moving.
+_git_memo = {}
+_git_memo_lock = threading.Lock()
+_GIT_STAMPS = ("HEAD", "index", "packed-refs", "refs", "logs/HEAD")
+
+
+def _git_key(project):
+    g = WORKSPACE / project / ".git"
+    return tuple(_mtime(g / n) for n in _GIT_STAMPS)
+
+
+def _git_memoed(project, what, run):
+    key = (project, what)
+    stamp = _git_key(project)
+    with _git_memo_lock:
+        hit = _git_memo.get(key)
+        if hit and hit[0] == stamp:
+            return hit[1]
+    val = run()
+    with _git_memo_lock:
+        _git_memo[key] = (stamp, val)
+    return val
+
+
 def _head(project, instance=None):
     """The commit an instance is built FROM: the project tree's HEAD, or the
     ref's own tip when the instance is pinned to one. Both answers come from
@@ -3588,9 +3619,12 @@ def _head(project, instance=None):
     still a commit this can name."""
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
-    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
-              ref or "HEAD"], timeout=10)
-    return r["out"].strip() if r["code"] == 0 else ""
+
+    def run():
+        r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
+                  ref or "HEAD"], timeout=10)
+        return r["out"].strip() if r["code"] == 0 else ""
+    return _git_memoed(project, "head:" + ref, run)
 
 
 def _dirty(project):
@@ -3803,10 +3837,19 @@ def test(project, instance=MAIN, cmd="", args=()):
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
-    st = state(project, instance)
-    if not st.get("available"):
-        return {"error": st.get("why") or "the instance's daemon is not reachable"}
-    if not st.get("running"):
+    # The two facts starting a run depends on, and only those. This asked for
+    # the whole state() before it answered: a compose config parse, the risks,
+    # the problems, the host mapping, a docker ps for port clashes, running,
+    # exists and the git head, each a round trip through the agent to the node
+    # and one after another. On an unlucky poll cycle that passed the caller's
+    # thirty seconds, the caller gave up saying "timed out", and the run this
+    # then started went on unattended inside the container for fifteen
+    # minutes, holding the node's one slot (B202). Everything state() works
+    # out is for a row somebody is looking at; nobody is looking here.
+    a = available()
+    if not a["on"]:
+        return {"error": a["why"] or "the instance's daemon is not reachable"}
+    if not _running(project, instance):
         return {"error": f"{_pname(project, instance)} is not running: Up on the Docker tab "
                          "(or a rebuild) starts it, and the tests run inside it"}
     cfg = _config(project, instance)

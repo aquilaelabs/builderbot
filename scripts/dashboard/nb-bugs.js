@@ -9,15 +9,19 @@ function nbBugsView({$, nb, project}){
   nb.bugs = null;
   nb.bugRev = null;      // the tracker's revision as of the last read
 
-  async function loadBugs(){
+  async function loadBugs(again = false){
     try{
       const r = await fetch("/api/bugs?project=" + encodeURIComponent(project));
       const j = await r.json();
       nb.bugs = j.error ? {bugs: [], error: j.error} : j;
     }catch(e){ nb.bugs = {bugs: [], error: String(e)}; }
-    // Whatever the poll last said is now what this copy reflects.
-    nb.bugRev = revs[`bug:${project}`] ?? nb.bugRev;
+    // The answer's own revision, not the page's token as of now (B201); an
+    // answer that failed carries none, and the token stands in.
+    nb.bugRev = nb.bugs.rev ?? revs[`bug:${project}`] ?? nb.bugRev;
     drawBugs();
+    // Already behind (see nb-tests.js): read once more now.
+    if (!again && nb.bugs.rev !== undefined && revs[`bug:${project}`] !== undefined
+        && revs[`bug:${project}`] !== nb.bugs.rev) return loadBugs(true);
   }
 
   // Wrapped so the poll can tell this panel's own write from somebody
@@ -232,7 +236,7 @@ function nbBugsView({$, nb, project}){
             <button type="button" class="danger bRm"
               title="for a report that should not exist: mis-filed, a duplicate,
                      the wrong project. A real one that is dealt with gets
-                     closed instead.">Delete</button>
+                     closed instead.">Remove</button>
           </div>
         </div>
       </details>`).join("");
@@ -315,7 +319,7 @@ function nbBugsView({$, nb, project}){
             placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
           <div class="actbar">
             <button type="button" class="stop">Cancel</button>
-            <button type="button" class="danger">Delete it</button></div>`;
+            <button type="button" class="danger">Remove it</button></div>`;
         body.appendChild(box);
         arriveBox(box);
         // Removed first, then redrawn: the box is what defers the redraw,

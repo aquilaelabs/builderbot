@@ -88,6 +88,7 @@ def _conn(timeout):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE                 # the pin below is the check
+    # nosemgrep: httpsconnection-detected (pinned on first use, see the agent)
     c = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=ctx)
     c.connect()
     pin = os.environ.get("BB_CONTROLLER_PIN", "")

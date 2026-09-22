@@ -3,16 +3,22 @@
 // script beside index.html (docs/nodes.md §13): one file per notebook view
 // (R60). A factory makeNotebook calls per notebook.
 function nbRulesView({$, nb, project}){
-  async function loadRules(){
+  async function loadRules(again = false){
     nb.loadCodebase().then(() => drawRules());
     try{
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
       nb.ruleData = await r.json();
     }catch(e){ nb.ruleData = {error: String(e), rules: []}; }
-    nb.rulesRev = revs[`rules:${project}`] ?? nb.rulesRev;
+    // The answer's own revision, not the page's token as of now (B201); an
+    // answer that failed carries none, and the token stands in.
+    nb.rulesRev = nb.ruleData.rev ?? revs[`rules:${project}`] ?? nb.rulesRev;
     nb.rulePending = null;
     nb.ruleClash = null;
     drawRules();
+    // Already behind (see nb-tests.js): read once more now, unless somebody
+    // is typing, which is the case the poll's own guard keeps.
+    if (!again && nb.ruleData.rev !== undefined && revs[`rules:${project}`] !== undefined
+        && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRules(true);
   }
 
   // The global rules, read-only, under the project's own. The server has always
@@ -29,7 +35,7 @@ function nbRulesView({$, nb, project}){
     const cond = r => (r.paths || []).length || (r.words || []).length;
     return `<div class="sub dim ggroup">also in force here, set for every project in Controller settings</div>
       <div class="field" id="rlGlobal">${gs.map(g => `
-        <details class="bug grule">
+        <details class="bug grule"${sectAttr(`rules:global:${project}|${g.name}`)}>
           <summary><span class="btitle">${esc(g.name || "")}</span>
             <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
             <span class="pill">global</span></summary>

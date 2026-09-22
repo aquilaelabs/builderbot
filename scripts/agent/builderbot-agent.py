@@ -513,6 +513,9 @@ class Controller:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE       # the pin below is the check
+        # The certificate is pinned on first use and any other refused; a CA
+        # check would refuse the self-signed one a home proxy serves.
+        # nosemgrep: httpsconnection-detected
         c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout,
                                         context=ctx)
         c.connect()
@@ -4877,6 +4880,7 @@ class Agent:
                 osname = "osx" if platform.system() == "Darwin" else "linux"
                 job.say("asking GitHub for the latest runner release…\n")
                 try:
+                    # nosemgrep: dynamic-urllib-use-detected (RUNNER_RELEASES is a literal at the top of this file)
                     with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
@@ -4888,6 +4892,10 @@ class Agent:
                 job.say(f"downloading {asset}\n")
                 job.flush()
                 try:
+                    # The release API named it; only a web address is followed,
+                    # since urlopen would open file:// as readily.
+                    if not str(asset).lower().startswith("https://"):
+                        raise ValueError(f"the release names a non-https asset: {str(asset)[:60]}")
                     with urllib.request.urlopen(asset, timeout=600) as r, open(tar_path, "wb") as f:
                         shutil.copyfileobj(r, f)
                 except OSError as e:
@@ -5035,6 +5043,7 @@ class Agent:
                 job.say("asking gitea.com for the latest act_runner release…\n")
                 rel = {}
                 try:
+                    # nosemgrep: dynamic-urllib-use-detected (ACT_RUNNER_RELEASES is a literal at the top of this file)
                     with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
@@ -5054,6 +5063,8 @@ class Agent:
                 job.say(f"downloading {asset}\n")
                 job.flush()
                 try:
+                    if not str(asset).lower().startswith("https://"):   # as for the GitHub runner above
+                        raise ValueError(f"the release names a non-https asset: {str(asset)[:60]}")
                     with urllib.request.urlopen(asset, timeout=600) as r, open(exe, "wb") as f:
                         shutil.copyfileobj(r, f)
                 except OSError as e:

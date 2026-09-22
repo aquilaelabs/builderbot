@@ -207,8 +207,7 @@ PREFS_FILE="${DASHBOARD_STATE:-/config}/claude-prefs.json"
 # `app[1]` or `web*` would silently exclude its neighbors from the deny list,
 # which is the one direction this must not fail in.
 siblings_of() {
-    find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d \
-        -not -name '_work' -printf '%p\n' 2>/dev/null \
+    find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -printf '%p\n' 2>/dev/null \
         | { grep -vxF "$WORKSPACE/$1" || true; }   # sole project: no siblings
 }
 
@@ -863,7 +862,7 @@ case "$target" in
             # Same rule the dashboard lists by: a directory holding
             # .bbignore is not a project, so offering it here as one would
             # only send someone back to a name that will be refused again.
-            find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' \
+            find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d \
                 -not -exec test -e '{}/.bbignore' ';' -printf '  %f\n' >&2
             bad ""
         fi

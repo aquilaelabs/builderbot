@@ -475,6 +475,31 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
     rmSync(other, { recursive: true, force: true });
   }
 
+  // B203: a write is not disturbed by the view reading beside it, nor by
+  // another write. The write directory is one per tree, rebuilt as each write
+  // starts, and the branch list (a read, on the poll path) once went through
+  // it to ask whether a branch differs from main: every poll pulled the refs
+  // out from under whatever write was in flight, and this suite failed at a
+  // different step each time. Forced here rather than waited for.
+  {
+    let reading = true, reads = 0;
+    const reader = (async () => { while (reading){ await api('what=branches'); reads++; } })();
+    const bad = [];
+    for (let n = 0; n < 6; n++){
+      const pair = await Promise.all([act('branch', { name: `race-a${n}` }), act('branch', { name: `race-b${n}` })]);
+      const sw = await act('switch', { name: `race-a${n}` });
+      const back = await act('switch', { name: main });
+      for (const [what, r] of [['branch a', pair[0]], ['branch b', pair[1]], ['switch', sw], ['switch back', back]])
+        if (!r.ok) bad.push(`${what} ${n}: ${String(r.error || r.out).slice(0, 80)}`);
+    }
+    reading = false; await reader;
+    const on = git('rev-parse', '--abbrev-ref', 'HEAD');
+    ok(!bad.length && on === main && reads > 0,
+       `24 writes, two of them at once each round, all land while the branch list is read ${reads} times beside them (${
+         bad.length ? bad.slice(0, 3).join(' | ') : 'on ' + on})`);
+    for (let n = 0; n < 6; n++){ git('branch', '-D', `race-a${n}`); git('branch', '-D', `race-b${n}`); }
+  }
+
   // The WRITES run none of the programs the tree names either (B153). The
   // reads were the first half; a commit, a switch and a merge are the half
   // that has to move the tree afterwards, and each of them is a hook git

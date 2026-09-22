@@ -43,8 +43,10 @@ const dmPollSays = () => {
 // Whether this list knows what is actually running. One function because the
 // rows' ghosting and Remove's confirmation are the same question asked twice,
 // and two copies of it would drift.
+// `stale` counts: a listing kept from before the node's current job is not
+// a claim about now, and the job is the thing most likely to have changed it.
 const dmBlind = () =>
-  !!(dockerList?.blind || dockerList?.error || dmPollSays());
+  !!(dockerList?.blind || dockerList?.stale || dockerList?.error || dmPollSays());
 
 // Applied to the DOM after a list draws rather than woven into each renderer,
 // four places render one of these controls, and one function that switches
@@ -115,10 +117,20 @@ function dockerNodeKeep(){
 let dockerAsk = 0;                       // which ask is newest, so an older
                                          // answer landing late cannot win
 let dockerFetching = false;        // an answer is on its way: the tab says so
+// ...but only said once it has been slow. A fetch here is one per revision
+// while a job runs, which is one per log line, and a word that appeared for
+// each of them blinked at the foot of the tab through every build. Under this
+// long, nothing is said: an answer that arrives at once needs no announcing.
+const DM_SLOW_MS = 600;
+let dmSlowTimer = null, dmSlow = false;
 async function loadDocker(){
   const asked = dockerNode;
   const ask = ++dockerAsk;
   dockerFetching = true;
+  clearTimeout(dmSlowTimer);
+  dmSlowTimer = setTimeout(() => {
+    if (ask === dockerAsk && dockerFetching){ dmSlow = true; dockerRev++; drawPanes(); }
+  }, DM_SLOW_MS);
   let got;
   try{
     got = await (await fetch("/api/docker"
@@ -128,7 +140,7 @@ async function loadDocker(){
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
-  if (ask === dockerAsk) dockerFetching = false;
+  if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; clearTimeout(dmSlowTimer); }
   if (asked !== dockerNode) return;
   // A newer ask is in flight or has landed: Refresh under a revision reload,
   // or a reload under Refresh. This answer is about an earlier moment, and a
@@ -876,7 +888,11 @@ function dmRowsHtml(ins, job, blind){
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
           d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
         </div>
-        <details class="dmdet"${isPhone() ? "" : " open"}>
+        <details class="dmdet"${
+          // Remembered on a phone, where it is a fold. On a desktop its summary
+          // is not drawn, so a shut one could never be opened again: always open.
+          isPhone() ? sectAttr(`docker:det:${d.project}|${d.instance}`)
+                    : ` data-sect="${esc(`docker:det:${d.project}|${d.instance}`)}" open`}>
           <summary class="dmsum"><span class="t">Details</span><span class="sst">${
             [d.ports.length ? `${d.ports.length} port${d.ports.length === 1 ? "" : "s"}` : "",
              (d.services || []).length > 1 ? `${d.services.length} services` : ""]
@@ -1239,7 +1255,13 @@ function renderDockerInto(i){
   // `dmstale` while the rows are the last answer and a new one is on its
   // way: what a reader waiting on a refresh looks at, and what the note
   // below says in words.
-  el.innerHTML = `<div class="dmtab${dockerFetching ? " dmstale" : ""}">${picker}${askRows}${note
+  // Slow, not merely in flight: dockerFetching alone is true for the whole
+  // of every fetch, and the timer in loadDocker is what decides it is worth
+  // saying. A listing the server itself marked stale wears the same class
+  // without the word: it is the last answer, and nothing is on its way that
+  // the next revision will not bring.
+  const slow = dockerFetching && dmSlow;
+  el.innerHTML = `<div class="dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${askRows}${note
       ? `<div class="empty">${esc(note)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -1250,7 +1272,7 @@ function renderDockerInto(i){
     <div class="actbar macros">${mayDocker()
         ? `<button id="bDockerNew">New container</button>` : ""
       }<button id="bDockerRe">Refresh</button>${
-      dockerFetching ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
+      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
   gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
   // when the job moved, so between draws the reader keeps whatever scroll

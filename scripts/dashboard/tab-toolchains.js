@@ -116,7 +116,7 @@ function tcSystemLine(p, managed){
   // this machine's release carries; a missing one is already the one it takes.
   const show = (miss.length ? miss : sys.names).map(x => x.split("|").join(" or "));
   const list = show.length <= 6 ? esc(show.join(", "))
-    : `${esc(show.slice(0, 4).join(", "))}<details class="tcsysl"><summary> and ${show.length - 4} more</summary>, ${
+    : `${esc(show.slice(0, 4).join(", "))}<details class="tcsysl"${sectAttr(`toolchains:sysl:${tcNode}|${p.name}`)}><summary> and ${show.length - 4} more</summary>, ${
         esc(show.slice(4).join(", "))}</details>`;
   const head = !p.installed ? `Installs ${n} system package${plural} with it here (${esc(sys.manager)})`
     : miss.length ? `${miss.length} of its ${n} system package${plural} missing here (${esc(sys.manager)})${
@@ -330,7 +330,7 @@ function renderToolchainsInto(i){
       // it needs, which is a click rather than a search.
       const no = (d.items || []).filter(i => i.wrong_platform);
       if (!no.length) return "";
-      return `<details class="sect tcno"><summary><span class="t">Not for this node</span>
+      return `<details class="sect tcno"${sectAttr("toolchains:no:" + tcNode)}><summary><span class="t">Not for this node</span>
           <span class="sst">${no.length}</span></summary>
         <div class="tcs">${no.map(i => tcRow(i, true, job)).join("")}</div></details>`;
     })()}

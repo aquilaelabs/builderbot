@@ -94,9 +94,27 @@ const DRIVERS = {
 // Every kind that renders a document, from the page's own registry, never a
 // hand-kept list here, because a hand-kept list is how a new kind ships
 // unmeasured.
-const kinds = await page.evaluate(() =>
+const tabKinds = await page.evaluate(() =>
   Object.entries(TABKINDS).filter(([, v]) => v.render).map(([k]) => k));
-const undriven = kinds.filter(k => !DRIVERS[k]);
+const undriven = tabKinds.filter(k => !DRIVERS[k]);
+// The notebook is one tab kind and EIGHT surfaces, and every loop below
+// measured whichever one it happened to be on, which was the Roadmap: the
+// driver opens there and bring() focuses a tab it already has. So nine of
+// the notebook's views had never been measured for the action-bar language,
+// the loose-button rule, destructive-last or the control widths, and six
+// words for "delete this row" and 42-word paragraphs grew under a check that
+// looked like it covered them (roadmap R70). Each view is a kind of its own
+// here, read off the strip the page draws rather than kept as a list, for
+// the same reason the tab kinds are.
+const NB_VIEWS = await page.evaluate(() =>
+  [...document.getElementById('nbTpl').content.querySelectorAll('.nbtabs button[data-v]')]
+    .map(b => b.dataset.v));
+for (const v of NB_VIEWS)
+  DRIVERS[`notebook:${v}`] = {
+    open: () => page.evaluate(w => openNotebook('alpha', w), v),
+    readyWhen: `.pane .nb .nbview[data-view="${v}"]:not([hidden])`,
+  };
+const kinds = tabKinds.flatMap(k => k === 'notebook' ? NB_VIEWS.map(v => `notebook:${v}`) : [k]);
 ok(undriven.length === 0,
    `every document tab kind has a conformance driver${
      undriven.length ? `; missing: ${undriven.join(', ')} (add it to
@@ -123,8 +141,17 @@ async function measure(kind){
       .filter(e => !INDENTED.some(c => e.classList.contains(c)))
       // Nested band-in-band measures the outer one; the inner is content.
       .filter(e => !e.parentElement.closest(BANDS));
-    const lefts = [...new Set(bands.map(e => Math.round(
-      e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft))))];
+    const leftOf = e => Math.round(
+      e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft));
+    const lefts = [...new Set(bands.map(leftOf))];
+    // Which band sits at each x, for the failure: three numbers say a view is
+    // ragged and nothing about where, and the fix is in one band's CSS.
+    const who = {};
+    for (const e of bands){
+      const x = leftOf(e);
+      who[x] = who[x] || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}${
+        e.id ? '#' + e.id : ''} in ${e.parentElement?.className || e.parentElement?.tagName}`;
+    }
     const ref = document.getElementById('mName');
     const skin = el => { const c = getComputedStyle(el);
       return [c.backgroundColor, c.borderTopLeftRadius, c.borderTopColor,
@@ -153,7 +180,7 @@ async function measure(kind){
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
       maxw: cs.maxWidth,
-      bands: bands.length, lefts,
+      bands: bands.length, lefts, who,
       controls: controls.length, offskin,
     };
   }, { BANDS, INDENTED });
@@ -164,6 +191,8 @@ async function measure(kind){
 // when one is open, and otherwise opened, after closing the oldest other
 // document when the strip is full.
 async function bring(kind){
+  // `notebook:<view>` is the notebook's tab with that view showing.
+  const view = kind.startsWith('notebook:') ? kind.slice('notebook:'.length) : '';
   const had = await page.evaluate(k => {
     const t = tabs.find(x => x.kind === k);
     if (t){ focusTab(t.id); return true; }
@@ -172,8 +201,15 @@ async function bring(kind){
       if (old) dropTab(old.id);
     }
     return false;
-  }, kind);
-  if (had) return;
+  }, view ? 'notebook' : kind);
+  if (had){
+    if (view){
+      await page.evaluate(w => getNotebook('alpha').view(w), view);
+      await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+      await sleep(400);                   // the view's own fetch lands
+    }
+    return;
+  }
   // A fresh open settles before it is measured: a proseline sizes itself to
   // its text once the view's data has landed, a beat after the band shows.
   await DRIVERS[kind].open();
@@ -197,7 +233,7 @@ for (const kind of kinds){
      `[${kind}] caps at the document width (got ${m.maxw})`);
   ok(m.bands > 0 && m.lefts.length === 1,
      `[${kind}] every band starts at one x (${m.bands} bands at ${
-       JSON.stringify(m.lefts)})`);
+       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
   ok(m.offskin.length === 0,
      `[${kind}] every control wears the field skin${
        m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
@@ -456,6 +492,57 @@ for (const kind of kinds){
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height${
        L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
+}
+
+// ---- one loading line and one empty state -----------------------------------
+// docs/design-language.md, Document tabs: `.loading` while it waits and
+// `.empty` when there is nothing, inside the list. Read off the SOURCE, since
+// an empty state is only on screen when the data happens to be empty, and the
+// fixtures are not. Five classes were doing these two jobs (R70 step 3).
+{
+  const { readdirSync, readFileSync } = await import('node:fs');
+  // Not `new URL`: URL in this file is the dashboard's address, from lib.mjs.
+  const here = (await import('node:path')).resolve(import.meta.dirname, '..') + '/';
+  const off = [];
+  for (const f of readdirSync(here).filter(n => /^(nb-|tab-).*\.js$|^index\.html$/.test(n))){
+    readFileSync(here + f, 'utf8').split('\n').forEach((line, i) => {
+      if (/<[a-z]+ class="(?!loading)[^"]*">loading…/.test(line)) off.push(`${f}:${i + 1} a loading line not in .loading`);
+      if (/class="none"/.test(line)) off.push(`${f}:${i + 1} an empty state in .none`);
+      // A <div>: a line of its own. A <span> saying "no AVD uses it" inside a
+      // row is a fact about that row, not a list with nothing in it.
+      if (/<div class="sub dim">(no |nothing |none )/.test(line)) off.push(`${f}:${i + 1} an empty state in .sub dim`);
+    });
+  }
+  ok(off.length === 0, `a loading line is .loading and an empty state is .empty, in every script${
+    off.length ? ': ' + off.join('; ') : ''}`);
+}
+
+// ---- a fold stays the way it was left ---------------------------------------
+// A redraw rebuilds the markup, so a <details> with nothing behind it goes
+// back to however it was first drawn: the Docker manager's Details fold shut
+// itself on a phone every time a job took a step. A fold is remembered one of
+// two ways: a data-sect key, which the page's one toggle listener records
+// (sectAttr and docSection both write it), or a list row that carries its own
+// identity and whose view keeps the open set itself.
+async function forgetfulFolds(){
+  return page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    if (!host) return { err: 'no document box found' };
+    const own = 'details[data-file], details[data-key], details[data-id], details[data-i], details[data-path], details[data-branch]';
+    return { bare: [...host.querySelectorAll('details')]
+      .filter(d => !d.dataset.sect && !d.matches(own))
+      .map(d => `details.${d.className || '(no class)'} "${
+        (d.querySelector('summary')?.textContent || '').trim().slice(0, 30)}"`) };
+  });
+}
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await bring(kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  const F = await forgetfulFolds();
+  ok(!F.err && F.bare.length === 0,
+     `[${kind}] every fold is remembered across a redraw${
+       F.err ? ` (${F.err})` : F.bare.length ? `: ${[...new Set(F.bare)].join('; ')}` : ''}`);
 }
 
 // ---- a setting is written by Save, never by the pick -----------------------
@@ -769,10 +856,21 @@ await page.evaluate(() => setView('terminal'));
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,
 // 88%), and 88% is what bites here.
+//
+// A phone starts every fold shut, and a control inside a shut fold has no
+// line to be measured on. Opened the way a person's press leaves them, which
+// is recorded as well as open, so a redraw between here and the measuring
+// does not shut them again. (These used to arrive open by accident: the page
+// recorded the desktop's default as a choice, and carried it down here.)
+const unfold = () => page.evaluate(() => {
+  document.querySelectorAll('.doc.on details[data-sect]').forEach(d => {
+    sectOpen[d.dataset.sect] = true; d.open = true; });
+});
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  await unfold();
   const S = await spanning();
   ok(!S.err && S.wide.length === 0,
      `[${kind}] no control or row of controls spans the tab at phone width${
@@ -930,8 +1028,8 @@ for (const kind of kinds){
   // The notebook is six views behind one tab, and each has its own layout;
   // the Tests view is the one that scrolled sideways while the Roadmap, the
   // one this check used to look at, did not.
-  const views = kind === 'notebook'
-    ? await page.$$eval('.nb .nbview', vs => vs.map(v => v.dataset.view)) : [''];
+  // (Every view is a kind of its own now, so this loop meets each once.)
+  const views = [''];
   for (const v of views){
     if (v){
       await page.evaluate(w => getNotebook('alpha').view(w), v);
@@ -997,7 +1095,9 @@ for (const kind of kinds){
   };
   await focus();
   ok(await page.$eval(sel, d => d.open), `[${kind}] a section opens by default on a desktop (${key})`);
-  await page.evaluate(s => { document.querySelector(s).open = false; }, sel);
+  // A press on the summary, not `open = false`: only a fold somebody pressed
+  // is recorded, so that markup arriving open is never mistaken for a choice.
+  await page.click(sel + ' > summary');
   await page.waitForFunction(k => sectOpen[k] === false, key, { timeout: 5000 });
   ok(true, `[${kind}] a fold closed by hand stays closed for the page (${key})`);
   await page.reload(); await ready(page);

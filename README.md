@@ -249,7 +249,7 @@ step: the folder is mounted along with everything else beside it, and it
 appears on the dashboard at the next poll. A directory that is not a working
 project is not hidden but reported: no git repository or the wrong ownership in
 red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
-empty directories, hidden ones and the runner's `_work` are left out.
+empty directories and hidden ones are left out.
 
 **Updating**: CI publishes `:latest` for any push to `main` that touches the
 image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
@@ -1232,9 +1232,8 @@ lives in its body. The cards:
   valid git repository. Only errors are folded away: a **warning stays in the
   list**, in amber, because it is asking for something. This is what
   makes one mapping for the whole folder workable: a directory that is not a
-  project says so instead of quietly not appearing. Hidden directories and the
-  runner's `_work` are skipped outright, and empty
-  directories are never listed either: a mount point waiting for
+  project says so instead of quietly not appearing. Hidden directories are
+  skipped outright, and empty directories are never listed either: a mount point waiting for
   content is not a fault to report.
   A directory holding a **`.bbignore`** file is not a project and is not
   listed: the container writes one into any path of its own that lands in
@@ -3788,6 +3787,17 @@ and pushed again whenever the template moved, with a window gate that ended
 sessions when a copy fell behind. The copy was the problem: nothing kept it
 current, and the machinery that policed it was larger than the thing it
 policed.
+
+A project set up before that may still carry one. Earlier still the block was
+written into `CLAUDE.md` itself, between `<!-- BUILDERBOT:ENV:BEGIN -->` and
+`<!-- BUILDERBOT:ENV:END -->`, and a project that committed it then has it in
+its history and its working copy now: prose about machinery that is gone,
+which nothing here reads and nothing here will ever update. It does no harm
+beyond being wrong. Removing it is an ordinary edit to the project's own
+`CLAUDE.md`, made and committed by whoever owns the project; BuilderBot does
+not offer to do it, because that was always a commit to somebody else's
+repository. A leftover `CLAUDE.local.md` is the same text outside git and can
+simply be deleted.
 
 ## Playwright, Android, plugins, publishing
 
