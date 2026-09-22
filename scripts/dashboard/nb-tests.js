@@ -27,23 +27,29 @@ function nbTestsView({$, nb, project}){
                                 && typeof t.arg === "string" && t.arg.startsWith("sh:") && t.arg.endsWith(":" + project));
     if (mine) focusTab(mine.id); else newShell(project);
     busy(btn, "Opening");
-    // The shell has to be up before anything can be typed into it: a new one
-    // registers with tmux a moment after its tab opens.
-    for (let i = 0; i < 40; i++){
-      const t = tabOf(panes[active]);
-      if (t && t.kind === "term" && liveSessions().has(sessionOf(t.arg))) break;
-      await new Promise(r => setTimeout(r, 250));
-    }
     const t = tabOf(panes[active]);
-    if (!t || t.kind !== "term" || !liveSessions().has(sessionOf(t.arg))){
+    if (!t || t.kind !== "term"){
       unbusy(btn, "Open the run's output");
-      return notify("the shell did not come up; open one and run bb tests log -f", true);
+      return notify("no shell tab opened; open one and run bb tests log -f", true);
     }
-    try{
-      const r = await postJSON("/api/send", {session: sessionOf(t.arg), macro: "tests-log"});
-      const j = await r.json();
-      if (j.error) notify(j.error, true);
-    }catch(e){ notify("could not send: " + e, true); }
+    // Sent, and sent again while the shell is still coming up. The server
+    // asks tmux itself whether the session is there, so this does not wait
+    // on the page's own list of sessions, which arrives with the status
+    // poll every fifteen seconds and, for a shell on a node, only after the
+    // node's next heartbeat: waiting on that said "the shell did not come
+    // up" over a shell that was up.
+    const session = sessionOf(t.arg);
+    let said = "";
+    for (let i = 0; i < 24; i++){
+      try{
+        const r = await postJSON("/api/send", {session, macro: "tests-log"});
+        const j = await r.json();
+        said = j.error || "";
+        if (!said || !/no such session/.test(said)) break;
+      }catch(e){ said = "could not send: " + e; break; }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    if (said) notify(said, true);
     unbusy(btn, "Open the run's output");
   }
 

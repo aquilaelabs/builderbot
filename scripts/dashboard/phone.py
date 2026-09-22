@@ -158,15 +158,23 @@ def forget(nid, ip):
 
 # ---- adb, on the node ------------------------------------------------------
 
-def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone"):
+def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone", probe=False):
     """One adb command on the node's phone server. Never `-e` or `-d`; see
     the module docstring. {"code", "out"}; an unreachable node is a failure
-    with the reason as its output."""
+    with the reason as its output.
+
+    `probe` is for a READ nobody asked to see, the device listing: a probe
+    job moves no revision and is dropped once its answer is read. Listed,
+    it was a row on the Jobs tab per node per minute, all reading "exec adb
+    devices -l", and each one moved the revision the Docker manager
+    refetches its whole listing on. A push or an install is a record and
+    stays one."""
     if nodes is None:
         return {"code": 1, "out": "the node registry is not available on this controller"}
     r = nodes.run_wait(by, nid, ["adb", *args],
                        env={"ANDROID_ADB_SERVER_PORT": ADB_PORT},
-                       timeout=timeout, files=files, sizes=sizes, project=project)
+                       timeout=timeout, files=files, sizes=sizes, project=project,
+                       forget=probe)
     if r.get("error"):
         return {"code": 1, "out": r["error"]}
     return {"code": r.get("code") or 0, "out": r.get("out") or ""}
@@ -205,7 +213,7 @@ def devices(nid, force=False):
     if no_adb(nid):
         _dev_fail[nid] = True
         return list(c["devs"]) if c else []
-    r = _adb(nid, "devices", "-l", timeout=20)
+    r = _adb(nid, "devices", "-l", timeout=20, probe=True)
     if r["code"] != 0:
         # A probe that did not run (the node's one slot taken by a push, an
         # agent behind, a node away) is not a node with no phone. The last

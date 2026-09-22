@@ -75,6 +75,22 @@ ok(await page.$eval('.phonetab', el => /connected by test \(you\)/.test(el.textC
    'the tab shows the phone by model and says whose connection it is');
 ok(await page.$('.phonetab #phDisconnect') !== null, '...and offers Disconnect to the owner');
 
+// The listing behind that tab is `adb devices -l` on the node, once a minute
+// while anything watches: a probe, not a record. It was a job row per node
+// per minute on the Jobs tab, every one reading "exec adb devices -l", and
+// each moved the revision the Docker manager refetches its listing on.
+{
+  const revBefore = (await api('/api/revs')).body.devapp;
+  const listed = await api('/api/phone?node=' + sandbox.id + '&probe=1');
+  ok(listed.status === 200 && listed.body.nodes.some(n => n.id === sandbox.id && n.phone),
+     'a forced listing runs adb on the node and still finds the phone');
+  const jobs = (await api('/api/v1/jobs')).body.jobs;
+  ok(!jobs.some(j => /adb devices/.test(JSON.stringify(j))),
+     `...as a probe: no "exec adb devices" row on the Jobs tab (${jobs.length} rows)`);
+  ok((await api('/api/revs')).body.devapp === revBefore,
+     '...and the Docker manager\'s revision did not move for it');
+}
+
 // A second account sees the connection and cannot drive it.
 execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'visitor', '--role', 'admin'],
   { input: 'visitorpass1\nvisitorpass1\n', encoding: 'utf8',
