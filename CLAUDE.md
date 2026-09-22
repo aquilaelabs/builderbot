@@ -97,8 +97,9 @@ by hand cost four commands and still could not see the failed builds.
   back. **When it fails, `bb ci-log` is the first place to look:** the runner keeps
   no console output, so the workflow tees each check into
   `/config/ci-logs/<repo>/` and that command reads it. `--list` shows the runs
-  kept with their results. Without it the only local evidence is
-  `/workspace/_work/_diag`, which names the failing step and nothing it said;
+  kept with their results. Without it the only local evidence is the
+  runner's own `_diag` directory on its node, which names the failing step and
+  nothing it said;
   that cost a round trip through the operator once already.
   It runs **on the pull request and nowhere else**. A `pull_request` build
   checks out `refs/pull/N/merge`, this branch already merged into main, so

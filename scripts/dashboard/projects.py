@@ -165,9 +165,7 @@ def sanitize_name(raw):
 
     - a leading dot, dash or underscore is dropped. GitHub is happy with
       `.github`; the project scan skips anything starting with a dot, so such
-      a directory would be created and then never appear. Dropping `_` also
-      keeps `_work` (the runner's tree, which the scan skips by name) from
-      being reachable through a name that sanitizes into it.
+      a directory would be created and then never appear.
     - runs of dashes collapse. GitHub leaves `my---app` alone; nobody means it.
     - trailing dashes go, which are always an artifact of the replacement
       rather than anything typed on purpose.

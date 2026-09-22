@@ -281,7 +281,6 @@ cmd_projects() {
     local d found=0
     for d in "$WORKSPACE"/*/; do
         [ -d "$d" ] || continue
-        case "$(basename "$d")" in _work) continue ;; esac
         # Not a project, by the same mark the dashboard's list honours: the
         # toolchain store, a dev instance's build tree, anything the operator
         # chose to hide.
@@ -1001,7 +1000,7 @@ cmd_emu() {
 
 # ---- what CI said, from inside the container -------------------------------
 # The self-hosted runner streams a job's console output to GitHub and keeps
-# none of it: /workspace/_work/_diag holds the runner's own diagnostics, which
+# none of it: its own _diag directory holds the runner's diagnostics, which
 # name the failing step and its exit code and never a line of what it printed.
 # With no PAT there is no API to ask either, so "CI is red, why?" had no
 # answer in here for a job that ran in this very container. The lint workflow
@@ -5343,7 +5342,7 @@ cmd_lint() {
         else
             local -a args=() g
             for g in "$@"; do args+=(-o -path "./$g"); done
-            find . \( -name .git -o -name node_modules -o -name _work \) -prune \
+            find . \( -name .git -o -name node_modules \) -prune \
                 -o -type f \( "${args[@]:1}" \) -print0 2>/dev/null
         fi
     }

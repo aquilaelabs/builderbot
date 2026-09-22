@@ -368,7 +368,6 @@ seed_home() {
         local d
         for d in "$WORKSPACE"/*/; do
             [ -d "$d" ] || continue
-            [ "$d" = "$WORKSPACE/_work/" ] && continue   # an old runner tree, left alone
             log "chown -R ${PUID}:${PGID} ${d}"
             chown -R "$PUID:$PGID" "$d"
         done

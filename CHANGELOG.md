@@ -21,6 +21,10 @@
 - Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 
+### Removed
+
+- The projects list, the startup log and the container's welcome text no longer skip a directory called _work by name: the retired runner's tree is gone from the share, so there is nothing to skip. (d8c1e87)
+
 ### Fixed
 
 - Android builds work again inside a Claude session on a node: Gradle, the Android tools and the Kotlin compiler keep their files in each person's own home instead of the shared one sessions cannot write (23f1183)

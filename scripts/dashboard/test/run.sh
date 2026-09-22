@@ -115,8 +115,8 @@ PORT="${DASHBOARD_TEST_PORT:-$(free_port)}"
 # that cost an hour once, and the tell was obscure enough to be worth this check.
 #
 # Only reachable now when the port was pinned by hand, which is exactly when
-# the holder is worth identifying: a copy running out of /workspace/_work is
-# the CI runner's, mid-job, and killing it ends a build.
+# the holder is worth identifying: a copy running out of a runner's _work
+# directory is a CI job on this node, mid-run, and killing it ends a build.
 if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$holder" ]; then
     where="$(tr '\0' ' ' < "/proc/$holder/cmdline" 2>/dev/null || true)"
     case "$where" in

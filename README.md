@@ -249,7 +249,7 @@ step: the folder is mounted along with everything else beside it, and it
 appears on the dashboard at the next poll. A directory that is not a working
 project is not hidden but reported: no git repository or the wrong ownership in
 red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
-empty directories, hidden ones and the runner's `_work` are left out.
+empty directories and hidden ones are left out.
 
 **Updating**: CI publishes `:latest` for any push to `main` that touches the
 image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
@@ -1232,9 +1232,8 @@ lives in its body. The cards:
   valid git repository. Only errors are folded away: a **warning stays in the
   list**, in amber, because it is asking for something. This is what
   makes one mapping for the whole folder workable: a directory that is not a
-  project says so instead of quietly not appearing. Hidden directories and the
-  runner's `_work` are skipped outright, and empty
-  directories are never listed either: a mount point waiting for
+  project says so instead of quietly not appearing. Hidden directories are
+  skipped outright, and empty directories are never listed either: a mount point waiting for
   content is not a fault to report.
   A directory holding a **`.bbignore`** file is not a project and is not
   listed: the container writes one into any path of its own that lands in

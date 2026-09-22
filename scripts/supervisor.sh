@@ -116,7 +116,7 @@ cat <<EOF
       docker exec -it ${CONTAINER_NAME} bb shell
 
   Projects are mounted under ${WORKSPACE}:
-$(find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' -printf '      %p\n' 2>/dev/null || true)
+$(find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -printf '      %p\n' 2>/dev/null || true)
 EOF
 
 # Stay in the foreground, doing nothing: everything that runs here supervises
