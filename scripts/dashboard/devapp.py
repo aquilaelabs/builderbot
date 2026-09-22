@@ -377,7 +377,6 @@ runner = None                    # jobs.py, for Abort to reach the process
 
 # How much of a long command's output the row carries. A pull writes a line
 # per layer per progress tick, so this is a tail and not a transcript.
-LOG_TAIL = 4000
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
 # calls on one project; two rows are two jobs, and the queue orders those.
@@ -589,12 +588,16 @@ def _compose_done(job, state):
         for o in (job.get("outputs") or []):
             if isinstance(o, dict) and o.get("kind") == "compose":
                 step = str(o.get("failed_at") or "")
-        return {"building": "build failed; the tail of its output is below",
-                "stopping": "stopping it failed; the tail of its output is below",
-                "starting": "up failed; the tail of its output is below",
-                "testing": "the tests failed: their output is the job's log",
-                "preparing": "a bind directory could not be made on the node: its line is below",
-                }.get(step, "")
+        # The output's last words ride the reason: the row shows the last
+        # line of it, and the whole log is the Jobs tab's.
+        tail = (queue.job_tail(job["id"], 500) if queue is not None else "").strip()
+        head = {"building": "build failed", "stopping": "stopping it failed",
+                "starting": "up failed", "testing": "the tests failed",
+                "preparing": "a bind directory could not be made on the node"}.get(step, "")
+        # The head stays whole and only the tail is cut: sliced from the end
+        # as one string, a long tail took the head with it and the row
+        # stopped saying what had failed.
+        return (head + ":\n" + tail[-400:]) if head and tail else head
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
     # Up to the operator. The row below would clear the flag, so this returns.
@@ -800,7 +803,6 @@ def job_view(project, instance):
                 "action": (j.get("spec") or {}).get("action", ""),
                 "step": ("queued" if j["state"] == "queued" else j["step"])
                         if running else "",
-                "log": queue.job_tail(j["id"], LOG_TAIL),
                 "error": "" if running else j["error"],
                 "aborting": bool(running and j["cancel"]),
                 "node": j["node"]}
@@ -849,7 +851,9 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
 def job_rev():
     """The poll's cheap tell that something here moved: the store, and the
     queue's own rev, since a job's every log chunk is a repaint."""
-    q = queue.jobs_rev() if queue is not None else 0
+    # The state-only rev: a row draws a job's state, step and how it ended,
+    # never its output, so a line of output is not a reason to redraw.
+    q = queue.jobs_state_rev() if queue is not None else 0
     return f"{_rev}:{q}:{_mtime(FILE)}"
 
 
@@ -3791,7 +3795,7 @@ def _job_up(project, instance, run):
     if r["code"] != 0:
         # On the JOB, which is what the row reads: without this a failed Up
         # left a row that said "stopped" with no account of why.
-        return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
+        return {"state": "failed", "error": "up failed:\n" + r["out"][-400:]}
     with _lock:
         d = _load()
         row = _rec(d, project, instance)
@@ -3976,8 +3980,9 @@ def _job_rebuild(project, instance, run):
             return {"state": "canceled",
                     "error": "stopped; what had already been built is kept"}
         if r["code"] != 0:
-            return {"state": "failed",
-                    "error": "build failed; the tail of its output is below"}
+            # The reason carries the output's last words: the row shows the
+            # last line of it, and the whole log is the Jobs tab's.
+            return {"state": "failed", "error": "build failed:\n" + r["out"][-400:]}
         with _lock:
             d = _load()
             _stamp(_rec(d, project, instance), project, instance)
@@ -4015,7 +4020,7 @@ def _job_rebuild(project, instance, run):
             return {"state": "canceled",
                     "error": "stopped: the image is built, but not started"}
         if r["code"] != 0:
-            return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
+            return {"state": "failed", "error": "up failed:\n" + r["out"][-400:]}
         return {"state": "succeeded"}
     finally:
         # Whatever happened (built, failed, gated) the build is no longer in

@@ -95,6 +95,7 @@ bb: BuilderBot helper
                          ARGS go to the command, so a suite that takes file
                          names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
+  bb tests log [-f]      the last run's output, whole; -f follows a run still going
   bb tests lab           the lab suites, against real services: the dev stack's Gitea, a real node
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
@@ -2919,6 +2920,20 @@ cmd_tests() {
     # running anything. A red suite should cost one run, not four: what broke
     # is a fact the log already holds, and re-running to find it out again is
     # nine minutes for an answer that was on disk.
+    # The run's output itself, which bb tests run tees beside the project.
+    # `-f` follows a run that is still going: the Tests view's button sends
+    # this into the project's shell, where output belongs (it can be
+    # scrolled, paged and left running), rather than into a box on a row
+    # that redrew for every line.
+    if [ "${1:-}" = log ]; then
+        local rl="${WORKSPACE}/${proj}/.bb-test-run.log"
+        [ -f "$rl" ] || die "no run log yet; \`bb tests run\` writes one beside the project"
+        if [ "${2:-}" = -f ] || [ "${2:-}" = --follow ]; then
+            exec tail -n 200 -f "$rl"
+        fi
+        cat "$rl"
+        return
+    fi
     if [ "${1:-}" = last ]; then
         local prev="${WORKSPACE}/${proj}/.bb-test-run.log"
         [ -f "$prev" ] || die "no run log yet; \`bb tests run\` writes one beside the project"

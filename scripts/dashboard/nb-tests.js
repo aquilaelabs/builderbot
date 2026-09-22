@@ -16,6 +16,37 @@ function nbTestsView({$, nb, project}){
   let tstEditing = new Set();   // the rows whose two fields are out
   nb.tstSuite = ""; nb.tstFlagged = false, nb.tstUndoc = false;
 
+  // The run's output, in the project's shell: opened if none is, focused if
+  // one is, and `bb tests log -f` typed into it, which follows a run still
+  // going. Output belongs in a terminal, where it scrolls and pages and can
+  // be left running; a box on the Docker row used to carry a tail of it and
+  // redraw for every line.
+  async function openRunOutput(){
+    const btn = $("tstOut");
+    const mine = tabs.find(t => t.kind === "term" && !isClaude(t)
+                                && typeof t.arg === "string" && t.arg.startsWith("sh:") && t.arg.endsWith(":" + project));
+    if (mine) focusTab(mine.id); else newShell(project);
+    busy(btn, "Opening");
+    // The shell has to be up before anything can be typed into it: a new one
+    // registers with tmux a moment after its tab opens.
+    for (let i = 0; i < 40; i++){
+      const t = tabOf(panes[active]);
+      if (t && t.kind === "term" && liveSessions().has(sessionOf(t.arg))) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    const t = tabOf(panes[active]);
+    if (!t || t.kind !== "term" || !liveSessions().has(sessionOf(t.arg))){
+      unbusy(btn, "Open the run's output");
+      return notify("the shell did not come up; open one and run bb tests log -f", true);
+    }
+    try{
+      const r = await postJSON("/api/send", {session: sessionOf(t.arg), macro: "tests-log"});
+      const j = await r.json();
+      if (j.error) notify(j.error, true);
+    }catch(e){ notify("could not send: " + e, true); }
+    unbusy(btn, "Open the run's output");
+  }
+
   async function loadTests(again = false){
     try{
       const r = await fetch("/api/tests?project=" + encodeURIComponent(project));
@@ -68,6 +99,8 @@ function nbTestsView({$, nb, project}){
 
   function drawTests(){
     const j = nb.tests || {};
+    const ob = $("tstOut");
+    if (ob){ ob.onclick = openRunOutput; ob.hidden = !mayShell(); }
     if (j.error){
       $("tstHint").textContent = "tests: " + j.error;
       $("tstList").innerHTML = ""; $("tstStats").hidden = true;

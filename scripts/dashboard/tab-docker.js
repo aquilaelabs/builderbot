@@ -43,10 +43,13 @@ const dmPollSays = () => {
 // Whether this list knows what is actually running. One function because the
 // rows' ghosting and Remove's confirmation are the same question asked twice,
 // and two copies of it would drift.
-// `stale` counts: a listing kept from before the node's current job is not
-// a claim about now, and the job is the thing most likely to have changed it.
+// `stale` does NOT count: a listing kept from before the node's current job
+// is the last thing the daemon said, not a silence, and treating it as one
+// drew "the daemon is not answering" on every row through every build. The
+// pill says "as last seen" for it instead, and the actions stay live: they
+// go through the agent, which is not what is busy.
 const dmBlind = () =>
-  !!(dockerList?.blind || dockerList?.stale || dockerList?.error || dmPollSays());
+  !!(dockerList?.blind || dockerList?.error || dmPollSays());
 
 // Applied to the DOM after a list draws rather than woven into each renderer,
 // four places render one of these controls, and one function that switches
@@ -805,6 +808,9 @@ function dmBuilt(d){
 
 // What one dev instance is doing, in a line: the action bar's status.
 function dmState(d, job, mine, busy, blind){
+  // A job in flight on this row is known whatever the listing says: its
+  // phase comes from the job, not from the daemon.
+  if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
   // Nothing was asked, so nothing is claimed. What it was built from is still
   // true (that is a record on this side) and it is the one fact worth
   // carrying into a listing nobody can act on.
@@ -813,7 +819,6 @@ function dmState(d, job, mine, busy, blind){
       ? `${dmBuilt(d)}: the daemon is not answering, so whether it is up is
          unknown`
       : "never built: the daemon is not answering";
-  if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
   // How a job ENDED, which this row never said. A build that failed or was
   // stopped left the row showing the state it happened to be in, so the only
   // account of what went wrong was in the tail below it, and an abort, which
@@ -881,7 +886,8 @@ function dmRowsHtml(ins, job, blind){
             blind ? "state unknown"
             : d.running && live.some(c => c.state !== "running")
               ? `partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`
-            : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
+            : d.running ? "running" : d.exists ? "stopped" : "down"}${
+            dockerList?.stale && !blind ? ", as last seen" : ""})</span></div>
         <div class="sub">${d.source === "file"
           ? `written here: this dashboard holds its compose file`
           : `from ${esc(d.project)}'s compose file${
@@ -907,21 +913,6 @@ function dmRowsHtml(ins, job, blind){
         <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         </details>
-        ${busy || (mine && job.error)
-          // What it is actually doing, live. The step word above says the
-          // phase (building, starting) and this says what the phase is
-          // spending its time on, which for a pull is the only way to tell a
-          // slow download from a hang. Raw, and deliberately not parsed into a
-          // bar: docker rewrites a line per layer per tick, and turning that
-          // into a percentage is the thing the toolchains tab gave up on.
-          // Tailed whether or not it is still running. The row only
-          // repaints when something moved, so this is not a fight with the
-          // reader's scrolling, and the end is where the reason is: a failed
-          // job rendered its last 1200 characters scrolled to the TOP, which
-          // on anything that pulled an image is the middle of the download
-          // and never the error that ended it.
-          ? `<pre class="dmlog" data-tail="1">${
-              esc((job.log || "").slice(-1200))}</pre>` : ""}
       </div>
       <div class="actbar dmacts">
         <span class="state${!blind && d.running ? " ok" : ""}">${dmState(d, job, mine, busy, blind)}</span>
@@ -1274,13 +1265,6 @@ function renderDockerInto(i){
       }<button id="bDockerRe">Refresh</button>${
       slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
   gateDocker(el, off);
-  // Every tail sits at its own bottom after a draw. The list repaints only
-  // when the job moved, so between draws the reader keeps whatever scroll
-  // they chose; what this stops is a redraw putting them back at the top of
-  // output whose point is at the end.
-  el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
-    t.scrollTop = t.scrollHeight;
-  });
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.
   el.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {

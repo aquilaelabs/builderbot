@@ -1951,6 +1951,19 @@ def _jbump():
     _jrev[0] += 1
 
 
+# The jobs rev without the log chunks: a job queued, taken, finished,
+# cancelled, or a new step word, and nothing for a line of output. What a
+# ROW watches. The Docker manager followed the jobs rev and refetched its
+# whole listing several times a second through every build, for a tail it
+# has since stopped drawing; the Jobs tab, which does draw the log, keeps
+# the full rev.
+_jsrev = [0]
+
+
+def jobs_state_rev():
+    return _jsrev[0]
+
+
 def _jstate_bump():
     """A job was queued, taken, finished or cancelled: the jobs rev, and the
     nodes rev with it, because a node's row carries what is applying on it,
@@ -1959,6 +1972,7 @@ def _jstate_bump():
     "installing now" and then the result without anybody reloading. A log
     chunk moves only the jobs rev: a row does not change for one."""
     _jbump()
+    _jsrev[0] += 1
     _bump()
 
 
@@ -2563,7 +2577,10 @@ def job_set(job_id, **fields):
         _exec("UPDATE jobs SET " + ", ".join(f"{k} = ?" for k in sets)
               + " WHERE id = ?", (*sets.values(), job_id))
         if not _quiet(job_id):
+            # A step word or a reason is what a row draws, so the state-only
+            # rev moves too: the controller's own runner sets them here.
             _jbump()
+            _jsrev[0] += 1
 
 
 def job_log(node_id, job_id, chunks, step=None):
@@ -2599,6 +2616,8 @@ def job_log(node_id, job_id, chunks, step=None):
             _exec("UPDATE jobs SET step = ? WHERE id = ?", (str(step)[:60], job_id))
     if (n or step is not None) and not _quiet(job_id):
         _jbump()
+        if step is not None:
+            _jsrev[0] += 1
     # ...and anything waiting to go DOWN to the job. The agent posts output
     # every half second, so this reply is the only channel the controller has
     # toward a running job: `cancel` has ridden it since the start, and a

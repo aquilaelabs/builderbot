@@ -495,6 +495,8 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
+bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
+                   Tests view's Open the run's output sends this into the project's shell
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
                    whenever the instance is up, so a suite that tests BuilderBot cannot disturb the

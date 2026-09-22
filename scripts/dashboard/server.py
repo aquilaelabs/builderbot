@@ -271,6 +271,10 @@ MACROS = {
     "lint":             ["bb", "lint"],
     "logs":             ["bb", "logs"],
     "logs-follow":      ["bb", "logs", "-f"],
+    # The last test run's output, followed while it is still running: the
+    # Tests view's button sends this into the project's shell. A row used
+    # to carry a tail of the job's log and redraw for every line of it.
+    "tests-log":        ["bb", "tests", "log", "-f"],
 }
 # Sendable, but not listed in the bb commands card: another card owns them.
 # Empty since the controller's own runner went (the Runner card is a view of

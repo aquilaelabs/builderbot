@@ -547,16 +547,16 @@ await page.waitForFunction((SEL) => {
 }, DM, { timeout: 20000 });
 ok(true, 'a commit unghosts Rebuild: the code has moved since the build');
 // ---- a long build is watchable, and stoppable ---------------------------
-// Both were missing. The log was assigned after the command returned, so a
-// pull was minutes of nothing and then everything at once (a download that
-// looked like a hang), and there was no way to interrupt one at all.
+// The row says what phase the job is in and offers Abort while it runs;
+// the output itself is the Jobs tab's and the shell's, not a box on the row
+// that redrew for every line of it.
 writeFileSync(`${DIR}/dockerstate/build.slow`, '1');
 await dmClick('rebuild');
 await page.waitForFunction(sel => {
-  const e = document.querySelector(sel + ' .dmlog');
-  return e && /pulling layer/.test(e.textContent);
+  const e = document.querySelector(sel + ' .state');
+  return e && /building|pulling|starting|working|queued/i.test(e.textContent);
 }, DM, { timeout: 20000 });
-ok(true, "the command's output appears while it is still running, not after");
+ok(await page.$(`${DM} .dmlog`) === null, "the row carries the job's phase and no tail of its output");
 ok(await page.$(`${DM} [data-dm="abort"]`) !== null,
    '...with an Abort beside it, which a build never had');
 await dmClick('abort');
@@ -645,11 +645,10 @@ await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: 20000 
 const failed = await page.evaluate(() => dockerList?.job || {});
 ok(/up failed/.test(failed.error || ''),
    'an Up that fails leaves the reason on the row, not only in the reply');
-ok(!failed.running && /mount source path/.test(failed.log || ''),
-   '...with the output that ended it still in the tail');
+ok(!failed.running && !('log' in failed),
+   '...and the payload carries no log: the reason is the row\'s, the output is the Jobs tab\'s');
 await idle();
 await openManager();
-await page.waitForSelector(`${DM} .dmlog`, { timeout: 20000 });
 // The row's one-line summary is the REASON, not the label. A compose failure
 // arrives as "up failed:\n<docker's output>" kept from the end, so reading its
 // first line put "up failed:" on the row and dropped what docker actually
@@ -661,8 +660,6 @@ ok(await page.evaluate(() => [
      jobWhy(''),
    ].join(' | ')) === 'creating network: pool overlaps | build failed; the tail of its output is below | ',
    'a failed job is summarised by its reason, not by the label above it');
-ok(await page.$eval(`${DM} .dmlog`, e => e.dataset.tail === '1'),
-   '...and that tail is pinned to its end, which is where the error is');
 // Rebuild has to wake for the retry. A build records itself before the up
 // that follows it, so a failed up left the row insisting the build was
 // current: true, and not what somebody looking at a red row wants offered.

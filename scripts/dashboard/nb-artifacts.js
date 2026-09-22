@@ -128,7 +128,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             <span class="dim state ${da.running ? "ok" : ""}">(${devState})</span></div>
           <div class="dim">${
             daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
-            : daJob?.error ? "build failed; see below"
+            // The reason's head and its last words, on one line: "build
+            // failed: stub build exploded". The whole output is the Jobs
+            // tab's, and the shell's through the Tests view.
+            : daJob?.error ? esc((l => l.length > 1 && l[0] !== l[l.length - 1] ? `${l[0]} ${l[l.length - 1]}` : l[0] || "")(
+                String(daJob.error).split("\n").map(x => x.trim()).filter(Boolean)))
             : da.await_env ? "built: fill in the env (Env), then Up"
             : da.interrupted ? `a build was interrupted: BuilderBot restarted
                 while it was running${da.built_rev
@@ -151,8 +155,6 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           // it. So a note, in the quiet voice, not a verdict in red.
           da.port_clash?.length ? `<div class="dim li">port ${esc(da.port_clash.join(", "))} ${
             da.port_clash.length === 1 ? "is" : "are"} published already on this node: the instance Send makes sets its own in its env</div>` : ""}
-          ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
-            esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
         <span class="acts">
           ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
