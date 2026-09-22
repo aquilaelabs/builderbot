@@ -12,6 +12,7 @@
 - A project's Rules list the global rules too, read-only, and a rule that shares a trigger with a global one says so; a session is told the project's rule wins where the two disagree. (ba22503)
 - Two toolchains a session can draw with: graphics (ImageMagick, resvg, oxipng, pngquant, cwebp) behind bb img, and diagrams (PlantUML, Mermaid) behind bb diagram, both writing into dist/. bb favicon runs on a node again. (81dd077)
 - A toolchain row that lacks system packages carries Install them now, which puts them on that node without reinstalling the toolchain; a row whose needed toolchain is missing on the node says which and offers that row's install. (205863a)
+- A toolchain's row says which bb verbs installing it adds (bb emu, bb img, bb diagram...), one root verb per recipe, and the suite holds the catalogue to the script so no two recipes can claim one name. (076a324)
 
 ### Changed
 

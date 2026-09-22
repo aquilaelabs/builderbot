@@ -110,6 +110,29 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
    && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
    'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
 
+// A recipe that gives a session a bb verb says which (`verbs`), one root
+// per recipe, so a row can say what installing it adds. Held to the script
+// itself: every declared verb is a label in bb's dispatch, no two recipes
+// claim one, and the dispatch carries no duplicate label at all, since a
+// bash case takes the first match and hides a second in silence.
+{
+  const bb = readFileSync(`${import.meta.dirname}/../../bb`, 'utf8');
+  const labels = [...bb.matchAll(/^    ([a-z][a-z0-9|-]*)\)\s+(?:shift; )?cmd_/gm)]
+    .flatMap(m => m[1].split('|'));
+  const dup = labels.filter((l, i) => labels.indexOf(l) !== i);
+  ok(dup.length === 0, `bb's dispatch names each verb once (${dup.join(', ') || 'no duplicates'})`);
+  const claimed = new Map();
+  const missing = [];
+  for (const t of catalog.toolchains) for (const v of t.verbs || []) {
+    if (!labels.includes(v)) missing.push(`${t.name}: bb ${v}`);
+    if (claimed.has(v)) missing.push(`${v} is claimed by ${claimed.get(v)} and ${t.name}`);
+    claimed.set(v, t.name);
+  }
+  ok(missing.length === 0, `every verb a recipe declares is bb's, and one recipe's only (${missing.join('; ') || 'all agree'})`);
+  ok(await page.$$eval('.doc .tc .sub', ss => ss.some(s => /Adds .*bb emu/.test(s.textContent))),
+     'a row says which bb verbs installing it adds');
+}
+
 // Pressing Install accepts Google's SDK terms, and the tab says so where the
 // button is: the acceptance is the operator's, not a script's.
 ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent)

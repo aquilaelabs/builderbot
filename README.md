@@ -1331,7 +1331,10 @@ lives in its body. The cards:
   every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Each row also names the system packages its tool puts
+  is a bin on the row. A recipe that gives a session a `bb` verb says which,
+  one root verb per recipe (`bb emu`, `bb img`), so the row says what
+  installing it adds and no two recipes can claim one name; the suite holds
+  the catalogue to the script. Each row also names the system packages its tool puts
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may

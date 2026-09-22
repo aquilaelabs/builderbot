@@ -316,7 +316,10 @@
           ]
         }
       },
-      "updatable": true
+      "updatable": true,
+      "verbs": [
+        "emu"
+      ]
     },
     {
       "name": "android:platform-tools",
@@ -785,7 +788,10 @@
           "match": "Download url:\\s+(\\S+)"
         }
       },
-      "updatable": true
+      "updatable": true,
+      "verbs": [
+        "shot"
+      ]
     },
     {
       "name": "lint-tools",
@@ -824,7 +830,10 @@
           "bytes": 70000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "verbs": [
+        "lint"
+      ]
     },
     {
       "name": "ffmpeg",
@@ -917,7 +926,11 @@
         "emerge": [
           "media-fonts/dejavu"
         ]
-      }
+      },
+      "verbs": [
+        "img",
+        "favicon"
+      ]
     },
     {
       "name": "diagrams",
@@ -962,6 +975,9 @@
         "jdk",
         "node",
         "playwright"
+      ],
+      "verbs": [
+        "diagram"
       ]
     },
     {
