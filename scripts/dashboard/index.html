@@ -4621,11 +4621,11 @@ const TABKINDS = {
               render: (i) => renderDockerInto(i),
               // ...and phRev, because a session's rebuild request is answered
               // on this tab and arrives on the phone payload's ask list.
-              live: () => `${dockerRev}/${nodesRev}/${phRev}`,
+              live: () => `${dockerRev}/${dmNodesKey()}/${phRev}`,
               open: () => { const t = dockerTab();
                             if (!dockerNode && t?.arg && t.arg !== "__docker")
                               dockerNode = t.arg;
-                            if (!dockerList) loadDocker();
+                            if (!dockerList && !dockerFetching) loadDocker();
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
               icon: TOOL_ICONS.nodes,
@@ -4910,7 +4910,12 @@ function show(t){
   pinFor = null;
   render();
   if (isPhone()) setView("terminal");
-  TABKINDS[t.kind]?.open?.();
+  // Once. The render above ran the kind's open hook already when this tab
+  // was not the one its pane showed, and running it here as well opened
+  // every tab twice: two node listings, two phone probes, and with the
+  // Docker manager's own load behind them, three listings of one daemon
+  // for one press, each one a set of reads on the node (B210).
+  if (!openedNow.has(t.id)) TABKINDS[t.kind]?.open?.();
   // Only when it is a different project's: switching back to a notebook must
   // not reload it, or whatever is staged in it goes.
   refreshSoon();      // a just-opened terminal's session appears in Sessions
@@ -5601,7 +5606,11 @@ function wireConsole(root){
   });
 }
 
+// The tabs whose open hook the draw in progress ran: show() reads it so a
+// tab is opened once, by whichever of the two ran first.
+const openedNow = new Set();
 function drawPanes(){
+  openedNow.clear();
   if (!state) return;    // nothing to point a frame at until the first poll
   $("panes").classList.toggle("split", isSplit());
   // A frame kept alive behind the visible one belongs to a tab. When the tab
@@ -5700,6 +5709,7 @@ function drawPanes(){
     // plus the kind's own open hook, which is what a tab restored from a saved
     // layout needs to fetch what it draws.
     renderDoc(i, t, pane);
+    openedNow.add(t.id);
     TABKINDS[t.kind]?.open?.();
   }
 }

@@ -99,11 +99,26 @@ const dockerSeen = {};
 // anybody picked and was reliably the second entry in the picker.
 function dockerTab(){ return tabs.find(t => t.kind === "docker"); }
 
+// What this tab draws from the node list: the picker's rows. The list
+// itself moves on every heartbeat (nodes.rev folds the agent's numbers in),
+// and a tab keyed on the whole of it repainted for every one while a Nodes
+// tab was open anywhere in the layout, though nothing it shows had changed
+// (B210's second half). A node arriving, leaving, renamed or changing state
+// still repaints, because that is what the picker is made of.
+function dmNodesKey(){
+  if (nodesList === null) return "?";
+  return nodesList.filter(n => n.kind !== "local")
+    .map(n => [n.id, n.name, n.kind, n.state].join(",")).join(";");
+}
+
 function openDocker(){
   const t = dockerTab();
   if (!dockerNode && t?.arg && t.arg !== "__docker") dockerNode = t.arg;
   openTab({kind: "docker", arg: dockerNode || "__docker", label: "Docker"});
-  loadDocker();
+  // Opening is a look: a tab already on screen is read again. Not while an
+  // answer is on its way, which is the case the tab's own open hook just
+  // made when the list was empty.
+  if (!dockerFetching) loadDocker();
 }
 
 // ...and remembered when it changes, which is the only moment it can be

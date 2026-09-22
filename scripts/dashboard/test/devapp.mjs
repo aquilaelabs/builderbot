@@ -2796,6 +2796,53 @@ ok(await page.$('#devSend'),
      '...while a project with no compose file is not asked the question at all');
   await page.evaluate(() => { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); openDocker(); });
   await page.waitForSelector('.dmtab', { timeout: 15000 });
+
+  // Opening is one ask (B210). show() ran a kind's open hook after the draw
+  // had run it, and openDocker() loaded on top of both: three listings of
+  // one daemon for one press, each a set of reads on the node, and the tab
+  // visibly refreshing three times before it settled. The fetches all fire
+  // inside the call itself, so they are counted the moment it returns.
+  {
+    // Not while the open above still has an answer on its way: an ask in
+    // flight is the one case a second open rightly does not add to.
+    await page.waitForFunction(() => !dockerFetching, null, { timeout: 15000 });
+    const counts = await page.evaluate(() => {
+      const f = window.fetch; const seen = { docker: 0, nodes: 0 };
+      window.fetch = (...a) => { const u = String(a[0]);
+        if (u.startsWith('/api/docker')) seen.docker++;
+        if (u.startsWith('/api/v1/nodes')) seen.nodes++; return f(...a); };
+      dockerList = null; dockerRev++;
+      openDocker();
+      const docker = seen.docker;
+      const hadNodes = tabs.some(t => t.kind === 'nodes');
+      openTab({ kind: 'nodes', arg: '__nodes', label: 'Nodes' });
+      const nodes = seen.nodes;
+      window.fetch = f;
+      if (!hadNodes) dropTab(tabs.find(t => t.kind === 'nodes').id);
+      openDocker();
+      return { docker, nodes };
+    });
+    ok(counts.docker === 1, `opening the Docker tab asks for its listing once (${counts.docker})`);
+    ok(counts.nodes === 1, `...and opening the Nodes tab asks for the node list once (${counts.nodes})`);
+    await page.waitForSelector('.dmtab', { timeout: 15000 });
+    // ...and a heartbeat is not a repaint: the node list moves with every
+    // one, and the tab is keyed on the rows its picker draws, not on that.
+    const keyed = await page.evaluate(() => {
+      const n = (nodesList || []).find(x => x.kind !== 'local');
+      if (!n) return { none: true };
+      const before = TABKINDS.docker.live();
+      const was = n.reported;
+      n.reported = { sample: { cpu_pct: 99, mem_used_mb: 1, mem_mb: 2 } };
+      nodesRev++;
+      const numbers = TABKINDS.docker.live() === before;
+      const st = n.state; n.state = st + '-moved';
+      const state = TABKINDS.docker.live() !== before;
+      n.state = st; n.reported = was;
+      return { numbers, state };
+    });
+    ok(!keyed.none && keyed.numbers, "a heartbeat's numbers moving does not repaint the Docker tab");
+    ok(keyed.state, '...while a node changing state does');
+  }
   await page.evaluate(async () => {
     await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ project: 'ep.silon', devtest: true }) });

@@ -54,6 +54,7 @@
 - bb emu create makes an AVD the emulator can start, bb emu start finds the AVD you made without being told its level and returns only once the system has booted, and bb emu install refuses while it is still booting instead of failing silently. (89d73cd)
 - The phone's device listing is a probe: no 'exec adb devices -l' row on the Jobs tab per node per minute, and the Docker tab stops refetching its listing for each one (65b863b)
 - Open the run's output on the Tests view sends into the shell until it answers, instead of saying the shell did not come up while a node shell was still being reported (65b863b)
+- Opening the Docker tab asks for its listing once instead of three times, and every tab's open hook runs once; a node heartbeat no longer repaints the Docker tab (3dce874)
 
 ### Security
 
