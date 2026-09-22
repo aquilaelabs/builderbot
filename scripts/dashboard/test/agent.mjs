@@ -1759,19 +1759,23 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     let failed = '';
     try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
     catch (e) { failed = String(e.stderr) + String(e.stdout); }
-    ok(/no test command is set/.test(failed), 'bb test with nothing set says what to set, and where');
-    // ...unless the tree says how it is tested. "Run the tests" has one
-    // conventional answer per ecosystem, so a project nobody configured
-    // still answers, and says once that nothing was set, because a command
-    // nobody typed should not look like one somebody did.
+    ok(/no test command is set/.test(failed) && /bb settings set test/.test(failed),
+       'bb test with nothing set refuses, and names the verb that fills the field in');
+    // Nothing runs that nobody wrote down: a tree with a go.mod is not a
+    // test command, and bb test says so rather than guessing one. The session
+    // fills the field in, and from then on it runs.
     writeFileSync(`${DIR}/ws/alpha/go.mod`, 'module alpha\n');
-    let fell = '';
-    try { fell = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
-      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }).toString(); }
-    catch (e) { fell = String(e.stderr) + String(e.stdout); }
+    let still = '';
+    try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
+    catch (e) { still = String(e.stderr) + String(e.stdout); }
     rmSync(`${DIR}/ws/alpha/go.mod`, { force: true });
-    ok(/nothing set for tests on alpha, so: go test \.\/\.\.\./.test(fell),
-       'a project with a go.mod answers bb test with go test, saying it fell back');
+    ok(/no test command is set/.test(still), 'a go.mod in the tree is not a test command: it still refuses');
+    const filled = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings', 'set', 'test', 'echo TEST-SET-RAN'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/set test for alpha: echo TEST-SET-RAN/.test(filled), 'bb settings set test fills the field in under auto');
+    const ran = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/TEST-SET-RAN/.test(ran), '...and bb test runs what the session set');
+    execFileSync('bash', [`${REPO}/scripts/bb`, 'settings', 'set', 'test', ''], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' });
     const sess = (await api('/api/v1/jobs?project=alpha&n=3')).jobs;
     ok(sess.some(j => j.requested_by === 'session:alpha'), 'a run from a session is attributed to the session');
   }

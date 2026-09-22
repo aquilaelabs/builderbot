@@ -3539,6 +3539,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
+        <label class="pick">Fill in build and test <select id="rnGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
       </div>
       <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
         it on the notebook for your approval. Deny refuses it with a reason.</div>
@@ -5938,7 +5940,7 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules"};
+const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules", settings: "rnGateSettings"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
@@ -6004,13 +6006,6 @@ function rnFillPrefsRest(p){
   const canDevTest = !!(p?.has_compose || p?.prefs?.devtest);
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.devtest ? "only" : "either";
-  // What an empty box means here. A project of a shape anybody would
-  // recognise (this repo's harness, a gradlew, a go.mod) has one obvious
-  // way to run its tests, and `bb test` uses it when nothing is set; the
-  // placeholder says which, rather than leaving the operator to discover
-  // that the field is optional.
-  $("rnTestCmd").placeholder = p?.prefs?.test_default
-    ? `test: blank runs ${p.prefs.test_default}` : "test, e.g. ./gradlew test";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8690,7 +8685,7 @@ function drawPendingModal(j){
   $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
   $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
   $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
-  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules"};
+  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`
              : r.kind === "rules" && r.number ? String(r.number) : "";
@@ -8707,6 +8702,8 @@ function drawPendingModal(j){
       bits.push(a.text || "");
       if (a.paths) bits.push(`files: ${Array.isArray(a.paths) ? a.paths.join(", ") : a.paths}`);
       if (a.words) bits.push(`words: ${Array.isArray(a.words) ? a.words.join(", ") : a.words}`);
+    } else if (r.kind === "settings"){
+      for (const k of ["build", "test", "outputs"]) if (a[k]) bits.push(`${k}: ${Array.isArray(a[k]) ? a[k].join(", ") : a[k]}`);
     }
     return bits.filter(Boolean).join("\n");
   };

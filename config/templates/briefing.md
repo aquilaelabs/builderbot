@@ -32,7 +32,10 @@ something to assume: `bb toolchains` says what is installed and where.
 
 When the toolchain lacks what a build needs, the refusal names the way out:
 push and let CI build it, or say plainly that it cannot be built until the
-operator installs the tool.
+operator installs the tool. A project whose build or test command is not set
+refuses too: `bb settings set build|test|outputs "..."` fills the field in
+for the operator, and the project's gate decides whether that lands, waits
+for their approval, or is refused.
 
 ## Git
 

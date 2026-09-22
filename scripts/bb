@@ -119,7 +119,9 @@ bb: BuilderBot helper
   bb users               the dashboard's accounts; passwd NAME is the way back in
   bb users token PROJECT [ACCOUNT]  a session token for one project (and one
                          account), for a node proved by hand
-  bb settings [--json]   this project's settings as the dashboard has them (read-only)
+  bb settings [--json]   this project's settings as the dashboard has them
+  bb settings set build|test|outputs VALUE   fill one in for the operator; held
+                         or refused where the project's gate says so
   bb work                who else is changing this project, and which files
                          two of you have open at once
   bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended;
@@ -4446,8 +4448,13 @@ run_here() {
 
 # bb settings [--json]: this project's settings, as the dashboard has them:
 # node, model, effort, the build and test commands, whether it is locked.
-# Read-only, and no verb writes any of it: those are the settings dialog's.
 # On a node it is relayed, and it is what bb-tty and bb build read there.
+# bb settings set build|test|outputs VALUE: the one write, and only those
+# three fields: a session has read the tree and knows how it builds, and the
+# operator often does not. It goes through the project's fourth gate (auto,
+# ask, deny), the same shape as a roadmap add; the node, the policy and the
+# gates themselves have no verb, since a session that could loosen its own
+# gate has no gate.
 # bb git VERB [ARGS...]: git's network half, run where the credential is.
 #
 # Rule 2 of docs/nodes.md §20: PATs and deploy keys are set up on the
@@ -4520,6 +4527,35 @@ cmd_settings() {
             proj=""
         }
     fi
+    if [ "${1:-}" = set ]; then
+        [ -n "$proj" ] || die "not inside a project under ${WORKSPACE}; cd into one first"
+        local field="${2:-}"; shift 2 2>/dev/null || true
+        case "$field" in build|test|outputs) ;; *) die "bb settings set build|test|outputs VALUE" ;; esac
+        [ $# -ge 1 ] || die "bb settings set $field VALUE: the command to run, or for outputs the globs, comma-separated"
+        BB_SET_FIELD="$field" BB_SET_VALUE="$*" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+            python3 - "$(dirname "$(readlink -f "$0")")/dashboard" "$proj" <<'PY'
+import json, os, sys
+here, proj = sys.argv[1], sys.argv[2]
+sys.path.insert(0, here)
+import prefs, pending
+def _w(path, obj):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f: json.dump(obj, f)
+    os.replace(tmp, path)
+prefs.configure(state=os.environ["DASHBOARD_STATE"], write_json=_w)
+pending.configure(state=os.environ["DASHBOARD_STATE"], write_json=_w)
+field, value = os.environ["BB_SET_FIELD"], os.environ["BB_SET_VALUE"]
+r = prefs.session_set(proj, **{field: value})
+if r.get("error"):
+    print("[builderbot] ERROR: " + r["error"], file=sys.stderr); raise SystemExit(1)
+if r.get("held"):
+    print(f"held for approval: {field} for {proj} lands in its settings when the operator "
+          "approves it on the notebook; you are told on a later turn what they decided")
+else:
+    print(f"set {field} for {proj}: {value}")
+PY
+        return
+    fi
     # The tree this is being asked from, when the caller is standing in the
     # project it is asking about: what says how the project is tested is the
     # directory, and a relayed verb does not always carry the workspace.
@@ -4543,13 +4579,6 @@ rec = dict(prefs.get(proj) or {})
 # nothing set, which is claude's own default.
 _mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
 rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
-# What `bb test` runs here with nothing set. Never written to the file: the
-# record stays the operator's, and this is what an empty box means. From the
-# tree itself where the caller stands in one; the workspace is not in the
-# environment on every path a relayed verb takes, and the directory is.
-_root = os.environ.get("BB_PROJECT_ROOT") or os.path.join(
-    os.environ.get("BB_WORKSPACE") or "/workspace", proj)
-rec["test_default"] = prefs.test_default_at(_root) if proj else ""
 try:
     locks = json.load(open(os.path.join(state, "locked-projects.json")))
 except (OSError, ValueError):
@@ -5015,24 +5044,20 @@ try:
     rec = json.load(sys.stdin)
 except ValueError:
     rec = {}
-# Four things, in order: the command, where it came from, whether the tests
-# run only in the container, then the output globs. What the settings say,
-# or, for a test, the command a project of this shape obviously runs, so a
-# repo nobody configured still answers bb test. Where it came from rides
-# along because the caller says so out loud, and asking a second time would
-# be a second relay from a node.
+# Three things, in order: the command, whether the tests run only in the
+# container, then the output globs. What the settings say and nothing else:
+# a command nobody typed must not run as if somebody had.
 # No apostrophes in here: the whole block is inside shell single quotes.
 role = os.environ["BB_ROLE_"]
-set_here = rec.get(role) or ""
-cmd = set_here or (rec.get("test_default") if role == "test" else "") or ""
+cmd = rec.get(role) or ""
 print(cmd)
-print("set" if set_here else ("default" if cmd else "none"))
+print("set" if cmd else "none")
 print("only" if rec.get("devtest") else "either")
 for g in rec.get("outputs") or []:
     print(g)
 ')
-    local cmd="${rec[0]:-}" from="${rec[1]:-none}" where="${rec[2]:-either}"
-    [ -n "$cmd" ] || die "no $role command is set for $proj; the operator sets it in the project's settings dialog (Build and test)"
+    local cmd="${rec[0]:-}" where="${rec[2]:-either}"
+    [ -n "$cmd" ] || die "no $role command is set for $proj: bb settings set $role '...' fills it in (the operator approves it where the project asks), or the operator does in the settings dialog (Build and test)"
     # A test runs inside the project's dev instance when it has one that is
     # UP (roadmap R48): the container is the boundary. Otherwise on the node,
     # unless the project's Docker row says the tests are the container's
@@ -5063,7 +5088,6 @@ for g in rec.get("outputs") or []:
     fi
     # Said before it runs: a command nobody typed should not look like one
     # somebody did.
-    [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
     local -a args=(--role "$role") g
     for g in "${rec[@]:3}"; do [ -n "$g" ] && args+=(--out "$g"); done
     # Anything else on the line is APPENDED TO THE COMMAND, not read as a flag

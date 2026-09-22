@@ -22,6 +22,7 @@
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
 - Nostromo has square corners: a project's colour bar on its tab ends in a hard edge, the title wears the stencil face and the tab in front glows. On every scheme, a notebook tab that is not in front now carries a hint of its project's colour. (f17026a)
 - The companion app knows all four things a session can ask for (the phone, root, a rebuild, a container), shows a container's compose file in the approval, pulls down to refresh on every list, and stops its watch with a notice when the sign-in no longer works. (8eacfed)
+- A session can fill in a project's build, test and outputs fields with bb settings set, under a fourth gate in the project's settings (auto, ask, deny). bb test no longer guesses a test command from the tree: with nothing set it refuses and names the verb. (03988bb)
 
 ### Removed
 

@@ -6001,9 +6001,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "down":
             r = devapp.down(name, inst)
         elif act == "test":
-            # The command is the project's own, from its settings, with the
-            # same fallback bb test uses when nothing is set.
-            cmd = prefs.get(name)["test"] or prefs.test_default(name, WORKSPACE)
+            # The command is the project's own, from its settings.
+            cmd = prefs.get(name)["test"]
             r = devapp.test(name, inst, cmd, [str(a) for a in (req.get("args") or [])][:32])
         elif act == "rebuild":
             r = devapp.rebuild(name, inst, field(req, "ack"))

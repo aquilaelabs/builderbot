@@ -417,9 +417,11 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
                    the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them: node,
-                   model, effort, build and test commands, lock. Read-only;
-                   on a node it is relayed from the controller, and it is
-                   what bb-tty and bb build read there.
+                   model, effort, build and test commands, lock. On a node
+                   it is relayed from the controller, and it is what bb-tty
+                   and bb build read there. `set build|test|outputs VALUE`
+                   is the one write: a session fills a field in for the
+                   operator, under the project's gate (below).
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
 bb work            who else is working this project, and which files two of
@@ -1706,15 +1708,16 @@ offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog: one
 node for everything it does off this box: containers, builds, tests, CI and
-emulation, and gives its build and test commands and the output globs. **The
-test command has a default and the build command does not**: "run the tests"
-has one conventional answer per ecosystem, so a tree with a `gradlew`, a
-`go.mod`, a `Cargo.toml`, a `pytest.ini`, a `package.json` declaring a test
-script (or this repository's own harness) answers `bb test` and `bb tests
-run` with nothing set, saying once which command it fell back to, and the
-field shows it as what leaving the box empty means. "Build" has no such
-answer (which target, which flavour, which of an Android project's four),
-so `bb build` still refuses and names the dialog. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+emulation, and gives its build and test commands and the output globs.
+**Nothing runs that nobody wrote down**: with a field empty, `bb build` and
+`bb test` refuse and say how to fill it. The person who knows how a tree
+builds is often the session that has just read it, so a session can:
+`bb settings set test "./gradlew test"` (or `build`, or `outputs`), and
+what happens then is the project's fourth gate, beside the three for the
+notebook: auto lands it, ask holds it on the notebook for approval with the
+command in full, deny refuses it with a sentence the session quotes. Only
+those three fields have a verb; the node, the git policy and the gates
+themselves stay the dialog's. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on
@@ -2397,8 +2400,8 @@ switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
 **How much of what a session adds lands on its own** is the last row of the
-same dialog: *Claude may* add to the roadmap, file bugs and add rules, each
-**auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
+same dialog: *Claude may* add to the roadmap, file bugs, add rules and fill
+in build and test, each **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell

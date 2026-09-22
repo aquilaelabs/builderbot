@@ -65,10 +65,11 @@ write_json = None
 FILE = None
 STATE = None
 
-KINDS = ("roadmap", "bugs", "rules")
+KINDS = ("roadmap", "bugs", "rules", "settings")
 MODES = ("auto", "ask", "deny")
 # What each tab calls an entry, for the refusal and the held line.
-NOUN = {"roadmap": "roadmap items", "bugs": "bug reports", "rules": "rules"}
+NOUN = {"roadmap": "roadmap items", "bugs": "bug reports", "rules": "rules",
+        "settings": "build and test settings"}
 # Held records per project. A session that files sixty things nobody has
 # looked at is a session talking to itself; the limit says so.
 MAX_PENDING = 60

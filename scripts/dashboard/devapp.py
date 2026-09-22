@@ -3832,8 +3832,9 @@ def test(project, instance=MAIN, cmd="", args=()):
         return {"error": "no compose file here, so there is no container to test in"}
     cmd = str(cmd or "").strip()
     if not cmd:
-        return {"error": f"no test command is set for {project}: the operator sets it "
-                         "in the project's settings dialog (Build and test)"}
+        return {"error": f"no test command is set for {project}: bb settings set test "
+                         "'...' fills it in, or the operator does in the project's "
+                         "settings dialog (Build and test)"}
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}

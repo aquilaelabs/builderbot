@@ -58,16 +58,18 @@ await page.waitForSelector('#rnmodal:not([hidden])');
 const opts = await page.$$eval('#rnGateRoadmap option', os => os.map(o => o.value));
 ok(opts.join(',') === 'auto,ask,deny'
    && await page.$eval('#rnGateRoadmap', e => e.value) === 'auto'
-   && await page.$eval('#rnGateRules', e => e.value) === 'auto',
-   'the dialog offers auto, ask and deny per tab, and reads auto until something is set');
+   && await page.$eval('#rnGateRules', e => e.value) === 'auto'
+   && await page.$eval('#rnGateSettings', e => e.value) === 'auto',
+   'the dialog offers auto, ask and deny per tab, and for build and test, and reads auto until something is set');
 await page.selectOption('#rnGateRoadmap', 'ask');
 await page.selectOption('#rnGateBugs', 'ask');
 await page.selectOption('#rnGateRules', 'deny');
+await page.selectOption('#rnGateSettings', 'ask');
 await page.click('#rnGo');
 await gone('#rnmodal');
 const gate = () => file('claude-prefs.json').projects?.alpha?.gate || {};
-ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny',
-   'saving writes the three words beside the project\'s other settings');
+ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny' && gate().settings === 'ask',
+   'saving writes the four words beside the project\'s other settings');
 await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.rules === 'deny',
                            null, { timeout: 30000 });
 await page.click('#projects [data-rn="alpha"]');
@@ -110,6 +112,13 @@ ok(/held behind B\d+/.test(bb('bug', 'note', `B${bnum}`, 'seen on chrome too')),
 ok(/still waiting/.test(bbErr('bug', 'fix', `B${bnum}`, 'x')),
    '...and closing it is refused');
 
+// ---- the fourth gate: a session filling in build and test -------------------
+const sheld = bb('settings', 'set', 'test', 'echo held-test');
+ok(/held for approval: test for alpha/.test(sheld) && !(file('claude-prefs.json').projects?.alpha?.test),
+   `under ask a session's bb settings set is held, and the field stays empty (${sheld.trim().slice(0, 60)})`);
+ok(waiting().some(r => r.kind === 'settings' && /test: echo held-test/.test(r.summary)),
+   '...as a settings change whose summary is the command, since that is what is being approved');
+
 // ---- deny: refused with a sentence to quote ---------------------------------
 const refused = bbErr('rules', 'add', 'no-em-dashes', 'No em dashes.');
 ok(/does not take new rules from a session/.test(refused) && /say it in your reply/.test(refused),
@@ -122,7 +131,7 @@ await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
 await nbShown(page);
 await page.waitForSelector('.pane .nb #nbPending:not([hidden])', { timeout: 20000 });
 const band = await page.$eval('.pane .nb #nbPending', e => e.textContent.replace(/\s+/g, ' '));
-ok(/6 changes from a session are waiting for your approval/.test(band) && /4 roadmap, 2 bugs/.test(band),
+ok(/7 changes from a session are waiting for your approval/.test(band) && /4 roadmap, 2 bugs, 1 setting/.test(band),
    `the band above the tabs counts what is waiting, per tab (${band.trim().slice(0, 90)})`);
 ok(await page.$eval('.pane .nb .nbtabs [data-v="roadmap"] .pcount', e => e.textContent) === '4'
    && await page.$eval('.pane .nb .nbtabs [data-v="bugs"] .pcount', e => e.textContent) === '2'
@@ -136,7 +145,7 @@ ok(await page.$eval('#bBell .dot', d => d.classList.contains('ask')),
 await page.click('#bBell');
 await page.waitForSelector('#bellPanel:not([hidden])');
 const row = await page.$eval('#bellPanel .bnote.ask', e => e.textContent.replace(/\s+/g, ' '));
-ok(/waiting for your approval/.test(row) && /6 changes from a session in alpha/.test(row),
+ok(/waiting for your approval/.test(row) && /7 changes from a session in alpha/.test(row),
    'the bell carries one row per project, not per change');
 await page.click('#bellPanel [data-bpend="alpha"]');
 await page.waitForSelector('#pendModal:not([hidden])', { timeout: 10000 });
@@ -144,11 +153,11 @@ ok(/alpha/.test(await page.$eval('#pendTitle', e => e.textContent)),
    '...and its Review opens the project\'s list');
 
 // ---- the review modal -------------------------------------------------------
-await page.waitForFunction(() => document.querySelectorAll('#pendList .prow').length === 6,
+await page.waitForFunction(() => document.querySelectorAll('#pendList .prow').length === 7,
                            null, { timeout: 10000 });
 const kinds = await page.$$eval('#pendList .pkind', ks => ks.map(k => k.textContent));
-ok(kinds.join(',') === 'Roadmap,Bugs',
-   'the modal groups what is waiting by tab');
+ok(kinds.join(',') === 'Roadmap,Bugs,Build and test',
+   'the modal groups what is waiting by tab, and the settings change under its own heading');
 ok(await page.$$eval('#pendList input[data-pend]', bs => bs.every(b => b.checked))
    && await page.$eval('#pendAllBox', b => b.checked),
    '...everything ticked, and the master box with it');
@@ -159,12 +168,14 @@ ok(await page.$eval('#pendList .prow:not(.dep) details pre', p => /1\. measure i
 // Untick the held roadmap add: its two follow-ups go with it.
 const parent = await page.$eval('#pendList .prow:not(.dep) input[data-pend]', b => b.dataset.pend);
 await page.click(`#pendList input[data-pend="${parent}"]`);
-ok(await page.$$eval('#pendList input[data-pend]:checked', bs => bs.length) === 3
+ok(await page.$$eval('#pendList input[data-pend]:checked', bs => bs.length) === 4
    && await page.$eval('#pendAllBox', b => b.indeterminate),
    'unticking a change unticks what rides behind it, and the master box goes indeterminate');
 await page.click('#pendApprove');
 await page.waitForFunction(() => document.querySelectorAll('#pendList .prow').length === 3,
                            null, { timeout: 15000 });
+ok(file('claude-prefs.json').projects?.alpha?.test === 'echo held-test',
+   'Approve replays the settings change: the test command lands in the project\'s settings');
 ok(bugs().some(b => b.title === 'the picker loses focus' && /seen on chrome too/.test(b.notes || '')
                     && String(b.id) === bnum && b.by === 'claude')
    && roadmapItems().some(r => r.text === 'a second held item'),

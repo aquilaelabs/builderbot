@@ -38,7 +38,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # into each notebook tab (roadmap #27): auto lands it, ask holds it for
 # approval, deny refuses it. Creation only; see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
-GATE_KINDS = ("roadmap", "bugs", "rules")
+GATE_KINDS = ("roadmap", "bugs", "rules", "settings")
 # The git policy's two questions, and what they read as when nothing is set:
 # a session may push the branch it works on, and may not push to main.
 GITPOL_KEYS = ("push", "main")
@@ -59,7 +59,21 @@ COLORS = ("red", "orange", "yellow", "green", "teal", "blue", "violet", "pink")
 _lock = threading.Lock()
 
 
+def _register():
+    """The replay for a held settings change, registered with the queue.
+    bb loads this module by path (spec_from_file_location) with nothing on
+    sys.path, so the directory it sits in is put there first: pending.py is
+    beside it, and it imports statefile the same way."""
+    import sys                                                  # noqa: PLC0415
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import pending                                              # noqa: PLC0415
+    pending.applier("settings", replay)
+
+
 def configure(*, write_json, state):
+    _register()
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "claude-prefs.json"
 
@@ -252,75 +266,14 @@ def get(project):
 # "build" does not (which target, which flavour, which of an Android
 # project's four), so `bb build` still refuses and says so rather than
 # guessing at somebody's release variant.
-TEST_DEFAULTS = (
-    # This repository's own harness, which is a shell script rather than a
-    # runner anyone would guess at.
-    ("scripts/dashboard/test/run.sh", "bash scripts/dashboard/test/run.sh"),
-    ("gradlew", "./gradlew test"),
-    ("Cargo.toml", "cargo test"),
-    ("go.mod", "go test ./..."),
-    ("pytest.ini", "pytest"),
-    ("tox.ini", "pytest"),
-)
-
-
-def test_default(project, workspace=None):
-    """The test command this project would obviously use, or ""."""
-    return test_default_at(Path(workspace or "/workspace") / str(project or ""))
-
-
-def test_default_at(root):
-    """...for a directory, which is what a caller standing IN the tree has.
-
-    Read from the tree each time rather than remembered: a repo that grows a
-    test runner should start answering, and one that loses it should stop.
-    Two entry points because the two callers know different things: the
-    server knows the workspace and the project name, and bb knows the
-    directory it is being run in and often not the workspace at all.
-    """
-    root = Path(root)
-    try:
-        if not root.is_dir():
-            return ""
-    except OSError:
-        return ""
-    for name, cmd in TEST_DEFAULTS:
-        if (root / name).exists():
-            return cmd
-    # package.json, only when it actually declares a test script: the field
-    # is optional and npm answers "no test specified" with an exit 1 for the
-    # rest, which is a failing suite that never existed.
-    try:
-        pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
-        if isinstance(pkg, dict) and (pkg.get("scripts") or {}).get("test"):
-            return "npm test"
-    except (OSError, ValueError, AttributeError):
-        pass
-    # ...and a python project with tests but no runner config of its own.
-    if (root / "pyproject.toml").is_file() and (root / "tests").is_dir():
-        return "pytest"
-    return ""
-
-
 def all_projects(workspace=None):
     """Every project's pair, for the status payload. Cheap (one small file,
     no subprocess), which is what lets this ride the poll at all.
 
-    With a workspace, each record also carries `test_default`: what `bb test`
-    would run there with nothing set, so the settings field can offer it as
-    what leaving the box empty means. A handful of `exists()` calls beside a
-    snapshot that already runs git per project.
+    `workspace` is accepted and unused: the status poll passes it.
     """
     d = _load()["projects"]
-    out = {}
-    for k, v in d.items():
-        if not isinstance(k, str):
-            continue
-        rec = _clean(v)
-        if workspace is not None:
-            rec["test_default"] = test_default(k, workspace)
-        out[k] = rec
-    return out
+    return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
 def set_prefs(project, node=None, build=None, test=None,
@@ -408,4 +361,36 @@ def forget(project):
         if d["projects"].pop(project, None) is not None:
             write_json(FILE, d)
 
+
+# ---- a session fills in the build, test and outputs fields ------------------
+# The three fields a session can know better than anybody: it has read the
+# tree. What it may do with them is the project's fourth gate (roadmap #27's
+# shape): auto lands the write, ask holds it for the operator on the notebook,
+# deny refuses it with a sentence to quote. Only these three: the node, the
+# policy and the gates themselves stay the operator's, since a session that
+# could loosen its own gate has no gate.
+SESSION_FIELDS = ("build", "test", "outputs")
+
+
+def session_set(project, **fields):
+    """A session's write to build, test or outputs, through the gate."""
+    import pending                                              # noqa: PLC0415
+    got = {k: v for k, v in fields.items() if k in SESSION_FIELDS and v is not None}
+    if not got:
+        return {"error": f"nothing to set: one of {', '.join(SESSION_FIELDS)}"}
+    if not pending.replaying():
+        g = pending.mode(project, "settings")
+        if g == "deny":
+            return {"error": pending.refusal("settings")}
+        if g == "ask":
+            words = "; ".join(f"{k}: {v if isinstance(v, str) else ', '.join(v)}" for k, v in got.items())
+            return pending.hold(project, "settings", "set", got, summary=words)
+    r = set_prefs(project, **got)
+    return r if r.get("error") else {"ok": True, "set": sorted(got)}
+
+
+def replay(project, verb, args):
+    if verb != "set":
+        return {"error": f"not a settings change that can be replayed: {verb}"}
+    return session_set(project, **{k: v for k, v in (args or {}).items() if k in SESSION_FIELDS})
 

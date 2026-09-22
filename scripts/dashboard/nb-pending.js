@@ -37,7 +37,7 @@ function nbPendingView({$, nb, project, root}){
     el.hidden = !n;
     if (!n){ el.innerHTML = ""; return; }
     const c = nb.pendData.counts || {};
-    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"]]
+    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"], ["settings", "setting"]]
       .filter(([k]) => c[k]).map(([k, w]) => `${c[k]} ${w}${c[k] === 1 || w === "roadmap" ? "" : "s"}`);
     el.innerHTML = `<div><span>${n} change${n === 1 ? "" : "s"} from a session
         ${n === 1 ? "is" : "are"} waiting for your approval${parts.length ? ": " + esc(parts.join(", ")) : ""}.</span>
