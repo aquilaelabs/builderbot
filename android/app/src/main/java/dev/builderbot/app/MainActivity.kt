@@ -24,9 +24,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+import dev.builderbot.app.ui.AccentDeep
+import dev.builderbot.app.ui.Bg
+import dev.builderbot.app.ui.Bad
+import dev.builderbot.app.ui.Dim
+import dev.builderbot.app.ui.Ink
+import dev.builderbot.app.ui.Line
+import dev.builderbot.app.ui.Note
+import dev.builderbot.app.ui.Panel
+import dev.builderbot.app.ui.Sunk
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import dev.builderbot.app.ui.Warn
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
@@ -71,22 +87,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// The dashboard's own palette, so the app reads as the same thing: the dark
-// ground, the accent blue, amber for a question, red for stopped work.
-val Accent = Color(0xFF58A6FF)
-val Warn = Color(0xFFD29922)
-val Bad = Color(0xFFE5534B)
-val Ok = Color(0xFF3FB950)
-
+// The dashboard's own scheme (ui/Parts.kt holds the tokens), so the app
+// reads as the same thing: a filled accent surface is the deep green with
+// ink on it, the surface is the panel colour, the edge is the line token,
+// and the corners are the site's two radii. The site is dark by design and
+// so is this; a light system setting still gets a readable page rather than
+// a second design.
 @Composable
 fun BuilderBotTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val scheme = if (dark) darkColorScheme(
-        primary = Accent, background = Color(0xFF0F141A), surface = Color(0xFF161B22),
-        surfaceVariant = Color(0xFF1A1F26), onBackground = Color(0xFFE6EDF3), onSurface = Color(0xFFE6EDF3),
-        error = Bad)
-    else lightColorScheme(primary = Color(0xFF0969DA), error = Bad)
-    MaterialTheme(colorScheme = scheme, content = content)
+        primary = AccentDeep, onPrimary = Ink, primaryContainer = AccentDeep, onPrimaryContainer = Ink,
+        secondary = Note, secondaryContainer = AccentDeep, onSecondaryContainer = Ink,
+        tertiary = Note, background = Bg, onBackground = Ink, surface = Panel, onSurface = Ink,
+        surfaceVariant = Sunk, onSurfaceVariant = Dim, surfaceContainer = Panel,
+        surfaceContainerHigh = Panel, surfaceContainerHighest = Panel, surfaceContainerLow = Bg, outline = Line, outlineVariant = Line,
+        error = Bad, onError = Ink)
+    else lightColorScheme(primary = AccentDeep, onPrimary = Color.White, secondaryContainer = Color(0xFFD7F0DC), error = Bad)
+    MaterialTheme(colorScheme = scheme,
+        shapes = Shapes(extraSmall = RoundedCornerShape(4.dp), small = RoundedCornerShape(6.dp),
+                        medium = RoundedCornerShape(8.dp), large = RoundedCornerShape(8.dp)),
+        content = content)
 }
 
 data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -97,6 +118,7 @@ fun BuilderBotApp(openOn: String) {
     val store = remember { Store(context) }
     var signedIn by remember { mutableStateOf(store.signedIn) }
     var isAdmin by remember { mutableStateOf(true) }
+    var waiting by remember { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
             LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; WatchService.startIfWanted(context) }
@@ -111,18 +133,29 @@ fun BuilderBotApp(openOn: String) {
         ).filter { it.route != "nodes" || isAdmin }
         val entry by nav.currentBackStackEntryAsState()
         val here = entry?.destination?.route ?: "home"
-        Scaffold(bottomBar = {
-            NavigationBar {
+        Scaffold(containerColor = Bg, bottomBar = {
+            NavigationBar(containerColor = Panel) {
                 for (t in tabs) NavigationBarItem(
                     selected = here.startsWith(t.route),
                     onClick = { nav.navigate(t.route) { launchSingleTop = true; popUpTo("home") } },
-                    icon = { Icon(t.icon, contentDescription = t.label) },
-                    label = { Text(t.label) })
+                    icon = {
+                        // The count of what waits on the person, on the tab
+                        // it lives under: the bell's dot, in the shape a phone
+                        // has for it.
+                        if (t.route == "approvals" && waiting > 0)
+                            BadgedBox(badge = { Badge(containerColor = Warn, contentColor = Bg) { Text("$waiting") } }) {
+                                Icon(t.icon, contentDescription = t.label) }
+                        else Icon(t.icon, contentDescription = t.label)
+                    },
+                    label = { Text(t.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Ink, selectedTextColor = Ink, indicatorColor = AccentDeep,
+                        unselectedIconColor = Dim, unselectedTextColor = Dim))
             }
         }) { pad ->
             NavHost(nav, startDestination = if (openOn in setOf("approvals", "nodes")) openOn else "home",
                     modifier = Modifier.padding(pad)) {
-                composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, openProject = { nav.navigate("project/$it") }) }
+                composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, onWaiting = { waiting = it }, openProject = { nav.navigate("project/$it") }) }
                 composable("project/{name}") { e -> ProjectScreen(store, e.arguments?.getString("name") ?: "") }
                 composable("approvals") { ApprovalsScreen(store) }
                 composable("nodes") { NodesScreen(store) }

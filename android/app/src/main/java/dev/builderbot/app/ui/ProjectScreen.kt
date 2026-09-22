@@ -21,6 +21,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -41,11 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.builderbot.app.Accent
-import dev.builderbot.app.Bad
-import dev.builderbot.app.Ok
 import dev.builderbot.app.Store
-import dev.builderbot.app.Warn
 import dev.builderbot.app.arr
 import dev.builderbot.app.bool
 import dev.builderbot.app.int
@@ -70,9 +73,24 @@ fun ProjectScreen(store: Store, name: String) {
     val api = store.api() ?: return
     var view by remember { mutableStateOf("Roadmap") }
     Column(Modifier.fillMaxSize()) {
-        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp))
-        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (v in VIEWS) FilterChip(selected = view == v, onClick = { view = v }, label = { Text(v) })
+        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
+             modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 6.dp))
+        // The view strip, the site's: one line of small tabs, the one in
+        // front on the deep accent with ink, the rest on the panel with a
+        // hairline. Scrolls sideways rather than wrapping: six words do not
+        // fit a phone, and a chip that wraps letter by letter takes the whole
+        // strip's height with it.
+        Row(Modifier.padding(horizontal = 12.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (v in VIEWS) {
+                val on = view == v
+                Text(v, color = Ink, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .background(if (on) AccentDeep else Panel, RoundedCornerShape(6.dp))
+                        .border(1.dp, if (on) AccentDeep else Line, RoundedCornerShape(6.dp))
+                        .clickable { view = v }
+                        .padding(horizontal = 12.dp, vertical = 7.dp))
+            }
         }
         when (view) {
             "Roadmap" -> Roadmap(api, name)
@@ -114,20 +132,25 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                     said = try { api.roadmapAdd(project, text.trim()); text = ""; "added" } catch (e: Exception) { e.message ?: "" }
                     reload()
                 } }) { Text("Add") } }
-                if (said.isNotBlank()) Text(said, color = Accent)
+                if (said.isNotBlank()) Text(said, color = Note)
                 if (td.error != null) Problem(td.error)
                 if (td.value != null && items.isEmpty()) Dim("nothing on the roadmap")
             }
         }
         items(items) { it ->
-            val shelved = it.bool("shelved")
+            // A shelved item carries WHEN it was shelved, so the field is a
+            // time and not a flag; a bare bool read it as false.
+            val shelved = it.optLong("shelved", 0L) > 0L || it.optBoolean("shelved")
             Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
-                    Text("R${it.int("number")}", color = if (shelved) MaterialTheme.colorScheme.onSurface.copy(alpha = .5f) else Accent, modifier = Modifier.padding(end = 8.dp))
-                    Text(it.str("text"), modifier = Modifier.weight(1f), color = if (shelved) MaterialTheme.colorScheme.onSurface.copy(alpha = .5f) else MaterialTheme.colorScheme.onSurface)
+                    Tag("R${it.int("id", it.int("number"))}", color = if (shelved) Dim else Ink, modifier = Modifier.padding(end = 10.dp, top = 1.dp))
+                    Text(it.str("text"), modifier = Modifier.weight(1f), color = if (shelved) Dim else Ink)
+                    if (shelved){ Spacer(Modifier.width(6.dp)); Pill("shelved", Dim) }
                 }
                 for ((i, s) in it.arr("steps").withIndex())
-                    Dim("  ${i + 1}. ${s.str("text")}" + (if (s.bool("done")) " ✓" else if (s.int("sent") > 0) " (sent)" else ""))
+                    Text("${i + 1}. ${s.str("text")}" + (if (s.bool("done")) "  \u2713" else if (s.int("sent") > 0) "  (sent)" else ""),
+                        color = if (s.bool("done")) Ok else Dim, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 12.dp, top = 2.dp))
                 if (it.str("info").isNotBlank()) Dim("  " + it.str("info").take(200))
                 Row {
                     Spacer(Modifier.weight(1f))
@@ -138,7 +161,7 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                     if (!shelved) TextButton(onClick = { scope.launch { runCatching { api.roadmapShelve(project, it.opt("id")) }; reload() } }) { Text("Shelve") }
                 }
             }
-            HorizontalDivider()
+            Hairline()
         }
     }
     }
@@ -170,7 +193,7 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
                         reload()
                     } }) { Text("File") }
                 }
-                if (said.isNotBlank()) Text(said, color = Accent)
+                if (said.isNotBlank()) Text(said, color = Note)
                 if (bg.error != null) Problem(bg.error)
                 if (bg.value != null && rows.isEmpty()) Dim("no bugs filed")
             }
@@ -179,12 +202,13 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
             val open = b.str("status") == "open"
             Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
-                    Text("B${b.int("number")}", color = if (open) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = .5f), modifier = Modifier.padding(end = 8.dp))
+                    Tag("B${b.int("id", b.int("number"))}", color = if (open) Ink else Dim, modifier = Modifier.padding(end = 10.dp, top = 1.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(b.str("title"), color = if (open) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
-                        Dim(listOf(b.str("severity"), b.str("status"), b.str("area")).filter { it.isNotBlank() }.joinToString(" · "))
+                        Text(b.str("title"), color = if (open) Ink else Dim)
+                        Dim(listOf(if (open) "" else b.str("status"), b.str("area")).filter { it.isNotBlank() }.joinToString(" · "))
                     }
-                    Text(b.str("severity"), color = when (b.str("severity")) { "high" -> Bad; "medium" -> Warn; else -> Ok }, style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.width(8.dp))
+                    Pill(b.str("severity"), if (open) severityColor(b.str("severity")) else Dim)
                 }
                 if (open) Row { Spacer(Modifier.weight(1f))
                     TextButton(onClick = { scope.launch {
@@ -195,7 +219,7 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
                     TextButton(onClick = { scope.launch { runCatching { api.bugStatus(project, b.opt("id"), "fixed", "closed from the app") }; reload() } }) { Text("Fixed") }
                 }
             }
-            HorizontalDivider()
+            Hairline()
         }
     }
     }
@@ -227,7 +251,7 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
                 val trig = (r.strs("files") + r.strs("words")).filter { it.isNotBlank() }
                 if (trig.isNotEmpty()) Dim("when: " + trig.joinToString(", "))
             }
-            HorizontalDivider()
+            Hairline()
         }
         item {
             Column(Modifier.padding(16.dp, 12.dp)) {
@@ -243,7 +267,7 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
                 if (about.isNotBlank()) Text(about)
                 Dim(listOf(m.str("type"), m.str("when")).filter { it.isNotBlank() }.joinToString(" · "))
             }
-            HorizontalDivider()
+            Hairline()
         }
     }
     }
@@ -268,7 +292,7 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
                 Text(a.str("name").ifBlank { a.str("path") })
                 Dim(listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "").filter { it.isNotBlank() }.joinToString(" · "))
             }
-            HorizontalDivider()
+            Hairline()
         }
     }
     }
@@ -353,7 +377,7 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                     }
                 }) { Text(if (live && restart) "Save and end it" else "Save") }
             }
-            if (said.isNotBlank()) Text(said, color = Accent)
+            if (said.isNotBlank()) Text(said, color = Note)
         }
     }
 }
