@@ -122,8 +122,10 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
   map('coverage-ingest', counts);
   ok(/loadDocker: reached by \d+ suites?: .*probe-suite \(3\)/.test(map('covered', 'loadDocker')),
      'covered NAME names the suite that ran it and how often');
-  ok(/tab-docker\.js:\d+  openDocker|every function here was reached/.test(map('uncovered', 'scripts/dashboard/tab-docker.js')),
-     'uncovered FILE lists what no suite reached');
+  const unc = map('uncovered', 'scripts/dashboard/tab-docker.js');
+  ok(/^\d+ functions? no suite reached in scripts\/dashboard\/tab-docker\.js:/.test(unc) || /every function here was reached/.test(unc),
+     `uncovered FILE lists what no suite reached (${unc.split('\n')[0].slice(0, 60)})`);
+  ok(!/\bloadDocker\b/.test(unc), '...and not the one the ingested counts reached');
   execFileSync('rm', ['-rf', dir]);
   if (before === null) execFileSync('rm', ['-f', `${REPO}/.bb-map/coverage.json`]); else writeFileSync(`${REPO}/.bb-map/coverage.json`, before);
 }
@@ -135,7 +137,7 @@ ok(/^\d+-\d+  function nbRoadmapView$/m.test(defs) && /^  \d+-\d+  function draw
    'defs lists a file top down, a function under the closure it lives in and a callback under its function');
 
 // It rebuilds itself when a source is newer, and not otherwise.
-const stamp = () => readFileSync(`${REPO}/.bb-map/index.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
+const stamp = () => readFileSync(`${REPO}/.bb-map/map2.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
 const before = stamp();
 map('find', 'openDocker');
 ok(stamp() === before, 'a query on an unchanged tree does not rebuild');
@@ -143,6 +145,17 @@ execFileSync('touch', [`${REPO}/scripts/dashboard/tab-docker.js`]);
 map('find', 'openDocker');
 ok(stamp() !== before, '...and a source newer than the index does');
 ok(/\(1 file scanned\)/.test(map()), '...rescanning that file alone and keeping the rest');
+
+// An index of another format is rebuilt, never read: the first map crashed
+// with a KeyError on every question when it met a newer index on the tree.
+{
+  const f = `${REPO}/.bb-map/map2.json`;
+  const good = readFileSync(f, 'utf8');
+  writeFileSync(f, JSON.stringify({ built: 1, files: { 'scripts/bb': { mtime: 1, lang: 'sh' } }, defs: [], calls: [], draws: [] }));
+  ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(map('find', 'openDocker')),
+     'an index of another format is rebuilt and the question answered');
+  writeFileSync(f, good);
+}
 
 // Refusals say what to type.
 let said = '';

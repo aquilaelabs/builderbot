@@ -73,6 +73,7 @@
 - A section closed by hand stays closed even when the tab repaints during its slide, as the Nodes tab does on every heartbeat (6e2466a)
 - The Emulator tab no longer refetches its listing on every node heartbeat, and the Jobs and Users tabs ask for their list once per press instead of twice (e30f41e)
 - A notebook's first open asks for its rules and its code base once, not three times: the poll's revision for a project with no rules now matches the answer's, and askers in flight share one fetch (e30f41e)
+- bb map's index carries its format and a reader that meets another rebuilds instead of crashing, which the controller's build did against an index a newer map had written (52ff276)
 
 ### Security
 

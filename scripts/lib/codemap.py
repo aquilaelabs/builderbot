@@ -28,7 +28,7 @@ is the question a session otherwise spends thirty greps on, and it says so
 in its output where it is guessing (an anonymous callback is attributed to
 the nearest named function around it).
 
-The index lives at .bb-map/index.json under the tree, ignored by git.
+The index lives at .bb-map/map2.json under the tree, ignored by git.
 """
 import ast
 import json
@@ -39,6 +39,14 @@ import time
 from pathlib import Path
 
 INDEX_DIR = ".bb-map"
+# The index file carries its format, and a reader that meets another
+# format rebuilds rather than reads: the first map read a newer per-file
+# index as its own flat one and every question raised a KeyError, on the
+# bb a session runs while the controller's build lagged the tree. The file
+# is named for the format too, so two bb builds on one tree keep to their
+# own files during the window when both exist.
+FORMAT = 2
+INDEX_FILE = f"map{FORMAT}.json"
 SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchpad",
              "_work", "build", ".gradle", ".idea", "venv", ".venv"}
 # The brace-counting scanner covers every C-shaped language: what differs
@@ -643,13 +651,13 @@ def build(root, prior=None):
         files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
                       "draws": sink.draws, "routes": sink.routes, "refs": sink.refs}
         scanned += 1
-    idx = {"built": time.time(), "root": str(root), "scanned": scanned,
+    idx = {"format": FORMAT, "built": time.time(), "root": str(root), "scanned": scanned,
            "dropped": len(set(kept) - set(files)), "files": files}
     out = root / INDEX_DIR
     out.mkdir(exist_ok=True)
-    tmp = out / "index.json.tmp"
+    tmp = out / (INDEX_FILE + ".tmp")
     tmp.write_text(json.dumps(idx))
-    tmp.replace(out / "index.json")
+    tmp.replace(out / INDEX_FILE)
     return flat(idx)
 
 
@@ -660,16 +668,24 @@ def flat(idx):
     return idx
 
 
+def usable(prior):
+    """An index this reader wrote: its format, and every file entry whole."""
+    return (isinstance(prior, dict) and prior.get("format") == FORMAT
+            and isinstance(prior.get("files"), dict)
+            and all(isinstance(v, dict) and "defs" in v and "calls" in v and "mtime" in v
+                    for v in prior["files"].values()))
+
+
 def load(root, force=False):
     root = Path(root)
-    f = root / INDEX_DIR / "index.json"
+    f = root / INDEX_DIR / INDEX_FILE
     prior = None
     if not force and f.exists():
         try:
             prior = json.loads(f.read_text())
         except (OSError, ValueError):
             prior = None
-    if prior is None:
+    if not usable(prior):
         return build(root)
     have = prior.get("files", {})
     now = {}
@@ -1085,7 +1101,7 @@ def summary(idx):
             + (f", {idx['dropped']} dropped" if idx.get("dropped") else ""))
     return [f"{len(idx['files'])} files ({', '.join(f'{n} {k}' for k, n in sorted(langs.items()))}; {n_test} test suites), "
             f"{len(idx['defs'])} definitions, {len(idx['calls'])} calls, {len(idx['draws'])} ids and classes drawn",
-            f"last built {when} ({what}) into {INDEX_DIR}/index.json; a changed file is rescanned by itself, the rest kept",
+            f"last built {when} ({what}) into {INDEX_DIR}/{INDEX_FILE}; a changed file is rescanned by itself, the rest kept",
             "",
             "bb map find NAME | who-calls NAME | calls NAME | defs FILE | draws ID|.class | suites FILE... | build"]
 
