@@ -6308,6 +6308,19 @@ cmd_diagram() {
     done
     [ "${#files[@]}" -gt 0 ] || die "bb diagram FILE... [--out DIR]: .puml or .plantuml (PlantUML), .mmd or .mermaid (Mermaid)"
     mkdir -p "$out"; out="$(cd "$out" && pwd)"
+    # A result is named by its source's stem, so two sources with one stem
+    # (flow.puml and flow.mmd) would write one flow.png, the second over
+    # the first without a word (B212). Refused before anything renders.
+    local seen=" " stems=() first
+    for f in "${files[@]}"; do
+        name="$(basename "${f%.*}")"
+        case "$seen" in
+            *" $name "*)
+                first="$(printf '%s\n' "${stems[@]}" | awk -F'\t' -v n="$name" '$1 == n { print $2; exit }')"
+                die "${first} and ${f} would both write ${out}/${name}.png: rename one, or render them into different --out directories" ;;
+        esac
+        seen="$seen$name "; stems+=("${name}	${f}")
+    done
     for f in "${files[@]}"; do
         name="$(basename "${f%.*}")"
         case "$f" in
