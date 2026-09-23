@@ -13,6 +13,7 @@
 - Two toolchains a session can draw with: graphics (ImageMagick, resvg, oxipng, pngquant, cwebp) behind bb tool graphics, and diagrams (PlantUML, Mermaid) behind bb tool diagrams, both writing into dist/; bb tool graphics favicon makes a favicon set from one mark (81dd077)
 - A toolchain row that lacks system packages carries Install them now, which puts them on that node without reinstalling the toolchain; a row whose needed toolchain is missing on the node says which and offers that row's install. (205863a)
 - A toolchain's row says which tool installing it adds (bb tool graphics, bb tool diagrams), one name per recipe, and the suite holds the catalogue to the script so no two recipes can claim one (076a324)
+- bb map: a code map over the tree a session asks instead of grepping: find, who-calls, calls, defs, draws and suites, built from the files themselves with nothing installed and rebuilt when a source is newer (3c0fa26)
 
 ### Changed
 

@@ -80,6 +80,10 @@ by hand cost four commands and still could not see the failed builds.
   resolves `bb` as the copy beside it, so `bb dashboard dev` exercises the
   checkout's subcommands too.
 
+- **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
+  `bb map draws ID` and `bb map suites FILE` answer "where would I look"
+  from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
+  Ask it before grepping; `test/codemap.mjs` holds it to the tree.
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from

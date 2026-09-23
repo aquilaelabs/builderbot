@@ -37,6 +37,20 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
+## Finding your way
+
+    bb map who-calls NAME      every call of NAME, with the function it is made from
+    bb map find NAME           where NAME is defined; bb map defs FILE lists a file
+    bb map draws ID|.class     which functions draw an element, which suites name it
+    bb map suites FILE...      the suites that reach what a file defines or draws
+
+Ask the map before grepping. It is an index over this tree (python, the
+dashboard's scripts, bb's shell, the suites), rebuilt by itself when a
+source is newer, and it answers "where would I look" in one call: the
+question that otherwise costs thirty greps and a wrong guess. It is rough
+by design: braces, not scope; an anonymous callback is attributed to the
+nearest named function around it.
+
 ## Git
 
 Your commit identity arrives as git's environment, so a commit that cannot find

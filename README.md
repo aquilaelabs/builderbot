@@ -594,6 +594,8 @@ bb dashboard test  browser-test the dashboard from this checkout, isolated
 bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
 bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
+bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
+                   draws ID|.class, suites FILE...; a session asks it before grepping
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
@@ -606,6 +608,17 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
+
+`bb map` is the code map a session asks instead of grepping (roadmap R75):
+one index over the tree it is in, python, the dashboard's scripts (the
+inline script in `index.html` included), `bb`'s own shell and the test
+suites. It knows where every function is defined, every call by name with
+the function it is made from, every element id and class a function's
+markup draws, and which suite names each of those, so `who-calls
+loadDocker` or `draws .dmtab` is one call rather than a hunt. Built with
+nothing installed (python's own parser, a small scanner for the scripts),
+into `.bb-map/` beside the tree, rebuilt by itself when a source is newer.
+It is rough on purpose, braces not scope, and says so where it guesses.
 
 `bb shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a

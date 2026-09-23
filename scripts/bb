@@ -187,6 +187,8 @@ bb: BuilderBot helper
   bb dashboard status    which copy of the dashboard is serving right now
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
+  bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
+                         draws ID|.class, suites FILE...; ask it before grepping
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
@@ -5898,6 +5900,13 @@ is not running; see bb logs."
 # not serving. Compares the image's /opt/builderbot/scripts and the shipped
 # templates against the repo's, file by file. Answers the question every
 # session asks itself after editing anything here.
+# bb map: the code map (lib/codemap.py, roadmap R75). Over the project tree
+# a session is in (BB_TREE on a node, else the working directory), rebuilt
+# by itself when a source is newer than the index.
+cmd_map() {
+    python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
+}
+
 cmd_drift() {
     local repo="${1:-$PWD}" n=0
     [ -d "$repo/scripts" ] || die "$repo does not look like the BuilderBot checkout (no scripts/)"
@@ -7266,6 +7275,7 @@ case "${1:-help}" in
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
+    map)      shift; cmd_map "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
     tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
