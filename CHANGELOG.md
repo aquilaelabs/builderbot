@@ -39,6 +39,7 @@
 - The Nostromo scheme wears the ship: hull plating behind the page, ribbing down the left gutter, a stencilled plate mark on each open card and a glyph strip across the header, all hand-drawn SVG, faint, and never under text (7abef33)
 - The Nostromo decals are louder and reach the phone: plating at a fifth and on the document panes, ribbing in the gutter at any width, the card plate mark on every open card (509b23b)
 - bb map keeps its index per file: an edit rescans that file alone (a fifth of a second) instead of the whole tree (a second and a half), and says how many it rescanned (0ce1283)
+- bb map sections FILE reads a file by its section headers with each section's outside callers, load-time callers and coverage; the welcome panel is the first section to leave index.html whole, into page-welcome.js (5464a9d)
 
 ### Removed
 

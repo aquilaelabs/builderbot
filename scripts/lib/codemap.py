@@ -17,6 +17,9 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map suites FILE...        the suites that reach what these files define, draw or name
                                  (--names: one suite name per line, for a script)
     bb map unused [FILE]         page functions nothing calls and nothing passes by name: dead by measurement
+    bb map sections FILE         the file by its `// ---- name ----` sections: functions, who reaches in
+                                 from outside, what runs at load, what the suite covers. The unit a
+                                 cleanup moves.
     bb map coverage              what the last covered run reached, per file (bb tests coverage runs one)
     bb map covered NAME          which suites ran NAME, and how often: the regression net for touching it
     bb map uncovered [FILE]      the functions no suite reached
@@ -108,6 +111,7 @@ class Sink:
         self.draws = []     # {what, kind: id|class|path|file, line, fn}
         self.routes = []    # {path, handler}
         self.refs = {}      # name -> how often it is used without being called
+        self.sections = []  # {name, line}: the `// ---- name ----` headers
 
     def add_def(self, name, line, kind, parent):
         self.defs.append({"name": name, "file": self.path, "line": line, "end": line,
@@ -126,7 +130,20 @@ class Sink:
                            "fn": fn})
 
 
+SECTION_HEAD = re.compile(r"^\s*(?://|#)\s*----\s*(.*?)\s*-{3,}\s*$")
+
+
+def scan_sections(text, sink):
+    """The `// ---- name ----` (or `# ----`) headers a file is written in:
+    the units a person reads it by, and the units a cleanup moves."""
+    for i, line in enumerate(text.split("\n"), 1):
+        m = SECTION_HEAD.match(line)
+        if m and m.group(1):
+            sink.sections.append({"name": m.group(1), "line": i})
+
+
 def scan_python(text, sink):
+    scan_sections(text, sink)
     for m in ROUTE.finditer(text):
         sink.routes.append({"path": m.group(1), "handler": m.group(2), "file": sink.path})
     try:
@@ -540,6 +557,8 @@ class JSScanner:
 
 
 def scan_js(text, sink, line0=1, base=0):
+    if line0 == 1 and base == 0:
+        scan_sections(text, sink)
     suffix = Path(sink.path).suffix
     JSScanner(text, sink, line0, shape_methods=suffix in SHAPE_METHODS, base=base,
               fn_words=FN_BY_SUFFIX.get(suffix, set())).run()
@@ -549,6 +568,7 @@ SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
 
 
 def scan_html(text, sink):
+    scan_sections(text, sink)
     pos = 0
     for m in SCRIPT.finditer(text):
         markup = text[pos:m.start()]
@@ -569,6 +589,7 @@ SH_DEF = re.compile(r"^\s*(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\)\s*\{")
 
 
 def scan_sh(text, sink):
+    scan_sections(text, sink)
     lines = text.split("\n")
     names = {m.group(1): i + 1 for i, ln in enumerate(lines) if (m := SH_DEF.match(ln))}
     cur = "(top level)"
@@ -649,7 +670,8 @@ def build(root, prior=None):
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
         files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
-                      "draws": sink.draws, "routes": sink.routes, "refs": sink.refs}
+                      "draws": sink.draws, "routes": sink.routes, "refs": sink.refs,
+                      "sections": sink.sections}
         scanned += 1
     idx = {"format": FORMAT, "built": time.time(), "root": str(root), "scanned": scanned,
            "dropped": len(set(kept) - set(files)), "files": files}
@@ -1091,6 +1113,47 @@ def instrument(dash):
     return n_files, n_fns
 
 
+def q_sections(idx, path, cov=None):
+    files = [f for f in idx["files"] if f == path or f.endswith("/" + path)]
+    if not files:
+        return [f"{path} is not indexed"]
+    f = files[0]
+    entry = idx["files"][f]
+    heads = entry.get("sections") or []
+    if not heads:
+        return [f"{f} has no `// ---- name ----` sections"]
+    top = [d for d in entry["defs"] if not d["parent"] and not d["name"].startswith("(")]
+    hit = covered_ids(cov) if cov else {}
+    # calls INTO a function, by caller, from anywhere
+    callers = {}
+    for c in idx["calls"]:
+        callers.setdefault(c["name"], []).append(c)
+    out = [f"{f}: {len(heads)} sections, {len(top)} top-level definitions"]
+    bounds = [(h["line"], heads[i + 1]["line"] if i + 1 < len(heads) else 10**9, h["name"])
+              for i, h in enumerate(heads)]
+    for start, end, name in bounds:
+        mine = [d for d in top if start <= d["line"] < end]
+        names = {d["name"] for d in mine}
+        outside, at_load = set(), set()
+        for d in mine:
+            for c in callers.get(d["name"], []):
+                if c["file"] == f and start <= c["line"] < end:
+                    continue
+                if is_test(c["file"]):
+                    continue
+                if c["caller"] == "(top level)":
+                    at_load.add(f"{Path(c['file']).name}:{c['line']}")
+                outside.add(c["caller"] if c["file"] == f else f"{Path(c['file']).name}:{c['caller']}")
+        covered = sum(1 for d in mine if fid(d) in hit) if hit else None
+        cov_s = f", {covered}/{len(mine)} covered" if hit and mine else ""
+        out.append(f"  {start:6d}  {name}: {len(mine)} function{'s' if len(mine) != 1 else ''}, "
+                   f"{len(outside)} caller{'s' if len(outside) != 1 else ''} from outside"
+                   + (f", {len(at_load)} at load" if at_load else "") + cov_s)
+        _ = names
+    out.append("bb map defs FILE lists the functions; who-calls NAME each one's callers; a section with few callers from outside and none at load moves whole")
+    return out
+
+
 def summary(idx):
     langs = {}
     for f in idx["files"].values():
@@ -1150,6 +1213,12 @@ def main(argv):
             print("bb map covered NAME", file=sys.stderr)
             return 2
         print("\n".join(q_covered(idx, coverage_load(root), rest[0])))
+        return 0
+    if verb == "sections":
+        if not rest:
+            print("bb map sections FILE", file=sys.stderr)
+            return 2
+        print("\n".join(q_sections(idx, rest[0], coverage_load(root))))
         return 0
     if verb == "uncovered":
         print("\n".join(q_uncovered(idx, coverage_load(root), rest[0] if rest else None)))

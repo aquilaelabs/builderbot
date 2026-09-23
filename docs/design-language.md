@@ -195,6 +195,19 @@ swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
+## Files
+
+The page is `index.html` and classic scripts beside it, loaded before its
+own script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view,
+`page-*.js` for a part of the page that is neither (the welcome panel).
+Each is pure declarations, since it runs before the page and its helpers
+exist; wiring that must run at load stays in `index.html` under the
+section's `// ---- name ----` header, with a line saying where the
+functions went. `bb map sections index.html` reads the page by those
+headers, with each section's outside callers, what runs at load and what
+the suite covers, and a section with few outside callers and nothing at
+load is the next to move.
+
 ## Document tabs
 
 Reading surfaces, not terminals. A new kind does not write its own chrome: it

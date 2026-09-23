@@ -130,6 +130,15 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
   if (before === null) execFileSync('rm', ['-f', `${REPO}/.bb-map/coverage.json`]); else writeFileSync(`${REPO}/.bb-map/coverage.json`, before);
 }
 
+// A file by its sections: the unit a cleanup moves, with what reaches in
+// from outside and what runs at load, which is what decides whether a
+// section can leave the page whole.
+const sec = map('sections', 'scripts/dashboard/index.html');
+ok(/^scripts\/dashboard\/index\.html: \d+ sections, \d+ top-level definitions$/m.test(sec)
+   && /^\s+\d+  the welcome panel: the guide, and the changelog: \d+ functions, \d+ callers? from outside/m.test(sec)
+   && /^\s+\d+  tabs: \d+ functions, \d+ callers from outside/m.test(sec),
+   'sections lists a file by its headers with each section\'s functions and outside callers');
+
 // Nested definitions are shown under their parent.
 const defs = map('defs', 'scripts/dashboard/nb-roadmap.js');
 ok(/^\d+-\d+  function nbRoadmapView$/m.test(defs) && /^  \d+-\d+  function drawRoadmap  \(in nbRoadmapView\)$/m.test(defs)
