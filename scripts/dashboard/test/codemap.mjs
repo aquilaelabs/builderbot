@@ -77,6 +77,15 @@ ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server
 ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
    'a change with no suite still gets the lint and voice checks');
 
+// The other C-shaped languages: the companion app's Kotlin. `fun` opens a
+// definition, a trailing lambda (Row(...) { ... }) is a call and not a
+// method, and a default lambda in a parameter list does not open the body.
+const kt = map('defs', 'android/app/src/main/java/dev/builderbot/app/ui/Parts.kt');
+ok(/^\d+-\d+  function Pill$/m.test(kt) && /function Panel/.test(kt), 'Kotlin functions are definitions with their span');
+const pill = map('who-calls', 'Pill');
+ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from HomeScreen\b/.test(pill) && !/from Row\b/.test(pill),
+   'a Compose call is attributed to the composable it sits in, not to the Row whose lambda holds it');
+
 // Nested definitions are shown under their parent.
 const defs = map('defs', 'scripts/dashboard/nb-roadmap.js');
 ok(/^\d+-\d+  function drawRoadmap$/m.test(defs) && /^  \d+-\d+  arrow onclick  \(in drawRoadmap\)/m.test(defs),

@@ -37,13 +37,43 @@ from pathlib import Path
 INDEX_DIR = ".bb-map"
 SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchpad",
              "_work", "build", ".gradle", ".idea", "venv", ".venv"}
-EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".html": "html", ".sh": "sh"}
+# The brace-counting scanner covers every C-shaped language: what differs
+# is the word that opens a function (`fun`, `func`, `fn`, `function`) or
+# none at all (Java, C#, Dart, C, where `name(...) {` after a type is the
+# definition), which is what the scanner already spots for a JS method.
+EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
+        ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
+        ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
+        ".swift": "js", ".dart": "js", ".c": "js", ".h": "js", ".cc": "js", ".cpp": "js",
+        ".hpp": "js", ".m": "js", ".mm": "js", ".php": "js", ".scala": "js", ".groovy": "js"}
+# The words that open a function or a type in those languages. `def` is
+# not here: python has its own parser, and Ruby's `def ... end` has no
+# braces to count, so Ruby is not indexed (the one common language that
+# is not).
+FN_WORDS = {"function", "fun", "func", "fn"}
+# Where `name(...) {` with no keyword IS a definition: a JS object method, a
+# Java, C#, Dart or C function after its type. In Kotlin, Swift, Go and
+# Rust it is a call with a trailing lambda (Row(...) { ... }), and reading
+# it as a method put every Compose call inside "Row".
+SHAPE_METHODS = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".html", ".java", ".cs",
+                 ".dart", ".c", ".h", ".cc", ".cpp", ".hpp", ".m", ".mm", ".php",
+                 ".scala", ".groovy"}
+TYPE_WORDS = {"class", "interface", "object", "struct", "enum", "trait", "impl",
+              "record", "protocol", "extension", "companion"}
 MAX_BYTES = 3_000_000
 
 JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "function", "return", "typeof",
                "else", "do", "try", "finally", "throw", "case", "default", "delete",
                "void", "in", "of", "instanceof", "await", "yield", "with", "class",
-               "const", "let", "var", "async", "new", "import", "export"}
+               "const", "let", "var", "async", "new", "import", "export",
+               # the other C-shaped languages' control words, so `when (x) {`
+               # or `match x {` is not read as a call or a method
+               "when", "match", "loop", "unless", "until", "guard", "defer", "select",
+               "foreach", "lock", "using", "synchronized", "sizeof", "assert",
+               "fun", "func", "fn", "override", "suspend", "public", "private",
+               "protected", "internal", "static", "final", "open", "inline", "pub",
+               "unsafe", "mut", "val", "init", "constructor", "super",
+               "this", "self", "go", "chan", "range", "then", "elif", "where"}
 
 
 # ---- the scanners ---------------------------------------------------------
@@ -162,8 +192,9 @@ class JSScanner:
     IDENT = re.compile(r"[A-Za-z_$][\w$]*")
     REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
 
-    def __init__(self, text, sink, line0=1, top="(top level)"):
+    def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True):
         self.s = text
+        self.shape_methods = shape_methods
         self.sink = sink
         self.line = line0
         self.top = top
@@ -179,6 +210,7 @@ class JSScanner:
         self.parens = 0
         self.paren_at_pending = 0
         self.maybe_method = None
+        self.receiver = False
 
     def enclosing(self):
         return self.stack[-1][0] if self.stack else self.top
@@ -291,7 +323,7 @@ class JSScanner:
                         k = n if k2 < 0 else k2
                     k += 1
                 inner = s[j + 2:k - 1]
-                sub = JSScanner(inner, self.sink, self.line, self.enclosing())
+                sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods)
                 sub.stack = list(self.stack)
                 sub.run()
                 self.line += inner.count("\n")
@@ -315,19 +347,28 @@ class JSScanner:
 
     def ident(self, word):
         self.prev_ident, self.last_ident = self.last_ident, word
-        if word in ("function", "class"):
-            self.last_kw = word
-        elif word == "async":
-            pass
+        if word in FN_WORDS:
+            self.last_kw = "function"
+        elif word in TYPE_WORDS:
+            self.last_kw = "class"
+        elif word in ("async", "override", "suspend", "public", "private", "protected",
+                      "internal", "static", "final", "open", "inline", "pub", "unsafe",
+                      "operator", "infix", "data", "sealed", "abstract", "export", "default"):
+            pass                     # a modifier: the keyword before it still stands
+        elif self.last_kw == "function" and self.last_sig == ")" and self.receiver:
+            # Go: func (r *T) NAME(  : the receiver came first
+            self.receiver = False
+            self.begin_def(word, "function")
+            self.last_kw = ""
         else:
             if self.last_kw == "function" and word not in JS_KEYWORDS:
-                # function NAME(
+                # function NAME(  /  fun NAME(  /  fn NAME(  /  func NAME(
                 self.begin_def(word, "function")
                 self.last_kw = ""
             elif self.last_kw == "class" and word not in JS_KEYWORDS:
                 self.begin_def(word, "class")
                 self.last_kw = ""
-            elif word not in JS_KEYWORDS and word not in ("function", "class"):
+            elif word not in JS_KEYWORDS:
                 self.last_kw = ""
         self.last_sig = word
 
@@ -357,7 +398,7 @@ class JSScanner:
                 # NAME( : a call, unless it is a method definition   name(...){
                 before = s[max(0, self.i - 240):self.i].rstrip()
                 head = before[:-len(prev)].rstrip()
-                if head.endswith(("{", ",", ";", "}")) or head.endswith("\n") or not head:
+                if self.shape_methods and (head.endswith(("{", ",", ";", "}")) or not head):
                     # possibly an object/class method: decided at the ) {
                     self.maybe_method = (prev, self.line)
                 else:
@@ -367,7 +408,11 @@ class JSScanner:
                     qm = re.search(r"([A-Za-z_$][\w$]*)\s*\.$", head)
                     qual = qm.group(1) if qm else ""
                 self.sink.add_call(prev, qual, self.line, self.enclosing())
-            elif prev == "function" or prev == "async":
+            elif prev == "func" and self.last_kw == "function":
+                # Go: `func (` is a receiver, and the name comes after it
+                self.receiver = True
+                self.maybe_method = None
+            elif prev in FN_WORDS or prev == "async":
                 # an anonymous function: `function(` or `async (`; body follows
                 self.pending = self.sink.add_def("(anonymous)", self.line, "function", "")
                 self.pending_depth = self.depth
@@ -382,7 +427,9 @@ class JSScanner:
             self.last_sig = ")"
             return
         if c == "{":
-            if self.pending is not None:
+            if self.pending is not None and self.parens <= self.paren_at_pending:
+                # the body: not a brace inside the parameter list, which a
+                # Kotlin default lambda (`onClick: () -> Unit = {}`) puts there
                 self.stack.append((self.pending["name"], self.depth))
                 self.pending["body"] = self.depth
                 self.pending = None
@@ -456,7 +503,7 @@ class JSScanner:
 
 
 def scan_js(text, sink, line0=1):
-    JSScanner(text, sink, line0).run()
+    JSScanner(text, sink, line0, shape_methods=Path(sink.path).suffix in SHAPE_METHODS).run()
 
 
 SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
@@ -582,11 +629,17 @@ def load(root, force=False):
 
 # ---- the questions ----------------------------------------------------------
 
+TEST_NAME = re.compile(r"(^|/)(test_[^/]+\.py|[^/]+_test\.(go|py|rs)|[^/]+Test\.(kt|java|cs|scala)"
+                       r"|[^/]+\.(test|spec)\.[cm]?[jt]sx?|[^/]+_spec\.rb)$")
+
+
 def is_test(path):
-    """A suite: an .mjs under a test directory, not the library beside them
-    and not a stub the harness runs."""
-    return ("/test/" in "/" + path or path.startswith("test/")) and path.endswith(".mjs") \
-        and not path.endswith("/lib.mjs")
+    """A test: an .mjs under a test directory (this repository's suites,
+    minus the library beside them), or a file named the way its language
+    names tests: test_x.py, x_test.go, XTest.kt, x.test.ts, x.spec.js."""
+    if ("/test/" in "/" + path or path.startswith("test/")) and path.endswith(".mjs"):
+        return not path.endswith("/lib.mjs")
+    return bool(TEST_NAME.search(path)) or "/androidTest/" in path or "/src/test/" in path
 
 
 _LINES = {}
