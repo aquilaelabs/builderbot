@@ -23,6 +23,7 @@
 - bb lint and the lint workflow fail when the node agent's file changes without AGENT_VERSION moving: a node compares the file and the Nodes tab names the number, and the two had disagreed (9505eee)
 - bb status names the session token in use, where it came from and when it expires, so a renewed token is visible instead of an environment copy reading as expired (4649cfd)
 - bb map who-calls lists where a function is passed by name as well as where it is called, and bb map state lists a page script's page-level lets with where each is assigned and whether from the status poll (03f9c14)
+- bb map addresses reads the roadmap's file-and-line details (or any text) and says which addresses moved away from the name beside them and which names are gone, so a plan's addresses are corrected rather than trusted (13f8015)
 
 ### Changed
 

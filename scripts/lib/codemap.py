@@ -21,6 +21,9 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map state [FILE]          the page-level `let`s of a page script (all of them with no FILE), each
                                  with where it is assigned and from what: one assigned from `state`
                                  mirrors the poll and drifts from it, which is what to read instead
+    bb map addresses [FILE...]   the `file ~line` addresses in these texts (the roadmap on stdin with
+                                 no FILE), each checked against where the name beside it is now:
+                                 a plan keeps its words and its addresses move under it
     bb map sections FILE         the file by its `// ---- name ----` sections: functions, who reaches in
                                  from outside, what runs at load, what the suite covers. The unit a
                                  cleanup moves.
@@ -1386,6 +1389,138 @@ def q_state(idx, root, path=None):
     return out
 
 
+FILE_WORD = re.compile(r"(?<![\w/])([A-Za-z0-9_][\w./-]*\.(?:py|js|mjs|html|sh|kt|kts|yml|yaml|json|toml|xml|md))(?:'s)?\b")
+CLAUSE_END = re.compile(r";|\. |\), ")   # where one address's sentence stops and another's starts
+ADDR = re.compile(r"~(\d{2,6})")
+IDENT_BEFORE = re.compile(r"([A-Za-z_][\w]*)(?:\(\))?")
+ITEM = re.compile(r"^\s*~?\s*([RB]\d+)\b")     # `~ R18` is a shelved item in the listing
+
+
+def _inside(d, n):
+    """An address inside the name's own span is right: a line into the
+    middle of a long function is still that function's."""
+    return d["line"] - 5 <= n <= max(d["line"], d.get("end", d["line"])) + 5
+
+
+def q_addresses(idx, root, texts):
+    """Every `~line` in the texts, read with the file last named before it
+    and the name nearest before it that the map defines in that file, and
+    compared with where that name is now. A plan's words stay true while
+    its addresses move under it (item 7: keep the words, change the
+    addresses); this is what finds the ones that moved. Input is the
+    roadmap's own listing (one item per line, its id first) or any text."""
+    files = list(idx["files"])
+    by_file = {}
+    for d in idx["defs"]:
+        by_file.setdefault(d["file"], {}).setdefault(d["name"], d)
+
+    def resolve(name):
+        hits = [f for f in files if f == name or f.endswith("/" + name)]
+        if not hits:
+            hits = [f for f in files if Path(f).name == Path(name).name]
+        return hits
+
+    stale, gone, unanchored, fine = [], [], 0, 0
+    for text in texts:
+        tag = ""
+        for line in text.split("\n"):
+            m = ITEM.match(line)
+            if m:
+                tag = m.group(1)            # the listing puts details under the id's line
+            current = None
+            # a file named earlier on the line is the file every later ~N is in
+            marks = [(fm.start(), "file", fm.group(1)) for fm in FILE_WORD.finditer(line)]
+            marks += [(am.start(), "addr", am) for am in ADDR.finditer(line)]
+            for _pos, kind, val in sorted(marks, key=lambda x: x[0]):
+                if kind == "file":
+                    current = val
+                    continue
+                am = val
+                n = int(am.group(1))
+                where = f"{tag + ': ' if tag else ''}~{n}"
+                if not current:
+                    unanchored += 1
+                    continue
+                hits = resolve(current)
+                if len(hits) != 1:
+                    unanchored += 1
+                    continue
+                f = hits[0]
+                # the name nearest before the address, the file's own words
+                # taken out: `pinTo() in scripts/dashboard/index.html (~4634)`
+                # is anchored on pinTo, not on index or html
+                start = max(0, am.start() - 160)
+                while start > 0 and not line[start - 1].isspace():
+                    start -= 1                 # never cut a name in half
+                head = line[start:am.start()]
+                # One clause: `export_gaps() (agent.py ~1465), called from the
+                # pre-flight (~4431)` is two addresses, and the second has no
+                # name, not the first one's.
+                cuts = [c.end() for c in CLAUSE_END.finditer(head)]
+                if cuts:
+                    head = head[cuts[-1]:]
+                # A file named between a name and the address owns the address:
+                # `cmd_tests (the lab subverb), docker-compose.yml's lab profile
+                # (~186)` is the compose file's line, and cmd_tests is prose
+                # before it. Only a name right up against the file mention
+                # (`pinTo() in index.html (~4634)`) reaches across it.
+                fms = list(FILE_WORD.finditer(head))
+                if fms:
+                    after = head[fms[-1].end():]
+                    if re.sub(r"[\s(~]", "", after):
+                        head = after
+                head = FILE_WORD.sub(" ", head)
+                # `nodes._census` names its module, which is the file; read
+                # after the file words are gone, or `tab-emulator.js (` reads
+                # as the module emulator
+                qm = re.search(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(?\s*$", head)
+                if qm and len(resolve(qm.group(1) + ".py")) == 1:
+                    f = resolve(qm.group(1) + ".py")[0]
+                names = [i.group(1) for i in IDENT_BEFORE.finditer(head)]
+                # The nearest name that could be a symbol: camelCase, an
+                # underscore, or written with its parentheses. A plain word
+                # (drawn, list, controller) is prose and skipped; the first
+                # symbol-looking name decides, so `imgAdder() in index.html
+                # (~8093)` is imgAdder's address and not the one before it.
+                anchor = next((x for x in reversed(names)
+                               if len(x) > 2 and (any(c.isupper() for c in x[1:]) or "_" in x
+                                                  or re.search(re.escape(x) + r"\(\)", head))), None)
+                if anchor is None or anchor.isupper():
+                    unanchored += 1            # a constant: the map indexes none
+                    continue
+                d = by_file.get(f, {}).get(anchor)
+                if d is None:
+                    # defined in another file: the address names the wrong one
+                    elsewhere = [fd[anchor] for g, fd in by_file.items() if anchor in fd and not is_test(g)]
+                    if len(elsewhere) == 1 and _inside(elsewhere[0], n):
+                        fine += 1              # the number is right; the file the line last named is prose
+                    elif len(elsewhere) == 1:
+                        # the file read for it was the last one the line named,
+                        # which may be the plan's slip or this reader's
+                        stale.append(f"{where}  {anchor} is {elsewhere[0]['file']}:{elsewhere[0]['line']} now "
+                                     f"(the line last named {Path(f).name})")
+                    elif elsewhere:
+                        stale.append(f"{where}  {anchor} is not in {Path(f).name}; {len(elsewhere)} files define one")
+                    else:
+                        gone.append(f"{where}  {anchor} is defined nowhere the map looks now (was {Path(f).name}; "
+                                    "a field, a setting or a constant is not indexed)")
+                    continue
+                if _inside(d, n):
+                    fine += 1
+                else:
+                    stale.append(f"{where}  {anchor} is {f}:{d['line']} now")
+    out = []
+    if stale:
+        out.append(f"{len(stale)} address{'es' if len(stale) != 1 else ''} moved:")
+        out += ["  " + x for x in stale]
+    if gone:
+        out.append(f"{len(gone)} name{'s' if len(gone) != 1 else ''} the address was for {'are' if len(gone) != 1 else 'is'} gone:")
+        out += ["  " + x for x in gone]
+    out.append(f"{fine} address{'es' if fine != 1 else ''} still inside the name beside {'them' if fine != 1 else 'it'}, "
+               f"{unanchored} with no name the map can check")
+    return out
+
+
 def q_sections(idx, path, cov=None):
     files = [f for f in idx["files"] if f == path or f.endswith("/" + path)]
     if not files:
@@ -1492,6 +1627,12 @@ def main(argv):
             print("bb map covered NAME", file=sys.stderr)
             return 2
         print("\n".join(q_covered(idx, coverage_load(root), rest[0])))
+        return 0
+    if verb == "addresses":
+        texts = []
+        for f in rest or ["-"]:
+            texts.append(sys.stdin.read() if f == "-" else Path(f).read_text(errors="replace"))
+        print("\n".join(q_addresses(idx, root, texts)))
         return 0
     if verb == "state":
         print("\n".join(q_state(idx, root, rest[0] if rest else None)))

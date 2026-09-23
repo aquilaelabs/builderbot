@@ -193,7 +193,7 @@ bb: BuilderBot helper
                          container is not serving yet
   bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                          draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
-                         coverage, covered NAME, uncovered [FILE]; ask it before grepping
+                         addresses [FILE...], coverage, covered NAME, uncovered [FILE]; ask it before grepping
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
@@ -6095,6 +6095,12 @@ is not running; see bb logs."
 # a session is in (BB_TREE on a node, else the working directory), rebuilt
 # by itself when a source is newer than the index.
 cmd_map() {
+    # `addresses` with nothing to read reads the roadmap: the plan is where
+    # a session writes `file ~line`, and where those go stale (item 7).
+    if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
+        cmd_roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        return
+    fi
     python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
 }
 

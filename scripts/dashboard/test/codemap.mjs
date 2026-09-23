@@ -112,6 +112,24 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
 ok(/devapp\.py:\d+  passed by name in configure  \| .*runner\.register\("compose", run_compose_job\)/.test(map('who-calls', 'run_compose_job')),
    'a python function passed by name is seen where it is passed, in the function that passes it');
 
+// A plan keeps its words and its addresses move under it (item 7 of the
+// 23 Sep list): `file ~line` in the roadmap's details is checked against
+// where the name beside it is now, and a name that is nowhere is said.
+{
+  const txt = `${REPO}/.bb-map/probe-addresses.txt`;
+  const at = map('find', 'openDocker').match(/:(\d+)/)[1];      // a true address, wherever it is today
+  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/index.html (~4634), and',
+                      '~ R3  another, shelved', `       details: imgAdder() in index.html (~8093); openDocker (tab-docker.js ~${at}) draws it.`, ''].join('\n'));
+  const adr = map('addresses', txt);
+  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/index\.html:\d+ now$/m.test(adr),
+     'an address more than twenty lines from its name is reported with where the name is now, under its item');
+  ok(/^  R3: ~8093  imgAdder is defined nowhere the map looks now \(was index\.html;/m.test(adr),
+     '...a name that is gone is said to be gone, under a shelved item too');
+  ok(/^1 address still inside the name beside it, 0 with no name/m.test(adr),
+     '...and one that still holds is counted, not listed');
+  execFileSync('rm', ['-f', txt]);
+}
+
 // An arrow with an expression body is a function too (B224): `const
 // drawLinux = () => drawShellCard(...)` was in no answer at all, so a
 // refactor read it as nothing. Found, and seen passed by name.

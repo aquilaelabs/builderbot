@@ -131,7 +131,12 @@ by hand cost four commands and still could not see the failed builds.
   what: one fed from `state` is a copy of the poll kept by hand (B213,
   B215), and the sweep for those starts there. `who-calls` lists where a
   function is passed by name as well as where it is called, so a handler
-  handed to a draw never reads as dead.
+  handed to a draw never reads as dead. Every fix here carries its reason
+  in a comment beside it, and what moves keeps the words and changes the
+  addresses: `bb map addresses` reads the roadmap's `file ~line` details
+  (or any file) and says which addresses moved away from the name beside
+  them and which names are gone, which is how a plan written last month
+  is still a plan.
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from
