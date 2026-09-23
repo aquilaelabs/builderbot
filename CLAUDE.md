@@ -102,7 +102,8 @@ by hand cost four commands and still could not see the failed builds.
   endpoint once).
 - **What the suite covers:** `bb tests coverage [SUITE...]` runs the
   harness with a counter in every function of the copy it runs from (the
-  page's, and the server's under a profile hook) and merges what they
+  page's, the server's and the node agent's under a profile hook, the
+  agent counted whether run as a process or driven in process) and merges what they
   reached into `.bb-map/coverage.json`; then `bb map covered NAME` says
   which suites ran a function and how often, which is the regression net
   for touching it, and `bb map uncovered [FILE]` lists what no suite

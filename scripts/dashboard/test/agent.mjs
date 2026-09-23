@@ -1839,9 +1839,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         const r = await api(`/api/v1/jobs?id=${fj.job}`);
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
       }, 60000);
-      const tcv = await api(`/api/toolchains?node=${minted.id}`);
-      ok(tcv.job && !tcv.job.running && typeof tcv.job.errors === 'object',
-         `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv.job?.errors)})`);
+      // The finished job's view, once nothing on the node is still running:
+      // a toolchain job still active there draws the running view instead.
+      const tcv = await until(async () => {
+        const t = await api(`/api/toolchains?node=${minted.id}`);
+        return t.job && !t.job.running && 'errors' in t.job ? t : null;
+      }, 30000);
+      ok(tcv && typeof tcv.job.errors === 'object',
+         `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv?.job?.errors)})`);
       const log = [
         'toolchain', '== system packages for graphics: fonts-dejavu-core',
         '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/linux-x86_64/diagrams',
@@ -2360,6 +2365,29 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The status command, the one the docs tell a person to run on a node.
     const st = execFileSync('python3', [AGENT_RUN, 'status'], { env: agentEnv, encoding: 'utf8' });
     ok(st.length > 0 && new RegExp(minted.id).test(st), `\`builderbot-agent status\` names the node (${st.trim().split('\n')[0].slice(0, 80)})`);
+  }
+
+  // ---- one command as root, allowed by a person, run by the real agent -----
+  // root.mjs proves the asking and the allowing on the controller; this is
+  // the other end: the agent runs the command as given, once, its log
+  // opening with the reason and who allowed it, and the output streams
+  // back. The fixture agent is not root, so `id -un` names the test user,
+  // which is the honest answer here.
+  {
+    const asked = await api('/api/phone', { action: 'ask', kind: 'root', why: 'prove the root path on the real agent',
+                                            cmd: ['sh', '-c', 'echo root job ran; id -un'], project: 'alpha' });
+    ok(asked.id > 0, `a root ask for the project on this node is queued (${asked.id || asked.error})`);
+    const al = await api('/api/phone', { action: 'allow', id: asked.id });
+    ok(!al.error, `an administrator allows it (${al.error || 'ok'})`);
+    const rfin = await until(async () => {
+      const r = await api('/api/phone', { action: 'outcome', id: asked.id });
+      return ['done', 'failed', 'denied', 'expired'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(rfin?.state === 'done' && /# root on this node, allowed by test: prove the root path/.test(rfin.out || '')
+       && /root job ran/.test(rfin.out || ''),
+       `the agent runs it once and the log opens with the reason and who allowed it (${rfin?.state}: ${(rfin?.out || '').trim().split('\n')[0]?.slice(0, 90)})`);
+    const sysjob = ((await api('/api/v1/jobs?n=10')).jobs || []).find(j => j.type === 'system' && j.node === minted.id);
+    ok(sysjob && sysjob.state === 'succeeded', `...as a system job on this node, finished (${sysjob?.state || 'no system job found'})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------

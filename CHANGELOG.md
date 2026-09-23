@@ -19,6 +19,7 @@
 - bb dashboard trace SECONDS prints what the dashboard was asked over that window, by endpoint and by who asked, and the design suite holds the matching invariant: an idle page issues only its polls, and opening a tab asks each endpoint once (e30f41e)
 - Every session's briefing now says which build the controller is running and when it was built, so no session argues from a build it assumed (e30f41e)
 - bb tests coverage runs the suite with a counter in every function, and bb map covered, uncovered and unused answer which suites reach a function, what none reaches, and what nothing calls or passes by name (a8d258e)
+- The node agent is under measured test: its self-update runs for real in the suite, the wicked and dhcpcd network writers are driven, and bb map covered reports the agent at 197 of 206 functions reached (7f621e0)
 
 ### Changed
 
