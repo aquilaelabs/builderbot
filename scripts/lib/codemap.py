@@ -997,8 +997,13 @@ def coverage_ingest(root, idx, files, strip=""):
             # the server's: an absolute path, a first line and a name, matched
             # to the map's definition of that name nearest that line
             file, _, rest = key.partition(":")
-            if strip and file.startswith(strip):
-                file = file[len(strip):]
+            # Paths as the process saw them: a doubled slash from a harness
+            # that joins with one, a symlink the tree sits behind. Normalised
+            # before the prefix comes off, and the prefix the same way.
+            file = os.path.normpath(file)
+            pre = os.path.normpath(strip) + "/" if strip else ""
+            if pre and file.startswith(pre):
+                file = file[len(pre):]
             line, _, name = rest.partition(":")
             try:
                 line = int(line)

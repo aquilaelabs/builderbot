@@ -8,10 +8,19 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// Under bb tests coverage (R76) every python this file starts, the agent it
+// runs and the module it drives in-process alike, counts the agent's
+// functions into its own file: PID is each process's own, so a self-update's
+// successor and every snippet get a file apiece. Set once, inherited by all.
+if (process.env.BB_COVERAGE_DIR){
+  process.env.BB_COVERAGE_OUT = `${process.env.BB_COVERAGE_DIR}/agent-PID.json`;
+  process.env.BB_COVERAGE_SUITE = 'agent';
+  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot-agent.py';   // the copy counts as the file
+}
 // The toolchain store is scoped by platform (roadmap R19): a machine's
 // toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
 // store goes there, while the store's own path (the setting) stays the
@@ -354,7 +363,13 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
 // sat for an hour at the same assertion. A file needs no reader.
 const AGENT_LOG_FILE = `${DIR}/agent.log`;
 const agentOut = openSync(AGENT_LOG_FILE, 'a');
-const agent = spawn('python3', [AGENT, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
+// Run from a copy, not from the file the controller ships: the self-update
+// below moves the shipped file and has to find the running one behind it,
+// which is what every node sees on a controller update.
+const AGENT_RUN = `${DIR}/agent-run/builderbot-agent.py`;
+mkdirSync(`${DIR}/agent-run`, { recursive: true });
+copyFileSync(AGENT, AGENT_RUN);
+const agent = spawn('python3', [AGENT_RUN, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
 const agentLog = () => { try { return readFileSync(AGENT_LOG_FILE, 'utf8'); } catch { return ''; } };
 try {
   const live = await until(async () => {
@@ -2301,6 +2316,50 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
+
+    // The update itself, which every node performs on every controller
+    // update and no suite had run: the shipped file moves (a comment on
+    // its end, here), the row reads behind, Update agent queues the job,
+    // the agent downloads the file, checks its digest, writes it over its
+    // own, re-executes in place and dials in on the new digest. Then it
+    // still takes work, which is the point of it staying the same process.
+    appendFileSync(AGENT, '\n# the suite: from here on the controller ships a newer agent\n');
+    const shipped = await until(async () => {
+      const r = await api('/api/v1/nodes');
+      return r.agent?.digest && r.agent.digest !== all.agent.digest ? r.agent : null;
+    }, 20000);
+    ok(shipped && shipped.version === all.agent.version,
+       `the controller ships the file as it is now: a new digest, the same number (${shipped?.digest?.slice(0, 19)})`);
+    const behind = await until(async () => { const x = await nodeById(minted.id); return x.agent?.digest !== shipped.digest ? x : null; }, 5000);
+    ok(behind !== null, '...and the node, still on the old file, is behind by digest');
+    const up = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+    ok(up.ok && /^j_/.test(up.job), `Update agent queues the self-update (${up.job || up.error})`);
+    const ufin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${up.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(ufin?.state === 'succeeded' && /installed sha256:/.test(ufin.log || '') && /restarting/.test(ufin.log || ''),
+       `the agent downloads the file, checks its digest, installs it over its own and restarts (${ufin?.state}: ${(ufin?.log || '').trim().split('\n').pop()?.slice(0, 80)})`);
+    const back = await until(async () => {
+      const x = await nodeById(minted.id);
+      return x.live && x.agent?.digest === shipped.digest ? x : null;
+    }, 60000);
+    ok(back !== null, `...and dials in again on the shipped digest, live (${back?.agent?.digest?.slice(0, 19)})`);
+    ok(/re-executing the new agent/.test(agentLog()), '...having re-executed itself in place, the same process');
+    ok(readFileSync(AGENT_RUN, 'utf8').includes('from here on the controller ships a newer agent'),
+       '...and the file it runs from is the shipped one now');
+    const cur2 = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+    ok(cur2.ok && cur2.current === true, '...so it is current again and no job is queued');
+    const ej = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['sh', '-c', 'echo alive after the update'] });
+    const efin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${ej.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(efin?.state === 'succeeded' && /alive after the update/.test(efin.log || ''),
+       `...and the new agent takes a job (${efin?.state})`);
+    // The status command, the one the docs tell a person to run on a node.
+    const st = execFileSync('python3', [AGENT_RUN, 'status'], { env: agentEnv, encoding: 'utf8' });
+    ok(st.length > 0 && new RegExp(minted.id).test(st), `\`builderbot-agent status\` names the node (${st.trim().split('\n')[0].slice(0, 80)})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------
@@ -2723,6 +2782,78 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
      `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
   ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
      '...and its revert is the whole file as it was before the change');
+}
+
+// ---- the last two backends: wicked, and dhcpcd on its own -------------------
+// SUSE's wicked is ifcfg and ifroute files plus netconfig's resolver line,
+// then ifreload; Void's dhcpcd is a marked block in dhcpcd.conf and a
+// restart. Same spec, same revert, driven in process like the two above.
+{
+  const NB = `${DIR}/nbin2`; mkdirSync(NB, { recursive: true });
+  writeFileSync(`${NB}/systemctl`, `#!/bin/sh
+echo "systemctl $*" >> "${DIR}/net2.log"
+case "$*" in "is-active wicked") echo active ;; *) echo inactive ;; esac
+`, { mode: 0o755 });
+  for (const b of ['wicked', 'netconfig', 'dhcpcd'])
+    writeFileSync(`${NB}/${b}`, `#!/bin/sh\necho "${b} $*" >> "${DIR}/net2.log"\n`, { mode: 0o755 });
+  writeFileSync(`${NB}/pgrep`, `#!/bin/sh\necho 4242\n`, { mode: 0o755 });
+  const NONE = ['NETPLAN', 'NMCLI', 'NETWORKCTL', 'IFUP']
+    .map(k => `os.environ['BUILDERBOT_${k}_BIN'] = '/nonexistent/${k.toLowerCase()}'`).join('\n');
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+${NONE}
+os.environ['PATH'] = ${JSON.stringify(NB)} + ':' + os.environ.get('PATH', '')
+os.environ['BUILDERBOT_WICKED_BIN'] = ${JSON.stringify(`${NB}/wicked`)}
+os.environ['BUILDERBOT_SYSCONFIG_NET_DIR'] = sc = tempfile.mkdtemp()
+os.environ['BUILDERBOT_DHCPCD_CONF'] = dc = os.path.join(tempfile.mkdtemp(), 'dhcpcd.conf')
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+a = m.Agent.__new__(m.Agent); a.state = {'stores': {}}
+class J:
+    def __init__(self): self.lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+want = {'network': {'mode': 'static', 'address': '10.3.3.5/24', 'gateway': '10.3.3.1', 'dns': ['10.3.3.1', '10.3.3.2'], 'interface': 'eth0'}}
+open(os.path.join(sc, 'config'), 'w').write('NETCONFIG_DNS_POLICY="auto"\\nNETCONFIG_DNS_STATIC_SERVERS="9.9.9.9"\\n')
+w_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j1 = J(); r1 = a._apply_network(j1, want)
+rd = lambda n: open(os.path.join(sc, n)).read() if os.path.exists(os.path.join(sc, n)) else None
+w_files = {'ifcfg': rd('ifcfg-eth0'), 'ifroute': rd('ifroute-eth0'), 'config': rd('config')}
+a.hello = lambda: (503, {})
+j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+w_after = {'ifcfg': rd('ifcfg-eth0'), 'ifroute': rd('ifroute-eth0'), 'config': rd('config')}
+# dhcpcd: wicked out of the way, a conf with lines of its own to keep
+m.WICKED_BIN = '/nonexistent/wicked'
+open(dc, 'w').write('hostname\\nnoipv6\\n')
+d_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j3 = J(); r3 = a._apply_network(j3, want)
+d_text = open(dc).read()
+j4 = J(); r4 = a._apply_network(j4, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+d_after = open(dc).read()
+print(json.dumps({'w_backend': w_backend, 'r1': r1, 'w_files': w_files, 'r2': r2, 'w_after': w_after, 'log2': ''.join(j2.lines),
+                  'd_backend': d_backend, 'r3': r3, 'd_text': d_text, 'r4': r4, 'd_after': d_after,
+                  'calls': open(${JSON.stringify(`${DIR}/net2.log`)}).read()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.w_backend === 'wicked' && R.r1[0] === 'succeeded'
+     && R.w_files.ifcfg === "STARTMODE='auto'\nBOOTPROTO='static'\nIPADDR='10.3.3.5/24'\n"
+     && R.w_files.ifroute === 'default 10.3.3.1 - eth0\n'
+     && /NETCONFIG_DNS_POLICY="auto"\nNETCONFIG_DNS_STATIC_SERVERS="10\.3\.3\.1 10\.3\.3\.2"\n/.test(R.w_files.config)
+     && /wicked ifreload eth0/.test(R.calls) && /netconfig update -f/.test(R.calls),
+     `with wicked active the spec is ifcfg, ifroute and netconfig's resolver line, then a reload (${R.w_backend}, ${R.r1[0]})`);
+  ok(R.r2[0] === 'failed' && /reverting/.test(R.log2) && R.w_after.ifcfg === R.w_files.ifcfg
+     && R.w_after.ifroute === R.w_files.ifroute && R.w_after.config === R.w_files.config,
+     '...and a change the controller cannot confirm puts all three files back');
+  ok(R.d_backend === 'dhcpcd' && R.r3[0] === 'succeeded'
+     && /^hostname\nnoipv6\n\n# BuilderBot: eth0\ninterface eth0\nstatic ip_address=10\.3\.3\.5\/24\nstatic routers=10\.3\.3\.1\nstatic domain_name_servers=10\.3\.3\.1 10\.3\.3\.2\n# BuilderBot: end\n$/.test(R.d_text)
+     && /systemctl restart dhcpcd/.test(R.calls),
+     `with dhcpcd alone the spec is a marked block after the file's own lines, and a restart (${R.d_backend}, ${R.r3[0]})`);
+  ok(R.r4[0] === 'succeeded' && R.d_after === 'hostname\nnoipv6\n',
+     '...and dhcp takes the block out again, leaving the file as it was');
 }
 
 // ---- the toolchain store, scoped by platform; and a Mac ----------------------------
