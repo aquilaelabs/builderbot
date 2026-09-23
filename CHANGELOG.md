@@ -40,6 +40,7 @@
 - The Nostromo decals are louder and reach the phone: plating at a fifth and on the document panes, ribbing in the gutter at any width, the card plate mark on every open card (509b23b)
 - bb map keeps its index per file: an edit rescans that file alone (a fifth of a second) instead of the whole tree (a second and a half), and says how many it rescanned (0ce1283)
 - bb map sections FILE reads a file by its section headers with each section's outside callers, load-time callers and coverage; the welcome panel is the first section to leave index.html whole, into page-welcome.js (5464a9d)
+- Chat, the Analysis tab and the Projects tab leave index.html for files of their own, picked by bb map sections; the page's script is 500 lines shorter (76240c4)
 
 ### Removed
 
@@ -75,6 +76,7 @@
 - The Emulator tab no longer refetches its listing on every node heartbeat, and the Jobs and Users tabs ask for their list once per press instead of twice (e30f41e)
 - A notebook's first open asks for its rules and its code base once, not three times: the poll's revision for a project with no rules now matches the answer's, and askers in flight share one fetch (e30f41e)
 - bb map's index carries its format and a reader that meets another rebuilds instead of crashing, which the controller's build did against an index a newer map had written (52ff276)
+- Coverage counts are keyed by a function's name and place in its file, so an edit above a function no longer reads as it being unreached (76240c4)
 
 ### Security
 
