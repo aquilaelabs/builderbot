@@ -1317,17 +1317,16 @@ lives in its body. The cards:
   a Claude session on that project waits for it, so its first question
   about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
-  folder), desktop junk like `__MACOSX` is skipped, and with no notes typed
-  the `CLAUDE.md` is drafted from the unpacked files the way a clone's is.
+  folder), desktop junk like `__MACOSX` is skipped, and a `CLAUDE.md` is
+  written only from notes you typed.
   Nothing is committed; the first session, or you, decides what the first
   commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the
   container's own access (a deploy key or PAT that can already reach it).
-  The directory takes the repository's name, and the `CLAUDE.md` project
-  section is drafted from the repo itself (the README's opening paragraph,
-  plus build/test commands read off marker files like `package.json`,
-  `gradlew`, `Cargo.toml`), marked as a draft for a session to verify. A
-  repo that already carries a `CLAUDE.md` keeps its own, untouched.
+  The directory takes the repository's name. A repo that carries a
+  `CLAUDE.md` keeps its own, untouched, and one that does not gets none:
+  the briefing a session reads is assembled by the controller, and an
+  untracked draft in somebody's checkout was not worth the mystery.
   For a private repo with its own deploy key, a **Deploy key** picker lists
   what the shielded agent holds (public halves only, via `ssh-add -L`) and
   shows the selected key for copying into the repo's GitHub deploy-key page.

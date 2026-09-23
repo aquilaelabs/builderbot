@@ -201,10 +201,8 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
      '...without the wrapper folder or the desktop junk');
   ok((statSync(`${DIR}/ws/fromtar/build.sh`).mode & 0o111) !== 0,
      '...and a script keeps its executable bit');
-  ok(/frobnicates widgets/.test(readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8'))
-     && /Drafted automatically/.test(readFileSync(`${DIR}/ws/fromtar/CLAUDE.md`, 'utf8'))
-     && !existsSync(`${DIR}/ws/fromtar/CLAUDE.local.md`),
-     'with no notes typed, a CLAUDE.md is drafted from the unpacked files, and nothing else');
+  ok(!existsSync(`${DIR}/ws/fromtar/CLAUDE.md`) && !existsSync(`${DIR}/ws/fromtar/CLAUDE.local.md`),
+     'with no notes typed, no CLAUDE.md is written: nothing is drafted for a tree that arrived (23 Sep)');
 
   // A zip with no wrapper folder lands as it is.
   execFileSync('python3', ['-c', `

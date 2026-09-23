@@ -222,9 +222,8 @@ function pDraw(){
          : pPat && fg.id === "github" && pLinkAuth === "key"
            ? " One that does not exist yet is created for you, private." : "")
     : "Fetched with the container's own access: a deploy key or PAT that can "
-      + "already reach it; private repos need that set up first. A CLAUDE.md is "
-      + "drafted from its README and build files (kept as-is if it already has "
-      + "one).";
+      + "already reach it; private repos need that set up first. A CLAUDE.md it "
+      + "carries is kept as it is; none is written for it.";
   $("pNameHint").textContent = pMode === "clone"
     ? "The directory to clone into. Fills itself in from the address: change "
       + "it to keep more than one checkout of the same repository."
