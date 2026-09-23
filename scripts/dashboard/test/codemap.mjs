@@ -51,6 +51,32 @@ const suites = map('suites', 'scripts/dashboard/tab-docker.js');
 ok(/^scripts\/dashboard\/test\/devapp\.mjs  \(\d+:/m.test(suites),
    `suites FILE names the suites that reach what the file draws, most first (${suites.split('\n')[0].slice(0, 70)})`);
 
+// A python change reaches its suites through the server's route table: the
+// module's functions are called from a handler, the handler answers a path,
+// the suite asks it. Only calls INTO the module count (roadmap.items), and
+// the walk goes through the handler's own methods, never a module-level
+// helper: by name alone `load` reached every store and every suite.
+const pyS = map('suites', 'scripts/dashboard/roadmap.py');
+ok(/^scripts\/dashboard\/test\/roadmap\.mjs  \(\d+: .*\/api\/roadmap/m.test(pyS),
+   'a python module finds the suites that ask the paths its handlers answer');
+ok(!/auth\.mjs  \(\d+: \/api\/bugs/.test(pyS), '...and not every suite that asks any path');
+ok(/^scripts\/dashboard\/test\/agent\.mjs  \(\d+: .*scripts\/bb/m.test(map('suites', 'scripts/bb')),
+   'a file a suite names outright, such as bb itself, reaches that suite');
+const names = map('suites', 'scripts/dashboard/toolchains.py', '--names').split('\n');
+ok(names.includes('toolchains') && !names.some(n => n.startsWith('lab-')),
+   `--names gives one suite per line for a script, lab suites left out (${names.join(', ')})`);
+
+// bb tests preflight: the plan from named files (the copy this runs in has
+// no .git, so the branch half is not asked here).
+const pre = (...files) => execFileSync('bash', [`${REPO}/scripts/bb`, 'tests', 'preflight', '--dry', '--files', ...files],
+                                       { encoding: 'utf8', env: { ...process.env, BB_TREE: REPO } });
+const plan = pre('scripts/dashboard/tab-docker.js');
+ok(/suites:.*\bdevapp\b/.test(plan) && /checks:\s+lint voice design/.test(plan),
+   `a dashboard change plans its suites and the design check (${plan.match(/suites:.*/)?.[0].slice(0, 60)})`);
+ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server.py is the whole suite, said as such');
+ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
+   'a change with no suite still gets the lint and voice checks');
+
 // Nested definitions are shown under their parent.
 const defs = map('defs', 'scripts/dashboard/nb-roadmap.js');
 ok(/^\d+-\d+  function drawRoadmap$/m.test(defs) && /^  \d+-\d+  arrow onclick  \(in drawRoadmap\)/m.test(defs),

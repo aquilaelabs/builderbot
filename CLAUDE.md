@@ -93,6 +93,13 @@ by hand cost four commands and still could not see the failed builds.
   between runs, and its server is the kept copy's, so a change to the
   dashboard's python needs `bb tests keep stop` and a new keep; its `.js`
   and `.html` are copied over before every attached run.
+- **Before a push:** `bb tests preflight` lists the files the branch
+  changed (against `origin/main`, plus the working tree), asks the map
+  which suites reach them, and runs those with the lint, voice and design
+  checks the house rules name; `--dry` prints the plan, `--files F...`
+  names the files instead. A change to `server.py` is the whole suite,
+  said as such. This exists because the one suite skipped by hand before
+  a push was the one that would have caught it.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).

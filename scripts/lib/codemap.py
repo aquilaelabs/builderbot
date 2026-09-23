@@ -14,7 +14,8 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map calls NAME            what NAME calls
     bb map defs FILE             the definitions in one file, nested shown
     bb map draws ID|.class       which functions draw it, which suites name it
-    bb map suites FILE...        the suites that name what these files define or draw
+    bb map suites FILE...        the suites that reach what these files define, draw or name
+                                 (--names: one suite name per line, for a script)
     bb map build                 rebuild now (it rebuilds itself when a source is newer)
 
 The scanner is deliberately rough: it knows nothing of scope beyond braces
@@ -54,7 +55,8 @@ class Sink:
         self.path = path
         self.defs = []      # {name, line, end, kind, parent}
         self.calls = []     # {name, qual, line, caller}
-        self.draws = []     # {what, kind: id|class, line, fn}
+        self.draws = []     # {what, kind: id|class|path|file, line, fn}
+        self.routes = []    # {path, handler}
 
     def add_def(self, name, line, kind, parent):
         self.defs.append({"name": name, "file": self.path, "line": line, "end": line,
@@ -71,6 +73,8 @@ class Sink:
 
 
 def scan_python(text, sink):
+    for m in ROUTE.finditer(text):
+        sink.routes.append({"path": m.group(1), "handler": m.group(2), "file": sink.path})
     try:
         tree = ast.parse(text)
     except SyntaxError as e:
@@ -111,20 +115,37 @@ ATTR_ID = re.compile(r"""\bid=["']([A-Za-z][\w:-]*)["']""")
 ATTR_CLASS = re.compile(r"""\bclass=["']([^"']+)["']""")
 SEL = re.compile(r"""(?<![\w$])([#.])([A-Za-z_][\w-]*)""")
 HANDLER = re.compile(r"""\bon[a-z]+=["']\s*([A-Za-z_$][\w$]*)\s*\(""")
+# What a suite and a server share besides names: an API path, and a file
+# of the tree named outright (a suite that runs scripts/bb). Both are how
+# `suites FILE` reaches a python change, which no suite calls by name.
+API_PATH = re.compile(r"(/api/[\w/.-]+)")
+TREE_FILE = re.compile(r"(?<![\w/])((?:scripts|config|tools|docs)/[\w./-]+)")
+# The server's route table: a kind, an API path and the handler's name, on
+# one line. How a python change reaches a suite: the module's functions are
+# called from a handler, the handler answers a path, and the suite asks it.
+ROUTE = re.compile(r"""\(\s*"\w+"\s*,\s*"(/api/[^"]+)"\s*,\s*"(\w+)"\s*\)""")
 
 
 def strings_draw(s):
     """The element ids and classes a string carries: markup attributes, and
     the #id / .class of a selector. Only for strings that look like either,
-    so a sentence with a full stop in it does not become a class."""
+    so a sentence with a full stop in it does not become a class. Plus an
+    API path and a file of the tree, for `suites`."""
     out = []
+    for m in API_PATH.finditer(s):
+        out.append((m.group(1).rstrip("/.").split("?")[0], "path"))
+    for m in TREE_FILE.finditer(s):
+        out.append((m.group(1).rstrip("."), "file"))
     for m in ATTR_ID.finditer(s):
         out.append((m.group(1), "id"))
     for m in ATTR_CLASS.finditer(s):
         for c in m.group(1).split():
             if c.isidentifier() or "-" in c:
                 out.append((c.strip(), "class"))
-    if "<" not in s and len(s) < 200 and re.match(r"^[\s\w#.\[\]=\"':>,()*+~^$|-]+$", s):
+    # A selector, not a sentence: short, selector characters only, and at
+    # most six words, since prose with a full stop in it matched before.
+    if "<" not in s and len(s) < 200 and len(s.split()) <= 6 \
+            and re.match(r"^[\s\w#.\[\]=\"':>,()*+~^$|-]+$", s):
         for m in SEL.finditer(s):
             what = m.group(2)
             if m.group(1) == "#" and re.match(r"^[A-Za-z]", what):
@@ -516,7 +537,7 @@ def sources(root):
 def build(root):
     root = Path(root)
     idx = {"built": time.time(), "root": str(root), "files": {}, "defs": [], "calls": [],
-           "draws": []}
+           "draws": [], "routes": []}
     for p, lang in sources(root):
         rel = str(p.relative_to(root))
         try:
@@ -534,6 +555,7 @@ def build(root):
         idx["defs"] += sink.defs
         idx["calls"] += sink.calls
         idx["draws"] += sink.draws
+        idx["routes"] += sink.routes
     out = root / INDEX_DIR
     out.mkdir(exist_ok=True)
     tmp = out / "index.json.tmp"
@@ -561,7 +583,10 @@ def load(root, force=False):
 # ---- the questions ----------------------------------------------------------
 
 def is_test(path):
-    return "/test/" in "/" + path or path.startswith("test/")
+    """A suite: an .mjs under a test directory, not the library beside them
+    and not a stub the harness runs."""
+    return ("/test/" in "/" + path or path.startswith("test/")) and path.endswith(".mjs") \
+        and not path.endswith("/lib.mjs")
 
 
 _LINES = {}
@@ -654,27 +679,82 @@ def q_draws(idx, what):
     return out
 
 
-def q_suites(idx, paths):
-    """The suites that name anything these files define or draw: the map's
-    half of a preflight (R75 step 3)."""
+def suites_for(idx, paths):
+    """{suite file: set of reasons} for the suites that reach these files:
+    a suite that calls a function they define, names an id or class they
+    draw, asks an API path they name, or names one of them outright (a
+    suite that runs scripts/bb). A changed suite reaches itself. The
+    map's half of a preflight (R75 step 3)."""
     files = set()
     for p in paths:
         files |= {f for f in idx["files"] if f == p or f.endswith("/" + p)}
-    if not files:
-        return ["none of those files is indexed"]
-    names = {d["name"] for d in idx["defs"] if d["file"] in files and not d["name"].startswith("(")}
+    # Names a suite can call: the page's own functions, which a suite calls
+    # bare inside page.evaluate. Never a python function: no suite calls
+    # one, and `remove()` or `load()` defined in a module matched every
+    # suite's DOM and its own helpers.
+    js = {f for f in files if idx["files"].get(f, {}).get("lang") in ("js", "html")}
+    names = {d["name"] for d in idx["defs"] if d["file"] in js and not d["name"].startswith("(")
+             and len(d["name"]) > 3}
     things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files}
+    # A python change: the paths its functions answer, through the handlers
+    # that call them (up to three hops of callers, within the python).
+    py = {f for f in files if idx["files"].get(f, {}).get("lang") == "py"}
+    if py:
+        defs = {d["name"] for d in idx["defs"] if d["file"] in py and not d["name"].startswith("(")}
+        stems = {Path(f).stem for f in py}
+        # The calls INTO the module: qualified with its name (roadmap.items)
+        # or bare from inside it. By name alone, `load` reached every store.
+        reached = {c["caller"].rsplit(".", 1)[-1] for c in idx["calls"]
+                   if c["name"] in defs and "." in c["caller"]
+                   and (c["qual"] in stems or (not c["qual"] and c["file"] in py))}
+        frontier = set(reached)
+        # Then two hops through the handler's own methods (self.X calls),
+        # never through a module-level helper: the status snapshot calls
+        # every store, and walking through it reached every route.
+        for _ in range(2):
+            callers = {c["caller"].rsplit(".", 1)[-1] for c in idx["calls"]
+                       if c["name"] in frontier and c["qual"] == "self" and "." in c["caller"]}
+            frontier = callers - reached
+            reached |= callers
+        for r in idx.get("routes", []):
+            if r["handler"] in reached:
+                things.add((r["path"], "path"))
     hits = {}
+    for f in files:
+        if is_test(f):
+            hits.setdefault(f, set()).add("changed itself")
+    mark = {"class": ".", "id": "#", "path": "", "file": ""}
+    paths = {w for w, k in things if k == "path"}
     for d in idx["draws"]:
-        if is_test(d["file"]) and (d["what"], d["kind"]) in things:
-            hits.setdefault(d["file"], set()).add(("." if d["kind"] == "class" else "#") + d["what"])
+        if not is_test(d["file"]):
+            continue
+        if (d["what"], d["kind"]) in things:
+            hits.setdefault(d["file"], set()).add(mark[d["kind"]] + d["what"])
+        elif d["kind"] == "path" and any(d["what"].startswith(p_ + "/") or d["what"].startswith(p_ + "?")
+                                         for p_ in paths):
+            hits.setdefault(d["file"], set()).add(d["what"])
+        elif d["kind"] == "file" and any(f == d["what"] or f.endswith("/" + d["what"]) for f in files):
+            hits.setdefault(d["file"], set()).add(d["what"])
     for c in idx["calls"]:
-        if is_test(c["file"]) and c["name"] in names:
+        if is_test(c["file"]) and not c["qual"] and c["name"] in names:
             hits.setdefault(c["file"], set()).add(c["name"] + "()")
+    return files, hits
+
+
+def q_suites(idx, paths, names_only=False):
+    files, hits = suites_for(idx, paths)
+    if not files:
+        return [] if names_only else ["none of those files is indexed"]
     if not hits:
-        return ["no suite names anything these files define or draw"]
+        return [] if names_only else ["no suite names anything these files define or draw"]
     out = []
-    for f, why in sorted(hits.items(), key=lambda kv: -len(kv[1])):
+    for f, why in sorted(hits.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        if names_only:
+            # For a script that will run them: a lab suite needs a real
+            # service and is asked for by name (bb tests lab), never picked.
+            if not Path(f).name.startswith("lab-"):
+                out.append(Path(f).stem)
+            continue
         w = sorted(why)
         out.append(f"{f}  ({len(w)}: {', '.join(w[:5])}{', ...' if len(w) > 5 else ''})")
     return out
@@ -729,7 +809,8 @@ def main(argv):
     elif verb == "draws":
         lines = q_draws(idx, rest[0])
     else:
-        lines = q_suites(idx, rest)
+        names_only = "--names" in rest
+        lines = q_suites(idx, [r for r in rest if r != "--names"], names_only)
     print("\n".join(lines))
     return 0
 

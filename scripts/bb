@@ -99,6 +99,7 @@ bb: BuilderBot helper
   bb tests lab           the lab suites, against real services: the dev stack's Gitea, a real node
   bb tests probe FILE    a scratch Playwright script against the dashboard fixture, like a suite
   bb tests keep [stop|log]  keep the fixture up, so a suite or a probe attaches to it
+  bb tests preflight [--dry] [--base REF] [--files F...]  the suites and checks a change touches, run
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
   bb rules               the house rules for this project: the operator's and yours
@@ -2924,6 +2925,66 @@ cmd_tests() {
         . "$keepf"
         log "fixture kept at $KEEP_URL (test:test): bb dashboard test SUITE and bb tests probe FILE attach to it; bb tests keep stop ends it"
         return
+    fi
+    # Preflight (roadmap R75 step 3): the suites a change touches, picked by
+    # the code map from the files that changed, run before a push with the
+    # checks the house rules name. Never picked by hand again: the one
+    # suite skipped before a push this month was the one that would have
+    # caught it. The files: the branch against its base, plus the working
+    # tree; or --files given outright; --dry only prints the plan.
+    if [ "${1:-}" = preflight ]; then
+        shift
+        local dry="" base="" files=() f suites=() checks=() all_dash=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --dry) dry=1; shift ;;
+                --base) base="$2"; shift 2 ;;
+                --files) shift; while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do files+=("$1"); shift; done ;;
+                *) die "bb tests preflight [--dry] [--base REF] [--files F...]" ;;
+            esac
+        done
+        if [ "${#files[@]}" -eq 0 ]; then
+            git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git tree: bb tests preflight --files F... names the files instead"
+            if [ -z "$base" ]; then
+                base="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 && echo origin/main || echo main)"
+            fi
+            local mb; mb="$(git merge-base "$base" HEAD 2>/dev/null || echo "$base")"
+            while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
+                { git diff --name-only "$mb" HEAD; git status --porcelain | sed -E 's/^.{3}//; s/.* -> //'; } | sort -u)
+            log "preflight: $(printf '%s' "${#files[@]}") file(s) changed since $base ($(git rev-parse --short "$mb"))"
+        fi
+        [ "${#files[@]}" -gt 0 ] || { log "nothing changed: nothing to run"; return 0; }
+        # The suites, from the map. Python under the dashboard reaches its
+        # suites through the API paths it names; server.py names them all,
+        # so a change there is the whole suite, said as such.
+        for f in "${files[@]}"; do
+            case "$f" in scripts/dashboard/server.py) all_dash=1 ;; esac
+        done
+        if [ -n "$all_dash" ]; then
+            suites=(ALL)
+        else
+            while IFS= read -r f; do [ -n "$f" ] && suites+=("$f"); done < <(cmd_map suites "${files[@]}" --names)
+        fi
+        # The checks the house rules ask for before handing back.
+        checks=(lint voice)
+        for f in "${files[@]}"; do
+            case "$f" in scripts/dashboard/*) checks+=(design); break ;; esac
+        done
+        printf '  files:   %s\n' "${files[*]}"
+        printf '  suites:  %s\n' "${suites[*]:-none}"
+        printf '  checks:  %s\n' "${checks[*]}"
+        [ -z "$dry" ] || return 0
+        local rc=0
+        if [ "${suites[*]:-}" = ALL ]; then cmd_dashboard test || rc=1
+        elif [ "${#suites[@]}" -gt 0 ]; then cmd_dashboard test "${suites[@]}" || rc=1; fi
+        local c
+        for c in "${checks[@]}"; do
+            # design is uniform.mjs, already in the run when it is listed
+            case "$c" in design) case " ${suites[*]:-} " in *" uniform "*|*" ALL "*) continue ;; esac ;; esac
+            bash "$0" rules check "$c" || rc=1
+        done
+        [ "$rc" = 0 ] && log "preflight: clean" || warn "preflight: something above failed"
+        return "$rc"
     fi
     if [ "${1:-}" = lab ]; then
         # Each lab suite says what it needs and skips itself in one line
@@ -7278,7 +7339,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"rules check"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and

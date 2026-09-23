@@ -619,6 +619,13 @@ kept world is not put back between runs, and a change to the dashboard's
 python needs a fresh keep; `bb tests keep stop` ends it. Both are R75's
 second step.
 
+`bb tests preflight` is what a session runs before a push: the files the
+branch changed, the suites the code map says reach them (a page function
+they call bare, an id or class they name, an API path a changed python
+module answers through the server's route table, a file named outright),
+and the lint, voice and design checks, run together; `--dry` prints the
+plan. R75's third step, so the suites are never picked by hand.
+
 `bb map` is the code map a session asks instead of grepping (roadmap R75):
 one index over the tree it is in, python, the dashboard's scripts (the
 inline script in `index.html` included), `bb`'s own shell and the test
